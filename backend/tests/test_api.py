@@ -1,11 +1,22 @@
 import asyncio
+from datetime import timedelta
 from io import BytesIO
+from uuid import uuid4
 
-import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy import func, select
 
-WORKSPACE_ID = "workspace-demo"
+from app.domain import OutboxStatus
+from app.models import (
+    JobAttemptRecord,
+    OutboxEventRecord,
+    UsageEventRecord,
+    utc_now,
+)
+from app.outbox import publish_pending_events
+
+WORKSPACE_ID = "ws_test"
 
 
 def image_payload(
@@ -17,166 +28,313 @@ def image_payload(
     return output.getvalue()
 
 
-def upload_asset(client: TestClient, filename: str = "product.png") -> dict:
+def idem() -> dict[str, str]:
+    return {"Idempotency-Key": str(uuid4())}
+
+
+def upload_asset(
+    client: TestClient,
+    *,
+    filename: str = "product.png",
+    media_kind: str = "image",
+    key: str | None = None,
+) -> dict:
     response = client.post(
-        "/api/assets",
-        data={"workspace_id": WORKSPACE_ID, "origin": "upload"},
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        headers={"Idempotency-Key": key or str(uuid4())},
+        data={"origin_kind": "upload", "media_kind": media_kind},
         files={"file": (filename, image_payload(), "image/png")},
     )
-    assert response.status_code == 201
+    assert response.status_code == 201, response.text
     return response.json()
 
 
-def create_local_edit_job(client: TestClient, asset_id: str) -> dict:
-    response = client.post(
-        "/api/jobs",
-        json={
-            "type": "local_edit",
-            "workspace_id": WORKSPACE_ID,
-            "input_asset_ids": [asset_id],
-            "configuration": {
-                "quality": "balanced",
-                "selection_coverage": 0.124,
-            },
-            "estimated_cost": 2,
+def local_edit_payload(source_id: str, mask_id: str) -> dict:
+    return {
+        "type": "local_edit",
+        "intent": "submit",
+        "display_name": "蓝色耳机",
+        "input": {
+            "source_asset_id": source_id,
+            "selection_mask_asset_id": mask_id,
         },
+        "configuration": {
+            "instruction": "将耳罩改为深蓝色",
+            "quality": "balanced",
+            "output_format": "png",
+        },
+    }
+
+
+def create_local_edit_job(
+    client: TestClient,
+    source_id: str,
+    mask_id: str,
+    *,
+    key: str | None = None,
+) -> dict:
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers={"Idempotency-Key": key or str(uuid4())},
+        json=local_edit_payload(source_id, mask_id),
     )
-    assert response.status_code == 201
+    assert response.status_code == 202, response.text
     return response.json()
 
 
-def test_health_and_empty_collections(client: TestClient) -> None:
-    health = client.get("/health")
-    assert health.status_code == 200
-    assert health.json()["task_runner"] == "mock"
-
-    assets = client.get("/api/assets", params={"workspace_id": WORKSPACE_ID})
-    jobs = client.get("/api/jobs", params={"workspace_id": WORKSPACE_ID})
-    assert assets.json() == {"items": [], "total": 0}
-    assert jobs.json() == {"items": [], "total": 0}
-
-
-def test_upload_validates_and_persists_image_metadata(client: TestClient) -> None:
-    asset = upload_asset(client)
-    assert asset["filename"] == "product.png"
-    assert asset["content_type"] == "image/png"
-    assert asset["width"] == 96
-    assert asset["height"] == 96
-    assert asset["storage_key"].startswith(f"{WORKSPACE_ID}/")
-
-    fetched = client.get(f"/api/assets/{asset['id']}")
-    listed = client.get(
-        "/api/assets",
-        params={"workspace_id": WORKSPACE_ID, "origin": "upload"},
+def dispatch_pending(client: TestClient) -> int:
+    return publish_pending_events(
+        client.app.state.settings,
+        client.app.state.session_factory,
+        client.app.state.task_runner,
     )
-    assert fetched.status_code == 200
-    assert listed.json()["total"] == 1
 
 
-def test_upload_rejects_non_image_payload(client: TestClient) -> None:
-    response = client.post(
-        "/api/assets",
-        data={"workspace_id": WORKSPACE_ID},
-        files={"file": ("fake.png", b"not-an-image", "image/png")},
-    )
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "INVALID_IMAGE"
+def test_health_identity_and_empty_collections(client: TestClient) -> None:
+    live = client.get("/health/live")
+    ready = client.get("/health/ready")
+    me = client.get("/api/v1/me")
+    workspaces = client.get("/api/v1/workspaces")
+    assets = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/assets")
+    jobs = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs")
+
+    assert live.status_code == 200
+    assert ready.json()["checks"]["database"] == "ok"
+    assert me.json() == {"id": "usr_test"}
+    assert workspaces.json()[0]["id"] == WORKSPACE_ID
+    assert assets.json()["items"] == []
+    assert jobs.json()["items"] == []
 
 
-def test_workspace_id_rejects_path_characters(client: TestClient) -> None:
-    response = client.post(
-        "/api/assets",
-        data={"workspace_id": "../workspace"},
-        files={"file": ("product.png", image_payload(), "image/png")},
-    )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
-
-
-def test_job_lifecycle_cancel_and_retry(client: TestClient) -> None:
-    asset = upload_asset(client)
-    job = create_local_edit_job(client, asset["id"])
-    assert job["status"] == "queued"
-    assert job["progress"] == 0
-    assert job["api_request_count"] == 0
-
-    cancelled = client.post(f"/api/jobs/{job['id']}/cancel")
-    assert cancelled.status_code == 200
-    assert cancelled.json()["status"] == "cancelled"
-
-    retried = client.post(f"/api/jobs/{job['id']}/retry")
-    assert retried.status_code == 201
-    assert retried.json()["status"] == "queued"
-    assert retried.json()["retry_of_job_id"] == job["id"]
-    assert retried.json()["parent_job_id"] == job["id"]
-
-
-def test_mock_runner_completes_without_external_api_usage(
+def test_upload_is_idempotent_private_and_accessible_by_signed_url(
     client: TestClient,
 ) -> None:
-    asset = upload_asset(client)
-    job = create_local_edit_job(client, asset["id"])
+    key = str(uuid4())
+    asset = upload_asset(client, key=key)
+    replay = upload_asset(client, key=key)
 
+    assert replay["id"] == asset["id"]
+    assert asset["sha256"]
+    assert "storage_key" not in asset
+    assert "object_key" not in asset
+    assert "storage_bucket" not in asset
+
+    access = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets/{asset['id']}/access-url",
+        json={"disposition": "inline", "variant": "original"},
+    )
+    assert access.status_code == 200
+    content = client.get(access.json()["url"])
+    assert content.status_code == 200
+    assert content.headers["content-type"] == "image/png"
+
+
+def test_upload_rejects_missing_idempotency_and_invalid_images(
+    client: TestClient,
+) -> None:
+    missing_key = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        files={"file": ("product.png", image_payload(), "image/png")},
+    )
+    invalid = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        headers=idem(),
+        files={"file": ("fake.png", b"not-an-image", "image/png")},
+    )
+    assert missing_key.status_code == 400
+    assert missing_key.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
+    assert invalid.status_code == 400
+    assert invalid.json()["error"]["code"] == "INVALID_IMAGE"
+    assert invalid.json()["error"]["request_id"].startswith("req_")
+
+
+def test_idempotency_key_reuse_with_different_request_is_rejected(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="source.png")
+    mask = upload_asset(client, filename="mask.png", media_kind="mask")
+    key = str(uuid4())
+    first = create_local_edit_job(client, source["id"], mask["id"], key=key)
+    replay = create_local_edit_job(client, source["id"], mask["id"], key=key)
+    assert first["id"] == replay["id"]
+
+    changed = local_edit_payload(source["id"], mask["id"])
+    changed["configuration"]["instruction"] = "改成红色"
+    conflict = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers={"Idempotency-Key": key},
+        json=changed,
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+
+def test_job_uses_relational_items_outbox_and_exact_costs(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="source.png")
+    mask = upload_asset(client, filename="mask.png", media_kind="mask")
+    job = create_local_edit_job(client, source["id"], mask["id"])
+
+    assert job["status"] == "queued"
+    assert len(job["items"]) == 1
+    assert {item["role"] for item in job["assets"]} == {
+        "source",
+        "selection_mask",
+    }
+    assert job["cost"]["estimated_min"]["micros"] == "40000"
+    assert job["cost"]["actual"] is None
+
+    assert dispatch_pending(client) == 1
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert completed["status"] == "completed"
+    assert completed["items"][0]["status"] == "succeeded"
+    assert completed["cost"]["actual"]["micros"] == "0"
+    assert completed["cost"]["actual_credits"] == 0
+
+    # Redelivery is harmless: no second attempt or usage event is created.
     asyncio.run(client.app.state.task_runner.run(job["id"]))
-    completed = client.get(f"/api/jobs/{job['id']}")
-    payload = completed.json()
+    with client.app.state.session_factory() as session:
+        attempts = session.scalar(
+            select(func.count())
+            .select_from(JobAttemptRecord)
+            .where(JobAttemptRecord.job_id == job["id"])
+        )
+        usage_events = session.scalar(
+            select(func.count())
+            .select_from(UsageEventRecord)
+            .where(UsageEventRecord.job_id == job["id"])
+        )
+    assert attempts == 1
+    assert usage_events == 1
 
-    assert payload["status"] == "completed"
-    assert payload["progress"] == 100
-    assert payload["api_request_count"] == 0
-    assert payload["actual_cost"] == 0
-    assert payload["usage"]["reported"] is False
-    assert payload["raw_outputs"][0]["kind"] == "phase1_mock_result"
+
+def test_cancel_is_terminal_and_retry_creates_a_new_job(client: TestClient) -> None:
+    source = upload_asset(client, filename="source.png")
+    mask = upload_asset(client, filename="mask.png", media_kind="mask")
+    job = create_local_edit_job(client, source["id"], mask["id"])
+
+    cancelled = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/cancel",
+        headers=idem(),
+        json={"reason": "用户主动取消"},
+    )
+    assert cancelled.status_code == 202
+    assert cancelled.json()["status"] == "cancelled"
+
+    retried = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/retry",
+        headers=idem(),
+        json={"scope": "full", "item_ids": []},
+    )
+    assert retried.status_code == 201
+    assert retried.json()["id"] != job["id"]
+    assert retried.json()["retry_of_job_id"] == job["id"]
+    assert retried.json()["root_job_id"] == job["id"]
 
 
-def test_job_rejects_missing_or_invalid_asset_groups(client: TestClient) -> None:
+def test_detail_pack_stops_for_validated_plan_confirmation(
+    client: TestClient,
+) -> None:
+    reference = upload_asset(client)
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json={
+            "type": "detail_pack",
+            "intent": "submit",
+            "display_name": "耳机详情页",
+            "input": {
+                "product_groups": [
+                    {"group_key": "product-1", "asset_ids": [reference["id"]]}
+                ]
+            },
+            "configuration": {
+                "product_name": "无线耳机",
+                "selling_points": ["降噪", "长续航"],
+                "platform_code": "amazon",
+                "language": "zh-CN",
+                "page_count": 3,
+            },
+        },
+    )
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+    published = dispatch_pending(client)
+    if published != 1:
+        with client.app.state.session_factory() as session:
+            event = session.scalar(
+                select(OutboxEventRecord).where(
+                    OutboxEventRecord.aggregate_id == job_id
+                )
+            )
+            failure = event.last_error if event else "missing outbox event"
+        raise AssertionError(f"plan dispatch failed: {failure}")
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
+    assert planned["status"] == "awaiting_confirmation"
+    assert planned["plan"]["validation_status"] == "valid"
+    assert len(planned["plan"]["payload"]["pages"]) == 3
+
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/plan/confirm",
+        headers=idem(),
+        json={"expected_revision": 1},
+    )
+    assert confirmed.status_code == 202
+    dispatch_pending(client)
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
+    assert completed["status"] == "completed"
+    assert completed["succeeded_item_count"] == 3
+
+
+def test_missing_assets_and_unknown_workspace_do_not_leak(client: TestClient) -> None:
+    unknown_workspace = client.get("/api/v1/workspaces/ws_unknown/assets")
+    assert unknown_workspace.status_code == 404
+    assert unknown_workspace.json()["error"]["code"] == "WORKSPACE_NOT_FOUND"
+
     missing = client.post(
-        "/api/jobs",
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
         json={
             "type": "local_edit",
-            "workspace_id": WORKSPACE_ID,
-            "input_asset_ids": ["asset_missing"],
+            "intent": "submit",
+            "input": {
+                "source_asset_id": "asset_missing",
+                "selection_mask_asset_id": "asset_missing_mask",
+            },
+            "configuration": {
+                "instruction": "修改颜色",
+                "quality": "balanced",
+                "output_format": "png",
+            },
         },
     )
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "INPUT_ASSET_NOT_FOUND"
 
-    invalid_group = client.post(
-        "/api/jobs",
-        json={
-            "type": "detail_pack",
-            "workspace_id": WORKSPACE_ID,
-            "input_asset_ids": [],
-        },
-    )
-    assert invalid_group.status_code == 422
-    assert invalid_group.json()["error"]["code"] == "VALIDATION_ERROR"
 
+def test_outbox_failure_stays_recoverable(client: TestClient) -> None:
+    source = upload_asset(client, filename="source.png")
+    mask = upload_asset(client, filename="mask.png", media_kind="mask")
+    job = create_local_edit_job(client, source["id"], mask["id"])
 
-def test_queue_failure_marks_job_failed(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    asset = upload_asset(client)
-    client.app.state.settings.auto_process_jobs = True
-    client.app.state.settings.task_dispatcher = "celery"
+    with client.app.state.session_factory() as session:
+        event = session.scalar(
+            select(OutboxEventRecord).where(OutboxEventRecord.aggregate_id == job["id"])
+        )
+        assert event is not None
+        assert event.status == OutboxStatus.PENDING.value
+        event.status = OutboxStatus.PUBLISHING.value
+        event.locked_at = utc_now() - timedelta(minutes=6)
+        event.locked_by = "dead-dispatcher"
+        session.commit()
 
-    def unavailable(_: str) -> None:
-        raise ConnectionError("broker unavailable")
+    assert dispatch_pending(client) == 1
 
-    monkeypatch.setattr("app.tasks.process_job.delay", unavailable)
-    response = client.post(
-        "/api/jobs",
-        json={
-            "type": "local_edit",
-            "workspace_id": WORKSPACE_ID,
-            "input_asset_ids": [asset["id"]],
-        },
-    )
-
-    assert response.status_code == 503
-    error = response.json()["error"]
-    assert error["code"] == "TASK_QUEUE_UNAVAILABLE"
-    failed = client.get(f"/api/jobs/{error['details']['job_id']}").json()
-    assert failed["status"] == "failed"
-    assert failed["error_code"] == "TASK_QUEUE_UNAVAILABLE"
+    with client.app.state.session_factory() as session:
+        event = session.scalar(
+            select(OutboxEventRecord).where(OutboxEventRecord.aggregate_id == job["id"])
+        )
+        assert event is not None
+        assert event.status == OutboxStatus.PUBLISHED.value
+        assert event.attempt_count == 1

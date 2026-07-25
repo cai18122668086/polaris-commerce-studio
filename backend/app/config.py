@@ -13,7 +13,13 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Polaris Commerce Studio API"
-    app_version: str = "0.1.0"
+    app_version: str = "1.1.0"
+    environment: Literal["development", "test", "production"] = "development"
+    auth_mode: Literal["development", "external"] = "development"
+    development_user_id: str = "usr_development"
+    development_workspace_id: str = "ws_development"
+    development_workspace_name: str = "开发工作区"
+    access_url_secret: str = "development-access-url-secret-change-me"
     database_url: str = (
         "postgresql+psycopg://polaris:polaris_dev_only@localhost:5432/polaris"
     )
@@ -25,6 +31,7 @@ class Settings(BaseSettings):
     s3_access_key: str = "polaris_minio"
     s3_secret_key: str = "polaris_minio_dev_only"
     s3_bucket: str = "polaris-assets"
+    s3_auto_create_bucket: bool = True
     auto_process_jobs: bool = True
     task_dispatcher: Literal["inline", "celery"] = "celery"
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
@@ -38,3 +45,17 @@ class Settings(BaseSettings):
             "http://localhost:3001",
         ]
     )
+
+    def validate_runtime_safety(self) -> None:
+        if self.environment != "production":
+            return
+        if self.auth_mode == "development":
+            raise RuntimeError("生产环境禁止使用 development 身份模式。")
+        forbidden_secrets = {
+            "polaris_minio_dev_only",
+            "development-access-url-secret-change-me",
+        }
+        if self.s3_secret_key in forbidden_secrets:
+            raise RuntimeError("生产环境禁止使用开发对象存储密钥。")
+        if self.access_url_secret in forbidden_secrets:
+            raise RuntimeError("生产环境必须配置独立的访问 URL 签名密钥。")

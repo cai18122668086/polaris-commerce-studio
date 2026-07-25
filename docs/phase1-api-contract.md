@@ -1,100 +1,113 @@
-# Phase 1 API 契约
+# API v1 生产契约
 
-本契约服务于局部修改和商品详情图两种任务。Phase 1 第一批只模拟任务执行，不调用图片 API。
+更新日期：2026-07-25
 
-## 资产
+本文件是 Phase 1.1 之后唯一有效的业务 API 契约。机器可读契约位于
+`docs/openapi-v1.json`，前端生成类型位于
+`lib/api/generated/openapi.d.ts`。
 
-### `POST /api/assets`
+## 边界
 
-使用 `multipart/form-data` 上传单张图片：
+- 业务资源只通过 `/api/v1` 暴露。
+- `/health/live` 和 `/health/ready` 不版本化。
+- 当前执行器仍是零付费调用的生产形态模拟器。
+- 前端页面尚未切换到 API v1。
+- `workspace_id` 位于路径中，但服务端仍必须从 Principal 和
+  `workspace_members` 验证访问权。
+- 生产环境禁止启用 development 身份模式。
 
-- `workspace_id`：工作区标识。
-- `origin`：`upload`、`local_edit` 或 `detail_pack`。
-- `file`：PNG、JPEG 或 WebP，默认不超过 20MB、4000 万像素。
+## 资源路径
 
-文件写入 S3 兼容对象存储（本地 Compose 使用 MinIO），数据库只保存元数据和
-`storage_key`。单元测试仍可使用临时本地存储。
+```text
+GET  /api/v1/me
+GET  /api/v1/workspaces
+GET  /api/v1/workspaces/{workspace_id}
 
-### `GET /api/assets`
+POST /api/v1/workspaces/{workspace_id}/assets
+GET  /api/v1/workspaces/{workspace_id}/assets
+GET  /api/v1/workspaces/{workspace_id}/assets/{asset_id}
+POST /api/v1/workspaces/{workspace_id}/assets/{asset_id}/access-url
 
-按 `workspace_id` 查询，可选 `origin`、`limit` 和 `offset`。
+POST  /api/v1/workspaces/{workspace_id}/jobs
+GET   /api/v1/workspaces/{workspace_id}/jobs
+GET   /api/v1/workspaces/{workspace_id}/jobs/{job_id}
+PATCH /api/v1/workspaces/{workspace_id}/jobs/{job_id}
+POST  /api/v1/workspaces/{workspace_id}/jobs/{job_id}/submit
+POST  /api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel
+POST  /api/v1/workspaces/{workspace_id}/jobs/{job_id}/retry
+POST  /api/v1/workspaces/{workspace_id}/jobs/{job_id}/clone
+PUT   /api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan
+POST  /api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/confirm
+```
 
-### `GET /api/assets/{asset_id}`
+## 幂等
 
-返回单个素材元数据。
+资产上传、任务创建、提交、取消、重试、复制和计划确认必须提供
+`Idempotency-Key`。记录保留七天。
 
-## 任务
+- 同 key、同请求：返回第一次创建的资源。
+- 同 key、不同请求：`409 IDEMPOTENCY_KEY_REUSED`。
+- 同 key、首次请求尚未完成：`409 IDEMPOTENCY_IN_PROGRESS`。
 
-任务类型：
+## 任务状态
 
-- `local_edit`
-- `detail_pack`
+```text
+draft
+queued
+planning
+awaiting_confirmation
+processing
+cancelling
+partial
+completed
+failed
+cancelled
+```
 
-任务状态：
+`partial/completed/failed/cancelled` 是不可变终态。重试创建新任务。
+详情图计划必须通过结构校验并显式确认，才会进入 processing。
 
-- `draft`
-- `queued`
-- `planning`
-- `processing`
-- `partial`
-- `completed`
-- `failed`
-- `cancelled`
+## 成本
 
-### `POST /api/jobs`
+- 数据库存储 `bigint` 微单位。
+- API 使用十进制字符串返回 `micros`，避免 JavaScript 精度损失。
+- `actual=null` 表示未知；零只表示已确认没有发生费用。
+- 客户端不能提交估算、实际成本、提示词版本或策略版本。
+- 提交任务时预留额度；终态时结算并释放余额。
 
-示例：
+## 资产安全
+
+- API 不返回 provider、bucket、object key 或旧 `storage_key`。
+- 只有 `ready` 资产可参与任务。
+- 下载使用经授权生成的十分钟短期 URL。
+- 局部修改只有验证通过的 `locked_delivery` 可以标记为可交付。
+
+## 分页
+
+资产和任务列表使用不透明 keyset cursor：
 
 ```json
 {
-  "type": "local_edit",
-  "workspace_id": "workspace-demo",
-  "input_asset_ids": ["asset_xxx"],
-  "configuration": {
-    "quality": "balanced",
-    "selection_coverage": 0.124
-  },
-  "prompt_version": "phase1-mock",
-  "strategy_version": "phase1-mock",
-  "estimated_cost": 2
+  "items": [],
+  "next_cursor": null,
+  "has_more": false,
+  "total": null
 }
 ```
 
-局部修改必须有且只有一张输入素材；商品详情图支持同一商品的 1–8 张角度图。
+只有 `include_total=true` 时计算 total。游标绑定原筛选条件。
 
-### `GET /api/jobs`
-
-按 `workspace_id` 查询，可选 `type`、`status`、`limit` 和 `offset`。
-
-### `GET /api/jobs/{job_id}`
-
-返回任务输入、配置、状态、进度、输出、错误、usage、成本和时间信息。
-
-### `POST /api/jobs/{job_id}/cancel`
-
-取消非终态任务。已完成、失败或已取消任务返回 `JOB_NOT_CANCELLABLE`。
-
-### `POST /api/jobs/{job_id}/retry`
-
-只有失败、部分成功或已取消任务可以重试；新任务保留 `retry_of_job_id` 和 `parent_job_id`。
-
-## 错误结构
+## 错误
 
 ```json
 {
   "error": {
-    "code": "INPUT_ASSET_NOT_FOUND",
-    "message": "部分输入素材不存在或不属于当前工作区。",
-    "details": {
-      "asset_ids": ["asset_missing"]
-    }
+    "code": "ASSET_NOT_FOUND",
+    "message": "未找到指定素材。",
+    "details": null,
+    "request_id": "req_xxx"
   }
 }
 ```
 
-## 后续适配点
-
-- 前端保留现有设计与数据结构，逐页切换到这些 HTTP 接口。
-- 将模拟执行器替换为局部修改和商品详情图的真实服务层。
-- 为对象下载补充短期签名 URL。
-- 接入账号体系后，以服务端身份替换当前显式 `workspace_id`。
+跨工作区资源查询统一返回 `404`，不泄露资源是否存在。

@@ -30,3 +30,25 @@ def process_job(self: Any, job_id: str) -> dict[str, str]:
         }
     finally:
         engine.dispose()
+
+
+@celery_app.task(
+    bind=True,
+    name="polaris.cancel_job",
+    autoretry_for=(OperationalError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 5},
+)
+def cancel_job_task(self: Any, job_id: str) -> dict[str, str]:
+    del self
+    engine, session_factory = build_database(settings.database_url)
+    runner = MockTaskRunner(session_factory, settings.mock_job_delay_seconds)
+    try:
+        terminal_status = asyncio.run(runner.cancel(job_id))
+        return {
+            "job_id": job_id,
+            "status": terminal_status.value if terminal_status else "not_found",
+        }
+    finally:
+        engine.dispose()

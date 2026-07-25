@@ -12,12 +12,17 @@
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
+    "api:export": "python backend/scripts/export_openapi.py docs/openapi-v1.json",
+    "api:generate": "openapi-typescript docs/openapi-v1.json -o lib/api/generated/openapi.d.ts",
+    "api:check": "npm run api:export && npm run api:generate && git diff --exit-code -- docs/openapi-v1.json lib/api/generated/openapi.d.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^0.468.0",
     "next": "16.2.6",
+    "openapi-fetch": "^0.17.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
@@ -32,6 +37,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "openapi-typescript": "^7.13.0",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",

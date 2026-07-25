@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import re
 from dataclasses import dataclass
 from io import BytesIO
@@ -28,7 +29,12 @@ class StoredImage:
     byte_size: int
     width: int
     height: int
-    storage_key: str
+    object_key: str
+    sha256: str
+    storage_provider: str
+    storage_bucket: str
+    object_version: str = ""
+    etag: str | None = None
 
 
 @dataclass(frozen=True)
@@ -38,15 +44,31 @@ class ValidatedImage:
     content_type: str
     width: int
     height: int
-    storage_key: str
+    object_key: str
+    sha256: str
 
 
 class ImageStorage(Protocol):
+    provider_name: str
+    bucket_name: str
+
     async def save_image(
         self,
         upload: UploadFile,
         workspace_id: str,
     ) -> StoredImage: ...
+
+    async def save_validated(self, image: ValidatedImage) -> StoredImage: ...
+
+    async def read_bytes(self, object_key: str) -> bytes: ...
+
+    async def create_access_url(
+        self,
+        object_key: str,
+        filename: str,
+        disposition: str,
+        expires_seconds: int,
+    ) -> str | None: ...
 
 
 class ImageValidator:
@@ -104,7 +126,8 @@ class ImageValidator:
             content_type=content_type,
             width=width,
             height=height,
-            storage_key=f"{workspace_id}/{uuid4().hex}{suffix}",
+            object_key=f"{workspace_id}/{uuid4().hex}{suffix}",
+            sha256=hashlib.sha256(payload).hexdigest(),
         )
 
 
@@ -116,6 +139,8 @@ class LocalImageStorage:
     ) -> None:
         self.root = root.resolve()
         self.validator = validator
+        self.provider_name = "local"
+        self.bucket_name = "local"
 
     async def save_image(
         self,
@@ -123,7 +148,10 @@ class LocalImageStorage:
         workspace_id: str,
     ) -> StoredImage:
         image = await self.validator.validate(upload, workspace_id)
-        destination = (self.root / image.storage_key).resolve()
+        return await self.save_validated(image)
+
+    async def save_validated(self, image: ValidatedImage) -> StoredImage:
+        destination = (self.root / image.object_key).resolve()
         if self.root not in destination.parents:
             raise UploadValidationError(
                 "INVALID_STORAGE_PATH",
@@ -131,7 +159,27 @@ class LocalImageStorage:
             )
         destination.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(destination.write_bytes, image.payload)
-        return _stored_image(image)
+        return _stored_image(
+            image,
+            provider=self.provider_name,
+            bucket=self.bucket_name,
+        )
+
+    async def read_bytes(self, object_key: str) -> bytes:
+        source = (self.root / object_key).resolve()
+        if self.root not in source.parents:
+            raise FileNotFoundError(object_key)
+        return await asyncio.to_thread(source.read_bytes)
+
+    async def create_access_url(
+        self,
+        object_key: str,
+        filename: str,
+        disposition: str,
+        expires_seconds: int,
+    ) -> str | None:
+        del object_key, filename, disposition, expires_seconds
+        return None
 
 
 class S3ImageStorage:
@@ -144,9 +192,13 @@ class S3ImageStorage:
         secret_key: str,
         bucket: str,
         validator: ImageValidator,
+        auto_create_bucket: bool = False,
     ) -> None:
         self.bucket = bucket
+        self.bucket_name = bucket
+        self.provider_name = "s3"
         self.validator = validator
+        self.auto_create_bucket = auto_create_bucket
         self.client: BaseClient = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -162,18 +214,32 @@ class S3ImageStorage:
         workspace_id: str,
     ) -> StoredImage:
         image = await self.validator.validate(upload, workspace_id)
-        await asyncio.to_thread(self._put_image, image)
-        return _stored_image(image)
+        return await self.save_validated(image)
 
-    def _put_image(self, image: ValidatedImage) -> None:
+    async def save_validated(self, image: ValidatedImage) -> StoredImage:
+        result = await asyncio.to_thread(self._put_image, image)
+        raw_etag = result.get("ETag")
+        return _stored_image(
+            image,
+            provider=self.provider_name,
+            bucket=self.bucket,
+            etag=str(raw_etag).strip('"') if raw_etag else None,
+            version=str(result.get("VersionId") or ""),
+        )
+
+    def _put_image(self, image: ValidatedImage) -> dict[str, object]:
         self._ensure_bucket()
-        self.client.put_object(
+        result = self.client.put_object(
             Bucket=self.bucket,
-            Key=image.storage_key,
+            Key=image.object_key,
             Body=image.payload,
             ContentType=image.content_type,
-            Metadata={"workspace-id": image.storage_key.split("/", 1)[0]},
+            Metadata={
+                "workspace-id": image.object_key.split("/", 1)[0],
+                "sha256": image.sha256,
+            },
         )
+        return dict(result)
 
     def _ensure_bucket(self) -> None:
         if self._bucket_ready:
@@ -184,16 +250,64 @@ class S3ImageStorage:
             error_code = exc.response.get("Error", {}).get("Code")
             if error_code not in {"404", "NoSuchBucket", "NotFound"}:
                 raise
+            if not self.auto_create_bucket:
+                raise RuntimeError(
+                    f"对象存储桶 {self.bucket!r} 不存在，且禁止在请求路径自动创建。"
+                ) from exc
             self.client.create_bucket(Bucket=self.bucket)
         self._bucket_ready = True
 
+    async def read_bytes(self, object_key: str) -> bytes:
+        response = await asyncio.to_thread(
+            self.client.get_object,
+            Bucket=self.bucket,
+            Key=object_key,
+        )
+        return await asyncio.to_thread(response["Body"].read)
 
-def _stored_image(image: ValidatedImage) -> StoredImage:
+    async def create_access_url(
+        self,
+        object_key: str,
+        filename: str,
+        disposition: str,
+        expires_seconds: int,
+    ) -> str | None:
+        content_disposition = f'{disposition}; filename="{_safe_filename(filename)}"'
+        return await asyncio.to_thread(
+            self.client.generate_presigned_url,
+            "get_object",
+            Params={
+                "Bucket": self.bucket,
+                "Key": object_key,
+                "ResponseContentDisposition": content_disposition,
+            },
+            ExpiresIn=expires_seconds,
+        )
+
+
+def _stored_image(
+    image: ValidatedImage,
+    *,
+    provider: str,
+    bucket: str,
+    version: str = "",
+    etag: str | None = None,
+) -> StoredImage:
     return StoredImage(
         filename=image.filename,
         content_type=image.content_type,
         byte_size=len(image.payload),
         width=image.width,
         height=image.height,
-        storage_key=image.storage_key,
+        object_key=image.object_key,
+        sha256=image.sha256,
+        storage_provider=provider,
+        storage_bucket=bucket,
+        object_version=version,
+        etag=etag,
     )
+
+
+def _safe_filename(filename: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", Path(filename).name)
+    return cleaned[:120] or "download"

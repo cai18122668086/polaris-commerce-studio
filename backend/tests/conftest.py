@@ -11,6 +11,12 @@ from app.main import create_app
 def settings(tmp_path) -> Settings:
     return Settings(
         _env_file=None,
+        environment="test",
+        auth_mode="development",
+        development_user_id="usr_test",
+        development_workspace_id="ws_test",
+        development_workspace_name="测试工作区",
+        access_url_secret="test-access-url-secret",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         auto_create_schema=True,
         storage_backend="local",

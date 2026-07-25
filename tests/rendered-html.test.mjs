@@ -28,8 +28,9 @@ test("server-renders the finished product shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>AI 功能大全｜极光商绘<\/title>/i);
-  assert.match(html, /AI 功能大全/);
+  assert.match(html, /<title>首页｜极光商绘<\/title>/i);
+  assert.match(html, /一键直达创作任务/);
+  assert.match(html, /全品类/);
   assert.match(html, /局部修改/);
   assert.match(html, /商品详情图/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/i);

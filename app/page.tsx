@@ -2,12 +2,12 @@ import { AppShell } from "@/components/app-shell";
 import { ToolDirectory } from "@/components/tool-directory";
 
 export const metadata = {
-  title: "AI 功能大全",
+  title: "首页",
 };
 
 export default function Home() {
   return (
-    <AppShell>
+    <AppShell sidebar={false}>
       <div className="tool-market-page">
         <ToolDirectory />
       </div>

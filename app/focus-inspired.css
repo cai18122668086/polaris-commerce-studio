@@ -1602,7 +1602,8 @@ select:focus-visible {
   position: relative;
   display: flex;
   align-items: center;
-  width: min(1480px, calc(100% - 64px));
+  width: clamp(760px, 64vw, 1224px);
+  max-width: calc(100% - 40px);
   min-height: 180px;
   margin: 0 auto;
 }
@@ -1707,7 +1708,8 @@ select:focus-visible {
 }
 
 .focus-home__content {
-  width: min(1480px, calc(100% - 64px));
+  width: clamp(760px, 64vw, 1224px);
+  max-width: calc(100% - 40px);
   margin: 0 auto;
   padding: 34px 0 72px;
 }
@@ -1736,7 +1738,7 @@ select:focus-visible {
 
 .home-feature-card {
   position: relative;
-  min-height: 250px;
+  min-height: clamp(187px, 14.6vw, 280px);
   overflow: hidden;
   border: 1px solid var(--studio-line);
   border-radius: 14px;
@@ -1746,7 +1748,7 @@ select:focus-visible {
 
 .home-feature-card > img {
   width: 100%;
-  height: 250px;
+  height: clamp(187px, 14.6vw, 280px);
   object-fit: cover;
   transition: transform 260ms ease;
 }
@@ -1810,7 +1812,7 @@ select:focus-visible {
   position: relative;
   display: grid;
   grid-template-columns: 1fr 48%;
-  min-height: 176px;
+  min-height: clamp(140px, 10.4vw, 200px);
   overflow: hidden;
   border: 1px solid #efeeeb;
   border-radius: 12px;
@@ -1851,7 +1853,7 @@ select:focus-visible {
 
 .home-category-card > img {
   width: 100%;
-  height: 176px;
+  height: clamp(140px, 10.4vw, 200px);
   object-fit: cover;
   mask-image: linear-gradient(90deg, transparent 0%, #000 28%);
   transition: transform 240ms ease;
@@ -2214,9 +2216,9 @@ select:focus-visible {
 }
 
 /* Desktop scale: designed to be read at the browser's normal 100% zoom. */
-@media (min-width: 1366px) {
+@media (min-width: 901px) {
   :root {
-    --nav-height: 68px;
+    --nav-height: 66px;
     --sidebar-width: 238px;
   }
 
@@ -2616,14 +2618,160 @@ select:focus-visible {
     padding: 26px;
   }
 
+  .textarea-wrap textarea,
+  .form-grid textarea {
+    min-height: 118px;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .textarea-wrap > span,
+  .form-grid label > small {
+    font-size: 12px;
+  }
+
+  .prompt-chips button {
+    min-height: 32px;
+    padding-inline: 11px;
+    font-size: 12px;
+  }
+
+  .quality-options button {
+    min-height: 60px;
+    padding: 11px 12px;
+  }
+
+  .quality-options strong,
+  .cost-bar span,
+  .generation-feedback strong {
+    font-size: 13px;
+  }
+
+  .quality-options small,
+  .quality-options em,
+  .generation-feedback p {
+    font-size: 11px;
+  }
+
+  .cost-bar {
+    min-height: 48px;
+    padding-inline: 15px;
+  }
+
+  .cost-bar strong {
+    font-size: 15px;
+  }
+
+  .help-panel__title strong {
+    font-size: 18px;
+  }
+
+  .help-panel__title p,
+  .help-card__head,
+  .help-card p,
+  .help-steps li {
+    font-size: 12px;
+  }
+
+  .help-card {
+    padding: 18px;
+  }
+
+  .help-card__head em,
+  .help-steps i {
+    font-size: 10px;
+  }
+
+  .help-card > strong {
+    font-size: 15px;
+  }
+
+  .help-more {
+    min-height: 42px;
+    font-size: 13px;
+  }
+
+  .marketplace-selector__head h2,
+  .form-section-head h2,
+  .planning-head h2 {
+    font-size: 24px;
+  }
+
+  .marketplace-selector__head p,
+  .form-section-head p,
+  .planning-head p {
+    font-size: 13px;
+  }
+
+  .marketplace-grid > button {
+    min-height: 92px;
+    padding: 14px;
+  }
+
+  .marketplace-grid strong,
+  .form-grid label > span,
+  .option-field > span {
+    font-size: 13px;
+  }
+
+  .marketplace-grid small,
+  .marketplace-summary,
+  .marketplace-specs small {
+    font-size: 11px;
+  }
+
+  .marketplace-specs b,
+  .marketplace-summary strong {
+    font-size: 13px;
+  }
+
+  .form-grid {
+    gap: 18px;
+  }
+
+  .form-grid input,
+  .form-grid select {
+    min-height: 46px;
+    padding-inline: 14px;
+    font-size: 15px;
+  }
+
+  .option-field {
+    min-height: 54px;
+    padding: 12px 14px;
+  }
+
+  .plan-list article {
+    min-height: 78px;
+    padding: 14px 16px;
+  }
+
+  .plan-list article > i,
+  .quality-chip {
+    font-size: 11px;
+  }
+
+  .plan-list article strong {
+    font-size: 15px;
+  }
+
+  .plan-list article p {
+    font-size: 12px;
+  }
+
+  .generation-actions > p,
+  .generation-footer small {
+    font-size: 12px;
+  }
+
   .focus-home__hero,
   .focus-home__hero-inner {
-    min-height: 220px;
+    min-height: clamp(160px, 12.5vw, 240px);
   }
 
   .focus-home__headline span,
   .focus-home__headline h1 {
-    font-size: clamp(31px, 2.4vw, 42px);
+    font-size: clamp(24px, 1.875vw, 36px);
   }
 
   .focus-home__hero-art {
@@ -2638,11 +2786,11 @@ select:focus-visible {
   }
 
   .focus-home__section-head h2 {
-    font-size: 28px;
+    font-size: clamp(20px, 1.6vw, 31px);
   }
 
   .focus-home__section-head p {
-    font-size: 15px;
+    font-size: clamp(12px, 0.95vw, 18px);
   }
 
   .home-feature-grid {
@@ -2706,5 +2854,32 @@ select:focus-visible {
 
   .home-command__promises {
     font-size: 12px;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1499px) {
+  .workspace-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .help-panel {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-height: auto;
+    padding: 24px 30px 40px;
+    border-top: 1px solid var(--studio-line);
+    border-left: 0;
+  }
+
+  .help-panel__title,
+  .help-more,
+  .risk-note {
+    grid-column: 1 / -1;
+  }
+
+  .record-row {
+    grid-template-columns: 76px minmax(220px, 1fr) 130px 150px;
+    gap: 12px;
   }
 }

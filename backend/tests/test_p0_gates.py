@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
@@ -25,6 +26,7 @@ from app.models import (
 )
 from app.outbox import publish_pending_events
 from app.services import lock_workspace_limits
+from app.storage import LocalImageStorage, StoredImage, ValidatedImage
 
 WORKSPACE_ID = "ws_test"
 
@@ -128,6 +130,12 @@ def _stored_file_count(client: TestClient) -> int:
     return sum(1 for item in root.rglob("*") if item.is_file())
 
 
+class _FailAfterWriteStorage(LocalImageStorage):
+    async def save_validated(self, image: ValidatedImage) -> StoredImage:
+        await super().save_validated(image)
+        raise RuntimeError("simulated storage failure after write")
+
+
 def test_workspace_limit_gate_uses_database_row_lock() -> None:
     session = Mock(spec=Session)
     limits = WorkspaceLimitRecord(workspace_id=WORKSPACE_ID)
@@ -169,6 +177,78 @@ def test_storage_quota_rejects_second_upload_without_overage(
             )
         )
     assert int(used or 0) == len(payload)
+
+
+def test_storage_save_failure_cleans_database_and_partial_object(
+    client: TestClient,
+) -> None:
+    before_counts = _table_counts(client)
+    before_files = _stored_file_count(client)
+    original_storage = client.app.state.storage
+    client.app.state.storage = _FailAfterWriteStorage(
+        Path(original_storage.root),
+        client.app.state.image_validator,
+    )
+
+    with pytest.raises(RuntimeError, match="simulated storage failure after write"):
+        client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+            headers=_idem(),
+            data={"origin_kind": "upload", "media_kind": "image"},
+            files={"file": ("failed.png", _image_payload(), "image/png")},
+        )
+
+    assert _table_counts(client) == before_counts
+    assert _stored_file_count(client) == before_files
+
+
+def test_database_commit_failure_cleans_database_and_staged_object(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before_counts = _table_counts(client)
+    before_files = _stored_file_count(client)
+    session_class = client.app.state.session_factory.class_
+
+    def fail_commit(_session: Session) -> None:
+        raise RuntimeError("simulated database commit failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(session_class, "commit", fail_commit)
+        with pytest.raises(RuntimeError, match="simulated database commit failure"):
+            client.post(
+                f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+                headers=_idem(),
+                data={"origin_kind": "upload", "media_kind": "image"},
+                files={"file": ("failed.png", _image_payload(), "image/png")},
+            )
+
+    assert _table_counts(client) == before_counts
+    assert _stored_file_count(client) == before_files
+
+
+def test_quota_rejection_has_zero_database_and_storage_side_effects(
+    client: TestClient,
+) -> None:
+    with client.app.state.session_factory() as session:
+        limits = session.get(WorkspaceLimitRecord, WORKSPACE_ID)
+        assert limits is not None
+        limits.storage_quota_bytes = 0
+        session.commit()
+    before_counts = _table_counts(client)
+    before_files = _stored_file_count(client)
+
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        headers=_idem(),
+        data={"origin_kind": "upload", "media_kind": "image"},
+        files={"file": ("rejected.png", _image_payload(), "image/png")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "STORAGE_QUOTA_EXCEEDED"
+    assert _table_counts(client) == before_counts
+    assert _stored_file_count(client) == before_files
 
 
 def test_viewer_write_gate_has_zero_database_and_storage_side_effects(

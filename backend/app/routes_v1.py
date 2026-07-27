@@ -1,5 +1,7 @@
+import asyncio
 import hashlib
 import hmac
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, cast
 
@@ -18,7 +20,7 @@ from fastapi import (
 from fastapi.responses import Response
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import (
     Principal,
@@ -93,10 +95,21 @@ from .services import (
     settle_credits,
     transition_job,
 )
+from .storage import ImageStorage, StoredImage
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
 PrincipalDependency = Annotated[Principal, Depends(get_principal)]
+logger = logging.getLogger(__name__)
+
+
+class _UploadCommitOutcomeUnknown(RuntimeError):
+    def __init__(self, asset_id: str, object_key: str) -> None:
+        super().__init__(
+            f"Unable to determine upload commit outcome for asset {asset_id}"
+        )
+        self.asset_id = asset_id
+        self.object_key = object_key
 
 
 def _schedule_outbox(request: Request, background_tasks: BackgroundTasks) -> None:
@@ -110,6 +123,126 @@ def _schedule_outbox(request: Request, background_tasks: BackgroundTasks) -> Non
         request.app.state.session_factory,
         request.app.state.task_runner,
     )
+
+
+async def _cleanup_upload_object(
+    storage: ImageStorage,
+    *,
+    object_key: str,
+    object_version: str = "",
+    reason: str,
+) -> None:
+    try:
+        await storage.delete_object(object_key, object_version)
+    except Exception:
+        logger.exception(
+            "upload_object_cleanup_failed",
+            extra={
+                "object_key": object_key,
+                "object_version": object_version,
+                "cleanup_reason": reason,
+            },
+        )
+
+
+def _commit_staged_asset(
+    session_factory: sessionmaker[Session],
+    *,
+    workspace_id: str,
+    actor_user_id: str,
+    idempotency_key: str,
+    request_hash: str,
+    origin_kind: AssetOriginKind,
+    media_kind: AssetMediaKind,
+    stored: StoredImage,
+) -> tuple[AssetResponse, bool]:
+    """Run the complete quota critical section in a worker-thread transaction."""
+
+    with session_factory() as session:
+        idem, replay = claim_idempotency(
+            session,
+            workspace_id=workspace_id,
+            actor_user_id=actor_user_id,
+            method="POST",
+            route_template="/api/v1/workspaces/{workspace_id}/assets",
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+        )
+        if replay:
+            return (
+                asset_response(
+                    get_workspace_asset(
+                        session,
+                        workspace_id,
+                        cast(str, idem.resource_id),
+                    )
+                ),
+                False,
+            )
+
+        limits = lock_workspace_limits(session, workspace_id)
+        used_bytes = session.scalar(
+            select(func.coalesce(func.sum(AssetRecord.byte_size), 0)).where(
+                AssetRecord.workspace_id == workspace_id,
+                AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+                AssetRecord.deleted_at.is_(None),
+            )
+        )
+        if int(used_bytes or 0) + stored.byte_size > limits.storage_quota_bytes:
+            raise ApiError(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "STORAGE_QUOTA_EXCEEDED",
+                "当前工作区存储空间不足。",
+            )
+
+        asset_id = new_id("asset")
+        asset = AssetRecord(
+            id=asset_id,
+            workspace_id=workspace_id,
+            media_kind=media_kind.value,
+            origin_kind=origin_kind.value,
+            lifecycle_status=AssetLifecycleStatus.READY.value,
+            original_filename=stored.filename,
+            content_type=stored.content_type,
+            byte_size=stored.byte_size,
+            width=stored.width,
+            height=stored.height,
+            sha256=stored.sha256,
+            storage_provider=stored.storage_provider,
+            storage_bucket=stored.storage_bucket,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            etag=stored.etag,
+            asset_metadata={},
+        )
+        session.add(asset)
+        complete_idempotency(
+            idem,
+            resource_type="asset",
+            resource_id=asset.id,
+            response_status=status.HTTP_201_CREATED,
+        )
+        session.flush()
+        response = asset_response(asset)
+        try:
+            session.commit()
+        except Exception as commit_error:
+            session.rollback()
+            try:
+                with session_factory() as verification_session:
+                    committed = verification_session.get(AssetRecord, asset_id)
+                    if (
+                        committed is not None
+                        and committed.object_key == stored.object_key
+                    ):
+                        return asset_response(committed), True
+            except Exception:
+                raise _UploadCommitOutcomeUnknown(
+                    asset_id,
+                    stored.object_key,
+                ) from commit_error
+            raise
+        return response, True
 
 
 @router.get("/me", response_model=CurrentUserResponse, tags=["identity"])
@@ -173,7 +306,6 @@ def get_workspace(
 async def upload_asset(
     request: Request,
     workspace: WorkspaceWriteDependency,
-    session: SessionDependency,
     file: Annotated[UploadFile, File()],
     origin_kind: Annotated[AssetOriginKind, Form()] = AssetOriginKind.UPLOAD,
     media_kind: Annotated[AssetMediaKind, Form()] = AssetMediaKind.IMAGE,
@@ -194,67 +326,57 @@ async def upload_asset(
             "media_kind": media_kind.value,
         }
     )
-    idem, replay = claim_idempotency(
-        session,
-        workspace_id=workspace.workspace_id,
-        actor_user_id=workspace.principal.user_id,
-        method="POST",
-        route_template="/api/v1/workspaces/{workspace_id}/assets",
-        idempotency_key=idempotency_key,
-        request_hash=request_hash,
-    )
-    if replay:
-        return asset_response(
-            get_workspace_asset(
-                session, workspace.workspace_id, cast(str, idem.resource_id)
-            )
+    storage: ImageStorage = request.app.state.storage
+    try:
+        stored = await storage.save_validated(validated)
+    except Exception:
+        await _cleanup_upload_object(
+            storage,
+            object_key=validated.object_key,
+            reason="storage_save_failed",
         )
+        raise
 
-    limits = lock_workspace_limits(session, workspace.workspace_id)
-    used_bytes = session.scalar(
-        select(func.coalesce(func.sum(AssetRecord.byte_size), 0)).where(
-            AssetRecord.workspace_id == workspace.workspace_id,
-            AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
-            AssetRecord.deleted_at.is_(None),
+    try:
+        response, retained = await asyncio.to_thread(
+            _commit_staged_asset,
+            request.app.state.session_factory,
+            workspace_id=workspace.workspace_id,
+            actor_user_id=workspace.principal.user_id,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            origin_kind=origin_kind,
+            media_kind=media_kind,
+            stored=stored,
         )
-    )
-    if int(used_bytes or 0) + len(validated.payload) > limits.storage_quota_bytes:
-        raise ApiError(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            "STORAGE_QUOTA_EXCEEDED",
-            "当前工作区存储空间不足。",
+    except _UploadCommitOutcomeUnknown as exc:
+        logger.critical(
+            "upload_commit_outcome_unknown",
+            extra={
+                "asset_id": exc.asset_id,
+                "object_key": exc.object_key,
+                "workspace_id": workspace.workspace_id,
+            },
+            exc_info=True,
         )
+        raise
+    except Exception:
+        await _cleanup_upload_object(
+            storage,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            reason="database_write_failed",
+        )
+        raise
 
-    stored = await request.app.state.storage.save_validated(validated)
-    asset = AssetRecord(
-        id=new_id("asset"),
-        workspace_id=workspace.workspace_id,
-        media_kind=media_kind.value,
-        origin_kind=origin_kind.value,
-        lifecycle_status=AssetLifecycleStatus.READY.value,
-        original_filename=stored.filename,
-        content_type=stored.content_type,
-        byte_size=stored.byte_size,
-        width=stored.width,
-        height=stored.height,
-        sha256=stored.sha256,
-        storage_provider=stored.storage_provider,
-        storage_bucket=stored.storage_bucket,
-        object_key=stored.object_key,
-        object_version=stored.object_version,
-        etag=stored.etag,
-        asset_metadata={},
-    )
-    session.add(asset)
-    complete_idempotency(
-        idem,
-        resource_type="asset",
-        resource_id=asset.id,
-        response_status=status.HTTP_201_CREATED,
-    )
-    session.commit()
-    session.refresh(asset)
-    return asset_response(asset)
+    if not retained:
+        await _cleanup_upload_object(
+            storage,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            reason="idempotency_replay",
+        )
+    return response
 
 
 @router.get(

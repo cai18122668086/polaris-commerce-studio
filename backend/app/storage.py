@@ -60,6 +60,12 @@ class ImageStorage(Protocol):
 
     async def save_validated(self, image: ValidatedImage) -> StoredImage: ...
 
+    async def delete_object(
+        self,
+        object_key: str,
+        object_version: str = "",
+    ) -> None: ...
+
     async def read_bytes(self, object_key: str) -> bytes: ...
 
     async def create_access_url(
@@ -152,11 +158,7 @@ class LocalImageStorage:
 
     async def save_validated(self, image: ValidatedImage) -> StoredImage:
         destination = (self.root / image.object_key).resolve()
-        if self.root not in destination.parents:
-            raise UploadValidationError(
-                "INVALID_STORAGE_PATH",
-                "无法创建安全的文件存储路径。",
-            )
+        self._require_safe_path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(destination.write_bytes, image.payload)
         return _stored_image(
@@ -165,11 +167,28 @@ class LocalImageStorage:
             bucket=self.bucket_name,
         )
 
+    async def delete_object(
+        self,
+        object_key: str,
+        object_version: str = "",
+    ) -> None:
+        del object_version
+        destination = (self.root / object_key).resolve()
+        self._require_safe_path(destination)
+        await asyncio.to_thread(destination.unlink, missing_ok=True)
+
     async def read_bytes(self, object_key: str) -> bytes:
         source = (self.root / object_key).resolve()
         if self.root not in source.parents:
             raise FileNotFoundError(object_key)
         return await asyncio.to_thread(source.read_bytes)
+
+    def _require_safe_path(self, path: Path) -> None:
+        if self.root not in path.parents:
+            raise UploadValidationError(
+                "INVALID_STORAGE_PATH",
+                "无法创建安全的文件存储路径。",
+            )
 
     async def create_access_url(
         self,
@@ -256,6 +275,22 @@ class S3ImageStorage:
                 ) from exc
             self.client.create_bucket(Bucket=self.bucket)
         self._bucket_ready = True
+
+    async def delete_object(
+        self,
+        object_key: str,
+        object_version: str = "",
+    ) -> None:
+        await asyncio.to_thread(self._delete_object, object_key, object_version)
+
+    def _delete_object(self, object_key: str, object_version: str) -> None:
+        request: dict[str, str] = {
+            "Bucket": self.bucket,
+            "Key": object_key,
+        }
+        if object_version:
+            request["VersionId"] = object_version
+        self.client.delete_object(**request)
 
     async def read_bytes(self, object_key: str) -> bytes:
         response = await asyncio.to_thread(

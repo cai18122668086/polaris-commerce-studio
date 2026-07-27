@@ -170,6 +170,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception:
             checks["database"] = "failed"
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        if app_settings.auth_mode == "external":
+            checks["authentication"] = "not_configured"
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return HealthResponse(
             status=(
                 "ok" if all(value == "ok" for value in checks.values()) else "degraded"

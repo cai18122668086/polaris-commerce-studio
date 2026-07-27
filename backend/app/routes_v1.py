@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from .auth import (
     Principal,
     WorkspaceDependency,
+    WorkspaceWriteDependency,
     get_principal,
 )
 from .database import get_session
@@ -84,6 +85,7 @@ from .services import (
     get_workspace_job,
     job_detail_response,
     job_list_response,
+    lock_workspace_limits,
     new_id,
     require_idempotency_key,
     reserve_credits,
@@ -170,7 +172,7 @@ def get_workspace(
 )
 async def upload_asset(
     request: Request,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     file: Annotated[UploadFile, File()],
     origin_kind: Annotated[AssetOriginKind, Form()] = AssetOriginKind.UPLOAD,
@@ -208,6 +210,7 @@ async def upload_asset(
             )
         )
 
+    limits = lock_workspace_limits(session, workspace.workspace_id)
     used_bytes = session.scalar(
         select(func.coalesce(func.sum(AssetRecord.byte_size), 0)).where(
             AssetRecord.workspace_id == workspace.workspace_id,
@@ -215,7 +218,6 @@ async def upload_asset(
             AssetRecord.deleted_at.is_(None),
         )
     )
-    limits = request.app.state.workspace_limits(session, workspace.workspace_id)
     if int(used_bytes or 0) + len(validated.payload) > limits.storage_quota_bytes:
         raise ApiError(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -444,7 +446,7 @@ def create_job(
     payload: JobCreate,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -583,7 +585,7 @@ def get_job(
 def update_draft_job(
     job_id: str,
     payload: DraftJobUpdate,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
 ) -> JobDetailResponse:
     job = get_workspace_job(
@@ -614,7 +616,7 @@ def submit_job(
     job_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -633,6 +635,13 @@ def submit_job(
     )
     if replay:
         return job_detail_response(session, job)
+    if JobStatus(job.status) != JobStatus.DRAFT:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "JOB_NOT_SUBMITTABLE",
+            "当前任务状态不能提交。",
+            {"status": job.status},
+        )
     enforce_active_job_limit(session, workspace.workspace_id)
     transition_job(job, JobStatus.QUEUED, progress=0)
     reserve_credits(
@@ -664,7 +673,7 @@ def cancel_job(
     payload: CancelRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -746,7 +755,7 @@ def retry_job(
     payload: RetryRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -782,6 +791,7 @@ def retry_job(
                 session, workspace.workspace_id, cast(str, idem.resource_id)
             ),
         )
+    enforce_active_job_limit(session, workspace.workspace_id)
     selected = retry_item_ids(session, source, payload.scope, payload.item_ids)
     if not selected:
         raise ApiError(
@@ -824,7 +834,7 @@ def clone_job(
     job_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -895,7 +905,7 @@ def clone_job(
 def update_plan(
     job_id: str,
     payload: PlanUpdateRequest,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
 ) -> PlanResponse:
     job = get_workspace_job(
@@ -969,7 +979,7 @@ def confirm_plan(
     payload: PlanConfirmRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:

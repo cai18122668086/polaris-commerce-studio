@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 from collections.abc import Iterator
 from copy import deepcopy
+from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -18,24 +20,32 @@ from sqlalchemy.engine import make_url
 
 from app.config import Settings
 from app.domain import JobStatus
+from app.execution import AttemptLease
 from app.main import create_app
 from app.models import (
     AssetRecord,
     AuditEventRecord,
+    CreditReservationRecord,
     JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
     UsageEventRecord,
+    utc_now,
 )
+from app.provider import ProviderRequest
+from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
     IMAGE_FORMAT,
     IMAGE_SIZE,
     JPEG_QUALITY,
     FakeXingheGateway,
     ImageEditRequest,
+    OperationRoutingProvider,
     PlannerRequest,
     SourceImage,
     TengliOpenAICompatibleGateway,
+    XingheAgentError,
+    XingheImageProvider,
     build_resume_signature,
     normalize_usage,
     quality_for_role,
@@ -472,8 +482,56 @@ def test_unreported_usage_is_explicit_and_metrics_are_distinct(
     assert metrics["average_api_latency"] is not None
     assert metrics["image_wall_time"] is not None
     assert metrics["effective_seconds_per_page"] is not None
+    assert metrics["throughput_pages_per_second"] > 0
     assert metrics["job_wall_time"] is not None
     assert metrics["usage_missing_count"] == 3
+
+
+def test_throughput_metric_has_stable_zero_and_completed_semantics(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="throughput-lifecycle.jpg")
+    job = _create_detail_job(client, [source["id"]], page_count=2)
+
+    assert dispatch_pending(client) == 1
+    planned = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert (
+        planned["plan"]["payload"]["metrics"]["throughput_pages_per_second"]
+        == 0.0
+    )
+
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json={"expected_revision": 1},
+    )
+    assert confirmed.status_code == 202
+    assert (
+        confirmed.json()["plan"]["payload"]["metrics"][
+            "throughput_pages_per_second"
+        ]
+        == 0.0
+    )
+
+    assert dispatch_pending(client) == 1
+    completed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    metrics = completed["plan"]["payload"]["metrics"]
+    assert completed["status"] == JobStatus.COMPLETED.value
+    assert metrics["success_count"] == 2
+    assert metrics["image_wall_time"] > 0
+    assert metrics["throughput_pages_per_second"] == pytest.approx(
+        metrics["success_count"] / metrics["image_wall_time"]
+    )
+    persisted = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()["plan"]["payload"]["metrics"]
+    assert persisted["throughput_pages_per_second"] == pytest.approx(
+        metrics["throughput_pages_per_second"]
+    )
 
 
 def test_budget_and_manifest_preflight_happen_before_provider(
@@ -500,6 +558,300 @@ def test_budget_and_manifest_preflight_happen_before_provider(
         assert failed["error_code"] == "BUDGET_LIMIT_EXCEEDED"
         assert gateway.planner_calls == []
         assert gateway.image_calls == []
+
+
+class _Budget429Transport:
+    def __init__(self, page_count: int) -> None:
+        self.page_count = page_count
+        self.planner_calls = 0
+        self.image_calls = 0
+
+    async def post_json(self, **_: Any) -> tuple[int, dict[str, Any]]:
+        self.planner_calls += 1
+        screens = [
+            {
+                "role": "Cover",
+                "title": f"Title {page}",
+                "label": f"Label {page}",
+                "composition": "One hero",
+                "device": "One line",
+                "difference": "Scale",
+            }
+            for page in range(1, self.page_count + 1)
+        ]
+        return (
+            200,
+            {
+                "id": "offline-planner",
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "analysis": {
+                                        "category_key": "fashion",
+                                        "category_reason": "visible",
+                                        "product_image_analysis": {
+                                            "visible_facts": []
+                                        },
+                                        "product_consistency_anchors": {},
+                                        "buyer_objections": ["appearance"],
+                                    },
+                                    "plan": {
+                                        "campaign_style_lock": "lock",
+                                        "design_strength_lock": "lock",
+                                        "screens": screens,
+                                    },
+                                }
+                            )
+                        }
+                    }
+                ],
+            },
+        )
+
+    async def post_multipart(self, **_: Any) -> tuple[int, dict[str, Any]]:
+        self.image_calls += 1
+        return 429, {"id": f"offline-429-{self.image_calls}"}
+
+
+def _install_budget_runner(
+    client: TestClient,
+    transport: _Budget429Transport,
+    *,
+    budget_limit_micros: int,
+    concurrency: int,
+) -> TengliOpenAICompatibleGateway:
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="offline-placeholder",
+        base_url="https://offline.invalid",
+        planner_model="planner",
+        image_model="image",
+        transport=transport,
+        medium_price_micros=45_000,
+        high_price_micros=90_000,
+    )
+    client.app.state.task_runner = MockTaskRunner(
+        client.app.state.session_factory,
+        0,
+        storage=client.app.state.storage,
+        xinghe_gateway=gateway,
+        xinghe_concurrency=concurrency,
+        budget_limit_micros=budget_limit_micros,
+        medium_price_micros=45_000,
+        high_price_micros=90_000,
+    )
+    return gateway
+
+
+def _confirm_job(client: TestClient, job_id: str) -> None:
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/plan/confirm",
+        headers=idem(),
+        json={"expected_revision": 1},
+    )
+    assert response.status_code == 202
+
+
+def test_retry_budget_is_cumulative_and_fails_before_extra_provider_call(
+    settings: Settings,
+) -> None:
+    configured = settings.model_copy(
+        update={
+            "tengli_smoke_budget_usd": 0.09,
+            "xinghe_medium_price_micros": 45_000,
+            "xinghe_high_price_micros": 90_000,
+            "xinghe_concurrency": 1,
+        }
+    )
+    with TestClient(create_app(configured)) as client:
+        transport = _Budget429Transport(page_count=1)
+        _install_budget_runner(
+            client,
+            transport,
+            budget_limit_micros=90_000,
+            concurrency=1,
+        )
+        source = upload_asset(client, filename="budget-retry.jpg")
+        job = _create_detail_job(client, [source["id"]], page_count=1)
+
+        assert dispatch_pending(client) == 1
+        _confirm_job(client, job["id"])
+        assert dispatch_pending(client) == 1
+        assert transport.planner_calls == 1
+        assert transport.image_calls == 1
+
+        failed = client.get(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+        ).json()
+        assert failed["status"] == JobStatus.FAILED.value
+        with client.app.state.session_factory() as session:
+            audits = session.scalars(
+                select(AuditEventRecord)
+                .where(
+                    AuditEventRecord.request_id.in_(
+                        select(JobAttemptRecord.id).where(
+                            JobAttemptRecord.job_id == job["id"]
+                        )
+                    ),
+                    AuditEventRecord.action.in_(
+                        [
+                            "xinghe.image_reserved",
+                            "xinghe.image_budget_rejected",
+                        ]
+                    ),
+                )
+                .order_by(AuditEventRecord.id)
+            ).all()
+            usages = session.scalars(
+                select(UsageEventRecord).where(
+                    UsageEventRecord.job_id == job["id"]
+                )
+            ).all()
+            credit_reservation = session.scalar(
+                select(CreditReservationRecord).where(
+                    CreditReservationRecord.job_id == job["id"]
+                )
+            )
+        reserved = [
+            event for event in audits if event.action == "xinghe.image_reserved"
+        ]
+        rejected = [
+            event
+            for event in audits
+            if event.action == "xinghe.image_budget_rejected"
+        ]
+        assert len(reserved) == 1
+        assert len(rejected) == 1
+        assert sum(
+            int(event.details["estimated_cost_micros"])
+            for event in reserved
+        ) == 90_000
+        assert rejected[0].details["cumulative_exposure_micros"] == 180_000
+        assert sum(event.estimated_cost_micros or 0 for event in usages) == 90_000
+        assert sorted(
+            bool(event.raw_usage["metrics"]["provider_called"])
+            for event in usages
+        ) == [False, True]
+        assert credit_reservation is not None
+        assert credit_reservation.status == "settled"
+        assert credit_reservation.settled_credits == 0
+
+
+def test_concurrent_and_duplicate_delivery_cannot_oversubscribe_budget(
+    postgres_xinghe_client: TestClient,
+) -> None:
+    client = postgres_xinghe_client
+    transport = _Budget429Transport(page_count=2)
+    _install_budget_runner(
+        client,
+        transport,
+        budget_limit_micros=180_000,
+        concurrency=2,
+    )
+    source = upload_asset(client, filename="budget-concurrent.jpg")
+    job = _create_detail_job(client, [source["id"]], page_count=2)
+
+    assert dispatch_pending(client) == 1
+    _confirm_job(client, job["id"])
+    assert dispatch_pending(client) == 1
+    assert transport.image_calls == 2
+    assert asyncio.run(client.app.state.task_runner.run(job["id"])) == JobStatus.FAILED
+    assert transport.image_calls == 2
+    with client.app.state.session_factory() as session:
+        reservations = session.scalars(
+            select(AuditEventRecord)
+            .where(
+                AuditEventRecord.action == "xinghe.image_reserved",
+                AuditEventRecord.request_id.in_(
+                    select(JobAttemptRecord.id).where(
+                        JobAttemptRecord.job_id == job["id"]
+                    )
+                ),
+            )
+            .order_by(AuditEventRecord.id)
+        ).all()
+    assert sum(
+        int(event.details["estimated_cost_micros"])
+        for event in reservations
+    ) == 180_000
+
+
+def test_budget_reservation_survives_duplicate_attempt_and_worker_recovery(
+    client: TestClient,
+) -> None:
+    transport = _Budget429Transport(page_count=1)
+    gateway = _install_budget_runner(
+        client,
+        transport,
+        budget_limit_micros=90_000,
+        concurrency=1,
+    )
+    source = upload_asset(client, filename="budget-recovery.jpg")
+    job = _create_detail_job(client, [source["id"]], page_count=1)
+    assert dispatch_pending(client) == 1
+    _confirm_job(client, job["id"])
+
+    coordinator = client.app.state.task_runner.coordinator
+    assert coordinator.prepare(job["id"]) == JobStatus.PROCESSING
+    lease = coordinator.claim_next_item(job["id"])
+    assert isinstance(lease, AttemptLease)
+    assert coordinator.mark_provider_started(lease) is True
+    routed = coordinator.provider
+    assert isinstance(routed, OperationRoutingProvider)
+    detail_provider = routed.detail_provider
+    assert isinstance(detail_provider, XingheImageProvider)
+    request = ProviderRequest(
+        workspace_id=lease.workspace_id,
+        job_id=lease.job_id,
+        job_item_id=lease.item_id,
+        attempt_id=lease.attempt_id,
+        operation=lease.operation,
+        idempotency_key=lease.provider_idempotency_key,
+        configuration=lease.configuration,
+    )
+    configuration, sources = detail_provider._authorize(request)
+    detail_provider._reserve_call_budget(
+        request,
+        configuration,
+        source_count=len(sources),
+    )
+    with pytest.raises(XingheAgentError) as exc_info:
+        detail_provider._reserve_call_budget(
+            request,
+            configuration,
+            source_count=len(sources),
+        )
+    assert exc_info.value.code == "IMAGE_CALL_ALREADY_RESERVED"
+
+    with client.app.state.session_factory() as session:
+        attempt = session.get(JobAttemptRecord, lease.attempt_id)
+        assert attempt is not None
+        attempt.lease_expires_at = utc_now() - timedelta(seconds=1)
+        session.commit()
+
+    recovery = MockTaskRunner(
+        client.app.state.session_factory,
+        0,
+        storage=client.app.state.storage,
+        xinghe_gateway=gateway,
+        xinghe_concurrency=1,
+        budget_limit_micros=90_000,
+        medium_price_micros=45_000,
+        high_price_micros=90_000,
+    )
+    assert asyncio.run(recovery.run(job["id"])) == JobStatus.FAILED
+    assert transport.image_calls == 0
+    with client.app.state.session_factory() as session:
+        reservations = session.scalar(
+            select(func.count())
+            .select_from(AuditEventRecord)
+            .where(
+                AuditEventRecord.action == "xinghe.image_reserved",
+                AuditEventRecord.request_id == lease.attempt_id,
+            )
+        )
+    assert reservations == 1
 
 
 def test_generated_assets_record_real_dimensions_without_resampling(

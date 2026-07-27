@@ -32,6 +32,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from .config import Settings
 from .domain import (
     AssetLifecycleStatus,
+    AttemptStatus,
+    JobItemStatus,
     JobStatus,
     PlanValidationStatus,
     UsageCompleteness,
@@ -1775,6 +1777,7 @@ class XinghePlanningCoordinator:
                     "image_wall_time": None,
                     "average_api_latency": None,
                     "effective_seconds_per_page": None,
+                    "throughput_pages_per_second": 0.0,
                     "job_wall_time": None,
                     "success_count": 0,
                     "failure_count": 0,
@@ -1875,6 +1878,23 @@ class XingheImageProvider:
             idempotency_key=request.idempotency_key,
         )
         async with self._semaphore:
+            try:
+                self._reserve_call_budget(
+                    request,
+                    configuration,
+                    source_count=len(sources),
+                )
+            except XingheAgentError as exc:
+                return _provider_rejection(exc.code, str(exc), self.gateway)
+            except Exception as exc:
+                return _provider_rejection(
+                    "AUDIT_WRITE_FAILED",
+                    (
+                        "Image budget reservation audit failed "
+                        f"({type(exc).__name__})."
+                    ),
+                    self.gateway,
+                )
             async with self._activity_lock:
                 self._active_requests += 1
                 active_concurrency = self._active_requests
@@ -2070,6 +2090,143 @@ class XingheImageProvider:
                         payload=b"",
                     )
                 )
+            return dict(item_configuration), tuple(sources)
+
+    def _reserve_call_budget(
+        self,
+        request: ProviderRequest,
+        configuration: Mapping[str, Any],
+        *,
+        source_count: int,
+    ) -> None:
+        """Atomically reserve one attempt's worst-case image-call exposure."""
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, request.job_id, with_for_update=True)
+            item = session.get(
+                JobItemRecord,
+                request.job_item_id,
+                with_for_update=True,
+            )
+            attempt = session.get(
+                JobAttemptRecord,
+                request.attempt_id,
+                with_for_update=True,
+            )
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == request.job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if (
+                job is None
+                or item is None
+                or attempt is None
+                or plan is None
+                or job.workspace_id != request.workspace_id
+                or item.workspace_id != request.workspace_id
+                or attempt.workspace_id != request.workspace_id
+                or item.job_id != job.id
+                or attempt.job_item_id != item.id
+            ):
+                raise XingheAgentError(
+                    "WORKSPACE_SCOPE_MISMATCH",
+                    "The image request is outside its durable workspace scope.",
+                )
+            if (
+                JobStatus(job.status) != JobStatus.PROCESSING
+                or JobItemStatus(item.status) != JobItemStatus.RUNNING
+                or AttemptStatus(attempt.status) != AttemptStatus.RUNNING
+                or plan.validation_status != PlanValidationStatus.VALID.value
+                or plan.confirmed_at is None
+            ):
+                raise XingheAgentError(
+                    "IMAGE_CALL_NOT_AUTHORIZED",
+                    "The durable attempt is not authorized for an image call.",
+                )
+            reservation = session.scalar(
+                select(CreditReservationRecord).where(
+                    CreditReservationRecord.job_id == job.id,
+                    CreditReservationRecord.workspace_id == job.workspace_id,
+                    CreditReservationRecord.status == "active",
+                )
+            )
+            if reservation is None:
+                raise XingheAgentError(
+                    "BUDGET_RESERVATION_MISSING",
+                    "An active budget reservation is required before image calls.",
+                )
+            existing = session.scalar(
+                select(AuditEventRecord.id)
+                .where(
+                    AuditEventRecord.workspace_id == job.workspace_id,
+                    AuditEventRecord.action == "xinghe.image_reserved",
+                    AuditEventRecord.request_id == attempt.id,
+                )
+                .limit(1)
+            )
+            if existing is not None:
+                raise XingheAgentError(
+                    "IMAGE_CALL_ALREADY_RESERVED",
+                    "This durable attempt already reserved an image call.",
+                )
+
+            quality = str(configuration["quality"])
+            current_exposure = _configured_image_unit_cost(plan.payload, quality)
+            prior_reservations = session.scalars(
+                select(AuditEventRecord)
+                .join(
+                    JobAttemptRecord,
+                    AuditEventRecord.request_id == JobAttemptRecord.id,
+                )
+                .where(
+                    JobAttemptRecord.job_id == job.id,
+                    AuditEventRecord.workspace_id == job.workspace_id,
+                    AuditEventRecord.action == "xinghe.image_reserved",
+                )
+                .order_by(AuditEventRecord.id)
+            ).all()
+            prior_exposure = sum(
+                _reserved_image_exposure(event.details, plan.payload)
+                for event in prior_reservations
+            )
+            planner_cost = _known_planner_actual_cost(plan.payload)
+            cumulative_exposure = (
+                planner_cost + prior_exposure + current_exposure
+            )
+            audit_details = {
+                "attempt_no": attempt.attempt_no,
+                "page": int(configuration["page"]),
+                "quality": quality,
+                "source_count": source_count,
+                "provider_type": self.gateway.provider_name,
+                "estimated_cost_micros": current_exposure,
+                "prior_reserved_exposure_micros": prior_exposure,
+                "known_planner_cost_micros": planner_cost,
+                "cumulative_exposure_micros": cumulative_exposure,
+                "budget_limit_micros": self.budget_limit_micros,
+                "idempotency_key_sha256": hashlib.sha256(
+                    request.idempotency_key.encode()
+                ).hexdigest(),
+            }
+            if cumulative_exposure > self.budget_limit_micros:
+                session.add(
+                    AuditEventRecord(
+                        workspace_id=job.workspace_id,
+                        action="xinghe.image_budget_rejected",
+                        resource_type="job_item",
+                        resource_id=item.id,
+                        request_id=attempt.id,
+                        details=audit_details,
+                    )
+                )
+                session.commit()
+                raise XingheAgentError(
+                    "BUDGET_LIMIT_EXCEEDED",
+                    "The cumulative image-call exposure exceeds the job budget.",
+                )
             session.add(
                 AuditEventRecord(
                     workspace_id=job.workspace_id,
@@ -2077,20 +2234,10 @@ class XingheImageProvider:
                     resource_type="job_item",
                     resource_id=item.id,
                     request_id=attempt.id,
-                    details={
-                        "attempt_no": attempt.attempt_no,
-                        "page": int(item_configuration["page"]),
-                        "quality": str(item_configuration["quality"]),
-                        "source_count": len(sources),
-                        "provider_type": self.gateway.provider_name,
-                        "idempotency_key_sha256": hashlib.sha256(
-                            request.idempotency_key.encode()
-                        ).hexdigest(),
-                    },
+                    details=audit_details,
                 )
             )
             session.commit()
-            return dict(item_configuration), tuple(sources)
 
     async def _load_sources(
         self,
@@ -2518,6 +2665,13 @@ def update_job_metrics(session: Session, job: JobRecord) -> None:
         else None
     )
     completed_pages = successes
+    throughput_pages_per_second = (
+        completed_pages / image_wall_time
+        if completed_pages > 0
+        and image_wall_time is not None
+        and image_wall_time > 0
+        else 0.0
+    )
     payload = dict(plan.payload)
     previous_metrics = payload.get("metrics")
     metrics = (
@@ -2534,6 +2688,7 @@ def update_job_metrics(session: Session, job: JobRecord) -> None:
                 if image_wall_time is not None and completed_pages
                 else None
             ),
+            "throughput_pages_per_second": throughput_pages_per_second,
             "job_wall_time": (
                 _elapsed_seconds(job.started_at, utc_now())
                 if job.started_at is not None
@@ -2559,6 +2714,59 @@ def update_job_metrics(session: Session, job: JobRecord) -> None:
     payload["state"] = JobStatus(job.status).value
     plan.payload = payload
     plan.payload_hash = canonical_hash(payload)
+
+
+def _configured_image_unit_cost(
+    plan_payload: Mapping[str, Any],
+    quality: str,
+) -> int:
+    cost_value = plan_payload.get("cost")
+    if not isinstance(cost_value, Mapping):
+        raise XingheAgentError(
+            "AGENT_CONFIGURATION_INVALID",
+            "The confirmed plan has no valid cost configuration.",
+        )
+    key = "high_unit_micros" if quality == "high" else "medium_unit_micros"
+    value = cost_value.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise XingheAgentError(
+            "AGENT_CONFIGURATION_INVALID",
+            "The confirmed plan has an invalid image unit cost.",
+        )
+    return value
+
+
+def _reserved_image_exposure(
+    audit_details: Mapping[str, Any],
+    plan_payload: Mapping[str, Any],
+) -> int:
+    value = audit_details.get("estimated_cost_micros")
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    quality = audit_details.get("quality")
+    if quality not in {"medium", "high"}:
+        raise XingheAgentError(
+            "BUDGET_RESERVATION_INVALID",
+            "A prior image-call reservation has invalid cost metadata.",
+        )
+    return _configured_image_unit_cost(plan_payload, str(quality))
+
+
+def _known_planner_actual_cost(plan_payload: Mapping[str, Any]) -> int:
+    usage_value = plan_payload.get("usage")
+    if not isinstance(usage_value, Mapping):
+        return 0
+    planner_value = usage_value.get("planner")
+    if not isinstance(planner_value, list):
+        return 0
+    total = 0
+    for entry in planner_value:
+        if not isinstance(entry, Mapping):
+            continue
+        value = entry.get("actual_cost_micros")
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            total += value
+    return total
 
 
 def planner_accounting(

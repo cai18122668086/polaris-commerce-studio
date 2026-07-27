@@ -1481,6 +1481,7 @@ def _copy_job_relations_for_retry(
                 "image_wall_time": None,
                 "average_api_latency": None,
                 "effective_seconds_per_page": None,
+                "throughput_pages_per_second": 0.0,
                 "job_wall_time": None,
                 "success_count": 0,
                 "failure_count": 0,

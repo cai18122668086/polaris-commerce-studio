@@ -771,6 +771,10 @@ class ExecutionCoordinator:
             )
             try:
                 self.usage_writer.add(session, usage_event)
+                if job.type == JobType.DETAIL_PACK.value:
+                    from .xinghe_agent import update_job_metrics
+
+                    update_job_metrics(session, job)
                 session.commit()
                 return True
             except Exception as exc:

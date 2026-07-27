@@ -1,3 +1,4 @@
+import asyncio
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock
@@ -5,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -26,7 +28,7 @@ from app.models import (
 )
 from app.outbox import publish_pending_events
 from app.services import lock_workspace_limits
-from app.storage import LocalImageStorage, StoredImage, ValidatedImage
+from app.storage import ImageValidator, LocalImageStorage, StoredImage, ValidatedImage
 
 WORKSPACE_ID = "ws_test"
 
@@ -136,6 +138,19 @@ class _FailAfterWriteStorage(LocalImageStorage):
         raise RuntimeError("simulated storage failure after write")
 
 
+class _CancelAfterWriteStorage(LocalImageStorage):
+    def __init__(self, root: Path, validator: ImageValidator) -> None:
+        super().__init__(root, validator)
+        self.object_written = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def save_validated(self, image: ValidatedImage) -> StoredImage:
+        stored = await super().save_validated(image)
+        self.object_written.set()
+        await self.release.wait()
+        return stored
+
+
 def test_workspace_limit_gate_uses_database_row_lock() -> None:
     session = Mock(spec=Session)
     limits = WorkspaceLimitRecord(workspace_id=WORKSPACE_ID)
@@ -200,6 +215,62 @@ def test_storage_save_failure_cleans_database_and_partial_object(
 
     assert _table_counts(client) == before_counts
     assert _stored_file_count(client) == before_files
+
+
+def test_client_cancellation_after_object_write_cleans_and_propagates(
+    settings: Settings,
+) -> None:
+    application = create_app(settings)
+    storage = _CancelAfterWriteStorage(
+        settings.storage_dir,
+        application.state.image_validator,
+    )
+
+    async def cancel_upload() -> None:
+        async with application.router.lifespan_context(application):
+            application.state.storage = storage
+            transport = ASGITransport(app=application, raise_app_exceptions=True)
+            async with AsyncClient(
+                transport=transport,
+                base_url="http://test",
+            ) as async_client:
+                task = asyncio.create_task(
+                    async_client.post(
+                        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+                        headers=_idem(),
+                        data={"origin_kind": "upload", "media_kind": "image"},
+                        files={
+                            "file": (
+                                "cancelled.png",
+                                _image_payload(),
+                                "image/png",
+                            )
+                        },
+                    )
+                )
+                await asyncio.wait_for(storage.object_written.wait(), timeout=5)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(task, timeout=5)
+                assert task.cancelled()
+
+            with application.state.session_factory() as session:
+                asset_count = session.scalar(
+                    select(func.count()).select_from(AssetRecord)
+                )
+                idempotency_count = session.scalar(
+                    select(func.count()).select_from(IdempotencyRequestRecord)
+                )
+                limits = session.get(WorkspaceLimitRecord, WORKSPACE_ID)
+                assert limits is not None
+                assert limits.storage_quota_bytes == 10 * 1024 * 1024 * 1024
+            assert asset_count == 0
+            assert idempotency_count == 0
+            assert not [
+                path for path in settings.storage_dir.rglob("*") if path.is_file()
+            ]
+
+    asyncio.run(cancel_upload())
 
 
 def test_database_commit_failure_cleans_database_and_staged_object(

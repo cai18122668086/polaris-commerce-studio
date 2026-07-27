@@ -145,6 +145,27 @@ async def _cleanup_upload_object(
         )
 
 
+async def _finish_cleanup_before_cancellation(
+    storage: ImageStorage,
+    *,
+    object_key: str,
+    reason: str,
+) -> None:
+    cleanup_task = asyncio.create_task(
+        _cleanup_upload_object(
+            storage,
+            object_key=object_key,
+            reason=reason,
+        )
+    )
+    while not cleanup_task.done():
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError:
+            continue
+    cleanup_task.result()
+
+
 def _commit_staged_asset(
     session_factory: sessionmaker[Session],
     *,
@@ -329,6 +350,13 @@ async def upload_asset(
     storage: ImageStorage = request.app.state.storage
     try:
         stored = await storage.save_validated(validated)
+    except asyncio.CancelledError:
+        await _finish_cleanup_before_cancellation(
+            storage,
+            object_key=validated.object_key,
+            reason="storage_save_cancelled",
+        )
+        raise
     except Exception:
         await _cleanup_upload_object(
             storage,

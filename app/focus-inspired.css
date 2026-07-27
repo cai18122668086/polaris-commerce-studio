@@ -2922,3 +2922,572 @@ select:focus-visible {
     gap: 12px;
   }
 }
+
+/* Desktop typography audit: remove the starter's 7–11px UI type scale. */
+@media (min-width: 901px) {
+  /* Global chrome and shared navigation */
+  .brand-copy small {
+    font-size: 12px;
+  }
+
+  .usage-pill span,
+  .task-trigger span,
+  .user-menu .desktop-only {
+    font-size: 14px;
+  }
+
+  .usage-pill strong {
+    font-size: 16px;
+  }
+
+  .task-trigger i {
+    font-size: 12px;
+  }
+
+  .user-menu small {
+    font-size: 12px;
+  }
+
+  .tool-group > p,
+  .future-tools > p,
+  .workspace-history > p {
+    font-size: 13px;
+  }
+
+  .tool-link span:nth-child(2) strong {
+    font-size: 15px;
+  }
+
+  .tool-link span:nth-child(2) small,
+  .workspace-history a span,
+  .future-tools > span {
+    font-size: 13px;
+  }
+
+  .workspace-history a small {
+    font-size: 12px;
+  }
+
+  .tool-link em,
+  .future-tools i,
+  .sidebar-tip > span {
+    font-size: 12px;
+  }
+
+  .sidebar-tip strong {
+    font-size: 14px;
+  }
+
+  .sidebar-tip p {
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .page-title-row > div > span,
+  .section-heading > div > span,
+  .card-heading > div > span,
+  .workspace-header > div > p {
+    font-size: 13px;
+  }
+
+  .page-title-row p,
+  .workspace-header > div > span,
+  .section-heading p,
+  .card-heading p {
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  .back-link,
+  .autosave-state {
+    font-size: 13px !important;
+  }
+
+  .secondary-button {
+    font-size: 14px;
+  }
+
+  .status-badge {
+    font-size: 12px;
+  }
+
+  /* Dashboard */
+  .overview-strip p {
+    font-size: 14px;
+  }
+
+  .overview-strip > div > span,
+  .overview-strip__progress small,
+  .progress-ring span {
+    font-size: 12px;
+  }
+
+  .dashboard-shortcuts > a strong {
+    font-size: 16px;
+  }
+
+  .dashboard-shortcuts > a span {
+    font-size: 14px;
+  }
+
+  .feature-card__tag,
+  .feature-points span {
+    font-size: 12px;
+  }
+
+  .feature-card__content > p {
+    font-size: 14px;
+  }
+
+  .feature-card__content > b {
+    font-size: 15px;
+  }
+
+  .selection-box,
+  .feature-badge,
+  .detail-visual > span > i {
+    font-size: 12px;
+  }
+
+  .card-heading a {
+    font-size: 14px;
+  }
+
+  .recent-job__title > strong {
+    font-size: 15px;
+  }
+
+  .recent-job-list p {
+    font-size: 13px;
+  }
+
+  .recent-job-list article > div > span:last-child {
+    font-size: 12px;
+  }
+
+  /* Local edit workspace */
+  .workflow-steps > div {
+    font-size: 14px;
+  }
+
+  .brush-control,
+  .brush-control b {
+    font-size: 13px;
+  }
+
+  .toolbar-group--right b {
+    font-size: 12px;
+  }
+
+  .selection-label,
+  .canvas-status {
+    font-size: 12px;
+  }
+
+  .uploaded-file strong {
+    font-size: 15px;
+  }
+
+  .uploaded-file small {
+    margin-top: 2px;
+    font-size: 13px;
+  }
+
+  .link-button {
+    min-height: 34px;
+    font-size: 14px;
+  }
+
+  .textarea-wrap > span {
+    font-size: 13px;
+  }
+
+  .prompt-chips button {
+    font-size: 13px;
+  }
+
+  .quality-options strong,
+  .cost-bar span,
+  .generation-feedback strong {
+    font-size: 15px;
+  }
+
+  .quality-options small,
+  .quality-options em,
+  .generation-feedback p {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .cost-bar strong {
+    font-size: 16px;
+  }
+
+  .privacy-line,
+  .before-after > div > span {
+    font-size: 12px;
+  }
+
+  .locked-badge {
+    font-size: 13px;
+  }
+
+  /* Workspace assistant */
+  .help-panel__title p {
+    font-size: 14px;
+  }
+
+  .help-card__head,
+  .help-steps li,
+  .summary-row {
+    font-size: 13px;
+  }
+
+  .help-card__head em,
+  .help-steps i {
+    font-size: 12px;
+  }
+
+  .summary-row b {
+    font-size: 13px;
+  }
+
+  .suggestion-card strong,
+  .safety-card strong {
+    font-size: 14px;
+  }
+
+  .suggestion-card p,
+  .safety-card p,
+  .risk-note p {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* Detail-pack channel, forms and output controls */
+  .platform-selected-state,
+  .validation-chip,
+  .plan-valid {
+    font-size: 12px;
+  }
+
+  .market-region-switch small {
+    font-size: 13px;
+  }
+
+  .marketplace-mark {
+    font-size: 14px;
+  }
+
+  .marketplace-grid strong {
+    font-size: 16px;
+  }
+
+  .marketplace-grid small {
+    font-size: 13px;
+  }
+
+  .marketplace-summary {
+    min-height: 64px;
+    font-size: 13px;
+  }
+
+  .marketplace-summary > span {
+    font-size: 14px;
+  }
+
+  .marketplace-summary strong {
+    font-size: 15px;
+  }
+
+  .marketplace-summary p {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .marketplace-summary p > small {
+    font-size: 12px;
+  }
+
+  .marketplace-specs small {
+    font-size: 12px;
+  }
+
+  .marketplace-specs b {
+    font-size: 14px;
+  }
+
+  .upload-thumb > span {
+    font-size: 12px;
+  }
+
+  .upload-more strong {
+    font-size: 14px;
+  }
+
+  .upload-more small {
+    font-size: 12px;
+  }
+
+  .analysis-strip {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .form-grid label > span,
+  .option-field > span {
+    font-size: 14px;
+  }
+
+  .form-grid label > small {
+    font-size: 13px;
+  }
+
+  .selected-output-platform {
+    min-height: 52px;
+  }
+
+  .selected-output-platform .marketplace-mark {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+    font-size: 13px;
+  }
+
+  .selected-output-platform strong {
+    font-size: 14px;
+  }
+
+  .selected-output-platform small {
+    font-size: 12px;
+  }
+
+  .segmented-control button,
+  .page-count-control button {
+    min-height: 40px;
+    font-size: 14px;
+  }
+
+  .plan-list article > i,
+  .quality-chip,
+  .page-status {
+    font-size: 12px;
+  }
+
+  .plan-list article p {
+    font-size: 13px;
+  }
+
+  .estimate-grid p,
+  .generation-actions > p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .estimate-grid strong {
+    font-size: 15px;
+  }
+
+  /* Jobs and records */
+  .job-stats p {
+    font-size: 13px;
+  }
+
+  .job-stats small {
+    font-size: 12px;
+  }
+
+  .record-tabs > div:first-child button,
+  .asset-tabs button {
+    font-size: 14px;
+  }
+
+  .record-tabs button span,
+  .asset-tabs button span,
+  .records-toolbar > span,
+  .asset-count {
+    font-size: 12px;
+  }
+
+  .search-field input,
+  .records-toolbar > button,
+  .asset-toolbar > button,
+  .select-filter,
+  .select-filter select {
+    font-size: 13px;
+  }
+
+  .record-cover span {
+    font-size: 12px;
+  }
+
+  .record-main > div:first-child small,
+  .record-progress span {
+    font-size: 12px;
+  }
+
+  .record-main h3 {
+    font-size: 16px;
+  }
+
+  .record-main > p {
+    font-size: 13px;
+  }
+
+  .record-meta > span,
+  .record-meta small {
+    font-size: 12px;
+  }
+
+  .record-meta strong {
+    font-size: 14px;
+  }
+
+  .pagination,
+  .pagination button {
+    font-size: 13px;
+  }
+
+  /* Asset library */
+  .asset-overview p,
+  .storage-card strong small,
+  .storage-card > em {
+    font-size: 12px;
+  }
+
+  .selection-toolbar > span,
+  .selection-toolbar button {
+    font-size: 13px;
+  }
+
+  .upload-asset-card strong {
+    font-size: 15px;
+  }
+
+  .upload-asset-card p {
+    font-size: 13px;
+  }
+
+  .upload-asset-card small {
+    font-size: 12px;
+  }
+
+  .asset-image > span,
+  .asset-hover-actions button {
+    font-size: 12px;
+  }
+
+  .asset-info strong {
+    font-size: 15px;
+  }
+
+  .asset-info p,
+  .asset-info > span,
+  .asset-safe-note {
+    font-size: 12px;
+  }
+
+  /* Help center */
+  .help-hero > span,
+  .help-hero > p,
+  .help-hero input {
+    font-size: 14px;
+  }
+
+  .help-hero kbd,
+  .home-command kbd,
+  .help-flow__title small {
+    font-size: 12px;
+  }
+
+  .help-flow__title h3 {
+    font-size: 19px;
+  }
+
+  .help-flow-grid li strong {
+    font-size: 14px;
+  }
+
+  .help-flow-grid li small {
+    font-size: 12px;
+  }
+
+  .help-flow-grid article > a {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .guide-grid strong {
+    font-size: 15px;
+  }
+
+  .guide-grid p {
+    font-size: 13px;
+  }
+
+  .guide-grid small {
+    font-size: 12px;
+  }
+
+  .faq-list article > button strong {
+    font-size: 15px;
+  }
+
+  .faq-list article > div p,
+  .support-card p {
+    font-size: 13px;
+  }
+
+  .support-card h3 {
+    font-size: 18px;
+  }
+
+  .support-card small {
+    font-size: 12px;
+  }
+
+  /* Task drawer shared by every route */
+  .drawer-head p,
+  .drawer-summary p {
+    font-size: 13px;
+  }
+
+  .drawer-job__top small,
+  .drawer-job__meta {
+    font-size: 12px;
+  }
+
+  .drawer-job__body > strong {
+    font-size: 15px;
+  }
+
+  .drawer-job__body > p {
+    font-size: 13px;
+  }
+
+  .drawer-footer-link {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1280px) {
+  .top-nav__brand {
+    flex-basis: 170px;
+  }
+
+  .main-nav > a {
+    flex: 0 0 auto;
+    padding-inline: 9px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .top-nav__inner {
+    padding-inline: 16px;
+  }
+
+  .usage-pill span,
+  .user-menu .desktop-only {
+    display: none;
+  }
+}

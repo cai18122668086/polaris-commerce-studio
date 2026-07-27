@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.mutable import MutableDict
@@ -52,10 +53,17 @@ def utc_now() -> datetime:
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
 
 
@@ -148,8 +156,8 @@ class AssetRecord(Base):
         Index(
             "ix_assets_workspace_created",
             "workspace_id",
-            "created_at",
-            "id",
+            text("created_at DESC"),
+            text("id DESC"),
         ),
     )
 
@@ -178,10 +186,17 @@ class AssetRecord(Base):
     object_version: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     etag: Mapped[str | None] = mapped_column(String(255))
     asset_metadata: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", MutableDict.as_mutable(json_type()), default=dict, nullable=False
+        "metadata",
+        MutableDict.as_mutable(json_type()),
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -210,14 +225,55 @@ class JobRecord(TimestampMixin, Base):
             "actual_cost_micros IS NULL OR actual_cost_micros >= 0",
             name="ck_jobs_actual_cost_nonnegative",
         ),
+        CheckConstraint(
+            "api_request_count >= 0",
+            name="ck_jobs_api_request_count_nonnegative",
+        ),
+        CheckConstraint(
+            """
+            (
+                status IN ('partial', 'completed', 'failed', 'cancelled')
+                AND finished_at IS NOT NULL
+                AND (
+                    (
+                        status = 'completed'
+                        AND succeeded_item_count = expected_item_count
+                        AND failed_item_count = 0
+                    )
+                    OR (
+                        status = 'partial'
+                        AND succeeded_item_count > 0
+                        AND succeeded_item_count < expected_item_count
+                    )
+                    OR (status = 'failed' AND succeeded_item_count = 0)
+                    OR status = 'cancelled'
+                )
+            )
+            OR (
+                status NOT IN ('partial', 'completed', 'failed', 'cancelled')
+                AND finished_at IS NULL
+            )
+            """,
+            name="ck_jobs_terminal_consistency",
+        ),
         UniqueConstraint("workspace_id", "id", name="uq_jobs_workspace_id"),
+        ForeignKeyConstraint(
+            ["workspace_id", "root_job_id"],
+            ["jobs.workspace_id", "jobs.id"],
+            name="fk_jobs_workspace_root_job",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "retry_of_job_id"],
+            ["jobs.workspace_id", "jobs.id"],
+            name="fk_jobs_workspace_retry_of_job",
+        ),
         Index("ix_jobs_workspace_created", "workspace_id", "created_at", "id"),
         Index(
             "ix_jobs_workspace_status_created",
             "workspace_id",
             "status",
-            "created_at",
-            "id",
+            text("created_at DESC"),
+            text("id DESC"),
         ),
         Index(
             "ix_jobs_workspace_type_status_created",
@@ -243,7 +299,9 @@ class JobRecord(TimestampMixin, Base):
     display_name: Mapped[str | None] = mapped_column(String(160))
     progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     configuration: Mapped[dict[str, Any]] = mapped_column(
-        MutableDict.as_mutable(json_type()), default=dict, nullable=False
+        MutableDict.as_mutable(json_type()),
+        default=dict,
+        nullable=False,
     )
     configuration_schema: Mapped[str] = mapped_column(
         String(32), default="v1", nullable=False
@@ -318,7 +376,10 @@ class JobItemRecord(TimestampMixin, Base):
     stage: Mapped[str | None] = mapped_column(String(32))
     quality: Mapped[str | None] = mapped_column(String(16))
     configuration: Mapped[dict[str, Any]] = mapped_column(
-        MutableDict.as_mutable(json_type()), default=dict, nullable=False
+        MutableDict.as_mutable(json_type()),
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
     )
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     source_job_item_id: Mapped[str | None] = mapped_column(
@@ -357,6 +418,12 @@ class JobAssetRecord(Base):
             ["assets.workspace_id", "assets.id"],
             ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["workspace_id", "job_id", "job_item_id"],
+            ["job_items.workspace_id", "job_items.job_id", "job_items.id"],
+            name="fk_job_assets_workspace_job_item",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[int] = mapped_column(IDENTITY_TYPE, primary_key=True, autoincrement=True)
@@ -371,10 +438,16 @@ class JobAssetRecord(Base):
     ordinal: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_deliverable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     validation: Mapped[dict[str, Any]] = mapped_column(
-        MutableDict.as_mutable(json_type()), default=dict, nullable=False
+        MutableDict.as_mutable(json_type()),
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
 
 
@@ -402,13 +475,16 @@ class JobPlanRecord(Base):
         String(16), default=PlanValidationStatus.PENDING.value, nullable=False
     )
     validation_errors: Mapped[list[dict[str, Any]]] = mapped_column(
-        json_type(), default=list, nullable=False
+        json_type(), default=list, server_default=text("'[]'"), nullable=False
     )
     validator_version: Mapped[str] = mapped_column(
         String(64), default="phase1.1", nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -417,13 +493,30 @@ class JobPlanRecord(Base):
 class JobAttemptRecord(Base):
     __tablename__ = "job_attempts"
     __table_args__ = (
+        CheckConstraint(
+            "attempt_no > 0",
+            name="ck_job_attempts_attempt_no_positive",
+        ),
         UniqueConstraint("job_item_id", "attempt_no", name="uq_job_attempt_no"),
         UniqueConstraint(
             "provider", "provider_idempotency_key", name="uq_attempt_provider_idem"
         ),
+        UniqueConstraint(
+            "workspace_id",
+            "job_id",
+            "job_item_id",
+            "id",
+            name="uq_job_attempts_workspace_job_item_id",
+        ),
         ForeignKeyConstraint(
             ["workspace_id", "job_id"],
             ["jobs.workspace_id", "jobs.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "job_id", "job_item_id"],
+            ["job_items.workspace_id", "job_items.job_id", "job_items.id"],
+            name="fk_job_attempts_workspace_job_item",
             ondelete="CASCADE",
         ),
     )
@@ -451,7 +544,10 @@ class JobAttemptRecord(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     error_details: Mapped[dict[str, Any] | None] = mapped_column(json_type())
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -467,6 +563,18 @@ class UsageEventRecord(Base):
         CheckConstraint(
             "actual_cost_micros IS NULL OR actual_cost_micros >= 0",
             name="ck_usage_actual_cost",
+        ),
+        UniqueConstraint("attempt_id", name="uq_usage_events_attempt_id"),
+        ForeignKeyConstraint(
+            ["workspace_id", "job_id", "job_item_id", "attempt_id"],
+            [
+                "job_attempts.workspace_id",
+                "job_attempts.job_id",
+                "job_attempts.job_item_id",
+                "job_attempts.id",
+            ],
+            name="fk_usage_events_workspace_job_item_attempt",
+            ondelete="CASCADE",
         ),
     )
 
@@ -497,14 +605,17 @@ class UsageEventRecord(Base):
     height: Mapped[int | None] = mapped_column(Integer)
     usage_reported: Mapped[bool] = mapped_column(Boolean, nullable=False)
     raw_usage: Mapped[dict[str, Any]] = mapped_column(
-        json_type(), default=dict, nullable=False
+        json_type(), default=dict, server_default=text("'{}'"), nullable=False
     )
     pricing_version: Mapped[str] = mapped_column(String(64), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     estimated_cost_micros: Mapped[int | None] = mapped_column(BigInteger)
     actual_cost_micros: Mapped[int | None] = mapped_column(BigInteger)
     occurred_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
 
 
@@ -543,6 +654,26 @@ class IdempotencyRequestRecord(TimestampMixin, Base):
 
 class OutboxEventRecord(Base):
     __tablename__ = "outbox_events"
+    __table_args__ = (
+        Index(
+            "ix_outbox_events_claim",
+            "available_at",
+            "created_at",
+            postgresql_where=text("status IN ('pending', 'failed')"),
+            sqlite_where=text("status IN ('pending', 'failed')"),
+        ),
+        Index(
+            "ix_outbox_events_reclaim",
+            "locked_at",
+            "created_at",
+            postgresql_where=text(
+                "status = 'publishing' AND locked_at IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "status = 'publishing' AND locked_at IS NOT NULL"
+            ),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(
@@ -554,7 +685,7 @@ class OutboxEventRecord(Base):
     dedupe_key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(json_type(), nullable=False)
     status: Mapped[str] = mapped_column(
-        String(16), default=OutboxStatus.PENDING.value, nullable=False, index=True
+        String(16), default=OutboxStatus.PENDING.value, nullable=False
     )
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     available_at: Mapped[datetime] = mapped_column(
@@ -565,7 +696,10 @@ class OutboxEventRecord(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
 
 
@@ -591,6 +725,19 @@ class WorkspaceCreditAccountRecord(TimestampMixin, Base):
 
 class CreditReservationRecord(TimestampMixin, Base):
     __tablename__ = "credit_reservations"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "id",
+            name="uq_credit_reservations_workspace_id",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "job_id"],
+            ["jobs.workspace_id", "jobs.id"],
+            name="fk_credit_reservations_workspace_job",
+            ondelete="CASCADE",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(
@@ -608,6 +755,29 @@ class CreditReservationRecord(TimestampMixin, Base):
 
 class CreditLedgerEntryRecord(Base):
     __tablename__ = "credit_ledger_entries"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "reservation_id"],
+            ["credit_reservations.workspace_id", "credit_reservations.id"],
+            name="fk_credit_ledger_workspace_reservation",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "job_id"],
+            ["jobs.workspace_id", "jobs.id"],
+            name="fk_credit_ledger_workspace_job",
+        ),
+        Index(
+            "uq_credit_ledger_settlement_reservation",
+            "reservation_id",
+            unique=True,
+            postgresql_where=text(
+                "entry_type = 'settle' AND reservation_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "entry_type = 'settle' AND reservation_id IS NOT NULL"
+            ),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(IDENTITY_TYPE, primary_key=True, autoincrement=True)
     workspace_id: Mapped[str] = mapped_column(
@@ -625,7 +795,10 @@ class CreditLedgerEntryRecord(Base):
     balance_after_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reserved_after_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )
 
 
@@ -644,8 +817,11 @@ class AuditEventRecord(Base):
     resource_id: Mapped[str | None] = mapped_column(String(40))
     request_id: Mapped[str | None] = mapped_column(String(64))
     details: Mapped[dict[str, Any]] = mapped_column(
-        json_type(), default=dict, nullable=False
+        json_type(), default=dict, server_default=text("'{}'"), nullable=False
     )
     occurred_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )

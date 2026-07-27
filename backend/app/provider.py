@@ -22,6 +22,10 @@ class ProviderOutcome(StrEnum):
 
 @dataclass(frozen=True)
 class ProviderRequest:
+    workspace_id: str
+    job_id: str
+    job_item_id: str
+    attempt_id: str
     operation: str
     idempotency_key: str
     configuration: dict[str, Any]
@@ -63,6 +67,7 @@ class FakeProvider:
         self.delay_seconds = delay_seconds
         self.outcome = outcome
         self.call_count = 0
+        self.external_network_request_count = 0
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         self.call_count += 1
@@ -75,7 +80,8 @@ class FakeProvider:
                 provider_request_id=request_id,
                 error_code="MOCK_PROVIDER_FAILED",
                 error_message="The fake provider returned a deterministic failure.",
-                raw_usage={"fake": True, "called": True},
+                usage_reported=True,
+                raw_usage=_zero_usage(),
             )
         if self.outcome == ProviderOutcome.OUTCOME_UNKNOWN:
             return ProviderResult(
@@ -83,13 +89,27 @@ class FakeProvider:
                 provider_request_id=None,
                 error_code="PROVIDER_OUTCOME_UNKNOWN",
                 error_message="The fake provider outcome is intentionally unknown.",
-                usage_reported=False,
-                raw_usage={"fake": True, "called": True, "outcome": "unknown"},
-                actual_cost_micros=None,
+                usage_reported=True,
+                raw_usage={**_zero_usage(), "outcome": "unknown"},
             )
         return ProviderResult(
             outcome=self.outcome,
             provider_request_id=request_id,
-            usage_reported=False,
-            raw_usage={"fake": True, "called": True},
+            usage_reported=True,
+            raw_usage=_zero_usage(),
         )
+
+
+def _zero_usage() -> dict[str, Any]:
+    return {
+        "provider_type": "mock",
+        "fake": True,
+        "called": True,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_tokens": 0,
+        "input_images": 0,
+        "output_images": 0,
+        "network_requests": 0,
+        "cost_micros": 0,
+    }

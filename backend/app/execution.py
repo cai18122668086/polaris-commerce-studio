@@ -6,6 +6,7 @@ import asyncio
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Protocol
 from uuid import uuid4
 
 from sqlalchemy import func, select, update
@@ -22,6 +23,7 @@ from .domain import (
     UsageCompleteness,
 )
 from .models import (
+    AuditEventRecord,
     JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
@@ -30,13 +32,13 @@ from .models import (
     utc_now,
 )
 from .provider import (
-    FakeProvider,
     Provider,
     ProviderOutcome,
     ProviderRequest,
     ProviderResult,
 )
 from .services import canonical_hash, new_id, settle_credits, transition_job
+from .skill_runtime import build_fake_skill_runtime_provider
 
 ACTIVE_ATTEMPT_STATUSES = {
     AttemptStatus.CLAIMED.value,
@@ -57,6 +59,7 @@ SUCCESS_ITEM_STATUSES = {
 
 @dataclass(frozen=True)
 class AttemptLease:
+    workspace_id: str
     job_id: str
     item_id: str
     attempt_id: str
@@ -64,6 +67,15 @@ class AttemptLease:
     provider_idempotency_key: str
     operation: str
     configuration: dict[str, object]
+
+
+class UsageEventWriter(Protocol):
+    def add(self, session: Session, event: UsageEventRecord) -> None: ...
+
+
+class DatabaseUsageEventWriter:
+    def add(self, session: Session, event: UsageEventRecord) -> None:
+        session.add(event)
 
 
 class ExecutionCoordinator:
@@ -77,6 +89,7 @@ class ExecutionCoordinator:
         worker_id: str | None = None,
         lease_seconds: float = 30,
         heartbeat_seconds: float = 10,
+        usage_writer: UsageEventWriter | None = None,
     ) -> None:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -87,6 +100,7 @@ class ExecutionCoordinator:
         self.worker_id = worker_id or f"worker-{socket.gethostname()}-{uuid4().hex}"
         self.lease_seconds = lease_seconds
         self.heartbeat_seconds = heartbeat_seconds
+        self.usage_writer = usage_writer or DatabaseUsageEventWriter()
 
     async def run(self, job_id: str) -> JobStatus | None:
         current = self.prepare(job_id)
@@ -326,19 +340,27 @@ class ExecutionCoordinator:
         attempt: JobAttemptRecord,
     ) -> AttemptLease:
         return AttemptLease(
+            workspace_id=job.workspace_id,
             job_id=job.id,
             item_id=item.id,
             attempt_id=attempt.id,
             lease_token=attempt.lease_token,
             provider_idempotency_key=attempt.provider_idempotency_key,
             operation=attempt.operation,
-            configuration=dict(item.configuration),
+            configuration={
+                "job": dict(job.configuration),
+                "item": dict(item.configuration),
+            },
         )
 
     async def execute_lease(self, lease: AttemptLease) -> bool:
         if not self.mark_provider_started(lease):
             return False
         request = ProviderRequest(
+            workspace_id=lease.workspace_id,
+            job_id=lease.job_id,
+            job_item_id=lease.item_id,
+            attempt_id=lease.attempt_id,
             operation=lease.operation,
             idempotency_key=lease.provider_idempotency_key,
             configuration=lease.configuration,
@@ -444,24 +466,91 @@ class ExecutionCoordinator:
             item.finished_at = now
             item.state_version += 1
 
+            usage_event = UsageEventRecord(
+                workspace_id=job.workspace_id,
+                job_id=job.id,
+                job_item_id=item.id,
+                attempt_id=attempt.id,
+                provider=self.provider.name,
+                model=self.provider.model,
+                operation=job.type,
+                provider_request_id=result.provider_request_id,
+                input_tokens=_usage_count(result.raw_usage, "input_tokens"),
+                output_tokens=_usage_count(result.raw_usage, "output_tokens"),
+                cached_tokens=_usage_count(result.raw_usage, "cached_tokens"),
+                input_image_count=_usage_count(result.raw_usage, "input_images"),
+                output_image_count=_usage_count(result.raw_usage, "output_images"),
+                usage_reported=result.usage_reported,
+                raw_usage=result.raw_usage,
+                pricing_version=self.provider.pricing_version,
+                currency=job.currency or "USD",
+                estimated_cost_micros=result.estimated_cost_micros,
+                actual_cost_micros=result.actual_cost_micros,
+            )
+            try:
+                self.usage_writer.add(session, usage_event)
+                session.commit()
+                return True
+            except Exception as exc:
+                session.rollback()
+                usage_error_type = type(exc).__name__
+        return self._fail_closed_on_usage_error(
+            lease,
+            result,
+            usage_error_type,
+        )
+
+    def _fail_closed_on_usage_error(
+        self,
+        lease: AttemptLease,
+        result: ProviderResult,
+        usage_error_type: str,
+    ) -> bool:
+        """Persist a controlled failure when usage cannot be recorded."""
+
+        now = utc_now()
+        with self.session_factory() as session:
+            job = session.get(JobRecord, lease.job_id, with_for_update=True)
+            item = session.get(JobItemRecord, lease.item_id, with_for_update=True)
+            attempt = session.get(
+                JobAttemptRecord, lease.attempt_id, with_for_update=True
+            )
+            if job is None or item is None or attempt is None:
+                return False
+            if (
+                job.workspace_id != lease.workspace_id
+                or item.workspace_id != lease.workspace_id
+                or attempt.workspace_id != lease.workspace_id
+                or attempt.lease_token != lease.lease_token
+                or attempt.leased_by != self.worker_id
+                or attempt.status != AttemptStatus.RUNNING.value
+                or item.status != JobItemStatus.RUNNING.value
+            ):
+                return False
+            attempt.status = AttemptStatus.FAILED.value
+            attempt.provider_request_id = result.provider_request_id
+            attempt.error_code = "USAGE_RECORD_FAILED"
+            attempt.error_message = "Usage could not be recorded; execution closed."
+            attempt.finished_at = now
+            item.status = JobItemStatus.FAILED.value
+            item.error_code = "USAGE_RECORD_FAILED"
+            item.error_message = "Usage could not be recorded; execution closed."
+            item.finished_at = now
+            item.state_version += 1
             session.add(
-                UsageEventRecord(
-                    workspace_id=job.workspace_id,
-                    job_id=job.id,
-                    job_item_id=item.id,
-                    attempt_id=attempt.id,
-                    provider=self.provider.name,
-                    model=self.provider.model,
-                    operation=job.type,
-                    provider_request_id=result.provider_request_id,
-                    input_image_count=0,
-                    output_image_count=0,
-                    usage_reported=result.usage_reported,
-                    raw_usage=result.raw_usage,
-                    pricing_version=self.provider.pricing_version,
-                    currency=job.currency or "USD",
-                    estimated_cost_micros=result.estimated_cost_micros,
-                    actual_cost_micros=result.actual_cost_micros,
+                AuditEventRecord(
+                    workspace_id=lease.workspace_id,
+                    action="skill_runtime.usage_record_failed",
+                    resource_type="job",
+                    resource_id=lease.job_id,
+                    request_id=lease.attempt_id,
+                    details={
+                        "attempt_id": lease.attempt_id,
+                        "job_item_id": lease.item_id,
+                        "provider_type": self.provider.name,
+                        "error_code": "USAGE_RECORD_FAILED",
+                        "usage_error_type": usage_error_type,
+                    },
                 )
             )
             session.commit()
@@ -616,7 +705,7 @@ def build_fake_coordinator(
 ) -> ExecutionCoordinator:
     return ExecutionCoordinator(
         session_factory,
-        FakeProvider(delay_seconds=delay_seconds),
+        build_fake_skill_runtime_provider(session_factory, delay_seconds),
     )
 
 
@@ -626,3 +715,10 @@ def _lease_expired(expires_at: datetime, now: datetime) -> bool:
     if expires_at.tzinfo is None and now.tzinfo is not None:
         now = now.replace(tzinfo=None)
     return expires_at <= now
+
+
+def _usage_count(raw_usage: dict[str, object], key: str) -> int | None:
+    value = raw_usage.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value

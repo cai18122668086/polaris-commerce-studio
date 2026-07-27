@@ -53,3 +53,6 @@ disable_error_code = ["import-untyped"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["skill_manifests/*.json"]

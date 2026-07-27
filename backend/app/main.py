@@ -17,9 +17,8 @@ from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse
 from .storage import (
     ImageStorage,
-    ImageValidator,
     LocalImageStorage,
-    S3ImageStorage,
+    build_image_storage,
 )
 from .task_runner import MockTaskRunner
 
@@ -41,26 +40,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
     app_settings.validate_runtime_safety()
     engine, session_factory = build_database(app_settings.database_url)
-    validator = ImageValidator(
-        app_settings.max_upload_bytes,
-        app_settings.max_image_pixels,
-    )
-    storage: ImageStorage
-    if app_settings.storage_backend == "s3":
-        storage = S3ImageStorage(
-            endpoint_url=app_settings.s3_endpoint_url,
-            region=app_settings.s3_region,
-            access_key=app_settings.s3_access_key,
-            secret_key=app_settings.s3_secret_key,
-            bucket=app_settings.s3_bucket,
-            validator=validator,
-            auto_create_bucket=app_settings.s3_auto_create_bucket,
-        )
-    else:
-        storage = LocalImageStorage(app_settings.storage_dir, validator)
+    storage: ImageStorage = build_image_storage(app_settings)
+    validator = storage.validator
     task_runner = MockTaskRunner(
         session_factory,
         app_settings.mock_job_delay_seconds,
+        storage=storage,
+        xinghe_concurrency=app_settings.xinghe_concurrency,
+        budget_limit_micros=int(
+            app_settings.tengli_smoke_budget_usd * 1_000_000
+        ),
+        medium_price_micros=app_settings.xinghe_medium_price_micros,
+        high_price_micros=app_settings.xinghe_high_price_micros,
     )
 
     @asynccontextmanager

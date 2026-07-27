@@ -622,7 +622,16 @@ def create_job(
     if payload.intent == "submit":
         enforce_active_job_limit(session, workspace.workspace_id)
 
-    job, asset_roles = _new_job_from_payload(workspace.workspace_id, payload)
+    job, asset_roles = _new_job_from_payload(
+        workspace.workspace_id,
+        payload,
+        detail_medium_price_micros=(
+            request.app.state.settings.xinghe_medium_price_micros
+        ),
+        detail_high_price_micros=(
+            request.app.state.settings.xinghe_high_price_micros
+        ),
+    )
     asset_ids = [item[0] for item in asset_roles]
     get_ready_assets(session, workspace.workspace_id, asset_ids)
     session.add(job)
@@ -1168,6 +1177,21 @@ def confirm_plan(
     )
     if replay:
         return job_detail_response(session, job)
+    if job.type == JobType.DETAIL_PACK.value:
+        from .xinghe_agent import (
+            XingheAgentError,
+            synchronize_confirmed_plan,
+        )
+
+        try:
+            synchronize_confirmed_plan(session, job, plan)
+        except XingheAgentError as exc:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "PLAN_INVALID",
+                "The plan is invalid and cannot be confirmed.",
+                {"reason": exc.code},
+            ) from exc
     plan.confirmed_at = utc_now()
     transition_job(job, JobStatus.PROCESSING, stage="generating", progress=20)
     add_outbox_event(
@@ -1188,6 +1212,9 @@ def confirm_plan(
 def _new_job_from_payload(
     workspace_id: str,
     payload: LocalEditJobCreate | DetailPackJobCreate,
+    *,
+    detail_medium_price_micros: int = 45_000,
+    detail_high_price_micros: int = 90_000,
 ) -> tuple[JobRecord, list[tuple[str, str, int]]]:
     if isinstance(payload, LocalEditJobCreate):
         item_count = 1
@@ -1196,13 +1223,30 @@ def _new_job_from_payload(
             (payload.input.selection_mask_asset_id, "selection_mask", 0),
         ]
     else:
-        item_count = payload.configuration.page_count
+        item_count = (
+            payload.configuration.page_count
+            * len(payload.input.product_groups)
+        )
         asset_roles = [
             (asset_id, "product_reference", ordinal)
             for group in payload.input.product_groups
             for ordinal, asset_id in enumerate(group.asset_ids)
         ]
-    minimum, maximum, credits = estimate_job(JobType(payload.type), item_count)
+    if isinstance(payload, DetailPackJobCreate):
+        minimum = item_count * min(
+            detail_medium_price_micros,
+            detail_high_price_micros,
+        )
+        maximum = item_count * max(
+            detail_medium_price_micros,
+            detail_high_price_micros,
+        )
+        _, _, credits = estimate_job(JobType(payload.type), item_count)
+    else:
+        minimum, maximum, credits = estimate_job(
+            JobType(payload.type),
+            item_count,
+        )
     is_submit = payload.intent == "submit"
     job = JobRecord(
         id=new_id("job"),
@@ -1268,8 +1312,33 @@ def _copy_job_for_retry(
     scope: RetryScope,
     selected: list[str],
 ) -> JobRecord:
-    del session
     minimum, maximum, credits = estimate_job(JobType(source.type), len(selected))
+    if source.type == JobType.DETAIL_PACK.value:
+        source_plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == source.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        cost = (
+            source_plan.payload.get("cost")
+            if source_plan is not None
+            and isinstance(source_plan.payload, dict)
+            else None
+        )
+        if isinstance(cost, dict):
+            medium_price = cost.get("medium_unit_micros")
+            high_price = cost.get("high_unit_micros")
+            if (
+                isinstance(medium_price, int)
+                and not isinstance(medium_price, bool)
+                and medium_price >= 0
+                and isinstance(high_price, int)
+                and not isinstance(high_price, bool)
+                and high_price >= 0
+            ):
+                minimum = len(selected) * min(medium_price, high_price)
+                maximum = len(selected) * max(medium_price, high_price)
     return JobRecord(
         id=new_id("job"),
         workspace_id=source.workspace_id,
@@ -1365,6 +1434,76 @@ def _copy_job_relations_for_retry(
                     validation=relation.validation,
                 )
             )
+    if source.type == JobType.DETAIL_PACK.value:
+        source_plan = session.scalar(
+            select(JobPlanRecord)
+            .where(
+                JobPlanRecord.job_id == source.id,
+                JobPlanRecord.validation_status == PlanValidationStatus.VALID.value,
+            )
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if source_plan is not None and source_plan.confirmed_at is not None:
+            copied_payload = dict(source_plan.payload)
+            copied_payload["state"] = "confirmed"
+            cost_value = copied_payload.get("cost")
+            cost = dict(cost_value) if isinstance(cost_value, dict) else {}
+            pending_items = [
+                item for item in source_items if item.id in selected
+            ]
+            pending_high = sum(item.quality == "high" for item in pending_items)
+            pending_medium = len(pending_items) - pending_high
+            medium_price = int(cost.get("medium_unit_micros", 45_000))
+            high_price = int(cost.get("high_unit_micros", 90_000))
+            cost.update(
+                {
+                    "pending_medium_count": pending_medium,
+                    "pending_high_count": pending_high,
+                    "estimated_pending_micros": (
+                        pending_medium * medium_price
+                        + pending_high * high_price
+                    ),
+                }
+            )
+            copied_payload["cost"] = cost
+            copied_payload["usage"] = {
+                "planner": [],
+                "planner_reused_from_job_id": source.id,
+                "image": {
+                    "reported_requests": 0,
+                    "unreported_requests": 0,
+                },
+            }
+            copied_payload["metrics"] = {
+                "planning_time": 0,
+                "planning_reused": True,
+                "image_wall_time": None,
+                "average_api_latency": None,
+                "effective_seconds_per_page": None,
+                "job_wall_time": None,
+                "success_count": 0,
+                "failure_count": 0,
+                "rate_limit_429_count": 0,
+                "actual_concurrency": 0,
+                "usage_missing_count": 0,
+            }
+            session.add(
+                JobPlanRecord(
+                    id=new_id("plan"),
+                    workspace_id=target.workspace_id,
+                    job_id=target.id,
+                    revision=1,
+                    schema_version=source_plan.schema_version,
+                    payload=copied_payload,
+                    payload_hash=canonical_hash(copied_payload),
+                    validation_status=PlanValidationStatus.VALID.value,
+                    validation_errors=[],
+                    validator_version=source_plan.validator_version,
+                    validated_at=utc_now(),
+                    confirmed_at=utc_now(),
+                )
+            )
 
 
 def _validate_plan_payload(
@@ -1382,6 +1521,10 @@ def _validate_plan_payload(
                 "actual": len(pages),
             }
         ]
+    if job.type == JobType.DETAIL_PACK.value:
+        from .xinghe_agent import validate_editable_plan_payload
+
+        return validate_editable_plan_payload(payload, job.expected_item_count)
     return []
 
 

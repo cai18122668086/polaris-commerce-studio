@@ -13,6 +13,7 @@ from botocore.exceptions import ClientError
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
 
+from .config import Settings
 from .errors import UploadValidationError
 
 ALLOWED_IMAGE_FORMATS = {
@@ -51,6 +52,7 @@ class ValidatedImage:
 class ImageStorage(Protocol):
     provider_name: str
     bucket_name: str
+    validator: "ImageValidator"
 
     async def save_image(
         self,
@@ -75,6 +77,26 @@ class ImageStorage(Protocol):
         disposition: str,
         expires_seconds: int,
     ) -> str | None: ...
+
+
+def build_image_storage(settings: Settings) -> ImageStorage:
+    """Build the shared API/worker storage dependency from one configuration."""
+
+    validator = ImageValidator(
+        settings.max_upload_bytes,
+        settings.max_image_pixels,
+    )
+    if settings.storage_backend == "s3":
+        return S3ImageStorage(
+            endpoint_url=settings.s3_endpoint_url,
+            region=settings.s3_region,
+            access_key=settings.s3_access_key,
+            secret_key=settings.s3_secret_key,
+            bucket=settings.s3_bucket,
+            validator=validator,
+            auto_create_bucket=settings.s3_auto_create_bucket,
+        )
+    return LocalImageStorage(settings.storage_dir, validator)
 
 
 class ImageValidator:

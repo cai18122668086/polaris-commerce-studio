@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     auto_process_jobs: bool = True
     task_dispatcher: Literal["inline", "celery"] = "celery"
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
+    tengli_api_key: SecretStr = SecretStr("")
+    tengli_base_url: str = "https://api.tengliapi.xyz:8443"
+    tengli_image_model: str = "gpt-image-2"
+    tengli_vision_model: str = "gpt-5.6-terra"
+    tengli_smoke_budget_usd: float = Field(default=200, gt=0, le=200)
+    xinghe_concurrency: Literal[1, 2, 6] = 6
+    xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
+    xinghe_high_price_micros: int = Field(default=90_000, ge=0)
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)

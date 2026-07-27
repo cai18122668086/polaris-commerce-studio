@@ -8,6 +8,7 @@ into job state, leases, credits, or API routes.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol
@@ -32,6 +33,39 @@ class ProviderRequest:
 
 
 @dataclass(frozen=True)
+class ProviderArtifact:
+    payload: bytes
+    filename: str
+    content_type: str
+    width: int
+    height: int
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if not self.payload:
+            raise ValueError("Provider artifact payload cannot be empty.")
+        if hashlib.sha256(self.payload).hexdigest() != self.sha256:
+            raise ValueError("Provider artifact SHA-256 does not match its payload.")
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError("Provider artifact dimensions must be positive.")
+
+
+@dataclass(frozen=True)
+class PersistedProviderArtifact:
+    filename: str
+    content_type: str
+    byte_size: int
+    width: int
+    height: int
+    sha256: str
+    storage_provider: str
+    storage_bucket: str
+    object_key: str
+    object_version: str
+    etag: str | None = None
+
+
+@dataclass(frozen=True)
 class ProviderResult:
     outcome: ProviderOutcome
     provider_request_id: str | None = None
@@ -41,6 +75,13 @@ class ProviderResult:
     raw_usage: dict[str, Any] = field(default_factory=dict)
     estimated_cost_micros: int | None = 0
     actual_cost_micros: int | None = 0
+    retryable: bool = False
+    http_status: int | None = None
+    artifact: ProviderArtifact | None = None
+    persisted_artifact: PersistedProviderArtifact | None = None
+    provider_name: str | None = None
+    model_name: str | None = None
+    pricing_version: str | None = None
 
 
 class Provider(Protocol):

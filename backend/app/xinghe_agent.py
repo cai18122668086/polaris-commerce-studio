@@ -76,8 +76,8 @@ MAX_PAGE_RETRIES = 2
 PLANNER_LEASE_SECONDS = 900
 
 _PLANNER_JSON_FENCE = re.compile(
-    r"\A(?P<prefix>[^{}\[\]]*?)```(?:json)?[ \t]*\r?\n"
-    r"(?P<body>.*?)\r?\n```(?P<suffix>[^{}\[\]]*?)\Z",
+    r"\A```(?:json)?[ \t]*\r?\n"
+    r"(?P<body>.*?)\r?\n```[ \t]*\Z",
     re.IGNORECASE | re.DOTALL,
 )
 _HIGH_ROLE_PATTERNS = tuple(
@@ -348,7 +348,7 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
         )
     if len(screens) != page_count:
         raise XingheAgentError(
-            "PLANNER_PAGE_COUNT_MISMATCH",
+            "PLANNER_SCHEMA_INVALID",
             "Planner returned a different number of screens than requested.",
         )
     normalized_screens: list[dict[str, str]] = []
@@ -3117,7 +3117,13 @@ def _planner_message_text(payload: Mapping[str, Any]) -> str:
 
 
 def _planner_content_payload(content: str) -> object:
-    """Decode only a full JSON value or one complete, unambiguous JSON fence."""
+    """Decode only a full JSON value or one complete, unambiguous JSON fence.
+
+    Outer whitespace is stripped. A fence may be untagged or use a
+    case-insensitive ``json`` tag, followed by spaces/tabs and LF or CRLF.
+    Nothing except spaces/tabs may follow the closing fence before outer
+    whitespace is stripped.
+    """
 
     stripped = content.strip()
     try:

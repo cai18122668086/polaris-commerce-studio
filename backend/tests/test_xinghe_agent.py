@@ -173,7 +173,7 @@ def test_exact_page_count_uses_one_planner_call(
         ("transport", "PLANNER_REQUEST_FAILED"),
         ("invalid_json", "PLANNER_SCHEMA_INVALID"),
         ("schema", "PLANNER_SCHEMA_INVALID"),
-        ("wrong_page_count", "PLANNER_PAGE_COUNT_MISMATCH"),
+        ("wrong_page_count", "PLANNER_SCHEMA_INVALID"),
     ],
 )
 def test_invalid_planner_fails_group_with_zero_image_calls(
@@ -693,15 +693,26 @@ def _install_budget_runner(
     return gateway
 
 
-def test_single_fenced_planner_object_reaches_confirmation_gate(
+@pytest.mark.parametrize(
+    "content",
+    [
+        json.dumps(_valid_planner_content(6)),
+        f"```json\n{json.dumps(_valid_planner_content(6))}\n```",
+        f"```JSON  \r\n{json.dumps(_valid_planner_content(6))}\r\n```\t",
+        f"\n\t``` \t\n{json.dumps(_valid_planner_content(6))}\n```\n ",
+    ],
+    ids=[
+        "whole-object",
+        "json-fence",
+        "uppercase-json-tag-with-horizontal-whitespace",
+        "untagged-fence-with-boundary-whitespace",
+    ],
+)
+def test_strict_planner_content_reaches_confirmation_gate(
     settings: Settings,
+    content: str,
 ) -> None:
     page_count = 6
-    content = (
-        "Planner result:\n```json\n"
-        f"{json.dumps(_valid_planner_content(page_count))}\n"
-        "```\nEnd of planner result."
-    )
     with TestClient(create_app(settings)) as client:
         transport = _PlannerContentTransport(content, page_count=page_count)
         _install_budget_runner(
@@ -721,6 +732,10 @@ def test_single_fenced_planner_object_reaches_confirmation_gate(
         assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
         plan_payload = planned["plan"]["payload"]
         assert len(plan_payload["pages"]) == page_count
+        assert (
+            plan_payload.get("planner_request_count", transport.planner_calls) == 1
+        )
+        assert plan_payload.get("image_request_count", transport.image_calls) == 0
         assert len(plan_payload["usage"]["planner"]) == 1
         assert plan_payload["usage"]["image"]["reported_requests"] == 0
         assert plan_payload["metrics"]["usage_missing_count"] == 0
@@ -728,6 +743,8 @@ def test_single_fenced_planner_object_reaches_confirmation_gate(
         assert planner_usage["reported"] is True
         assert planner_usage["normalized"]["total_tokens"] == 150
         assert planner_usage["actual_cost_micros"] is None
+        assert plan_payload["cost"]["budget_limit_micros"] == 200_000_000
+        assert plan_payload["cost"]["estimated_pending_micros"] == 540_000
         assert transport.planner_calls == 1
         assert transport.image_calls == 0
 
@@ -744,6 +761,21 @@ def test_single_fenced_planner_object_reaches_confirmation_gate(
             "PLANNER_SCHEMA_INVALID",
         ),
         (
+            f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n"
+            "```\n7\n```",
+            "PLANNER_SCHEMA_INVALID",
+        ),
+        (
+            f"Planner result:\n```json\n"
+            f"{json.dumps(_valid_planner_content(6))}\n```",
+            "PLANNER_SCHEMA_INVALID",
+        ),
+        (
+            f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n"
+            "End of planner result.",
+            "PLANNER_SCHEMA_INVALID",
+        ),
+        (
             f"```json\n{json.dumps(_valid_planner_content(6))}",
             "PLANNER_SCHEMA_INVALID",
         ),
@@ -753,7 +785,7 @@ def test_single_fenced_planner_object_reaches_confirmation_gate(
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(5))}\n```",
-            "PLANNER_PAGE_COUNT_MISMATCH",
+            "PLANNER_SCHEMA_INVALID",
         ),
     ],
     ids=[
@@ -761,6 +793,9 @@ def test_single_fenced_planner_object_reaches_confirmation_gate(
         "json-scalar",
         "json-array",
         "ambiguous-multiple-objects",
+        "multiple-fences-second-scalar",
+        "nonempty-prefix",
+        "nonempty-suffix",
         "malformed-fence",
         "missing-fields",
         "non-six-pages",
@@ -793,10 +828,13 @@ def test_unsafe_planner_content_fails_closed_before_image(
         plan_payload = failed["plan"]["payload"]
         assert plan_payload["planner_request_count"] == 1
         assert plan_payload["image_request_count"] == 0
+        assert len(plan_payload.get("pages", [])) == 0
         planner_usage = plan_payload["usage"]["planner"][0]
         assert planner_usage["reported"] is True
         assert planner_usage["normalized"]["total_tokens"] == 150
         assert planner_usage["actual_cost_micros"] is None
+        assert plan_payload.get("cost", {}).get("budget_limit_micros") is None
+        assert plan_payload.get("cost", {}).get("estimated_pending_micros") is None
         assert transport.planner_calls == 1
         assert transport.image_calls == 0
 

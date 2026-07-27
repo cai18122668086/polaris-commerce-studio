@@ -75,6 +75,11 @@ DEFAULT_BUDGET_LIMIT_MICROS = 200_000_000
 MAX_PAGE_RETRIES = 2
 PLANNER_LEASE_SECONDS = 900
 
+_PLANNER_JSON_FENCE = re.compile(
+    r"\A(?P<prefix>[^{}\[\]]*?)```(?:json)?[ \t]*\r?\n"
+    r"(?P<body>.*?)\r?\n```(?P<suffix>[^{}\[\]]*?)\Z",
+    re.IGNORECASE | re.DOTALL,
+)
 _HIGH_ROLE_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -782,10 +787,7 @@ class TengliOpenAICompatibleGateway:
                     http_status=status,
                 )
             text = _planner_message_text(response)
-            try:
-                plan_payload: object = json.loads(text)
-            except json.JSONDecodeError:
-                plan_payload = text
+            plan_payload = _planner_content_payload(text)
             raw_usage = _raw_usage(response)
             return PlannerCallResult(
                 payload=plan_payload,
@@ -3112,6 +3114,22 @@ def _planner_message_text(payload: Mapping[str, Any]) -> str:
             "Planner response has no JSON content.",
         )
     return content
+
+
+def _planner_content_payload(content: str) -> object:
+    """Decode only a full JSON value or one complete, unambiguous JSON fence."""
+
+    stripped = content.strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        match = _PLANNER_JSON_FENCE.fullmatch(stripped)
+        if match is None:
+            return content
+    try:
+        return json.loads(match.group("body"))
+    except json.JSONDecodeError:
+        return content
 
 
 def _image_bytes(payload: Mapping[str, Any]) -> bytes:

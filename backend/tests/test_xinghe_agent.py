@@ -615,6 +615,55 @@ class _Budget429Transport:
         return 429, {"id": f"offline-429-{self.image_calls}"}
 
 
+def _valid_planner_content(page_count: int) -> dict[str, Any]:
+    screens = [
+        {
+            "role": "Cover",
+            "title": f"Title {page}",
+            "label": f"Label {page}",
+            "composition": "One hero",
+            "device": "One line",
+            "difference": "Scale",
+        }
+        for page in range(1, page_count + 1)
+    ]
+    return {
+        "analysis": {
+            "category_key": "fashion",
+            "category_reason": "visible",
+            "product_image_analysis": {"visible_facts": []},
+            "product_consistency_anchors": {},
+            "buyer_objections": ["appearance"],
+        },
+        "plan": {
+            "campaign_style_lock": "lock",
+            "design_strength_lock": "lock",
+            "screens": screens,
+        },
+    }
+
+
+class _PlannerContentTransport(_Budget429Transport):
+    def __init__(self, content: str, *, page_count: int) -> None:
+        super().__init__(page_count)
+        self.content = content
+
+    async def post_json(self, **_: Any) -> tuple[int, dict[str, Any]]:
+        self.planner_calls += 1
+        return (
+            200,
+            {
+                "id": "offline-planner-content",
+                "choices": [{"message": {"content": self.content}}],
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "total_tokens": 150,
+                },
+            },
+        )
+
+
 def _install_budget_runner(
     client: TestClient,
     transport: _Budget429Transport,
@@ -642,6 +691,114 @@ def _install_budget_runner(
         high_price_micros=90_000,
     )
     return gateway
+
+
+def test_single_fenced_planner_object_reaches_confirmation_gate(
+    settings: Settings,
+) -> None:
+    page_count = 6
+    content = (
+        "Planner result:\n```json\n"
+        f"{json.dumps(_valid_planner_content(page_count))}\n"
+        "```\nEnd of planner result."
+    )
+    with TestClient(create_app(settings)) as client:
+        transport = _PlannerContentTransport(content, page_count=page_count)
+        _install_budget_runner(
+            client,
+            transport,
+            budget_limit_micros=200_000_000,
+            concurrency=6,
+        )
+        source = upload_asset(client, filename="fenced-planner.jpg")
+        job = _create_detail_job(client, [source["id"]], page_count=page_count)
+
+        assert dispatch_pending(client) == 1
+        planned = client.get(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+        ).json()
+
+        assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+        plan_payload = planned["plan"]["payload"]
+        assert len(plan_payload["pages"]) == page_count
+        assert len(plan_payload["usage"]["planner"]) == 1
+        assert plan_payload["usage"]["image"]["reported_requests"] == 0
+        assert plan_payload["metrics"]["usage_missing_count"] == 0
+        planner_usage = plan_payload["usage"]["planner"][0]
+        assert planner_usage["reported"] is True
+        assert planner_usage["normalized"]["total_tokens"] == 150
+        assert planner_usage["actual_cost_micros"] is None
+        assert transport.planner_calls == 1
+        assert transport.image_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_code"),
+    [
+        ("plain non-JSON text", "PLANNER_SCHEMA_INVALID"),
+        ("7", "PLANNER_SCHEMA_INVALID"),
+        ('[{"analysis": {}, "plan": {}}]', "PLANNER_SCHEMA_INVALID"),
+        (
+            f"{json.dumps(_valid_planner_content(6))}\n"
+            f"{json.dumps(_valid_planner_content(6))}",
+            "PLANNER_SCHEMA_INVALID",
+        ),
+        (
+            f"```json\n{json.dumps(_valid_planner_content(6))}",
+            "PLANNER_SCHEMA_INVALID",
+        ),
+        (
+            json.dumps({"analysis": {}, "plan": {}}),
+            "PLANNER_SCHEMA_INVALID",
+        ),
+        (
+            f"```json\n{json.dumps(_valid_planner_content(5))}\n```",
+            "PLANNER_PAGE_COUNT_MISMATCH",
+        ),
+    ],
+    ids=[
+        "plain-text",
+        "json-scalar",
+        "json-array",
+        "ambiguous-multiple-objects",
+        "malformed-fence",
+        "missing-fields",
+        "non-six-pages",
+    ],
+)
+def test_unsafe_planner_content_fails_closed_before_image(
+    settings: Settings,
+    content: str,
+    expected_code: str,
+) -> None:
+    page_count = 6
+    with TestClient(create_app(settings)) as client:
+        transport = _PlannerContentTransport(content, page_count=page_count)
+        _install_budget_runner(
+            client,
+            transport,
+            budget_limit_micros=200_000_000,
+            concurrency=6,
+        )
+        source = upload_asset(client, filename="invalid-planner-content.jpg")
+        job = _create_detail_job(client, [source["id"]], page_count=page_count)
+
+        assert dispatch_pending(client) == 1
+        failed = client.get(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+        ).json()
+
+        assert failed["status"] == JobStatus.FAILED.value
+        assert failed["error_code"] == expected_code
+        plan_payload = failed["plan"]["payload"]
+        assert plan_payload["planner_request_count"] == 1
+        assert plan_payload["image_request_count"] == 0
+        planner_usage = plan_payload["usage"]["planner"][0]
+        assert planner_usage["reported"] is True
+        assert planner_usage["normalized"]["total_tokens"] == 150
+        assert planner_usage["actual_cost_micros"] is None
+        assert transport.planner_calls == 1
+        assert transport.image_calls == 0
 
 
 def _confirm_job(client: TestClient, job_id: str) -> None:

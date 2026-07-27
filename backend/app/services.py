@@ -384,13 +384,20 @@ def get_ready_assets(
     return assets
 
 
-def get_workspace_job(session: Session, workspace_id: str, job_id: str) -> JobRecord:
-    job = session.scalar(
-        select(JobRecord).where(
+def get_workspace_job(
+    session: Session,
+    workspace_id: str,
+    job_id: str,
+    *,
+    for_update: bool = False,
+) -> JobRecord:
+    statement = select(JobRecord).where(
             JobRecord.workspace_id == workspace_id,
             JobRecord.id == job_id,
         )
-    )
+    if for_update:
+        statement = statement.with_for_update()
+    job = session.scalar(statement)
     if job is None:
         raise ApiError(
             status.HTTP_404_NOT_FOUND,

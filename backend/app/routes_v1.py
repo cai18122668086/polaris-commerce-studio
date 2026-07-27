@@ -17,6 +17,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .auth import (
@@ -585,7 +586,9 @@ def update_draft_job(
     workspace: WorkspaceDependency,
     session: SessionDependency,
 ) -> JobDetailResponse:
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(job.status) != JobStatus.DRAFT:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -616,7 +619,9 @@ def submit_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -664,7 +669,9 @@ def cancel_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -691,6 +698,24 @@ def cancel_job(
         JobStatus.QUEUED,
         JobStatus.AWAITING_CONFIRMATION,
     }:
+        cancellable_items = session.scalars(
+            select(JobItemRecord)
+            .where(
+                JobItemRecord.job_id == job.id,
+                JobItemRecord.status.in_(
+                    [
+                        JobItemStatus.PENDING.value,
+                        JobItemStatus.QUEUED.value,
+                        JobItemStatus.RUNNING.value,
+                    ]
+                ),
+            )
+            .with_for_update()
+        ).all()
+        for item in cancellable_items:
+            item.status = JobItemStatus.CANCELLED.value
+            item.finished_at = utc_now()
+            item.state_version += 1
         transition_job(job, JobStatus.CANCELLED, progress=job.progress)
         settle_credits(session, job, 0)
     else:
@@ -726,7 +751,9 @@ def retry_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    source = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(source.status) not in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,
@@ -801,7 +828,9 @@ def clone_job(
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
-    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    source = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(source.status) not in TERMINAL_JOB_STATUSES:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -869,7 +898,9 @@ def update_plan(
     workspace: WorkspaceDependency,
     session: SessionDependency,
 ) -> PlanResponse:
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -906,7 +937,16 @@ def update_plan(
         validated_at=utc_now(),
     )
     session.add(plan)
-    session.commit()
+    job.state_version += 1
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "PLAN_REVISION_CONFLICT",
+            "计划已更新，请刷新后重试。",
+        ) from exc
     return PlanResponse(
         id=plan.id,
         revision=plan.revision,
@@ -934,7 +974,9 @@ def confirm_plan(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     plan = session.scalar(
         select(JobPlanRecord)
         .where(JobPlanRecord.job_id == job.id)

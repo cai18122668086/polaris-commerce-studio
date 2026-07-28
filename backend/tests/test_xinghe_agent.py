@@ -1810,7 +1810,10 @@ class _RecordingTransport:
                                 '"design_strength_lock":"lock",'
                                 '"screens":[{"role":"Cover","title":"Title",'
                                 '"label":"Label","composition":"Hero",'
-                                '"device":"Line","difference":"Scale"}]}}'
+                                '"device":"Line","difference":"Scale"},'
+                                '{"role":"Detail","title":"Detail",'
+                                '"label":"Label","composition":"Close-up",'
+                                '"device":"Macro","difference":"Texture"}]}}'
                             )
                         }
                     }
@@ -1869,10 +1872,13 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
                 job_id="job_test",
                 group_key="shoe",
                 sources=sources,
-                page_count=1,
+                page_count=2,
                 language="en",
                 product_name="shoe",
-                product_information=("visible",),
+                product_information=(
+                    "visible",
+                    "Do not describe this product as waterproof",
+                ),
                 platform_code="amazon",
                 idempotency_key="planner-idem",
             )
@@ -1910,6 +1916,26 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     )
     assert "inside the top-level analysis object" in planner_text
     assert "always emit it as a JSON object; never omit it" in planner_text
+    assert "every screen's device must be non-empty" in planner_text
+    assert "at least two substantively different devices" in planner_text
+    assert "trimming surrounding whitespace and case-normalizing" in planner_text
+    assert "case or whitespace differences do not count" in planner_text
+    for prohibited_claim in (
+        "leather",
+        "comfort",
+        "durability",
+        "wear resistance",
+    ):
+        assert prohibited_claim in planner_text
+    assert "explicit, non-negotiable hard constraint" in planner_text
+    assert "every safety-relevant field of every plan screen" in planner_text
+    assert "must never be violated" in planner_text
+    assert "including FALILIAN when visible" in planner_text
+    assert "not product branding or selling points" in planner_text
+    assert (
+        "points=['visible', 'Do not describe this product as waterproof']"
+        in planner_text
+    )
     assert transport.multipart_calls[0]["url"].endswith("/v1/images/edits")
     fields = dict(transport.multipart_calls[0]["fields"])
     assert fields["size"] == IMAGE_SIZE

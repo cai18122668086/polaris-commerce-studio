@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from .celery_app import celery_app, settings
 from .database import build_database
 from .storage import ImageStorage, build_image_storage
-from .task_runner import MockTaskRunner
+from .task_runner import (
+    MockTaskRunner,
+    build_task_runner,
+    validate_task_runner_settings,
+)
+
+validate_task_runner_settings(settings)
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
@@ -29,15 +35,7 @@ def _process_runner() -> MockTaskRunner:
         _engine.dispose()
     _engine, _session_factory = build_database(settings.database_url)
     _storage = build_image_storage(settings)
-    _runner = MockTaskRunner(
-        _session_factory,
-        settings.mock_job_delay_seconds,
-        storage=_storage,
-        xinghe_concurrency=settings.xinghe_concurrency,
-        budget_limit_micros=int(settings.tengli_smoke_budget_usd * 1_000_000),
-        medium_price_micros=settings.xinghe_medium_price_micros,
-        high_price_micros=settings.xinghe_high_price_micros,
-    )
+    _runner = build_task_runner(_session_factory, settings, _storage)
     _owner_pid = process_id
     return _runner
 

@@ -20,7 +20,7 @@ from .storage import (
     LocalImageStorage,
     build_image_storage,
 )
-from .task_runner import MockTaskRunner
+from .task_runner import build_task_runner, validate_task_runner_settings
 
 
 def _serializable_validation_errors(
@@ -39,20 +39,11 @@ def _serializable_validation_errors(
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
     app_settings.validate_runtime_safety()
+    validate_task_runner_settings(app_settings)
     engine, session_factory = build_database(app_settings.database_url)
     storage: ImageStorage = build_image_storage(app_settings)
     validator = storage.validator
-    task_runner = MockTaskRunner(
-        session_factory,
-        app_settings.mock_job_delay_seconds,
-        storage=storage,
-        xinghe_concurrency=app_settings.xinghe_concurrency,
-        budget_limit_micros=int(
-            app_settings.tengli_smoke_budget_usd * 1_000_000
-        ),
-        medium_price_micros=app_settings.xinghe_medium_price_micros,
-        high_price_micros=app_settings.xinghe_high_price_micros,
-    )
+    task_runner = build_task_runner(session_factory, app_settings, storage)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:

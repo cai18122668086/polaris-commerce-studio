@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     s3_auto_create_bucket: bool = True
     auto_process_jobs: bool = True
     task_dispatcher: Literal["inline", "celery"] = "celery"
+    task_runner: Literal["mock", "tengli"] = "mock"
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
     tengli_api_key: SecretStr = SecretStr("")
     tengli_base_url: str = "https://api.tengliapi.xyz:8443"

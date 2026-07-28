@@ -1,5 +1,8 @@
 """Compatibility facade for the API/outbox execution dependency."""
 
+import math
+from urllib.parse import urlsplit
+
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
@@ -43,6 +46,63 @@ class MockTaskRunner:
 
     async def cancel(self, job_id: str) -> JobStatus | None:
         return self.coordinator.cancel(job_id)
+
+
+def validate_task_runner_settings(settings: Settings) -> None:
+    """Reject unsafe real-provider configuration without exposing secret values."""
+
+    if settings.task_runner == "mock":
+        return
+    if not settings.tengli_api_key.get_secret_value().strip():
+        raise RuntimeError("tengli task runner requires a non-empty API key")
+    budget = settings.tengli_smoke_budget_usd
+    if not math.isfinite(budget) or budget <= 0 or budget > 2:
+        raise RuntimeError(
+            "tengli task runner budget must be greater than 0 and at most USD 2"
+        )
+    if settings.xinghe_concurrency != 2:
+        raise RuntimeError("tengli task runner concurrency must be exactly 2")
+
+    try:
+        endpoint = urlsplit(settings.tengli_base_url)
+        valid_endpoint = (
+            endpoint.scheme in {"http", "https"} and endpoint.hostname is not None
+        )
+    except ValueError:
+        valid_endpoint = False
+    if not valid_endpoint:
+        raise RuntimeError("tengli task runner requires a valid provider base URL")
+    if not settings.tengli_image_model.strip():
+        raise RuntimeError("tengli task runner requires an image model")
+    if not settings.tengli_vision_model.strip():
+        raise RuntimeError("tengli task runner requires a vision model")
+
+
+def build_task_runner(
+    session_factory: sessionmaker[Session],
+    settings: Settings,
+    storage: ImageStorage,
+) -> MockTaskRunner:
+    """Build the configured runner for every API and worker startup path."""
+
+    if settings.task_runner == "mock":
+        return MockTaskRunner(
+            session_factory,
+            settings.mock_job_delay_seconds,
+            storage=storage,
+            xinghe_concurrency=settings.xinghe_concurrency,
+            budget_limit_micros=int(settings.tengli_smoke_budget_usd * 1_000_000),
+            medium_price_micros=settings.xinghe_medium_price_micros,
+            high_price_micros=settings.xinghe_high_price_micros,
+        )
+
+    validate_task_runner_settings(settings)
+    return build_tengli_task_runner(
+        session_factory,
+        settings,
+        storage,
+        concurrency=settings.xinghe_concurrency,
+    )
 
 
 def build_tengli_task_runner(

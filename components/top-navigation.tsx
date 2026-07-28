@@ -10,6 +10,8 @@ import {
   PanelRightOpen,
   Zap,
 } from "lucide-react";
+import { useJobs } from "@/features/jobs/api/jobs";
+import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { BrandMark } from "./brand-mark";
 
 const navItems = [
@@ -31,6 +33,14 @@ export function TopNavigation({
   showMenu?: boolean;
 }) {
   const pathname = usePathname();
+  const { workspace } = useWorkspace();
+  const jobs = useJobs(workspace?.id, { limit: 20 });
+  const activeCount =
+    jobs.data?.items.filter((job) =>
+      ["queued", "planning", "awaiting_confirmation", "processing", "cancelling"].includes(
+        job.status,
+      ),
+    ).length ?? 0;
 
   return (
     <header className="top-nav">
@@ -67,11 +77,11 @@ export function TopNavigation({
           })}
         </nav>
         <div className="top-nav__actions">
-          <button className="usage-pill" aria-label="剩余创作次数">
+          <span className="usage-pill" aria-label="当前为零付费内部 mock 环境">
             <Zap size={15} />
-            <span>创作额度</span>
-            <strong>268</strong>
-          </button>
+            <span>内部 mock</span>
+            <strong>0 付费</strong>
+          </span>
           <Link href="/help" className="icon-button desktop-only" aria-label="帮助">
             <CircleHelp size={19} />
           </Link>
@@ -82,13 +92,13 @@ export function TopNavigation({
           <button className="task-trigger" onClick={onOpenTasks}>
             <PanelRightOpen size={18} />
             <span>任务</span>
-            <i>2</i>
+            <i>{activeCount}</i>
           </button>
           <Link href="/dashboard" className="user-menu" aria-label="打开个人控制台">
-            <span className="avatar">林</span>
+            <span className="avatar">{workspace?.name.slice(0, 1) ?? "内"}</span>
             <span className="desktop-only">
-              林小满
-              <small>品牌设计师</small>
+              {workspace?.name ?? "内部测试"}
+              <small>{workspace?.role ?? "development"}</small>
             </span>
             <ChevronDown size={14} className="desktop-only" />
           </Link>

@@ -9,21 +9,21 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import { productImages } from "@/lib/mock-data";
+import { demoImages } from "@/lib/fixtures/demo-images";
 
 const featuredTools = [
   {
     title: "局部修改",
     description: "一句话精修，只改变选中的区域",
     href: "/workspace/local-edit",
-    image: productImages.headphones,
+    image: demoImages.headphones,
     className: "home-feature--edit",
   },
   {
     title: "商品详情图",
     description: "从商品素材到完整电商套图",
     href: "/workspace/detail-pack",
-    image: productImages.skincare,
+    image: demoImages.skincare,
     className: "home-feature--pack",
   },
 ];
@@ -32,17 +32,17 @@ const categoryCards = [
   {
     title: "箱包手袋",
     description: "快速统一商品氛围",
-    image: productImages.handbag,
+    image: demoImages.handbag,
   },
   {
     title: "腕表饰品",
     description: "突出材质与细节",
-    image: productImages.watch,
+    image: demoImages.watch,
   },
   {
     title: "鞋服商品",
     description: "减少重复修图工作",
-    image: productImages.shoes,
+    image: demoImages.shoes,
   },
 ];
 
@@ -77,7 +77,7 @@ export function ToolDirectory() {
             <span className="hero-art__tile">
               <Headphones size={28} />
             </span>
-            <img src={productImages.handbag} alt="" />
+            <img src={demoImages.handbag} alt="" />
             <span className="hero-art__spark">
               <Sparkles size={26} />
             </span>
@@ -176,7 +176,7 @@ export function ToolDirectory() {
               <Check size={13} /> 不改变任务语义
             </span>
             <span>
-              <Check size={13} /> 界面确认后接入 API
+              <Check size={13} /> 已接入内部 mock API
             </span>
           </div>
         </div>

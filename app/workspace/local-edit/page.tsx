@@ -1,491 +1,169 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   Brush,
   Check,
   CheckCircle2,
-  Circle,
-  Columns2,
-  Download,
-  Eraser,
-  Expand,
   ImagePlus,
   Info,
-  Layers3,
   LoaderCircle,
-  MousePointer2,
-  Redo2,
   RotateCcw,
   ShieldCheck,
   Sparkles,
-  SquareDashed,
-  Undo2,
-  ZoomIn,
-  ZoomOut,
+  Upload,
 } from "lucide-react";
+
 import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
+import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
-import { productImages } from "@/lib/mock-data";
+import { useUploadAsset } from "@/features/assets/api/assets";
+import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
+import { useWorkspace } from "@/features/workspaces/api/workspaces";
+import { errorMessage } from "@/lib/api/request";
+import type { Asset } from "@/lib/api/types";
+import { jobNote } from "@/lib/jobs/presentation";
 
 const qualities = [
-  { key: "preview", label: "快速预览", desc: "约 20 秒", cost: "1 次" },
-  { key: "balanced", label: "均衡", desc: "约 50 秒", cost: "2 次" },
-  { key: "final", label: "最终质量", desc: "约 90 秒", cost: "4 次" },
-];
+  { key: "preview", label: "快速预览", desc: "mock runner", cost: "不计费" },
+  { key: "balanced", label: "均衡", desc: "mock runner", cost: "不计费" },
+  { key: "final", label: "最终质量", desc: "mock runner", cost: "不计费" },
+] as const;
 
-const defaultPrompt =
-  "将耳罩外侧的亮面塑料改为细腻的深灰色磨砂金属，保留原有高光方向、品牌标识和结构接缝。";
-
-const promptSuggestions = [
-  { label: "保留光影", text: "保留原有光影方向与明暗关系。" },
-  { label: "保留结构", text: "保留商品结构、接缝与品牌标识。" },
-  { label: "自然融合", text: "让修改边缘与周围材质自然融合。" },
-];
-
-type GenerationState = "idle" | "queued" | "processing" | "completed";
+async function createMaskFile(): Promise<File> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("浏览器无法创建选区蒙版。");
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, 512, 512);
+  context.fillStyle = "#fff";
+  context.beginPath();
+  context.ellipse(330, 260, 110, 150, 0, 0, Math.PI * 2);
+  context.fill();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("选区蒙版编码失败。");
+  return new File([blob], "selection-mask.png", { type: "image/png" });
+}
 
 export default function LocalEditPage() {
-  const [quality, setQuality] = useState("final");
-  const [tool, setTool] = useState("brush");
-  const [brushSize, setBrushSize] = useState(32);
-  const [zoom, setZoom] = useState(72);
-  const [selectionStage, setSelectionStage] = useState(2);
-  const [prompt, setPrompt] = useState(defaultPrompt);
-  const [generationState, setGenerationState] = useState<GenerationState>("idle");
-  const [progress, setProgress] = useState(0);
-  const [validationMessage, setValidationMessage] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [quality, setQuality] = useState<"preview" | "balanced" | "final">("final");
+  const [prompt, setPrompt] = useState("将授权选区改为深灰色磨砂金属，保留商品结构与光影。");
+  const [sourceAsset, setSourceAsset] = useState<Asset>();
+  const [previewUrl, setPreviewUrl] = useState<string>();
+  const [selectionConfirmed, setSelectionConfirmed] = useState(false);
+  const [jobId, setJobId] = useState<string>();
+  const { workspace } = useWorkspace();
+  const upload = useUploadAsset(workspace?.id);
+  const createJob = useCreateJob(workspace?.id);
+  const job = useJob(workspace?.id, jobId);
 
-  const selectedQuality =
-    qualities.find((item) => item.key === quality) ?? qualities[2];
-  const selectionPercent = selectionStage === 2 ? 12.4 : selectionStage === 1 ? 6.1 : 0;
-  const isGenerating = generationState === "queued" || generationState === "processing";
-  const currentStep =
-    generationState === "completed" ? 4 : isGenerating ? 3 : selectionStage === 0 ? 1 : 2;
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
-  useEffect(() => {
-    if (generationState === "queued") {
-      const timer = window.setTimeout(() => {
-        setGenerationState("processing");
-        setProgress(28);
-      }, 700);
-      return () => window.clearTimeout(timer);
-    }
+  const onSourceFile = (file?: File) => {
+    if (!file) return;
+    setSelectionConfirmed(false);
+    setJobId(undefined);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    upload.mutate(
+      { file, mediaKind: "image" },
+      { onSuccess: (asset) => setSourceAsset(asset) },
+    );
+  };
 
-    if (generationState === "processing") {
-      const timer = window.setTimeout(() => {
-        const nextProgress = Math.min(progress + 18, 100);
-        setProgress(nextProgress);
-        if (nextProgress === 100) {
-          setGenerationState("completed");
-        }
-      }, 420);
-      return () => window.clearTimeout(timer);
-    }
-  }, [generationState, progress]);
-
-  const updateSelection = (nextStage: number) => {
-    setSelectionStage(Math.max(0, Math.min(2, nextStage)));
-    setValidationMessage("");
-    if (generationState === "completed") {
-      setGenerationState("idle");
-      setProgress(0);
+  const submit = async () => {
+    if (!sourceAsset || !selectionConfirmed || !prompt.trim() || !workspace) return;
+    try {
+      const mask = await upload.mutateAsync({ file: await createMaskFile(), mediaKind: "mask" });
+      const created = await createJob.mutateAsync({
+        type: "local_edit",
+        intent: "submit",
+        display_name: `局部修改 · ${sourceAsset.original_filename}`,
+        input: { source_asset_id: sourceAsset.id, selection_mask_asset_id: mask.id },
+        configuration: { instruction: prompt.trim(), output_format: "png", quality },
+      });
+      setJobId(created.id);
+    } catch {
+      // Mutations expose the mapped error below.
     }
   };
 
-  const editSelectionFromCanvas = () => {
-    if (tool === "brush" || tool === "rectangle") {
-      updateSelection(selectionStage + 1);
-    } else if (tool === "eraser") {
-      updateSelection(selectionStage - 1);
-    }
-  };
-
-  const applyPromptSuggestion = (suggestion: (typeof promptSuggestions)[number]) => {
-    if (prompt.includes(suggestion.text)) return;
-    setPrompt((current) => `${current.trim()}${current.trim() ? "\n" : ""}${suggestion.text}`);
-    setValidationMessage("");
-  };
-
-  const startGeneration = () => {
-    if (selectionStage === 0) {
-      setValidationMessage("请先在画布上绘制并确认修改选区。");
-      return;
-    }
-    if (!prompt.trim()) {
-      setValidationMessage("请填写选区内需要发生的变化。");
-      return;
-    }
-
-    setValidationMessage("");
-    setGenerationState("queued");
-    setProgress(12);
-  };
+  const requestError = upload.error ?? createJob.error ?? job.error;
+  const busy = upload.isPending || createJob.isPending;
 
   return (
     <AppShell flush>
       <div className="workspace-page">
         <div className="workspace-main">
           <WorkspaceHeader
-            eyebrow="商品图工具"
+            eyebrow="商品图工具 · 内部 mock"
             title="局部修改"
-            description="只改变授权选区，让商品主体、构图与选区外像素保持原样。"
-            meta={
-              <span className="autosave-state">
-                <CheckCircle2 size={15} />
-                草稿已保存
-              </span>
-            }
+            description="上传与任务状态使用真实 API；本轮不会调用图片 Provider，也不会产生真实生成结果。"
+            meta={<span className="autosave-state"><ShieldCheck size={15} />零付费 mock runner</span>}
           />
-
           <div className="workflow-steps">
-            {["上传原图", "绘制选区", "描述修改", "生成与验证"].map((step, index) => (
-              <div
-                key={step}
-                className={index < currentStep ? "done" : index === currentStep ? "active" : ""}
-              >
-                <i>{index < currentStep ? <Check size={14} /> : index + 1}</i>
-                <span>{step}</span>
-                {index < 3 && <em />}
-              </div>
-            ))}
+            {["上传原图", "确认选区", "创建任务", "观察状态"].map((step, index) => {
+              const current = !sourceAsset ? 0 : !selectionConfirmed ? 1 : !jobId ? 2 : 3;
+              return <div key={step} className={index < current ? "done" : index === current ? "active" : ""}><i>{index < current ? <Check size={14} /> : index + 1}</i><span>{step}</span>{index < 3 && <em />}</div>;
+            })}
           </div>
 
           <div className="local-edit-layout">
             <section className="editor-card">
               <div className="card-toolbar">
-                <div className="toolbar-group">
-                  <button
-                    className={tool === "pointer" ? "active" : ""}
-                    onClick={() => setTool("pointer")}
-                    aria-label="选择工具"
-                  >
-                    <MousePointer2 size={17} />
-                  </button>
-                  <button
-                    className={tool === "brush" ? "active" : ""}
-                    onClick={() => setTool("brush")}
-                    aria-label="画笔工具"
-                  >
-                    <Brush size={17} />
-                  </button>
-                  <button
-                    className={tool === "rectangle" ? "active" : ""}
-                    onClick={() => setTool("rectangle")}
-                    aria-label="矩形选区"
-                  >
-                    <SquareDashed size={17} />
-                  </button>
-                  <button
-                    className={tool === "eraser" ? "active" : ""}
-                    onClick={() => setTool("eraser")}
-                    aria-label="橡皮擦"
-                  >
-                    <Eraser size={17} />
-                  </button>
-                </div>
-                <div className="brush-control">
-                  <span>笔刷</span>
-                  <input
-                    type="range"
-                    min="8"
-                    max="80"
-                    value={brushSize}
-                    onChange={(event) => setBrushSize(Number(event.target.value))}
-                    aria-label="笔刷大小"
-                  />
-                  <b>{brushSize}px</b>
-                </div>
-                <div className="toolbar-group toolbar-group--right">
-                  <button
-                    onClick={() => updateSelection(selectionStage - 1)}
-                    disabled={selectionStage === 0}
-                    aria-label="撤销上一处选区"
-                  >
-                    <Undo2 size={16} />
-                  </button>
-                  <button
-                    onClick={() => updateSelection(selectionStage + 1)}
-                    disabled={selectionStage === 2}
-                    aria-label="重做上一处选区"
-                  >
-                    <Redo2 size={16} />
-                  </button>
-                  <span />
-                  <button
-                    onClick={() => setZoom((current) => Math.max(50, current - 10))}
-                    disabled={zoom === 50}
-                    aria-label="缩小画布"
-                  >
-                    <ZoomOut size={16} />
-                  </button>
-                  <b>{zoom}%</b>
-                  <button
-                    onClick={() => setZoom((current) => Math.min(120, current + 10))}
-                    disabled={zoom === 120}
-                    aria-label="放大画布"
-                  >
-                    <ZoomIn size={16} />
-                  </button>
-                  <button onClick={() => setZoom(72)} aria-label="适应画布">
-                    <Expand size={16} />
-                  </button>
-                </div>
+                <div className="toolbar-group"><button className="active" aria-label="画笔工具"><Brush size={17} /></button></div>
+                <strong>{sourceAsset ? sourceAsset.original_filename : "等待上传原图"}</strong>
               </div>
               <div className="image-editor">
-                <div
-                  className={`canvas-frame tool-${tool}`}
-                  onClick={editSelectionFromCanvas}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      editSelectionFromCanvas();
-                    }
-                  }}
-                  role="application"
-                  tabIndex={0}
-                  aria-label="局部修改选区画布。使用画笔或矩形增加选区，使用橡皮擦减少选区。"
+                <button
+                  className="canvas-frame tool-brush"
+                  onClick={() => sourceAsset && setSelectionConfirmed((value) => !value)}
+                  disabled={!sourceAsset}
+                  aria-pressed={selectionConfirmed}
                 >
-                  <div
-                    className="canvas-content"
-                    style={{ transform: `scale(${zoom / 72})` }}
-                  >
-                    <img src={productImages.headphones} alt="待修改的黑色头戴耳机" />
-                    {selectionStage >= 1 && <div className="mask-shape mask-shape--left" />}
-                    {selectionStage >= 2 && <div className="mask-shape mask-shape--right" />}
-                    {selectionStage > 0 && (
-                      <div className="selection-outline">
-                        <span className="selection-label">
-                          <Brush size={13} />
-                          已授权选区 {selectionPercent}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="canvas-status">
-                  <span>
-                    <Circle size={9} fill="currentColor" />
-                    2048 × 2048 px
-                  </span>
-                  <span>
-                    <Layers3 size={14} />
-                    原图画布
-                  </span>
-                  <span className="safe">
-                    <ShieldCheck size={14} />
-                    {selectionStage > 0 ? "选区外锁定" : "等待绘制选区"}
-                  </span>
-                </div>
+                  {previewUrl ? (
+                    <div className="canvas-content"><img src={previewUrl} alt="待修改的上传商品图" />{selectionConfirmed && <div className="mask-shape mask-shape--right" />} {selectionConfirmed && <div className="selection-outline"><span className="selection-label"><Brush size={13} />已授权示例选区</span></div>}</div>
+                  ) : (
+                    <div className="empty-state"><ImagePlus size={30} /><h3>先上传商品原图</h3><p>上传成功后可点击画布确认本轮示例选区。</p></div>
+                  )}
+                </button>
+                <div className="canvas-status"><span className="safe"><ShieldCheck size={14} />{selectionConfirmed ? "选区已授权" : "尚未授权选区"}</span></div>
               </div>
             </section>
 
             <aside className="edit-controls">
               <section className="control-card">
-                <div className="control-card__heading">
-                  <span>1</span>
-                  <div>
-                    <strong>原始图片</strong>
-                    <p>PNG · 3.8MB · 2048 × 2048</p>
-                  </div>
-                  <button aria-label="重新上传">
-                    <RotateCcw size={16} />
-                  </button>
-                </div>
-                <div className="uploaded-file">
-                  <img src={productImages.headphones} alt="" />
-                  <span>
-                    <strong>quietform_pro_front.png</strong>
-                    <small>图片清晰度良好</small>
-                  </span>
-                  <CheckCircle2 size={17} />
-                </div>
-                <button className="link-button">
-                  <ImagePlus size={15} />
-                  从素材库替换
+                <div className="control-card__heading"><span>1</span><div><strong>原始图片</strong><p>{sourceAsset ? "已写入资产 API" : "选择 JPG / PNG / WEBP"}</p></div></div>
+                <button className="link-button" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>
+                  {upload.isPending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}{sourceAsset ? "重新上传" : "上传素材"}
                 </button>
+                <input ref={fileInput} className="visually-hidden" type="file" accept="image/*" onChange={(event) => onSourceFile(event.target.files?.[0])} />
               </section>
-
               <section className="control-card">
-                <div className="control-card__heading">
-                  <span>2</span>
-                  <div>
-                    <strong>修改要求</strong>
-                    <p>清楚描述选区内要发生的变化</p>
-                  </div>
-                </div>
-                <div className="textarea-wrap">
-                  <textarea
-                    value={prompt}
-                    maxLength={500}
-                    onChange={(event) => {
-                      setPrompt(event.target.value);
-                      setValidationMessage("");
-                    }}
-                    aria-label="修改要求"
-                  />
-                  <span>{prompt.length} / 500</span>
-                </div>
-                <div className="prompt-chips">
-                  {promptSuggestions.map((suggestion) => {
-                    const applied = prompt.includes(suggestion.text);
-                    return (
-                      <button
-                        key={suggestion.label}
-                        className={applied ? "applied" : ""}
-                        onClick={() => applyPromptSuggestion(suggestion)}
-                        aria-pressed={applied}
-                      >
-                        {applied && <Check size={11} />}
-                        {suggestion.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <div className="control-card__heading"><span>2</span><div><strong>修改要求</strong><p>会作为真实任务配置保存</p></div></div>
+                <div className="textarea-wrap"><textarea value={prompt} maxLength={500} onChange={(event) => setPrompt(event.target.value)} aria-label="修改要求" /><span>{prompt.length} / 500</span></div>
               </section>
-
               <section className="control-card">
-                <div className="control-card__heading">
-                  <span>3</span>
-                  <div>
-                    <strong>生成质量</strong>
-                    <p>越高的档位越适合材质与细节</p>
-                  </div>
-                </div>
+                <div className="control-card__heading"><span>3</span><div><strong>质量标签</strong><p>仅供 mock 任务契约验证</p></div></div>
                 <div className="quality-options">
-                  {qualities.map((item) => (
-                    <button
-                      key={item.key}
-                      className={quality === item.key ? "selected" : ""}
-                      onClick={() => setQuality(item.key)}
-                    >
-                      <i>{quality === item.key && <Check size={12} />}</i>
-                      <span>
-                        <strong>{item.label}</strong>
-                        <small>{item.desc}</small>
-                      </span>
-                      <em>{item.cost}</em>
-                    </button>
-                  ))}
+                  {qualities.map((item) => <button key={item.key} className={quality === item.key ? "selected" : ""} onClick={() => setQuality(item.key)}><i>{quality === item.key && <Check size={12} />}</i><span><strong>{item.label}</strong><small>{item.desc}</small></span><em>{item.cost}</em></button>)}
                 </div>
               </section>
-
-              <div className="cost-bar">
-                <span>
-                  本次预计消耗
-                  <Info size={14} />
-                </span>
-                <strong>{selectedQuality.cost}创作额度</strong>
-              </div>
-              {(validationMessage || generationState !== "idle") && (
-                <div
-                  className={`generation-feedback ${
-                    validationMessage
-                      ? "error"
-                      : generationState === "completed"
-                        ? "success"
-                        : "active"
-                  }`}
-                  aria-live="polite"
-                >
-                  <span>
-                    {validationMessage ? (
-                      <AlertCircle size={16} />
-                    ) : generationState === "completed" ? (
-                      <CheckCircle2 size={16} />
-                    ) : (
-                      <LoaderCircle size={16} className="spin" />
-                    )}
-                  </span>
-                  <div>
-                    <strong>
-                      {validationMessage
-                        ? "还不能生成"
-                        : generationState === "queued"
-                          ? "任务正在排队"
-                          : generationState === "processing"
-                            ? "正在生成并执行像素锁定"
-                            : "严格锁定结果已就绪"}
-                    </strong>
-                    <p>
-                      {validationMessage ||
-                        (generationState === "completed"
-                          ? "选区外像素校验通过，原始结果与锁定结果均已保留。"
-                          : `当前进度 ${progress}% · 请保持此页面打开`)}
-                    </p>
-                    {!validationMessage && generationState !== "completed" && (
-                      <i>
-                        <span style={{ width: `${progress}%` }} />
-                      </i>
-                    )}
-                  </div>
-                </div>
-              )}
-              <button
-                className="primary-button generate-button"
-                onClick={startGeneration}
-                disabled={isGenerating}
-                aria-busy={isGenerating}
-              >
-                {isGenerating ? (
-                  <LoaderCircle size={17} className="spin" />
-                ) : generationState === "completed" ? (
-                  <RotateCcw size={17} />
-                ) : (
-                  <Sparkles size={17} />
-                )}
-                {generationState === "completed"
-                  ? "基于当前设置再次生成"
-                  : isGenerating
-                    ? "正在处理"
-                    : "生成局部修改"}
+              <div className="cost-bar"><span>本次环境<Info size={14} /></span><strong>零付费 mock</strong></div>
+              {requestError && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{errorMessage(requestError)}</p></div></div>}
+              {job.data && <div className={`generation-feedback ${job.data.status === "failed" ? "error" : job.data.status === "completed" ? "success" : "active"}`} aria-live="polite"><span>{job.data.status === "completed" ? <CheckCircle2 size={16} /> : <LoaderCircle size={16} className={["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} />}</span><div><strong><StatusBadge status={job.data.status} /></strong><p>{jobNote(job.data)} · {job.data.progress}%</p>{["queued", "planning", "processing"].includes(job.data.status) && <i><span style={{ width: `${job.data.progress}%` }} /></i>}</div></div>}
+              <button className="primary-button generate-button" onClick={() => void submit()} disabled={!sourceAsset || !selectionConfirmed || !prompt.trim() || busy} aria-busy={busy}>
+                {busy ? <LoaderCircle className="spin" size={17} /> : jobId ? <RotateCcw size={17} /> : <Sparkles size={17} />}
+                {busy ? "正在写入 API" : jobId ? "创建新的 mock 任务" : "创建内部 mock 任务"}
               </button>
-              <p className="privacy-line">
-                <ShieldCheck size={13} />
-                原图与结果仅用于本次创作，不公开展示
-              </p>
+              <p className="privacy-line"><ShieldCheck size={13} />不会调用真实 Provider；页面不会展示伪造的生成图。</p>
             </aside>
           </div>
-
-          <section className="result-preview-card">
-            <div className="card-heading">
-              <div>
-                <span>
-                  {generationState === "completed"
-                    ? "刚刚完成 · LE-DEMO-0725"
-                    : "最近结果 · LE-0725-1638"}
-                </span>
-                <h2>{generationState === "completed" ? "本次严格锁定结果" : "严格锁定结果"}</h2>
-                <p>选区外像素比对通过，原始模型结果与最终交付结果均已保留。</p>
-              </div>
-              <div className="result-actions">
-                <span className="locked-badge">
-                  <ShieldCheck size={15} />
-                  0 个越界像素
-                </span>
-                <button className="secondary-button">
-                  <Download size={16} />
-                  下载 PNG
-                </button>
-              </div>
-            </div>
-            <div className="before-after">
-              <div>
-                <span>原始图片</span>
-                <img src={productImages.headphones} alt="修改前耳机" />
-              </div>
-              <div className="comparison-handle">
-                <Columns2 size={17} />
-              </div>
-              <div className="after-image">
-                <span>严格锁定结果</span>
-                <img src={productImages.headphones} alt="修改后耳机" />
-                <i className="metal-effect" />
-              </div>
-            </div>
-          </section>
         </div>
         <HelpPanel mode="local-edit" />
       </div>

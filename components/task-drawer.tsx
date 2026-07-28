@@ -1,87 +1,53 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Pause, RotateCcw, X } from "lucide-react";
-import { mockJobs } from "@/lib/mock-data";
+import { Ban, ChevronRight, LoaderCircle, RotateCcw, X } from "lucide-react";
+
+import { useCancelJob, useJobs, useRetryJob } from "@/features/jobs/api/jobs";
+import { useWorkspace } from "@/features/workspaces/api/workspaces";
+import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation";
 import { StatusBadge } from "./status-badge";
 
-export function TaskDrawer({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const visibleJobs = mockJobs.slice(0, 4);
+export function TaskDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { workspace } = useWorkspace();
+  const jobs = useJobs(workspace?.id, { limit: 8 });
+  const cancel = useCancelJob(workspace?.id);
+  const retry = useRetryJob(workspace?.id);
+  const visibleJobs = jobs.data?.items.slice(0, 4) ?? [];
 
   return (
     <>
       {open && <button className="drawer-overlay" onClick={onClose} aria-label="关闭任务抽屉" />}
       <aside className={`task-drawer ${open ? "open" : ""}`} aria-hidden={!open}>
         <div className="drawer-head">
-          <div>
-            <p>任务中心</p>
-            <strong>全站创作进度</strong>
-          </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭任务抽屉">
-            <X size={19} />
-          </button>
+          <div><p>任务中心 · API</p><strong>内部 mock 进度</strong></div>
+          <button className="icon-button" onClick={onClose} aria-label="关闭任务抽屉"><X size={19} /></button>
         </div>
         <div className="drawer-summary">
-          <div>
-            <span className="live-dot" />
-            <p>正在处理</p>
-            <strong>2</strong>
-          </div>
-          <div>
-            <p>今日完成</p>
-            <strong>14</strong>
-          </div>
-          <div>
-            <p>待处理异常</p>
-            <strong className="danger-text">1</strong>
-          </div>
+          <div><span className="live-dot" /><p>正在处理</p><strong>{visibleJobs.filter((job) => ["queued", "planning", "processing"].includes(job.status)).length}</strong></div>
+          <div><p>已完成</p><strong>{visibleJobs.filter((job) => job.status === "completed").length}</strong></div>
+          <div><p>待处理异常</p><strong className="danger-text">{visibleJobs.filter((job) => ["failed", "partial"].includes(job.status)).length}</strong></div>
         </div>
         <div className="drawer-list">
+          {jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
+          {!jobs.isPending && visibleJobs.length === 0 && <div className="api-state"><p>尚无内部 mock 任务。</p></div>}
           {visibleJobs.map((job) => (
-            <article key={job.id} className="drawer-job">
-              <img src={job.cover} alt="" />
+            <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">
-                <div className="drawer-job__top">
-                  <StatusBadge status={job.status} />
-                  <small>{job.createdAt}</small>
-                </div>
-                <strong>{job.title}</strong>
-                <p>{job.note}</p>
-                {(job.status === "processing" || job.status === "queued") && (
-                  <div className="mini-progress">
-                    <i style={{ width: `${job.progress}%` }} />
-                  </div>
-                )}
+                <div className="drawer-job__top"><StatusBadge status={job.status} /><small>{formatDate(job.created_at)}</small></div>
+                <strong>{jobTitle(job)}</strong><p>{jobNote(job)}</p>
+                {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">
-                  <span>{job.count}</span>
-                  <span>{job.duration}</span>
-                  {job.status === "processing" && (
-                    <button aria-label="暂停任务">
-                      <Pause size={14} />
-                    </button>
-                  )}
-                  {job.status === "failed" && (
-                    <button aria-label="重试任务">
-                      <RotateCcw size={14} />
-                    </button>
-                  )}
+                  <span>{jobCount(job)}</span><span>{job.stage ?? "—"}</span>
+                  {["processing", "queued", "planning"].includes(job.status) && <button aria-label="取消任务" onClick={() => cancel.mutate(job.id)}><Ban size={14} /></button>}
+                  {["failed", "partial"].includes(job.status) && <button aria-label="重试失败项" onClick={() => retry.mutate(job.id)}><RotateCcw size={14} /></button>}
                 </div>
               </div>
             </article>
           ))}
         </div>
-        <Link href="/jobs" className="drawer-footer-link" onClick={onClose}>
-          查看全部生成记录
-          <ChevronRight size={16} />
-        </Link>
+        <Link href="/jobs" className="drawer-footer-link" onClick={onClose}>查看全部生成记录<ChevronRight size={16} /></Link>
       </aside>
     </>
   );
 }
-

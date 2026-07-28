@@ -1,198 +1,182 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
-  CalendarDays,
   Check,
-  ChevronDown,
   CloudUpload,
-  Filter,
+  FileWarning,
   FolderOpen,
-  Grid3X3,
   Image as ImageIcon,
   LayoutGrid,
-  List,
-  MoreHorizontal,
+  LoaderCircle,
   Paintbrush2,
   Search,
   Sparkles,
   Upload,
 } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
-import { mockAssets } from "@/lib/mock-data";
 
-const sourceOptions = ["全部来源", "素材上传", "局部修改", "商品详情图"];
+import { AppShell } from "@/components/app-shell";
+import {
+  useAssetAccessUrl,
+  useAssets,
+  useUploadAsset,
+} from "@/features/assets/api/assets";
+import { useWorkspace } from "@/features/workspaces/api/workspaces";
+import { errorMessage } from "@/lib/api/request";
+import type { Asset } from "@/lib/api/types";
+import { formatDate } from "@/lib/jobs/presentation";
+
+function AssetCard({
+  asset,
+  workspaceId,
+  selected,
+  onToggle,
+}: {
+  asset: Asset;
+  workspaceId: string;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const accessUrl = useAssetAccessUrl(workspaceId, asset.id);
+  return (
+    <article className={`asset-card ${selected ? "selected" : ""}`}>
+      <div className="asset-image tone-violet">
+        {accessUrl.data ? (
+          <img src={accessUrl.data.url} alt={asset.original_filename} />
+        ) : (
+          <div className="api-image-placeholder" aria-label="正在加载素材预览">
+            {accessUrl.isError ? <FileWarning size={26} /> : <LoaderCircle className="spin" size={26} />}
+          </div>
+        )}
+        <button className="asset-check" onClick={onToggle} aria-label={`选择 ${asset.original_filename}`}>
+          {selected && <Check size={14} />}
+        </button>
+        <span>{asset.origin_kind === "upload" ? "上传原图" : "任务产物"}</span>
+      </div>
+      <div className="asset-info">
+        <div>
+          <strong>{asset.original_filename}</strong>
+          {accessUrl.data && (
+            <a href={accessUrl.data.url} target="_blank" rel="noreferrer" aria-label="打开素材">
+              <ArrowUpRight size={15} />
+            </a>
+          )}
+        </div>
+        <p>{asset.content_type} · {formatDate(asset.created_at)}</p>
+        <span>
+          {asset.width && asset.height ? `${asset.width} × ${asset.height}` : "尺寸待识别"}
+          {" · "}
+          {(asset.byte_size / 1024 / 1024).toFixed(1)} MB
+        </span>
+      </div>
+    </article>
+  );
+}
 
 export default function AssetsPage() {
-  const [source, setSource] = useState("全部来源");
+  const fileInput = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const { workspace, isPending: workspacePending, error: workspaceError } = useWorkspace();
+  const assetsQuery = useAssets(workspace?.id);
+  const upload = useUploadAsset(workspace?.id);
   const assets = useMemo(
     () =>
-      mockAssets.filter(
-        (asset) =>
-          (source === "全部来源" || asset.source === source) &&
-          asset.title.toLowerCase().includes(query.toLowerCase()),
+      (assetsQuery.data?.items ?? []).filter((asset) =>
+        asset.original_filename.toLowerCase().includes(query.toLowerCase()),
       ),
-    [query, source],
+    [assetsQuery.data, query],
   );
+  const requestError = workspaceError ?? assetsQuery.error ?? upload.error;
 
+  const chooseFile = () => fileInput.current?.click();
+  const onFile = (file?: File) => {
+    if (!file) return;
+    upload.mutate({ file }, { onSuccess: () => { if (fileInput.current) fileInput.current.value = ""; } });
+  };
   const toggleSelected = (id: string) =>
-    setSelected((items) =>
-      items.includes(id) ? items.filter((item) => item !== id) : [...items, id],
-    );
+    setSelected((items) => (items.includes(id) ? items.filter((item) => item !== id) : [...items, id]));
 
   return (
     <AppShell>
       <div className="content-page assets-page">
         <div className="page-title-row">
           <div>
-            <span>资产管理</span>
+            <span>资产管理 · API 已连接</span>
             <h1>个人素材库</h1>
-            <p>统一管理原始素材与生成结果，并在不同工作流之间复用。</p>
+            <p>素材会写入内部 mock 后端；此环境不会触发真实图片生成。</p>
           </div>
-          <button className="primary-button">
-            <Upload size={17} />
-            上传素材
+          <button className="primary-button" onClick={chooseFile} disabled={!workspace || upload.isPending}>
+            {upload.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}
+            {upload.isPending ? "正在上传" : "上传素材"}
           </button>
+          <input
+            ref={fileInput}
+            className="visually-hidden"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => onFile(event.target.files?.[0])}
+          />
         </div>
 
         <section className="asset-overview">
           <div className="storage-card">
-            <span>
-              <FolderOpen size={21} />
-            </span>
-            <div>
-              <p>素材空间</p>
-              <strong>3.8 GB <small>/ 10 GB</small></strong>
-              <i><b style={{ width: "38%" }} /></i>
-            </div>
-            <em>可用 6.2 GB</em>
+            <span><FolderOpen size={21} /></span>
+            <div><p>当前工作区</p><strong>{workspace?.name ?? "正在连接"}</strong></div>
+            <em>内部 mock</em>
           </div>
-          <div>
-            <ImageIcon size={19} />
-            <span>
-              <p>原始素材</p>
-              <strong>146</strong>
-            </span>
-          </div>
-          <div>
-            <Sparkles size={19} />
-            <span>
-              <p>生成结果</p>
-              <strong>312</strong>
-            </span>
-          </div>
-          <div>
-            <CloudUpload size={19} />
-            <span>
-              <p>本周新增</p>
-              <strong>28</strong>
-            </span>
-          </div>
+          <div><ImageIcon size={19} /><span><p>已加载素材</p><strong>{assetsQuery.data?.total ?? assets.length}</strong></span></div>
+          <div><Sparkles size={19} /><span><p>任务产物</p><strong>{assets.filter((item) => item.origin_kind !== "upload").length}</strong></span></div>
+          <div><CloudUpload size={19} /><span><p>上传原图</p><strong>{assets.filter((item) => item.origin_kind === "upload").length}</strong></span></div>
         </section>
 
-        <section className="asset-library">
+        <section className="asset-library" aria-busy={workspacePending || assetsQuery.isPending}>
           <div className="asset-library__head">
-            <div className="asset-tabs">
-              <button className="active">全部素材 <span>458</span></button>
-              <button>原始图片 <span>146</span></button>
-              <button>生成结果 <span>312</span></button>
-            </div>
-            <div className="view-toggle">
-              <button className="active" aria-label="网格视图"><LayoutGrid size={17} /></button>
-              <button aria-label="列表视图"><List size={17} /></button>
-            </div>
+            <div className="asset-tabs"><button className="active">全部素材 <span>{assets.length}</span></button></div>
+            <div className="view-toggle"><button className="active" aria-label="网格视图"><LayoutGrid size={17} /></button></div>
           </div>
           <div className="asset-toolbar">
             <label className="search-field">
               <Search size={16} />
-              <input
-                placeholder="搜索素材名称"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
+              <input placeholder="搜索素材名称" value={query} onChange={(event) => setQuery(event.target.value)} />
             </label>
-            <div className="select-filter">
-              <Filter size={15} />
-              <select value={source} onChange={(event) => setSource(event.target.value)}>
-                {sourceOptions.map((item) => <option key={item}>{item}</option>)}
-              </select>
-              <ChevronDown size={14} />
-            </div>
-            <button>
-              <CalendarDays size={16} />
-              最近 30 天
-            </button>
-            <button>
-              <Grid3X3 size={16} />
-              全部尺寸
-            </button>
             <span className="asset-count">{assets.length} 个素材</span>
           </div>
+
+          {requestError && (
+            <div className="api-state api-state--error" role="alert">
+              <FileWarning size={24} />
+              <div><strong>素材服务暂时不可用</strong><p>{errorMessage(requestError)}</p></div>
+              <button className="secondary-button" onClick={() => void assetsQuery.refetch()}>重新连接</button>
+            </div>
+          )}
+          {(workspacePending || assetsQuery.isPending) && (
+            <div className="api-state"><LoaderCircle className="spin" size={24} /><p>正在从 API 加载素材…</p></div>
+          )}
+          {!requestError && !assetsQuery.isPending && assets.length === 0 && (
+            <div className="empty-state">
+              <Upload size={28} /><h3>{query ? "没有匹配素材" : "还没有素材"}</h3>
+              <p>{query ? "清除搜索后再试。" : "上传一张图片即可开始零付费 mock 内测。"}</p>
+              <button className="secondary-button" onClick={query ? () => setQuery("") : chooseFile}>{query ? "清除搜索" : "上传第一张素材"}</button>
+            </div>
+          )}
           {selected.length > 0 && (
             <div className="selection-toolbar">
-              <span>
-                <i><Check size={13} /></i>
-                已选择 {selected.length} 项
-              </span>
-              <button>
-                <Paintbrush2 size={15} />
-                带入局部修改
-              </button>
-              <button>
-                <Sparkles size={15} />
-                创建详情套图
-              </button>
+              <span><i><Check size={13} /></i>已选择 {selected.length} 项</span>
+              <button><Paintbrush2 size={15} />带入局部修改</button>
+              <button><Sparkles size={15} />创建详情套图</button>
               <button onClick={() => setSelected([])}>取消选择</button>
             </div>
           )}
           <div className="asset-grid">
-            <button className="upload-asset-card">
-              <span><Upload size={24} /></span>
-              <strong>上传新素材</strong>
-              <p>拖拽图片到这里，或点击选择文件</p>
-              <small>JPG / PNG / WEBP · 单张不超过 20MB</small>
+            <button className="upload-asset-card" onClick={chooseFile} disabled={!workspace || upload.isPending}>
+              <span><Upload size={24} /></span><strong>上传新素材</strong>
+              <p>点击选择图片文件</p><small>JPG / PNG / WEBP · 服务端校验大小</small>
             </button>
             {assets.map((asset) => (
-              <article key={asset.id} className={`asset-card ${selected.includes(asset.id) ? "selected" : ""}`}>
-                <div className={`asset-image tone-${asset.tone}`}>
-                  <img src={asset.image} alt={asset.title} />
-                  <button
-                    className="asset-check"
-                    onClick={() => toggleSelected(asset.id)}
-                    aria-label={`选择 ${asset.title}`}
-                  >
-                    {selected.includes(asset.id) && <Check size={14} />}
-                  </button>
-                  <span>{asset.kind}</span>
-                  <button className="asset-more" aria-label="更多操作"><MoreHorizontal size={16} /></button>
-                  <div className="asset-hover-actions">
-                    <button>
-                      <Paintbrush2 size={15} />
-                      局部修改
-                    </button>
-                    <button>
-                      <Sparkles size={15} />
-                      详情套图
-                    </button>
-                  </div>
-                </div>
-                <div className="asset-info">
-                  <div>
-                    <strong>{asset.title}</strong>
-                    <button aria-label="打开素材"><ArrowUpRight size={15} /></button>
-                  </div>
-                  <p>{asset.source} · {asset.createdAt}</p>
-                  <span>{asset.size}</span>
-                </div>
-              </article>
+              <AssetCard key={asset.id} asset={asset} workspaceId={workspace!.id} selected={selected.includes(asset.id)} onToggle={() => toggleSelected(asset.id)} />
             ))}
-          </div>
-          <div className="asset-safe-note">
-            <Check size={14} />
-            素材库暂不提供批量删除，避免误删正在被任务引用的图片。
           </div>
         </section>
       </div>

@@ -427,7 +427,12 @@ class ExecutionCoordinator:
                     provider_task.cancel()
                     return False
         result = await provider_task
-        if result.artifact is not None:
+        effective_provider = self._effective_provider_name(result)
+        if effective_provider == "mock":
+            if result.persisted_artifact is not None:
+                await self._delete_persisted_artifact(result.persisted_artifact)
+            result = self._without_mock_artifacts(result)
+        elif result.artifact is not None:
             result = await self._persist_provider_artifact(lease, result)
         finished = self.finish_attempt(lease, result)
         if result.persisted_artifact is not None and not self._artifact_linked(
@@ -436,6 +441,35 @@ class ExecutionCoordinator:
         ):
             await self._delete_persisted_artifact(result.persisted_artifact)
         return finished
+
+    def _effective_provider_name(self, result: ProviderResult) -> str:
+        return result.provider_name or self.provider.name
+
+    @staticmethod
+    def _without_mock_artifacts(result: ProviderResult) -> ProviderResult:
+        raw_usage = dict(result.raw_usage)
+        raw_usage["output_images"] = 0
+        for key in ("raw", "normalized"):
+            value = raw_usage.get(key)
+            if isinstance(value, dict):
+                sanitized = dict(value)
+                sanitized["output_images"] = 0
+                raw_usage[key] = sanitized
+        metrics_value = raw_usage.get("metrics")
+        metrics = dict(metrics_value) if isinstance(metrics_value, dict) else {}
+        metrics["mock_artifact_discarded"] = bool(
+            metrics.get("mock_artifact_discarded")
+        ) or (
+            result.artifact is not None
+            or result.persisted_artifact is not None
+        )
+        raw_usage["metrics"] = metrics
+        return replace(
+            result,
+            raw_usage=raw_usage,
+            artifact=None,
+            persisted_artifact=None,
+        )
 
     async def _persist_provider_artifact(
         self,
@@ -587,6 +621,9 @@ class ExecutionCoordinator:
         lease: AttemptLease,
         result: ProviderResult,
     ) -> bool:
+        effective_provider = self._effective_provider_name(result)
+        if effective_provider == "mock":
+            result = self._without_mock_artifacts(result)
         now = utc_now()
         with self.session_factory() as session:
             job = session.get(JobRecord, lease.job_id, with_for_update=True)
@@ -648,7 +685,9 @@ class ExecutionCoordinator:
             if result.outcome == ProviderOutcome.SUCCEEDED:
                 attempt.status = AttemptStatus.SUCCEEDED.value
                 item.status = JobItemStatus.SUCCEEDED.value
-                item.result_source = "generated"
+                item.result_source = (
+                    "mock" if effective_provider == "mock" else "generated"
+                )
                 item.error_code = None
                 item.error_message = None
             elif result.outcome == ProviderOutcome.FAILED:
@@ -734,7 +773,7 @@ class ExecutionCoordinator:
                     )
                 )
 
-            usage_provider = result.provider_name or self.provider.name
+            usage_provider = effective_provider
             usage_model = result.model_name or self.provider.model
             usage_pricing = result.pricing_version or self.provider.pricing_version
             usage_event = UsageEventRecord(

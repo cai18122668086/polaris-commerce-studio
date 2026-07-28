@@ -20,17 +20,19 @@ from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 
 from app.config import Settings
-from app.domain import JobStatus
+from app.domain import AssetOriginKind, JobAssetDirection, JobStatus
 from app.execution import AttemptLease
 from app.main import create_app
 from app.models import (
     AssetRecord,
     AuditEventRecord,
     CreditReservationRecord,
+    JobAssetRecord,
     JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
     UsageEventRecord,
+    WorkspaceLimitRecord,
     utc_now,
 )
 from app.provider import ProviderRequest
@@ -96,6 +98,15 @@ def _gateway(client: TestClient) -> FakeXingheGateway:
     gateway = planner.gateway
     assert isinstance(gateway, FakeXingheGateway)
     return gateway
+
+
+class _OfflineNonMockGateway(FakeXingheGateway):
+    """No-network test double that exercises the deliverable provider path."""
+
+    provider_name = "offline-test-provider"
+    planner_model = "offline-test-planner"
+    image_model = "offline-test-image"
+    pricing_version = "offline-test-zero-v1"
 
 
 @pytest.fixture
@@ -1573,9 +1584,120 @@ def test_budget_reservation_survives_duplicate_attempt_and_worker_recovery(
     assert reservations == 1
 
 
-def test_generated_assets_record_real_dimensions_without_resampling(
+def test_mock_detail_pack_discards_artifacts_before_storage(
     client: TestClient,
 ) -> None:
+    source = upload_asset(client, filename="mock-artifact.jpg")
+    storage_root = client.app.state.settings.storage_dir
+    before_files = sorted(
+        path.relative_to(storage_root)
+        for path in storage_root.rglob("*")
+        if path.is_file()
+    )
+    with client.app.state.session_factory() as session:
+        before_asset_count = int(
+            session.scalar(select(func.count()).select_from(AssetRecord)) or 0
+        )
+        before_asset_bytes = int(
+            session.scalar(
+                select(func.coalesce(func.sum(AssetRecord.byte_size), 0))
+            )
+            or 0
+        )
+        limits = session.get(WorkspaceLimitRecord, WORKSPACE_ID)
+        assert limits is not None
+        before_quota = limits.storage_quota_bytes
+
+    job = _create_detail_job(client, [source["id"]], page_count=2)
+    assert dispatch_pending(client) == 1
+    assert (
+        client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+            headers=idem(),
+            json={"expected_revision": 1},
+        ).status_code
+        == 202
+    )
+    assert dispatch_pending(client) == 1
+    completed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+
+    assert completed["status"] == JobStatus.COMPLETED.value
+    assert all(item["result_source"] == "mock" for item in completed["items"])
+    assert not [
+        relation
+        for relation in completed["assets"]
+        if relation["direction"] == JobAssetDirection.OUTPUT.value
+    ]
+    listed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        params={"include_total": "true"},
+    )
+    assert listed.status_code == 200
+    assert listed.json()["total"] == before_asset_count
+    assert {asset["id"] for asset in listed.json()["items"]} == {source["id"]}
+
+    with client.app.state.session_factory() as session:
+        generated_assets = session.scalar(
+            select(func.count())
+            .select_from(AssetRecord)
+            .where(AssetRecord.origin_kind == AssetOriginKind.GENERATED.value)
+        )
+        output_relations = session.scalar(
+            select(func.count())
+            .select_from(JobAssetRecord)
+            .where(
+                JobAssetRecord.job_id == job["id"],
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+            )
+        )
+        asset_bytes = session.scalar(
+            select(func.coalesce(func.sum(AssetRecord.byte_size), 0))
+        )
+        current_limits = session.get(WorkspaceLimitRecord, WORKSPACE_ID)
+        usage = session.scalars(
+            select(UsageEventRecord)
+            .where(UsageEventRecord.job_id == job["id"])
+            .order_by(UsageEventRecord.occurred_at)
+        ).all()
+
+    assert generated_assets == 0
+    assert output_relations == 0
+    assert int(asset_bytes or 0) == before_asset_bytes
+    assert current_limits is not None
+    assert current_limits.storage_quota_bytes == before_quota
+    assert len(usage) == 2
+    assert all(event.provider == "mock" for event in usage)
+    assert all(event.output_image_count == 0 for event in usage)
+    assert all(event.estimated_cost_micros == 0 for event in usage)
+    assert all(event.actual_cost_micros == 0 for event in usage)
+    assert all(event.raw_usage["output_images"] == 0 for event in usage)
+    assert all(event.raw_usage["raw"]["output_images"] == 0 for event in usage)
+    assert all(event.raw_usage["raw"]["network_requests"] == 0 for event in usage)
+    assert all(
+        event.raw_usage["metrics"]["mock_artifact_discarded"] is True
+        for event in usage
+    )
+    after_files = sorted(
+        path.relative_to(storage_root)
+        for path in storage_root.rglob("*")
+        if path.is_file()
+    )
+    assert after_files == before_files
+
+
+def test_non_mock_artifacts_remain_deliverable_without_resampling(
+    client: TestClient,
+) -> None:
+    gateway = _OfflineNonMockGateway()
+    client.app.state.task_runner = MockTaskRunner(
+        client.app.state.session_factory,
+        0,
+        storage=client.app.state.storage,
+        xinghe_gateway=gateway,
+        xinghe_concurrency=1,
+    )
     source = upload_asset(client, filename="dimensions.jpg")
     job = _create_detail_job(client, [source["id"]], page_count=1)
     assert dispatch_pending(client) == 1
@@ -1594,15 +1716,18 @@ def test_generated_assets_record_real_dimensions_without_resampling(
     output = next(asset for asset in completed["assets"] if asset["is_deliverable"])
     with client.app.state.session_factory() as session:
         asset = session.get(AssetRecord, output["asset_id"])
-        assert asset is not None
         usage = session.scalar(
             select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
         )
 
+    assert asset is not None
     assert (asset.width, asset.height) == (24, 32)
+    assert output["direction"] == JobAssetDirection.OUTPUT.value
     assert output["validation"]["requested_size"] == IMAGE_SIZE
     assert output["validation"]["locally_resampled"] is False
+    assert completed["items"][0]["result_source"] == "generated"
     assert usage is not None
+    assert usage.provider == _OfflineNonMockGateway.provider_name
     assert (usage.width, usage.height) == (24, 32)
 
 

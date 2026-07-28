@@ -245,6 +245,54 @@
         "title": "CancelRequest",
         "type": "object"
       },
+      "CapabilityStatus": {
+        "properties": {
+          "availability": {
+            "description": "Whether the workflow and API are available for internal testing. This does not mean that real generation is available; clients must also inspect execution.",
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "execution": {
+            "description": "How this capability executes: locally, through the zero-cost mock runner, through a real provider, or not at all.",
+            "enum": [
+              "local",
+              "mock",
+              "provider",
+              "none"
+            ],
+            "title": "Execution",
+            "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
+                  "TASK_RUNNER_MOCK",
+                  "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable machine-readable explanation when execution is mocked or the capability is unavailable.",
+            "title": "Reason Code"
+          }
+        },
+        "required": [
+          "availability",
+          "execution",
+          "reason_code"
+        ],
+        "title": "CapabilityStatus",
+        "type": "object"
+      },
       "CostSummary": {
         "properties": {
           "actual": {
@@ -460,6 +508,50 @@
           }
         },
         "title": "DraftJobUpdate",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1395,6 +1487,74 @@
         "title": "RetryScope",
         "type": "string"
       },
+      "RuntimeCapabilities": {
+        "properties": {
+          "asset_management": {
+            "$ref": "#/components/schemas/CapabilityStatus",
+            "description": "Asset upload, listing, and private access URL workflow."
+          },
+          "detail_pack": {
+            "$ref": "#/components/schemas/CapabilityStatus",
+            "description": "Detail-pack workflow. Its execution follows the selected task runner."
+          },
+          "external_authentication": {
+            "$ref": "#/components/schemas/CapabilityStatus",
+            "description": "External authentication capability. A configured mode alone does not mean that the implementation is available."
+          },
+          "local_edit": {
+            "$ref": "#/components/schemas/CapabilityStatus",
+            "description": "Local-edit workflow. It remains mock-only until a dedicated local-edit provider is implemented, regardless of the selected task runner."
+          }
+        },
+        "required": [
+          "asset_management",
+          "local_edit",
+          "detail_pack",
+          "external_authentication"
+        ],
+        "title": "RuntimeCapabilities",
+        "type": "object"
+      },
+      "RuntimeStatusResponse": {
+        "properties": {
+          "authentication_mode": {
+            "enum": [
+              "development",
+              "external"
+            ],
+            "title": "Authentication Mode",
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/RuntimeCapabilities"
+          },
+          "environment": {
+            "enum": [
+              "development",
+              "test",
+              "production"
+            ],
+            "title": "Environment",
+            "type": "string"
+          },
+          "task_runner": {
+            "enum": [
+              "mock",
+              "tengli"
+            ],
+            "title": "Task Runner",
+            "type": "string"
+          }
+        },
+        "required": [
+          "environment",
+          "authentication_mode",
+          "task_runner",
+          "capabilities"
+        ],
+        "title": "RuntimeStatusResponse",
+        "type": "object"
+      },
       "UsageCompleteness": {
         "enum": [
           "none",
@@ -1521,6 +1681,66 @@
         "summary": "Current User",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/api/v1/runtime": {
+      "get": {
+        "description": "Reports internal-test workflow availability and execution mode. availability=available only means the workflow/API can be exercised; clients must read execution before describing real generation support.",
+        "operationId": "get_runtime_status_api_v1_runtime_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Runtime Status",
+        "tags": [
+          "system"
         ]
       }
     },

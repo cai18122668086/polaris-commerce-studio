@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Runtime Status
+         * @description Reports internal-test workflow availability and execution mode. availability=available only means the workflow/API can be exercised; clients must read execution before describing real generation support.
+         */
+        get: operations["get_runtime_status_api_v1_runtime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces": {
         parameters: {
             query?: never;
@@ -380,6 +400,26 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** CapabilityStatus */
+        CapabilityStatus: {
+            /**
+             * Availability
+             * @description Whether the workflow and API are available for internal testing. This does not mean that real generation is available; clients must also inspect execution.
+             * @enum {string}
+             */
+            availability: "available" | "unavailable";
+            /**
+             * Execution
+             * @description How this capability executes: locally, through the zero-cost mock runner, through a real provider, or not at all.
+             * @enum {string}
+             */
+            execution: "local" | "mock" | "provider" | "none";
+            /**
+             * Reason Code
+             * @description Stable machine-readable explanation when execution is mocked or the capability is unavailable.
+             */
+            reason_code: ("LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED" | "TASK_RUNNER_MOCK" | "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED") | null;
+        };
         /** CostSummary */
         CostSummary: {
             actual: components["schemas"]["MoneyAmount"] | null;
@@ -443,6 +483,21 @@ export interface components {
             } | null;
             /** Display Name */
             display_name?: string | null;
+        };
+        /** ErrorBody */
+        ErrorBody: {
+            /** Code */
+            code: string;
+            /** Details */
+            details?: unknown | null;
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id: string;
+        };
+        /** ErrorResponse */
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -753,6 +808,36 @@ export interface components {
          * @enum {string}
          */
         RetryScope: "full" | "failed" | "missing" | "selected";
+        /** RuntimeCapabilities */
+        RuntimeCapabilities: {
+            /** @description Asset upload, listing, and private access URL workflow. */
+            asset_management: components["schemas"]["CapabilityStatus"];
+            /** @description Detail-pack workflow. Its execution follows the selected task runner. */
+            detail_pack: components["schemas"]["CapabilityStatus"];
+            /** @description External authentication capability. A configured mode alone does not mean that the implementation is available. */
+            external_authentication: components["schemas"]["CapabilityStatus"];
+            /** @description Local-edit workflow. It remains mock-only until a dedicated local-edit provider is implemented, regardless of the selected task runner. */
+            local_edit: components["schemas"]["CapabilityStatus"];
+        };
+        /** RuntimeStatusResponse */
+        RuntimeStatusResponse: {
+            /**
+             * Authentication Mode
+             * @enum {string}
+             */
+            authentication_mode: "development" | "external";
+            capabilities: components["schemas"]["RuntimeCapabilities"];
+            /**
+             * Environment
+             * @enum {string}
+             */
+            environment: "development" | "test" | "production";
+            /**
+             * Task Runner
+             * @enum {string}
+             */
+            task_runner: "mock" | "tengli";
+        };
         /**
          * UsageCompleteness
          * @enum {string}
@@ -806,6 +891,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_status_api_v1_runtime_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeStatusResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */

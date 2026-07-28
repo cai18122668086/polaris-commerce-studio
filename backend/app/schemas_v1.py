@@ -40,6 +40,67 @@ class WorkspaceResponse(BaseModel):
     role: MembershipRole
 
 
+CapabilityAvailability = Literal["available", "unavailable"]
+CapabilityExecution = Literal["local", "mock", "provider", "none"]
+CapabilityReasonCode = Literal[
+    "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
+    "TASK_RUNNER_MOCK",
+    "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+]
+
+
+class CapabilityStatus(BaseModel):
+    availability: CapabilityAvailability = Field(
+        description=(
+            "Whether the workflow and API are available for internal testing. "
+            "This does not mean that real generation is available; clients must "
+            "also inspect execution."
+        )
+    )
+    execution: CapabilityExecution = Field(
+        description=(
+            "How this capability executes: locally, through the zero-cost mock "
+            "runner, through a real provider, or not at all."
+        )
+    )
+    reason_code: CapabilityReasonCode | None = Field(
+        description=(
+            "Stable machine-readable explanation when execution is mocked or the "
+            "capability is unavailable."
+        )
+    )
+
+
+class RuntimeCapabilities(BaseModel):
+    asset_management: CapabilityStatus = Field(
+        description="Asset upload, listing, and private access URL workflow."
+    )
+    local_edit: CapabilityStatus = Field(
+        description=(
+            "Local-edit workflow. It remains mock-only until a dedicated local-edit "
+            "provider is implemented, regardless of the selected task runner."
+        )
+    )
+    detail_pack: CapabilityStatus = Field(
+        description=(
+            "Detail-pack workflow. Its execution follows the selected task runner."
+        )
+    )
+    external_authentication: CapabilityStatus = Field(
+        description=(
+            "External authentication capability. A configured mode alone does not "
+            "mean that the implementation is available."
+        )
+    )
+
+
+class RuntimeStatusResponse(BaseModel):
+    environment: Literal["development", "test", "production"]
+    authentication_mode: Literal["development", "external"]
+    task_runner: Literal["mock", "tengli"]
+    capabilities: RuntimeCapabilities
+
+
 class AssetResponse(BaseModel):
     id: str
     workspace_id: str

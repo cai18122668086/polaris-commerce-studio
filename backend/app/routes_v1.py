@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import (
     APIRouter,
@@ -59,9 +59,11 @@ from .schemas_v1 import (
     AssetListResponse,
     AssetResponse,
     CancelRequest,
+    CapabilityStatus,
     CurrentUserResponse,
     DetailPackJobCreate,
     DraftJobUpdate,
+    ErrorResponse,
     JobCreate,
     JobDetailResponse,
     JobListResponse,
@@ -70,6 +72,8 @@ from .schemas_v1 import (
     PlanResponse,
     PlanUpdateRequest,
     RetryRequest,
+    RuntimeCapabilities,
+    RuntimeStatusResponse,
     WorkspaceResponse,
 )
 from .services import (
@@ -269,6 +273,73 @@ def _commit_staged_asset(
 @router.get("/me", response_model=CurrentUserResponse, tags=["identity"])
 def current_user(principal: PrincipalDependency) -> CurrentUserResponse:
     return CurrentUserResponse(id=principal.user_id)
+
+
+def runtime_status_response(
+    *,
+    environment: Literal["development", "test", "production"],
+    authentication_mode: Literal["development", "external"],
+    task_runner: Literal["mock", "tengli"],
+) -> RuntimeStatusResponse:
+    detail_pack = (
+        CapabilityStatus(
+            availability="available",
+            execution="mock",
+            reason_code="TASK_RUNNER_MOCK",
+        )
+        if task_runner == "mock"
+        else CapabilityStatus(
+            availability="available",
+            execution="provider",
+            reason_code=None,
+        )
+    )
+    return RuntimeStatusResponse(
+        environment=environment,
+        authentication_mode=authentication_mode,
+        task_runner=task_runner,
+        capabilities=RuntimeCapabilities(
+            asset_management=CapabilityStatus(
+                availability="available",
+                execution="local",
+                reason_code=None,
+            ),
+            local_edit=CapabilityStatus(
+                availability="available",
+                execution="mock",
+                reason_code="LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
+            ),
+            detail_pack=detail_pack,
+            external_authentication=CapabilityStatus(
+                availability="unavailable",
+                execution="none",
+                reason_code="EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+            ),
+        ),
+    )
+
+
+@router.get(
+    "/runtime",
+    response_model=RuntimeStatusResponse,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse}},
+    tags=["system"],
+    description=(
+        "Reports internal-test workflow availability and execution mode. "
+        "availability=available only means the workflow/API can be exercised; "
+        "clients must read execution before describing real generation support."
+    ),
+)
+def get_runtime_status(
+    request: Request,
+    _principal: PrincipalDependency,
+) -> RuntimeStatusResponse:
+    settings = request.app.state.settings
+    return runtime_status_response(
+        environment=settings.environment,
+        authentication_mode=settings.auth_mode,
+        task_runner=settings.task_runner,
+    )
 
 
 @router.get("/workspaces", response_model=list[WorkspaceResponse], tags=["identity"])

@@ -8,6 +8,7 @@ from PIL import Image
 from sqlalchemy import func, select
 
 from app.domain import OutboxStatus
+from app.main import create_app
 from app.models import (
     JobAttemptRecord,
     OutboxEventRecord,
@@ -15,6 +16,7 @@ from app.models import (
     utc_now,
 )
 from app.outbox import publish_pending_events
+from app.routes_v1 import runtime_status_response
 
 WORKSPACE_ID = "ws_test"
 
@@ -104,6 +106,103 @@ def test_health_identity_and_empty_collections(client: TestClient) -> None:
     assert workspaces.json()[0]["id"] == WORKSPACE_ID
     assert assets.json()["items"] == []
     assert jobs.json()["items"] == []
+
+
+def test_runtime_capabilities_report_mock_and_tengli_execution(
+    client: TestClient,
+) -> None:
+    response = client.get("/api/v1/runtime")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "environment": "test",
+        "authentication_mode": "development",
+        "task_runner": "mock",
+        "capabilities": {
+            "asset_management": {
+                "availability": "available",
+                "execution": "local",
+                "reason_code": None,
+            },
+            "local_edit": {
+                "availability": "available",
+                "execution": "mock",
+                "reason_code": "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
+            },
+            "detail_pack": {
+                "availability": "available",
+                "execution": "mock",
+                "reason_code": "TASK_RUNNER_MOCK",
+            },
+            "external_authentication": {
+                "availability": "unavailable",
+                "execution": "none",
+                "reason_code": "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+            },
+        },
+    }
+
+    tengli = runtime_status_response(
+        environment="production",
+        authentication_mode="external",
+        task_runner="tengli",
+    )
+    assert tengli.capabilities.local_edit.execution == "mock"
+    assert (
+        tengli.capabilities.local_edit.reason_code
+        == "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED"
+    )
+    assert tengli.capabilities.detail_pack.execution == "provider"
+    assert tengli.capabilities.detail_pack.reason_code is None
+    assert tengli.capabilities.external_authentication.availability == "unavailable"
+
+
+def test_runtime_requires_an_authenticated_principal(settings) -> None:
+    external_settings = settings.model_copy(update={"auth_mode": "external"})
+
+    with TestClient(create_app(external_settings)) as external:
+        response = external.get("/api/v1/runtime")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHENTICATED"
+    assert response.json()["error"]["request_id"].startswith("req_")
+
+
+def test_runtime_openapi_contract_is_explicit_and_stable(client: TestClient) -> None:
+    schema = client.app.openapi()
+    operation = schema["paths"]["/api/v1/runtime"]["get"]
+    schemas = schema["components"]["schemas"]
+
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/RuntimeStatusResponse"
+    }
+    assert operation["responses"]["401"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
+    assert schemas["RuntimeStatusResponse"]["required"] == [
+        "environment",
+        "authentication_mode",
+        "task_runner",
+        "capabilities",
+    ]
+    assert set(schemas["RuntimeCapabilities"]["properties"]) == {
+        "asset_management",
+        "local_edit",
+        "detail_pack",
+        "external_authentication",
+    }
+    availability = schemas["CapabilityStatus"]["properties"]["availability"]
+    execution = schemas["CapabilityStatus"]["properties"]["execution"]
+    reason_code = schemas["CapabilityStatus"]["properties"]["reason_code"]
+    assert availability["enum"] == ["available", "unavailable"]
+    assert execution["enum"] == ["local", "mock", "provider", "none"]
+    assert reason_code["anyOf"][0]["enum"] == [
+        "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
+        "TASK_RUNNER_MOCK",
+        "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+    ]
+    assert "internal testing" in availability["description"]
+    assert "clients must read execution" in operation["description"]
 
 
 def test_upload_is_idempotent_private_and_accessible_by_signed_url(

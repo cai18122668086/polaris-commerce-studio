@@ -1,0 +1,279 @@
+name: polaris-internal-staging
+
+x-backend-common-environment: &backend-common-environment
+  POLARIS_ENVIRONMENT: development
+  POLARIS_AUTH_MODE: development
+  POLARIS_DEVELOPMENT_USER_ID: ${POLARIS_DEVELOPMENT_USER_ID:?set internal user id}
+  POLARIS_DEVELOPMENT_WORKSPACE_ID: ${POLARIS_DEVELOPMENT_WORKSPACE_ID:?set internal workspace id}
+  POLARIS_DEVELOPMENT_WORKSPACE_NAME: ${POLARIS_DEVELOPMENT_WORKSPACE_NAME:?set internal workspace name}
+  POLARIS_ACCESS_URL_SECRET: ${POLARIS_ACCESS_URL_SECRET:?set a random access URL signing secret}
+  POLARIS_DATABASE_URL: postgresql+psycopg://polaris:${POLARIS_POSTGRES_PASSWORD:?set PostgreSQL password}@postgres:5432/polaris
+  POLARIS_AUTO_CREATE_SCHEMA: "false"
+  POLARIS_STORAGE_BACKEND: s3
+  POLARIS_S3_ENDPOINT_URL: http://minio:9000
+  POLARIS_S3_REGION: us-east-1
+  POLARIS_S3_ACCESS_KEY: ${POLARIS_MINIO_ROOT_USER:?set MinIO root user}
+  POLARIS_S3_SECRET_KEY: ${POLARIS_MINIO_ROOT_PASSWORD:?set MinIO root password}
+  POLARIS_S3_BUCKET: ${POLARIS_S3_BUCKET:?set private asset bucket}
+  POLARIS_S3_AUTO_CREATE_BUCKET: "true"
+  POLARIS_AUTO_PROCESS_JOBS: "true"
+  POLARIS_TASK_DISPATCHER: celery
+  POLARIS_CELERY_BROKER_URL: redis://:${POLARIS_REDIS_PASSWORD:?set Redis password}@redis:6379/0
+  POLARIS_CELERY_RESULT_BACKEND: redis://:${POLARIS_REDIS_PASSWORD:?set Redis password}@redis:6379/1
+  POLARIS_MAX_UPLOAD_BYTES: "20971520"
+  POLARIS_MAX_IMAGE_PIXELS: "40000000"
+  POLARIS_CORS_ORIGINS: '["http://127.0.0.1:8080","http://localhost:8080"]'
+
+x-backend-real-runner-environment: &backend-real-runner-environment
+  <<: *backend-common-environment
+  POLARIS_TASK_RUNNER: tengli
+  POLARIS_TENGLI_API_KEY: ${POLARIS_TENGLI_API_KEY:?set backend-only Tengli API key}
+  POLARIS_TENGLI_BASE_URL: ${POLARIS_TENGLI_BASE_URL:?set Tengli HTTPS base URL}
+  POLARIS_TENGLI_IMAGE_MODEL: ${POLARIS_TENGLI_IMAGE_MODEL:?set approved image model}
+  POLARIS_TENGLI_VISION_MODEL: ${POLARIS_TENGLI_VISION_MODEL:?set approved planner model}
+  POLARIS_TENGLI_SMOKE_BUDGET_USD: ${POLARIS_TENGLI_SMOKE_BUDGET_USD:?set budget at or below USD 2}
+  POLARIS_XINGHE_CONCURRENCY: "2"
+  POLARIS_XINGHE_MEDIUM_PRICE_MICROS: "45000"
+  POLARIS_XINGHE_HIGH_PRICE_MICROS: "90000"
+
+x-backend-build: &backend-build
+  context: ..
+  dockerfile: deploy/backend.Dockerfile
+
+x-service-security: &service-security
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: "5"
+
+services:
+  postgres:
+    <<: *service-security
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_DB: polaris
+      POSTGRES_USER: polaris
+      POSTGRES_PASSWORD: ${POLARIS_POSTGRES_PASSWORD:?set PostgreSQL password}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polaris -d polaris"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  redis:
+    <<: *service-security
+    image: redis:8.6.4-alpine
+    environment:
+      REDISCLI_AUTH: ${POLARIS_REDIS_PASSWORD:?set Redis password}
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60"
+      - "1000"
+      - --requirepass
+      - ${POLARIS_REDIS_PASSWORD:?set Redis password}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  minio:
+    <<: *service-security
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${POLARIS_MINIO_ROOT_USER:?set MinIO root user}
+      MINIO_ROOT_PASSWORD: ${POLARIS_MINIO_ROOT_PASSWORD:?set MinIO root password}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  migrate:
+    <<: *service-security
+    build: *backend-build
+    environment:
+      <<: *backend-common-environment
+      POLARIS_TASK_RUNNER: mock
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  api:
+    <<: *service-security
+    build: *backend-build
+    environment: *backend-real-runner-environment
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - edge
+      - backend
+
+  worker:
+    <<: *service-security
+    build: *backend-build
+    environment: *backend-real-runner-environment
+    command:
+      - python
+      - -m
+      - celery
+      - -A
+      - app.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+      - --prefetch-multiplier=1
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "celery -A app.celery_app:celery_app inspect ping --timeout 5 >/dev/null 2>&1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 90s
+    networks:
+      - backend
+
+  dispatcher:
+    <<: *service-security
+    build: *backend-build
+    environment: *backend-real-runner-environment
+    command: ["python", "-m", "app.outbox_worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  frontend:
+    <<: *service-security
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - edge
+
+  caddy:
+    <<: *service-security
+    image: caddy:2.10.2-alpine
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /config
+      - /data
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    networks:
+      - edge
+
+networks:
+  edge:
+    internal: true
+  backend:
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

@@ -750,6 +750,28 @@ def test_planner_schema_errors_use_json_pointer_paths(
     assert exc_info.value.json_pointer == expected_path
 
 
+def test_complete_planner_mapping_missing_consistency_anchors_fails_closed() -> None:
+    payload = _valid_planner_content(1)
+    del payload["analysis"]["product_consistency_anchors"]
+
+    with pytest.raises(XingheAgentError) as exc_info:
+        validate_planner_payload(payload, 1)
+
+    assert exc_info.value.code == "PLANNER_SCHEMA_INVALID"
+    assert exc_info.value.json_pointer == (
+        "/analysis/product_consistency_anchors"
+    )
+    assert "product_consistency_anchors" not in payload["analysis"]
+
+
+def test_valid_planner_mapping_with_consistency_anchors_passes() -> None:
+    payload = _valid_planner_content(1)
+
+    validated = validate_planner_payload(payload, 1)
+
+    assert validated["analysis"]["product_consistency_anchors"] == {}
+
+
 def test_json_pointer_escapes_reference_tokens() -> None:
     assert _json_pointer() == "/"
     assert _json_pointer("a/b", "~key", 0) == "/a~1b/~0key/0"
@@ -1880,6 +1902,14 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert image.artifact is not None
     assert (image.artifact.width, image.artifact.height) == (24, 32)
     assert transport.json_calls[0]["url"].endswith("/v1/chat/completions")
+    planner_text = transport.json_calls[0]["payload"]["messages"][0][
+        "content"
+    ][0]["text"]
+    assert (
+        "/analysis/product_consistency_anchors is REQUIRED" in planner_text
+    )
+    assert "inside the top-level analysis object" in planner_text
+    assert "always emit it as a JSON object; never omit it" in planner_text
     assert transport.multipart_calls[0]["url"].endswith("/v1/images/edits")
     fields = dict(transport.multipart_calls[0]["fields"])
     assert fields["size"] == IMAGE_SIZE

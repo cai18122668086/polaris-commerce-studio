@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,6 +32,8 @@ main = smoke_v10.main
 run_harness = smoke_v10.run_harness
 source_audit = smoke_v10.source_audit
 consume_live_approval = smoke_v10.consume_live_approval
+CalibrateBlockedTransport = smoke_v10.CalibrateBlockedTransport
+TransportResponse = smoke_v10.TransportResponse
 
 
 def _config(
@@ -52,7 +55,8 @@ def _config(
         selling_points=selling_points,
         platform_code="amazon",
         language="en",
-        page_count=1,
+        page_count=6,
+        approved_budget_micros=2_000_000,
         timeouts=TimeoutPolicy(
             transport_seconds=2,
             poll_seconds=10,
@@ -74,6 +78,8 @@ def test_calibrate_blocked_covers_formal_path_for_ten_seconds() -> None:
         "job_create",
         "initial_dispatch",
         "plan_poll",
+        "frozen_plan_gate",
+        "approved_budget_gate",
         "plan_confirm",
         "confirmed_dispatch",
         "result_poll",
@@ -84,6 +90,11 @@ def test_calibrate_blocked_covers_formal_path_for_ten_seconds() -> None:
         "provider_calls": 0,
         "secret_reads": 0,
         "real_jobs": 0,
+    }
+    assert result["preconfirm_gate"] == {
+        "passed": True,
+        "approved_budget_micros": 2_000_000,
+        "estimated_max_micros": 1_500_000,
     }
 
 
@@ -109,6 +120,206 @@ def test_live_refuses_before_secret_network_or_real_job(
         run_harness(config, live_factory=forbidden_live_factory)
 
     assert live_factory_calls == []
+
+
+def _mutating_blocked_factory(
+    mutate: Any,
+    captured: list[Any],
+) -> Any:
+    class MutatingBlockedTransport:
+        def __init__(self, counters: Any) -> None:
+            self.delegate = CalibrateBlockedTransport(counters)
+            self.confirm_attempts = 0
+            captured.append(self)
+
+        def request(
+            self,
+            method: str,
+            path: str,
+            *,
+            headers: Any,
+            json_body: Any,
+            timeout_seconds: float,
+        ) -> Any:
+            if method == "POST" and path.endswith("/plan/confirm"):
+                self.confirm_attempts += 1
+            response = self.delegate.request(
+                method,
+                path,
+                headers=headers,
+                json_body=json_body,
+                timeout_seconds=timeout_seconds,
+            )
+            if (
+                method == "GET"
+                and response.payload.get("status") == "awaiting_confirmation"
+            ):
+                payload = deepcopy(response.payload)
+                mutate(payload)
+                return TransportResponse(response.status_code, payload)
+            return response
+
+        def close(self) -> None:
+            self.delegate.close()
+
+    return MutatingBlockedTransport
+
+
+@pytest.mark.parametrize(
+    ("mutate", "error_code"),
+    [
+        (
+            lambda job: job["plan"]["payload"]["pages"][0].__setitem__(
+                "device", " "
+            ),
+            "PLAN_DEVICE_REQUIRED",
+        ),
+        (
+            lambda job: [
+                page.__setitem__("device", " SAME Device ")
+                for page in job["plan"]["payload"]["pages"]
+            ],
+            "PLAN_DEVICE_DIVERSITY",
+        ),
+        (
+            lambda job: job["plan"]["payload"]["pages"][1].__setitem__(
+                "title", "Exceptional durability"
+            ),
+            "UNSUPPORTED_DURABILITY",
+        ),
+        (
+            lambda job: job["plan"]["payload"]["pages"][2].__setitem__(
+                "role", "Leather showcase"
+            ),
+            "UNSUPPORTED_LEATHER",
+        ),
+        (
+            lambda job: job["plan"]["payload"]["pages"][2].__setitem__(
+                "label", "All-day comfort"
+            ),
+            "UNSUPPORTED_COMFORT",
+        ),
+        (
+            lambda job: job["plan"]["payload"]["pages"][3].__setitem__(
+                "composition", "Wear-resistance callout"
+            ),
+            "UNSUPPORTED_WEAR_RESISTANCE",
+        ),
+        (
+            lambda job: job["plan"]["payload"]["pages"][4].__setitem__(
+                "device", "FALILIAN badge"
+            ),
+            "WATERMARK_AS_PRODUCT_BRANDING",
+        ),
+        (
+            lambda job: job["plan"]["payload"]["pages"][5].__setitem__(
+                "difference", "可见水印卖点"
+            ),
+            "WATERMARK_AS_PRODUCT_BRANDING",
+        ),
+    ],
+)
+def test_frozen_plan_gate_stops_before_confirmation(
+    mutate: Any,
+    error_code: str,
+) -> None:
+    captured: list[Any] = []
+
+    with pytest.raises(HarnessError, match=error_code):
+        run_harness(
+            _config(),
+            blocked_factory=_mutating_blocked_factory(mutate, captured),
+        )
+
+    assert captured[0].confirm_attempts == 0
+    assert captured[0].delegate._confirmed is False
+    assert captured[0].delegate._counters.provider_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("mutate", "error_code"),
+    [
+        (
+            lambda job: job.pop("cost"),
+            "ESTIMATED_COST_MISSING",
+        ),
+        (
+            lambda job: job["cost"]["estimated_max"].__setitem__(
+                "micros", "invalid"
+            ),
+            "ESTIMATED_COST_INVALID",
+        ),
+        (
+            lambda job: job["cost"]["estimated_max"].__setitem__(
+                "micros", "-1"
+            ),
+            "ESTIMATED_COST_INVALID",
+        ),
+        (
+            lambda job: job["cost"]["estimated_max"].__setitem__(
+                "micros", "2000001"
+            ),
+            "APPROVED_BUDGET_EXCEEDED",
+        ),
+    ],
+)
+def test_budget_gate_stops_before_confirmation(
+    mutate: Any,
+    error_code: str,
+) -> None:
+    captured: list[Any] = []
+
+    with pytest.raises(HarnessError, match=error_code):
+        run_harness(
+            _config(),
+            blocked_factory=_mutating_blocked_factory(mutate, captured),
+        )
+
+    assert captured[0].confirm_attempts == 0
+    assert captured[0].delegate._confirmed is False
+    assert captured[0].delegate._counters.provider_calls == 0
+
+
+def test_budget_must_be_explicit_before_runtime_creation() -> None:
+    blocked_factory_calls: list[Any] = []
+
+    def forbidden_blocked_factory(counters: Any) -> Any:
+        blocked_factory_calls.append(counters)
+        raise AssertionError("runtime must not be constructed")
+
+    with pytest.raises(HarnessError, match="APPROVED_BUDGET_REQUIRED"):
+        run_harness(
+            replace(_config(), approved_budget_micros=None),
+            blocked_factory=forbidden_blocked_factory,
+        )
+
+    assert blocked_factory_calls == []
+
+
+def test_cli_budget_default_fails_closed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "calibrate-blocked",
+            "--asset-id",
+            "asset_calibration_blocked",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert payload == {
+        "schema": "polaris-xinghe-v10-smoke-result-v1",
+        "mode": "calibrate-blocked",
+        "status": "fail",
+        "error_code": "APPROVED_BUDGET_REQUIRED",
+        "preconfirm_gate": {
+            "passed": False,
+            "approved_budget_micros": None,
+            "estimated_max_micros": None,
+        },
+    }
 
 
 def test_live_approval_is_explicit_and_consumed_once(tmp_path: Path) -> None:
@@ -187,6 +398,9 @@ def test_machine_result_has_outer_timeout_floor_and_no_sensitive_content() -> No
     assert selling_point not in serialized
     assert "asset_calibration_blocked" not in serialized
     assert "http://127.0.0.1:9" not in serialized
+    assert result["preconfirm_gate"]["passed"] is True
+    assert result["preconfirm_gate"]["approved_budget_micros"] == 2_000_000
+    assert "Product view" not in serialized
 
 
 def test_source_audit_hashes_and_offline_compiles_candidate_boundary() -> None:
@@ -219,6 +433,8 @@ def test_cli_emits_machine_readable_calibration(
             "10",
             "--cleanup-margin-seconds",
             "3",
+            "--approved-budget-micros",
+            "2000000",
         ]
     )
     payload = json.loads(capsys.readouterr().out)
@@ -227,3 +443,4 @@ def test_cli_emits_machine_readable_calibration(
     assert payload["schema"] == "polaris-xinghe-v10-smoke-result-v1"
     assert payload["status"] == "pass"
     assert payload["safety"]["network_attempts"] == 0
+    assert payload["preconfirm_gate"]["passed"] is True

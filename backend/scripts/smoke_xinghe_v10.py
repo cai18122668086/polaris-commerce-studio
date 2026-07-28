@@ -12,6 +12,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -23,6 +24,15 @@ from uuid import UUID, uuid4
 RESULT_SCHEMA = "polaris-xinghe-v10-smoke-result-v1"
 APPROVAL_SCHEMA = "polaris-xinghe-v10-live-approval-v1"
 TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "cancelled"})
+PLAN_CONTENT_FIELDS = (
+    "role",
+    "title",
+    "label",
+    "composition",
+    "device",
+    "difference",
+)
+BLOCKED_ESTIMATED_MAX_MICROS = 1_500_000
 
 
 class HarnessError(RuntimeError):
@@ -136,6 +146,7 @@ class HarnessConfig:
     language: str
     page_count: int
     timeouts: TimeoutPolicy
+    approved_budget_micros: int | None = None
     approval_file: Path | None = None
     approval_id: str | None = None
     auth_token_file: Path | None = None
@@ -152,11 +163,21 @@ class HarnessConfig:
             raise HarnessError("PAGE_COUNT_INVALID")
         if not self.product_name.strip():
             raise HarnessError("PRODUCT_NAME_REQUIRED")
+        if self.approved_budget_micros is None:
+            raise HarnessError("APPROVED_BUDGET_REQUIRED")
+        if (
+            not isinstance(self.approved_budget_micros, int)
+            or isinstance(self.approved_budget_micros, bool)
+            or self.approved_budget_micros < 0
+        ):
+            raise HarnessError("APPROVED_BUDGET_INVALID")
 
 
 @dataclass
 class WorkflowTrace:
     actions: list[str] = field(default_factory=list)
+    preconfirm_gate_passed: bool = False
+    estimated_max_micros: int | None = None
 
 
 class SystemClock:
@@ -189,6 +210,7 @@ class CalibrateBlockedTransport:
         self._counters = counters
         self._job_created = False
         self._confirmed = False
+        self._page_count = 0
 
     def request(
         self,
@@ -207,6 +229,13 @@ class CalibrateBlockedTransport:
         if method == "POST" and normalized == jobs_path:
             if json_body is None or json_body.get("type") != "detail_pack":
                 raise HarnessError("CALIBRATION_PAYLOAD_INVALID")
+            configuration = json_body.get("configuration")
+            if not isinstance(configuration, Mapping):
+                raise HarnessError("CALIBRATION_PAYLOAD_INVALID")
+            page_count = configuration.get("page_count")
+            if page_count != 6:
+                raise HarnessError("CALIBRATION_PAGE_COUNT_INVALID")
+            self._page_count = page_count
             self._job_created = True
             return TransportResponse(202, self._job_payload("planning"))
         if method == "GET" and normalized == job_path and self._job_created:
@@ -231,17 +260,45 @@ class CalibrateBlockedTransport:
                 "confirmed_at": (
                     "2000-01-01T00:00:00Z" if self._confirmed else None
                 ),
+                "payload": {"pages": self._safe_screens()},
             }
         return {
             "id": "job_calibration_blocked",
             "type": "detail_pack",
             "status": status,
-            "expected_item_count": 1,
+            "expected_item_count": self._page_count,
             "succeeded_item_count": 0,
             "failed_item_count": 0,
             "api_request_count": self._counters.provider_calls,
+            "cost": {
+                "estimated_max": {
+                    "micros": str(BLOCKED_ESTIMATED_MAX_MICROS),
+                    "currency": "USD",
+                }
+            },
             "plan": plan,
         }
+
+    def _safe_screens(self) -> list[dict[str, str]]:
+        devices = (
+            "Scale grid",
+            "Macro inset",
+            "Feature callout",
+            "Angle comparison",
+            "Material map",
+            "Closing tableau",
+        )
+        return [
+            {
+                "role": f"screen-{index}",
+                "title": f"Product view {index}",
+                "label": f"View {index}",
+                "composition": f"Composition {index}",
+                "device": device,
+                "difference": f"Layout variation {index}",
+            }
+            for index, device in enumerate(devices, start=1)
+        ]
 
 
 class LiveHttpTransport:
@@ -493,7 +550,15 @@ def run_workflow(
     if planned.get("status") != "awaiting_confirmation":
         _validate_terminal(planned, config.page_count)
         raise HarnessError("JOB_TERMINATED_BEFORE_CONFIRMATION")
+    _validate_frozen_plan(planned, config.page_count)
+    trace.actions.append("frozen_plan_gate")
+    trace.estimated_max_micros = _validate_approved_budget(
+        planned,
+        config.approved_budget_micros,
+    )
+    trace.actions.append("approved_budget_gate")
     revision = _plan_revision(planned)
+    trace.preconfirm_gate_passed = True
 
     _request(
         runtime,
@@ -604,6 +669,11 @@ def _result(
             "minimum_required_seconds": 10.0,
         },
         "timeouts": config.timeouts.as_dict(),
+        "preconfirm_gate": {
+            "passed": trace.preconfirm_gate_passed,
+            "approved_budget_micros": config.approved_budget_micros,
+            "estimated_max_micros": trace.estimated_max_micros,
+        },
         "safety": counters.as_dict(),
         "source_sha256": dict(hashes),
         "candidate_hash_algorithm": (
@@ -695,6 +765,93 @@ def _plan_revision(payload: Mapping[str, Any]) -> int:
     return revision
 
 
+def _validate_frozen_plan(payload: Mapping[str, Any], page_count: int) -> None:
+    screens = _plan_screens(payload)
+    if len(screens) != page_count:
+        raise HarnessError("PLAN_SCREEN_COUNT")
+    normalized_devices: set[str] = set()
+    for screen in screens:
+        if not isinstance(screen, Mapping):
+            raise HarnessError("PLAN_SCREEN_INVALID")
+        for field_name in PLAN_CONTENT_FIELDS:
+            value = screen.get(field_name)
+            if not isinstance(value, str):
+                raise HarnessError("PLAN_SCREEN_INVALID")
+            normalized = " ".join(value.split()).casefold()
+            if field_name == "device":
+                if not normalized:
+                    raise HarnessError("PLAN_DEVICE_REQUIRED")
+                normalized_devices.add(normalized)
+            _reject_unsupported_claim(normalized)
+    if len(normalized_devices) < 2:
+        raise HarnessError("PLAN_DEVICE_DIVERSITY")
+
+
+def _plan_screens(payload: Mapping[str, Any]) -> list[Any]:
+    plan = payload.get("plan")
+    if not isinstance(plan, Mapping):
+        raise HarnessError("PLAN_SCREENS_MISSING")
+    plan_payload = plan.get("payload")
+    if not isinstance(plan_payload, Mapping):
+        raise HarnessError("PLAN_SCREENS_MISSING")
+    screens = plan_payload.get("screens")
+    if screens is None:
+        screens = plan_payload.get("pages")
+    if not isinstance(screens, list):
+        raise HarnessError("PLAN_SCREENS_MISSING")
+    return screens
+
+
+def _reject_unsupported_claim(normalized: str) -> None:
+    normalized_words = re.sub(r"[\W_]+", " ", normalized, flags=re.UNICODE)
+    claim_patterns = (
+        ("UNSUPPORTED_LEATHER", r"\bleather\b"),
+        ("UNSUPPORTED_COMFORT", r"\bcomfort(?:able)?\b"),
+        ("UNSUPPORTED_DURABILITY", r"\bdurab(?:ility|le)\b"),
+        (
+            "UNSUPPORTED_WEAR_RESISTANCE",
+            r"\bwear\s+resistan(?:ce|t)\b",
+        ),
+    )
+    for error_code, pattern in claim_patterns:
+        if re.search(pattern, normalized_words):
+            raise HarnessError(error_code)
+    if (
+        re.search(r"\bfalilian\b", normalized_words)
+        or re.search(r"\bwater\s*mark\b", normalized_words)
+        or "水印" in normalized
+    ):
+        raise HarnessError("WATERMARK_AS_PRODUCT_BRANDING")
+
+
+def _validate_approved_budget(
+    payload: Mapping[str, Any],
+    approved_budget_micros: int | None,
+) -> int:
+    if approved_budget_micros is None:
+        raise HarnessError("APPROVED_BUDGET_REQUIRED")
+    cost = payload.get("cost")
+    if not isinstance(cost, Mapping):
+        raise HarnessError("ESTIMATED_COST_MISSING")
+    estimated_max = cost.get("estimated_max")
+    if not isinstance(estimated_max, Mapping) or "micros" not in estimated_max:
+        raise HarnessError("ESTIMATED_COST_MISSING")
+    raw_micros = estimated_max["micros"]
+    if isinstance(raw_micros, bool):
+        raise HarnessError("ESTIMATED_COST_INVALID")
+    if isinstance(raw_micros, int):
+        estimated_micros = raw_micros
+    elif isinstance(raw_micros, str) and re.fullmatch(r"[0-9]+", raw_micros):
+        estimated_micros = int(raw_micros)
+    else:
+        raise HarnessError("ESTIMATED_COST_INVALID")
+    if estimated_micros < 0:
+        raise HarnessError("ESTIMATED_COST_INVALID")
+    if estimated_micros > approved_budget_micros:
+        raise HarnessError("APPROVED_BUDGET_EXCEEDED")
+    return estimated_micros
+
+
 def _validate_terminal(payload: Mapping[str, Any], page_count: int) -> int:
     if payload.get("status") != "completed":
         raise HarnessError("JOB_NOT_COMPLETED")
@@ -745,7 +902,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--selling-point", action="append", default=[])
     parser.add_argument("--platform-code", default="amazon")
     parser.add_argument("--language", default="en")
-    parser.add_argument("--page-count", type=int, default=1)
+    parser.add_argument("--page-count", type=int, default=6)
+    parser.add_argument("--approved-budget-micros", type=int)
     parser.add_argument("--transport-timeout-seconds", type=float, default=5.0)
     parser.add_argument("--poll-timeout-seconds", type=float, default=10.0)
     parser.add_argument(
@@ -772,6 +930,7 @@ def config_from_args(arguments: argparse.Namespace) -> HarnessConfig:
         platform_code=str(arguments.platform_code),
         language=str(arguments.language),
         page_count=int(arguments.page_count),
+        approved_budget_micros=arguments.approved_budget_micros,
         timeouts=TimeoutPolicy(
             transport_seconds=float(arguments.transport_timeout_seconds),
             poll_seconds=float(arguments.poll_timeout_seconds),
@@ -798,6 +957,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "mode": config.mode,
             "status": "fail",
             "error_code": exc.code,
+            "preconfirm_gate": {
+                "passed": False,
+                "approved_budget_micros": config.approved_budget_micros,
+                "estimated_max_micros": None,
+            },
         }
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 2

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
 from collections.abc import Iterator
@@ -649,7 +650,7 @@ def _valid_planner_content(page_count: int) -> dict[str, Any]:
 
 def _planner_validation_path_cases() -> list[Any]:
     cases: list[Any] = [
-        pytest.param(7, 1, "", id="root"),
+        pytest.param(7, 1, "/", id="root"),
         pytest.param(
             {"plan": _valid_planner_content(1)["plan"]},
             1,
@@ -750,6 +751,7 @@ def test_planner_schema_errors_use_json_pointer_paths(
 
 
 def test_json_pointer_escapes_reference_tokens() -> None:
+    assert _json_pointer() == "/"
     assert _json_pointer("a/b", "~key", 0) == "/a~1b/~0key/0"
 
 
@@ -758,7 +760,7 @@ def test_json_pointer_escapes_reference_tokens() -> None:
     [
         (
             json.dumps(_valid_planner_content(1)),
-            ("whole_json:decoded",),
+            ("whole_json:decoded", "whole_json:decoded_kind:mapping"),
             True,
         ),
         (
@@ -767,6 +769,7 @@ def test_json_pointer_escapes_reference_tokens() -> None:
                 "whole_json:decode_failed",
                 "fence:matched",
                 "fence_json:decoded",
+                "fence_json:decoded_kind:mapping",
             ),
             True,
         ),
@@ -800,6 +803,26 @@ def test_planner_parse_trace_is_fixed_and_content_free(
     assert trace == expected_trace
     assert isinstance(payload, dict) is decoded
     assert content not in json.dumps(trace)
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_kind"),
+    [
+        ("[]", "list"),
+        ("7", "scalar"),
+        ("null", "null"),
+        ("```json\n[]\n```", "list"),
+        ("```\nfalse\n```", "scalar"),
+        ("```json\nnull\n```", "null"),
+    ],
+)
+def test_planner_parse_trace_records_decoded_kind(
+    content: str,
+    expected_kind: str,
+) -> None:
+    _, trace = _planner_content_payload_with_trace(content)
+
+    assert trace[-1].endswith(f"decoded_kind:{expected_kind}")
 
 
 def test_planner_structure_fingerprint_uses_shape_not_values() -> None:
@@ -838,6 +861,16 @@ class _PlannerContentTransport(_Budget429Transport):
         )
 
 
+class _PlannerEnvelopeTransport(_Budget429Transport):
+    def __init__(self, response: dict[str, Any]) -> None:
+        super().__init__(1)
+        self.response = response
+
+    async def post_json(self, **_: Any) -> tuple[int, dict[str, Any]]:
+        self.planner_calls += 1
+        return 200, deepcopy(self.response)
+
+
 def _install_budget_runner(
     client: TestClient,
     transport: _Budget429Transport,
@@ -865,6 +898,206 @@ def _install_budget_runner(
         high_price_micros=90_000,
     )
     return gateway
+
+
+@pytest.mark.parametrize(
+    (
+        "response",
+        "expected_envelope",
+        "expected_bytes",
+        "expected_sha256",
+        "expected_request_id",
+        "expected_usage",
+    ),
+    [
+        (
+            {},
+            {
+                "envelope_kind": "mapping",
+                "choices_kind": "missing",
+                "choices_count": None,
+                "choice0_kind": "missing",
+                "message_kind": "missing",
+                "content_kind": "missing",
+            },
+            None,
+            None,
+            "absent",
+            ("absent", "absent"),
+        ),
+        (
+            {"choices": []},
+            {
+                "envelope_kind": "mapping",
+                "choices_kind": "list",
+                "choices_count": 0,
+                "choice0_kind": "missing",
+                "message_kind": "missing",
+                "content_kind": "missing",
+            },
+            None,
+            None,
+            "absent",
+            ("absent", "absent"),
+        ),
+        (
+            {
+                "id": "secret-request-id",
+                "choices": [
+                    {"message": {"content": []}},
+                    {"message": {"content": "ignored"}},
+                ],
+                "usage": {},
+            },
+            {
+                "envelope_kind": "mapping",
+                "choices_kind": "list",
+                "choices_count": 2,
+                "choice0_kind": "mapping",
+                "message_kind": "mapping",
+                "content_kind": "list",
+            },
+            None,
+            None,
+            "present",
+            ("present", "incomplete"),
+        ),
+        (
+            {
+                "choices": [{"message": {"content": {"unsafe": "value"}}}],
+                "usage": {"input_tokens": 1},
+            },
+            {
+                "envelope_kind": "mapping",
+                "choices_kind": "list",
+                "choices_count": 1,
+                "choice0_kind": "mapping",
+                "message_kind": "mapping",
+                "content_kind": "mapping",
+            },
+            None,
+            None,
+            "absent",
+            ("present", "incomplete"),
+        ),
+        (
+            {
+                "choices": [{"message": {"content": None}}],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 2,
+                    "total_tokens": 3,
+                },
+            },
+            {
+                "envelope_kind": "mapping",
+                "choices_kind": "list",
+                "choices_count": 1,
+                "choice0_kind": "mapping",
+                "message_kind": "mapping",
+                "content_kind": "null",
+            },
+            None,
+            None,
+            "absent",
+            ("present", "complete"),
+        ),
+        (
+            {"choices": [{"message": {"content": ""}}]},
+            {
+                "envelope_kind": "mapping",
+                "choices_kind": "list",
+                "choices_count": 1,
+                "choice0_kind": "mapping",
+                "message_kind": "mapping",
+                "content_kind": "string",
+            },
+            0,
+            hashlib.sha256(b"").hexdigest(),
+            "absent",
+            ("absent", "absent"),
+        ),
+        (
+            {"choices": [{"message": {"content": "机密正文"}}]},
+            {
+                "envelope_kind": "mapping",
+                "choices_kind": "list",
+                "choices_count": 1,
+                "choice0_kind": "mapping",
+                "message_kind": "mapping",
+                "content_kind": "string",
+            },
+            len(bytes("机密正文", "utf-8")),
+            hashlib.sha256(bytes("机密正文", "utf-8")).hexdigest(),
+            "absent",
+            ("absent", "absent"),
+        ),
+    ],
+    ids=[
+        "choices-missing",
+        "choices-empty",
+        "choices-multiple-array-content",
+        "object-content",
+        "null-content-complete-usage",
+        "empty-string-content",
+        "unicode-string-content",
+    ],
+)
+def test_raw_planner_envelope_diagnostics_are_safe_and_durable(
+    settings: Settings,
+    response: dict[str, Any],
+    expected_envelope: dict[str, Any],
+    expected_bytes: int | None,
+    expected_sha256: str | None,
+    expected_request_id: str,
+    expected_usage: tuple[str, str],
+) -> None:
+    with TestClient(create_app(settings)) as client:
+        transport = _PlannerEnvelopeTransport(response)
+        _install_budget_runner(
+            client,
+            transport,
+            budget_limit_micros=200_000_000,
+            concurrency=1,
+        )
+        source = upload_asset(client, filename="raw-envelope.jpg")
+        job = _create_detail_job(client, [source["id"]], page_count=1)
+
+        assert dispatch_pending(client) == 1
+        failed = client.get(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+        ).json()
+
+        assert failed["status"] == JobStatus.FAILED.value
+        expected_error = (
+            "PLANNER_SCHEMA_INVALID"
+            if expected_bytes not in (None, 0)
+            else "PLANNER_RESPONSE_INVALID"
+        )
+        assert failed["error_code"] == expected_error
+        diagnostics = failed["plan"]["payload"]["planner_diagnostics"][0]
+        expected_trace = (
+            ["whole_json:decode_failed", "fence:not_matched"]
+            if expected_bytes not in (None, 0)
+            else ["provider_payload:rejected_before_json_parse"]
+        )
+        assert diagnostics == {
+            "schema": "xinghe-planner-diagnostics",
+            "version": "xinghe-planner-observability-v2",
+            "parse_trace": expected_trace,
+            "structure_fingerprint": diagnostics["structure_fingerprint"],
+            "provider_envelope": expected_envelope,
+            "content_utf8_bytes": expected_bytes,
+            "content_sha256": expected_sha256,
+            "request_id_presence": expected_request_id,
+            "usage_presence": expected_usage[0],
+            "usage_completeness": expected_usage[1],
+        }
+        assert len(diagnostics["structure_fingerprint"]) == 64
+        persisted = json.dumps(failed, ensure_ascii=False, sort_keys=True)
+        assert "secret-request-id" not in persisted
+        assert "机密正文" not in persisted
+        assert '"unsafe": "value"' not in persisted
 
 
 @pytest.mark.parametrize(
@@ -921,8 +1154,28 @@ def test_strict_planner_content_reaches_confirmation_gate(
         assert plan_payload["cost"]["estimated_pending_micros"] == 540_000
         diagnostics = plan_payload["planner_diagnostics"]
         assert len(diagnostics) == 1
-        assert diagnostics[0]["version"] == "xinghe-planner-observability-v1"
-        assert diagnostics[0]["parse_trace"][-1].endswith(":decoded")
+        assert diagnostics[0]["schema"] == "xinghe-planner-diagnostics"
+        assert diagnostics[0]["version"] == "xinghe-planner-observability-v2"
+        assert diagnostics[0]["parse_trace"][-2].endswith(":decoded")
+        assert diagnostics[0]["parse_trace"][-1].endswith(
+            ":decoded_kind:mapping"
+        )
+        raw_content = content.encode("utf-8")
+        assert diagnostics[0]["content_utf8_bytes"] == len(raw_content)
+        assert diagnostics[0]["content_sha256"] == hashlib.sha256(
+            raw_content
+        ).hexdigest()
+        assert diagnostics[0]["provider_envelope"] == {
+            "envelope_kind": "mapping",
+            "choices_kind": "list",
+            "choices_count": 1,
+            "choice0_kind": "mapping",
+            "message_kind": "mapping",
+            "content_kind": "string",
+        }
+        assert diagnostics[0]["request_id_presence"] == "present"
+        assert diagnostics[0]["usage_presence"] == "present"
+        assert diagnostics[0]["usage_completeness"] == "complete"
         assert len(diagnostics[0]["structure_fingerprint"]) == 64
         assert set(diagnostics[0]["structure_fingerprint"]) <= set(
             "0123456789abcdef"
@@ -934,37 +1187,37 @@ def test_strict_planner_content_reaches_confirmation_gate(
 @pytest.mark.parametrize(
     ("content", "expected_code", "expected_path"),
     [
-        ("plain non-JSON text", "PLANNER_SCHEMA_INVALID", ""),
-        ("7", "PLANNER_SCHEMA_INVALID", ""),
-        ('[{"analysis": {}, "plan": {}}]', "PLANNER_SCHEMA_INVALID", ""),
+        ("plain non-JSON text", "PLANNER_SCHEMA_INVALID", "/"),
+        ("7", "PLANNER_SCHEMA_INVALID", "/"),
+        ('[{"analysis": {}, "plan": {}}]', "PLANNER_SCHEMA_INVALID", "/"),
         (
             f"{json.dumps(_valid_planner_content(6))}\n"
             f"{json.dumps(_valid_planner_content(6))}",
             "PLANNER_SCHEMA_INVALID",
-            "",
+            "/",
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n"
             "```\n7\n```",
             "PLANNER_SCHEMA_INVALID",
-            "",
+            "/",
         ),
         (
             f"Planner result:\n```json\n"
             f"{json.dumps(_valid_planner_content(6))}\n```",
             "PLANNER_SCHEMA_INVALID",
-            "",
+            "/",
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n"
             "End of planner result.",
             "PLANNER_SCHEMA_INVALID",
-            "",
+            "/",
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(6))}",
             "PLANNER_SCHEMA_INVALID",
-            "",
+            "/",
         ),
         (
             json.dumps({"analysis": {}, "plan": {}}),
@@ -1034,7 +1287,8 @@ def test_unsafe_planner_content_fails_closed_before_image(
         assert plan_payload.get("cost", {}).get("estimated_pending_micros") is None
         diagnostics = plan_payload["planner_diagnostics"]
         assert len(diagnostics) == 1
-        assert diagnostics[0]["version"] == "xinghe-planner-observability-v1"
+        assert diagnostics[0]["schema"] == "xinghe-planner-diagnostics"
+        assert diagnostics[0]["version"] == "xinghe-planner-observability-v2"
         assert diagnostics[0]["parse_trace"]
         assert len(diagnostics[0]["structure_fingerprint"]) == 64
         with client.app.state.session_factory() as session:
@@ -1079,7 +1333,7 @@ def test_planner_diagnostics_never_persist_response_content(
             )
 
         assert failed["status"] == JobStatus.FAILED.value
-        assert failed["plan"]["validation_errors"][0]["path"] == ""
+        assert failed["plan"]["validation_errors"][0]["path"] == "/"
         assert marker not in json.dumps(failed, sort_keys=True)
         assert audit is not None
         assert marker not in json.dumps(audit.details, sort_keys=True)

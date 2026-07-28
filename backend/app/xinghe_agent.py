@@ -66,7 +66,8 @@ QUALITY_POLICY_VERSION = "xinghe-semantic-quality-v1"
 PROMPT_POLICY_VERSION = "xinghe-density-v1"
 RESUME_SIGNATURE_VERSION = "xinghe-resume-v1"
 PLAN_SCHEMA_VERSION = "xinghe-plan-v1"
-PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v1"
+PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v2"
+PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
 IMAGE_SIZE = "1024x1536"
 IMAGE_FORMAT = "jpeg"
 JPEG_QUALITY = 92
@@ -162,6 +163,12 @@ class PlannerCallResult:
     parse_trace: tuple[str, ...] = ()
     structure_fingerprint: str | None = None
     error_path: str | None = None
+    provider_envelope: dict[str, Any] | None = None
+    content_utf8_bytes: int | None = None
+    content_sha256: str | None = None
+    request_id_presence: str = "not_available"
+    usage_presence: str = "not_available"
+    usage_completeness: str = "not_available"
 
 
 @dataclass(frozen=True)
@@ -322,7 +329,7 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
     root = _require_mapping(
         payload,
         "PLANNER_SCHEMA_INVALID",
-        path="",
+        path="/",
     )
     analysis = _require_mapping(
         root.get("analysis"),
@@ -804,6 +811,7 @@ class TengliOpenAICompatibleGateway:
             "messages": [{"role": "user", "content": content}],
             "response_format": {"type": "json_object"},
         }
+        response: Mapping[str, Any] | None = None
         try:
             self.external_network_request_count += 1
             status, response = await self.transport.post_json(
@@ -813,6 +821,7 @@ class TengliOpenAICompatibleGateway:
                 timeout_seconds=self.timeout_seconds,
             )
             if status >= 400:
+                envelope_diagnostics = _planner_envelope_diagnostics(response)
                 return PlannerCallResult(
                     payload=None,
                     provider_request_id=_safe_request_id(response),
@@ -829,10 +838,22 @@ class TengliOpenAICompatibleGateway:
                     ),
                     error_message=f"Planner request failed with HTTP {status}.",
                     http_status=status,
+                    provider_envelope=envelope_diagnostics[
+                        "provider_envelope"
+                    ],
+                    request_id_presence=envelope_diagnostics[
+                        "request_id_presence"
+                    ],
+                    usage_presence=envelope_diagnostics["usage_presence"],
+                    usage_completeness=envelope_diagnostics[
+                        "usage_completeness"
+                    ],
                 )
+            envelope_diagnostics = _planner_envelope_diagnostics(response)
             text = _planner_message_text(response)
             plan_payload, parse_trace = _planner_content_payload_with_trace(text)
             raw_usage = _raw_usage(response)
+            content_bytes = text.encode("utf-8")
             return PlannerCallResult(
                 payload=plan_payload,
                 provider_request_id=_safe_request_id(response),
@@ -845,18 +866,68 @@ class TengliOpenAICompatibleGateway:
                 structure_fingerprint=_planner_structure_fingerprint(
                     plan_payload
                 ),
+                provider_envelope=envelope_diagnostics["provider_envelope"],
+                content_utf8_bytes=len(content_bytes),
+                content_sha256=hashlib.sha256(content_bytes).hexdigest(),
+                request_id_presence=envelope_diagnostics[
+                    "request_id_presence"
+                ],
+                usage_presence=envelope_diagnostics["usage_presence"],
+                usage_completeness=envelope_diagnostics[
+                    "usage_completeness"
+                ],
             )
         except XingheAgentError as exc:
+            envelope_diagnostics = (
+                _planner_envelope_diagnostics(response)
+                if response is not None
+                else _unavailable_planner_envelope_diagnostics()
+            )
+            raw_content = _planner_raw_content(response)
+            rejected_content_bytes = (
+                raw_content.encode("utf-8")
+                if isinstance(raw_content, str)
+                else None
+            )
+            raw_usage = (
+                _raw_usage(response) if response is not None else None
+            )
             return PlannerCallResult(
                 payload=None,
-                provider_request_id=None,
-                raw_usage=None,
-                normalized_usage=normalize_usage(None),
+                provider_request_id=(
+                    _safe_request_id(response) if response is not None else None
+                ),
+                raw_usage=raw_usage,
+                normalized_usage=normalize_usage(raw_usage),
                 api_latency_seconds=time.perf_counter() - started,
                 actual_cost_micros=None,
                 error_code=exc.code,
                 error_message=str(exc),
                 error_path=exc.json_pointer,
+                parse_trace=("provider_payload:rejected_before_json_parse",),
+                structure_fingerprint=_planner_structure_fingerprint(
+                    response
+                    if raw_content is _MISSING_JSON_VALUE
+                    else raw_content
+                ),
+                provider_envelope=envelope_diagnostics["provider_envelope"],
+                content_utf8_bytes=(
+                    len(rejected_content_bytes)
+                    if rejected_content_bytes is not None
+                    else None
+                ),
+                content_sha256=(
+                    hashlib.sha256(rejected_content_bytes).hexdigest()
+                    if rejected_content_bytes is not None
+                    else None
+                ),
+                request_id_presence=envelope_diagnostics[
+                    "request_id_presence"
+                ],
+                usage_presence=envelope_diagnostics["usage_presence"],
+                usage_completeness=envelope_diagnostics[
+                    "usage_completeness"
+                ],
             )
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
@@ -2875,9 +2946,8 @@ def planner_accounting(
         if isinstance(cost, int) and not isinstance(cost, bool) and cost >= 0:
             known_cost += 1
             total_cost += cost
-        request_id = value.get("provider_request_id")
         real_calls += int(
-            isinstance(request_id, str) and not request_id.startswith("mock_")
+            value.get("provider_request_id_presence") == "present"
         )
     return requests, reported, known_cost, total_cost, real_calls
 
@@ -2993,7 +3063,7 @@ def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
         "raw": result.raw_usage,
         "normalized": result.normalized_usage,
         "reported": bool(result.normalized_usage["reported"]),
-        "provider_request_id": result.provider_request_id,
+        "provider_request_id_presence": result.request_id_presence,
         "api_latency_seconds": result.api_latency_seconds,
         "http_status": result.http_status,
         "actual_cost_micros": result.actual_cost_micros,
@@ -3002,9 +3072,16 @@ def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
 
 def _planner_diagnostics_record(result: PlannerCallResult) -> dict[str, Any]:
     return {
+        "schema": PLANNER_DIAGNOSTICS_SCHEMA,
         "version": PLANNER_OBSERVABILITY_VERSION,
         "parse_trace": list(result.parse_trace),
         "structure_fingerprint": result.structure_fingerprint,
+        "provider_envelope": result.provider_envelope,
+        "content_utf8_bytes": result.content_utf8_bytes,
+        "content_sha256": result.content_sha256,
+        "request_id_presence": result.request_id_presence,
+        "usage_presence": result.usage_presence,
+        "usage_completeness": result.usage_completeness,
     }
 
 
@@ -3233,7 +3310,11 @@ def _planner_content_payload_with_trace(
 
     stripped = content.strip()
     try:
-        return json.loads(stripped), ("whole_json:decoded",)
+        decoded = json.loads(stripped)
+        return decoded, (
+            "whole_json:decoded",
+            f"whole_json:decoded_kind:{_decoded_json_kind(decoded)}",
+        )
     except json.JSONDecodeError:
         match = _PLANNER_JSON_FENCE.fullmatch(stripped)
         if match is None:
@@ -3242,10 +3323,12 @@ def _planner_content_payload_with_trace(
                 "fence:not_matched",
             )
     try:
-        return json.loads(match.group("body")), (
+        decoded = json.loads(match.group("body"))
+        return decoded, (
             "whole_json:decode_failed",
             "fence:matched",
             "fence_json:decoded",
+            f"fence_json:decoded_kind:{_decoded_json_kind(decoded)}",
         )
     except json.JSONDecodeError:
         return content, (
@@ -3272,6 +3355,130 @@ def _with_planner_observability(
         result,
         parse_trace=trace,
         structure_fingerprint=fingerprint,
+        provider_envelope=(
+            result.provider_envelope
+            if result.provider_envelope is not None
+            else _unavailable_planner_envelope_diagnostics()[
+                "provider_envelope"
+            ]
+        ),
+    )
+
+
+def _decoded_json_kind(value: object) -> str:
+    if isinstance(value, Mapping):
+        return "mapping"
+    if isinstance(value, list):
+        return "list"
+    if value is None:
+        return "null"
+    return "scalar"
+
+
+def _safe_json_kind(value: object) -> str:
+    if value is _MISSING_JSON_VALUE:
+        return "missing"
+    if value is None:
+        return "null"
+    if isinstance(value, Mapping):
+        return "mapping"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int | float):
+        return "number"
+    return "non_json"
+
+
+def _planner_raw_content(payload: object) -> object:
+    if not isinstance(payload, Mapping):
+        return _MISSING_JSON_VALUE
+    choices = payload.get("choices", _MISSING_JSON_VALUE)
+    if not isinstance(choices, list) or not choices:
+        return _MISSING_JSON_VALUE
+    choice = choices[0]
+    if not isinstance(choice, Mapping):
+        return _MISSING_JSON_VALUE
+    message = choice.get("message", _MISSING_JSON_VALUE)
+    if not isinstance(message, Mapping):
+        return _MISSING_JSON_VALUE
+    return message.get("content", _MISSING_JSON_VALUE)
+
+
+def _planner_envelope_diagnostics(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    choices = payload.get("choices", _MISSING_JSON_VALUE)
+    choice0 = (
+        choices[0]
+        if isinstance(choices, list) and choices
+        else _MISSING_JSON_VALUE
+    )
+    message = (
+        choice0.get("message", _MISSING_JSON_VALUE)
+        if isinstance(choice0, Mapping)
+        else _MISSING_JSON_VALUE
+    )
+    content = (
+        message.get("content", _MISSING_JSON_VALUE)
+        if isinstance(message, Mapping)
+        else _MISSING_JSON_VALUE
+    )
+    usage = payload.get("usage", _MISSING_JSON_VALUE)
+    usage_presence = (
+        "absent" if usage is _MISSING_JSON_VALUE else "present"
+    )
+    usage_completeness = "absent"
+    if usage_presence == "present":
+        usage_completeness = (
+            "complete" if _planner_usage_is_complete(usage) else "incomplete"
+        )
+    return {
+        "provider_envelope": {
+            "envelope_kind": _safe_json_kind(payload),
+            "choices_kind": _safe_json_kind(choices),
+            "choices_count": len(choices) if isinstance(choices, list) else None,
+            "choice0_kind": _safe_json_kind(choice0),
+            "message_kind": _safe_json_kind(message),
+            "content_kind": _safe_json_kind(content),
+        },
+        "request_id_presence": (
+            "present" if _safe_request_id(payload) is not None else "absent"
+        ),
+        "usage_presence": usage_presence,
+        "usage_completeness": usage_completeness,
+    }
+
+
+def _unavailable_planner_envelope_diagnostics() -> dict[str, Any]:
+    return {
+        "provider_envelope": {
+            "envelope_kind": "not_available",
+            "choices_kind": "not_available",
+            "choices_count": None,
+            "choice0_kind": "not_available",
+            "message_kind": "not_available",
+            "content_kind": "not_available",
+        },
+        "request_id_presence": "not_available",
+        "usage_presence": "not_available",
+        "usage_completeness": "not_available",
+    }
+
+
+def _planner_usage_is_complete(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    input_tokens = value.get("input_tokens", value.get("prompt_tokens"))
+    output_tokens = value.get(
+        "output_tokens", value.get("completion_tokens")
+    )
+    return all(
+        _usage_integer(item) is not None
+        for item in (input_tokens, output_tokens, value.get("total_tokens"))
     )
 
 
@@ -3474,6 +3681,8 @@ def _strict_page_count(value: object) -> int:
 
 
 def _json_pointer(*tokens: str | int) -> str:
+    if not tokens:
+        return "/"
     return "".join(
         f"/{str(token).replace('~', '~0').replace('/', '~1')}"
         for token in tokens

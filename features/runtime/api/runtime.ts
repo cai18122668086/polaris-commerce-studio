@@ -25,6 +25,29 @@ export function useRuntimeStatus() {
 type WorkflowCapability =
   RuntimeStatus["capabilities"]["local_edit"];
 
+export type WorkflowPresentation = {
+  mode: "provider" | "mock" | "unavailable" | "unknown";
+  canDeliverImages: boolean;
+};
+
+export function presentWorkflow(
+  capability: WorkflowCapability | null | undefined,
+): WorkflowPresentation {
+  if (!capability) {
+    return { mode: "unknown", canDeliverImages: false };
+  }
+  if (capability.availability !== "available") {
+    return { mode: "unavailable", canDeliverImages: false };
+  }
+  if (capability.execution === "provider") {
+    return { mode: "provider", canDeliverImages: true };
+  }
+  if (capability.execution === "mock") {
+    return { mode: "mock", canDeliverImages: false };
+  }
+  return { mode: "unavailable", canDeliverImages: false };
+}
+
 function supportsProvider(capability: WorkflowCapability | undefined): boolean {
   return (
     capability?.availability === "available" &&

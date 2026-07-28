@@ -1652,15 +1652,19 @@ select:focus-visible {
   height: 180px;
 }
 
-.focus-home__hero-art > img {
+.focus-home__hero-art > .hero-art__product {
   position: absolute;
   right: 42px;
   bottom: 0;
+  display: grid;
   width: 132px;
   height: 152px;
+  place-items: center;
   border-radius: 66px 66px 18px 18px;
-  object-fit: cover;
-  filter: saturate(0.82);
+  color: #8d4936;
+  background:
+    radial-gradient(circle at 68% 24%, #fff 0 8%, transparent 9%),
+    linear-gradient(145deg, #ffe3d8, #ef9277);
   box-shadow: 0 16px 36px rgb(75 37 28 / 14%);
   transform: rotate(4deg);
 }
@@ -1749,15 +1753,23 @@ select:focus-visible {
   box-shadow: 0 4px 16px rgb(28 24 22 / 8%);
 }
 
-.home-feature-card > img {
+.home-feature-card > .home-feature-card__art {
+  display: grid;
   width: 100%;
   height: clamp(187px, 14.6vw, 280px);
-  object-fit: cover;
+  place-items: center;
+  color: #8c4c3c;
+  background:
+    radial-gradient(circle at 68% 24%, rgb(255 255 255 / 74%) 0 7%, transparent 8%),
+    linear-gradient(145deg, #fff1eb, #efb19f);
   transition: transform 260ms ease;
 }
 
-.home-feature--pack > img {
-  object-position: center 55%;
+.home-feature--pack > .home-feature-card__art {
+  color: #765449;
+  background:
+    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 72%) 0 8%, transparent 9%),
+    linear-gradient(145deg, #fff5e8, #e7bea0);
 }
 
 .home-feature-card > div {
@@ -1780,7 +1792,7 @@ select:focus-visible {
   font-size: 15px;
 }
 
-.home-feature-card span {
+.home-feature-card > div > span {
   min-width: 0;
   overflow: hidden;
   color: rgb(255 255 255 / 78%);
@@ -1800,7 +1812,7 @@ select:focus-visible {
   transform: translateY(-2px);
 }
 
-.home-feature-card:hover > img {
+.home-feature-card:hover > .home-feature-card__art {
   transform: scale(1.025);
 }
 
@@ -1836,7 +1848,7 @@ select:focus-visible {
   font-size: 15px;
 }
 
-.home-category-card span {
+.home-category-card > div > span {
   margin-top: 7px;
   color: var(--ink-500);
   font-size: 12px;
@@ -1854,10 +1866,13 @@ select:focus-visible {
   background: var(--studio-orange);
 }
 
-.home-category-card > img {
+.home-category-card > .home-category-card__art {
+  display: grid;
   width: 100%;
   height: clamp(140px, 10.4vw, 200px);
-  object-fit: cover;
+  place-items: center;
+  color: #9a553f;
+  background: linear-gradient(145deg, #fff2ed, #eeb09e);
   mask-image: linear-gradient(90deg, transparent 0%, #000 28%);
   transition: transform 240ms ease;
 }
@@ -1867,7 +1882,7 @@ select:focus-visible {
   box-shadow: var(--shadow-md);
 }
 
-.home-category-card:hover img {
+.home-category-card:hover .home-category-card__art {
   transform: scale(1.04);
 }
 
@@ -2146,7 +2161,7 @@ select:focus-visible {
   }
 
   .home-feature-card,
-  .home-feature-card > img {
+  .home-feature-card > .home-feature-card__art {
     min-height: 184px;
     height: 184px;
   }
@@ -2196,7 +2211,7 @@ select:focus-visible {
   }
 
   .home-feature-card,
-  .home-feature-card > img {
+  .home-feature-card > .home-feature-card__art {
     min-height: 170px;
     height: 170px;
   }
@@ -2205,7 +2220,7 @@ select:focus-visible {
     padding-inline: 12px;
   }
 
-  .home-feature-card span {
+  .home-feature-card > div > span {
     display: none;
   }
 
@@ -2213,7 +2228,7 @@ select:focus-visible {
     padding: 13px 0 12px 10px;
   }
 
-  .home-category-card span {
+  .home-category-card > div > span {
     white-space: normal;
   }
 }
@@ -2845,7 +2860,7 @@ select:focus-visible {
     font-size: 18px;
   }
 
-  .home-feature-card span {
+  .home-feature-card > div > span {
     font-size: 14px;
   }
 
@@ -2862,7 +2877,7 @@ select:focus-visible {
     font-size: 18px;
   }
 
-  .home-category-card span {
+  .home-category-card > div > span {
     font-size: 14px;
   }
 

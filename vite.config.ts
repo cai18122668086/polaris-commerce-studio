@@ -44,6 +44,12 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    build: {
+      // `/assets` is a product route. Keep browser files beneath a dedicated
+      // reserved path; the pinned vinext compatibility patch teaches its local
+      // production server to serve this directory consistently on every OS.
+      assetsDir: "_polaris-static",
+    },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,

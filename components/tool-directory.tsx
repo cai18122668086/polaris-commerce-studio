@@ -4,26 +4,29 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
+  BriefcaseBusiness,
   Check,
+  Footprints,
   Headphones,
+  PackageOpen,
   Search,
   Sparkles,
+  Watch,
 } from "lucide-react";
-import { demoImages } from "@/lib/fixtures/demo-images";
 
 const featuredTools = [
   {
     title: "局部修改",
     description: "一句话精修，只改变选中的区域",
     href: "/workspace/local-edit",
-    image: demoImages.headphones,
+    icon: Headphones,
     className: "home-feature--edit",
   },
   {
     title: "商品详情图",
     description: "从商品素材到完整电商套图",
     href: "/workspace/detail-pack",
-    image: demoImages.skincare,
+    icon: PackageOpen,
     className: "home-feature--pack",
   },
 ];
@@ -32,17 +35,17 @@ const categoryCards = [
   {
     title: "箱包手袋",
     description: "快速统一商品氛围",
-    image: demoImages.handbag,
+    icon: BriefcaseBusiness,
   },
   {
     title: "腕表饰品",
     description: "突出材质与细节",
-    image: demoImages.watch,
+    icon: Watch,
   },
   {
     title: "鞋服商品",
     description: "减少重复修图工作",
-    image: demoImages.shoes,
+    icon: Footprints,
   },
 ];
 
@@ -77,7 +80,9 @@ export function ToolDirectory() {
             <span className="hero-art__tile">
               <Headphones size={28} />
             </span>
-            <img src={demoImages.handbag} alt="" />
+            <span className="hero-art__product">
+              <BriefcaseBusiness size={58} />
+            </span>
             <span className="hero-art__spark">
               <Sparkles size={26} />
             </span>
@@ -103,7 +108,9 @@ export function ToolDirectory() {
                 className={`home-feature-card ${tool.className}`}
                 key={tool.href}
               >
-                <img src={tool.image} alt="" />
+                <span className="home-feature-card__art" aria-hidden="true">
+                  <tool.icon size={68} />
+                </span>
                 <div>
                   <strong>{tool.title}</strong>
                   <span>{tool.description}</span>
@@ -134,7 +141,9 @@ export function ToolDirectory() {
                   <ArrowRight size={16} />
                 </i>
               </div>
-              <img src={card.image} alt="" />
+              <span className="home-category-card__art" aria-hidden="true">
+                <card.icon size={46} />
+              </span>
             </Link>
           ))}
         </div>

@@ -7,9 +7,10 @@
   },
   "scripts": {
     "dev": "vinext dev",
-    "build": "vinext build",
-    "start": "vinext start",
-    "test": "npm run build && node --test tests/*.test.mjs",
+    "build": "node build/patch-vinext-production.mjs && vinext build",
+    "start": "node build/patch-vinext-production.mjs && vinext start",
+    "postinstall": "node build/patch-vinext-production.mjs",
+    "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
     "api:export": "python backend/scripts/export_openapi.py docs/openapi-v1.json",

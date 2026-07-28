@@ -1,8 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 
-import { apiClient, createIdempotencyKey } from "@/lib/api/client";
+import { apiClient } from "@/lib/api/client";
+import {
+  IdempotencyIntentRegistry,
+  uploadIntentSignature,
+} from "@/lib/api/idempotency";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { AssetOriginKind } from "@/lib/api/types";
 import { assetKeys } from "./assets-keys";
@@ -37,7 +42,24 @@ export function useAssets(
 
 export function useUploadAsset(workspaceId: string | undefined) {
   const queryClient = useQueryClient();
-  return useMutation({
+  const registry = useRef<IdempotencyIntentRegistry | null>(null);
+  registry.current ??= new IdempotencyIntentRegistry();
+  const signatureByInput = useRef(
+    new WeakMap<File, Map<"image" | "mask", Promise<string>>>(),
+  );
+  const signatureFor = (input: { file: File; mediaKind?: "image" | "mask" }) => {
+    const mediaKind = input.mediaKind ?? "image";
+    const signatures =
+      signatureByInput.current.get(input.file) ??
+      new Map<"image" | "mask", Promise<string>>();
+    signatureByInput.current.set(input.file, signatures);
+    const existing = signatures.get(mediaKind);
+    if (existing) return existing;
+    const signature = uploadIntentSignature(input.file, mediaKind);
+    signatures.set(mediaKind, signature);
+    return signature;
+  };
+  const mutation = useMutation({
     mutationFn: async ({
       file,
       mediaKind = "image",
@@ -46,12 +68,14 @@ export function useUploadAsset(workspaceId: string | undefined) {
       mediaKind?: "image" | "mask";
     }) => {
       if (!workspaceId) throw new Error("工作区尚未就绪。");
+      const signature = await signatureFor({ file, mediaKind });
+      const idempotencyKey = registry.current!.keyFor(signature);
       const result = await apiClient.POST(
         "/api/v1/workspaces/{workspace_id}/assets",
         {
           params: {
             path: { workspace_id: workspaceId },
-            header: { "Idempotency-Key": createIdempotencyKey() },
+            header: { "Idempotency-Key": idempotencyKey },
           },
           body: {
             file: file as unknown as string,
@@ -69,12 +93,20 @@ export function useUploadAsset(workspaceId: string | undefined) {
       );
       return unwrapApiResponse(result);
     },
-    onSuccess: async () => {
+    onSuccess: async (_, input) => {
+      registry.current!.complete(await signatureFor(input));
       await queryClient.invalidateQueries({
         queryKey: assetKeys.lists(workspaceId!),
       });
     },
   });
+  return {
+    ...mutation,
+    abandonIntent: async (input: {
+      file: File;
+      mediaKind?: "image" | "mask";
+    }) => registry.current!.abandon(await signatureFor(input)),
+  };
 }
 
 export async function getAssetAccessUrl(

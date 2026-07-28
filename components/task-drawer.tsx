@@ -6,6 +6,7 @@ import { Ban, ChevronRight, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { useCancelJob, useJobs, useRetryJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation";
+import { allowsJobAction } from "@/lib/jobs/actions";
 import { StatusBadge } from "./status-badge";
 
 export function TaskDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -14,11 +15,23 @@ export function TaskDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
   const visibleJobs = jobs.data?.items.slice(0, 4) ?? [];
+  const runCancel = (job: (typeof visibleJobs)[number]) => {
+    if (!allowsJobAction(job.allowed_actions, "cancel")) return;
+    cancel.mutate({ jobId: job.id, allowedActions: job.allowed_actions });
+  };
+  const runRetry = (job: (typeof visibleJobs)[number]) => {
+    if (!allowsJobAction(job.allowed_actions, "retry")) return;
+    retry.mutate({ jobId: job.id, allowedActions: job.allowed_actions });
+  };
 
   return (
     <>
       {open && <button className="drawer-overlay" onClick={onClose} aria-label="关闭任务抽屉" />}
-      <aside className={`task-drawer ${open ? "open" : ""}`} aria-hidden={!open}>
+      <aside
+        className={`task-drawer ${open ? "open" : ""}`}
+        aria-hidden={!open}
+        inert={open ? undefined : true}
+      >
         <div className="drawer-head">
           <div><p>任务中心 · API</p><strong>内部 mock 进度</strong></div>
           <button className="icon-button" onClick={onClose} aria-label="关闭任务抽屉"><X size={19} /></button>
@@ -39,8 +52,8 @@ export function TaskDrawer({ open, onClose }: { open: boolean; onClose: () => vo
                 {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">
                   <span>{jobCount(job)}</span><span>{job.stage ?? "—"}</span>
-                  {["processing", "queued", "planning"].includes(job.status) && <button aria-label="取消任务" onClick={() => cancel.mutate(job.id)}><Ban size={14} /></button>}
-                  {["failed", "partial"].includes(job.status) && <button aria-label="重试失败项" onClick={() => retry.mutate(job.id)}><RotateCcw size={14} /></button>}
+                  {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} onClick={() => runCancel(job)}><Ban size={14} /></button>}
+                  {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试失败项 ${jobTitle(job)}`} onClick={() => runRetry(job)}><RotateCcw size={14} /></button>}
                 </div>
               </div>
             </article>

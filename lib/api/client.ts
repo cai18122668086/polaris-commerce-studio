@@ -17,7 +17,3 @@ const requestMetadata: Middleware = {
 
 export const apiClient = createClient<paths>({ baseUrl });
 apiClient.use(requestMetadata);
-
-export function createIdempotencyKey(): string {
-  return crypto.randomUUID();
-}

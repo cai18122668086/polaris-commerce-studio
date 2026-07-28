@@ -29,13 +29,13 @@ import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import type { Job, JobStatus } from "@/lib/api/types";
 import {
-  canCancel,
   formatDate,
   jobCount,
   jobNote,
   jobTitle,
   jobTypeLabel,
 } from "@/lib/jobs/presentation";
+import { allowsJobAction } from "@/lib/jobs/actions";
 
 const tabFilters: Record<string, JobStatus[] | undefined> = {
   all: undefined,
@@ -105,7 +105,18 @@ export default function JobsPage() {
   const actionError = cancel.error ?? retry.error;
 
   const runCancel = (job: Job) => {
-    if (window.confirm("确认取消此内部 mock 任务？已进入终态的项目不会回滚。")) cancel.mutate(job.id);
+    if (
+      !allowsJobAction(job.allowed_actions, "cancel") ||
+      !window.confirm("确认取消此内部 mock 任务？已进入终态的项目不会回滚。")
+    ) {
+      return;
+    }
+    cancel.mutate({ jobId: job.id, allowedActions: job.allowed_actions });
+  };
+
+  const runRetry = (job: Job) => {
+    if (!allowsJobAction(job.allowed_actions, "retry")) return;
+    retry.mutate({ jobId: job.id, allowedActions: job.allowed_actions });
   };
 
   return (
@@ -167,9 +178,9 @@ export default function JobsPage() {
                   </div>
                   <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>{job.stage ?? "等待阶段更新"}</small></div>
                   <div className="record-actions">
-                    {["failed", "partial"].includes(job.status) && <button title="重试失败项" className="emphasis" onClick={() => retry.mutate(job.id)} disabled={retry.isPending}><RotateCcw size={16} /></button>}
-                    {canCancel(job.status, job.allowed_actions) && <button title="取消任务" onClick={() => runCancel(job)} disabled={cancel.isPending}><Ban size={16} /></button>}
-                    <button title="查看详情" className="row-open" onClick={() => setSelectedJobId(job.id)}><ArrowUpRight size={16} /></button>
+                    {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={() => runRetry(job)} disabled={retry.isPending}><RotateCcw size={16} /></button>}
+                    {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} title="取消任务" onClick={() => runCancel(job)} disabled={cancel.isPending}><Ban size={16} /></button>}
+                    <button aria-label={`查看任务详情 ${jobTitle(job)}`} title="查看详情" className="row-open" onClick={() => setSelectedJobId(job.id)}><ArrowUpRight size={16} /></button>
                   </div>
                 </article>
               ))}

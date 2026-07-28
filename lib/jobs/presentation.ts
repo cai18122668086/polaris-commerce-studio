@@ -1,4 +1,4 @@
-import type { Job, JobDetail, JobStatus, JobType } from "@/lib/api/types";
+import type { Job, JobDetail, JobType } from "@/lib/api/types";
 
 export function jobTypeLabel(type: JobType): string {
   return type === "local_edit" ? "局部修改" : "详情套图";
@@ -31,8 +31,4 @@ export function formatDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-export function canCancel(status: JobStatus, actions: string[]): boolean {
-  return actions.includes("cancel") || ["queued", "planning", "processing"].includes(status);
 }

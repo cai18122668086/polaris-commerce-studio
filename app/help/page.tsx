@@ -25,12 +25,12 @@ const faqs = [
   {
     question: "局部修改为什么需要确认授权选区？",
     answer:
-      "选区不仅告诉模型修改位置，也是最终交付的像素权限边界。系统会在生成后严格回贴，确保选区外像素与原图完全一致。",
+      "选区会作为像素权限边界写入模拟任务；真实生成接入后，交付流程才会执行选区外像素校验。",
   },
   {
-    question: "详情图生成失败后会重新消耗全部额度吗？",
+    question: "详情图模拟流程失败后会重复创建全部项目吗？",
     answer:
-      "不会。每一页独立生成，已成功页面会被保留。继续任务时只重试失败或缺失页面，并重新估算这部分成本。",
+      "不会。模拟项目会独立记录状态，已成功状态会被保留；当前流程不会生成图片或产生 Provider 费用。",
   },
   {
     question: "多角度商品图应该如何拍摄？",
@@ -38,7 +38,7 @@ const faqs = [
       "建议保持相近光线、焦段和背景，至少包含正面、45 度与侧面。不要在同一商品分组中混入不同款式或规格。",
   },
   {
-    question: "生成结果会被公开或用于展示吗？",
+    question: "未来接入真实生成后，图片结果会被公开或用于展示吗？",
     answer:
       "当前工作台中的图片默认只在你的素材与任务中使用。对外展示、协作或分享功能后续会提供独立授权设置。",
   },
@@ -53,7 +53,7 @@ export default function HelpPage() {
         <section className="help-hero">
           <span><BookOpen size={18} /> 极光商绘帮助中心</span>
           <h1>需要帮助？从这里开始</h1>
-          <p>查找创作指南、最佳实践与常见问题，让每一次生成更稳定。</p>
+          <p>查找操作指南、最佳实践与常见问题，让每一次内部模拟流程更稳定。</p>
           <label>
             <Search size={19} />
             <input placeholder="搜索问题，例如：如何画选区、如何重试失败页面" />
@@ -67,7 +67,7 @@ export default function HelpPage() {
               <div>
                 <span>快速开始</span>
                 <h2>选择你的创作目标</h2>
-                <p>两条清晰路径，几分钟内完成第一次创作。</p>
+                <p>两条清晰路径，几分钟内完成第一次内部测试。</p>
               </div>
             </div>
             <div className="help-flow-grid">
@@ -83,7 +83,7 @@ export default function HelpPage() {
                   <li><i><UploadCloud size={16} /></i><span><strong>上传原始图片</strong><small>建议边长 1200px 以上</small></span></li>
                   <li><i><MousePointer2 size={16} /></i><span><strong>绘制授权选区</strong><small>只圈选允许变化的区域</small></span></li>
                   <li><i><MessageCircle size={16} /></i><span><strong>描述期望效果</strong><small>写清材质、颜色与保留项</small></span></li>
-                  <li><i><ShieldCheck size={16} /></i><span><strong>下载锁定结果</strong><small>系统验证选区外像素</small></span></li>
+                  <li><i><ShieldCheck size={16} /></i><span><strong>验证模拟任务状态</strong><small>真实生成接入后才可下载锁定结果</small></span></li>
                 </ol>
                 <Link href="/workspace/local-edit">
                   打开局部修改
@@ -95,14 +95,14 @@ export default function HelpPage() {
                   <span><Sparkles size={22} /></span>
                   <div>
                     <small>约 8 分钟</small>
-                    <h3>生成一套商品详情图</h3>
+                    <h3>验证一套商品详情规划</h3>
                   </div>
                 </div>
                 <ol>
                   <li><i><ImageIcon size={16} /></i><span><strong>添加多角度素材</strong><small>同一商品进入一个分组</small></span></li>
                   <li><i><FileQuestion size={16} /></i><span><strong>填写商品与卖点</strong><small>使用真实、可验证的信息</small></span></li>
                   <li><i><BookOpen size={16} /></i><span><strong>确认页面规划</strong><small>生成前可调整叙事结构</small></span></li>
-                  <li><i><CheckCircle2 size={16} /></i><span><strong>逐页检查与下载</strong><small>失败页面可单独重试</small></span></li>
+                  <li><i><CheckCircle2 size={16} /></i><span><strong>检查模拟流程终态</strong><small>当前无真实图片可下载</small></span></li>
                 </ol>
                 <Link href="/workspace/detail-pack">
                   创建详情套图
@@ -122,7 +122,7 @@ export default function HelpPage() {
             <div className="guide-grid">
               {[
                 { icon: PlayCircle, title: "新手入门", count: "6 篇指南", tone: "blue", text: "了解工作台、额度与任务状态" },
-                { icon: Paintbrush2, title: "局部修改", count: "12 篇指南", tone: "indigo", text: "选区技巧、提示词与锁定结果" },
+                { icon: Paintbrush2, title: "局部修改", count: "12 篇指南", tone: "indigo", text: "选区技巧、提示词与模拟状态" },
                 { icon: Sparkles, title: "商品详情图", count: "9 篇指南", tone: "violet", text: "平台选择、素材分组、页面规划与断点续作" },
                 { icon: ImageIcon, title: "素材与文件", count: "5 篇指南", tone: "cyan", text: "格式规范、清晰度与资产复用" },
                 { icon: ShieldCheck, title: "安全与隐私", count: "4 篇指南", tone: "green", text: "图片处理、权限与数据保护" },

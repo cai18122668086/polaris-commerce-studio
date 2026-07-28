@@ -29,14 +29,82 @@ import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useUploadAsset } from "@/features/assets/api/assets";
 import { useConfirmPlan, useCreateJob, useJob } from "@/features/jobs/api/jobs";
+import {
+  presentWorkflow,
+  useRuntimeStatus,
+  type WorkflowPresentation,
+} from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import type { Asset } from "@/lib/api/types";
 import { jobNote } from "@/lib/jobs/presentation";
+import { allowsJobAction } from "@/lib/jobs/actions";
 import { marketplaceGroups, type MarketRegion } from "@/lib/marketplaces";
 
 type UploadedSource = { asset: Asset; previewUrl: string };
 type PlanPage = { title: string; description?: string; quality?: string };
+
+function planItemPresentation(
+  itemStatus: string | undefined,
+  jobStatus: string | undefined,
+  workflow: WorkflowPresentation,
+) {
+  const completed =
+    ["succeeded", "reused"].includes(itemStatus ?? "") ||
+    jobStatus === "completed";
+  const failed =
+    itemStatus === "failed" ||
+    ["partial", "failed", "cancelled"].includes(jobStatus ?? "");
+
+  if (completed) {
+    if (workflow.mode === "provider") {
+      return {
+        className: "completed",
+        label: "Provider 图片完成",
+        icon: "done",
+      };
+    }
+    if (workflow.mode === "mock") {
+      return {
+        className: "completed",
+        label: "模拟流程完成 · 无真实图片产物",
+        icon: "done",
+      };
+    }
+    return {
+      className: "completed",
+      label: "任务状态已完成 · 图片能力未知",
+      icon: "done",
+    };
+  }
+  if (failed) {
+    return {
+      className: "failed",
+      label:
+        workflow.mode === "provider"
+          ? "Provider 流程未完成"
+          : workflow.mode === "mock"
+            ? "模拟流程结束 · 无真实图片产物"
+            : "任务已结束 · 图片能力未知",
+      icon: "failed",
+    };
+  }
+  if (workflow.mode === "unknown" || workflow.mode === "unavailable") {
+    return {
+      className: "queued",
+      label: "能力未知 · 真实生成未启用",
+      icon: "waiting",
+    };
+  }
+  return {
+    className: "queued",
+    label:
+      workflow.mode === "provider"
+        ? "Provider 流程处理中"
+        : "模拟流程处理中",
+    icon: "waiting",
+  };
+}
 
 function readPlanPages(payload: Record<string, unknown> | undefined): PlanPage[] {
   if (!payload) return [];
@@ -71,6 +139,10 @@ export default function DetailPackPage() {
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
   const job = useJob(workspace?.id, jobId);
+  const runtime = useRuntimeStatus();
+  const workflow = presentWorkflow(runtime.data?.capabilities.detail_pack);
+  const workflowAvailable =
+    workflow.mode === "mock" || workflow.mode === "provider";
   const selectedMarketplace =
     marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId) ??
     marketplaceGroups[marketRegion][0];
@@ -149,10 +221,29 @@ export default function DetailPackPage() {
       <div className="workspace-page">
         <div className="workspace-main">
           <WorkspaceHeader
-            eyebrow="电商套图 · 内部 mock"
+            eyebrow={
+              workflow.mode === "provider"
+                ? "电商套图 · Provider"
+                : workflow.mode === "mock"
+                  ? "电商套图 · 内部 mock"
+                  : "电商套图 · 能力未知"
+            }
             title="商品详情图"
-            description="资产、规划任务与确认会真实写入 API；计划确认只进入零付费 mock runner，不会调用真实图片 Provider。"
-            meta={<span className="autosave-state"><ShieldCheck size={15} />真实生成未启用</span>}
+            description={
+              workflow.mode === "provider"
+                ? "runtime 已报告 Provider 执行；确认前请核对费用与真实图片生成范围。"
+                : workflow.mode === "mock"
+                  ? "资产、规划任务与确认会真实写入 API；计划确认只进入零付费 mock runner。"
+                  : "runtime 能力状态未知，按 fail-closed 处理；规划与图片生成入口保持关闭。"
+            }
+            meta={
+              <span className="autosave-state">
+                <ShieldCheck size={15} />
+                {workflow.mode === "provider"
+                  ? "Provider 已报告启用"
+                  : "真实生成未启用"}
+              </span>
+            }
           />
 
           <section className="marketplace-selector">
@@ -167,7 +258,17 @@ export default function DetailPackPage() {
           </section>
 
           <div className="workflow-steps detail-steps">
-            {["商品素材", "商品信息", "输出设置", "确认规划", "mock 流转"].map((label, index) => <div key={label} className={index < step ? "done" : index === step ? "active" : ""}><i>{index < step ? <Check size={14} /> : index + 1}</i><span>{label}</span>{index < 4 && <em />}</div>)}
+            {[
+              "商品素材",
+              "商品信息",
+              "输出设置",
+              "确认规划",
+              workflow.mode === "provider"
+                ? "Provider 生成"
+                : workflow.mode === "mock"
+                  ? "mock 流转"
+                  : "等待能力",
+            ].map((label, index) => <div key={label} className={index < step ? "done" : index === step ? "active" : ""}><i>{index < step ? <Check size={14} /> : index + 1}</i><span>{label}</span>{index < 4 && <em />}</div>)}
           </div>
 
           <section className="detail-form-card">
@@ -206,21 +307,55 @@ export default function DetailPackPage() {
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
             {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>mock planner 处理中，正在轮询…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
-            {planPages.length > 0 && <div className="plan-list">{planPages.map((page, index) => <article key={`${page.title}-${index}`}><span className="plan-drag"><GripVertical size={15} /></span><i>{String(index + 1).padStart(2, "0")}</i><div><strong>{page.title}</strong><p>{page.description ?? "规划内容已由 mock planner 返回。"}</p></div><span className="quality-chip">{page.quality ?? "mock"}</span><span className="page-status queued"><Clock3 size={14} />待 mock 流转</span></article>)}</div>}
+            {planPages.length > 0 && (
+              <div className="plan-list">
+                {planPages.map((page, index) => {
+                  const item = job.data?.items.find(
+                    (candidate) => candidate.ordinal === index + 1,
+                  );
+                  const presentation = planItemPresentation(
+                    item?.status,
+                    job.data?.status,
+                    workflow,
+                  );
+                  return (
+                    <article key={`${page.title}-${index}`}>
+                      <span className="plan-drag"><GripVertical size={15} /></span>
+                      <i>{String(index + 1).padStart(2, "0")}</i>
+                      <div>
+                        <strong>{page.title}</strong>
+                        <p>{page.description ?? "规划内容已由任务详情 API 返回。"}</p>
+                      </div>
+                      <span className="quality-chip">{page.quality ?? "mock"}</span>
+                      <span className={`page-status ${presentation.className}`}>
+                        {presentation.icon === "done" ? (
+                          <CheckCircle2 size={14} />
+                        ) : presentation.icon === "failed" ? (
+                          <AlertCircle size={14} />
+                        ) : (
+                          <Clock3 size={14} />
+                        )}
+                        {presentation.label}
+                      </span>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           <section className="generation-footer">
             <div className="estimate-grid">
-              <span><CircleDollarSign size={18} /><div><p>本轮费用</p><strong>零付费 mock</strong></div></span>
+              <span><CircleDollarSign size={18} /><div><p>本轮模式</p><strong>{workflow.mode === "provider" ? "Provider 执行" : workflow.mode === "mock" ? "零付费 mock" : "能力未知 · fail-closed"}</strong></div></span>
               <span><Clock3 size={18} /><div><p>状态更新</p><strong>约每 1.5 秒轮询</strong></div></span>
-              <span><ShieldCheck size={18} /><div><p>Provider</p><strong>真实生成未启用</strong></div></span>
+              <span><ShieldCheck size={18} /><div><p>图片产物</p><strong>{workflow.canDeliverImages ? "Provider 已启用" : "真实生成未启用"}</strong></div></span>
             </div>
             <div className="generation-actions">
-              <p><Info size={14} />确认计划只允许 mock runner 继续状态流转，不会触发付费图片调用。</p>
+              <p><Info size={14} />{workflow.mode === "provider" ? "runtime 已报告 Provider 执行，确认后可能产生真实图片与费用。" : workflow.mode === "mock" ? "确认计划只推进模拟状态，不会产生可交付图片。" : "能力状态未知，确认入口保持关闭且不会进入图片生成。"}</p>
               {!jobId ? (
-                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!sources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}创建 mock 规划任务<ArrowRight size={17} /></button>
-              ) : job.data?.status === "awaiting_confirmation" && job.data.plan ? (
-                <button className="primary-button" onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision })} disabled={confirmPlan.isPending}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}确认计划并进入 mock 流转<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !sources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? (workflow.mode === "provider" ? "创建 Provider 规划任务" : "创建 mock 规划任务") : "能力未知，暂不可创建"}<ArrowRight size={17} /></button>
+              ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
+                <button className="primary-button" onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions })} disabled={confirmPlan.isPending}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并进入 Provider 生成" : "确认计划并进入 mock 流转"}<ArrowRight size={17} /></button>
               ) : (
                 <button className="primary-button" disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data ? jobNote(job.data) : "正在读取任务"}</button>
               )}

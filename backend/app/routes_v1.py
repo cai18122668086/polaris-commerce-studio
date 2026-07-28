@@ -1,5 +1,7 @@
+import asyncio
 import hashlib
 import hmac
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, cast
 
@@ -17,11 +19,13 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import (
     Principal,
     WorkspaceDependency,
+    WorkspaceWriteDependency,
     get_principal,
 )
 from .database import get_session
@@ -83,6 +87,7 @@ from .services import (
     get_workspace_job,
     job_detail_response,
     job_list_response,
+    lock_workspace_limits,
     new_id,
     require_idempotency_key,
     reserve_credits,
@@ -90,10 +95,21 @@ from .services import (
     settle_credits,
     transition_job,
 )
+from .storage import ImageStorage, StoredImage
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
 PrincipalDependency = Annotated[Principal, Depends(get_principal)]
+logger = logging.getLogger(__name__)
+
+
+class _UploadCommitOutcomeUnknown(RuntimeError):
+    def __init__(self, asset_id: str, object_key: str) -> None:
+        super().__init__(
+            f"Unable to determine upload commit outcome for asset {asset_id}"
+        )
+        self.asset_id = asset_id
+        self.object_key = object_key
 
 
 def _schedule_outbox(request: Request, background_tasks: BackgroundTasks) -> None:
@@ -107,6 +123,147 @@ def _schedule_outbox(request: Request, background_tasks: BackgroundTasks) -> Non
         request.app.state.session_factory,
         request.app.state.task_runner,
     )
+
+
+async def _cleanup_upload_object(
+    storage: ImageStorage,
+    *,
+    object_key: str,
+    object_version: str = "",
+    reason: str,
+) -> None:
+    try:
+        await storage.delete_object(object_key, object_version)
+    except Exception:
+        logger.exception(
+            "upload_object_cleanup_failed",
+            extra={
+                "object_key": object_key,
+                "object_version": object_version,
+                "cleanup_reason": reason,
+            },
+        )
+
+
+async def _finish_cleanup_before_cancellation(
+    storage: ImageStorage,
+    *,
+    object_key: str,
+    reason: str,
+) -> None:
+    cleanup_task = asyncio.create_task(
+        _cleanup_upload_object(
+            storage,
+            object_key=object_key,
+            reason=reason,
+        )
+    )
+    while not cleanup_task.done():
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError:
+            continue
+    cleanup_task.result()
+
+
+def _commit_staged_asset(
+    session_factory: sessionmaker[Session],
+    *,
+    workspace_id: str,
+    actor_user_id: str,
+    idempotency_key: str,
+    request_hash: str,
+    origin_kind: AssetOriginKind,
+    media_kind: AssetMediaKind,
+    stored: StoredImage,
+) -> tuple[AssetResponse, bool]:
+    """Run the complete quota critical section in a worker-thread transaction."""
+
+    with session_factory() as session:
+        idem, replay = claim_idempotency(
+            session,
+            workspace_id=workspace_id,
+            actor_user_id=actor_user_id,
+            method="POST",
+            route_template="/api/v1/workspaces/{workspace_id}/assets",
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+        )
+        if replay:
+            return (
+                asset_response(
+                    get_workspace_asset(
+                        session,
+                        workspace_id,
+                        cast(str, idem.resource_id),
+                    )
+                ),
+                False,
+            )
+
+        limits = lock_workspace_limits(session, workspace_id)
+        used_bytes = session.scalar(
+            select(func.coalesce(func.sum(AssetRecord.byte_size), 0)).where(
+                AssetRecord.workspace_id == workspace_id,
+                AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+                AssetRecord.deleted_at.is_(None),
+            )
+        )
+        if int(used_bytes or 0) + stored.byte_size > limits.storage_quota_bytes:
+            raise ApiError(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "STORAGE_QUOTA_EXCEEDED",
+                "当前工作区存储空间不足。",
+            )
+
+        asset_id = new_id("asset")
+        asset = AssetRecord(
+            id=asset_id,
+            workspace_id=workspace_id,
+            media_kind=media_kind.value,
+            origin_kind=origin_kind.value,
+            lifecycle_status=AssetLifecycleStatus.READY.value,
+            original_filename=stored.filename,
+            content_type=stored.content_type,
+            byte_size=stored.byte_size,
+            width=stored.width,
+            height=stored.height,
+            sha256=stored.sha256,
+            storage_provider=stored.storage_provider,
+            storage_bucket=stored.storage_bucket,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            etag=stored.etag,
+            asset_metadata={},
+        )
+        session.add(asset)
+        complete_idempotency(
+            idem,
+            resource_type="asset",
+            resource_id=asset.id,
+            response_status=status.HTTP_201_CREATED,
+        )
+        session.flush()
+        response = asset_response(asset)
+        try:
+            session.commit()
+        except Exception as commit_error:
+            session.rollback()
+            try:
+                with session_factory() as verification_session:
+                    committed = verification_session.get(AssetRecord, asset_id)
+                    if (
+                        committed is not None
+                        and committed.object_key == stored.object_key
+                    ):
+                        return asset_response(committed), True
+            except Exception:
+                raise _UploadCommitOutcomeUnknown(
+                    asset_id,
+                    stored.object_key,
+                ) from commit_error
+            raise
+        return response, True
 
 
 @router.get("/me", response_model=CurrentUserResponse, tags=["identity"])
@@ -169,8 +326,7 @@ def get_workspace(
 )
 async def upload_asset(
     request: Request,
-    workspace: WorkspaceDependency,
-    session: SessionDependency,
+    workspace: WorkspaceWriteDependency,
     file: Annotated[UploadFile, File()],
     origin_kind: Annotated[AssetOriginKind, Form()] = AssetOriginKind.UPLOAD,
     media_kind: Annotated[AssetMediaKind, Form()] = AssetMediaKind.IMAGE,
@@ -191,67 +347,64 @@ async def upload_asset(
             "media_kind": media_kind.value,
         }
     )
-    idem, replay = claim_idempotency(
-        session,
-        workspace_id=workspace.workspace_id,
-        actor_user_id=workspace.principal.user_id,
-        method="POST",
-        route_template="/api/v1/workspaces/{workspace_id}/assets",
-        idempotency_key=idempotency_key,
-        request_hash=request_hash,
-    )
-    if replay:
-        return asset_response(
-            get_workspace_asset(
-                session, workspace.workspace_id, cast(str, idem.resource_id)
-            )
+    storage: ImageStorage = request.app.state.storage
+    try:
+        stored = await storage.save_validated(validated)
+    except asyncio.CancelledError:
+        await _finish_cleanup_before_cancellation(
+            storage,
+            object_key=validated.object_key,
+            reason="storage_save_cancelled",
         )
+        raise
+    except Exception:
+        await _cleanup_upload_object(
+            storage,
+            object_key=validated.object_key,
+            reason="storage_save_failed",
+        )
+        raise
 
-    used_bytes = session.scalar(
-        select(func.coalesce(func.sum(AssetRecord.byte_size), 0)).where(
-            AssetRecord.workspace_id == workspace.workspace_id,
-            AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
-            AssetRecord.deleted_at.is_(None),
+    try:
+        response, retained = await asyncio.to_thread(
+            _commit_staged_asset,
+            request.app.state.session_factory,
+            workspace_id=workspace.workspace_id,
+            actor_user_id=workspace.principal.user_id,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            origin_kind=origin_kind,
+            media_kind=media_kind,
+            stored=stored,
         )
-    )
-    limits = request.app.state.workspace_limits(session, workspace.workspace_id)
-    if int(used_bytes or 0) + len(validated.payload) > limits.storage_quota_bytes:
-        raise ApiError(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            "STORAGE_QUOTA_EXCEEDED",
-            "当前工作区存储空间不足。",
+    except _UploadCommitOutcomeUnknown as exc:
+        logger.critical(
+            "upload_commit_outcome_unknown",
+            extra={
+                "asset_id": exc.asset_id,
+                "object_key": exc.object_key,
+                "workspace_id": workspace.workspace_id,
+            },
+            exc_info=True,
         )
+        raise
+    except Exception:
+        await _cleanup_upload_object(
+            storage,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            reason="database_write_failed",
+        )
+        raise
 
-    stored = await request.app.state.storage.save_validated(validated)
-    asset = AssetRecord(
-        id=new_id("asset"),
-        workspace_id=workspace.workspace_id,
-        media_kind=media_kind.value,
-        origin_kind=origin_kind.value,
-        lifecycle_status=AssetLifecycleStatus.READY.value,
-        original_filename=stored.filename,
-        content_type=stored.content_type,
-        byte_size=stored.byte_size,
-        width=stored.width,
-        height=stored.height,
-        sha256=stored.sha256,
-        storage_provider=stored.storage_provider,
-        storage_bucket=stored.storage_bucket,
-        object_key=stored.object_key,
-        object_version=stored.object_version,
-        etag=stored.etag,
-        asset_metadata={},
-    )
-    session.add(asset)
-    complete_idempotency(
-        idem,
-        resource_type="asset",
-        resource_id=asset.id,
-        response_status=status.HTTP_201_CREATED,
-    )
-    session.commit()
-    session.refresh(asset)
-    return asset_response(asset)
+    if not retained:
+        await _cleanup_upload_object(
+            storage,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            reason="idempotency_replay",
+        )
+    return response
 
 
 @router.get(
@@ -443,7 +596,7 @@ def create_job(
     payload: JobCreate,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -469,7 +622,16 @@ def create_job(
     if payload.intent == "submit":
         enforce_active_job_limit(session, workspace.workspace_id)
 
-    job, asset_roles = _new_job_from_payload(workspace.workspace_id, payload)
+    job, asset_roles = _new_job_from_payload(
+        workspace.workspace_id,
+        payload,
+        detail_medium_price_micros=(
+            request.app.state.settings.xinghe_medium_price_micros
+        ),
+        detail_high_price_micros=(
+            request.app.state.settings.xinghe_high_price_micros
+        ),
+    )
     asset_ids = [item[0] for item in asset_roles]
     get_ready_assets(session, workspace.workspace_id, asset_ids)
     session.add(job)
@@ -582,10 +744,12 @@ def get_job(
 def update_draft_job(
     job_id: str,
     payload: DraftJobUpdate,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
 ) -> JobDetailResponse:
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(job.status) != JobStatus.DRAFT:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -611,12 +775,14 @@ def submit_job(
     job_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -628,6 +794,13 @@ def submit_job(
     )
     if replay:
         return job_detail_response(session, job)
+    if JobStatus(job.status) != JobStatus.DRAFT:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "JOB_NOT_SUBMITTABLE",
+            "当前任务状态不能提交。",
+            {"status": job.status},
+        )
     enforce_active_job_limit(session, workspace.workspace_id)
     transition_job(job, JobStatus.QUEUED, progress=0)
     reserve_credits(
@@ -659,12 +832,14 @@ def cancel_job(
     payload: CancelRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -691,6 +866,24 @@ def cancel_job(
         JobStatus.QUEUED,
         JobStatus.AWAITING_CONFIRMATION,
     }:
+        cancellable_items = session.scalars(
+            select(JobItemRecord)
+            .where(
+                JobItemRecord.job_id == job.id,
+                JobItemRecord.status.in_(
+                    [
+                        JobItemStatus.PENDING.value,
+                        JobItemStatus.QUEUED.value,
+                        JobItemStatus.RUNNING.value,
+                    ]
+                ),
+            )
+            .with_for_update()
+        ).all()
+        for item in cancellable_items:
+            item.status = JobItemStatus.CANCELLED.value
+            item.finished_at = utc_now()
+            item.state_version += 1
         transition_job(job, JobStatus.CANCELLED, progress=job.progress)
         settle_credits(session, job, 0)
     else:
@@ -721,12 +914,14 @@ def retry_job(
     payload: RetryRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    source = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(source.status) not in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,
@@ -755,6 +950,7 @@ def retry_job(
                 session, workspace.workspace_id, cast(str, idem.resource_id)
             ),
         )
+    enforce_active_job_limit(session, workspace.workspace_id)
     selected = retry_item_ids(session, source, payload.scope, payload.item_ids)
     if not selected:
         raise ApiError(
@@ -797,11 +993,13 @@ def clone_job(
     job_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
-    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    source = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(source.status) not in TERMINAL_JOB_STATUSES:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -866,10 +1064,12 @@ def clone_job(
 def update_plan(
     job_id: str,
     payload: PlanUpdateRequest,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
 ) -> PlanResponse:
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     if JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -906,7 +1106,16 @@ def update_plan(
         validated_at=utc_now(),
     )
     session.add(plan)
-    session.commit()
+    job.state_version += 1
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "PLAN_REVISION_CONFLICT",
+            "计划已更新，请刷新后重试。",
+        ) from exc
     return PlanResponse(
         id=plan.id,
         revision=plan.revision,
@@ -929,12 +1138,14 @@ def confirm_plan(
     payload: PlanConfirmRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency,
+    workspace: WorkspaceWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    job = get_workspace_job(
+        session, workspace.workspace_id, job_id, for_update=True
+    )
     plan = session.scalar(
         select(JobPlanRecord)
         .where(JobPlanRecord.job_id == job.id)
@@ -966,6 +1177,21 @@ def confirm_plan(
     )
     if replay:
         return job_detail_response(session, job)
+    if job.type == JobType.DETAIL_PACK.value:
+        from .xinghe_agent import (
+            XingheAgentError,
+            synchronize_confirmed_plan,
+        )
+
+        try:
+            synchronize_confirmed_plan(session, job, plan)
+        except XingheAgentError as exc:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "PLAN_INVALID",
+                "The plan is invalid and cannot be confirmed.",
+                {"reason": exc.code},
+            ) from exc
     plan.confirmed_at = utc_now()
     transition_job(job, JobStatus.PROCESSING, stage="generating", progress=20)
     add_outbox_event(
@@ -986,6 +1212,9 @@ def confirm_plan(
 def _new_job_from_payload(
     workspace_id: str,
     payload: LocalEditJobCreate | DetailPackJobCreate,
+    *,
+    detail_medium_price_micros: int = 45_000,
+    detail_high_price_micros: int = 90_000,
 ) -> tuple[JobRecord, list[tuple[str, str, int]]]:
     if isinstance(payload, LocalEditJobCreate):
         item_count = 1
@@ -994,13 +1223,30 @@ def _new_job_from_payload(
             (payload.input.selection_mask_asset_id, "selection_mask", 0),
         ]
     else:
-        item_count = payload.configuration.page_count
+        item_count = (
+            payload.configuration.page_count
+            * len(payload.input.product_groups)
+        )
         asset_roles = [
             (asset_id, "product_reference", ordinal)
             for group in payload.input.product_groups
             for ordinal, asset_id in enumerate(group.asset_ids)
         ]
-    minimum, maximum, credits = estimate_job(JobType(payload.type), item_count)
+    if isinstance(payload, DetailPackJobCreate):
+        minimum = item_count * min(
+            detail_medium_price_micros,
+            detail_high_price_micros,
+        )
+        maximum = item_count * max(
+            detail_medium_price_micros,
+            detail_high_price_micros,
+        )
+        _, _, credits = estimate_job(JobType(payload.type), item_count)
+    else:
+        minimum, maximum, credits = estimate_job(
+            JobType(payload.type),
+            item_count,
+        )
     is_submit = payload.intent == "submit"
     job = JobRecord(
         id=new_id("job"),
@@ -1066,8 +1312,33 @@ def _copy_job_for_retry(
     scope: RetryScope,
     selected: list[str],
 ) -> JobRecord:
-    del session
     minimum, maximum, credits = estimate_job(JobType(source.type), len(selected))
+    if source.type == JobType.DETAIL_PACK.value:
+        source_plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == source.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        cost = (
+            source_plan.payload.get("cost")
+            if source_plan is not None
+            and isinstance(source_plan.payload, dict)
+            else None
+        )
+        if isinstance(cost, dict):
+            medium_price = cost.get("medium_unit_micros")
+            high_price = cost.get("high_unit_micros")
+            if (
+                isinstance(medium_price, int)
+                and not isinstance(medium_price, bool)
+                and medium_price >= 0
+                and isinstance(high_price, int)
+                and not isinstance(high_price, bool)
+                and high_price >= 0
+            ):
+                minimum = len(selected) * min(medium_price, high_price)
+                maximum = len(selected) * max(medium_price, high_price)
     return JobRecord(
         id=new_id("job"),
         workspace_id=source.workspace_id,
@@ -1163,6 +1434,77 @@ def _copy_job_relations_for_retry(
                     validation=relation.validation,
                 )
             )
+    if source.type == JobType.DETAIL_PACK.value:
+        source_plan = session.scalar(
+            select(JobPlanRecord)
+            .where(
+                JobPlanRecord.job_id == source.id,
+                JobPlanRecord.validation_status == PlanValidationStatus.VALID.value,
+            )
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if source_plan is not None and source_plan.confirmed_at is not None:
+            copied_payload = dict(source_plan.payload)
+            copied_payload["state"] = "confirmed"
+            cost_value = copied_payload.get("cost")
+            cost = dict(cost_value) if isinstance(cost_value, dict) else {}
+            pending_items = [
+                item for item in source_items if item.id in selected
+            ]
+            pending_high = sum(item.quality == "high" for item in pending_items)
+            pending_medium = len(pending_items) - pending_high
+            medium_price = int(cost.get("medium_unit_micros", 45_000))
+            high_price = int(cost.get("high_unit_micros", 90_000))
+            cost.update(
+                {
+                    "pending_medium_count": pending_medium,
+                    "pending_high_count": pending_high,
+                    "estimated_pending_micros": (
+                        pending_medium * medium_price
+                        + pending_high * high_price
+                    ),
+                }
+            )
+            copied_payload["cost"] = cost
+            copied_payload["usage"] = {
+                "planner": [],
+                "planner_reused_from_job_id": source.id,
+                "image": {
+                    "reported_requests": 0,
+                    "unreported_requests": 0,
+                },
+            }
+            copied_payload["metrics"] = {
+                "planning_time": 0,
+                "planning_reused": True,
+                "image_wall_time": None,
+                "average_api_latency": None,
+                "effective_seconds_per_page": None,
+                "throughput_pages_per_second": 0.0,
+                "job_wall_time": None,
+                "success_count": 0,
+                "failure_count": 0,
+                "rate_limit_429_count": 0,
+                "actual_concurrency": 0,
+                "usage_missing_count": 0,
+            }
+            session.add(
+                JobPlanRecord(
+                    id=new_id("plan"),
+                    workspace_id=target.workspace_id,
+                    job_id=target.id,
+                    revision=1,
+                    schema_version=source_plan.schema_version,
+                    payload=copied_payload,
+                    payload_hash=canonical_hash(copied_payload),
+                    validation_status=PlanValidationStatus.VALID.value,
+                    validation_errors=[],
+                    validator_version=source_plan.validator_version,
+                    validated_at=utc_now(),
+                    confirmed_at=utc_now(),
+                )
+            )
 
 
 def _validate_plan_payload(
@@ -1180,6 +1522,10 @@ def _validate_plan_payload(
                 "actual": len(pages),
             }
         ]
+    if job.type == JobType.DETAIL_PACK.value:
+        from .xinghe_agent import validate_editable_plan_payload
+
+        return validate_editable_plan_payload(payload, job.expected_item_count)
     return []
 
 

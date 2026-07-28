@@ -2,13 +2,14 @@ import asyncio
 import socket
 from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
-from .domain import OutboxStatus
-from .models import OutboxEventRecord, utc_now
+from .domain import JobStatus, OutboxStatus
+from .models import JobRecord, OutboxEventRecord, utc_now
 from .task_runner import MockTaskRunner
 
 
@@ -19,10 +20,11 @@ def publish_pending_events(
     *,
     limit: int = 20,
 ) -> int:
-    worker_id = f"outbox-{socket.gethostname()}"
+    worker_id = f"outbox-{socket.gethostname()}-{uuid4().hex}"
     now = utc_now()
     stale_lock_before = now - timedelta(minutes=5)
     with session_factory() as session:
+        _requeue_lost_deliveries(session, now)
         events = session.scalars(
             select(OutboxEventRecord)
             .where(
@@ -73,26 +75,79 @@ def publish_pending_events(
                 payload=payload,
             )
             with session_factory() as session:
-                current_event = session.get(OutboxEventRecord, event_id)
-                if current_event is None:
-                    continue
-                current_event.status = OutboxStatus.PUBLISHED.value
-                current_event.published_at = utc_now()
-                current_event.last_error = None
+                changed_id = session.scalar(
+                    update(OutboxEventRecord)
+                    .where(
+                        OutboxEventRecord.id == event_id,
+                        OutboxEventRecord.status == OutboxStatus.PUBLISHING.value,
+                        OutboxEventRecord.locked_by == worker_id,
+                    )
+                    .values(
+                        status=OutboxStatus.PUBLISHED.value,
+                        published_at=utc_now(),
+                        last_error=None,
+                        locked_at=None,
+                        locked_by=None,
+                    )
+                    .returning(OutboxEventRecord.id)
+                )
                 session.commit()
-                published += 1
+                published += int(changed_id is not None)
         except Exception as exc:
             with session_factory() as session:
-                failed_event = session.get(OutboxEventRecord, event_id)
-                if failed_event is None:
-                    continue
-                failed_event.status = OutboxStatus.FAILED.value
-                failed_event.available_at = utc_now() + timedelta(
-                    seconds=min(60, 2 ** min(failed_event.attempt_count, 5))
+                failed_event = session.scalar(
+                    select(OutboxEventRecord).where(
+                        OutboxEventRecord.id == event_id,
+                        OutboxEventRecord.status == OutboxStatus.PUBLISHING.value,
+                        OutboxEventRecord.locked_by == worker_id,
+                    )
                 )
-                failed_event.last_error = _safe_error(exc)
+                if failed_event is not None:
+                    failed_event.status = OutboxStatus.FAILED.value
+                    failed_event.available_at = utc_now() + timedelta(
+                        seconds=min(60, 2 ** min(failed_event.attempt_count, 5))
+                    )
+                    failed_event.last_error = _safe_error(exc)
+                    failed_event.locked_at = None
+                    failed_event.locked_by = None
                 session.commit()
     return published
+
+
+def _requeue_lost_deliveries(session: Session, now: Any) -> None:
+    """Restore broker deliveries from PostgreSQL after Redis/task loss.
+
+    A published event is a delivery acknowledgement, not completion state.
+    Non-terminal jobs therefore make old acknowledgements eligible again.
+    Database claims and fencing make the resulting at-least-once delivery safe.
+    """
+
+    active_job_ids = select(JobRecord.id).where(
+        JobRecord.status.in_(
+            [
+                JobStatus.QUEUED.value,
+                JobStatus.PLANNING.value,
+                JobStatus.PROCESSING.value,
+                JobStatus.CANCELLING.value,
+            ]
+        )
+    )
+    session.execute(
+        update(OutboxEventRecord)
+        .where(
+            OutboxEventRecord.aggregate_type == "job",
+            OutboxEventRecord.aggregate_id.in_(active_job_ids),
+            OutboxEventRecord.status == OutboxStatus.PUBLISHED.value,
+            OutboxEventRecord.published_at.is_not(None),
+            OutboxEventRecord.published_at <= now - timedelta(seconds=30),
+        )
+        .values(
+            status=OutboxStatus.PENDING.value,
+            available_at=now,
+            published_at=None,
+            last_error="delivery acknowledgement expired before job completion",
+        )
+    )
 
 
 def _dispatch(
@@ -114,7 +169,9 @@ def _dispatch(
     from .tasks import cancel_job_task, process_job
 
     task: Any = cancel_job_task if event_type == "job.cancel_requested" else process_job
-    task.apply_async(args=[job_id], task_id=dedupe_key)
+    # Celery task ids are observability identifiers only. Database attempts and
+    # lease fencing are the sole duplicate-execution guard.
+    task.apply_async(args=[job_id], headers={"outbox_dedupe_key": dedupe_key})
 
 
 def _safe_error(exc: Exception) -> str:

@@ -384,13 +384,20 @@ def get_ready_assets(
     return assets
 
 
-def get_workspace_job(session: Session, workspace_id: str, job_id: str) -> JobRecord:
-    job = session.scalar(
-        select(JobRecord).where(
+def get_workspace_job(
+    session: Session,
+    workspace_id: str,
+    job_id: str,
+    *,
+    for_update: bool = False,
+) -> JobRecord:
+    statement = select(JobRecord).where(
             JobRecord.workspace_id == workspace_id,
             JobRecord.id == job_id,
         )
-    )
+    if for_update:
+        statement = statement.with_for_update()
+    job = session.scalar(statement)
     if job is None:
         raise ApiError(
             status.HTTP_404_NOT_FOUND,
@@ -437,14 +444,28 @@ def estimate_job(job_type: JobType, item_count: int) -> tuple[int, int, int]:
     return item_count * 45_000, item_count * 90_000, item_count * 2
 
 
-def enforce_active_job_limit(session: Session, workspace_id: str) -> None:
-    limits = session.get(WorkspaceLimitRecord, workspace_id)
+def lock_workspace_limits(
+    session: Session,
+    workspace_id: str,
+) -> WorkspaceLimitRecord:
+    """Acquire the workspace-wide transaction lock used by quota gates."""
+
+    limits = session.get(
+        WorkspaceLimitRecord,
+        workspace_id,
+        with_for_update=True,
+    )
     if limits is None:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "WORKSPACE_LIMITS_NOT_CONFIGURED",
             "工作区限制尚未配置。",
         )
+    return limits
+
+
+def enforce_active_job_limit(session: Session, workspace_id: str) -> None:
+    limits = lock_workspace_limits(session, workspace_id)
     active = session.scalar(
         select(func.count())
         .select_from(JobRecord)

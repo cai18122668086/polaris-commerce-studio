@@ -103,9 +103,9 @@ def get_principal(
     if settings.auth_mode == "development":
         return Principal(user_id=x_user_id or settings.development_user_id)
     raise ApiError(
-        status.HTTP_503_SERVICE_UNAVAILABLE,
-        "AUTH_NOT_CONFIGURED",
-        "身份服务尚未配置。",
+        status.HTTP_401_UNAUTHORIZED,
+        "UNAUTHENTICATED",
+        "请求未通过身份认证。",
     )
 
 
@@ -140,3 +140,21 @@ def require_workspace(
 
 
 WorkspaceDependency = Annotated[WorkspaceContext, Depends(require_workspace)]
+
+
+def require_workspace_write(
+    workspace: WorkspaceDependency,
+) -> WorkspaceContext:
+    if workspace.role == MembershipRole.VIEWER:
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "WORKSPACE_ACCESS_DENIED",
+            "当前成员角色没有写入工作区的权限。",
+        )
+    return workspace
+
+
+WorkspaceWriteDependency = Annotated[
+    WorkspaceContext,
+    Depends(require_workspace_write),
+]

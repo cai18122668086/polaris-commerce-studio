@@ -66,6 +66,7 @@ QUALITY_POLICY_VERSION = "xinghe-semantic-quality-v1"
 PROMPT_POLICY_VERSION = "xinghe-density-v1"
 RESUME_SIGNATURE_VERSION = "xinghe-resume-v1"
 PLAN_SCHEMA_VERSION = "xinghe-plan-v1"
+PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v1"
 IMAGE_SIZE = "1024x1536"
 IMAGE_FORMAT = "jpeg"
 JPEG_QUALITY = 92
@@ -74,6 +75,7 @@ DEFAULT_HIGH_PRICE_MICROS = 90_000
 DEFAULT_BUDGET_LIMIT_MICROS = 200_000_000
 MAX_PAGE_RETRIES = 2
 PLANNER_LEASE_SECONDS = 900
+_MISSING_JSON_VALUE = object()
 
 _PLANNER_JSON_FENCE = re.compile(
     r"\A```(?:json)?[ \t]*\r?\n"
@@ -108,10 +110,18 @@ _HIGH_ROLE_PATTERNS = tuple(
 class XingheAgentError(RuntimeError):
     """Controlled, redaction-safe Agent failure."""
 
-    def __init__(self, code: str, message: str, *, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+        json_pointer: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.retryable = retryable
+        self.json_pointer = json_pointer
 
 
 @dataclass(frozen=True)
@@ -149,6 +159,9 @@ class PlannerCallResult:
     error_code: str | None = None
     error_message: str | None = None
     http_status: int | None = None
+    parse_trace: tuple[str, ...] = ()
+    structure_fingerprint: str | None = None
+    error_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -306,27 +319,45 @@ def build_resume_signature(
 def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]:
     """Validate the mandatory structured plan and exact screen count."""
 
-    root = _require_mapping(payload, "PLANNER_SCHEMA_INVALID")
+    root = _require_mapping(
+        payload,
+        "PLANNER_SCHEMA_INVALID",
+        path="",
+    )
     analysis = _require_mapping(
         root.get("analysis"),
         "PLANNER_SCHEMA_INVALID",
+        path=_json_pointer("analysis"),
     )
-    plan = _require_mapping(root.get("plan"), "PLANNER_SCHEMA_INVALID")
+    plan = _require_mapping(
+        root.get("plan"),
+        "PLANNER_SCHEMA_INVALID",
+        path=_json_pointer("plan"),
+    )
     for key in (
         "category_key",
         "category_reason",
     ):
-        _require_nonempty_string(analysis.get(key), key)
+        _require_nonempty_string(
+            analysis.get(key),
+            key,
+            path=_json_pointer("analysis", key),
+        )
     for key in (
         "product_image_analysis",
         "product_consistency_anchors",
     ):
-        _require_mapping(analysis.get(key), "PLANNER_SCHEMA_INVALID")
+        _require_mapping(
+            analysis.get(key),
+            "PLANNER_SCHEMA_INVALID",
+            path=_json_pointer("analysis", key),
+        )
     objections = analysis.get("buyer_objections")
     if not isinstance(objections, list) or not objections:
         raise XingheAgentError(
             "PLANNER_SCHEMA_INVALID",
             "Planner buyer objections must be a non-empty array.",
+            json_pointer=_json_pointer("analysis", "buyer_objections"),
         )
     campaign_lock = plan.get("campaign_style_lock")
     design_lock = plan.get("design_strength_lock")
@@ -334,28 +365,41 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
         raise XingheAgentError(
             "PLANNER_SCHEMA_INVALID",
             "Planner campaign style lock is invalid.",
+            json_pointer=_json_pointer("plan", "campaign_style_lock"),
         )
     if not isinstance(design_lock, (str, dict)) or not design_lock:
         raise XingheAgentError(
             "PLANNER_SCHEMA_INVALID",
             "Planner design strength lock is invalid.",
+            json_pointer=_json_pointer("plan", "design_strength_lock"),
         )
     screens = plan.get("screens")
     if not isinstance(screens, list):
         raise XingheAgentError(
             "PLANNER_SCHEMA_INVALID",
             "Planner screens must be an array.",
+            json_pointer=_json_pointer("plan", "screens"),
         )
     if len(screens) != page_count:
         raise XingheAgentError(
             "PLANNER_SCHEMA_INVALID",
             "Planner returned a different number of screens than requested.",
+            json_pointer=_json_pointer("plan", "screens"),
         )
     normalized_screens: list[dict[str, str]] = []
-    for screen in screens:
-        screen_mapping = _require_mapping(screen, "PLANNER_SCHEMA_INVALID")
+    for screen_index, screen in enumerate(screens):
+        screen_path = _json_pointer("plan", "screens", screen_index)
+        screen_mapping = _require_mapping(
+            screen,
+            "PLANNER_SCHEMA_INVALID",
+            path=screen_path,
+        )
         normalized = {
-            key: _require_nonempty_string(screen_mapping.get(key), key)
+            key: _require_nonempty_string(
+                screen_mapping.get(key),
+                key,
+                path=_json_pointer("plan", "screens", screen_index, key),
+            )
             for key in (
                 "role",
                 "title",
@@ -787,7 +831,7 @@ class TengliOpenAICompatibleGateway:
                     http_status=status,
                 )
             text = _planner_message_text(response)
-            plan_payload = _planner_content_payload(text)
+            plan_payload, parse_trace = _planner_content_payload_with_trace(text)
             raw_usage = _raw_usage(response)
             return PlannerCallResult(
                 payload=plan_payload,
@@ -797,6 +841,10 @@ class TengliOpenAICompatibleGateway:
                 api_latency_seconds=time.perf_counter() - started,
                 actual_cost_micros=_usage_cost_micros(raw_usage),
                 http_status=status,
+                parse_trace=parse_trace,
+                structure_fingerprint=_planner_structure_fingerprint(
+                    plan_payload
+                ),
             )
         except XingheAgentError as exc:
             return PlannerCallResult(
@@ -808,6 +856,7 @@ class TengliOpenAICompatibleGateway:
                 actual_cost_micros=None,
                 error_code=exc.code,
                 error_message=str(exc),
+                error_path=exc.json_pointer,
             )
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
@@ -982,6 +1031,7 @@ class XinghePlanningCoordinator:
                         f"({type(exc).__name__})."
                     ),
                 )
+            result = _with_planner_observability(result)
             results.append(result)
             if result.error_code is not None:
                 return self._fail_planning(
@@ -990,6 +1040,7 @@ class XinghePlanningCoordinator:
                     result.error_code,
                     result.error_message or "Planner request failed.",
                     results,
+                    error_path=result.error_path,
                 )
             try:
                 validated.append(
@@ -1002,6 +1053,7 @@ class XinghePlanningCoordinator:
                     exc.code,
                     str(exc),
                     results,
+                    error_path=exc.json_pointer,
                 )
         return self._complete_planning(
             job_id,
@@ -1426,6 +1478,8 @@ class XinghePlanningCoordinator:
         error_code: str,
         error_message: str,
         results: Sequence[PlannerCallResult],
+        *,
+        error_path: str | None = None,
     ) -> JobStatus:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
@@ -1439,6 +1493,7 @@ class XinghePlanningCoordinator:
                 error_code,
                 error_message,
                 results,
+                error_path=error_path,
             )
             session.commit()
         return JobStatus.FAILED
@@ -1451,8 +1506,13 @@ class XinghePlanningCoordinator:
         error_code: str,
         error_message: str,
         results: Sequence[PlannerCallResult],
+        *,
+        error_path: str | None = None,
     ) -> None:
         planner_usage = [_planner_usage_record(result) for result in results]
+        planner_diagnostics = [
+            _planner_diagnostics_record(result) for result in results
+        ]
         failed_payload = {
             **dict(plan.payload),
             "state": "failed",
@@ -1463,15 +1523,17 @@ class XinghePlanningCoordinator:
                     "unreported_requests": 0,
                 },
             },
+            "planner_diagnostics": planner_diagnostics,
             "planner_request_count": len(results),
             "image_request_count": 0,
         }
         plan.payload = failed_payload
         plan.payload_hash = canonical_hash(failed_payload)
         plan.validation_status = PlanValidationStatus.INVALID.value
-        plan.validation_errors = [
-            {"code": error_code, "message": error_message}
-        ]
+        validation_error = {"code": error_code, "message": error_message}
+        if error_path is not None:
+            validation_error["path"] = error_path
+        plan.validation_errors = [validation_error]
         plan.validated_at = utc_now()
         job.error_code = error_code
         job.error_message = error_message
@@ -1525,6 +1587,12 @@ class XinghePlanningCoordinator:
                 request_id=plan.id,
                 details={
                     "error_code": error_code,
+                    **(
+                        {"error_path": error_path}
+                        if error_path is not None
+                        else {}
+                    ),
+                    "planner_diagnostics": planner_diagnostics,
                     "planner_request_count": len(results),
                     "image_request_count": 0,
                 },
@@ -1558,6 +1626,10 @@ class XinghePlanningCoordinator:
                             "unreported_requests": 0,
                         },
                     },
+                    "planner_diagnostics": [
+                        _planner_diagnostics_record(result)
+                        for result in results
+                    ],
                     "image_request_count": 0,
                 }
                 plan.payload = interrupted_payload
@@ -1772,6 +1844,9 @@ class XinghePlanningCoordinator:
                         "unreported_requests": 0,
                     },
                 },
+                "planner_diagnostics": [
+                    _planner_diagnostics_record(result) for result in results
+                ],
                 "metrics": {
                     "planning_time": sum(
                         result.api_latency_seconds for result in results
@@ -1818,6 +1893,10 @@ class XinghePlanningCoordinator:
                         "high_count": high_count,
                         "medium_count": medium_count,
                         "estimated_pending_micros": estimated_pending_cost,
+                        "planner_diagnostics": [
+                            _planner_diagnostics_record(result)
+                            for result in results
+                        ],
                     },
                 )
             )
@@ -2921,6 +3000,14 @@ def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
     }
 
 
+def _planner_diagnostics_record(result: PlannerCallResult) -> dict[str, Any]:
+    return {
+        "version": PLANNER_OBSERVABILITY_VERSION,
+        "parse_trace": list(result.parse_trace),
+        "structure_fingerprint": result.structure_fingerprint,
+    }
+
+
 def _image_usage_record(
     result: ImageCallResult,
     *,
@@ -3104,14 +3191,24 @@ def _planner_message_text(payload: Mapping[str, Any]) -> str:
         raise XingheAgentError(
             "PLANNER_RESPONSE_INVALID",
             "Planner response has no choices.",
+            json_pointer=_json_pointer("choices"),
         )
-    choice = _require_mapping(choices[0], "PLANNER_RESPONSE_INVALID")
-    message = _require_mapping(choice.get("message"), "PLANNER_RESPONSE_INVALID")
+    choice = _require_mapping(
+        choices[0],
+        "PLANNER_RESPONSE_INVALID",
+        path=_json_pointer("choices", 0),
+    )
+    message = _require_mapping(
+        choice.get("message"),
+        "PLANNER_RESPONSE_INVALID",
+        path=_json_pointer("choices", 0, "message"),
+    )
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
         raise XingheAgentError(
             "PLANNER_RESPONSE_INVALID",
             "Planner response has no JSON content.",
+            json_pointer=_json_pointer("choices", 0, "message", "content"),
         )
     return content
 
@@ -3125,17 +3222,166 @@ def _planner_content_payload(content: str) -> object:
     whitespace is stripped.
     """
 
+    payload, _ = _planner_content_payload_with_trace(content)
+    return payload
+
+
+def _planner_content_payload_with_trace(
+    content: str,
+) -> tuple[object, tuple[str, ...]]:
+    """Decode planner content while recording only fixed, content-free stages."""
+
     stripped = content.strip()
     try:
-        return json.loads(stripped)
+        return json.loads(stripped), ("whole_json:decoded",)
     except json.JSONDecodeError:
         match = _PLANNER_JSON_FENCE.fullmatch(stripped)
         if match is None:
-            return content
+            return content, (
+                "whole_json:decode_failed",
+                "fence:not_matched",
+            )
     try:
-        return json.loads(match.group("body"))
+        return json.loads(match.group("body")), (
+            "whole_json:decode_failed",
+            "fence:matched",
+            "fence_json:decoded",
+        )
     except json.JSONDecodeError:
-        return content
+        return content, (
+            "whole_json:decode_failed",
+            "fence:matched",
+            "fence_json:decode_failed",
+        )
+
+
+def _with_planner_observability(
+    result: PlannerCallResult,
+) -> PlannerCallResult:
+    trace = result.parse_trace
+    if not trace:
+        trace = (
+            ("provider_payload:not_available",)
+            if result.error_code is not None
+            else ("gateway_payload:predecoded",)
+        )
+    fingerprint = result.structure_fingerprint
+    if fingerprint is None and result.error_code is None:
+        fingerprint = _planner_structure_fingerprint(result.payload)
+    return replace(
+        result,
+        parse_trace=trace,
+        structure_fingerprint=fingerprint,
+    )
+
+
+def _planner_structure_fingerprint(payload: object) -> str:
+    """Hash a value-free schema profile for safe response correlation."""
+
+    profile: dict[str, Any] = {
+        "root": _json_shape_summary(payload),
+    }
+    if not isinstance(payload, Mapping):
+        return canonical_hash(
+            {
+                "version": PLANNER_OBSERVABILITY_VERSION,
+                "profile": profile,
+            }
+        )
+    profile["root"] = _known_fields_profile(
+        payload,
+        ("analysis", "plan"),
+    )
+    analysis = payload.get("analysis", _MISSING_JSON_VALUE)
+    profile["analysis"] = _known_fields_profile(
+        analysis,
+        (
+            "category_key",
+            "category_reason",
+            "product_image_analysis",
+            "product_consistency_anchors",
+            "buyer_objections",
+        ),
+    )
+    plan = payload.get("plan", _MISSING_JSON_VALUE)
+    profile["plan"] = _known_fields_profile(
+        plan,
+        (
+            "campaign_style_lock",
+            "design_strength_lock",
+            "screens",
+        ),
+    )
+    if isinstance(plan, Mapping):
+        screens = plan.get("screens", _MISSING_JSON_VALUE)
+        profile["screens"] = _json_shape_summary(screens)
+        if isinstance(screens, list):
+            profile["screen_items"] = [
+                _known_fields_profile(
+                    screen,
+                    (
+                        "role",
+                        "title",
+                        "label",
+                        "composition",
+                        "device",
+                        "difference",
+                    ),
+                )
+                for screen in screens
+            ]
+    return canonical_hash(
+        {
+            "version": PLANNER_OBSERVABILITY_VERSION,
+            "profile": profile,
+        }
+    )
+
+
+def _known_fields_profile(
+    value: object,
+    expected_fields: Sequence[str],
+) -> dict[str, Any]:
+    summary = _json_shape_summary(value)
+    if not isinstance(value, Mapping):
+        return summary
+    expected = set(expected_fields)
+    return {
+        **summary,
+        "unknown_field_count": sum(key not in expected for key in value),
+        "fields": {
+            field: _json_shape_summary(
+                value.get(field, _MISSING_JSON_VALUE)
+            )
+            for field in expected_fields
+        },
+    }
+
+
+def _json_shape_summary(value: object) -> dict[str, Any]:
+    if value is _MISSING_JSON_VALUE:
+        return {"type": "missing"}
+    if value is None:
+        return {"type": "null"}
+    if isinstance(value, bool):
+        return {"type": "boolean"}
+    if isinstance(value, str):
+        return {"type": "string"}
+    if isinstance(value, int | float):
+        return {"type": "number"}
+    if isinstance(value, Mapping):
+        return {"type": "object", "field_count": len(value)}
+    if isinstance(value, list):
+        item_types: dict[str, int] = {}
+        for item in value:
+            item_type = str(_json_shape_summary(item)["type"])
+            item_types[item_type] = item_types.get(item_type, 0) + 1
+        return {
+            "type": "array",
+            "item_count": len(value),
+            "item_types": dict(sorted(item_types.items())),
+        }
+    return {"type": "non_json"}
 
 
 def _image_bytes(payload: Mapping[str, Any]) -> bytes:
@@ -3227,17 +3473,39 @@ def _strict_page_count(value: object) -> int:
     return value
 
 
-def _require_mapping(value: object, code: str) -> dict[str, Any]:
+def _json_pointer(*tokens: str | int) -> str:
+    return "".join(
+        f"/{str(token).replace('~', '~0').replace('/', '~1')}"
+        for token in tokens
+    )
+
+
+def _require_mapping(
+    value: object,
+    code: str,
+    *,
+    path: str | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise XingheAgentError(code, "Expected a JSON object.")
+        raise XingheAgentError(
+            code,
+            "Expected a JSON object.",
+            json_pointer=path,
+        )
     return dict(value)
 
 
-def _require_nonempty_string(value: object, field_name: str) -> str:
+def _require_nonempty_string(
+    value: object,
+    field_name: str,
+    *,
+    path: str | None = None,
+) -> str:
     if not isinstance(value, str) or not value.strip():
         raise XingheAgentError(
             "PLANNER_SCHEMA_INVALID",
             f"Required text field {field_name!r} is missing.",
+            json_pointer=path,
         )
     return value.strip()
 

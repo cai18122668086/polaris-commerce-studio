@@ -46,9 +46,13 @@ from app.xinghe_agent import (
     TengliOpenAICompatibleGateway,
     XingheAgentError,
     XingheImageProvider,
+    _json_pointer,
+    _planner_content_payload_with_trace,
+    _planner_structure_fingerprint,
     build_resume_signature,
     normalize_usage,
     quality_for_role,
+    validate_planner_payload,
 )
 from tests.test_api import WORKSPACE_ID, dispatch_pending, idem, upload_asset
 
@@ -643,6 +647,176 @@ def _valid_planner_content(page_count: int) -> dict[str, Any]:
     }
 
 
+def _planner_validation_path_cases() -> list[Any]:
+    cases: list[Any] = [
+        pytest.param(7, 1, "", id="root"),
+        pytest.param(
+            {"plan": _valid_planner_content(1)["plan"]},
+            1,
+            "/analysis",
+            id="analysis",
+        ),
+        pytest.param(
+            {"analysis": _valid_planner_content(1)["analysis"]},
+            1,
+            "/plan",
+            id="plan",
+        ),
+    ]
+    mutations = [
+        (
+            "category-key",
+            ("analysis", "category_key"),
+            "",
+            "/analysis/category_key",
+        ),
+        (
+            "product-image-analysis",
+            ("analysis", "product_image_analysis"),
+            [],
+            "/analysis/product_image_analysis",
+        ),
+        (
+            "buyer-objections",
+            ("analysis", "buyer_objections"),
+            [],
+            "/analysis/buyer_objections",
+        ),
+        (
+            "campaign-style-lock",
+            ("plan", "campaign_style_lock"),
+            [],
+            "/plan/campaign_style_lock",
+        ),
+        (
+            "design-strength-lock",
+            ("plan", "design_strength_lock"),
+            None,
+            "/plan/design_strength_lock",
+        ),
+        (
+            "screens-type",
+            ("plan", "screens"),
+            {},
+            "/plan/screens",
+        ),
+        (
+            "screen-item",
+            ("plan", "screens", 0),
+            7,
+            "/plan/screens/0",
+        ),
+        (
+            "screen-title",
+            ("plan", "screens", 0, "title"),
+            " ",
+            "/plan/screens/0/title",
+        ),
+    ]
+    for case_id, path, replacement, expected_path in mutations:
+        payload = _valid_planner_content(1)
+        target: Any = payload
+        for token in path[:-1]:
+            target = target[token]
+        target[path[-1]] = replacement
+        cases.append(
+            pytest.param(payload, 1, expected_path, id=case_id)
+        )
+    cases.append(
+        pytest.param(
+            _valid_planner_content(1),
+            2,
+            "/plan/screens",
+            id="screen-count",
+        )
+    )
+    return cases
+
+
+@pytest.mark.parametrize(
+    ("payload", "page_count", "expected_path"),
+    _planner_validation_path_cases(),
+)
+def test_planner_schema_errors_use_json_pointer_paths(
+    payload: object,
+    page_count: int,
+    expected_path: str,
+) -> None:
+    with pytest.raises(XingheAgentError) as exc_info:
+        validate_planner_payload(payload, page_count)
+
+    assert exc_info.value.code == "PLANNER_SCHEMA_INVALID"
+    assert exc_info.value.json_pointer == expected_path
+
+
+def test_json_pointer_escapes_reference_tokens() -> None:
+    assert _json_pointer("a/b", "~key", 0) == "/a~1b/~0key/0"
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_trace", "decoded"),
+    [
+        (
+            json.dumps(_valid_planner_content(1)),
+            ("whole_json:decoded",),
+            True,
+        ),
+        (
+            f"```json\n{json.dumps(_valid_planner_content(1))}\n```",
+            (
+                "whole_json:decode_failed",
+                "fence:matched",
+                "fence_json:decoded",
+            ),
+            True,
+        ),
+        (
+            "unsafe raw planner content",
+            (
+                "whole_json:decode_failed",
+                "fence:not_matched",
+            ),
+            False,
+        ),
+        (
+            "```json\n{not-json}\n```",
+            (
+                "whole_json:decode_failed",
+                "fence:matched",
+                "fence_json:decode_failed",
+            ),
+            False,
+        ),
+    ],
+    ids=["whole-json", "fenced-json", "not-fenced", "invalid-fenced-json"],
+)
+def test_planner_parse_trace_is_fixed_and_content_free(
+    content: str,
+    expected_trace: tuple[str, ...],
+    decoded: bool,
+) -> None:
+    payload, trace = _planner_content_payload_with_trace(content)
+
+    assert trace == expected_trace
+    assert isinstance(payload, dict) is decoded
+    assert content not in json.dumps(trace)
+
+
+def test_planner_structure_fingerprint_uses_shape_not_values() -> None:
+    first = _valid_planner_content(1)
+    same_shape = deepcopy(first)
+    same_shape["analysis"]["category_key"] = "secret-category-value"
+    same_shape["plan"]["screens"][0]["title"] = "secret-title-value"
+    changed_shape = deepcopy(first)
+    del changed_shape["plan"]["screens"][0]["title"]
+
+    first_fingerprint = _planner_structure_fingerprint(first)
+    assert _planner_structure_fingerprint(same_shape) == first_fingerprint
+    assert _planner_structure_fingerprint(changed_shape) != first_fingerprint
+    assert len(first_fingerprint) == 64
+    assert "secret" not in first_fingerprint
+
+
 class _PlannerContentTransport(_Budget429Transport):
     def __init__(self, content: str, *, page_count: int) -> None:
         super().__init__(page_count)
@@ -745,47 +919,62 @@ def test_strict_planner_content_reaches_confirmation_gate(
         assert planner_usage["actual_cost_micros"] is None
         assert plan_payload["cost"]["budget_limit_micros"] == 200_000_000
         assert plan_payload["cost"]["estimated_pending_micros"] == 540_000
+        diagnostics = plan_payload["planner_diagnostics"]
+        assert len(diagnostics) == 1
+        assert diagnostics[0]["version"] == "xinghe-planner-observability-v1"
+        assert diagnostics[0]["parse_trace"][-1].endswith(":decoded")
+        assert len(diagnostics[0]["structure_fingerprint"]) == 64
+        assert set(diagnostics[0]["structure_fingerprint"]) <= set(
+            "0123456789abcdef"
+        )
         assert transport.planner_calls == 1
         assert transport.image_calls == 0
 
 
 @pytest.mark.parametrize(
-    ("content", "expected_code"),
+    ("content", "expected_code", "expected_path"),
     [
-        ("plain non-JSON text", "PLANNER_SCHEMA_INVALID"),
-        ("7", "PLANNER_SCHEMA_INVALID"),
-        ('[{"analysis": {}, "plan": {}}]', "PLANNER_SCHEMA_INVALID"),
+        ("plain non-JSON text", "PLANNER_SCHEMA_INVALID", ""),
+        ("7", "PLANNER_SCHEMA_INVALID", ""),
+        ('[{"analysis": {}, "plan": {}}]', "PLANNER_SCHEMA_INVALID", ""),
         (
             f"{json.dumps(_valid_planner_content(6))}\n"
             f"{json.dumps(_valid_planner_content(6))}",
             "PLANNER_SCHEMA_INVALID",
+            "",
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n"
             "```\n7\n```",
             "PLANNER_SCHEMA_INVALID",
+            "",
         ),
         (
             f"Planner result:\n```json\n"
             f"{json.dumps(_valid_planner_content(6))}\n```",
             "PLANNER_SCHEMA_INVALID",
+            "",
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n"
             "End of planner result.",
             "PLANNER_SCHEMA_INVALID",
+            "",
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(6))}",
             "PLANNER_SCHEMA_INVALID",
+            "",
         ),
         (
             json.dumps({"analysis": {}, "plan": {}}),
             "PLANNER_SCHEMA_INVALID",
+            "/analysis/category_key",
         ),
         (
             f"```json\n{json.dumps(_valid_planner_content(5))}\n```",
             "PLANNER_SCHEMA_INVALID",
+            "/plan/screens",
         ),
     ],
     ids=[
@@ -805,6 +994,7 @@ def test_unsafe_planner_content_fails_closed_before_image(
     settings: Settings,
     content: str,
     expected_code: str,
+    expected_path: str,
 ) -> None:
     page_count = 6
     with TestClient(create_app(settings)) as client:
@@ -825,6 +1015,13 @@ def test_unsafe_planner_content_fails_closed_before_image(
 
         assert failed["status"] == JobStatus.FAILED.value
         assert failed["error_code"] == expected_code
+        assert failed["plan"]["validation_errors"] == [
+            {
+                "code": expected_code,
+                "message": failed["error_message"],
+                "path": expected_path,
+            }
+        ]
         plan_payload = failed["plan"]["payload"]
         assert plan_payload["planner_request_count"] == 1
         assert plan_payload["image_request_count"] == 0
@@ -835,6 +1032,57 @@ def test_unsafe_planner_content_fails_closed_before_image(
         assert planner_usage["actual_cost_micros"] is None
         assert plan_payload.get("cost", {}).get("budget_limit_micros") is None
         assert plan_payload.get("cost", {}).get("estimated_pending_micros") is None
+        diagnostics = plan_payload["planner_diagnostics"]
+        assert len(diagnostics) == 1
+        assert diagnostics[0]["version"] == "xinghe-planner-observability-v1"
+        assert diagnostics[0]["parse_trace"]
+        assert len(diagnostics[0]["structure_fingerprint"]) == 64
+        with client.app.state.session_factory() as session:
+            audit = session.scalar(
+                select(AuditEventRecord).where(
+                    AuditEventRecord.resource_id == job["id"],
+                    AuditEventRecord.action == "xinghe.planning_failed",
+                )
+            )
+        assert audit is not None
+        assert audit.details["error_path"] == expected_path
+        assert audit.details["planner_diagnostics"] == diagnostics
+        assert transport.planner_calls == 1
+        assert transport.image_calls == 0
+
+
+def test_planner_diagnostics_never_persist_response_content(
+    settings: Settings,
+) -> None:
+    marker = "sensitive-planner-response-marker"
+    with TestClient(create_app(settings)) as client:
+        transport = _PlannerContentTransport(marker, page_count=1)
+        _install_budget_runner(
+            client,
+            transport,
+            budget_limit_micros=200_000_000,
+            concurrency=1,
+        )
+        source = upload_asset(client, filename="diagnostics-redaction.jpg")
+        job = _create_detail_job(client, [source["id"]], page_count=1)
+
+        assert dispatch_pending(client) == 1
+        failed = client.get(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+        ).json()
+        with client.app.state.session_factory() as session:
+            audit = session.scalar(
+                select(AuditEventRecord).where(
+                    AuditEventRecord.resource_id == job["id"],
+                    AuditEventRecord.action == "xinghe.planning_failed",
+                )
+            )
+
+        assert failed["status"] == JobStatus.FAILED.value
+        assert failed["plan"]["validation_errors"][0]["path"] == ""
+        assert marker not in json.dumps(failed, sort_keys=True)
+        assert audit is not None
+        assert marker not in json.dumps(audit.details, sort_keys=True)
         assert transport.planner_calls == 1
         assert transport.image_calls == 0
 

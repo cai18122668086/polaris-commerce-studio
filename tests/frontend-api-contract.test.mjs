@@ -47,6 +47,14 @@ test("business UI is API-backed and runtime capability is fail-closed", async ()
   assert.match(runtime, /真实生成未启用/);
 });
 
+test("browser API client defaults to the same-origin edge proxy", async () => {
+  const client = await utf8("lib/api/client.ts");
+  assert.ok(client.includes(
+    'process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ""',
+  ));
+  assert.equal(client.includes("localhost:8000"), false);
+});
+
 test("runtime sources contain no non-loopback remote URLs", async () => {
   const files = await sourceFiles(["app", "components", "features", "lib"]);
   for (const file of files) {

@@ -2659,8 +2659,11 @@ select:focus-visible {
   letter-spacing: 0.12em;
 }
 
-.drawer-head strong {
+.drawer-head strong,
+.drawer-head h2 {
+  margin: 0;
   font-size: 19px;
+  font-weight: 700;
 }
 
 .drawer-summary {

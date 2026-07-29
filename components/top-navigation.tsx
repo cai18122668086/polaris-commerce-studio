@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { RefObject } from "react";
 import {
   Bell,
   ChevronDown,
@@ -27,10 +28,14 @@ export function TopNavigation({
   onOpenTasks,
   onOpenSidebar,
   showMenu = true,
+  taskOpen,
+  taskTriggerRef,
 }: {
   onOpenTasks: () => void;
   onOpenSidebar: () => void;
   showMenu?: boolean;
+  taskOpen: boolean;
+  taskTriggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const pathname = usePathname();
   const { workspace } = useWorkspace();
@@ -89,7 +94,15 @@ export function TopNavigation({
             <Bell size={19} />
             <i className="notification-dot" />
           </button>
-          <button className="task-trigger" onClick={onOpenTasks}>
+          <button
+            ref={taskTriggerRef}
+            className="task-trigger"
+            onClick={onOpenTasks}
+            aria-label={`打开任务中心，${activeCount} 个进行中任务`}
+            aria-controls="task-drawer"
+            aria-expanded={taskOpen}
+            aria-haspopup="dialog"
+          >
             <PanelRightOpen size={18} />
             <span>任务</span>
             <i>{activeCount}</i>

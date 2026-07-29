@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { TopNavigation } from "./top-navigation";
 import { ToolSidebar } from "./tool-sidebar";
 import { TaskDrawer } from "./task-drawer";
@@ -17,6 +17,7 @@ export function AppShell({
 }) {
   const [taskOpen, setTaskOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const taskTriggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="app-shell">
@@ -24,6 +25,8 @@ export function AppShell({
         onOpenTasks={() => setTaskOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}
         showMenu={sidebar}
+        taskOpen={taskOpen}
+        taskTriggerRef={taskTriggerRef}
       />
       <RuntimeCapabilityBanner />
       <div className="app-shell__body">
@@ -42,7 +45,11 @@ export function AppShell({
           {children}
         </main>
       </div>
-      <TaskDrawer open={taskOpen} onClose={() => setTaskOpen(false)} />
+      <TaskDrawer
+        open={taskOpen}
+        onClose={() => setTaskOpen(false)}
+        triggerRef={taskTriggerRef}
+      />
     </div>
   );
 }

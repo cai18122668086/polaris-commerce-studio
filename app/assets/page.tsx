@@ -137,9 +137,10 @@ export default function AssetsPage() {
             <div className="view-toggle"><button className="active" aria-label="网格视图"><LayoutGrid size={17} /></button></div>
           </div>
           <div className="asset-toolbar">
-            <label className="search-field">
+            <label className="search-field" htmlFor="asset-search">
+              <span className="visually-hidden">搜索素材</span>
               <Search size={16} />
-              <input placeholder="搜索素材名称" value={query} onChange={(event) => setQuery(event.target.value)} />
+              <input id="asset-search" placeholder="搜索素材名称" value={query} onChange={(event) => setQuery(event.target.value)} />
             </label>
             <span className="asset-count">{assets.length} 个素材</span>
           </div>

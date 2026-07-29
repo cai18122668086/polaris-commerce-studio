@@ -151,7 +151,7 @@ export default function JobsPage() {
             </div>
           </div>
           <div className="records-toolbar">
-            <label className="search-field"><Search size={16} /><input placeholder="搜索任务名称或编号" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+            <label className="search-field" htmlFor="job-search"><span className="visually-hidden">搜索任务</span><Search size={16} /><input id="job-search" placeholder="搜索任务名称或编号" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
             <span>{jobs.length} 个任务</span>
           </div>
 

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import test from "node:test";
@@ -66,6 +69,8 @@ test("production server serves every compiled module and stylesheet", async () =
     const businessRoute = await fetch(`http://${host}:${port}/assets`);
     assert.equal(businessRoute.status, 200);
     assert.match(businessRoute.headers.get("content-type") ?? "", /^text\/html\b/i);
+
+    await assertBrowserFocusContract(`http://${host}:${port}`);
   } finally {
     await stopProcessTree(child);
   }
@@ -141,6 +146,323 @@ function assertNamedInteractiveControls(html, route) {
       ariaLabel || visibleText,
       `${route} contains an unnamed <${tag}> control: ${match[0].slice(0, 180)}`,
     );
+  }
+}
+
+async function assertBrowserFocusContract(origin) {
+  const executable = findBrowserExecutable();
+  assert.ok(
+    executable,
+    "A Chromium browser is required for the production focus regression",
+  );
+  const debugPort = await reservePort();
+  const profile = await mkdtemp(path.join(os.tmpdir(), "polaris-browser-"));
+  const browserProcess = spawn(
+    executable,
+    [
+      "--headless=new",
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-default-apps",
+      "--disable-extensions",
+      "--disable-features=OptimizationHints,OptimizationGuideModelDownloading",
+      "--disable-gpu",
+      "--no-default-browser-check",
+      "--no-first-run",
+      "--no-sandbox",
+      `--remote-debugging-port=${debugPort}`,
+      `--user-data-dir=${profile}`,
+      "about:blank",
+    ],
+    { stdio: "ignore", windowsHide: true },
+  );
+
+  let cdp;
+  try {
+    const target = await waitForBrowserTarget(debugPort, browserProcess);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Accessibility.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+
+    await navigate(cdp, `${origin}/assets`);
+    await waitForValue(
+      cdp,
+      `document.querySelector(".task-trigger")?.getAttribute("aria-label")?.includes("任务中心")`,
+    );
+    const triggerName = await accessibleName(cdp, "button", "任务中心");
+    assert.match(triggerName, /任务中心/);
+    assert.match(triggerName, /\d+/);
+    assert.doesNotMatch(triggerName.trim(), /^\d+$/);
+    assert.equal(await inputLabel(cdp, "#asset-search"), "搜索素材");
+
+    await evaluate(
+      cdp,
+      `(() => {
+        const trigger = document.querySelector(".task-trigger");
+        trigger.focus();
+        trigger.click();
+        return true;
+      })()`,
+    );
+    await waitForValue(
+      cdp,
+      `document.activeElement?.getAttribute("aria-label") === "关闭任务抽屉" && document.querySelector("#task-drawer")?.classList.contains("open")`,
+    );
+    assert.equal(await accessibleName(cdp, "dialog", "内部 mock 进度"), "内部 mock 进度");
+    await evaluate(
+      cdp,
+      `document.querySelector("#task-drawer .drawer-head button")?.click()`,
+    );
+    await waitForTriggerFocus(cdp);
+
+    await openTaskDrawer(cdp);
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key: "Escape",
+      code: "Escape",
+    });
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: "Escape",
+      code: "Escape",
+    });
+    await waitForTriggerFocus(cdp);
+
+    await openTaskDrawer(cdp);
+    await evaluate(cdp, `document.querySelector(".drawer-overlay")?.click()`);
+    await waitForTriggerFocus(cdp);
+
+    await navigate(cdp, `${origin}/jobs`);
+    assert.equal(await inputLabel(cdp, "#job-search"), "搜索任务");
+
+    for (const route of routes) {
+      await navigate(cdp, `${origin}${route}`);
+      await assertAccessibleInteractiveNames(cdp, route);
+    }
+  } finally {
+    cdp?.close();
+    await stopProcessTree(browserProcess);
+    await rm(profile, {
+      recursive: true,
+      force: true,
+      maxRetries: 8,
+      retryDelay: 125,
+    });
+  }
+}
+
+function findBrowserExecutable() {
+  const candidates =
+    process.platform === "win32"
+      ? [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+          "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        ]
+      : process.platform === "darwin"
+        ? [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+          ]
+        : [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+          ];
+  return candidates.find(existsSync);
+}
+
+async function waitForBrowserTarget(port, browserProcess) {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (browserProcess.exitCode !== null) {
+      throw new Error("Chromium exited before its debugging target was ready");
+    }
+    try {
+      const response = await fetch(`http://${host}:${port}/json/list`);
+      if (response.ok) {
+        const targets = await response.json();
+        const page = targets.find(
+          (target) => target.type === "page" && target.webSocketDebuggerUrl,
+        );
+        if (page) return page;
+      }
+    } catch {
+      // The debugging endpoint has not bound yet.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Chromium debugging target did not become ready");
+}
+
+async function navigate(cdp, url) {
+  const loaded = cdp.waitFor("Page.loadEventFired");
+  await cdp.send("Page.navigate", { url });
+  await loaded;
+}
+
+async function openTaskDrawer(cdp) {
+  await evaluate(
+    cdp,
+    `(() => {
+      const trigger = document.querySelector(".task-trigger");
+      trigger.focus();
+      trigger.click();
+      return true;
+    })()`,
+  );
+  await waitForValue(
+    cdp,
+    `document.activeElement?.getAttribute("aria-label") === "关闭任务抽屉"`,
+  );
+}
+
+async function waitForTriggerFocus(cdp) {
+  await waitForValue(
+    cdp,
+    `document.activeElement?.classList.contains("task-trigger") && document.querySelector(".task-trigger")?.getAttribute("aria-expanded") === "false"`,
+  );
+}
+
+async function inputLabel(cdp, selector) {
+  return evaluate(
+    cdp,
+    `document.querySelector(${JSON.stringify(selector)})?.labels?.[0]?.textContent?.trim()`,
+  );
+}
+
+async function accessibleName(cdp, role, includes) {
+  const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+  const node = nodes.find(
+    (candidate) =>
+      candidate.role?.value === role &&
+      candidate.name?.value?.includes(includes),
+  );
+  assert.ok(node, `Expected accessible ${role} containing "${includes}"`);
+  return node.name.value;
+}
+
+async function assertAccessibleInteractiveNames(cdp, route) {
+  const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+  const interactiveRoles = new Set([
+    "button",
+    "checkbox",
+    "combobox",
+    "link",
+    "radio",
+    "searchbox",
+    "textbox",
+  ]);
+  for (const node of nodes) {
+    if (node.ignored || !interactiveRoles.has(node.role?.value)) continue;
+    const name = node.name?.value?.trim() ?? "";
+    assert.ok(name, `${route} contains an unnamed ${node.role.value}`);
+    assert.doesNotMatch(
+      name,
+      /^\d+$/,
+      `${route} contains a numeric-only ${node.role.value}: ${name}`,
+    );
+  }
+}
+
+async function waitForValue(cdp, expression) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (await evaluate(cdp, expression)) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Browser condition did not become true: ${expression}`);
+}
+
+async function evaluate(cdp, expression) {
+  const result = await cdp.send("Runtime.evaluate", {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  if (result.exceptionDetails) {
+    throw new Error(result.exceptionDetails.text);
+  }
+  return result.result.value;
+}
+
+class CdpClient {
+  constructor(socket) {
+    this.socket = socket;
+    this.nextId = 0;
+    this.pending = new Map();
+    this.listeners = new Map();
+    socket.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      if (message.id) {
+        const pending = this.pending.get(message.id);
+        if (!pending) return;
+        this.pending.delete(message.id);
+        if (message.error) pending.reject(new Error(message.error.message));
+        else pending.resolve(message.result);
+        return;
+      }
+      const listeners = this.listeners.get(message.method);
+      if (!listeners?.length) return;
+      this.listeners.delete(message.method);
+      for (const listener of listeners) listener(message.params);
+    });
+  }
+
+  static async connect(url) {
+    const socket = new WebSocket(url);
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("CDP connection timed out")),
+        10_000,
+      );
+      socket.addEventListener(
+        "open",
+        () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        { once: true },
+      );
+      socket.addEventListener(
+        "error",
+        () => {
+          clearTimeout(timeout);
+          reject(new Error("CDP connection failed"));
+        },
+        { once: true },
+      );
+    });
+    return new CdpClient(socket);
+  }
+
+  send(method, params = {}) {
+    const id = ++this.nextId;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.socket.send(JSON.stringify({ id, method, params }));
+    });
+  }
+
+  waitFor(method) {
+    return new Promise((resolve) => {
+      const listeners = this.listeners.get(method) ?? [];
+      listeners.push(resolve);
+      this.listeners.set(method, listeners);
+    });
+  }
+
+  close() {
+    this.socket.close();
   }
 }
 

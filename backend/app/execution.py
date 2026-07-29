@@ -488,10 +488,15 @@ class ExecutionCoordinator:
                 retryable=False,
                 artifact=None,
             )
+        suffix = (
+            ".png"
+            if artifact.content_type == "image/png"
+            else Path(artifact.filename).suffix or ".bin"
+        )
         object_key = (
             f"{lease.workspace_id}/generated/"
             f"{hashlib.sha256(lease.provider_idempotency_key.encode()).hexdigest()}"
-            ".jpg"
+            f"{suffix}"
         )
         try:
             stored = await self.artifact_storage.save_validated(
@@ -690,6 +695,7 @@ class ExecutionCoordinator:
                 )
                 item.error_code = None
                 item.error_message = None
+                item.error_details = None
             elif result.outcome == ProviderOutcome.FAILED:
                 attempt.status = AttemptStatus.FAILED.value
                 should_retry = (
@@ -710,6 +716,21 @@ class ExecutionCoordinator:
             if result.outcome != ProviderOutcome.SUCCEEDED:
                 item.error_code = item.error_code or result.error_code
                 item.error_message = result.error_message
+                metrics_value = result.raw_usage.get("metrics")
+                failure_metrics = (
+                    dict(metrics_value)
+                    if isinstance(metrics_value, dict)
+                    else {}
+                )
+                delivery_status = failure_metrics.get("delivery_status")
+                item.error_details = {
+                    "retryable": bool(result.retryable),
+                    "needs_reselection": bool(
+                        failure_metrics.get("needs_reselection")
+                    )
+                    or delivery_status == "needs_reselection_for_strict_lock",
+                    "provider_outcome": result.outcome.value,
+                }
             item.finished_at = (
                 None
                 if item.status == JobItemStatus.PENDING.value
@@ -723,6 +744,12 @@ class ExecutionCoordinator:
             ):
                 stored = result.persisted_artifact
                 asset_id = new_id("asset")
+                metrics_value = result.raw_usage.get("metrics")
+                result_metrics = (
+                    dict(metrics_value)
+                    if isinstance(metrics_value, dict)
+                    else {}
+                )
                 session.add(
                     AssetRecord(
                         id=asset_id,
@@ -750,6 +777,7 @@ class ExecutionCoordinator:
                             ),
                             "actual_width": stored.width,
                             "actual_height": stored.height,
+                            "provider_metrics": result_metrics,
                         },
                     )
                 )
@@ -760,7 +788,11 @@ class ExecutionCoordinator:
                         job_item_id=item.id,
                         asset_id=asset_id,
                         direction=JobAssetDirection.OUTPUT.value,
-                        role="detail_page",
+                        role=(
+                            "local_edit_result"
+                            if job.type == JobType.LOCAL_EDIT.value
+                            else "detail_page"
+                        ),
                         ordinal=item.ordinal,
                         is_deliverable=True,
                         validation={
@@ -769,6 +801,9 @@ class ExecutionCoordinator:
                             "actual_height": stored.height,
                             "requested_size": item.configuration.get("size"),
                             "locally_resampled": False,
+                            "outside_changed_pixels": result_metrics.get(
+                                "outside_changed_pixels"
+                            ),
                         },
                     )
                 )
@@ -1103,9 +1138,26 @@ def build_fake_coordinator(
         max_concurrency=xinghe_concurrency,
         budget_limit_micros=budget_limit_micros,
     )
+    default_provider = build_fake_skill_runtime_provider(
+        session_factory,
+        delay_seconds,
+    )
+    local_provider: Provider = default_provider
+    if xinghe_gateway is not None:
+        if storage is None:
+            raise ValueError("Real local-edit provider requires image storage.")
+        from .masked_repair import MaskedEditGateway, MaskedRepairProvider
+
+        local_provider = MaskedRepairProvider(
+            session_factory,
+            cast("MaskedEditGateway", gateway),
+            storage,
+            budget_limit_micros=budget_limit_micros,
+        )
     provider = OperationRoutingProvider(
-        build_fake_skill_runtime_provider(session_factory, delay_seconds),
+        default_provider,
         detail_provider,
+        local_provider,
     )
     return ExecutionCoordinator(
         session_factory,

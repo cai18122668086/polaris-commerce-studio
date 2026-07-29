@@ -43,6 +43,10 @@ from .domain import (
     RetryScope,
 )
 from .errors import ApiError, UploadValidationError
+from .masked_repair import (
+    MaskedRepairError,
+    validate_local_edit_asset_records,
+)
 from .models import (
     AssetRecord,
     JobAssetRecord,
@@ -281,6 +285,19 @@ def runtime_status_response(
     authentication_mode: Literal["development", "external"],
     task_runner: Literal["mock", "tengli"],
 ) -> RuntimeStatusResponse:
+    local_edit = (
+        CapabilityStatus(
+            availability="available",
+            execution="mock",
+            reason_code="TASK_RUNNER_MOCK",
+        )
+        if task_runner == "mock"
+        else CapabilityStatus(
+            availability="available",
+            execution="provider",
+            reason_code=None,
+        )
+    )
     detail_pack = (
         CapabilityStatus(
             availability="available",
@@ -304,11 +321,7 @@ def runtime_status_response(
                 execution="local",
                 reason_code=None,
             ),
-            local_edit=CapabilityStatus(
-                availability="available",
-                execution="mock",
-                reason_code="LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
-            ),
+            local_edit=local_edit,
             detail_pack=detail_pack,
             external_authentication=CapabilityStatus(
                 availability="unavailable",
@@ -704,7 +717,20 @@ def create_job(
         ),
     )
     asset_ids = [item[0] for item in asset_roles]
-    get_ready_assets(session, workspace.workspace_id, asset_ids)
+    assets = get_ready_assets(session, workspace.workspace_id, asset_ids)
+    if isinstance(payload, LocalEditJobCreate):
+        try:
+            validate_local_edit_asset_records(
+                assets[payload.input.source_asset_id],
+                assets[payload.input.selection_mask_asset_id],
+            )
+        except MaskedRepairError as exc:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                exc.code,
+                str(exc),
+                {"needs_reselection": exc.needs_reselection},
+            ) from exc
     session.add(job)
     session.flush()
     _add_items_and_inputs(session, job, asset_roles)
@@ -1314,10 +1340,12 @@ def _new_job_from_payload(
         )
         _, _, credits = estimate_job(JobType(payload.type), item_count)
     else:
-        minimum, maximum, credits = estimate_job(
-            JobType(payload.type),
-            item_count,
+        minimum = min(
+            detail_medium_price_micros,
+            detail_high_price_micros,
         )
+        maximum = max(detail_medium_price_micros, detail_high_price_micros)
+        _, _, credits = estimate_job(JobType(payload.type), item_count)
     is_submit = payload.intent == "submit"
     job = JobRecord(
         id=new_id("job"),
@@ -1384,7 +1412,10 @@ def _copy_job_for_retry(
     selected: list[str],
 ) -> JobRecord:
     minimum, maximum, credits = estimate_job(JobType(source.type), len(selected))
-    if source.type == JobType.DETAIL_PACK.value:
+    if source.type == JobType.LOCAL_EDIT.value:
+        minimum = source.estimated_cost_min_micros or minimum
+        maximum = source.estimated_cost_max_micros or maximum
+    elif source.type == JobType.DETAIL_PACK.value:
         source_plan = session.scalar(
             select(JobPlanRecord)
             .where(JobPlanRecord.job_id == source.id)

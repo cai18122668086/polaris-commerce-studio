@@ -38,6 +38,11 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
+from .masked_repair import (
+    MASKED_REPAIR_MODEL,
+    MaskedEditCallResult,
+    MaskedEditGatewayRequest,
+)
 from .models import (
     AssetRecord,
     AuditEventRecord,
@@ -1011,6 +1016,84 @@ class TengliOpenAICompatibleGateway:
                     if request.quality == "high"
                     else self.medium_price_micros
                 ),
+                error_code=exc.code,
+                error_message=str(exc),
+                retryable=exc.retryable,
+            )
+
+    async def edit_masked(
+        self,
+        request: MaskedEditGatewayRequest,
+    ) -> MaskedEditCallResult:
+        """Send an exact-canvas source plus a distinct API guidance mask."""
+
+        fields = [
+            ("model", MASKED_REPAIR_MODEL),
+            ("prompt", request.prompt),
+            ("n", "1"),
+            ("size", f"{request.width}x{request.height}"),
+            ("quality", request.quality),
+            ("output_format", "png"),
+            ("response_format", "b64_json"),
+        ]
+        files = [
+            ("image", "source.png", "image/png", request.source_png),
+            ("mask", "mask_api.png", "image/png", request.api_mask_png),
+        ]
+        estimated_cost = (
+            self.high_price_micros
+            if request.quality == "high"
+            else self.medium_price_micros
+        )
+        try:
+            self.external_network_request_count += 1
+            status, response = await self.transport.post_multipart(
+                url=urljoin(self.base_url, "v1/images/edits"),
+                headers=self._headers(request.idempotency_key),
+                fields=fields,
+                files=files,
+                timeout_seconds=self.timeout_seconds,
+            )
+            raw_usage = _raw_usage(response)
+            normalized = normalize_usage(raw_usage)
+            if status >= 400:
+                rate_limited = status == 429
+                return MaskedEditCallResult(
+                    outcome=ProviderOutcome.FAILED,
+                    provider_request_id=_safe_request_id(response),
+                    raw_usage=raw_usage,
+                    normalized_usage=normalized,
+                    actual_cost_micros=_usage_cost_micros(raw_usage),
+                    estimated_cost_micros=estimated_cost,
+                    error_code=(
+                        "LOCAL_EDIT_RATE_LIMITED"
+                        if rate_limited
+                        else "LOCAL_EDIT_REQUEST_FAILED"
+                    ),
+                    error_message=f"Local-edit request failed with HTTP {status}.",
+                    retryable=rate_limited or status >= 500,
+                    http_status=status,
+                )
+            image_bytes = _image_bytes(response)
+            artifact = _masked_png_artifact(image_bytes)
+            return MaskedEditCallResult(
+                outcome=ProviderOutcome.SUCCEEDED,
+                provider_request_id=_safe_request_id(response),
+                raw_usage=raw_usage,
+                normalized_usage=normalized,
+                actual_cost_micros=_usage_cost_micros(raw_usage),
+                estimated_cost_micros=estimated_cost,
+                artifact=artifact,
+                http_status=status,
+            )
+        except XingheAgentError as exc:
+            return MaskedEditCallResult(
+                outcome=ProviderOutcome.FAILED,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                actual_cost_micros=None,
+                estimated_cost_micros=estimated_cost,
                 error_code=exc.code,
                 error_message=str(exc),
                 retryable=exc.retryable,
@@ -2485,13 +2568,17 @@ class OperationRoutingProvider:
         self,
         default_provider: Provider,
         detail_provider: Provider,
+        local_provider: Provider | None = None,
     ) -> None:
         self.default_provider = default_provider
         self.detail_provider = detail_provider
+        self.local_provider = local_provider or default_provider
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if request.operation == "detail_pack":
             return await self.detail_provider.execute(request)
+        if request.operation == "local_edit":
+            return await self.local_provider.execute(request)
         return await self.default_provider.execute(request)
 
 
@@ -3235,6 +3322,34 @@ def _artifact_from_bytes(payload: bytes, *, filename: str) -> ProviderArtifact:
         content_type="image/jpeg",
         width=width,
         height=height,
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+
+
+def _masked_png_artifact(
+    payload: bytes,
+) -> ProviderArtifact:
+    try:
+        with Image.open(BytesIO(payload)) as image:
+            actual_width, actual_height = image.size
+            image_format = image.format
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise XingheAgentError(
+            "LOCAL_EDIT_RESPONSE_INVALID",
+            "Provider returned an invalid local-edit image.",
+        ) from exc
+    if image_format != "PNG":
+        raise XingheAgentError(
+            "LOCAL_EDIT_RESPONSE_FORMAT_INVALID",
+            "Provider did not return the requested PNG format.",
+        )
+    return ProviderArtifact(
+        payload=payload,
+        filename="local-edit-provider-raw.png",
+        content_type="image/png",
+        width=actual_width,
+        height=actual_height,
         sha256=hashlib.sha256(payload).hexdigest(),
     )
 

@@ -1,0 +1,943 @@
+"""Strict, workspace-scoped provider for durable local image edits."""
+
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from io import BytesIO
+from typing import Any, Protocol
+
+from PIL import Image, ImageChops, ImageFilter, ImageOps, UnidentifiedImageError
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from .domain import (
+    AssetLifecycleStatus,
+    AssetMediaKind,
+    AssetOriginKind,
+    AttemptStatus,
+    JobAssetDirection,
+    JobItemStatus,
+    JobStatus,
+)
+from .models import (
+    AssetRecord,
+    AuditEventRecord,
+    CreditReservationRecord,
+    JobAssetRecord,
+    JobAttemptRecord,
+    JobItemRecord,
+    JobRecord,
+    WorkspaceLimitRecord,
+)
+from .provider import (
+    ProviderArtifact,
+    ProviderOutcome,
+    ProviderRequest,
+    ProviderResult,
+)
+from .services import new_id
+from .storage import ImageStorage, ValidatedImage
+
+MASKED_REPAIR_WORKFLOW_VERSION = "masked-repair-v1"
+MASKED_REPAIR_PROMPT_VERSION = "masked-repair-master-v1"
+MASKED_REPAIR_MODEL = "gpt-image-2"
+_RAW_ROLE = "provider_raw"
+
+
+class MaskedRepairError(RuntimeError):
+    """A controlled local-edit failure safe to expose through job status."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+        needs_reselection: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+        self.needs_reselection = needs_reselection
+
+
+@dataclass(frozen=True)
+class MaskedEditGatewayRequest:
+    source_png: bytes
+    api_mask_png: bytes
+    prompt: str
+    quality: str
+    width: int
+    height: int
+    idempotency_key: str
+
+
+@dataclass(frozen=True)
+class MaskedEditCallResult:
+    outcome: ProviderOutcome
+    provider_request_id: str | None
+    raw_usage: dict[str, Any] | None
+    normalized_usage: dict[str, Any]
+    actual_cost_micros: int | None
+    estimated_cost_micros: int | None
+    artifact: ProviderArtifact | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    retryable: bool = False
+    http_status: int | None = None
+
+
+class MaskedEditGateway(Protocol):
+    provider_name: str
+    image_model: str
+    pricing_version: str
+
+    async def edit_masked(
+        self,
+        request: MaskedEditGatewayRequest,
+    ) -> MaskedEditCallResult: ...
+
+
+@dataclass(frozen=True)
+class _AuthorizedInputs:
+    source: AssetRecord
+    mask: AssetRecord
+    instruction: str
+    quality: str
+
+
+@dataclass(frozen=True)
+class _NormalizedInputs:
+    source_png: bytes
+    authority_png: bytes
+    api_mask_png: bytes
+    source_image: Image.Image
+    authority: Image.Image
+    width: int
+    height: int
+    normalized_source_sha256: str
+    authority_sha256: str
+
+
+class MaskedRepairProvider:
+    """Generate a raw edit, then deliver only an exact-authority composite."""
+
+    name = "masked-image-repair"
+    model = MASKED_REPAIR_MODEL
+    pricing_version = "masked-repair-configured-v1"
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        gateway: MaskedEditGateway,
+        storage: ImageStorage,
+        *,
+        budget_limit_micros: int,
+        feather_radius: int = 2,
+    ) -> None:
+        if budget_limit_micros <= 0:
+            raise ValueError("Masked-repair budget must be positive.")
+        if not 0 <= feather_radius <= 8:
+            raise ValueError("Masked-repair feather radius must be from 0 through 8.")
+        self.session_factory = session_factory
+        self.gateway = gateway
+        self.storage = storage
+        self.budget_limit_micros = budget_limit_micros
+        self.feather_radius = feather_radius
+
+    async def execute(self, request: ProviderRequest) -> ProviderResult:
+        try:
+            authorized = self._authorize(request)
+            normalized = await self._load_and_normalize(authorized)
+            self._reserve_call_budget(request, authorized.quality)
+        except MaskedRepairError as exc:
+            return self._rejected(exc)
+
+        gateway_request = MaskedEditGatewayRequest(
+            source_png=normalized.source_png,
+            api_mask_png=normalized.api_mask_png,
+            prompt=_master_prompt(authorized.instruction),
+            quality=_provider_quality(authorized.quality),
+            width=normalized.width,
+            height=normalized.height,
+            idempotency_key=request.idempotency_key,
+        )
+        call_count = 0
+        result: MaskedEditCallResult
+        while True:
+            call_count += 1
+            result = await self.gateway.edit_masked(gateway_request)
+            if not result.retryable or call_count >= 2:
+                break
+
+        usage = _usage_record(
+            result,
+            call_count=call_count,
+            source_sha256=authorized.source.sha256,
+            mask_sha256=authorized.mask.sha256,
+            normalized_source_sha256=normalized.normalized_source_sha256,
+            authority_sha256=normalized.authority_sha256,
+        )
+        if result.outcome != ProviderOutcome.SUCCEEDED or result.artifact is None:
+            return ProviderResult(
+                outcome=result.outcome,
+                provider_request_id=result.provider_request_id,
+                error_code=result.error_code,
+                error_message=result.error_message,
+                usage_reported=bool(result.normalized_usage.get("reported")),
+                raw_usage=usage,
+                estimated_cost_micros=result.estimated_cost_micros,
+                actual_cost_micros=result.actual_cost_micros,
+                retryable=result.retryable,
+                http_status=result.http_status,
+                provider_name=self.gateway.provider_name,
+                model_name=MASKED_REPAIR_MODEL,
+                pricing_version=self.gateway.pricing_version,
+            )
+
+        generation_id = _generation_id(
+            request.attempt_id,
+            result.provider_request_id,
+            result.artifact.sha256,
+        )
+        try:
+            await self._persist_raw_artifact(
+                request,
+                result.artifact,
+                generation_id=generation_id,
+                provider_request_id=result.provider_request_id,
+                source_sha256=authorized.source.sha256,
+                mask_sha256=authorized.mask.sha256,
+                normalized_source_sha256=normalized.normalized_source_sha256,
+                authority_sha256=normalized.authority_sha256,
+            )
+            final_artifact, outside_changed_pixels = _strict_composite(
+                normalized,
+                result.artifact,
+                feather_radius=self.feather_radius,
+            )
+        except Exception as error:
+            failure = (
+                error
+                if isinstance(error, MaskedRepairError)
+                else MaskedRepairError(
+                    "LOCAL_EDIT_POSTPROCESS_FAILED",
+                    f"Local-edit postprocessing failed ({type(error).__name__}).",
+                    retryable=True,
+                )
+            )
+            metrics = dict(usage["metrics"])
+            metrics.update(
+                {
+                    "generation_id": generation_id,
+                    "raw_artifact_sha256": result.artifact.sha256,
+                    "strict_lock_success": False,
+                    "delivery_status": (
+                        "needs_reselection_for_strict_lock"
+                        if failure.needs_reselection
+                        else "retryable_processing_failure"
+                        if failure.retryable
+                        else "strict_lock_failed"
+                    ),
+                }
+            )
+            usage["metrics"] = metrics
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                provider_request_id=result.provider_request_id,
+                error_code=failure.code,
+                error_message=str(failure),
+                usage_reported=bool(result.normalized_usage.get("reported")),
+                raw_usage=usage,
+                estimated_cost_micros=result.estimated_cost_micros,
+                actual_cost_micros=result.actual_cost_micros,
+                retryable=failure.retryable,
+                http_status=result.http_status,
+                provider_name=self.gateway.provider_name,
+                model_name=MASKED_REPAIR_MODEL,
+                pricing_version=self.gateway.pricing_version,
+            )
+
+        metrics = dict(usage["metrics"])
+        metrics.update(
+            {
+                "generation_id": generation_id,
+                "raw_artifact_sha256": result.artifact.sha256,
+                "raw_visual_success": None,
+                "strict_lock_success": True,
+                "outside_changed_pixels": outside_changed_pixels,
+                "final_sha256": final_artifact.sha256,
+                "final_width": final_artifact.width,
+                "final_height": final_artifact.height,
+                "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
+                "prompt_version": MASKED_REPAIR_PROMPT_VERSION,
+            }
+        )
+        usage["metrics"] = metrics
+        return ProviderResult(
+            outcome=ProviderOutcome.SUCCEEDED,
+            provider_request_id=result.provider_request_id,
+            usage_reported=bool(result.normalized_usage.get("reported")),
+            raw_usage=usage,
+            estimated_cost_micros=result.estimated_cost_micros,
+            actual_cost_micros=result.actual_cost_micros,
+            retryable=False,
+            http_status=result.http_status,
+            artifact=final_artifact,
+            provider_name=self.gateway.provider_name,
+            model_name=MASKED_REPAIR_MODEL,
+            pricing_version=self.gateway.pricing_version,
+        )
+
+    def _authorize(self, request: ProviderRequest) -> _AuthorizedInputs:
+        if request.operation != "local_edit":
+            raise MaskedRepairError(
+                "LOCAL_EDIT_OPERATION_INVALID",
+                "Masked repair only accepts local_edit attempts.",
+            )
+        with self.session_factory() as session:
+            job = session.get(JobRecord, request.job_id, with_for_update=True)
+            item = session.get(JobItemRecord, request.job_item_id, with_for_update=True)
+            attempt = session.get(
+                JobAttemptRecord,
+                request.attempt_id,
+                with_for_update=True,
+            )
+            if (
+                job is None
+                or item is None
+                or attempt is None
+                or job.workspace_id != request.workspace_id
+                or item.workspace_id != request.workspace_id
+                or attempt.workspace_id != request.workspace_id
+                or item.job_id != job.id
+                or attempt.job_item_id != item.id
+            ):
+                raise MaskedRepairError(
+                    "WORKSPACE_SCOPE_MISMATCH",
+                    "The local edit is outside its durable workspace scope.",
+                )
+            if (
+                JobStatus(job.status) != JobStatus.PROCESSING
+                or JobItemStatus(item.status) != JobItemStatus.RUNNING
+                or AttemptStatus(attempt.status) != AttemptStatus.RUNNING
+            ):
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_CALL_NOT_AUTHORIZED",
+                    "The durable attempt is not authorized for a provider call.",
+                )
+            inputs = session.scalars(
+                select(JobAssetRecord).where(
+                    JobAssetRecord.workspace_id == request.workspace_id,
+                    JobAssetRecord.job_id == job.id,
+                    JobAssetRecord.direction == JobAssetDirection.INPUT.value,
+                    JobAssetRecord.role.in_(["source", "selection_mask"]),
+                )
+            ).all()
+            by_role = {relation.role: relation.asset_id for relation in inputs}
+            source_id = by_role.get("source")
+            mask_id = by_role.get("selection_mask")
+            if source_id is None or mask_id is None or source_id == mask_id:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_INPUT_INVALID",
+                    "Source and selection mask must be distinct input assets.",
+                )
+            assets = {
+                asset.id: asset
+                for asset in session.scalars(
+                    select(AssetRecord).where(
+                        AssetRecord.workspace_id == request.workspace_id,
+                        AssetRecord.id.in_([source_id, mask_id]),
+                        AssetRecord.lifecycle_status
+                        == AssetLifecycleStatus.READY.value,
+                        AssetRecord.deleted_at.is_(None),
+                    )
+                ).all()
+            }
+            source = assets.get(source_id)
+            mask = assets.get(mask_id)
+            if source is None or mask is None:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_INPUT_NOT_READY",
+                    "Source and mask must be ready assets in the same workspace.",
+                )
+            if source.media_kind != AssetMediaKind.IMAGE.value:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_SOURCE_KIND_INVALID",
+                    "The source asset must be an image.",
+                )
+            if mask.media_kind != AssetMediaKind.MASK.value:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_MASK_KIND_INVALID",
+                    "The selection asset must have mask media kind.",
+                    needs_reselection=True,
+                )
+            if (
+                source.width is None
+                or source.height is None
+                or mask.width != source.width
+                or mask.height != source.height
+            ):
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_DIMENSIONS_MISMATCH",
+                    "Source and selection mask dimensions must match.",
+                    needs_reselection=True,
+                )
+            settings_value = request.configuration.get("job")
+            settings_root = settings_value if isinstance(settings_value, dict) else {}
+            edit_settings = settings_root.get("settings")
+            configuration = edit_settings if isinstance(edit_settings, dict) else {}
+            instruction = configuration.get("instruction")
+            quality = configuration.get("quality", "balanced")
+            if not isinstance(instruction, str) or not instruction.strip():
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_INSTRUCTION_INVALID",
+                    "A concrete local-edit instruction is required.",
+                )
+            if quality not in {"preview", "balanced", "final"}:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_QUALITY_INVALID",
+                    "Local-edit quality is invalid.",
+                )
+            return _AuthorizedInputs(
+                source=source,
+                mask=mask,
+                instruction=instruction,
+                quality=str(quality),
+            )
+
+    async def _load_and_normalize(
+        self,
+        authorized: _AuthorizedInputs,
+    ) -> _NormalizedInputs:
+        try:
+            source_bytes = await self.storage.read_bytes(authorized.source.object_key)
+            mask_bytes = await self.storage.read_bytes(authorized.mask.object_key)
+        except Exception as exc:
+            raise MaskedRepairError(
+                "LOCAL_EDIT_INPUT_READ_FAILED",
+                f"Local-edit input could not be read ({type(exc).__name__}).",
+                retryable=True,
+            ) from exc
+        if hashlib.sha256(source_bytes).hexdigest() != authorized.source.sha256:
+            raise MaskedRepairError(
+                "LOCAL_EDIT_SOURCE_HASH_MISMATCH",
+                "Source bytes no longer match the durable asset hash.",
+            )
+        if hashlib.sha256(mask_bytes).hexdigest() != authorized.mask.sha256:
+            raise MaskedRepairError(
+                "LOCAL_EDIT_MASK_HASH_MISMATCH",
+                "Mask bytes no longer match the durable asset hash.",
+            )
+        try:
+            source = _normalized_rgba(source_bytes)
+            mask_rgba = _normalized_rgba(mask_bytes)
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise MaskedRepairError(
+                "LOCAL_EDIT_IMAGE_INVALID",
+                "Source or selection mask is not a valid raster image.",
+                needs_reselection=True,
+            ) from exc
+        if source.size != mask_rgba.size:
+            raise MaskedRepairError(
+                "LOCAL_EDIT_DIMENSIONS_MISMATCH",
+                "Source and selection mask dimensions must match after EXIF handling.",
+                needs_reselection=True,
+            )
+        authority = _binary_authority(mask_rgba)
+        extrema = authority.getextrema()
+        if extrema == (0, 0):
+            raise MaskedRepairError(
+                "LOCAL_EDIT_MASK_EMPTY",
+                "The selection mask does not authorize any pixels.",
+                needs_reselection=True,
+            )
+        if extrema == (255, 255):
+            raise MaskedRepairError(
+                "LOCAL_EDIT_MASK_FULL_FRAME",
+                "The selection mask may not authorize the full canvas.",
+                needs_reselection=True,
+            )
+        source_png = _png_bytes(source)
+        authority_png = _png_bytes(authority)
+        api_mask_png = _api_mask_png(authority)
+        width, height = source.size
+        return _NormalizedInputs(
+            source_png=source_png,
+            authority_png=authority_png,
+            api_mask_png=api_mask_png,
+            source_image=source,
+            authority=authority,
+            width=width,
+            height=height,
+            normalized_source_sha256=hashlib.sha256(source_png).hexdigest(),
+            authority_sha256=hashlib.sha256(authority_png).hexdigest(),
+        )
+
+    def _reserve_call_budget(
+        self,
+        request: ProviderRequest,
+        quality: str,
+    ) -> None:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, request.job_id, with_for_update=True)
+            item = session.get(JobItemRecord, request.job_item_id, with_for_update=True)
+            attempt = session.get(
+                JobAttemptRecord,
+                request.attempt_id,
+                with_for_update=True,
+            )
+            if (
+                job is None
+                or item is None
+                or attempt is None
+                or job.workspace_id != request.workspace_id
+                or item.workspace_id != request.workspace_id
+                or attempt.workspace_id != request.workspace_id
+                or attempt.job_item_id != item.id
+                or JobStatus(job.status) != JobStatus.PROCESSING
+                or JobItemStatus(item.status) != JobItemStatus.RUNNING
+                or AttemptStatus(attempt.status) != AttemptStatus.RUNNING
+            ):
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_CALL_NOT_AUTHORIZED",
+                    "The durable attempt is not authorized for a provider call.",
+                )
+            reservation = session.scalar(
+                select(CreditReservationRecord).where(
+                    CreditReservationRecord.workspace_id == request.workspace_id,
+                    CreditReservationRecord.job_id == job.id,
+                    CreditReservationRecord.status == "active",
+                )
+            )
+            if reservation is None:
+                raise MaskedRepairError(
+                    "BUDGET_RESERVATION_MISSING",
+                    "An active budget reservation is required before local edit.",
+                )
+            existing = session.scalar(
+                select(AuditEventRecord.id)
+                .where(
+                    AuditEventRecord.workspace_id == request.workspace_id,
+                    AuditEventRecord.action == "masked_repair.image_reserved",
+                    AuditEventRecord.request_id == attempt.id,
+                )
+                .limit(1)
+            )
+            if existing is not None:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_CALL_ALREADY_RESERVED",
+                    "This durable attempt already reserved its provider call.",
+                )
+            exposure = int(job.estimated_cost_max_micros or 0)
+            if exposure <= 0 or exposure > self.budget_limit_micros:
+                raise MaskedRepairError(
+                    "BUDGET_LIMIT_EXCEEDED",
+                    "The local-edit maximum cost is outside the runner budget.",
+                )
+            prior = session.scalar(
+                select(func.count())
+                .select_from(AuditEventRecord)
+                .join(
+                    JobAttemptRecord,
+                    AuditEventRecord.request_id == JobAttemptRecord.id,
+                )
+                .where(
+                    JobAttemptRecord.job_id == job.id,
+                    AuditEventRecord.workspace_id == request.workspace_id,
+                    AuditEventRecord.action == "masked_repair.image_reserved",
+                )
+            )
+            if int(prior or 0) * exposure + exposure > self.budget_limit_micros:
+                raise MaskedRepairError(
+                    "BUDGET_LIMIT_EXCEEDED",
+                    "Cumulative local-edit exposure exceeds the runner budget.",
+                )
+            session.add(
+                AuditEventRecord(
+                    workspace_id=request.workspace_id,
+                    action="masked_repair.image_reserved",
+                    resource_type="job_item",
+                    resource_id=item.id,
+                    request_id=attempt.id,
+                    details={
+                        "attempt_no": attempt.attempt_no,
+                        "quality": quality,
+                        "estimated_cost_micros": exposure,
+                        "budget_limit_micros": self.budget_limit_micros,
+                        "idempotency_key_sha256": hashlib.sha256(
+                            request.idempotency_key.encode()
+                        ).hexdigest(),
+                    },
+                )
+            )
+            session.commit()
+
+    async def _persist_raw_artifact(
+        self,
+        request: ProviderRequest,
+        artifact: ProviderArtifact,
+        *,
+        generation_id: str,
+        provider_request_id: str | None,
+        source_sha256: str,
+        mask_sha256: str,
+        normalized_source_sha256: str,
+        authority_sha256: str,
+    ) -> None:
+        if artifact.content_type != "image/png":
+            raise MaskedRepairError(
+                "LOCAL_EDIT_RAW_FORMAT_INVALID",
+                "The provider raw artifact must be a PNG image.",
+            )
+        object_key = (
+            f"{request.workspace_id}/generated/local-edit/"
+            f"{hashlib.sha256(request.idempotency_key.encode()).hexdigest()}-raw.png"
+        )
+        stored = await self.storage.save_validated(
+            ValidatedImage(
+                payload=artifact.payload,
+                filename=f"{generation_id}-raw.png",
+                content_type=artifact.content_type,
+                width=artifact.width,
+                height=artifact.height,
+                object_key=object_key,
+                sha256=artifact.sha256,
+            )
+        )
+        try:
+            with self.session_factory() as session:
+                existing = session.scalar(
+                    select(AssetRecord).where(
+                        AssetRecord.workspace_id == request.workspace_id,
+                        AssetRecord.object_key == stored.object_key,
+                    )
+                )
+                if existing is not None:
+                    return
+                limits = session.get(
+                    WorkspaceLimitRecord,
+                    request.workspace_id,
+                    with_for_update=True,
+                )
+                used_bytes = session.scalar(
+                    select(func.coalesce(func.sum(AssetRecord.byte_size), 0)).where(
+                        AssetRecord.workspace_id == request.workspace_id,
+                        AssetRecord.lifecycle_status
+                        == AssetLifecycleStatus.READY.value,
+                        AssetRecord.deleted_at.is_(None),
+                    )
+                )
+                if (
+                    limits is None
+                    or int(used_bytes or 0) + stored.byte_size
+                    > limits.storage_quota_bytes
+                ):
+                    raise MaskedRepairError(
+                        "STORAGE_QUOTA_EXCEEDED",
+                        "The immutable raw result exceeds workspace storage quota.",
+                    )
+                asset_id = new_id("asset")
+                session.add(
+                    AssetRecord(
+                        id=asset_id,
+                        workspace_id=request.workspace_id,
+                        media_kind=AssetMediaKind.IMAGE.value,
+                        origin_kind=AssetOriginKind.GENERATED.value,
+                        lifecycle_status=AssetLifecycleStatus.READY.value,
+                        original_filename=stored.filename,
+                        content_type=stored.content_type,
+                        byte_size=stored.byte_size,
+                        width=stored.width,
+                        height=stored.height,
+                        sha256=stored.sha256,
+                        storage_provider=stored.storage_provider,
+                        storage_bucket=stored.storage_bucket,
+                        object_key=stored.object_key,
+                        object_version=stored.object_version,
+                        etag=stored.etag,
+                        asset_metadata={
+                            "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
+                            "generation_id": generation_id,
+                            "attempt_id": request.attempt_id,
+                            "provider_request_id": provider_request_id,
+                            "model": MASKED_REPAIR_MODEL,
+                            "source_sha256": source_sha256,
+                            "mask_sha256": mask_sha256,
+                            "normalized_source_sha256": normalized_source_sha256,
+                            "authority_sha256": authority_sha256,
+                            "immutable_provider_raw": True,
+                            "raw_visual_success": None,
+                        },
+                    )
+                )
+                session.add(
+                    JobAssetRecord(
+                        workspace_id=request.workspace_id,
+                        job_id=request.job_id,
+                        job_item_id=request.job_item_id,
+                        asset_id=asset_id,
+                        direction=JobAssetDirection.INTERMEDIATE.value,
+                        role=_RAW_ROLE,
+                        ordinal=0,
+                        is_deliverable=False,
+                        validation={
+                            "generation_id": generation_id,
+                            "sha256": stored.sha256,
+                            "width": stored.width,
+                            "height": stored.height,
+                            "model": MASKED_REPAIR_MODEL,
+                            "provider_request_id": provider_request_id,
+                            "raw_visual_success": None,
+                        },
+                    )
+                )
+                session.commit()
+        except Exception as exc:
+            await self.storage.delete_object(
+                stored.object_key,
+                stored.object_version,
+            )
+            if isinstance(exc, MaskedRepairError):
+                raise
+            raise MaskedRepairError(
+                "LOCAL_EDIT_RAW_PERSIST_FAILED",
+                (
+                    "The immutable provider result could not be persisted "
+                    f"({type(exc).__name__})."
+                ),
+                retryable=True,
+            ) from exc
+
+    def _rejected(self, error: MaskedRepairError) -> ProviderResult:
+        return ProviderResult(
+            outcome=ProviderOutcome.FAILED,
+            error_code=error.code,
+            error_message=str(error),
+            usage_reported=False,
+            raw_usage={
+                "provider_type": self.gateway.provider_name,
+                "input_images": 0,
+                "output_images": 0,
+                "network_requests": 0,
+                "metrics": {
+                    "needs_reselection": error.needs_reselection,
+                    "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
+                },
+            },
+            estimated_cost_micros=0,
+            actual_cost_micros=0,
+            retryable=error.retryable,
+            provider_name=self.gateway.provider_name,
+            model_name=MASKED_REPAIR_MODEL,
+            pricing_version=self.gateway.pricing_version,
+        )
+
+
+def validate_local_edit_asset_records(
+    source: AssetRecord,
+    mask: AssetRecord,
+) -> None:
+    """Cheap API preflight; byte-level mask validation remains provider-side."""
+
+    if source.id == mask.id:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_INPUT_INVALID",
+            "Source and selection mask must be different assets.",
+        )
+    if source.workspace_id != mask.workspace_id:
+        raise MaskedRepairError(
+            "WORKSPACE_SCOPE_MISMATCH",
+            "Source and selection mask must belong to one workspace.",
+        )
+    if source.media_kind != AssetMediaKind.IMAGE.value:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_SOURCE_KIND_INVALID",
+            "The source asset must be an image.",
+        )
+    if mask.media_kind != AssetMediaKind.MASK.value:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_MASK_KIND_INVALID",
+            "The selection asset must have mask media kind.",
+            needs_reselection=True,
+        )
+    if (
+        source.width is None
+        or source.height is None
+        or source.width != mask.width
+        or source.height != mask.height
+    ):
+        raise MaskedRepairError(
+            "LOCAL_EDIT_DIMENSIONS_MISMATCH",
+            "Source and selection mask dimensions must match.",
+            needs_reselection=True,
+        )
+
+
+def _normalized_rgba(payload: bytes) -> Image.Image:
+    with Image.open(BytesIO(payload)) as image:
+        normalized = ImageOps.exif_transpose(image)
+        normalized.load()
+        return normalized.convert("RGBA")
+
+
+def _binary_authority(mask: Image.Image) -> Image.Image:
+    alpha = mask.getchannel("A")
+    alpha_extrema = alpha.getextrema()
+    basis = alpha if alpha_extrema != (255, 255) else ImageOps.grayscale(mask)
+    return basis.point(lambda value: 255 if value > 127 else 0, mode="1").convert("L")
+
+
+def _api_mask_png(authority: Image.Image) -> bytes:
+    locked_alpha = ImageOps.invert(authority)
+    mask = Image.new("RGBA", authority.size, (255, 255, 255, 255))
+    mask.putalpha(locked_alpha)
+    return _png_bytes(mask)
+
+
+def _png_bytes(image: Image.Image) -> bytes:
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _strict_composite(
+    normalized: _NormalizedInputs,
+    raw: ProviderArtifact,
+    *,
+    feather_radius: int,
+) -> tuple[ProviderArtifact, int]:
+    try:
+        generated = _normalized_rgba(raw.payload)
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_RAW_IMAGE_INVALID",
+            "The immutable provider result is not a valid image.",
+        ) from exc
+    if generated.size != normalized.source_image.size:
+        generated = generated.resize(
+            normalized.source_image.size,
+            Image.Resampling.LANCZOS,
+        )
+    inward = normalized.authority
+    if feather_radius:
+        blurred = normalized.authority.filter(
+            ImageFilter.GaussianBlur(radius=feather_radius)
+        )
+        inward = ImageChops.multiply(blurred, normalized.authority)
+    candidate = Image.composite(generated, normalized.source_image, inward)
+    locked = Image.composite(
+        candidate,
+        normalized.source_image,
+        normalized.authority,
+    )
+    outside_changed = _outside_changed_pixels(
+        normalized.source_image,
+        locked,
+        normalized.authority,
+    )
+    if locked.size != normalized.source_image.size or outside_changed != 0:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_PIXEL_LOCK_FAILED",
+            "Strict local-edit compositing changed pixels outside authority.",
+            needs_reselection=True,
+        )
+    payload = _png_bytes(locked)
+    return (
+        ProviderArtifact(
+            payload=payload,
+            filename="local-edit-result.png",
+            content_type="image/png",
+            width=locked.width,
+            height=locked.height,
+            sha256=hashlib.sha256(payload).hexdigest(),
+        ),
+        outside_changed,
+    )
+
+
+def _outside_changed_pixels(
+    source: Image.Image,
+    result: Image.Image,
+    authority: Image.Image,
+) -> int:
+    source_bytes = source.convert("RGBA").tobytes()
+    result_bytes = result.convert("RGBA").tobytes()
+    mask_bytes = authority.tobytes()
+    changed = 0
+    for offset, allowed in enumerate(mask_bytes):
+        if allowed:
+            continue
+        start = offset * 4
+        if source_bytes[start : start + 4] != result_bytes[start : start + 4]:
+            changed += 1
+    return changed
+
+
+def _provider_quality(quality: str) -> str:
+    return {
+        "preview": "low",
+        "balanced": "medium",
+        "final": "high",
+    }[quality]
+
+
+def _master_prompt(user_request: str) -> str:
+    return (
+        "任务类型：严格局部图片编辑 / masked image edit。\n"
+        "第一张输入图是唯一原始画布。透明蒙版区域仅用于模型编辑上下文；"
+        "最终允许修改的范围以任务中确认的 authority selection 为准。\n"
+        f"用户要求：{user_request}\n\n"
+        "规则：1. 只完成用户要求的局部修改。"
+        "2. 延续原图的机位、透视、光向、曝光、白平衡、阴影、景深、锐度、"
+        "颗粒、压缩质感和风格。"
+        "3. 不重新拍摄、重构、美化或顺手修改整张图。"
+        "4. 保持边缘遮挡、纹理、结构和真实光影连续。"
+        "5. 不添加说明、对比图、边框、标记、水印或额外文字。"
+        "6. 输出一张与原画布尺寸和构图一致的完成图。"
+    )
+
+
+def _generation_id(
+    attempt_id: str,
+    provider_request_id: str | None,
+    raw_sha256: str,
+) -> str:
+    token = hashlib.sha256(
+        f"{attempt_id}:{provider_request_id or 'missing'}:{raw_sha256}".encode()
+    ).hexdigest()[:24]
+    return f"gen_{token}"
+
+
+def _usage_record(
+    result: MaskedEditCallResult,
+    *,
+    call_count: int,
+    source_sha256: str,
+    mask_sha256: str,
+    normalized_source_sha256: str,
+    authority_sha256: str,
+) -> dict[str, Any]:
+    normalized = dict(result.normalized_usage)
+    return {
+        "provider_type": "masked_image_edit",
+        "reported": bool(normalized.get("reported")),
+        "input_tokens": normalized.get("input_tokens"),
+        "output_tokens": normalized.get("output_tokens"),
+        "cached_tokens": normalized.get("cached_tokens"),
+        "input_images": 2,
+        "output_images": 1 if result.artifact is not None else 0,
+        "network_requests": call_count,
+        "raw": dict(result.raw_usage or {}),
+        "normalized": normalized,
+        "metrics": {
+            "source_sha256": source_sha256,
+            "mask_sha256": mask_sha256,
+            "normalized_source_sha256": normalized_source_sha256,
+            "authority_sha256": authority_sha256,
+            "transport_attempts": call_count,
+            "durable_idempotency_reused": call_count > 1,
+            "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
+        },
+    }

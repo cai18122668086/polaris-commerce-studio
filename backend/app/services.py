@@ -307,6 +307,7 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
                 result_source=item.result_source,
                 error_code=item.error_code,
                 error_message=item.error_message,
+                error_details=item.error_details,
                 started_at=item.started_at,
                 finished_at=item.finished_at,
             )

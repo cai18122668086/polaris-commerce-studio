@@ -127,7 +127,7 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
             "local_edit": {
                 "availability": "available",
                 "execution": "mock",
-                "reason_code": "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
+                "reason_code": "TASK_RUNNER_MOCK",
             },
             "detail_pack": {
                 "availability": "available",
@@ -147,11 +147,8 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
         authentication_mode="external",
         task_runner="tengli",
     )
-    assert tengli.capabilities.local_edit.execution == "mock"
-    assert (
-        tengli.capabilities.local_edit.reason_code
-        == "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED"
-    )
+    assert tengli.capabilities.local_edit.execution == "provider"
+    assert tengli.capabilities.local_edit.reason_code is None
     assert tengli.capabilities.detail_pack.execution == "provider"
     assert tengli.capabilities.detail_pack.reason_code is None
     assert tengli.capabilities.external_authentication.availability == "unavailable"
@@ -281,7 +278,7 @@ def test_job_uses_relational_items_outbox_and_exact_costs(
         "source",
         "selection_mask",
     }
-    assert job["cost"]["estimated_min"]["micros"] == "40000"
+    assert job["cost"]["estimated_min"]["micros"] == "45000"
     assert job["cost"]["actual"] is None
 
     assert dispatch_pending(client) == 1

@@ -77,8 +77,8 @@ class RuntimeCapabilities(BaseModel):
     )
     local_edit: CapabilityStatus = Field(
         description=(
-            "Local-edit workflow. It remains mock-only until a dedicated local-edit "
-            "provider is implemented, regardless of the selected task runner."
+            "Local-edit workflow. It uses the mock adapter under the mock runner "
+            "and the dedicated strict masked-repair provider under Tengli."
         )
     )
     detail_pack: CapabilityStatus = Field(
@@ -212,6 +212,7 @@ class JobItemResponse(BaseModel):
     result_source: str | None
     error_code: str | None
     error_message: str | None
+    error_details: dict[str, Any] | None
     started_at: datetime | None
     finished_at: datetime | None
 

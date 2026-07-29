@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     auth_mode: Literal["development", "external"] = "development"
     development_user_id: str = "usr_development"
     development_workspace_id: str = "ws_development"
-    development_workspace_name: str = "开发工作区"
+    development_workspace_name: str = "?????"
     access_url_secret: str = "development-access-url-secret-change-me"
     database_url: str = (
         "postgresql+psycopg://polaris:polaris_dev_only@localhost:5432/polaris"
@@ -76,16 +76,23 @@ class Settings(BaseSettings):
         ]
     )
 
+    @field_validator("xinghe_concurrency", mode="before")
+    @classmethod
+    def parse_xinghe_concurrency(cls, value: object) -> object:
+        if isinstance(value, str) and value in {"1", "2", "6"}:
+            return int(value)
+        return value
+
     def validate_runtime_safety(self) -> None:
         if self.environment != "production":
             return
         if self.auth_mode == "development":
-            raise RuntimeError("生产环境禁止使用 development 身份模式。")
+            raise RuntimeError("???????? development ?????")
         forbidden_secrets = {
             "polaris_minio_dev_only",
             "development-access-url-secret-change-me",
         }
         if self.s3_secret_key in forbidden_secrets:
-            raise RuntimeError("生产环境禁止使用开发对象存储密钥。")
+            raise RuntimeError("?????????????????")
         if self.access_url_secret in forbidden_secrets:
-            raise RuntimeError("生产环境必须配置独立的访问 URL 签名密钥。")
+            raise RuntimeError("????????????? URL ?????")

@@ -220,6 +220,16 @@ def test_task_runner_mode_uses_explicit_prefixed_environment_setting(
     assert settings.task_runner == "tengli"
 
 
+def test_xinghe_concurrency_uses_prefixed_environment_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POLARIS_XINGHE_CONCURRENCY", "2")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.xinghe_concurrency == 2
+
+
 def test_api_rejects_invalid_tengli_before_building_dependencies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

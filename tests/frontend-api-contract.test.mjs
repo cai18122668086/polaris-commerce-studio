@@ -20,7 +20,6 @@ test("OpenAPI exposes every frontend integration operation", async () => {
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/retry": ["post"],
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/confirm": ["post"],
   };
-
   for (const [path, methods] of Object.entries(expected)) {
     assert.ok(document.paths[path], `${path} should exist`);
     for (const method of methods) {
@@ -41,7 +40,6 @@ test("business UI is API-backed and runtime capability is fail-closed", async ()
   ];
   const contents = await Promise.all(businessFiles.map(utf8));
   assert.equal(contents.some((source) => source.includes("mock-data")), false);
-
   const runtime = await utf8("features/runtime/api/runtime.ts");
   assert.match(runtime, /availability === "available"/);
   assert.match(runtime, /execution === "provider"/);
@@ -74,8 +72,8 @@ test("mock copy stays honest and icon actions have stable names", async () => {
   assert.match(detail, /任务状态已完成 · 图片能力未知/);
   assert.match(detail, /runtime 已报告 Provider 执行/);
   assert.match(detail, /能力状态未知，确认入口保持关闭/);
-  assert.match(local, /真实生成接入后才可下载结果/);
-  assert.match(local, /能力状态未知，按未启用处理/);
+  assert.match(local, /mock 模式不会调用图片 Provider，也没有真实产物/);
+  assert.match(local, /能力状态未知，按 fail-closed 处理/);
   assert.match(helpPanel, /真实生成接入后才可下载/);
   assert.match(helpPanel, /能力状态未知，按 fail-closed 处理/);
   assert.match(helpPanel, /Provider 交付/);
@@ -95,9 +93,10 @@ test("write actions use server allowed_actions as the only authority", async () 
   const jobsPage = await utf8("app/jobs/page.tsx");
   const drawer = await utf8("components/task-drawer.tsx");
   const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const local = await utf8("app/workspace/local-edit/page.tsx");
   const mutations = await utf8("features/jobs/api/jobs.ts");
 
-  for (const source of [jobsPage, drawer, detail]) {
+  for (const source of [jobsPage, drawer, detail, local]) {
     assert.match(source, /allowsJobAction\(/);
   }
   for (const action of ["cancel", "retry", "confirm_plan"]) {

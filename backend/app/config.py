@@ -5,6 +5,26 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def default_masked_skill_root() -> Path:
+    """Return the project-owned, distributable masked repair runtime source."""
+
+    return (
+        Path(__file__).resolve().parents[1]
+        / "skill_sources"
+        / "masked-image-repair"
+    )
+
+
+def default_xinghe_skill_root() -> Path:
+    """Return the project-owned, distributable Xinghe runtime source."""
+
+    return (
+        Path(__file__).resolve().parents[1]
+        / "skill_sources"
+        / "xinghe-ecommerce-detail"
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -44,6 +64,7 @@ class Settings(BaseSettings):
     xinghe_concurrency: Literal[1, 2, 6] = 6
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)
+    xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)

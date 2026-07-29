@@ -14,6 +14,10 @@ from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import (
+    default_masked_skill_root,
+    default_xinghe_skill_root,
+)
 from app.domain import AttemptStatus, JobItemStatus, JobStatus
 from app.execution import UsageEventWriter
 from app.models import (
@@ -49,8 +53,8 @@ from app.skill_runtime import (
 )
 
 WORKSPACE_ID = "ws_test"
-XINGHE_HASH = "185b2b2c6f2b5f0f9de6bc1dc07c958ae82b6d817b951d3184f3f3803133949d"
-MASKED_HASH = "8d996ac54dbc1099f2c1797cbcf0afb1ad9695bd596036a7642b4194fe8d50a2"
+XINGHE_HASH = "f4ff20323c8ff542fa124271a4ab532f13810aff79a537f22face2ce803b7d17"
+MASKED_HASH = "7e77eeac8a6bb936e7bf1f1aa6272563a127c8079483820f69b561b89910556a"
 
 
 @dataclass
@@ -322,7 +326,7 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
     masked = registry.get("masked-image-repair")
     xinghe = registry.get("xinghe-ecommerce-detail")
     assert masked.content_hash == MASKED_HASH
-    assert len(masked.files) == 9
+    assert len(masked.files) == 5
     assert masked.policy.safe_expansion_mode == SafeExpansionMode.PREAUTHORIZED_ONLY
     assert masked.schema_version == MANIFEST_SCHEMA_VERSION
     assert masked.policy.schema_version == POLICY_SCHEMA_VERSION
@@ -337,7 +341,7 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
     assert expansion.layout_adaptation_allowed is False
     assert expansion.outside_effective_selection_changed_pixels == 0
     assert xinghe.content_hash == XINGHE_HASH
-    assert len(xinghe.files) == 30
+    assert len(xinghe.files) == 6
     assert xinghe.policy.auto_review_regeneration_allowed is False
     assert xinghe.policy.successful_page_auto_redraw_allowed is False
     assert xinghe.policy.safe_expansion_mode == SafeExpansionMode.DISABLED
@@ -369,6 +373,21 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
         assert manifest.provider_type == "mock"
         assert manifest.cost_limit_micros == 0
         assert manifest.real_provider_request_limit == 0
+
+
+def test_bundled_skill_sources_are_project_owned_and_verified() -> None:
+    sources_root = Path(__file__).resolve().parents[1] / "skill_sources"
+    roots = {
+        "masked-image-repair": (default_masked_skill_root(), MASKED_HASH),
+        "xinghe-ecommerce-detail": (
+            default_xinghe_skill_root(),
+            XINGHE_HASH,
+        ),
+    }
+    registry = SkillManifestRegistry.bundled()
+    for skill_id, (root, expected_hash) in roots.items():
+        assert root == sources_root / skill_id
+        assert registry.verify_source(skill_id, root) == expected_hash
 
 
 @pytest.mark.parametrize(

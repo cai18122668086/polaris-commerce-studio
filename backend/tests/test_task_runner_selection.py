@@ -78,6 +78,25 @@ def test_factory_default_mock_reads_no_key_and_calls_no_provider(
     assert isinstance(runner, MockTaskRunner)
 
 
+def test_factory_passes_configured_xinghe_root_to_both_stages(
+    tmp_path: Path,
+) -> None:
+    skill_root = tmp_path / "published-xinghe-runtime"
+    settings = _settings(
+        tmp_path,
+        task_runner="mock",
+        xinghe_skill_root=skill_root,
+    )
+
+    for _, session_factory, storage in _factory_dependencies(settings):
+        runner = task_runner.build_task_runner(session_factory, settings, storage)
+
+    assert runner.coordinator.detail_planner is not None
+    assert runner.coordinator.detail_planner.skill_root == skill_root
+    detail_provider = runner.coordinator.provider.detail_provider
+    assert detail_provider.skill_root == skill_root
+
+
 def test_factory_tengli_selects_existing_real_builder(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

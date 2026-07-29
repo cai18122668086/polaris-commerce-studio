@@ -8,6 +8,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md alembic.ini ./
 COPY app ./app
+COPY skill_sources ./skill_sources
 COPY migrations ./migrations
 
 RUN --mount=type=cache,target=/root/.cache/pip \

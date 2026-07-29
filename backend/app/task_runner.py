@@ -1,6 +1,7 @@
 """Compatibility facade for the API/outbox execution dependency."""
 
 import math
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,6 +26,7 @@ class MockTaskRunner:
         budget_limit_micros: int = 200_000_000,
         medium_price_micros: int = 45_000,
         high_price_micros: int = 90_000,
+        xinghe_skill_root: Path | None = None,
     ) -> None:
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
@@ -35,6 +37,7 @@ class MockTaskRunner:
             budget_limit_micros=budget_limit_micros,
             medium_price_micros=medium_price_micros,
             high_price_micros=high_price_micros,
+            xinghe_skill_root=xinghe_skill_root,
         )
 
     @property
@@ -94,6 +97,7 @@ def build_task_runner(
             budget_limit_micros=int(settings.tengli_smoke_budget_usd * 1_000_000),
             medium_price_micros=settings.xinghe_medium_price_micros,
             high_price_micros=settings.xinghe_high_price_micros,
+            xinghe_skill_root=settings.xinghe_skill_root,
         )
 
     validate_task_runner_settings(settings)
@@ -125,4 +129,5 @@ def build_tengli_task_runner(
         budget_limit_micros=int(settings.tengli_smoke_budget_usd * 1_000_000),
         medium_price_micros=settings.xinghe_medium_price_micros,
         high_price_micros=settings.xinghe_high_price_micros,
+        xinghe_skill_root=settings.xinghe_skill_root,
     )

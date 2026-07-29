@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from .config import default_masked_skill_root, default_xinghe_skill_root
 from .domain import JobType
 from .models import AuditEventRecord
 from .provider import (
@@ -953,14 +954,14 @@ def build_fake_skill_runtime_provider(
     """Build the only provider path authorized by the foundation batch."""
 
     registry = SkillManifestRegistry.bundled()
-    skill_root = Path.home() / ".codex" / "skills"
     runtime = SkillRuntime(
         registry,
         PostgresSkillRuntimeAuditSink(session_factory),
         global_cost_limit_micros=0,
         real_provider_request_limit=0,
         source_roots={
-            skill_id: skill_root / skill_id for skill_id in registry.skill_ids
+            "masked-image-repair": default_masked_skill_root(),
+            "xinghe-ecommerce-detail": default_xinghe_skill_root(),
         },
     )
     return SkillRuntimeProvider(

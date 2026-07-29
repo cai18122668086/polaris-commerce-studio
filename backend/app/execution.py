@@ -15,6 +15,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .config import default_xinghe_skill_root
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
@@ -1100,6 +1101,7 @@ def build_fake_coordinator(
     budget_limit_micros: int = 200_000_000,
     medium_price_micros: int = 45_000,
     high_price_micros: int = 90_000,
+    xinghe_skill_root: Path | None = None,
 ) -> ExecutionCoordinator:
     from .xinghe_agent import (
         FakeXingheGateway,
@@ -1114,12 +1116,7 @@ def build_fake_coordinator(
         gateway = FakeXingheGateway(delay_seconds=delay_seconds)
     else:
         gateway = cast("XingheGateway", xinghe_gateway)
-    skill_root = (
-        Path.home()
-        / ".codex"
-        / "skills"
-        / "xinghe-ecommerce-detail"
-    )
+    skill_root = xinghe_skill_root or default_xinghe_skill_root()
     planner = XinghePlanningCoordinator(
         session_factory,
         gateway,

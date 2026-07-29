@@ -67,9 +67,9 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
   function MaskEditor({ sourceUrl, sourceName, onChange, onError }, ref) {
     const imageCanvas = useRef<HTMLCanvasElement>(null);
     const maskCanvas = useRef<HTMLCanvasElement>(null);
-    const undoSnapshot = useRef<ImageData>();
-    const activePointer = useRef<number>();
-    const previousPoint = useRef<{ x: number; y: number }>();
+    const undoSnapshot = useRef<ImageData | null>(null);
+    const activePointer = useRef<number | null>(null);
+    const previousPoint = useRef<{ x: number; y: number } | null>(null);
     const [tool, setTool] = useState<"brush" | "eraser">("brush");
     const [brushSize, setBrushSize] = useState(48);
     const [ready, setReady] = useState(false);
@@ -118,7 +118,11 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
         const outputContext = output.getContext("2d");
         if (!outputContext) throw new Error("浏览器无法创建蒙版画布。");
         outputContext.putImageData(
-          new ImageData(binary.data, canvas.width, canvas.height),
+          new ImageData(
+            new Uint8ClampedArray(binary.data),
+            canvas.width,
+            canvas.height,
+          ),
           0,
           0,
         );
@@ -131,7 +135,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
     useEffect(() => {
       setReady(false);
       setCanUndo(false);
-      undoSnapshot.current = undefined;
+      undoSnapshot.current = null;
       onChange?.(false);
       onError?.();
       if (!sourceUrl) return;
@@ -194,7 +198,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
     };
 
     const pointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-      if (!ready || activePointer.current !== undefined) return;
+      if (!ready || activePointer.current !== null) return;
       const canvas = maskCanvas.current!;
       const context = canvas.getContext("2d")!;
       activePointer.current = event.pointerId;
@@ -214,8 +218,8 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
 
     const pointerEnd = (event: ReactPointerEvent<HTMLCanvasElement>) => {
       if (activePointer.current !== event.pointerId) return;
-      activePointer.current = undefined;
-      previousPoint.current = undefined;
+      activePointer.current = null;
+      previousPoint.current = null;
       if (maskCanvas.current?.hasPointerCapture(event.pointerId)) {
         maskCanvas.current.releasePointerCapture(event.pointerId);
       }
@@ -227,7 +231,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
       const context = canvas?.getContext("2d");
       if (!canvas || !context || !undoSnapshot.current) return;
       context.putImageData(undoSnapshot.current, 0, 0);
-      undoSnapshot.current = undefined;
+      undoSnapshot.current = null;
       setCanUndo(false);
       announceChange();
       onError?.();

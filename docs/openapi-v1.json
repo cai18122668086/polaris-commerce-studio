@@ -948,6 +948,18 @@
             ],
             "title": "Error Code"
           },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
           "error_message": {
             "anyOf": [
               {
@@ -1042,6 +1054,7 @@
           "result_source",
           "error_code",
           "error_message",
+          "error_details",
           "started_at",
           "finished_at"
         ],
@@ -1503,7 +1516,7 @@
           },
           "local_edit": {
             "$ref": "#/components/schemas/CapabilityStatus",
-            "description": "Local-edit workflow. It remains mock-only until a dedicated local-edit provider is implemented, regardless of the selected task runner."
+            "description": "Local-edit workflow. It uses the mock adapter under the mock runner and the dedicated strict masked-repair provider under Tengli."
           }
         },
         "required": [

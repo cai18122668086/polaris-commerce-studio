@@ -620,6 +620,10 @@ export interface components {
         JobItemResponse: {
             /** Error Code */
             error_code: string | null;
+            /** Error Details */
+            error_details: {
+                [key: string]: unknown;
+            } | null;
             /** Error Message */
             error_message: string | null;
             /** Finished At */
@@ -816,7 +820,7 @@ export interface components {
             detail_pack: components["schemas"]["CapabilityStatus"];
             /** @description External authentication capability. A configured mode alone does not mean that the implementation is available. */
             external_authentication: components["schemas"]["CapabilityStatus"];
-            /** @description Local-edit workflow. It remains mock-only until a dedicated local-edit provider is implemented, regardless of the selected task runner. */
+            /** @description Local-edit workflow. It uses the mock adapter under the mock runner and the dedicated strict masked-repair provider under Tengli. */
             local_edit: components["schemas"]["CapabilityStatus"];
         };
         /** RuntimeStatusResponse */

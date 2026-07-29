@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta
 from io import BytesIO
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ from sqlalchemy import func, select
 from app.domain import OutboxStatus
 from app.main import create_app
 from app.models import (
+    AuditEventRecord,
     JobAttemptRecord,
     OutboxEventRecord,
     UsageEventRecord,
@@ -223,6 +225,127 @@ def test_upload_is_idempotent_private_and_accessible_by_signed_url(
     content = client.get(access.json()["url"])
     assert content.status_code == 200
     assert content.headers["content-type"] == "image/png"
+
+
+def test_same_origin_access_mode_never_returns_internal_s3_url(
+    client: TestClient,
+) -> None:
+    client.app.state.settings.asset_access_url_mode = "same_origin"
+    presign = AsyncMock(return_value="http://minio:9000/private-object")
+    client.app.state.storage.create_access_url = presign
+    asset = upload_asset(client)
+
+    access = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets/{asset['id']}/access-url",
+        json={"disposition": "attachment", "variant": "original"},
+    )
+
+    assert access.status_code == 200
+    url = access.json()["url"]
+    assert url.startswith(
+        f"http://testserver/api/v1/workspaces/{WORKSPACE_ID}/assets/{asset['id']}/content?"
+    )
+    assert "minio" not in url
+    presign.assert_not_awaited()
+    content = client.get(url)
+    assert content.status_code == 200
+    assert content.content == image_payload()
+
+
+def _detail_submit_payload(asset_id: str) -> dict:
+    return {
+        "type": "detail_pack",
+        "intent": "submit",
+        "display_name": "Provider beta quota",
+        "input": {
+            "product_groups": [
+                {"group_key": "product", "asset_ids": [asset_id]}
+            ]
+        },
+        "configuration": {
+            "product_name": "Visible product",
+            "selling_points": ["visible facts only"],
+            "platform_code": "amazon",
+            "language": "en",
+            "page_count": 1,
+        },
+    }
+
+
+def test_real_provider_job_reservation_is_idempotent_and_daily_bounded(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 0.5
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 20
+    settings.tengli_planner_reserve_micros = 250_000
+    asset = upload_asset(client)
+    key = str(uuid4())
+    payload = _detail_submit_payload(asset["id"])
+
+    first = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers={"Idempotency-Key": key},
+        json=payload,
+    )
+    replay = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers={"Idempotency-Key": key},
+        json=payload,
+    )
+    blocked = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+
+    assert first.status_code == 202
+    assert replay.status_code == 202
+    assert replay.json()["id"] == first.json()["id"]
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "PROVIDER_DAILY_BUDGET_EXCEEDED"
+    with client.app.state.session_factory() as session:
+        reservations = session.scalars(
+            select(AuditEventRecord).where(
+                AuditEventRecord.action == "provider.beta_job_reserved"
+            )
+        ).all()
+    assert len(reservations) == 1
+    assert reservations[0].details["estimated_cost_micros"] == 430_000
+    assert reservations[0].details["provider_request_count"] == 3
+
+
+def test_real_provider_daily_request_limit_blocks_before_dispatch(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 2
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 3
+    settings.tengli_planner_reserve_micros = 250_000
+    asset = upload_asset(client)
+    payload = _detail_submit_payload(asset["id"])
+
+    first = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+    blocked = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+
+    assert first.status_code == 202
+    assert blocked.status_code == 409
+    assert (
+        blocked.json()["error"]["code"]
+        == "PROVIDER_DAILY_REQUEST_LIMIT_EXCEEDED"
+    )
 
 
 def test_upload_rejects_missing_idempotency_and_invalid_images(

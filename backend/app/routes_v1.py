@@ -57,6 +57,7 @@ from .models import (
     WorkspaceRecord,
     utc_now,
 )
+from .provider_quota import reserve_provider_job_quota
 from .schemas_v1 import (
     AccessUrlRequest,
     AccessUrlResponse,
@@ -594,12 +595,14 @@ async def create_asset_access_url(
             "素材尚未就绪。",
         )
     expires_at = datetime.now(UTC) + timedelta(minutes=10)
-    url = await request.app.state.storage.create_access_url(
-        asset.object_key,
-        asset.original_filename,
-        payload.disposition,
-        600,
-    )
+    url = None
+    if request.app.state.settings.asset_access_url_mode == "auto":
+        url = await request.app.state.storage.create_access_url(
+            asset.object_key,
+            asset.original_filename,
+            payload.disposition,
+            600,
+        )
     if url is None:
         expires = int(expires_at.timestamp())
         signature = _content_signature(
@@ -735,6 +738,12 @@ def create_job(
     session.flush()
     _add_items_and_inputs(session, job, asset_roles)
     if payload.intent == "submit":
+        _reserve_real_provider_job_if_enabled(
+            session,
+            request,
+            job,
+            workspace.principal.user_id,
+        )
         reserve_credits(
             session, workspace.workspace_id, job, cast(int, job.estimated_credits)
         )
@@ -899,6 +908,12 @@ def submit_job(
             {"status": job.status},
         )
     enforce_active_job_limit(session, workspace.workspace_id)
+    _reserve_real_provider_job_if_enabled(
+        session,
+        request,
+        job,
+        workspace.principal.user_id,
+    )
     transition_job(job, JobStatus.QUEUED, progress=0)
     reserve_credits(
         session, workspace.workspace_id, job, cast(int, job.estimated_credits)
@@ -1059,6 +1074,12 @@ def retry_job(
     session.add(retried)
     session.flush()
     _copy_job_relations_for_retry(session, source, retried, selected)
+    _reserve_real_provider_job_if_enabled(
+        session,
+        request,
+        retried,
+        workspace.principal.user_id,
+    )
     reserve_credits(
         session,
         workspace.workspace_id,
@@ -1367,6 +1388,46 @@ def _new_job_from_payload(
         queued_at=utc_now() if is_submit else None,
     )
     return job, asset_roles
+
+
+def _reserve_real_provider_job_if_enabled(
+    session: Session,
+    request: Request,
+    job: JobRecord,
+    actor_user_id: str,
+) -> None:
+    settings = request.app.state.settings
+    if settings.task_runner != "tengli":
+        return
+    configuration = job.configuration if isinstance(job.configuration, dict) else {}
+    input_configuration = configuration.get("input")
+    group_count = 0
+    if job.type == JobType.DETAIL_PACK.value and isinstance(
+        input_configuration, dict
+    ):
+        groups = input_configuration.get("product_groups")
+        if isinstance(groups, list):
+            group_count = len(groups)
+    image_cost = int(job.estimated_cost_max_micros or 0)
+    if job.type == JobType.DETAIL_PACK.value:
+        estimated_cost = (
+            image_cost * 2
+            + group_count * settings.tengli_planner_reserve_micros
+        )
+        provider_requests = job.expected_item_count * 2 + group_count
+    else:
+        estimated_cost = image_cost * 2
+        provider_requests = 2
+    reserve_provider_job_quota(
+        session,
+        job=job,
+        actor_user_id=actor_user_id,
+        estimated_cost_micros=estimated_cost,
+        provider_request_count=provider_requests,
+        daily_limit_micros=int(settings.tengli_daily_budget_usd * 1_000_000),
+        monthly_limit_micros=int(settings.tengli_monthly_budget_usd * 1_000_000),
+        daily_request_limit=settings.tengli_daily_request_limit,
+    )
 
 
 def _add_items_and_inputs(

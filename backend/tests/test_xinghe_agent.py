@@ -36,6 +36,7 @@ from app.models import (
     utc_now,
 )
 from app.provider import ProviderRequest
+from app.provider_quota import PROVIDER_JOB_QUOTA_ACTION
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
     IMAGE_FORMAT,
@@ -89,7 +90,32 @@ def _create_detail_job(
         },
     )
     assert response.status_code == 202
-    return response.json()
+    job = response.json()
+    planner = client.app.state.task_runner.coordinator.detail_planner
+    gateway = planner.gateway if planner is not None else None
+    if getattr(gateway, "provider_name", None) == "tengli":
+        # Offline adapter tests bypass HTTP runner selection, so seed the
+        # durable authorization that production submission creates.
+        with client.app.state.session_factory() as session:
+            session.add(
+                AuditEventRecord(
+                    workspace_id=WORKSPACE_ID,
+                    actor_user_id=None,
+                    action=PROVIDER_JOB_QUOTA_ACTION,
+                    resource_type="job",
+                    resource_id=job["id"],
+                    request_id=job["id"],
+                    details={
+                        "estimated_cost_micros": 1,
+                        "provider_request_count": 1,
+                        "daily_limit_micros": 1,
+                        "monthly_limit_micros": 1,
+                        "daily_request_limit": 1,
+                    },
+                )
+            )
+            session.commit()
+    return job
 
 
 def _gateway(client: TestClient) -> FakeXingheGateway:
@@ -931,6 +957,40 @@ def _install_budget_runner(
         high_price_micros=90_000,
     )
     return gateway
+
+
+def test_tengli_planner_fails_closed_without_durable_provider_quota(
+    client: TestClient,
+) -> None:
+    transport = _Budget429Transport(page_count=1)
+    _install_budget_runner(
+        client,
+        transport,
+        budget_limit_micros=200_000_000,
+        concurrency=1,
+    )
+    source = upload_asset(client, filename="quota-gate.jpg")
+    job = _create_detail_job(client, [source["id"]], page_count=1)
+    with client.app.state.session_factory() as session:
+        reservation = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.action == PROVIDER_JOB_QUOTA_ACTION,
+                AuditEventRecord.resource_id == job["id"],
+            )
+        )
+        assert reservation is not None
+        session.delete(reservation)
+        session.commit()
+
+    assert dispatch_pending(client) == 1
+    failed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+
+    assert failed["status"] == JobStatus.FAILED.value
+    assert failed["error_code"] == "PROVIDER_QUOTA_RESERVATION_MISSING"
+    assert transport.planner_calls == 0
+    assert transport.image_calls == 0
 
 
 @pytest.mark.parametrize(

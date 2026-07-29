@@ -36,6 +36,7 @@ from .provider import (
     ProviderRequest,
     ProviderResult,
 )
+from .provider_quota import require_provider_job_quota
 from .services import new_id
 from .storage import ImageStorage, ValidatedImage
 
@@ -516,6 +517,14 @@ class MaskedRepairProvider:
                     "BUDGET_RESERVATION_MISSING",
                     "An active budget reservation is required before local edit.",
                 )
+            if self.gateway.provider_name == "tengli":
+                try:
+                    require_provider_job_quota(session, job)
+                except RuntimeError as exc:
+                    raise MaskedRepairError(
+                        "PROVIDER_QUOTA_RESERVATION_MISSING",
+                        str(exc),
+                    ) from exc
             existing = session.scalar(
                 select(AuditEventRecord.id)
                 .where(

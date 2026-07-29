@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     s3_secret_key: str = "polaris_minio_dev_only"
     s3_bucket: str = "polaris-assets"
     s3_auto_create_bucket: bool = True
+    asset_access_url_mode: Literal["auto", "same_origin"] = "auto"
     auto_process_jobs: bool = True
     task_dispatcher: Literal["inline", "celery"] = "celery"
     task_runner: Literal["mock", "tengli"] = "mock"
@@ -61,6 +62,14 @@ class Settings(BaseSettings):
     tengli_image_model: str = "gpt-image-2"
     tengli_vision_model: str = "gpt-5.6-terra"
     tengli_smoke_budget_usd: float = Field(default=200, gt=0, le=200)
+    tengli_daily_budget_usd: float = Field(default=0, ge=0, le=2)
+    tengli_monthly_budget_usd: float = Field(default=0, ge=0, le=20)
+    tengli_daily_request_limit: int = Field(default=0, ge=0, le=100)
+    tengli_planner_reserve_micros: int = Field(
+        default=250_000,
+        ge=1,
+        le=2_000_000,
+    )
     xinghe_concurrency: Literal[1, 2, 6] = 6
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)

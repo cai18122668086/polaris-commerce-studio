@@ -61,6 +61,7 @@ from .provider import (
     ProviderRequest,
     ProviderResult,
 )
+from .provider_quota import require_provider_job_quota
 from .services import canonical_hash, new_id, settle_credits, transition_job
 from .skill_runtime import SkillManifestRegistry, SkillRuntimeError
 from .storage import ImageStorage
@@ -1547,6 +1548,14 @@ class XinghePlanningCoordinator:
                 "BUDGET_RESERVATION_MISSING",
                 "An active credit reservation is required before planning.",
             )
+        if self.gateway.provider_name == "tengli":
+            try:
+                require_provider_job_quota(session, job)
+            except RuntimeError as exc:
+                raise XingheAgentError(
+                    "PROVIDER_QUOTA_RESERVATION_MISSING",
+                    str(exc),
+                ) from exc
         if not requests:
             raise XingheAgentError(
                 "AGENT_CONFIGURATION_INVALID",
@@ -2393,6 +2402,14 @@ class XingheImageProvider:
                     "BUDGET_RESERVATION_MISSING",
                     "An active budget reservation is required before image calls.",
                 )
+            if self.gateway.provider_name == "tengli":
+                try:
+                    require_provider_job_quota(session, job)
+                except RuntimeError as exc:
+                    raise XingheAgentError(
+                        "PROVIDER_QUOTA_RESERVATION_MISSING",
+                        str(exc),
+                    ) from exc
             existing = session.scalar(
                 select(AuditEventRecord.id)
                 .where(

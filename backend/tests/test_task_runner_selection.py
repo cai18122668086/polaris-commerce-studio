@@ -36,6 +36,9 @@ def _settings(tmp_path: Path, **updates: object) -> Settings:
         mock_job_delay_seconds=0,
         tengli_api_key=SecretStr("test-provider-key"),
         tengli_smoke_budget_usd=1,
+        tengli_daily_budget_usd=1,
+        tengli_monthly_budget_usd=5,
+        tengli_daily_request_limit=20,
         xinghe_concurrency=2,
     )
     return settings.model_copy(update=updates)
@@ -134,6 +137,9 @@ def test_factory_tengli_selects_existing_real_builder(
         ({"tengli_smoke_budget_usd": float("nan")}, "budget"),
         ({"xinghe_concurrency": 1}, "concurrency"),
         ({"xinghe_concurrency": 6}, "concurrency"),
+        ({"tengli_daily_budget_usd": 0}, "daily budget"),
+        ({"tengli_monthly_budget_usd": 0.5}, "monthly budget"),
+        ({"tengli_daily_request_limit": 0}, "daily request limit"),
         ({"tengli_base_url": ""}, "base URL"),
         ({"tengli_base_url": "ftp://provider.example"}, "base URL"),
         ({"tengli_base_url": "http://["}, "base URL"),

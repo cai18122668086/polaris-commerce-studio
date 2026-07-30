@@ -2,7 +2,10 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from app.masked_repair import MaskedEditGatewayRequest
+from app.masked_repair import (
+    MaskedEditGatewayRequest,
+    MaskedVisualReviewRequest,
+)
 from app.xinghe_agent import TengliOpenAICompatibleGateway
 
 
@@ -81,3 +84,71 @@ def test_tengli_masked_edit_uses_dedicated_source_mask_contract() -> None:
     assert result.http_status == 400
     assert result.retryable is False
     assert result.error_code == "LOCAL_EDIT_REQUEST_FAILED"
+
+
+class VisualReviewTransport:
+    def __init__(self) -> None:
+        self.call: dict[str, Any] | None = None
+
+    async def post_json(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        self.call = kwargs
+        return (
+            200,
+            {
+                "id": "review_request",
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"visual_success":true,'
+                                '"instruction_satisfied":true,'
+                                '"identity_inside_selection_preserved":true,'
+                                '"boundary_continuity":true,'
+                                '"artifacts_absent":true,'
+                                '"reason_codes":["passed"],'
+                                '"summary":"The candidate passes review."}'
+                            )
+                        }
+                    }
+                ],
+            },
+        )
+
+    async def post_multipart(self, **_: Any) -> tuple[int, dict[str, Any]]:
+        raise AssertionError("Visual review must use the JSON endpoint.")
+
+
+def test_tengli_visual_review_sends_three_ordered_images_once() -> None:
+    transport = VisualReviewTransport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://provider.invalid",
+        planner_model="planner-test",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+    result = asyncio.run(
+        gateway.review_masked(
+            MaskedVisualReviewRequest(
+                source_png=b"source",
+                authority_png=b"authority",
+                candidate_png=b"candidate",
+                instruction="replace the selected label",
+                idempotency_key="visual-review-idem",
+            )
+        )
+    )
+
+    assert result.visual_success is True
+    assert result.reason_codes == ("passed",)
+    assert transport.call is not None
+    payload = transport.call["payload"]
+    assert payload["model"] == "planner-test"
+    assert payload["response_format"] == {"type": "json_object"}
+    assert transport.call["headers"]["Idempotency-Key"] == "visual-review-idem"
+    content = payload["messages"][1]["content"]
+    images = [item for item in content if item["type"] == "image_url"]
+    assert len(images) == 3
+    assert images[0]["image_url"]["url"].endswith("c291cmNl")
+    assert images[1]["image_url"]["url"].endswith("YXV0aG9yaXR5")
+    assert images[2]["image_url"]["url"].endswith("Y2FuZGlkYXRl")

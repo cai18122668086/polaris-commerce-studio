@@ -26,8 +26,8 @@ HIGH_QUALITY_ROLE_KEYWORDS = (
 
 
 def quality_for_screen(screen: dict) -> str:
-    role = str(screen.get("role", ""))
-    return "high" if any(keyword in role for keyword in HIGH_QUALITY_ROLE_KEYWORDS) else "medium"
+    del screen
+    return "high"
 
 
 def estimate_output_cost_range(
@@ -40,8 +40,8 @@ def estimate_output_cost_range(
     page_count = count * groups
     return {
         "page_count": page_count,
-        "minimum_usd": round(page_count * min(medium_price, high_price), 4),
-        "maximum_usd": round(page_count * max(medium_price, high_price), 4),
+        "minimum_usd": round(page_count * high_price, 4),
+        "maximum_usd": round(page_count * high_price, 4),
     }
 
 

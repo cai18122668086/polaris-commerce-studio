@@ -6,7 +6,7 @@
         "**/*.pyc"
     ],
     "skill_id": "xinghe-ecommerce-detail",
-    "content_hash": "f4ff20323c8ff542fa124271a4ab532f13810aff79a537f22face2ce803b7d17",
+    "content_hash": "b2977a412bddf5597945b7ec54960f330c6df652c71cba0c337a4f96eece8c64",
     "capability": "ecommerce_detail_pack",
     "input_contract": {
         "schema_id": "polaris.skill.xinghe-ecommerce-detail.input.v1",
@@ -67,8 +67,68 @@
     "real_provider_request_limit": 0,
     "files": [
         {
+            "path": "SKILL.md",
+            "sha256": "f5a446bcfc11be4bf071b2cb8f35d800948b450e50924b3da9a8f2ed57f6b534"
+        },
+        {
+            "path": "agents/openai.yaml",
+            "sha256": "24e79da515657dac3c3b07820c1158c6dcf3715a84053317861f77dae4783673"
+        },
+        {
             "path": "references/agent-api-runtime.md",
-            "sha256": "c1ca3e1f4c23a4d4f169700091b5ad83be74dc17eddf76877f9b9776f79ae6a9"
+            "sha256": "77f8e1b7c8ece12fdf782cd5cdf17d3f3e0f06f583445e0e5bfdf75b6f1d124d"
+        },
+        {
+            "path": "references/beauty-personalcare-structures.md",
+            "sha256": "410bda7e95109c34a7fa9dd8a490ed28d7cdb13756266d932ca03653e420c954"
+        },
+        {
+            "path": "references/category-router.md",
+            "sha256": "6b611250b2af6fe8fe84c46be549d48cd0425fcfe6ee08b628df098cf6c6a904"
+        },
+        {
+            "path": "references/compliance.md",
+            "sha256": "427c9a0230f2bba0742a66a01ee70e66e2279abd07793e57c6d4c7755eba08f6"
+        },
+        {
+            "path": "references/design-strength-system.md",
+            "sha256": "6785b47be81716b51294b9cf8821056cf81f811f092abff31598ddb332b38f30"
+        },
+        {
+            "path": "references/electronics-structures.md",
+            "sha256": "768966a8bcd73b8f0263a96bfa28850c7adc60164a4a4ee955fceff183a27e50"
+        },
+        {
+            "path": "references/fashion-page-structures.md",
+            "sha256": "0c815f656d82c119d10d6610529724defe7abcfc212fb5561a5413797f7e3dd8"
+        },
+        {
+            "path": "references/food-page-structures.md",
+            "sha256": "1ad1a757bbd0f134601d980004726da56338e07736a6962bbb60288ab83e21a7"
+        },
+        {
+            "path": "references/general-page-structures.md",
+            "sha256": "e07fae5f50caea10357b9c87681b9a022014ac9ba66e40bff5ca89ef80f0789e"
+        },
+        {
+            "path": "references/generation-tools.md",
+            "sha256": "6ff0ca571db5ac5f89b51d68b262bcf076f4773e752086bb5a93f34d6a638d1d"
+        },
+        {
+            "path": "references/home-daily-structures.md",
+            "sha256": "7814e2105de5f84b733765ff0d3dbab82c9943d43dbfdca298422f2153ef7f45"
+        },
+        {
+            "path": "references/pet-page-structures.md",
+            "sha256": "a87d45ec9455c1545cba88e9915578b9da8d90d153f546d9806a75b886617fb1"
+        },
+        {
+            "path": "references/prompt-contract.md",
+            "sha256": "ef11e99d3819895c89427b3629267fca74bcab83d479df50c1c5876941465f68"
+        },
+        {
+            "path": "references/quality-control.md",
+            "sha256": "0e5eb01415ea914c49b9e1f4d6713643b7d426c4ebcc65ac7ce2f155a9e7fd2b"
         },
         {
             "path": "xinghe_agent.py",
@@ -76,7 +136,7 @@
         },
         {
             "path": "xinghe_api.py",
-            "sha256": "b26791fad9fc317acc43f1d29e1ebbd3b995e7ce8f8de8a4d782c3c647916b52"
+            "sha256": "765c931f4fc9af9bd7112e6279debf292bd54feb9095a8e85e77bf540cbb7a36"
         },
         {
             "path": "xinghe_groups.py",
@@ -84,7 +144,7 @@
         },
         {
             "path": "xinghe_prompt.py",
-            "sha256": "e477863afec717924bb76472b84a3032e50dc48d0f53e9d9f8cc06d9fa45601b"
+            "sha256": "4fb58a536641791599d172733dc3865cd565f2998f278ef223c696254333e7d4"
         },
         {
             "path": "xinghe_usage.py",

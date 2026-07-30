@@ -13,6 +13,8 @@ from app.domain import AssetLifecycleStatus, AssetMediaKind, AssetOriginKind
 from app.masked_repair import (
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
+    MaskedVisualReviewCallResult,
+    MaskedVisualReviewRequest,
 )
 from app.models import (
     AssetRecord,
@@ -114,10 +116,17 @@ class OfflineMaskedGateway(FakeXingheGateway):
     image_model = "gpt-image-2"
     pricing_version = "offline-test-v1"
 
-    def __init__(self, outcomes: Sequence[str] = ("success",)) -> None:
+    def __init__(
+        self,
+        outcomes: Sequence[str] = ("success",),
+        *,
+        review_success: bool | None = True,
+    ) -> None:
         super().__init__()
         self.outcomes = list(outcomes)
+        self.review_success = review_success
         self.masked_calls: list[MaskedEditGatewayRequest] = []
+        self.review_calls: list[MaskedVisualReviewRequest] = []
 
     async def edit_masked(
         self,
@@ -160,6 +169,37 @@ class OfflineMaskedGateway(FakeXingheGateway):
             actual_cost_micros=12_000,
             estimated_cost_micros=80_000,
             artifact=_artifact(raw),
+            http_status=200,
+        )
+
+    async def review_masked(
+        self,
+        request: MaskedVisualReviewRequest,
+    ) -> MaskedVisualReviewCallResult:
+        self.review_calls.append(request)
+        return MaskedVisualReviewCallResult(
+            provider_request_id="offline_review_success",
+            raw_usage={"actual_cost_micros": 2_000},
+            normalized_usage=_usage(),
+            actual_cost_micros=2_000,
+            estimated_cost_micros=10_000,
+            visual_success=self.review_success,
+            summary="Controlled offline visual-review result.",
+            reason_codes=(
+                ("offline_review_passed",)
+                if self.review_success
+                else ("instruction_not_satisfied",)
+            ),
+            error_code=(
+                "LOCAL_EDIT_VISUAL_REVIEW_UNAVAILABLE"
+                if self.review_success is None
+                else None
+            ),
+            error_message=(
+                "Controlled review unavailable."
+                if self.review_success is None
+                else None
+            ),
             http_status=200,
         )
 
@@ -237,7 +277,14 @@ def test_real_local_edit_locks_every_outside_pixel_and_records_raw(
         assert raw_asset.asset_metadata["source_sha256"] == source["sha256"]
         assert raw_asset.asset_metadata["mask_sha256"] == mask["sha256"]
         assert raw_asset.asset_metadata["provider_request_id"] == "offline_success"
+        assert raw_asset.asset_metadata["raw_visual_success"] is True
+        assert (
+            raw_asset.asset_metadata["visual_review_request_id"]
+            == "offline_review_success"
+        )
+        assert raw_relation.validation["raw_visual_success"] is True
         assert output_relation.validation["outside_changed_pixels"] == 0
+        assert output_relation.validation["raw_visual_success"] is True
         output_key = output_asset.object_key
 
         assert (
@@ -280,6 +327,43 @@ def test_real_local_edit_locks_every_outside_pixel_and_records_raw(
                 assert result_rgba.getpixel((x, y)) == source_rgba.getpixel((x, y))
     assert len(gateway.masked_calls) == 1
     assert gateway.masked_calls[0].idempotency_key
+    assert len(gateway.review_calls) == 1
+    assert gateway.review_calls[0].source_png == source_bytes
+    assert gateway.review_calls[0].authority_png
+    assert gateway.review_calls[0].candidate_png
+
+
+def test_visual_review_rejection_retains_raw_without_delivery_or_regeneration(
+    client: TestClient,
+) -> None:
+    gateway = OfflineMaskedGateway(review_success=False)
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+
+    assert _dispatch(client) == 1
+    body = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert body["status"] == "failed"
+    assert body["items"][0]["error_code"] == (
+        "LOCAL_EDIT_VISUAL_REVIEW_REJECTED"
+    )
+
+    with client.app.state.session_factory() as session:
+        relations = session.scalars(
+            select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
+        ).all()
+        raw_relation = next(
+            item for item in relations if item.role == "provider_raw"
+        )
+        assert raw_relation.is_deliverable is False
+        assert raw_relation.validation["raw_visual_success"] is False
+        assert all(item.role != "local_edit_result" for item in relations)
+
+    assert len(gateway.masked_calls) == 1
+    assert len(gateway.review_calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -418,6 +502,7 @@ def test_retry_policy_is_one_transient_retry_and_no_4xx_retry(
         )
     assert len(gateway.masked_calls) == expected_calls
     assert len({call.idempotency_key for call in gateway.masked_calls}) == 1
+    assert len(gateway.review_calls) == (1 if expected_status == "completed" else 0)
 
 
 class RecordingProvider:

@@ -53,8 +53,8 @@ from app.skill_runtime import (
 )
 
 WORKSPACE_ID = "ws_test"
-XINGHE_HASH = "f4ff20323c8ff542fa124271a4ab532f13810aff79a537f22face2ce803b7d17"
-MASKED_HASH = "7e77eeac8a6bb936e7bf1f1aa6272563a127c8079483820f69b561b89910556a"
+XINGHE_HASH = "b2977a412bddf5597945b7ec54960f330c6df652c71cba0c337a4f96eece8c64"
+MASKED_HASH = "ce5b8c5c265da64fe9185ef9f78305d2b0635d5c2dda4a70c2d9df5d4e723ea4"
 
 
 @dataclass
@@ -326,7 +326,7 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
     masked = registry.get("masked-image-repair")
     xinghe = registry.get("xinghe-ecommerce-detail")
     assert masked.content_hash == MASKED_HASH
-    assert len(masked.files) == 5
+    assert len(masked.files) == 9
     assert masked.policy.safe_expansion_mode == SafeExpansionMode.PREAUTHORIZED_ONLY
     assert masked.schema_version == MANIFEST_SCHEMA_VERSION
     assert masked.policy.schema_version == POLICY_SCHEMA_VERSION
@@ -341,7 +341,7 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
     assert expansion.layout_adaptation_allowed is False
     assert expansion.outside_effective_selection_changed_pixels == 0
     assert xinghe.content_hash == XINGHE_HASH
-    assert len(xinghe.files) == 6
+    assert len(xinghe.files) == 21
     assert xinghe.policy.auto_review_regeneration_allowed is False
     assert xinghe.policy.successful_page_auto_redraw_allowed is False
     assert xinghe.policy.safe_expansion_mode == SafeExpansionMode.DISABLED

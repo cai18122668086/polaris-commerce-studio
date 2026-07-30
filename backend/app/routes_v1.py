@@ -1351,14 +1351,8 @@ def _new_job_from_payload(
             for ordinal, asset_id in enumerate(group.asset_ids)
         ]
     if isinstance(payload, DetailPackJobCreate):
-        minimum = item_count * min(
-            detail_medium_price_micros,
-            detail_high_price_micros,
-        )
-        maximum = item_count * max(
-            detail_medium_price_micros,
-            detail_high_price_micros,
-        )
+        minimum = item_count * detail_high_price_micros
+        maximum = item_count * detail_high_price_micros
         _, _, credits = estimate_job(JobType(payload.type), item_count)
     else:
         minimum = min(
@@ -1416,8 +1410,10 @@ def _reserve_real_provider_job_if_enabled(
         )
         provider_requests = job.expected_item_count * 2 + group_count
     else:
-        estimated_cost = image_cost * 2
-        provider_requests = 2
+        estimated_cost = (
+            image_cost * 2 + settings.tengli_planner_reserve_micros
+        )
+        provider_requests = 3
     reserve_provider_job_quota(
         session,
         job=job,
@@ -1500,8 +1496,8 @@ def _copy_job_for_retry(
                 and not isinstance(high_price, bool)
                 and high_price >= 0
             ):
-                minimum = len(selected) * min(medium_price, high_price)
-                maximum = len(selected) * max(medium_price, high_price)
+                minimum = len(selected) * high_price
+                maximum = len(selected) * high_price
     return JobRecord(
         id=new_id("job"),
         workspace_id=source.workspace_id,

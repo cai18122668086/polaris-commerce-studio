@@ -6,7 +6,7 @@
         "**/*.pyc"
     ],
     "skill_id": "masked-image-repair",
-    "content_hash": "7e77eeac8a6bb936e7bf1f1aa6272563a127c8079483820f69b561b89910556a",
+    "content_hash": "ce5b8c5c265da64fe9185ef9f78305d2b0635d5c2dda4a70c2d9df5d4e723ea4",
     "capability": "masked_image_repair",
     "input_contract": {
         "schema_id": "polaris.skill.masked-image-repair.input.v1",
@@ -73,12 +73,28 @@
     "real_provider_request_limit": 0,
     "files": [
         {
+            "path": "SKILL.md",
+            "sha256": "0d8d77240c18944c890512eb427babb4824c1c87f5bc3f27f6664ee9229b1b34"
+        },
+        {
+            "path": "agents/openai.yaml",
+            "sha256": "4a830cad4fb76b9e6d41845c286d27d8e375448dcfa6b20e6bd8a913f141936f"
+        },
+        {
             "path": "references/autonomous-deployment.md",
             "sha256": "255c32240180d2ba61fc45b8e6aa0911a84face1f1938eefea479335f1c7076c"
         },
         {
+            "path": "references/performance.md",
+            "sha256": "c19edec0fa8e2a40c094bec62404d59cf090cbd574d7d5e2795286fb1e9571ad"
+        },
+        {
             "path": "references/prompt-protocol.md",
             "sha256": "c324248b1818336036a381d9fe3ed500fa113601051dbcb35b78146c7a7edfe3"
+        },
+        {
+            "path": "references/text-replacement.md",
+            "sha256": "52d3d56254daf99d5d047bf5e168a95d01150fafd4ae4d1bf73f8d05e86c6386"
         },
         {
             "path": "scripts/preflight_content_fit.py",

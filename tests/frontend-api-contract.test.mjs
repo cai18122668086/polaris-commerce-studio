@@ -115,6 +115,16 @@ test("write actions use server allowed_actions as the only authority", async () 
   }
 });
 
+
+test("mask editor exposes brush, eraser, and rectangle authority tools", async () => {
+  const editor = await utf8("components/mask-editor.tsx");
+  assert.match(editor, /"brush" \| "eraser" \| "rectangle"/);
+  assert.match(editor, /tool === "rectangle"/);
+  assert.match(editor, /context\.fillRect\(left, top, width, height\)/);
+  assert.match(editor, /aria-label="矩形框选"/);
+  assert.match(editor, /disabled=\{!ready \|\| tool === "rectangle"\}/);
+});
+
 async function sourceFiles(directories) {
   const results = [];
   for (const directory of directories) {

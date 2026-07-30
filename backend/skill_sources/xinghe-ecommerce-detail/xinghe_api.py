@@ -59,7 +59,7 @@ class XingheImageClient:
         prompt: str,
         output_path: Path,
         size: str = "1024x1536",
-        quality: str = "medium",
+        quality: str = "high",
         output_format: str = "jpeg",
         output_compression: int = 92,
         image_field: str = "image",

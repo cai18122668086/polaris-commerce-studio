@@ -6,6 +6,7 @@ import { AlertCircle, Check, CheckCircle2, ImagePlus, Info, LoaderCircle, Rotate
 import { AppShell } from "@/components/app-shell";
 import { BeforeAfterResult } from "@/components/before-after-result";
 import { HelpPanel } from "@/components/help-panel";
+import { JobResultImage } from "@/components/job-result-image";
 import { MaskEditor, normalizeRasterImage, type MaskEditorHandle } from "@/components/mask-editor";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
@@ -44,6 +45,15 @@ export default function LocalEditPage() {
   const workflow = presentWorkflow(runtime.data?.capabilities.local_edit);
   const workflowAvailable = workflow.mode === "mock" || workflow.mode === "provider";
   const resultAsset = selectJobResultAssets(job.data)[0];
+  const rawCandidateAsset = job.data?.assets.find(
+    (asset) =>
+      asset.direction === "intermediate" && asset.role === "provider_raw",
+  );
+  const rawReviewSuccess = rawCandidateAsset?.validation.raw_visual_success;
+  const rawReviewSummary =
+    typeof rawCandidateAsset?.validation.visual_review_summary === "string"
+      ? rawCandidateAsset.validation.visual_review_summary
+      : undefined;
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -151,6 +161,15 @@ export default function LocalEditPage() {
               <div className="cost-bar"><span>本次环境<Info size={14} /></span><strong>{workflow.mode === "provider" ? "Provider · 可能计费" : workflow.mode === "mock" ? "零付费 mock" : "能力未知 · 不执行"}</strong></div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}
               {job.data && <div className={`generation-feedback ${["failed", "partial"].includes(job.data.status) ? "error" : job.data.status === "completed" ? "success" : "active"}`} aria-live="polite"><span>{job.data.status === "completed" ? <CheckCircle2 size={16} /> : <LoaderCircle size={16} className={["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} />}</span><div><strong><StatusBadge status={job.data.status} /></strong><p>{jobNote(job.data)} · {job.data.progress}%</p></div></div>}
+              {rawCandidateAsset && (
+                <div className={`generation-feedback ${rawReviewSuccess === true ? "success" : rawReviewSuccess === false ? "error" : "active"}`}>
+                  <span>{rawReviewSuccess === true ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}</span>
+                  <div>
+                    <strong>{rawReviewSuccess === true ? "视觉验收通过" : rawReviewSuccess === false ? "视觉验收未通过" : "视觉验收未完成"}</strong>
+                    <p>{rawReviewSummary ?? "原始候选已保留；只有验收通过的严格合成结果才可交付。"}</p>
+                  </div>
+                </div>
+              )}
               {canRetry ? (
                 <button className="primary-button generate-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : (
@@ -163,6 +182,7 @@ export default function LocalEditPage() {
           </div>
 
           {resultAsset && previewUrl && <section className="result-preview-card"><div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>生成结果</h2><p>拖动滑块对比标准化原图与后端生成资产。</p></div></div></div><BeforeAfterResult workspaceId={workspace?.id} sourceUrl={previewUrl} assetId={resultAsset.asset_id} /></section>}
+          {rawCandidateAsset && <section className="detail-form-card"><div className="form-section-head"><span className="number-chip number-chip--violet">R</span><div><h2>Provider 原始候选</h2><p>仅供视觉诊断，不是像素锁定后的可交付结果。</p></div></div><div className="job-results-grid"><JobResultImage workspaceId={workspace?.id} assetId={rawCandidateAsset.asset_id} alt="局部修改 Provider 原始候选" label="原始候选 · 不可交付" /></div></section>}
           {job.data?.status === "completed" && workflow.mode === "mock" && !resultAsset && <div className="api-state"><ImagePlus size={22} /><p>mock 流程已完成，但不会产生真实图片产物。</p></div>}
         </div>
         <HelpPanel mode="local-edit" />

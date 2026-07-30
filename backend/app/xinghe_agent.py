@@ -42,6 +42,8 @@ from .masked_repair import (
     MASKED_REPAIR_MODEL,
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
+    MaskedVisualReviewCallResult,
+    MaskedVisualReviewRequest,
 )
 from .models import (
     AssetRecord,
@@ -66,12 +68,12 @@ from .services import canonical_hash, new_id, settle_credits, transition_job
 from .skill_runtime import SkillManifestRegistry, SkillRuntimeError
 from .storage import ImageStorage
 
-WORKFLOW_VERSION = "xinghe-bounded-agent-v1"
-PLANNING_POLICY_VERSION = "xinghe-structured-plan-v1"
-QUALITY_POLICY_VERSION = "xinghe-semantic-quality-v1"
-PROMPT_POLICY_VERSION = "xinghe-density-v1"
-RESUME_SIGNATURE_VERSION = "xinghe-resume-v1"
-PLAN_SCHEMA_VERSION = "xinghe-plan-v1"
+WORKFLOW_VERSION = "xinghe-bounded-agent-v2"
+PLANNING_POLICY_VERSION = "xinghe-skill-parity-plan-v2"
+QUALITY_POLICY_VERSION = "xinghe-all-high-v2"
+PROMPT_POLICY_VERSION = "xinghe-skill-parity-prompt-v2"
+RESUME_SIGNATURE_VERSION = "xinghe-resume-v2"
+PLAN_SCHEMA_VERSION = "xinghe-plan-v2"
 PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v2"
 PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
 IMAGE_SIZE = "1024x1536"
@@ -113,6 +115,31 @@ _HIGH_ROLE_PATTERNS = tuple(
     )
 )
 
+_PLANNER_PROTOCOL_FILES = (
+    "SKILL.md",
+    "references/category-router.md",
+    "references/design-strength-system.md",
+    "references/prompt-contract.md",
+    "references/compliance.md",
+    "references/quality-control.md",
+    "references/fashion-page-structures.md",
+    "references/food-page-structures.md",
+    "references/pet-page-structures.md",
+    "references/beauty-personalcare-structures.md",
+    "references/home-daily-structures.md",
+    "references/electronics-structures.md",
+    "references/general-page-structures.md",
+)
+_SUBJECT_SCALES = {
+    "hero",
+    "medium",
+    "macro",
+    "scene",
+    "information",
+    "cutaway",
+    "overhead",
+}
+
 
 class XingheAgentError(RuntimeError):
     """Controlled, redaction-safe Agent failure."""
@@ -153,6 +180,7 @@ class PlannerRequest:
     product_information: tuple[str, ...]
     platform_code: str
     idempotency_key: str
+    system_prompt: str = ""
 
 
 @dataclass(frozen=True)
@@ -257,13 +285,10 @@ def normalize_usage(raw_usage: object) -> dict[str, Any]:
 
 
 def quality_for_role(role: str) -> str:
-    """Route semantic role text without relying on an exact role-name enum."""
+    """Apply the user-approved all-high detail-page quality policy."""
 
-    return (
-        "high"
-        if any(pattern.search(role) for pattern in _HIGH_ROLE_PATTERNS)
-        else "medium"
-    )
+    del role
+    return "high"
 
 
 def cost_range(
@@ -272,11 +297,10 @@ def cost_range(
     medium_price_micros: int,
     high_price_micros: int,
 ) -> tuple[int, int]:
+    del medium_price_micros
     total_pages = page_count * group_count
-    return (
-        total_pages * min(medium_price_micros, high_price_micros),
-        total_pages * max(medium_price_micros, high_price_micros),
-    )
+    high_total = total_pages * high_price_micros
+    return high_total, high_total
 
 
 def build_resume_signature(
@@ -372,19 +396,56 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
             "Planner buyer objections must be a non-empty array.",
             json_pointer=_json_pointer("analysis", "buyer_objections"),
         )
-    campaign_lock = plan.get("campaign_style_lock")
-    design_lock = plan.get("design_strength_lock")
-    if not isinstance(campaign_lock, (str, dict)) or not campaign_lock:
-        raise XingheAgentError(
-            "PLANNER_SCHEMA_INVALID",
-            "Planner campaign style lock is invalid.",
-            json_pointer=_json_pointer("plan", "campaign_style_lock"),
+    campaign_lock = _require_mapping(
+        plan.get("campaign_style_lock"),
+        "PLANNER_SCHEMA_INVALID",
+        path=_json_pointer("plan", "campaign_style_lock"),
+    )
+    for key in (
+        "palette",
+        "typography",
+        "background",
+        "lighting",
+        "icon_style",
+        "whitespace",
+        "product_scale",
+    ):
+        _require_nonempty_string(
+            campaign_lock.get(key),
+            key,
+            path=_json_pointer("plan", "campaign_style_lock", key),
         )
-    if not isinstance(design_lock, (str, dict)) or not design_lock:
+    design_lock = _require_mapping(
+        plan.get("design_strength_lock"),
+        "PLANNER_SCHEMA_INVALID",
+        path=_json_pointer("plan", "design_strength_lock"),
+    )
+    for key in (
+        "category_visual_motif",
+        "composition_contrast",
+        "color_contrast",
+        "template_ban",
+    ):
+        _require_nonempty_string(
+            design_lock.get(key),
+            key,
+            path=_json_pointer("plan", "design_strength_lock", key),
+        )
+    signature_devices = design_lock.get("signature_devices")
+    if (
+        not isinstance(signature_devices, list)
+        or len(signature_devices) < min(2, page_count)
+        or any(
+            not isinstance(value, str) or not value.strip()
+            for value in signature_devices
+        )
+    ):
         raise XingheAgentError(
             "PLANNER_SCHEMA_INVALID",
-            "Planner design strength lock is invalid.",
-            json_pointer=_json_pointer("plan", "design_strength_lock"),
+            "Planner design strength lock requires signature devices.",
+            json_pointer=_json_pointer(
+                "plan", "design_strength_lock", "signature_devices"
+            ),
         )
     screens = plan.get("screens")
     if not isinstance(screens, list):
@@ -398,6 +459,17 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
             "PLANNER_SCHEMA_INVALID",
             "Planner returned a different number of screens than requested.",
             json_pointer=_json_pointer("plan", "screens"),
+        )
+    rhythm_map = design_lock.get("rhythm_map")
+    if (
+        not isinstance(rhythm_map, list)
+        or len(rhythm_map) != page_count
+        or any(not isinstance(value, str) or not value.strip() for value in rhythm_map)
+    ):
+        raise XingheAgentError(
+            "PLANNER_SCHEMA_INVALID",
+            "Planner rhythm map must contain one entry per screen.",
+            json_pointer=_json_pointer("plan", "design_strength_lock", "rhythm_map"),
         )
     normalized_screens: list[dict[str, str]] = []
     for screen_index, screen in enumerate(screens):
@@ -420,9 +492,68 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
                 "composition",
                 "device",
                 "difference",
+                "structure",
+                "subject_scale",
             )
         }
+        if normalized["subject_scale"] not in _SUBJECT_SCALES:
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Planner subject scale is outside the production enum.",
+                json_pointer=_json_pointer(
+                    "plan", "screens", screen_index, "subject_scale"
+                ),
+            )
         normalized_screens.append(normalized)
+    minimum_roles = min(5, page_count)
+    minimum_structures = min(4, page_count)
+    minimum_scales = min(3, page_count)
+    minimum_devices = min(2, page_count)
+    distinct_roles = {item["role"].strip().casefold() for item in normalized_screens}
+    distinct_structures = {
+        item["structure"].strip().casefold() for item in normalized_screens
+    }
+    distinct_scales = {item["subject_scale"] for item in normalized_screens}
+    distinct_devices = {
+        item["device"].strip().casefold() for item in normalized_screens
+    }
+    if len(distinct_roles) < minimum_roles:
+        raise XingheAgentError(
+            "PLANNER_DESIGN_STRENGTH_INVALID",
+            "Planner did not provide enough distinct page roles.",
+            json_pointer=_json_pointer("plan", "screens"),
+        )
+    if len(distinct_structures) < minimum_structures:
+        raise XingheAgentError(
+            "PLANNER_DESIGN_STRENGTH_INVALID",
+            "Planner did not provide enough distinct page structures.",
+            json_pointer=_json_pointer("plan", "screens"),
+        )
+    if len(distinct_scales) < minimum_scales:
+        raise XingheAgentError(
+            "PLANNER_DESIGN_STRENGTH_INVALID",
+            "Planner did not provide enough subject-scale contrast.",
+            json_pointer=_json_pointer("plan", "screens"),
+        )
+    if len(distinct_devices) < minimum_devices:
+        raise XingheAgentError(
+            "PLANNER_DESIGN_STRENGTH_INVALID",
+            "Planner did not provide enough distinct signature devices.",
+            json_pointer=_json_pointer("plan", "screens"),
+        )
+    hero_count = sum(item["subject_scale"] == "hero" for item in normalized_screens)
+    if page_count > 1 and hero_count > (page_count + 1) // 2:
+        raise XingheAgentError(
+            "PLANNER_DESIGN_STRENGTH_INVALID",
+            "Too many screens use a full-product hero scale.",
+            json_pointer=_json_pointer("plan", "screens"),
+        )
+    if page_count > 1 and normalized_screens[-1]["role"] != "closing_summary":
+        raise XingheAgentError(
+            "PLANNER_DESIGN_STRENGTH_INVALID",
+            "The final screen must be the non-consultative closing summary.",
+            json_pointer=_json_pointer("plan", "screens", page_count - 1, "role"),
+        )
     return {
         "analysis": {
             "category_key": str(analysis["category_key"]),
@@ -434,8 +565,8 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
             "buyer_objections": list(objections),
         },
         "plan": {
-            "campaign_style_lock": campaign_lock,
-            "design_strength_lock": design_lock,
+            "campaign_style_lock": dict(campaign_lock),
+            "design_strength_lock": dict(design_lock),
             "screens": normalized_screens,
         },
     }
@@ -498,6 +629,8 @@ def compile_page_prompt(
         f"Campaign Style Lock: {campaign_lock}\n"
         f"Design Strength Lock: {design_lock}\n"
         f"Role: {screen['role']}\n"
+        f"Page structure: {screen['structure']}\n"
+        f"Subject scale: {screen['subject_scale']}\n"
         f"Main title ({language}): {screen['title']}\n"
         f"One short label ({language}): {screen['label']}\n"
         f"One visual hero and composition: {screen['composition']}\n"
@@ -512,6 +645,33 @@ def compile_page_prompt(
         "comfort, durability, or authenticity claims. Treat visible source "
         "watermarks as source marks, never as product branding or page copy."
     )
+
+
+def load_planner_system_prompt(skill_root: Path) -> str:
+    """Load the pinned direct-Codex protocol after manifest verification."""
+
+    sections: list[str] = [
+        (
+            "You are the production runtime for the pinned "
+            "xinghe-ecommerce-detail skill. Follow every included protocol "
+            "as authoritative. Perform one combined product-analysis and "
+            "page-planning pass; do not call images when planning is invalid."
+        )
+    ]
+    try:
+        for relative in _PLANNER_PROTOCOL_FILES:
+            path = skill_root / Path(relative)
+            sections.append(
+                f"\n\n--- BEGIN {relative} ---\n"
+                f"{path.read_text(encoding='utf-8')}"
+                f"\n--- END {relative} ---"
+            )
+    except (OSError, UnicodeError) as exc:
+        raise XingheAgentError(
+            "SKILL_PROTOCOL_LOAD_FAILED",
+            f"Pinned planner protocol could not be loaded ({type(exc).__name__}).",
+        ) from exc
+    return "".join(sections)
 
 
 class FakeXingheGateway:
@@ -604,9 +764,9 @@ class FakeXingheGateway:
                 raw_usage = None
             fail_count = self.image_failures.get(request.page_number, 0)
             if self._image_attempts[attempt_key] <= fail_count:
-                group_token = hashlib.sha256(
-                    request.group_key.encode()
-                ).hexdigest()[:10]
+                group_token = hashlib.sha256(request.group_key.encode()).hexdigest()[
+                    :10
+                ]
                 return ImageCallResult(
                     outcome=ProviderOutcome.FAILED,
                     provider_request_id=(
@@ -629,9 +789,7 @@ class FakeXingheGateway:
                 payload,
                 filename=f"{request.group_key}-page-{request.page_number:03d}.jpg",
             )
-            group_token = hashlib.sha256(
-                request.group_key.encode()
-            ).hexdigest()[:10]
+            group_token = hashlib.sha256(request.group_key.encode()).hexdigest()[:10]
             return ImageCallResult(
                 outcome=ProviderOutcome.SUCCEEDED,
                 provider_request_id=(
@@ -772,6 +930,7 @@ class TengliOpenAICompatibleGateway:
         image_model: str,
         medium_price_micros: int = DEFAULT_MEDIUM_PRICE_MICROS,
         high_price_micros: int = DEFAULT_HIGH_PRICE_MICROS,
+        review_price_micros: int = 20_000,
         timeout_seconds: float = 600,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
@@ -782,7 +941,7 @@ class TengliOpenAICompatibleGateway:
             raise ValueError("Tengli base URL must be an absolute HTTP(S) URL.")
         if not planner_model.strip() or not image_model.strip():
             raise ValueError("Planner and image models are required.")
-        if medium_price_micros < 0 or high_price_micros < 0:
+        if medium_price_micros < 0 or high_price_micros < 0 or review_price_micros < 0:
             raise ValueError("Configured unit prices cannot be negative.")
         self._api_key = api_key.strip()
         self.base_url = base_url.rstrip("/") + "/"
@@ -790,6 +949,7 @@ class TengliOpenAICompatibleGateway:
         self.image_model = image_model.strip()
         self.medium_price_micros = medium_price_micros
         self.high_price_micros = high_price_micros
+        self.review_price_micros = review_price_micros
         self.timeout_seconds = timeout_seconds
         self.transport = transport or UrllibOpenAITransport()
         self.external_network_request_count = 0
@@ -814,7 +974,10 @@ class TengliOpenAICompatibleGateway:
             )
         payload = {
             "model": self.planner_model,
-            "messages": [{"role": "user", "content": content}],
+            "messages": [
+                {"role": "system", "content": request.system_prompt},
+                {"role": "user", "content": content},
+            ],
             "response_format": {"type": "json_object"},
         }
         response: Mapping[str, Any] | None = None
@@ -834,9 +997,7 @@ class TengliOpenAICompatibleGateway:
                     raw_usage=_raw_usage(response),
                     normalized_usage=normalize_usage(_raw_usage(response)),
                     api_latency_seconds=time.perf_counter() - started,
-                    actual_cost_micros=_usage_cost_micros(
-                        _raw_usage(response)
-                    ),
+                    actual_cost_micros=_usage_cost_micros(_raw_usage(response)),
                     error_code=(
                         "PLANNER_RATE_LIMITED"
                         if status == 429
@@ -844,16 +1005,10 @@ class TengliOpenAICompatibleGateway:
                     ),
                     error_message=f"Planner request failed with HTTP {status}.",
                     http_status=status,
-                    provider_envelope=envelope_diagnostics[
-                        "provider_envelope"
-                    ],
-                    request_id_presence=envelope_diagnostics[
-                        "request_id_presence"
-                    ],
+                    provider_envelope=envelope_diagnostics["provider_envelope"],
+                    request_id_presence=envelope_diagnostics["request_id_presence"],
                     usage_presence=envelope_diagnostics["usage_presence"],
-                    usage_completeness=envelope_diagnostics[
-                        "usage_completeness"
-                    ],
+                    usage_completeness=envelope_diagnostics["usage_completeness"],
                 )
             envelope_diagnostics = _planner_envelope_diagnostics(response)
             text = _planner_message_text(response)
@@ -869,19 +1024,13 @@ class TengliOpenAICompatibleGateway:
                 actual_cost_micros=_usage_cost_micros(raw_usage),
                 http_status=status,
                 parse_trace=parse_trace,
-                structure_fingerprint=_planner_structure_fingerprint(
-                    plan_payload
-                ),
+                structure_fingerprint=_planner_structure_fingerprint(plan_payload),
                 provider_envelope=envelope_diagnostics["provider_envelope"],
                 content_utf8_bytes=len(content_bytes),
                 content_sha256=hashlib.sha256(content_bytes).hexdigest(),
-                request_id_presence=envelope_diagnostics[
-                    "request_id_presence"
-                ],
+                request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
-                usage_completeness=envelope_diagnostics[
-                    "usage_completeness"
-                ],
+                usage_completeness=envelope_diagnostics["usage_completeness"],
             )
         except XingheAgentError as exc:
             envelope_diagnostics = (
@@ -891,13 +1040,9 @@ class TengliOpenAICompatibleGateway:
             )
             raw_content = _planner_raw_content(response)
             rejected_content_bytes = (
-                raw_content.encode("utf-8")
-                if isinstance(raw_content, str)
-                else None
+                raw_content.encode("utf-8") if isinstance(raw_content, str) else None
             )
-            raw_usage = (
-                _raw_usage(response) if response is not None else None
-            )
+            raw_usage = _raw_usage(response) if response is not None else None
             return PlannerCallResult(
                 payload=None,
                 provider_request_id=(
@@ -912,9 +1057,7 @@ class TengliOpenAICompatibleGateway:
                 error_path=exc.json_pointer,
                 parse_trace=("provider_payload:rejected_before_json_parse",),
                 structure_fingerprint=_planner_structure_fingerprint(
-                    response
-                    if raw_content is _MISSING_JSON_VALUE
-                    else raw_content
+                    response if raw_content is _MISSING_JSON_VALUE else raw_content
                 ),
                 provider_envelope=envelope_diagnostics["provider_envelope"],
                 content_utf8_bytes=(
@@ -927,13 +1070,9 @@ class TengliOpenAICompatibleGateway:
                     if rejected_content_bytes is not None
                     else None
                 ),
-                request_id_presence=envelope_diagnostics[
-                    "request_id_presence"
-                ],
+                request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
-                usage_completeness=envelope_diagnostics[
-                    "usage_completeness"
-                ],
+                usage_completeness=envelope_diagnostics["usage_completeness"],
             )
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
@@ -979,9 +1118,7 @@ class TengliOpenAICompatibleGateway:
                     actual_cost_micros=_usage_cost_micros(raw_usage),
                     estimated_cost_micros=estimated_cost,
                     error_code=(
-                        "IMAGE_RATE_LIMITED"
-                        if rate_limited
-                        else "IMAGE_REQUEST_FAILED"
+                        "IMAGE_RATE_LIMITED" if rate_limited else "IMAGE_REQUEST_FAILED"
                     ),
                     error_message=f"Image request failed with HTTP {status}.",
                     retryable=rate_limited or status >= 500,
@@ -1100,6 +1237,109 @@ class TengliOpenAICompatibleGateway:
                 retryable=exc.retryable,
             )
 
+    async def review_masked(
+        self,
+        request: MaskedVisualReviewRequest,
+    ) -> MaskedVisualReviewCallResult:
+        """Review the raw candidate once; never regenerate from this call."""
+
+        content: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": _masked_visual_review_prompt(request.instruction),
+            }
+        ]
+        for image_payload in (
+            request.source_png,
+            request.authority_png,
+            request.candidate_png,
+        ):
+            encoded = base64.b64encode(image_payload).decode("ascii")
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{encoded}",
+                        "detail": "high",
+                    },
+                }
+            )
+        payload = {
+            "model": self.planner_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a strict visual acceptance reviewer for a "
+                        "masked image edit. Return JSON only. Do not propose "
+                        "or perform regeneration."
+                    ),
+                },
+                {"role": "user", "content": content},
+            ],
+            "response_format": {"type": "json_object"},
+        }
+        response: Mapping[str, Any] | None = None
+        try:
+            self.external_network_request_count += 1
+            status, response = await self.transport.post_json(
+                url=urljoin(self.base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key),
+                payload=payload,
+                timeout_seconds=self.timeout_seconds,
+            )
+            raw_usage = _raw_usage(response)
+            normalized = normalize_usage(raw_usage)
+            if status >= 400:
+                return MaskedVisualReviewCallResult(
+                    visual_success=None,
+                    provider_request_id=_safe_request_id(response),
+                    raw_usage=raw_usage,
+                    normalized_usage=normalized,
+                    actual_cost_micros=_usage_cost_micros(raw_usage),
+                    estimated_cost_micros=self.review_price_micros,
+                    error_code=(
+                        "LOCAL_EDIT_VISUAL_REVIEW_RATE_LIMITED"
+                        if status == 429
+                        else "LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED"
+                    ),
+                    error_message=(
+                        f"Local-edit visual review failed with HTTP {status}."
+                    ),
+                    retryable=status == 429 or status >= 500,
+                    http_status=status,
+                )
+            review_payload = _planner_content_payload(_planner_message_text(response))
+            review = _validate_masked_visual_review_payload(review_payload)
+            return MaskedVisualReviewCallResult(
+                visual_success=review["visual_success"],
+                provider_request_id=_safe_request_id(response),
+                raw_usage=raw_usage,
+                normalized_usage=normalized,
+                actual_cost_micros=_usage_cost_micros(raw_usage),
+                estimated_cost_micros=self.review_price_micros,
+                summary=review["summary"],
+                reason_codes=tuple(review["reason_codes"]),
+                http_status=status,
+            )
+        except XingheAgentError as exc:
+            raw_usage = _raw_usage(response) if response is not None else None
+            return MaskedVisualReviewCallResult(
+                visual_success=None,
+                provider_request_id=(
+                    _safe_request_id(response) if response is not None else None
+                ),
+                raw_usage=raw_usage,
+                normalized_usage=normalize_usage(raw_usage),
+                actual_cost_micros=(
+                    _usage_cost_micros(raw_usage) if raw_usage is not None else None
+                ),
+                estimated_cost_micros=self.review_price_micros,
+                error_code="LOCAL_EDIT_VISUAL_REVIEW_INVALID",
+                error_message=str(exc),
+                retryable=False,
+            )
+
     def _headers(self, idempotency_key: str) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_key}",
@@ -1118,6 +1358,7 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         image_model=settings.tengli_image_model,
         medium_price_micros=settings.xinghe_medium_price_micros,
         high_price_micros=settings.xinghe_high_price_micros,
+        review_price_micros=settings.tengli_planner_reserve_micros,
     )
 
 
@@ -1155,6 +1396,10 @@ class XinghePlanningCoordinator:
             return reserved
         plan_id, requests = reserved
         try:
+            system_prompt = load_planner_system_prompt(self.skill_root)
+            requests = tuple(
+                replace(request, system_prompt=system_prompt) for request in requests
+            )
             requests = tuple(
                 [await self._with_source_payloads(request) for request in requests]
             )
@@ -1181,10 +1426,7 @@ class XinghePlanningCoordinator:
                     api_latency_seconds=time.perf_counter() - started,
                     actual_cost_micros=None,
                     error_code="PLANNER_PROVIDER_FAILED",
-                    error_message=(
-                        "Planner provider failed "
-                        f"({type(exc).__name__})."
-                    ),
+                    error_message=(f"Planner provider failed ({type(exc).__name__})."),
                 )
             result = _with_planner_observability(result)
             results.append(result)
@@ -1282,6 +1524,7 @@ class XinghePlanningCoordinator:
             product_information=request.product_information,
             platform_code=request.platform_code,
             idempotency_key=request.idempotency_key,
+            system_prompt=request.system_prompt,
         )
 
     def _reserve(
@@ -1488,9 +1731,7 @@ class XinghePlanningCoordinator:
             signature_groups.append(
                 (
                     group_key,
-                    tuple(
-                        (source.filename, source.sha256) for source in source_tuple
-                    ),
+                    tuple((source.filename, source.sha256) for source in source_tuple),
                 )
             )
         signature = build_resume_signature(
@@ -1521,9 +1762,7 @@ class XinghePlanningCoordinator:
                     product_name=product_name,
                     product_information=tuple(selling_points_value),
                     platform_code=platform_code,
-                    idempotency_key=(
-                        f"{job.id}:planner:{group_index}:{signature}"
-                    ),
+                    idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
                 )
             )
         return tuple(requests)
@@ -1715,9 +1954,7 @@ class XinghePlanningCoordinator:
             if result.actual_cost_micros is not None
         ]
         job.actual_cost_micros = (
-            sum(known_costs)
-            if results and len(known_costs) == len(results)
-            else None
+            sum(known_costs) if results and len(known_costs) == len(results) else None
         )
         job.api_request_count = sum(
             isinstance(result.provider_request_id, str)
@@ -1750,11 +1987,7 @@ class XinghePlanningCoordinator:
                 request_id=plan.id,
                 details={
                     "error_code": error_code,
-                    **(
-                        {"error_path": error_path}
-                        if error_path is not None
-                        else {}
-                    ),
+                    **({"error_path": error_path} if error_path is not None else {}),
                     "planner_diagnostics": planner_diagnostics,
                     "planner_request_count": len(results),
                     "image_request_count": 0,
@@ -1790,8 +2023,7 @@ class XinghePlanningCoordinator:
                         },
                     },
                     "planner_diagnostics": [
-                        _planner_diagnostics_record(result)
-                        for result in results
+                        _planner_diagnostics_record(result) for result in results
                     ],
                     "image_request_count": 0,
                 }
@@ -1814,8 +2046,7 @@ class XinghePlanningCoordinator:
                 (
                     request.group_key,
                     tuple(
-                        (source.filename, source.sha256)
-                        for source in request.sources
+                        (source.filename, source.sha256) for source in request.sources
                     ),
                 )
                 for request in requests
@@ -1910,9 +2141,7 @@ class XinghePlanningCoordinator:
                         "planner_usage": _planner_usage_record(
                             results[group_index - 1]
                         ),
-                        "planning_time": results[
-                            group_index - 1
-                        ].api_latency_seconds,
+                        "planning_time": results[group_index - 1].api_latency_seconds,
                     }
                 )
             items = session.scalars(
@@ -1932,9 +2161,7 @@ class XinghePlanningCoordinator:
                 )
                 session.commit()
                 return JobStatus.FAILED
-            high_count = sum(
-                item["quality"] == "high" for item in item_configurations
-            )
+            high_count = sum(item["quality"] == "high" for item in item_configurations)
             medium_count = len(item_configurations) - high_count
             estimated_pending_cost = (
                 high_count * self.high_price_micros
@@ -1999,9 +2226,7 @@ class XinghePlanningCoordinator:
                     "budget_limit_micros": self.budget_limit_micros,
                 },
                 "usage": {
-                    "planner": [
-                        _planner_usage_record(result) for result in results
-                    ],
+                    "planner": [_planner_usage_record(result) for result in results],
                     "image": {
                         "reported_requests": 0,
                         "unreported_requests": 0,
@@ -2024,8 +2249,7 @@ class XinghePlanningCoordinator:
                     "rate_limit_429_count": 0,
                     "actual_concurrency": 0,
                     "usage_missing_count": sum(
-                        not result.normalized_usage["reported"]
-                        for result in results
+                        not result.normalized_usage["reported"] for result in results
                     ),
                 },
             }
@@ -2057,8 +2281,7 @@ class XinghePlanningCoordinator:
                         "medium_count": medium_count,
                         "estimated_pending_micros": estimated_pending_cost,
                         "planner_diagnostics": [
-                            _planner_diagnostics_record(result)
-                            for result in results
+                            _planner_diagnostics_record(result) for result in results
                         ],
                     },
                 )
@@ -2133,10 +2356,7 @@ class XingheImageProvider:
             except Exception as exc:
                 return _provider_rejection(
                     "AUDIT_WRITE_FAILED",
-                    (
-                        "Image budget reservation audit failed "
-                        f"({type(exc).__name__})."
-                    ),
+                    (f"Image budget reservation audit failed ({type(exc).__name__})."),
                     self.gateway,
                 )
             async with self._activity_lock:
@@ -2158,8 +2378,7 @@ class XingheImageProvider:
                         actual_cost_micros=None,
                         error_code="IMAGE_PROVIDER_FAILED",
                         error_message=(
-                            "Image provider failed "
-                            f"({type(exc).__name__})."
+                            f"Image provider failed ({type(exc).__name__})."
                         ),
                         retryable=False,
                     )
@@ -2445,9 +2664,7 @@ class XingheImageProvider:
                 for event in prior_reservations
             )
             planner_cost = _known_planner_actual_cost(plan.payload)
-            cumulative_exposure = (
-                planner_cost + prior_exposure + current_exposure
-            )
+            cumulative_exposure = planner_cost + prior_exposure + current_exposure
             audit_details = {
                 "attempt_no": attempt.attempt_no,
                 "page": int(configuration["page"]),
@@ -2509,9 +2726,7 @@ class XingheImageProvider:
                 for asset in session.scalars(
                     select(AssetRecord).where(
                         AssetRecord.workspace_id == workspace_id,
-                        AssetRecord.id.in_(
-                            [source.asset_id for source in sources]
-                        ),
+                        AssetRecord.id.in_([source.asset_id for source in sources]),
                     )
                 ).all()
             }
@@ -2562,9 +2777,7 @@ class XingheImageProvider:
                     request_id=request.attempt_id,
                     details={
                         "outcome": result.outcome.value,
-                        "usage_reported": bool(
-                            result.normalized_usage["reported"]
-                        ),
+                        "usage_reported": bool(result.normalized_usage["reported"]),
                         "http_status": result.http_status,
                         "rate_limited": result.rate_limited,
                         "actual_cost_micros": result.actual_cost_micros,
@@ -2637,6 +2850,8 @@ def validate_editable_plan_payload(
             "composition",
             "device",
             "difference",
+            "structure",
+            "subject_scale",
         ):
             value = page_value.get(key)
             if key == "page":
@@ -2916,23 +3131,17 @@ def update_job_metrics(session: Session, job: JobRecord) -> None:
             }
         )
     image_wall_time = (
-        (max(finishes) - min(starts)).total_seconds()
-        if starts and finishes
-        else None
+        (max(finishes) - min(starts)).total_seconds() if starts and finishes else None
     )
     completed_pages = successes
     throughput_pages_per_second = (
         completed_pages / image_wall_time
-        if completed_pages > 0
-        and image_wall_time is not None
-        and image_wall_time > 0
+        if completed_pages > 0 and image_wall_time is not None and image_wall_time > 0
         else 0.0
     )
     payload = dict(plan.payload)
     previous_metrics = payload.get("metrics")
-    metrics = (
-        dict(previous_metrics) if isinstance(previous_metrics, dict) else {}
-    )
+    metrics = dict(previous_metrics) if isinstance(previous_metrics, dict) else {}
     metrics.update(
         {
             "average_api_latency": (
@@ -2954,8 +3163,7 @@ def update_job_metrics(session: Session, job: JobRecord) -> None:
             "failure_count": failures,
             "rate_limit_429_count": rate_limits,
             "actual_concurrency": actual_concurrency,
-            "usage_missing_count": missing_usage
-            + _planner_usage_missing(payload),
+            "usage_missing_count": missing_usage + _planner_usage_missing(payload),
         }
     )
     usage_value = payload.get("usage")
@@ -3050,9 +3258,7 @@ def planner_accounting(
         if isinstance(cost, int) and not isinstance(cost, bool) and cost >= 0:
             known_cost += 1
             total_cost += cost
-        real_calls += int(
-            value.get("provider_request_id_presence") == "present"
-        )
+        real_calls += int(value.get("provider_request_id_presence") == "present")
     return requests, reported, known_cost, total_cost, real_calls
 
 
@@ -3278,18 +3484,62 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
             ],
         },
         "plan": {
-            "campaign_style_lock": "Consistent restrained product campaign.",
-            "design_strength_lock": (
-                "Use varied scale and composition without repeated templates."
-            ),
+            "campaign_style_lock": {
+                "palette": "Restrained neutral palette with one product-led accent.",
+                "typography": "Consistent editorial sans-serif hierarchy.",
+                "background": "Alternating clean field and grounded context.",
+                "lighting": "Consistent soft directional studio light.",
+                "icon_style": "Minimal line icons only when information requires them.",
+                "whitespace": "Deliberate negative space with changing rhythm.",
+                "product_scale": (
+                    "Vary hero, medium, macro, scene, and information scales."
+                ),
+            },
+            "design_strength_lock": {
+                "category_visual_motif": "Product-led geometric crop motif.",
+                "rhythm_map": [
+                    f"Page {index + 1}: distinct visual beat."
+                    for index in range(request.page_count)
+                ],
+                "composition_contrast": (
+                    "Alternate scale, alignment, depth, and density."
+                ),
+                "signature_devices": [
+                    "Geometric crop frame",
+                    "Restrained evidence ribbon",
+                ][: max(1, min(2, request.page_count))],
+                "color_contrast": "Alternate light field and accent field.",
+                "template_ban": "Never repeat the same centered-product template.",
+            },
             "screens": [
                 {
-                    "role": roles[index % len(roles)],
+                    "role": (
+                        "closing_summary"
+                        if index == request.page_count - 1 and request.page_count > 1
+                        else roles[index % len(roles)]
+                    ),
                     "title": f"{request.product_name} {index + 1}",
                     "label": f"Visible focus {index + 1}",
                     "composition": "One dominant visual hero.",
-                    "device": "A restrained information accent.",
+                    "device": (
+                        "Geometric crop frame"
+                        if index % 2 == 0
+                        else "Restrained evidence ribbon"
+                    ),
                     "difference": "Distinct scale and rhythm from adjacent pages.",
+                    "structure": (
+                        "editorial-hero",
+                        "offset-detail",
+                        "grounded-scene",
+                        "evidence-card",
+                    )[index % 4],
+                    "subject_scale": (
+                        "hero",
+                        "medium",
+                        "macro",
+                        "scene",
+                        "information",
+                    )[index % 5],
                 }
                 for index in range(request.page_count)
             ],
@@ -3371,6 +3621,78 @@ def _masked_png_artifact(
     )
 
 
+def _masked_visual_review_prompt(instruction: str) -> str:
+    return (
+        "Review exactly three ordered images: (1) source, (2) binary authority "
+        "mask where white pixels are editable and black pixels are locked, "
+        "(3) raw provider candidate. The server will later restore every "
+        "locked pixel exactly, so judge the requested change inside the white "
+        "selection, product identity within that selection, edge/lighting/"
+        "texture continuity at the selection boundary, and visible artifacts. "
+        f"User instruction: {instruction!r}. Return exactly one JSON object "
+        "with boolean fields visual_success, instruction_satisfied, "
+        "identity_inside_selection_preserved, boundary_continuity, and "
+        "artifacts_absent; a reason_codes array of concise stable strings; "
+        "and a concise summary string. visual_success may be true only when "
+        "all four component booleans are true. Do not recommend or perform "
+        "regeneration."
+    )
+
+
+def _validate_masked_visual_review_payload(payload: object) -> dict[str, Any]:
+    root = _require_mapping(
+        payload,
+        "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
+        path="/",
+    )
+    components: dict[str, bool] = {}
+    for key in (
+        "instruction_satisfied",
+        "identity_inside_selection_preserved",
+        "boundary_continuity",
+        "artifacts_absent",
+    ):
+        value = root.get(key)
+        if not isinstance(value, bool):
+            raise XingheAgentError(
+                "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
+                f"Visual review field {key} must be boolean.",
+                json_pointer=_json_pointer(key),
+            )
+        components[key] = value
+    declared = root.get("visual_success")
+    if not isinstance(declared, bool):
+        raise XingheAgentError(
+            "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
+            "Visual review verdict must be boolean.",
+            json_pointer=_json_pointer("visual_success"),
+        )
+    reason_values = root.get("reason_codes")
+    if not isinstance(reason_values, list) or any(
+        not isinstance(value, str) for value in reason_values
+    ):
+        raise XingheAgentError(
+            "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
+            "Visual review reason codes must be a string array.",
+            json_pointer=_json_pointer("reason_codes"),
+        )
+    reason_codes = [value.strip()[:80] for value in reason_values if value.strip()][:12]
+    summary = _require_nonempty_string(
+        root.get("summary"),
+        "summary",
+        path=_json_pointer("summary"),
+    )[:500]
+    computed = all(components.values())
+    if declared != computed:
+        reason_codes.append("inconsistent_component_verdict")
+    return {
+        "visual_success": declared and computed,
+        "reason_codes": reason_codes,
+        "summary": summary,
+        **components,
+    }
+
+
 def _planner_prompt(request: PlannerRequest) -> str:
     return (
         f"Return exactly one JSON object for product group {request.group_key!r}. "
@@ -3398,12 +3720,22 @@ def _planner_prompt(request: PlannerRequest) -> str:
         "/analysis/product_consistency_anchors is REQUIRED: place it inside "
         "the top-level analysis object and always emit it as a JSON object; "
         "never omit it. "
-        "Every screen requires role, title, label, composition, device, and "
-        "difference, and every screen's device must be non-empty. Across all "
-        "screens in the same plan, use at least two substantively different "
-        "devices; after trimming surrounding whitespace and case-normalizing "
-        "device values, at least two distinct values must still remain, so "
-        "case or whitespace differences do not count. "
+        "campaign_style_lock MUST be an object with non-empty palette, "
+        "typography, background, lighting, icon_style, whitespace, and "
+        "product_scale strings. design_strength_lock MUST be an object with "
+        "non-empty category_visual_motif, composition_contrast, "
+        "color_contrast, and template_ban strings; signature_devices MUST "
+        "contain at least two distinct devices when two or more pages are "
+        "requested; rhythm_map MUST contain exactly one non-empty entry per "
+        "screen. Every screen requires role, title, label, composition, "
+        "device, difference, structure, and subject_scale. subject_scale "
+        "MUST be exactly one of hero, medium, macro, scene, information, "
+        "cutaway, or overhead. Use at least five distinct roles, four "
+        "distinct structures, three subject scales, and two substantively "
+        "different devices when the requested page count permits; for fewer "
+        "pages use as many distinct values as there are pages. No more than "
+        "half the screens rounded up may use hero. When more than one page "
+        "is requested, the final role MUST be exactly closing_summary. "
         "Each page has one core selling point, one visual hero, one "
         "main title, and one short label; at most one zoom and two structural "
         "callouts; no collage, repeated crop windows, invented materials, "
@@ -3507,9 +3839,7 @@ def _with_planner_observability(
         provider_envelope=(
             result.provider_envelope
             if result.provider_envelope is not None
-            else _unavailable_planner_envelope_diagnostics()[
-                "provider_envelope"
-            ]
+            else _unavailable_planner_envelope_diagnostics()["provider_envelope"]
         ),
     )
 
@@ -3562,9 +3892,7 @@ def _planner_envelope_diagnostics(
 ) -> dict[str, Any]:
     choices = payload.get("choices", _MISSING_JSON_VALUE)
     choice0 = (
-        choices[0]
-        if isinstance(choices, list) and choices
-        else _MISSING_JSON_VALUE
+        choices[0] if isinstance(choices, list) and choices else _MISSING_JSON_VALUE
     )
     message = (
         choice0.get("message", _MISSING_JSON_VALUE)
@@ -3577,9 +3905,7 @@ def _planner_envelope_diagnostics(
         else _MISSING_JSON_VALUE
     )
     usage = payload.get("usage", _MISSING_JSON_VALUE)
-    usage_presence = (
-        "absent" if usage is _MISSING_JSON_VALUE else "present"
-    )
+    usage_presence = "absent" if usage is _MISSING_JSON_VALUE else "present"
     usage_completeness = "absent"
     if usage_presence == "present":
         usage_completeness = (
@@ -3622,9 +3948,7 @@ def _planner_usage_is_complete(value: object) -> bool:
     if not isinstance(value, Mapping):
         return False
     input_tokens = value.get("input_tokens", value.get("prompt_tokens"))
-    output_tokens = value.get(
-        "output_tokens", value.get("completion_tokens")
-    )
+    output_tokens = value.get("output_tokens", value.get("completion_tokens"))
     return all(
         _usage_integer(item) is not None
         for item in (input_tokens, output_tokens, value.get("total_tokens"))
@@ -3706,9 +4030,7 @@ def _known_fields_profile(
         **summary,
         "unknown_field_count": sum(key not in expected for key in value),
         "fields": {
-            field: _json_shape_summary(
-                value.get(field, _MISSING_JSON_VALUE)
-            )
+            field: _json_shape_summary(value.get(field, _MISSING_JSON_VALUE))
             for field in expected_fields
         },
     }
@@ -3745,11 +4067,7 @@ def _image_bytes(payload: Mapping[str, Any]) -> bytes:
     item: Mapping[str, Any] = payload
     if isinstance(data, list) and data:
         item = _require_mapping(data[0], "IMAGE_RESPONSE_INVALID")
-    encoded = (
-        item.get("b64_json")
-        or item.get("base64")
-        or item.get("image_base64")
-    )
+    encoded = item.get("b64_json") or item.get("base64") or item.get("image_base64")
     if not isinstance(encoded, str) or not encoded:
         raise XingheAgentError(
             "IMAGE_RESPONSE_INVALID",
@@ -3814,9 +4132,14 @@ def _encode_multipart(
 
 
 def _multipart_token(value: str) -> str:
-    return value.replace("\\", "_").replace('"', "_").replace("\r", "_").replace(
-        "\n",
-        "_",
+    return (
+        value.replace("\\", "_")
+        .replace('"', "_")
+        .replace("\r", "_")
+        .replace(
+            "\n",
+            "_",
+        )
     )
 
 
@@ -3833,8 +4156,7 @@ def _json_pointer(*tokens: str | int) -> str:
     if not tokens:
         return "/"
     return "".join(
-        f"/{str(token).replace('~', '~0').replace('/', '~1')}"
-        for token in tokens
+        f"/{str(token).replace('~', '~0').replace('/', '~1')}" for token in tokens
     )
 
 

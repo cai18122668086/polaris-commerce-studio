@@ -88,32 +88,30 @@ Compile these restrictions into every page prompt:
 
 These constraints improve clarity more reliably than raising image quality alone.
 
-## Dynamic quality assignment
+## All-high quality assignment
 
-Do not compare Agent-generated role names to a fixed exact-name set.
+Assign `high` to every detail-page image request regardless of the dynamic
+page role. The skill has no `medium` detail-image generation mode.
 
-Assign `high` when `role` contains any of:
-
-```text
-封面 结构 细节 特写 材质 表面 工艺 纹理 微距
-```
-
-Assign `medium` otherwise.
-
-Store the chosen quality in both `prompts.json` and `manifest.json`. A quality-policy change must change the job signature so old medium outputs are not silently reused as high outputs.
+Store `high` in both `prompts.json` and `manifest.json`. The all-high policy
+must have its own job-signature version so old medium outputs are never
+silently reused as high outputs.
 
 ## Cost display
 
-Before planning, show only a truthful cost range:
+Before planning, show one truthful fixed estimate:
 
 ```text
-minimum = total pages * lower configured unit price
-maximum = total pages * higher configured unit price
+estimated output cost = total pages * configured high unit price
 ```
 
-After the dynamic plan is compiled, show the actual number of pending high/medium requests and their estimated output cost. Exclude already successful resume pages.
+After the dynamic plan is compiled, show the actual number of pending high
+requests and their estimated output cost. The pending medium count must be
+zero. Exclude already successful resume pages.
 
-Do not assume relay pricing matches official reference pricing. Keep both unit prices editable.
+Do not assume relay pricing matches official reference pricing. Keep the high
+unit price editable; a legacy medium price may remain only for reading older
+records and must not affect new detail-image requests.
 
 ## Resume signature
 
@@ -207,8 +205,8 @@ TENGLI_VISION_MODEL
 - Invalid planning prevents all image requests for that group.
 - Every prompt starts with the 3:4 contract.
 - Every page has one title, one label, and one core selling point.
-- Dynamic cover/key-detail roles route to high.
-- Other roles route to medium.
+- Every detail-page image request routes to high.
+- The pending medium count is zero.
 - Requests use JPEG 92 and `size=1024x1536`; actual returned dimensions are inspected or reported without local resampling.
 - Successful pages survive resume without another request.
 - Failed pages can be retried independently.

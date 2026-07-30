@@ -4,6 +4,7 @@ import {
   Brush,
   Eraser,
   RotateCcw,
+  Square,
   Trash2,
 } from "lucide-react";
 import {
@@ -70,7 +71,8 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
     const undoSnapshot = useRef<ImageData | null>(null);
     const activePointer = useRef<number | null>(null);
     const previousPoint = useRef<{ x: number; y: number } | null>(null);
-    const [tool, setTool] = useState<"brush" | "eraser">("brush");
+    const rectangleStart = useRef<{ x: number; y: number } | null>(null);
+    const [tool, setTool] = useState<"brush" | "eraser" | "rectangle">("brush");
     const [brushSize, setBrushSize] = useState(48);
     const [ready, setReady] = useState(false);
     const [canUndo, setCanUndo] = useState(false);
@@ -197,22 +199,48 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
       previousPoint.current = point;
     };
 
+    const drawRectangleTo = (point: { x: number; y: number }) => {
+      const canvas = maskCanvas.current!;
+      const context = canvas.getContext("2d")!;
+      const start = rectangleStart.current;
+      const snapshot = undoSnapshot.current;
+      if (!start || !snapshot) return;
+      context.putImageData(snapshot, 0, 0);
+      const left = Math.floor(Math.min(start.x, point.x));
+      const top = Math.floor(Math.min(start.y, point.y));
+      const width = Math.max(1, Math.ceil(Math.abs(point.x - start.x)));
+      const height = Math.max(1, Math.ceil(Math.abs(point.y - start.y)));
+      context.save();
+      context.globalCompositeOperation = "source-over";
+      context.fillStyle = "rgba(124, 58, 237, 0.56)";
+      context.fillRect(left, top, width, height);
+      context.restore();
+    };
+
     const pointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
       if (!ready || activePointer.current !== null) return;
       const canvas = maskCanvas.current!;
       const context = canvas.getContext("2d")!;
+      const point = pointFor(event);
       activePointer.current = event.pointerId;
       canvas.setPointerCapture(event.pointerId);
       undoSnapshot.current = context.getImageData(0, 0, canvas.width, canvas.height);
       setCanUndo(true);
-      previousPoint.current = pointFor(event);
-      drawTo(previousPoint.current);
+      if (tool === "rectangle") {
+        rectangleStart.current = point;
+        drawRectangleTo(point);
+      } else {
+        previousPoint.current = point;
+        drawTo(point);
+      }
       event.preventDefault();
     };
 
     const pointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
       if (activePointer.current !== event.pointerId) return;
-      drawTo(pointFor(event));
+      const point = pointFor(event);
+      if (tool === "rectangle") drawRectangleTo(point);
+      else drawTo(point);
       event.preventDefault();
     };
 
@@ -220,6 +248,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
       if (activePointer.current !== event.pointerId) return;
       activePointer.current = null;
       previousPoint.current = null;
+      rectangleStart.current = null;
       if (maskCanvas.current?.hasPointerCapture(event.pointerId)) {
         maskCanvas.current.releasePointerCapture(event.pointerId);
       }
@@ -261,6 +290,16 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
             >
               <Eraser size={17} />
             </button>
+            <button
+              type="button"
+              className={tool === "rectangle" ? "active" : ""}
+              onClick={() => setTool("rectangle")}
+              disabled={!ready}
+              aria-label="矩形框选"
+              aria-pressed={tool === "rectangle"}
+            >
+              <Square size={17} />
+            </button>
           </div>
           <label className="brush-control">
             笔刷大小
@@ -270,7 +309,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
               max="240"
               value={brushSize}
               onChange={(event) => setBrushSize(Number(event.target.value))}
-              disabled={!ready}
+              disabled={!ready || tool === "rectangle"}
               aria-label="笔刷大小"
             />
             <b>{brushSize}px</b>

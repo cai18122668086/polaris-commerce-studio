@@ -454,7 +454,7 @@ def test_plan_edit_changes_quality_and_resume_signature_before_dispatch(
             .order_by(JobItemRecord.ordinal)
         ).all()
         original_signature = items[2].configuration["resume_signature"]
-        assert items[2].quality == "medium"
+        assert items[2].quality == "high"
 
     current = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
@@ -610,17 +610,6 @@ class _Budget429Transport:
 
     async def post_json(self, **_: Any) -> tuple[int, dict[str, Any]]:
         self.planner_calls += 1
-        screens = [
-            {
-                "role": "Cover",
-                "title": f"Title {page}",
-                "label": f"Label {page}",
-                "composition": "One hero",
-                "device": "One line",
-                "difference": "Scale",
-            }
-            for page in range(1, self.page_count + 1)
-        ]
         return (
             200,
             {
@@ -629,22 +618,7 @@ class _Budget429Transport:
                     {
                         "message": {
                             "content": json.dumps(
-                                {
-                                    "analysis": {
-                                        "category_key": "fashion",
-                                        "category_reason": "visible",
-                                        "product_image_analysis": {
-                                            "visible_facts": []
-                                        },
-                                        "product_consistency_anchors": {},
-                                        "buyer_objections": ["appearance"],
-                                    },
-                                    "plan": {
-                                        "campaign_style_lock": "lock",
-                                        "design_strength_lock": "lock",
-                                        "screens": screens,
-                                    },
-                                }
+                                _valid_planner_content(self.page_count)
                             )
                         }
                     }
@@ -658,17 +632,43 @@ class _Budget429Transport:
 
 
 def _valid_planner_content(page_count: int) -> dict[str, Any]:
-    screens = [
-        {
-            "role": "Cover",
-            "title": f"Title {page}",
-            "label": f"Label {page}",
-            "composition": "One hero",
-            "device": "One line",
-            "difference": "Scale",
-        }
-        for page in range(1, page_count + 1)
+    roles = [
+        "hero_cover",
+        "buyer_objection",
+        "scenario_proof",
+        "structure_detail",
+        "material_macro",
+        "feature_evidence",
+        "closing_summary",
     ]
+    structures = [
+        "asymmetric hero",
+        "split evidence",
+        "deep scene",
+        "cutaway detail",
+        "macro strip",
+        "comparison grid",
+        "closing stack",
+    ]
+    scales = ["hero", "medium", "scene", "macro", "cutaway"]
+    devices = ["speed halo", "material magnifier", "floating proof card"]
+    screens = []
+    for index in range(page_count):
+        role = roles[index % len(roles)]
+        if page_count > 1 and index == page_count - 1:
+            role = "closing_summary"
+        screens.append(
+            {
+                "role": role,
+                "title": f"Title {index + 1}",
+                "label": f"Label {index + 1}",
+                "composition": f"Composition {index + 1}",
+                "device": devices[index % len(devices)],
+                "difference": f"Difference {index + 1}",
+                "structure": structures[index % len(structures)],
+                "subject_scale": scales[index % len(scales)],
+            }
+        )
     return {
         "analysis": {
             "category_key": "fashion",
@@ -678,8 +678,30 @@ def _valid_planner_content(page_count: int) -> dict[str, Any]:
             "buyer_objections": ["appearance"],
         },
         "plan": {
-            "campaign_style_lock": "lock",
-            "design_strength_lock": "lock",
+            "campaign_style_lock": {
+                "palette": "black, ivory, and one electric accent",
+                "typography": "bold editorial sans",
+                "background": "layered studio gradients",
+                "lighting": "directional premium key light",
+                "icon_style": "minimal outlined proof icons",
+                "whitespace": "intentional asymmetric breathing room",
+                "product_scale": "varied hero, medium, and macro scales",
+            },
+            "design_strength_lock": {
+                "category_visual_motif": "fashion runway motion",
+                "composition_contrast": "alternate hero, split, scene, and macro",
+                "signature_devices": [
+                    "speed halo",
+                    "material magnifier",
+                    "floating proof card",
+                ],
+                "color_contrast": "dark-light alternation with electric accent",
+                "template_ban": "no repeated centered-product template",
+                "rhythm_map": [
+                    f"page {index + 1}: {structures[index % len(structures)]}"
+                    for index in range(page_count)
+                ],
+            },
             "screens": screens,
         },
     }
@@ -1968,7 +1990,7 @@ def test_semantic_quality_routing_is_version_stable() -> None:
         "Surface craft detail",
     ]
     assert all(quality_for_role(role) == "high" for role in high_roles)
-    assert quality_for_role("Daily use scenario") == "medium"
+    assert quality_for_role("Daily use scenario") == "high"
 
 
 class _RecordingTransport:
@@ -1985,21 +2007,7 @@ class _RecordingTransport:
                 "choices": [
                     {
                         "message": {
-                            "content": (
-                                '{"analysis":{"category_key":"fashion",'
-                                '"category_reason":"visible",'
-                                '"product_image_analysis":{"visible_facts":[]},'
-                                '"product_consistency_anchors":{},'
-                                '"buyer_objections":["appearance"]},'
-                                '"plan":{"campaign_style_lock":"lock",'
-                                '"design_strength_lock":"lock",'
-                                '"screens":[{"role":"Cover","title":"Title",'
-                                '"label":"Label","composition":"Hero",'
-                                '"device":"Line","difference":"Scale"},'
-                                '{"role":"Detail","title":"Detail",'
-                                '"label":"Label","composition":"Close-up",'
-                                '"device":"Macro","difference":"Texture"}]}}'
-                            )
+                            "content": json.dumps(_valid_planner_content(2))
                         }
                     }
                 ],
@@ -2066,6 +2074,7 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
                 ),
                 platform_code="amazon",
                 idempotency_key="planner-idem",
+                system_prompt="pinned same-source protocol",
             )
         )
     )
@@ -2093,18 +2102,24 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert image.artifact is not None
     assert (image.artifact.width, image.artifact.height) == (24, 32)
     assert transport.json_calls[0]["url"].endswith("/v1/chat/completions")
-    planner_text = transport.json_calls[0]["payload"]["messages"][0][
-        "content"
-    ][0]["text"]
+    messages = transport.json_calls[0]["payload"]["messages"]
+    assert messages[0] == {
+        "role": "system",
+        "content": "pinned same-source protocol",
+    }
+    planner_text = messages[1]["content"][0]["text"]
     assert (
         "/analysis/product_consistency_anchors is REQUIRED" in planner_text
     )
     assert "inside the top-level analysis object" in planner_text
     assert "always emit it as a JSON object; never omit it" in planner_text
-    assert "every screen's device must be non-empty" in planner_text
-    assert "at least two substantively different devices" in planner_text
-    assert "trimming surrounding whitespace and case-normalizing" in planner_text
-    assert "case or whitespace differences do not count" in planner_text
+    assert (
+        "Every screen requires role, title, label, composition" in planner_text
+    )
+    assert "four distinct structures" in planner_text
+    assert "three subject scales" in planner_text
+    assert "two substantively different devices" in planner_text
+    assert "final role MUST be exactly closing_summary" in planner_text
     for prohibited_claim in (
         "leather",
         "comfort",

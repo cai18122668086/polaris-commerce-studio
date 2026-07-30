@@ -15,7 +15,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import default_xinghe_skill_root
+from .config import default_masked_skill_root, default_xinghe_skill_root
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
@@ -805,6 +805,21 @@ class ExecutionCoordinator:
                             "outside_changed_pixels": result_metrics.get(
                                 "outside_changed_pixels"
                             ),
+                            "raw_visual_success": result_metrics.get(
+                                "raw_visual_success"
+                            ),
+                            "visual_review_summary": result_metrics.get(
+                                "visual_review_summary"
+                            ),
+                            "visual_review_reason_codes": result_metrics.get(
+                                "visual_review_reason_codes"
+                            ),
+                            "visual_review_version": result_metrics.get(
+                                "visual_review_version"
+                            ),
+                            "delivery_status": result_metrics.get(
+                                "delivery_status"
+                            ),
                         },
                     )
                 )
@@ -1150,6 +1165,7 @@ def build_fake_coordinator(
             cast("MaskedEditGateway", gateway),
             storage,
             budget_limit_micros=budget_limit_micros,
+            skill_root=default_masked_skill_root(),
         )
     provider = OperationRoutingProvider(
         default_provider,

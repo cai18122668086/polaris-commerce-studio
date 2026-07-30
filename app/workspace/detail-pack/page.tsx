@@ -35,9 +35,17 @@ function readPlanPages(payload: Record<string, unknown> | undefined): PlanPage[]
   return pages.flatMap((item, index) => {
     if (!item || typeof item !== "object") return [];
     const page = item as Record<string, unknown>;
+    const planDetails = [page.role, page.structure, page.subject_scale, page.composition, page.device]
+      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
     return [{
       title: typeof page.title === "string" ? page.title : `页面 ${index + 1}`,
-      description: typeof page.description === "string" ? page.description : typeof page.goal === "string" ? page.goal : undefined,
+      description: planDetails.length > 0
+        ? planDetails.join(" · ")
+        : typeof page.description === "string"
+          ? page.description
+          : typeof page.goal === "string"
+            ? page.goal
+            : undefined,
       quality: typeof page.quality === "string" ? page.quality : undefined,
     }];
   });

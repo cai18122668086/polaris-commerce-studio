@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from io import BytesIO
+from math import ceil, sqrt
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -42,11 +43,17 @@ from .services import new_id
 from .skill_runtime import SkillManifestRegistry, SkillRuntimeError
 from .storage import ImageStorage, ValidatedImage
 
-MASKED_REPAIR_WORKFLOW_VERSION = "masked-repair-v2"
+MASKED_REPAIR_WORKFLOW_VERSION = "masked-repair-v3"
 MASKED_REPAIR_PROMPT_VERSION = "masked-repair-master-v2"
 MASKED_REPAIR_REVIEW_VERSION = "masked-repair-visual-review-v1"
 MASKED_REPAIR_MODEL = "gpt-image-2"
 _RAW_ROLE = "provider_raw"
+_PROVIDER_EDGE_MULTIPLE = 16
+_PROVIDER_MIN_PIXELS = 655_360
+_PROVIDER_MAX_PIXELS = 8_294_400
+_PROVIDER_MAX_EDGE = 3_840
+_PROVIDER_MAX_RATIO = 3.0
+_MAX_RELAY_CROP_FRACTION = 0.15
 
 
 class MaskedRepairError(RuntimeError):
@@ -142,16 +149,26 @@ class _AuthorizedInputs:
 
 
 @dataclass(frozen=True)
+class _ProviderCanvas:
+    source_png: bytes
+    api_mask_png: bytes
+    width: int
+    height: int
+    source_box: tuple[int, int, int, int]
+
+
+@dataclass(frozen=True)
 class _NormalizedInputs:
     source_png: bytes
     authority_png: bytes
-    api_mask_png: bytes
     source_image: Image.Image
     authority: Image.Image
     width: int
     height: int
     normalized_source_sha256: str
     authority_sha256: str
+
+    provider_canvas: _ProviderCanvas
 
 
 class MaskedRepairProvider:
@@ -191,12 +208,12 @@ class MaskedRepairProvider:
             return self._rejected(exc)
 
         gateway_request = MaskedEditGatewayRequest(
-            source_png=normalized.source_png,
-            api_mask_png=normalized.api_mask_png,
+            source_png=normalized.provider_canvas.source_png,
+            api_mask_png=normalized.provider_canvas.api_mask_png,
             prompt=_master_prompt(authorized.instruction),
             quality=_provider_quality(authorized.quality),
-            width=normalized.width,
-            height=normalized.height,
+            width=normalized.provider_canvas.width,
+            height=normalized.provider_canvas.height,
             idempotency_key=request.idempotency_key,
         )
         call_count = 0
@@ -248,11 +265,6 @@ class MaskedRepairProvider:
                 mask_sha256=authorized.mask.sha256,
                 normalized_source_sha256=normalized.normalized_source_sha256,
                 authority_sha256=normalized.authority_sha256,
-            )
-            final_artifact, outside_changed_pixels = _strict_composite(
-                normalized,
-                result.artifact,
-                feather_radius=self.feather_radius,
             )
         except Exception as error:
             failure = (
@@ -315,8 +327,7 @@ class MaskedRepairProvider:
                 estimated_cost_micros=None,
                 error_code="LOCAL_EDIT_VISUAL_REVIEW_FAILED",
                 error_message=(
-                    "Local-edit visual review failed "
-                    f"({type(exc).__name__})."
+                    f"Local-edit visual review failed ({type(exc).__name__})."
                 ),
                 retryable=True,
             )
@@ -341,8 +352,7 @@ class MaskedRepairProvider:
                 estimated_cost_micros=review.estimated_cost_micros,
                 error_code="LOCAL_EDIT_VISUAL_REVIEW_AUDIT_FAILED",
                 error_message=(
-                    "Local-edit visual review audit failed "
-                    f"({type(exc).__name__})."
+                    f"Local-edit visual review audit failed ({type(exc).__name__})."
                 ),
                 retryable=True,
                 http_status=review.http_status,
@@ -369,11 +379,7 @@ class MaskedRepairProvider:
                 "visual_review_summary": review.summary,
                 "visual_review_reason_codes": list(review.reason_codes),
                 "visual_review_version": MASKED_REPAIR_REVIEW_VERSION,
-                "strict_lock_success": True,
-                "outside_changed_pixels": outside_changed_pixels,
-                "final_sha256": final_artifact.sha256,
-                "final_width": final_artifact.width,
-                "final_height": final_artifact.height,
+                "strict_lock_success": None,
                 "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
                 "prompt_version": MASKED_REPAIR_PROMPT_VERSION,
             }
@@ -384,9 +390,7 @@ class MaskedRepairProvider:
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 provider_request_id=result.provider_request_id,
-                error_code=(
-                    review.error_code or "LOCAL_EDIT_VISUAL_REVIEW_FAILED"
-                ),
+                error_code=(review.error_code or "LOCAL_EDIT_VISUAL_REVIEW_FAILED"),
                 error_message=(
                     review.error_message
                     or "Local-edit visual review did not return a verdict."
@@ -408,8 +412,7 @@ class MaskedRepairProvider:
                 provider_request_id=result.provider_request_id,
                 error_code="LOCAL_EDIT_VISUAL_REVIEW_REJECTED",
                 error_message=(
-                    review.summary
-                    or "The generated edit did not pass visual review."
+                    review.summary or "The generated edit did not pass visual review."
                 ),
                 usage_reported=usage_reported,
                 raw_usage=usage,
@@ -423,6 +426,66 @@ class MaskedRepairProvider:
             )
 
         metrics["delivery_status"] = "strict_result_delivered"
+        try:
+            final_artifact, outside_changed_pixels = _strict_composite(
+                normalized,
+                result.artifact,
+                feather_radius=self.feather_radius,
+            )
+        except Exception as error:
+            failure = (
+                error
+                if isinstance(error, MaskedRepairError)
+                else MaskedRepairError(
+                    "LOCAL_EDIT_POSTPROCESS_FAILED",
+                    f"Local-edit postprocessing failed ({type(error).__name__}).",
+                )
+            )
+            metrics.update(
+                {
+                    "strict_lock_success": False,
+                    "delivery_status": (
+                        "needs_reselection_for_strict_lock"
+                        if failure.needs_reselection
+                        else "raw_visual_success_locked_failed"
+                    ),
+                    "provider_request_width": normalized.provider_canvas.width,
+                    "provider_request_height": normalized.provider_canvas.height,
+                    "provider_raw_width": result.artifact.width,
+                    "provider_raw_height": result.artifact.height,
+                    "geometry_mapping": "uniform_cover_center_crop_v1",
+                }
+            )
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                provider_request_id=result.provider_request_id,
+                error_code=failure.code,
+                error_message=str(failure),
+                usage_reported=usage_reported,
+                raw_usage=usage,
+                estimated_cost_micros=estimated_cost,
+                actual_cost_micros=actual_cost,
+                retryable=False,
+                http_status=result.http_status,
+                provider_name=self.gateway.provider_name,
+                model_name=MASKED_REPAIR_MODEL,
+                pricing_version=self.gateway.pricing_version,
+            )
+        metrics.update(
+            {
+                "strict_lock_success": True,
+                "outside_changed_pixels": outside_changed_pixels,
+                "final_sha256": final_artifact.sha256,
+                "final_width": final_artifact.width,
+                "final_height": final_artifact.height,
+                "provider_request_width": normalized.provider_canvas.width,
+                "provider_request_height": normalized.provider_canvas.height,
+                "provider_raw_width": result.artifact.width,
+                "provider_raw_height": result.artifact.height,
+                "geometry_mapping": "uniform_cover_center_crop_v1",
+            }
+        )
+
         return ProviderResult(
             outcome=ProviderOutcome.SUCCEEDED,
             provider_request_id=result.provider_request_id,
@@ -437,6 +500,7 @@ class MaskedRepairProvider:
             model_name=MASKED_REPAIR_MODEL,
             pricing_version=self.gateway.pricing_version,
         )
+
     def _authorize(self, request: ProviderRequest) -> _AuthorizedInputs:
         try:
             SkillManifestRegistry.bundled().verify_source(
@@ -615,18 +679,18 @@ class MaskedRepairProvider:
             )
         source_png = _png_bytes(source)
         authority_png = _png_bytes(authority)
-        api_mask_png = _api_mask_png(authority)
+        provider_canvas = _build_provider_canvas(source, authority)
         width, height = source.size
         return _NormalizedInputs(
             source_png=source_png,
             authority_png=authority_png,
-            api_mask_png=api_mask_png,
             source_image=source,
             authority=authority,
             width=width,
             height=height,
             normalized_source_sha256=hashlib.sha256(source_png).hexdigest(),
             authority_sha256=hashlib.sha256(authority_png).hexdigest(),
+            provider_canvas=provider_canvas,
         )
 
     def _reserve_call_budget(
@@ -692,9 +756,7 @@ class MaskedRepairProvider:
                     "LOCAL_EDIT_CALL_ALREADY_RESERVED",
                     "This durable attempt already reserved its provider call.",
                 )
-            review_exposure = int(
-                getattr(self.gateway, "review_price_micros", 0) or 0
-            )
+            review_exposure = int(getattr(self.gateway, "review_price_micros", 0) or 0)
             exposure = int(job.estimated_cost_max_micros or 0) + review_exposure
             if exposure <= 0 or exposure > self.budget_limit_micros:
                 raise MaskedRepairError(
@@ -886,8 +948,7 @@ class MaskedRepairProvider:
                     JobAssetRecord.workspace_id == request.workspace_id,
                     JobAssetRecord.job_id == request.job_id,
                     JobAssetRecord.job_item_id == request.job_item_id,
-                    JobAssetRecord.direction
-                    == JobAssetDirection.INTERMEDIATE.value,
+                    JobAssetRecord.direction == JobAssetDirection.INTERMEDIATE.value,
                     JobAssetRecord.role == _RAW_ROLE,
                 )
             )
@@ -1049,12 +1110,7 @@ def _strict_composite(
             "LOCAL_EDIT_RAW_IMAGE_INVALID",
             "The immutable provider result is not a valid image.",
         ) from exc
-    if generated.size != normalized.source_image.size:
-        raise MaskedRepairError(
-            "LOCAL_EDIT_RAW_DIMENSIONS_MISMATCH",
-            "The provider result must match the source canvas exactly.",
-            retryable=True,
-        )
+    generated = _map_raw_to_source(normalized, generated)
     inward = normalized.authority
     if feather_radius:
         blurred = normalized.authority.filter(
@@ -1183,9 +1239,7 @@ def _usage_record(
     authority_sha256: str,
 ) -> dict[str, Any]:
     normalized = dict(result.normalized_usage)
-    review_normalized = (
-        dict(review.normalized_usage) if review is not None else {}
-    )
+    review_normalized = dict(review.normalized_usage) if review is not None else {}
     review_performed = review is not None
     reported = bool(normalized.get("reported")) and (
         not review_performed or bool(review_normalized.get("reported"))
@@ -1232,3 +1286,137 @@ def _usage_record(
             "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
         },
     }
+
+
+def _build_provider_canvas(
+    source: Image.Image,
+    authority: Image.Image,
+) -> _ProviderCanvas:
+    target_width, target_height, scaled_width, scaled_height = _provider_dimensions(
+        source.width,
+        source.height,
+    )
+    scaled_source = source
+    scaled_authority = authority
+    if (scaled_width, scaled_height) != source.size:
+        scaled_source = source.resize(
+            (scaled_width, scaled_height),
+            Image.Resampling.LANCZOS,
+        )
+        scaled_authority = authority.resize(
+            (scaled_width, scaled_height),
+            Image.Resampling.NEAREST,
+        )
+    offset_x = (target_width - scaled_width) // 2
+    offset_y = (target_height - scaled_height) // 2
+    source_box = (
+        offset_x,
+        offset_y,
+        offset_x + scaled_width,
+        offset_y + scaled_height,
+    )
+    edge_color = scaled_source.getpixel((0, 0))
+    provider_source = Image.new("RGBA", (target_width, target_height), edge_color)
+    provider_source.paste(scaled_source, (offset_x, offset_y))
+    provider_authority = Image.new("L", (target_width, target_height), 0)
+    provider_authority.paste(scaled_authority, (offset_x, offset_y))
+    return _ProviderCanvas(
+        source_png=_png_bytes(provider_source),
+        api_mask_png=_api_mask_png(provider_authority),
+        width=target_width,
+        height=target_height,
+        source_box=source_box,
+    )
+
+
+def _provider_dimensions(
+    width: int,
+    height: int,
+) -> tuple[int, int, int, int]:
+    if width <= 0 or height <= 0:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_DIMENSIONS_INVALID",
+            "The source canvas dimensions are invalid.",
+        )
+    area = width * height
+    scale = 1.0
+    if area < _PROVIDER_MIN_PIXELS:
+        scale = sqrt(_PROVIDER_MIN_PIXELS / area)
+    scale = min(
+        scale,
+        _PROVIDER_MAX_EDGE / max(width, height),
+        sqrt(_PROVIDER_MAX_PIXELS / area),
+    )
+    scaled_width = max(1, round(width * scale))
+    scaled_height = max(1, round(height * scale))
+    for _ in range(8):
+        target_width = ceil(scaled_width / _PROVIDER_EDGE_MULTIPLE) * 16
+        target_height = ceil(scaled_height / _PROVIDER_EDGE_MULTIPLE) * 16
+        if target_width / target_height > _PROVIDER_MAX_RATIO:
+            target_height = (
+                ceil(target_width / _PROVIDER_MAX_RATIO / _PROVIDER_EDGE_MULTIPLE)
+                * _PROVIDER_EDGE_MULTIPLE
+            )
+        elif target_height / target_width > _PROVIDER_MAX_RATIO:
+            target_width = (
+                ceil(target_height / _PROVIDER_MAX_RATIO / _PROVIDER_EDGE_MULTIPLE)
+                * _PROVIDER_EDGE_MULTIPLE
+            )
+        target_area = target_width * target_height
+        if target_area < _PROVIDER_MIN_PIXELS:
+            factor = sqrt(_PROVIDER_MIN_PIXELS / target_area) * 1.01
+            scaled_width = max(1, round(scaled_width * factor))
+            scaled_height = max(1, round(scaled_height * factor))
+            continue
+        if (
+            target_area > _PROVIDER_MAX_PIXELS
+            or max(target_width, target_height) > _PROVIDER_MAX_EDGE
+        ):
+            factor = (
+                min(
+                    sqrt(_PROVIDER_MAX_PIXELS / target_area),
+                    _PROVIDER_MAX_EDGE / max(target_width, target_height),
+                )
+                * 0.99
+            )
+            scaled_width = max(1, round(scaled_width * factor))
+            scaled_height = max(1, round(scaled_height * factor))
+            continue
+        return target_width, target_height, scaled_width, scaled_height
+    raise MaskedRepairError(
+        "LOCAL_EDIT_PROVIDER_DIMENSIONS_UNAVAILABLE",
+        "A legal provider canvas could not be derived without distortion.",
+    )
+
+
+def _map_raw_to_source(
+    normalized: _NormalizedInputs,
+    generated: Image.Image,
+) -> Image.Image:
+    target = normalized.provider_canvas
+    scale = max(target.width / generated.width, target.height / generated.height)
+    mapped_width = max(target.width, ceil(generated.width * scale))
+    mapped_height = max(target.height, ceil(generated.height * scale))
+    crop_fraction = max(
+        (mapped_width - target.width) / mapped_width,
+        (mapped_height - target.height) / mapped_height,
+    )
+    if crop_fraction > _MAX_RELAY_CROP_FRACTION:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_RAW_GEOMETRY_UNMAPPABLE",
+            "The provider result drifted too far for a non-distorting map.",
+        )
+    mapped = generated.resize(
+        (mapped_width, mapped_height),
+        Image.Resampling.LANCZOS,
+    )
+    left = (mapped_width - target.width) // 2
+    top = (mapped_height - target.height) // 2
+    provider_canvas = mapped.crop((left, top, left + target.width, top + target.height))
+    source_region = provider_canvas.crop(target.source_box)
+    if source_region.size != normalized.source_image.size:
+        source_region = source_region.resize(
+            normalized.source_image.size,
+            Image.Resampling.LANCZOS,
+        )
+    return source_region

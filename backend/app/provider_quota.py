@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 
 from .errors import ApiError
 from .models import AuditEventRecord, JobRecord, utc_now
+from .provider_quota_ledger import (
+    LEDGER_VERSION,
+    ProviderQuotaLedgerError,
+    reconcile_and_total,
+)
 from .services import lock_workspace_limits
 
 PROVIDER_JOB_QUOTA_ACTION = "provider.beta_job_reserved"
@@ -23,6 +28,9 @@ def reserve_provider_job_quota(
     daily_limit_micros: int,
     monthly_limit_micros: int,
     daily_request_limit: int,
+    planner_reserve_micros: int | None = None,
+    image_budget_micros: int | None = None,
+    group_count: int | None = None,
 ) -> None:
     """Atomically reserve one real-provider job against durable beta limits."""
 
@@ -66,41 +74,19 @@ def reserve_provider_job_quota(
         now = now.replace(tzinfo=UTC)
     day_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
     month_start = datetime(now.year, now.month, 1, tzinfo=UTC)
-    reservations = session.scalars(
-        select(AuditEventRecord).where(
-            AuditEventRecord.workspace_id == job.workspace_id,
-            AuditEventRecord.action == PROVIDER_JOB_QUOTA_ACTION,
-            AuditEventRecord.occurred_at >= month_start,
+    try:
+        daily_cost, monthly_cost, daily_requests = reconcile_and_total(
+            session,
+            workspace_id=job.workspace_id,
+            day_start=day_start,
+            month_start=month_start,
         )
-    ).all()
-
-    daily_cost = 0
-    monthly_cost = 0
-    daily_requests = 0
-    for reservation in reservations:
-        details = reservation.details if isinstance(reservation.details, dict) else {}
-        cost = details.get("estimated_cost_micros")
-        requests = details.get("provider_request_count")
-        if (
-            isinstance(cost, bool)
-            or not isinstance(cost, int)
-            or cost < 0
-            or isinstance(requests, bool)
-            or not isinstance(requests, int)
-            or requests < 0
-        ):
-            raise ApiError(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                "PROVIDER_QUOTA_LEDGER_INVALID",
-                "Real-provider quota ledger is invalid.",
-            )
-        monthly_cost += cost
-        occurred_at = reservation.occurred_at
-        if occurred_at.tzinfo is None:
-            occurred_at = occurred_at.replace(tzinfo=UTC)
-        if occurred_at >= day_start:
-            daily_cost += cost
-            daily_requests += requests
+    except ProviderQuotaLedgerError as exc:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "PROVIDER_QUOTA_LEDGER_INVALID",
+            str(exc),
+        ) from exc
 
     if daily_cost + estimated_cost_micros > effective_daily_limit:
         raise ApiError(
@@ -130,6 +116,11 @@ def reserve_provider_job_quota(
             resource_id=job.id,
             request_id=job.id,
             details={
+                "ledger_version": LEDGER_VERSION,
+                "job_type": job.type,
+                "planner_reserve_micros": planner_reserve_micros,
+                "image_budget_micros": image_budget_micros,
+                "group_count": group_count,
                 "estimated_cost_micros": estimated_cost_micros,
                 "provider_request_count": provider_request_count,
                 "daily_limit_micros": effective_daily_limit,

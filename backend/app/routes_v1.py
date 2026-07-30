@@ -715,9 +715,7 @@ def create_job(
         detail_medium_price_micros=(
             request.app.state.settings.xinghe_medium_price_micros
         ),
-        detail_high_price_micros=(
-            request.app.state.settings.xinghe_high_price_micros
-        ),
+        detail_high_price_micros=(request.app.state.settings.xinghe_high_price_micros),
     )
     asset_ids = [item[0] for item in asset_roles]
     assets = get_ready_assets(session, workspace.workspace_id, asset_ids)
@@ -853,9 +851,7 @@ def update_draft_job(
     workspace: WorkspaceWriteDependency,
     session: SessionDependency,
 ) -> JobDetailResponse:
-    job = get_workspace_job(
-        session, workspace.workspace_id, job_id, for_update=True
-    )
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
     if JobStatus(job.status) != JobStatus.DRAFT:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -886,9 +882,7 @@ def submit_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(
-        session, workspace.workspace_id, job_id, for_update=True
-    )
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -949,9 +943,7 @@ def cancel_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(
-        session, workspace.workspace_id, job_id, for_update=True
-    )
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -1031,9 +1023,7 @@ def retry_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    source = get_workspace_job(
-        session, workspace.workspace_id, job_id, for_update=True
-    )
+    source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
     if JobStatus(source.status) not in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,
@@ -1115,9 +1105,7 @@ def clone_job(
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
-    source = get_workspace_job(
-        session, workspace.workspace_id, job_id, for_update=True
-    )
+    source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
     if JobStatus(source.status) not in TERMINAL_JOB_STATUSES:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -1185,9 +1173,7 @@ def update_plan(
     workspace: WorkspaceWriteDependency,
     session: SessionDependency,
 ) -> PlanResponse:
-    job = get_workspace_job(
-        session, workspace.workspace_id, job_id, for_update=True
-    )
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
     if JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -1261,9 +1247,7 @@ def confirm_plan(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
-    job = get_workspace_job(
-        session, workspace.workspace_id, job_id, for_update=True
-    )
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
     plan = session.scalar(
         select(JobPlanRecord)
         .where(JobPlanRecord.job_id == job.id)
@@ -1341,9 +1325,8 @@ def _new_job_from_payload(
             (payload.input.selection_mask_asset_id, "selection_mask", 0),
         ]
     else:
-        item_count = (
-            payload.configuration.page_count
-            * len(payload.input.product_groups)
+        item_count = payload.configuration.page_count * len(
+            payload.input.product_groups
         )
         asset_roles = [
             (asset_id, "product_reference", ordinal)
@@ -1396,23 +1379,18 @@ def _reserve_real_provider_job_if_enabled(
     configuration = job.configuration if isinstance(job.configuration, dict) else {}
     input_configuration = configuration.get("input")
     group_count = 0
-    if job.type == JobType.DETAIL_PACK.value and isinstance(
-        input_configuration, dict
-    ):
+    if job.type == JobType.DETAIL_PACK.value and isinstance(input_configuration, dict):
         groups = input_configuration.get("product_groups")
         if isinstance(groups, list):
             group_count = len(groups)
     image_cost = int(job.estimated_cost_max_micros or 0)
     if job.type == JobType.DETAIL_PACK.value:
         estimated_cost = (
-            image_cost * 2
-            + group_count * settings.tengli_planner_reserve_micros
+            image_cost * 2 + group_count * settings.tengli_planner_reserve_micros
         )
         provider_requests = job.expected_item_count * 2 + group_count
     else:
-        estimated_cost = (
-            image_cost * 2 + settings.tengli_planner_reserve_micros
-        )
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros
         provider_requests = 3
     reserve_provider_job_quota(
         session,
@@ -1423,6 +1401,9 @@ def _reserve_real_provider_job_if_enabled(
         daily_limit_micros=int(settings.tengli_daily_budget_usd * 1_000_000),
         monthly_limit_micros=int(settings.tengli_monthly_budget_usd * 1_000_000),
         daily_request_limit=settings.tengli_daily_request_limit,
+        planner_reserve_micros=settings.tengli_planner_reserve_micros,
+        image_budget_micros=image_cost,
+        group_count=group_count,
     )
 
 
@@ -1481,8 +1462,7 @@ def _copy_job_for_retry(
         )
         cost = (
             source_plan.payload.get("cost")
-            if source_plan is not None
-            and isinstance(source_plan.payload, dict)
+            if source_plan is not None and isinstance(source_plan.payload, dict)
             else None
         )
         if isinstance(cost, dict):
@@ -1608,9 +1588,7 @@ def _copy_job_relations_for_retry(
             copied_payload["state"] = "confirmed"
             cost_value = copied_payload.get("cost")
             cost = dict(cost_value) if isinstance(cost_value, dict) else {}
-            pending_items = [
-                item for item in source_items if item.id in selected
-            ]
+            pending_items = [item for item in source_items if item.id in selected]
             pending_high = sum(item.quality == "high" for item in pending_items)
             pending_medium = len(pending_items) - pending_high
             medium_price = int(cost.get("medium_unit_micros", 45_000))
@@ -1620,8 +1598,7 @@ def _copy_job_relations_for_retry(
                     "pending_medium_count": pending_medium,
                     "pending_high_count": pending_high,
                     "estimated_pending_micros": (
-                        pending_medium * medium_price
-                        + pending_high * high_price
+                        pending_medium * medium_price + pending_high * high_price
                     ),
                 }
             )

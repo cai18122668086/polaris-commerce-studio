@@ -8,11 +8,13 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
 
-from app.domain import OutboxStatus
+from app.domain import JobStatus, OutboxStatus, PlanValidationStatus
 from app.main import create_app
 from app.models import (
     AuditEventRecord,
     JobAttemptRecord,
+    JobPlanRecord,
+    JobRecord,
     OutboxEventRecord,
     UsageEventRecord,
     utc_now,
@@ -258,9 +260,7 @@ def _detail_submit_payload(asset_id: str) -> dict:
         "intent": "submit",
         "display_name": "Provider beta quota",
         "input": {
-            "product_groups": [
-                {"group_key": "product", "asset_ids": [asset_id]}
-            ]
+            "product_groups": [{"group_key": "product", "asset_ids": [asset_id]}]
         },
         "configuration": {
             "product_name": "Visible product",
@@ -342,10 +342,113 @@ def test_real_provider_daily_request_limit_blocks_before_dispatch(
 
     assert first.status_code == 202
     assert blocked.status_code == 409
-    assert (
-        blocked.json()["error"]["code"]
-        == "PROVIDER_DAILY_REQUEST_LIMIT_EXCEEDED"
+    assert blocked.json()["error"]["code"] == "PROVIDER_DAILY_REQUEST_LIMIT_EXCEEDED"
+
+
+def test_unknown_planner_outcome_is_charged_conservatively_and_releases_images(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 0.7
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 5
+    settings.tengli_planner_reserve_micros = 250_000
+    asset = upload_asset(client)
+    payload = _detail_submit_payload(asset["id"])
+
+    first = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
     )
+    assert first.status_code == 202
+    job_id = first.json()["id"]
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        job.status = JobStatus.FAILED.value
+        job.stage = "planning_failed"
+        job.progress = 100
+        job.finished_at = utc_now()
+        job.error_code = "PLANNER_OUTCOME_UNKNOWN"
+        reservation_payload = {
+            "state": "planner_reserved",
+            "groups": [{"group_key": "product"}],
+        }
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="v1",
+                payload=reservation_payload,
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.INVALID.value,
+                validation_errors=[{"code": "PLANNER_OUTCOME_UNKNOWN"}],
+                validator_version="structured-plan-v2",
+                validated_at=utc_now(),
+            )
+        )
+        session.commit()
+
+    second = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+    assert second.status_code == 202
+    with client.app.state.session_factory() as session:
+        settlement = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job_id,
+                AuditEventRecord.action == "provider.beta_job_settled",
+            )
+        )
+        release = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job_id,
+                AuditEventRecord.action == "provider.beta_job_released",
+            )
+        )
+        assert settlement is not None
+        assert release is not None
+        assert settlement.details["charged_cost_micros"] == 250_000
+        assert settlement.details["actual_provider_request_count"] == 1
+        assert settlement.details["cost_basis"] == "conservative_unknown"
+        assert settlement.details["actual_cost_reported_count"] == 0
+        assert settlement.details["conservative_unknown_count"] == 1
+        assert release.details["released_cost_micros"] == 180_000
+        assert release.details["released_request_count"] == 2
+
+
+def test_terminal_detail_without_attempt_evidence_fails_quota_closed(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 0.7
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 5
+    settings.tengli_planner_reserve_micros = 250_000
+    asset = upload_asset(client)
+    payload = _detail_submit_payload(asset["id"])
+    first = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+    assert first.status_code == 202
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, first.json()["id"])
+        assert job is not None
+        job.status = JobStatus.FAILED.value
+        job.stage = "planning_failed"
+        job.progress = 100
+        job.finished_at = utc_now()
+        job.error_code = "CORRUPT_MISSING_EVIDENCE"
+        session.commit()
 
 
 def test_upload_rejects_missing_idempotency_and_invalid_images(

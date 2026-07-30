@@ -9,10 +9,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
 
+import app.masked_repair as masked_repair_module
 from app.domain import AssetLifecycleStatus, AssetMediaKind, AssetOriginKind
 from app.masked_repair import (
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
+    MaskedRepairError,
     MaskedVisualReviewCallResult,
     MaskedVisualReviewRequest,
 )
@@ -53,6 +55,19 @@ def _selection_png(
     image = Image.new("L", size, 0)
     for point in selected:
         image.putpixel(point, 255)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _selection_rect_png(
+    size: tuple[int, int],
+    box: tuple[int, int, int, int],
+) -> bytes:
+    image = Image.new("L", size, 0)
+    for y in range(box[1], box[3]):
+        for x in range(box[0], box[2]):
+            image.putpixel((x, y), 255)
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
@@ -121,10 +136,14 @@ class OfflineMaskedGateway(FakeXingheGateway):
         outcomes: Sequence[str] = ("success",),
         *,
         review_success: bool | None = True,
+        raw_size: tuple[int, int] | None = None,
+        report_actual_cost: bool = True,
     ) -> None:
         super().__init__()
         self.outcomes = list(outcomes)
         self.review_success = review_success
+        self.raw_size = raw_size
+        self.report_actual_cost = report_actual_cost
         self.masked_calls: list[MaskedEditGatewayRequest] = []
         self.review_calls: list[MaskedVisualReviewRequest] = []
 
@@ -160,13 +179,16 @@ class OfflineMaskedGateway(FakeXingheGateway):
                 retryable=False,
                 http_status=400,
             )
-        raw = _png((request.width, request.height), (220, 20, 40, 255))
+        raw_size = self.raw_size or (request.width, request.height)
+        raw = _png(raw_size, (220, 20, 40, 255))
         return MaskedEditCallResult(
             outcome=ProviderOutcome.SUCCEEDED,
             provider_request_id="offline_success",
-            raw_usage={"actual_cost_micros": 12_000},
-            normalized_usage=_usage(),
-            actual_cost_micros=12_000,
+            raw_usage={"actual_cost_micros": 12_000} if self.report_actual_cost else {},
+            normalized_usage=_usage()
+            if self.report_actual_cost
+            else {"reported": False},
+            actual_cost_micros=12_000 if self.report_actual_cost else None,
             estimated_cost_micros=80_000,
             artifact=_artifact(raw),
             http_status=200,
@@ -179,9 +201,11 @@ class OfflineMaskedGateway(FakeXingheGateway):
         self.review_calls.append(request)
         return MaskedVisualReviewCallResult(
             provider_request_id="offline_review_success",
-            raw_usage={"actual_cost_micros": 2_000},
-            normalized_usage=_usage(),
-            actual_cost_micros=2_000,
+            raw_usage={"actual_cost_micros": 2_000} if self.report_actual_cost else {},
+            normalized_usage=_usage()
+            if self.report_actual_cost
+            else {"reported": False},
+            actual_cost_micros=2_000 if self.report_actual_cost else None,
             estimated_cost_micros=10_000,
             visual_success=self.review_success,
             summary="Controlled offline visual-review result.",
@@ -333,6 +357,65 @@ def test_real_local_edit_locks_every_outside_pixel_and_records_raw(
     assert gateway.review_calls[0].candidate_png
 
 
+def test_terminal_quota_settlement_releases_unused_retry_without_fake_actual_cost(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 0.6
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 5
+    settings.tengli_planner_reserve_micros = 250_000
+    gateway = OfflineMaskedGateway(report_actual_cost=False)
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+
+    status_code, first = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+    assert _dispatch(client) == 1
+    first_body = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}"
+    ).json()
+    assert first_body["status"] == "completed"
+
+    second_status, _ = _create_job(client, source["id"], mask["id"])
+    assert second_status == 202
+    with client.app.state.session_factory() as session:
+        settlement = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == first["id"],
+                AuditEventRecord.action == "provider.beta_job_settled",
+            )
+        )
+        release = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == first["id"],
+                AuditEventRecord.action == "provider.beta_job_released",
+            )
+        )
+        attempts = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == first["id"],
+                AuditEventRecord.action == "provider.beta_job_attempts_recorded",
+            )
+        )
+        usage = session.scalar(
+            select(UsageEventRecord).where(UsageEventRecord.job_id == first["id"])
+        )
+        assert settlement is not None
+        assert release is not None
+        assert attempts is not None
+        assert usage is not None
+        assert usage.actual_cost_micros is None
+        assert settlement.details["charged_cost_micros"] == 90_000
+        assert settlement.details["actual_provider_request_count"] == 2
+        assert settlement.details["cost_basis"] == "estimated_fallback"
+        assert settlement.details["actual_cost_reported_count"] == 0
+        assert release.details["released_cost_micros"] == 340_000
+        assert release.details["released_request_count"] == 1
+        assert attempts.details["attempts"][0]["actual_cost_reported"] is False
+
+
 def test_visual_review_rejection_retains_raw_without_delivery_or_regeneration(
     client: TestClient,
 ) -> None:
@@ -343,25 +426,225 @@ def test_visual_review_rejection_retains_raw_without_delivery_or_regeneration(
     assert status_code == 202
 
     assert _dispatch(client) == 1
-    body = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert body["status"] == "failed"
-    assert body["items"][0]["error_code"] == (
-        "LOCAL_EDIT_VISUAL_REVIEW_REJECTED"
-    )
+    assert body["items"][0]["error_code"] == ("LOCAL_EDIT_VISUAL_REVIEW_REJECTED")
 
     with client.app.state.session_factory() as session:
         relations = session.scalars(
             select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
         ).all()
-        raw_relation = next(
-            item for item in relations if item.role == "provider_raw"
-        )
+        raw_relation = next(item for item in relations if item.role == "provider_raw")
         assert raw_relation.is_deliverable is False
         assert raw_relation.validation["raw_visual_success"] is False
         assert all(item.role != "local_edit_result" for item in relations)
 
+    assert len(gateway.masked_calls) == 1
+    assert len(gateway.review_calls) == 1
+
+
+def test_non_multiple_source_and_relay_drift_map_back_without_authority_leak(
+    client: TestClient,
+) -> None:
+    source_size = (1200, 1202)
+    raw_size = (1275, 1233)
+    gateway = OfflineMaskedGateway(raw_size=raw_size)
+    _install_runner(client, gateway)
+    source_bytes = _png(source_size, (10, 20, 30, 255))
+    source = _upload(
+        client,
+        source_bytes,
+        media_kind="image",
+        filename="non-multiple-source.png",
+    )
+    mask = _upload(
+        client,
+        _selection_rect_png(source_size, (400, 400, 800, 800)),
+        media_kind="mask",
+        filename="non-multiple-selection.png",
+    )
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+
+    assert _dispatch(client) == 1
+    request = gateway.masked_calls[0]
+    assert request.width == 1200
+    assert request.height == 1216
+    assert request.width % 16 == request.height % 16 == 0
+
+    with client.app.state.session_factory() as session:
+        relations = session.scalars(
+            select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
+        ).all()
+        raw_relation = next(item for item in relations if item.role == "provider_raw")
+        output_relation = next(
+            item for item in relations if item.role == "local_edit_result"
+        )
+        raw_asset = session.get(AssetRecord, raw_relation.asset_id)
+        output_asset = session.get(AssetRecord, output_relation.asset_id)
+        assert raw_asset is not None
+        assert output_asset is not None
+        assert (raw_asset.width, raw_asset.height) == raw_size
+        assert (output_asset.width, output_asset.height) == source_size
+        assert output_relation.validation["outside_changed_pixels"] == 0
+        usage = session.scalar(
+            select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
+        )
+        assert usage is not None
+        metrics = usage.raw_usage["metrics"]
+        assert metrics["provider_request_width"] == 1200
+        assert metrics["provider_request_height"] == 1216
+        assert metrics["provider_raw_width"] == 1275
+        assert metrics["provider_raw_height"] == 1233
+        assert metrics["geometry_mapping"] == "uniform_cover_center_crop_v1"
+
+
+def test_excessive_relay_drift_preserves_visual_success_but_fails_strict_lock(
+    client: TestClient,
+) -> None:
+    gateway = OfflineMaskedGateway(raw_size=(1800, 900), review_success=True)
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+
+    assert _dispatch(client) == 1
+    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert body["status"] == "failed"
+    assert body["items"][0]["error_code"] == "LOCAL_EDIT_RAW_GEOMETRY_UNMAPPABLE"
+    with client.app.state.session_factory() as session:
+        relations = session.scalars(
+            select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
+        ).all()
+        raw_relation = next(item for item in relations if item.role == "provider_raw")
+        assert raw_relation.validation["raw_visual_success"] is True
+        assert all(item.role != "local_edit_result" for item in relations)
+        usage = session.scalar(
+            select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
+        )
+        assert usage is not None
+        metrics = usage.raw_usage["metrics"]
+        assert metrics["raw_visual_success"] is True
+        assert metrics["strict_lock_success"] is False
+        assert metrics["delivery_status"] == "raw_visual_success_locked_failed"
+        assert metrics["provider_raw_width"] == 1800
+        assert metrics["provider_raw_height"] == 900
+    assert len(gateway.masked_calls) == 1
+    assert len(gateway.review_calls) == 1
+
+
+def test_visual_review_unavailable_stops_before_strict_lock_and_keeps_raw(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    strict_called = False
+
+    def unexpected_strict(*args: object, **kwargs: object) -> object:
+        nonlocal strict_called
+        strict_called = True
+        raise AssertionError("strict lock must wait for a positive visual verdict")
+
+    monkeypatch.setattr(
+        masked_repair_module,
+        "_strict_composite",
+        unexpected_strict,
+    )
+    gateway = OfflineMaskedGateway(review_success=None)
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+
+    assert _dispatch(client) == 1
+    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert body["status"] == "failed"
+    assert body["items"][0]["error_code"] == "LOCAL_EDIT_VISUAL_REVIEW_UNAVAILABLE"
+    assert strict_called is False
+    with client.app.state.session_factory() as session:
+        relations = session.scalars(
+            select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
+        ).all()
+        raw_relation = next(item for item in relations if item.role == "provider_raw")
+        assert raw_relation.validation["raw_visual_success"] is None
+        assert all(item.role != "local_edit_result" for item in relations)
+        usage = session.scalar(
+            select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
+        )
+        assert usage is not None
+        metrics = usage.raw_usage["metrics"]
+        assert metrics["raw_visual_success"] is None
+        assert metrics["strict_lock_success"] is None
+        assert metrics["delivery_status"] == "visual_review_unavailable"
+    assert len(gateway.masked_calls) == 1
+    assert len(gateway.review_calls) == 1
+
+
+def test_visual_rejection_happens_before_strict_composite(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    strict_called = False
+
+    def unexpected_strict(*args: object, **kwargs: object) -> object:
+        nonlocal strict_called
+        strict_called = True
+        raise AssertionError("strict composite must not run before review acceptance")
+
+    monkeypatch.setattr(
+        masked_repair_module,
+        "_strict_composite",
+        unexpected_strict,
+    )
+    gateway = OfflineMaskedGateway(review_success=False)
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+
+    assert _dispatch(client) == 1
+    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert body["items"][0]["error_code"] == "LOCAL_EDIT_VISUAL_REVIEW_REJECTED"
+    assert strict_called is False
+
+
+def test_raw_visual_success_is_preserved_when_strict_mapping_fails(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_strict(*args: object, **kwargs: object) -> object:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_PIXEL_LOCK_FAILED",
+            "Controlled strict lock failure.",
+        )
+
+    monkeypatch.setattr(masked_repair_module, "_strict_composite", fail_strict)
+    gateway = OfflineMaskedGateway(review_success=True)
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+
+    assert _dispatch(client) == 1
+    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert body["status"] == "failed"
+    assert body["items"][0]["error_code"] == "LOCAL_EDIT_PIXEL_LOCK_FAILED"
+
+    with client.app.state.session_factory() as session:
+        relations = session.scalars(
+            select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
+        ).all()
+        raw_relation = next(item for item in relations if item.role == "provider_raw")
+        assert raw_relation.validation["raw_visual_success"] is True
+        assert all(item.role != "local_edit_result" for item in relations)
+        usage = session.scalar(
+            select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
+        )
+        assert usage is not None
+        assert usage.raw_usage["metrics"]["raw_visual_success"] is True
+        assert usage.raw_usage["metrics"]["strict_lock_success"] is False
+        assert usage.raw_usage["metrics"]["delivery_status"] == (
+            "raw_visual_success_locked_failed"
+        )
     assert len(gateway.masked_calls) == 1
     assert len(gateway.review_calls) == 1
 

@@ -115,6 +115,28 @@ test("write actions use server allowed_actions as the only authority", async () 
   }
 });
 
+test("workflow pages submit the bounded inputs and failed-only retry scope", async () => {
+  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const local = await utf8("app/workspace/local-edit/page.tsx");
+
+  assert.match(local, /mediaKind: "mask"/);
+  assert.match(
+    local,
+    /input: \{ source_asset_id: sourceAsset\.id, selection_mask_asset_id: mask\.id \}/,
+  );
+  assert.match(
+    local,
+    /configuration: \{ instruction: prompt\.trim\(\), output_format: "png", quality \}/,
+  );
+  assert.match(
+    detail,
+    /input: \{ product_groups: \[\{ group_key: "primary-product", asset_ids: sources\.map/,
+  );
+  for (const source of [detail, local]) {
+    assert.match(source, /scope: "failed"/);
+  }
+});
+
 
 test("mask editor exposes brush, eraser, and rectangle authority tools", async () => {
   const editor = await utf8("components/mask-editor.tsx");

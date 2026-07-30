@@ -42,6 +42,10 @@ from app.xinghe_agent import (
     IMAGE_FORMAT,
     IMAGE_SIZE,
     JPEG_QUALITY,
+    PLAN_SCHEMA_VERSION,
+    PLANNING_POLICY_VERSION,
+    QUALITY_POLICY_VERSION,
+    WORKFLOW_VERSION,
     FakeXingheGateway,
     ImageEditRequest,
     OperationRoutingProvider,
@@ -207,6 +211,49 @@ def test_exact_page_count_uses_one_planner_call(
     assert len(gateway.planner_calls) == 1
     assert gateway.planner_calls[0].page_count == page_count
     assert gateway.image_calls == []
+
+
+def test_new_detail_job_pins_v2_all_high_evidence(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="v2-all-high.jpg")
+    job = _create_detail_job(client, [source["id"]], page_count=4)
+
+    assert dispatch_pending(client) == 1
+    planned = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    payload = planned["plan"]["payload"]
+
+    assert planned["release_version"] == WORKFLOW_VERSION
+    assert planned["strategy_version"] == PLANNING_POLICY_VERSION
+    assert planned["plan"]["schema_version"] == PLAN_SCHEMA_VERSION
+    assert payload["workflow_version"] == WORKFLOW_VERSION
+    assert [page["quality"] for page in payload["pages"]] == ["high"] * 4
+    assert [item["quality"] for item in planned["items"]] == ["high"] * 4
+    assert payload["cost"]["pending_high_count"] == 4
+    assert payload["cost"]["pending_medium_count"] == 0
+
+    with client.app.state.session_factory() as session:
+        plan = session.scalar(
+            select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"])
+        )
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job["id"])
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+
+    assert plan is not None
+    assert plan.validator_version == PLANNING_POLICY_VERSION
+    assert all(
+        item.configuration["workflow_version"] == WORKFLOW_VERSION
+        and item.configuration["planning_policy_version"]
+        == PLANNING_POLICY_VERSION
+        and item.configuration["quality_policy_version"]
+        == QUALITY_POLICY_VERSION
+        for item in items
+    )
 
 
 @pytest.mark.parametrize(

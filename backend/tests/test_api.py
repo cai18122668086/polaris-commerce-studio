@@ -4,6 +4,7 @@ from io import BytesIO
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
@@ -449,6 +450,118 @@ def test_terminal_detail_without_attempt_evidence_fails_quota_closed(
         job.finished_at = utc_now()
         job.error_code = "CORRUPT_MISSING_EVIDENCE"
         session.commit()
+
+    blocked = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+    assert blocked.status_code == 503
+    assert blocked.json()["error"]["code"] == "PROVIDER_QUOTA_LEDGER_INVALID"
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "duplicate_reservation",
+        "duplicate_settlement",
+        "wrong_settlement_request_id",
+        "wrong_reservation_event",
+        "changed_reserved_cost",
+        "changed_reserved_requests",
+        "cost_over_reservation",
+        "requests_over_reservation",
+    ],
+)
+def test_provider_quota_ledger_rejects_duplicate_or_inconsistent_events(
+    client: TestClient,
+    tamper: str,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 2
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 20
+    settings.tengli_planner_reserve_micros = 250_000
+    asset = upload_asset(client)
+    payload = _detail_submit_payload(asset["id"])
+    first = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+    assert first.status_code == 202
+    job_id = first.json()["id"]
+
+    with client.app.state.session_factory() as session:
+        reservation = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.workspace_id == WORKSPACE_ID,
+                AuditEventRecord.action == "provider.beta_job_reserved",
+                AuditEventRecord.resource_id == job_id,
+            )
+        )
+        assert reservation is not None
+        if tamper == "duplicate_reservation":
+            session.add(
+                AuditEventRecord(
+                    workspace_id=WORKSPACE_ID,
+                    action="provider.beta_job_reserved",
+                    resource_type="job",
+                    resource_id=job_id,
+                    request_id=job_id,
+                    details=dict(reservation.details),
+                )
+            )
+        else:
+            reserved_cost = int(reservation.details["estimated_cost_micros"])
+            reserved_requests = int(reservation.details["provider_request_count"])
+            settlement_details = {
+                "ledger_version": 2,
+                "reservation_event_id": reservation.id,
+                "reserved_cost_micros": reserved_cost,
+                "reserved_request_count": reserved_requests,
+                "charged_cost_micros": 0,
+                "actual_provider_request_count": 0,
+            }
+            if tamper == "wrong_reservation_event":
+                settlement_details["reservation_event_id"] = reservation.id + 1
+            elif tamper == "changed_reserved_cost":
+                settlement_details["reserved_cost_micros"] = reserved_cost - 1
+            elif tamper == "changed_reserved_requests":
+                settlement_details["reserved_request_count"] = reserved_requests - 1
+            elif tamper == "cost_over_reservation":
+                settlement_details["charged_cost_micros"] = reserved_cost + 1
+            elif tamper == "requests_over_reservation":
+                settlement_details["actual_provider_request_count"] = (
+                    reserved_requests + 1
+                )
+            settlement_request_id = (
+                "wrong_request_id"
+                if tamper == "wrong_settlement_request_id"
+                else job_id
+            )
+            settlement_count = 2 if tamper == "duplicate_settlement" else 1
+            for _ in range(settlement_count):
+                session.add(
+                    AuditEventRecord(
+                        workspace_id=WORKSPACE_ID,
+                        action="provider.beta_job_settled",
+                        resource_type="job",
+                        resource_id=job_id,
+                        request_id=settlement_request_id,
+                        details=dict(settlement_details),
+                    )
+                )
+        session.commit()
+
+    blocked = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+    assert blocked.status_code == 503
+    assert blocked.json()["error"]["code"] == "PROVIDER_QUOTA_LEDGER_INVALID"
 
 
 def test_upload_rejects_missing_idempotency_and_invalid_images(

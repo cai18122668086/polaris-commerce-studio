@@ -47,14 +47,21 @@ def reconcile_and_total(
         .order_by(AuditEventRecord.id)
     ).all()
     seen_job_ids: set[str] = set()
+    settlements_by_job: dict[str, AuditEventRecord | None] = {}
     for reservation in reservations:
         job_id = reservation.resource_id
         if not isinstance(job_id, str) or not job_id:
             raise ProviderQuotaLedgerError("A quota reservation has no job id.")
+        if reservation.request_id != job_id:
+            raise ProviderQuotaLedgerError(
+                "A quota reservation has an inconsistent request id."
+            )
         if job_id in seen_job_ids:
             raise ProviderQuotaLedgerError("A job has duplicate quota reservations.")
         seen_job_ids.add(job_id)
-        if _settlement(session, workspace_id, job_id) is not None:
+        settlement = _settlement_for_reservation(session, reservation)
+        settlements_by_job[job_id] = settlement
+        if settlement is not None:
             continue
         job = session.get(JobRecord, job_id)
         if job is None:
@@ -64,17 +71,17 @@ def reconcile_and_total(
         if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
             _append_settlement(session, job, reservation)
             session.flush()
+            settlements_by_job[job_id] = _settlement_for_reservation(
+                session,
+                reservation,
+            )
 
     daily_cost = 0
     monthly_cost = 0
     daily_requests = 0
     for reservation in reservations:
         cost, requests = _reservation_values(reservation)
-        settled = _settlement(
-            session,
-            workspace_id,
-            reservation.resource_id or "",
-        )
+        settled = settlements_by_job[reservation.resource_id or ""]
         if settled is not None:
             details = _details(settled)
             cost = _required_int(details, "charged_cost_micros")
@@ -84,28 +91,6 @@ def reconcile_and_total(
             daily_cost += cost
             daily_requests += requests
     return daily_cost, monthly_cost, daily_requests
-
-
-def settle_terminal_job(session: Session, job: JobRecord) -> bool:
-    """Append a settlement for a terminal job when one does not exist."""
-
-    if JobStatus(job.status) not in TERMINAL_JOB_STATUSES:
-        return False
-    reservation = session.scalar(
-        select(AuditEventRecord)
-        .where(
-            AuditEventRecord.workspace_id == job.workspace_id,
-            AuditEventRecord.action == RESERVATION_ACTION,
-            AuditEventRecord.resource_id == job.id,
-            AuditEventRecord.request_id == job.id,
-        )
-        .order_by(AuditEventRecord.id)
-        .limit(1)
-    )
-    if reservation is None or _settlement(session, job.workspace_id, job.id):
-        return False
-    _append_settlement(session, job, reservation)
-    return True
 
 
 def _append_settlement(
@@ -389,22 +374,61 @@ def _reservation_values(event: AuditEventRecord) -> tuple[int, int]:
     )
 
 
-def _settlement(
+def _settlement_for_reservation(
     session: Session,
-    workspace_id: str,
-    job_id: str,
+    reservation: AuditEventRecord,
 ) -> AuditEventRecord | None:
-    return session.scalar(
+    job_id = reservation.resource_id
+    if not isinstance(job_id, str) or not job_id:
+        raise ProviderQuotaLedgerError("A quota reservation has no job id.")
+    settlements = session.scalars(
         select(AuditEventRecord)
         .where(
-            AuditEventRecord.workspace_id == workspace_id,
+            AuditEventRecord.workspace_id == reservation.workspace_id,
             AuditEventRecord.action == SETTLEMENT_ACTION,
             AuditEventRecord.resource_id == job_id,
-            AuditEventRecord.request_id == job_id,
         )
         .order_by(AuditEventRecord.id)
-        .limit(1)
-    )
+    ).all()
+    if len(settlements) > 1:
+        raise ProviderQuotaLedgerError("A job has duplicate quota settlements.")
+    if not settlements:
+        return None
+    settlement = settlements[0]
+    _validate_settlement(reservation, settlement)
+    return settlement
+
+
+def _validate_settlement(
+    reservation: AuditEventRecord,
+    settlement: AuditEventRecord,
+) -> None:
+    reserved_cost, reserved_requests = _reservation_values(reservation)
+    details = _details(settlement)
+    if settlement.request_id != reservation.request_id:
+        raise ProviderQuotaLedgerError(
+            "A quota settlement has an inconsistent request id."
+        )
+    reservation_event_id = details.get("reservation_event_id")
+    if (
+        not _is_positive_int(reservation_event_id)
+        or int(reservation_event_id) != reservation.id
+    ):
+        raise ProviderQuotaLedgerError(
+            "A quota settlement references the wrong reservation."
+        )
+    if _required_int(details, "reserved_cost_micros") != reserved_cost:
+        raise ProviderQuotaLedgerError("A quota settlement changed the reserved cost.")
+    if _required_int(details, "reserved_request_count") != reserved_requests:
+        raise ProviderQuotaLedgerError(
+            "A quota settlement changed the reserved request count."
+        )
+    if _required_int(details, "charged_cost_micros") > reserved_cost:
+        raise ProviderQuotaLedgerError("A quota settlement exceeds the reserved cost.")
+    if _required_int(details, "actual_provider_request_count") > reserved_requests:
+        raise ProviderQuotaLedgerError(
+            "A quota settlement exceeds the reserved request count."
+        )
 
 
 def _add_event(

@@ -59,15 +59,19 @@ def reconcile_and_total(
         if job_id in seen_job_ids:
             raise ProviderQuotaLedgerError("A job has duplicate quota reservations.")
         seen_job_ids.add(job_id)
-        settlement = _settlement_for_reservation(session, reservation)
-        settlements_by_job[job_id] = settlement
-        if settlement is not None:
-            continue
         job = session.get(JobRecord, job_id)
         if job is None:
             raise ProviderQuotaLedgerError(
                 "A quota reservation references a missing job."
             )
+        settlement = _settlement_for_reservation(session, reservation)
+        settlements_by_job[job_id] = settlement
+        if settlement is not None:
+            if JobStatus(job.status) not in TERMINAL_JOB_STATUSES:
+                raise ProviderQuotaLedgerError(
+                    "A non-terminal job has a quota settlement."
+                )
+            continue
         if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
             _append_settlement(session, job, reservation)
             session.flush()

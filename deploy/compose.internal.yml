@@ -26,7 +26,7 @@ x-backend-common-environment: &backend-common-environment
 
 x-backend-real-runner-environment: &backend-real-runner-environment
   <<: *backend-common-environment
-  POLARIS_TASK_RUNNER: tengli
+  POLARIS_TASK_RUNNER: mock
   POLARIS_TENGLI_API_KEY: ${POLARIS_TENGLI_API_KEY:?set backend-only Tengli API key}
   POLARIS_TENGLI_BASE_URL: ${POLARIS_TENGLI_BASE_URL:?set Tengli HTTPS base URL}
   POLARIS_TENGLI_IMAGE_MODEL: ${POLARIS_TENGLI_IMAGE_MODEL:?set approved image model}

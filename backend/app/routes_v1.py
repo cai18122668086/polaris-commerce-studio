@@ -98,6 +98,7 @@ from .services import (
     job_list_response,
     lock_workspace_limits,
     new_id,
+    release_credits,
     require_idempotency_key,
     reserve_credits,
     retry_item_ids,
@@ -1064,6 +1065,7 @@ def retry_job(
     session.add(retried)
     session.flush()
     _copy_job_relations_for_retry(session, source, retried, selected)
+    release_credits(session, source)
     _reserve_real_provider_job_if_enabled(
         session,
         request,
@@ -1141,6 +1143,7 @@ def clone_job(
     session.add(cloned)
     session.flush()
     _copy_job_relations_for_retry(session, source, cloned, selected)
+    release_credits(session, source)
     reserve_credits(
         session,
         workspace.workspace_id,

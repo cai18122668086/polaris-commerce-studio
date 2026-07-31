@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     tengli_image_model: str = "gpt-image-2"
     tengli_vision_model: str = "gpt-5.6-terra"
     tengli_smoke_budget_usd: float = Field(default=200, gt=0, le=200)
+    provider_quota_enabled: bool = Field(default=True)
     tengli_daily_budget_usd: float = Field(default=0, ge=0, le=2)
     tengli_monthly_budget_usd: float = Field(default=0, ge=0, le=20)
     tengli_daily_request_limit: int = Field(default=0, ge=0, le=100)
@@ -88,8 +89,13 @@ class Settings(BaseSettings):
     @field_validator("xinghe_concurrency", mode="before")
     @classmethod
     def parse_xinghe_concurrency(cls, value: object) -> object:
-        if isinstance(value, str) and value in {"1", "2", "6"}:
-            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                pass
         return value
 
     def validate_runtime_safety(self) -> None:

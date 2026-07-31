@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     tengli_image_model: str = "gpt-image-2"
     tengli_vision_model: str = "gpt-5.6-terra"
     tengli_smoke_budget_usd: float = Field(default=200, gt=0, le=200)
+    provider_quota_enabled: bool = Field(default=True)
     xinghe_concurrency: Literal[1, 2, 6] = 6
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)

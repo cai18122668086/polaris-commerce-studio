@@ -1555,7 +1555,13 @@ class XinghePlanningCoordinator:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
             plan = session.get(JobPlanRecord, plan_id, with_for_update=True)
-            if job is None or plan is None:
+            if job is None:
+                return JobStatus.FAILED
+            if plan is None:
+                # Release the budget reservation before giving up — the job
+                # can never reach the provider, so it should not hold credits.
+                settle_credits(session, job, 0)
+                session.commit()
                 return JobStatus.FAILED
             self._fail_planning_locked(
                 session,
@@ -1681,7 +1687,13 @@ class XinghePlanningCoordinator:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
             plan = session.get(JobPlanRecord, plan_id, with_for_update=True)
-            if job is None or plan is None:
+            if job is None:
+                return JobStatus.FAILED
+            if plan is None:
+                # Release the budget reservation before giving up — the job
+                # can never reach the provider, so it should not hold credits.
+                settle_credits(session, job, 0)
+                session.commit()
                 return JobStatus.FAILED
             if JobStatus(job.status) != JobStatus.PLANNING:
                 current = JobStatus(job.status)

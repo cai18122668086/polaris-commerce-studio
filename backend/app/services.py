@@ -56,6 +56,19 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex}"
 
 
+# ---------------------------------------------------------------------------
+# Quota / credit reservation plumbing
+# ---------------------------------------------------------------------------
+
+_quota_enabled: bool = True
+
+
+def set_quota_enabled(enabled: bool) -> None:
+    """Toggle the provider quota subsystem at startup (e.g. from settings)."""
+    global _quota_enabled
+    _quota_enabled = enabled
+
+
 def canonical_hash(value: Any) -> str:
     payload = json.dumps(
         value,
@@ -484,7 +497,24 @@ def enforce_active_job_limit(session: Session, workspace_id: str) -> None:
 
 def reserve_credits(
     session: Session, workspace_id: str, job: JobRecord, credits: int
-) -> CreditReservationRecord:
+) -> CreditReservationRecord | None:
+    if not _quota_enabled:
+        return None
+
+    existing = session.scalar(
+        select(CreditReservationRecord).where(
+            CreditReservationRecord.job_id == job.id
+        )
+    )
+    if existing is not None:
+        if existing.status == CreditReservationStatus.ACTIVE.value:
+            return existing  # idempotent – same job already has an active reservation
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "CREDIT_RESERVATION_EXISTS",
+            "该任务已有结算或释放的配额预留，无法再次预留。",
+        )
+
     account = session.get(
         WorkspaceCreditAccountRecord, workspace_id, with_for_update=True
     )
@@ -530,6 +560,9 @@ def reserve_credits(
 
 
 def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> None:
+    if not _quota_enabled:
+        return
+
     reservation = session.scalar(
         select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)
     )
@@ -559,6 +592,53 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
         )
     )
     job.actual_credits = charged
+
+
+def release_credits(session: Session, job: JobRecord) -> None:
+    """Release an active reservation without deducting any balance.
+
+    This is the safe teardown path: it frees the reserved headroom so the
+    workspace can use it for other jobs, but does *not* charge.  Use it when
+    a job reached a terminal state but you do not want to record a cost
+    (e.g. the provider was never called, or you are cleaning up an orphaned
+    reservation that was already superseded by a retry).
+    """
+
+    if not _quota_enabled:
+        return
+
+    reservation = session.scalar(
+        select(CreditReservationRecord).where(
+            CreditReservationRecord.job_id == job.id
+        )
+    )
+    if reservation is None or reservation.status != CreditReservationStatus.ACTIVE.value:
+        return
+
+    account = session.get(
+        WorkspaceCreditAccountRecord, job.workspace_id
+    )
+    if account is None:
+        return
+
+    released = reservation.reserved_credits
+    account.reserved_credits -= released
+    account.version += 1
+    reservation.status = CreditReservationStatus.RELEASED.value
+
+    session.add(
+        CreditLedgerEntryRecord(
+            workspace_id=job.workspace_id,
+            reservation_id=reservation.id,
+            job_id=job.id,
+            entry_type="release",
+            delta_balance_credits=0,
+            delta_reserved_credits=-released,
+            balance_after_credits=account.balance_credits,
+            reserved_after_credits=account.reserved_credits,
+        )
+    )
+    session.flush()
 
 
 def add_outbox_event(

@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.outbox import publish_pending_events
 from app.routes_v1 import runtime_status_response
+from app.services import set_quota_enabled
 
 WORKSPACE_ID = "ws_test"
 
@@ -271,6 +272,37 @@ def _detail_submit_payload(asset_id: str) -> dict:
             "page_count": 1,
         },
     }
+
+
+def test_real_provider_quota_disabled_skips_recurring_limits(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.provider_quota_enabled = False
+    settings.tengli_daily_budget_usd = 0
+    settings.tengli_monthly_budget_usd = 0
+    settings.tengli_daily_request_limit = 0
+    set_quota_enabled(False)
+    try:
+        asset = upload_asset(client)
+        response = client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+            headers=idem(),
+            json=_detail_submit_payload(asset["id"]),
+        )
+
+        assert response.status_code == 202
+        with client.app.state.session_factory() as session:
+            reservations = session.scalars(
+                select(AuditEventRecord).where(
+                    AuditEventRecord.action == "provider.beta_job_reserved"
+                )
+            ).all()
+        assert reservations == []
+    finally:
+        settings.provider_quota_enabled = True
+        set_quota_enabled(True)
 
 
 def test_real_provider_job_reservation_is_idempotent_and_daily_bounded(

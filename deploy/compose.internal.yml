@@ -27,6 +27,7 @@ x-backend-common-environment: &backend-common-environment
 
 x-provider-environment: &provider-environment
   POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}
+  POLARIS_PROVIDER_QUOTA_ENABLED: ${POLARIS_PROVIDER_QUOTA_ENABLED:-false}
   POLARIS_TENGLI_API_KEY: ${POLARIS_TENGLI_API_KEY:-}
   POLARIS_TENGLI_BASE_URL: ${POLARIS_TENGLI_BASE_URL:-https://api.tengliapi.xyz:8443}
   POLARIS_TENGLI_IMAGE_MODEL: ${POLARIS_TENGLI_IMAGE_MODEL:-gpt-image-2}

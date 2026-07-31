@@ -13,7 +13,7 @@ from .provider_quota_ledger import (
     ProviderQuotaLedgerError,
     reconcile_and_total,
 )
-from .services import lock_workspace_limits
+from .services import lock_workspace_limits, quota_enabled
 
 PROVIDER_JOB_QUOTA_ACTION = "provider.beta_job_reserved"
 
@@ -33,6 +33,9 @@ def reserve_provider_job_quota(
     group_count: int | None = None,
 ) -> None:
     """Atomically reserve one real-provider job against durable beta limits."""
+
+    if not quota_enabled():
+        return
 
     values = (
         estimated_cost_micros,
@@ -133,6 +136,9 @@ def reserve_provider_job_quota(
 
 def require_provider_job_quota(session: Session, job: JobRecord) -> None:
     """Fail closed when a real provider job bypassed the submit-time gate."""
+
+    if not quota_enabled():
+        return
 
     reservation = session.scalar(
         select(AuditEventRecord.id)

@@ -127,6 +127,30 @@ def test_factory_tengli_selects_existing_real_builder(
     assert runner is sentinel
 
 
+def test_tengli_quota_disabled_accepts_zero_recurring_limits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings(
+        tmp_path,
+        task_runner="tengli",
+        provider_quota_enabled=False,
+        tengli_daily_budget_usd=0,
+        tengli_monthly_budget_usd=0,
+        tengli_daily_request_limit=0,
+    )
+    sentinel = object()
+
+    monkeypatch.setattr(
+        task_runner,
+        "build_tengli_task_runner",
+        lambda *args, **kwargs: sentinel,
+    )
+
+    for _, session_factory, storage in _factory_dependencies(settings):
+        assert task_runner.build_task_runner(session_factory, settings, storage) is sentinel
+
+
 @pytest.mark.parametrize(
     ("updates", "message"),
     [

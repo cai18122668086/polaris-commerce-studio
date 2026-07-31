@@ -64,6 +64,10 @@ def set_quota_enabled(enabled: bool) -> None:
     _quota_enabled = enabled
 
 
+def quota_enabled() -> bool:
+    return _quota_enabled
+
+
 def canonical_hash(value: Any) -> str:
     payload = json.dumps(
         value,

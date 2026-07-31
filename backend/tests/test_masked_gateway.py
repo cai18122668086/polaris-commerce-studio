@@ -1,6 +1,9 @@
 import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.error import URLError
+
+import pytest
 
 from app.masked_repair import (
     MaskedEditGatewayRequest,
@@ -152,3 +155,175 @@ def test_tengli_visual_review_sends_three_ordered_images_once() -> None:
     assert images[0]["image_url"]["url"].endswith("c291cmNl")
     assert images[1]["image_url"]["url"].endswith("YXV0aG9yaXR5")
     assert images[2]["image_url"]["url"].endswith("Y2FuZGlkYXRl")
+
+
+class ConfigurableVisualReviewTransport:
+    def __init__(
+        self,
+        *,
+        status: int = 200,
+        response: dict[str, Any] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.status = status
+        self.response = response or {}
+        self.error = error
+        self.call_count = 0
+
+    async def post_json(self, **_: Any) -> tuple[int, dict[str, Any]]:
+        self.call_count += 1
+        if self.error is not None:
+            raise self.error
+        return self.status, self.response
+
+    async def post_multipart(self, **_: Any) -> tuple[int, dict[str, Any]]:
+        raise AssertionError("Visual review must use the JSON endpoint.")
+
+
+def _visual_review_gateway(
+    transport: ConfigurableVisualReviewTransport,
+) -> TengliOpenAICompatibleGateway:
+    return TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://provider.invalid",
+        planner_model="planner-test",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+
+
+def _visual_review_request() -> MaskedVisualReviewRequest:
+    return MaskedVisualReviewRequest(
+        source_png=b"source",
+        authority_png=b"authority",
+        candidate_png=b"candidate",
+        instruction="replace the selected label",
+        idempotency_key="visual-review-idem",
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "error_code"),
+    [
+        (429, "LOCAL_EDIT_VISUAL_REVIEW_RATE_LIMITED"),
+        (503, "LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED"),
+    ],
+)
+def test_tengli_visual_review_retries_transient_http_failures(
+    status: int,
+    error_code: str,
+) -> None:
+    transport = ConfigurableVisualReviewTransport(
+        status=status,
+        response={"id": f"review_http_{status}", "error": {"code": "temporary"}},
+    )
+
+    result = asyncio.run(
+        _visual_review_gateway(transport).review_masked(_visual_review_request())
+    )
+
+    assert transport.call_count == 1
+    assert result.visual_success is None
+    assert result.provider_request_id == f"review_http_{status}"
+    assert result.http_status == status
+    assert result.error_code == error_code
+    assert result.retryable is True
+
+
+@pytest.mark.parametrize("status", [400, 401, 422])
+def test_tengli_visual_review_does_not_retry_client_http_failures(
+    status: int,
+) -> None:
+    transport = ConfigurableVisualReviewTransport(
+        status=status,
+        response={"id": f"review_http_{status}", "error": {"code": "invalid"}},
+    )
+
+    result = asyncio.run(
+        _visual_review_gateway(transport).review_masked(_visual_review_request())
+    )
+
+    assert transport.call_count == 1
+    assert result.visual_success is None
+    assert result.provider_request_id == f"review_http_{status}"
+    assert result.http_status == status
+    assert result.error_code == "LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED"
+    assert result.retryable is False
+
+
+@pytest.mark.parametrize(
+    "transport_error",
+    [
+        pytest.param(TimeoutError("timed out"), id="timeout"),
+        pytest.param(OSError("connection reset"), id="os-error"),
+        pytest.param(URLError("temporary DNS failure"), id="url-error"),
+    ],
+)
+def test_tengli_visual_review_classifies_direct_transport_failures_as_retryable(
+    transport_error: BaseException,
+) -> None:
+    transport = ConfigurableVisualReviewTransport(error=transport_error)
+
+    result = asyncio.run(
+        _visual_review_gateway(transport).review_masked(_visual_review_request())
+    )
+
+    assert transport.call_count == 1
+    assert result.visual_success is None
+    assert result.provider_request_id is None
+    assert result.http_status is None
+    assert result.error_code == "LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED"
+    assert result.retryable is True
+
+
+def test_tengli_visual_review_rejects_malformed_success_payload_without_retry() -> None:
+    transport = ConfigurableVisualReviewTransport(
+        status=200,
+        response={"id": "review_malformed", "choices": []},
+    )
+
+    result = asyncio.run(
+        _visual_review_gateway(transport).review_masked(_visual_review_request())
+    )
+
+    assert transport.call_count == 1
+    assert result.visual_success is None
+    assert result.provider_request_id == "review_malformed"
+    assert result.error_code == "LOCAL_EDIT_VISUAL_REVIEW_INVALID"
+    assert result.retryable is False
+
+
+def test_tengli_visual_review_returns_valid_rejection_without_retry() -> None:
+    transport = ConfigurableVisualReviewTransport(
+        status=200,
+        response={
+            "id": "review_rejected",
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"visual_success":false,'
+                            '"instruction_satisfied":false,'
+                            '"identity_inside_selection_preserved":true,'
+                            '"boundary_continuity":true,'
+                            '"artifacts_absent":true,'
+                            '"reason_codes":["instruction_not_satisfied"],'
+                            '"summary":"The requested change is not visible."}'
+                        )
+                    }
+                }
+            ],
+        },
+    )
+
+    result = asyncio.run(
+        _visual_review_gateway(transport).review_masked(_visual_review_request())
+    )
+
+    assert transport.call_count == 1
+    assert result.visual_success is False
+    assert result.provider_request_id == "review_rejected"
+    assert result.http_status == 200
+    assert result.error_code is None
+    assert result.retryable is False
+    assert result.reason_codes == ("instruction_not_satisfied",)

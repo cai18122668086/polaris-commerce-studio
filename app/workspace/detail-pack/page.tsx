@@ -21,10 +21,16 @@ import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
 import { selectJobResultAssets } from "@/lib/jobs/results";
-import { marketplaceGroups, type MarketRegion } from "@/lib/marketplaces";
+import {
+  marketplaceGroups,
+  type MarketplaceImageSize,
+  type MarketRegion,
+} from "@/lib/marketplaces";
 
 type UploadedSource = { asset: Asset; previewUrl: string };
 type PlanPage = { title: string; description?: string; quality?: string };
+
+const DEFAULT_DETAIL_SIZE: MarketplaceImageSize = "1024x1536";
 
 function readPlanPages(payload: Record<string, unknown> | undefined): PlanPage[] {
   if (!payload) return [];
@@ -80,6 +86,7 @@ export default function DetailPackPage() {
   const [pageCount, setPageCount] = useState(6);
   const [marketRegion, setMarketRegion] = useState<MarketRegion>("domestic");
   const [marketplaceId, setMarketplaceId] = useState("tmall");
+  const [imageSize, setImageSize] = useState<MarketplaceImageSize>(DEFAULT_DETAIL_SIZE);
   const [language, setLanguage] = useState<"zh-CN" | "en-US">("zh-CN");
   const [productName, setProductName] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
@@ -106,9 +113,17 @@ export default function DetailPackPage() {
   }, []);
 
   const selectRegion = (region: MarketRegion) => {
+    const marketplace = marketplaceGroups[region][0];
     setMarketRegion(region);
-    setMarketplaceId(marketplaceGroups[region][0].id);
+    setMarketplaceId(marketplace.id);
+    setImageSize(region === "international" ? marketplace.sizePresets?.[0]?.value ?? DEFAULT_DETAIL_SIZE : DEFAULT_DETAIL_SIZE);
     setLanguage(region === "domestic" ? "zh-CN" : "en-US");
+  };
+
+  const selectMarketplace = (marketplaceId: string) => {
+    const marketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId);
+    setMarketplaceId(marketplaceId);
+    setImageSize(marketRegion === "international" ? marketplace?.sizePresets?.[0]?.value ?? DEFAULT_DETAIL_SIZE : DEFAULT_DETAIL_SIZE);
   };
 
   const addFiles = async (files: FileList | null) => {
@@ -136,18 +151,20 @@ export default function DetailPackPage() {
 
   const createPlanningJob = async () => {
     if (!sources.length || !productName.trim() || !workspace) return;
+    const configuration = {
+      product_name: productName.trim(),
+      platform_code: marketplaceId,
+      page_count: pageCount,
+      language,
+      selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
+      size: imageSize,
+    };
     const created = await createJob.mutateAsync({
       type: "detail_pack",
       intent: "submit",
       display_name: `详情套图 · ${productName.trim()}`,
       input: { product_groups: [{ group_key: "primary-product", asset_ids: sources.map((source) => source.asset.id) }] },
-      configuration: {
-        product_name: productName.trim(),
-        platform_code: marketplaceId,
-        page_count: pageCount,
-        language,
-        selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
-      },
+      configuration,
     });
     setJobId(created.id);
   };
@@ -182,7 +199,7 @@ export default function DetailPackPage() {
               <button className={marketRegion === "international" ? "active" : ""} onClick={() => selectRegion("international")}><Globe2 size={17} /><span><strong>国际电商</strong><small>跨境与海外市场</small></span></button>
             </div>
             <div className="marketplace-grid">
-              {marketplaceGroups[marketRegion].map((marketplace) => <button key={marketplace.id} className={marketplaceId === marketplace.id ? "active" : ""} onClick={() => setMarketplaceId(marketplace.id)}><span className="marketplace-mark">{marketplace.shortName}</span><span><strong>{marketplace.name}</strong><small>{marketplace.format}</small></span><i>{marketplaceId === marketplace.id && <Check size={12} />}</i></button>)}
+              {marketplaceGroups[marketRegion].map((marketplace) => <button key={marketplace.id} className={marketplaceId === marketplace.id ? "active" : ""} onClick={() => selectMarketplace(marketplace.id)}><span className="marketplace-mark">{marketplace.shortName}</span><span><strong>{marketplace.name}</strong><small>{marketplace.format}</small></span><i>{marketplaceId === marketplace.id && <Check size={12} />}</i></button>)}
             </div>
           </section>
 
@@ -213,6 +230,7 @@ export default function DetailPackPage() {
             <div className="output-options">
               <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>简体中文</button><button className={language === "en-US" ? "active" : ""} onClick={() => setLanguage("en-US")}>English</button></div></div>
               <div className="option-field"><span><FileCheck2 size={16} />详情页数</span><div className="page-count-control">{[4, 6, 8].map((count) => <button key={count} className={pageCount === count ? "active" : ""} onClick={() => setPageCount(count)}>{count} 页</button>)}</div></div>
+              {marketRegion === "international" && <div className="option-field"><span><Globe2 size={16} />图片尺寸</span><div className="page-count-control">{selectedMarketplace.sizePresets?.map((preset) => <button key={preset.value} className={imageSize === preset.value ? "active" : ""} onClick={() => setImageSize(preset.value)}>{preset.label}</button>)}</div></div>}
             </div>
           </section>
 

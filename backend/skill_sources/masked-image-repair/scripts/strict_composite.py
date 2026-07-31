@@ -24,9 +24,11 @@ def changed_outside_count(
     selection: Image.Image,
 ) -> tuple[int, tuple[int, int, int, int] | None]:
     difference = ImageChops.difference(source.convert("RGBA"), result.convert("RGBA"))
-    changed = difference.convert("RGB")
-    red, green, blue = changed.split()
-    any_channel = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+    red, green, blue, alpha = difference.split()
+    any_channel = ImageChops.lighter(
+        ImageChops.lighter(ImageChops.lighter(red, green), blue),
+        alpha,
+    )
     binary = any_channel.point(lambda value: 255 if value else 0, mode="L")
     outside = ImageChops.multiply(binary, ImageChops.invert(selection))
     return sum(outside.histogram()[1:]), outside.getbbox()
@@ -52,7 +54,8 @@ def main() -> None:
         blurred = selection.filter(ImageFilter.GaussianBlur(min(args.feather, 64)))
         authority = ImageChops.multiply(blurred, selection)
 
-    result = Image.composite(generated, source, authority)
+    visible = Image.alpha_composite(source, generated)
+    result = Image.composite(visible, source, authority)
     # Apply the exact binary authority after all antialiasing and feathering.
     result = Image.composite(result, source, selection)
     args.out.parent.mkdir(parents=True, exist_ok=True)

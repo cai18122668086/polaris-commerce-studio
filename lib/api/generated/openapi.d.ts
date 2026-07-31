@@ -451,6 +451,12 @@ export interface components {
             product_name: string;
             /** Selling Points */
             selling_points?: string[];
+            /**
+             * Size
+             * @default 1024x1536
+             * @enum {string}
+             */
+            size: "1024x1536" | "1600x1600" | "2200x2200" | "2000x2000" | "1000x1000" | "1024x1024" | "2048x2048" | "1200x1200" | "750x1000";
         };
         /** DetailPackInput */
         DetailPackInput: {

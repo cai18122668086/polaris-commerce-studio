@@ -138,12 +138,14 @@ class OfflineMaskedGateway(FakeXingheGateway):
         review_success: bool | None = True,
         raw_size: tuple[int, int] | None = None,
         report_actual_cost: bool = True,
+        raw_alpha: int | None = None,
     ) -> None:
         super().__init__()
         self.outcomes = list(outcomes)
         self.review_success = review_success
         self.raw_size = raw_size
         self.report_actual_cost = report_actual_cost
+        self.raw_alpha = raw_alpha
         self.masked_calls: list[MaskedEditGatewayRequest] = []
         self.review_calls: list[MaskedVisualReviewRequest] = []
 
@@ -180,7 +182,12 @@ class OfflineMaskedGateway(FakeXingheGateway):
                 http_status=400,
             )
         raw_size = self.raw_size or (request.width, request.height)
-        raw = _png(raw_size, (220, 20, 40, 255))
+        raw_color = (
+            (220, 20, 40, 255)
+            if self.raw_alpha is None
+            else (0, 0, 0, self.raw_alpha)
+        )
+        raw = _png(raw_size, raw_color)
         return MaskedEditCallResult(
             outcome=ProviderOutcome.SUCCEEDED,
             provider_request_id="offline_success",
@@ -224,6 +231,50 @@ class OfflineMaskedGateway(FakeXingheGateway):
                 if self.review_success is None
                 else None
             ),
+            http_status=200,
+        )
+
+
+class RetryThenSuccessReviewGateway(OfflineMaskedGateway):
+    async def review_masked(
+        self,
+        request: MaskedVisualReviewRequest,
+    ) -> MaskedVisualReviewCallResult:
+        self.review_calls.append(request)
+        if len(self.review_calls) == 1:
+            return MaskedVisualReviewCallResult(
+                provider_request_id="offline_review_retry",
+                raw_usage={"actual_cost_micros": 1_000},
+                normalized_usage={
+                    "reported": True,
+                    "input_tokens": 3,
+                    "output_tokens": 0,
+                    "cached_tokens": 0,
+                    "total_tokens": 3,
+                },
+                actual_cost_micros=1_000,
+                estimated_cost_micros=10_000,
+                visual_success=None,
+                error_code="LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED",
+                error_message="controlled HTTP 503",
+                retryable=True,
+                http_status=503,
+            )
+        return MaskedVisualReviewCallResult(
+            provider_request_id="offline_review_success",
+            raw_usage={"actual_cost_micros": 2_000},
+            normalized_usage={
+                "reported": True,
+                "input_tokens": 5,
+                "output_tokens": 2,
+                "cached_tokens": 0,
+                "total_tokens": 7,
+            },
+            actual_cost_micros=2_000,
+            estimated_cost_micros=10_000,
+            visual_success=True,
+            summary="Controlled retry success.",
+            reason_codes=("offline_review_passed",),
             http_status=200,
         )
 
@@ -355,6 +406,110 @@ def test_real_local_edit_locks_every_outside_pixel_and_records_raw(
     assert gateway.review_calls[0].source_png == source_bytes
     assert gateway.review_calls[0].authority_png
     assert gateway.review_calls[0].candidate_png
+
+
+def test_transparent_provider_raw_is_materialized_before_review_and_locked(
+    client: TestClient,
+) -> None:
+    gateway = OfflineMaskedGateway(raw_alpha=128)
+    _install_runner(client, gateway)
+    source, mask, source_bytes = _valid_inputs(client)
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+    assert _dispatch(client) == 1
+
+    with client.app.state.session_factory() as session:
+        relations = session.scalars(
+            select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
+        ).all()
+        raw_relation = next(item for item in relations if item.role == "provider_raw")
+        output_relation = next(
+            item for item in relations if item.role == "local_edit_result"
+        )
+        raw_asset = session.get(AssetRecord, raw_relation.asset_id)
+        output_asset = session.get(AssetRecord, output_relation.asset_id)
+        assert raw_asset is not None
+        assert output_asset is not None
+        raw_key = raw_asset.object_key
+        output_key = output_asset.object_key
+
+    request = gateway.masked_calls[0]
+    expected_raw = _png((request.width, request.height), (0, 0, 0, 128))
+    persisted_raw = asyncio.run(client.app.state.storage.read_bytes(raw_key))
+    assert persisted_raw == expected_raw
+    assert raw_asset.sha256 == hashlib.sha256(expected_raw).hexdigest()
+
+    with Image.open(BytesIO(source_bytes)) as source_image:
+        source_rgba = source_image.convert("RGBA")
+    expected_candidate = Image.alpha_composite(
+        source_rgba,
+        Image.new("RGBA", source_rgba.size, (0, 0, 0, 128)),
+    )
+    with Image.open(BytesIO(gateway.review_calls[0].candidate_png)) as candidate_image:
+        candidate_rgba = candidate_image.convert("RGBA")
+    assert candidate_rgba.getpixel((0, 0)) == expected_candidate.getpixel((0, 0))
+    assert candidate_rgba.getpixel((0, 0)) != (0, 0, 0, 255)
+
+    delivered = asyncio.run(client.app.state.storage.read_bytes(output_key))
+    with Image.open(BytesIO(delivered)) as result_image:
+        result_rgba = result_image.convert("RGBA")
+    for y in range(8):
+        for x in range(8):
+            if not (2 <= x < 6 and 2 <= y < 6):
+                assert result_rgba.getpixel((x, y)) == source_rgba.getpixel((x, y))
+
+
+def test_visual_review_retries_once_without_regenerating_and_records_attempts(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        masked_repair_module,
+        "_VISUAL_REVIEW_RETRY_DELAY_SECONDS",
+        0,
+    )
+    gateway = RetryThenSuccessReviewGateway()
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+    status_code, job = _create_job(client, source["id"], mask["id"])
+    assert status_code == 202
+    assert _dispatch(client) == 1
+
+    with client.app.state.session_factory() as session:
+        usage = session.scalar(
+            select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
+        )
+        assert usage is not None
+        assert usage.actual_cost_micros == 15_000
+        assert usage.estimated_cost_micros == 100_000
+        assert usage.raw_usage["input_tokens"] == 8
+        attempts = usage.raw_usage["metrics"]["visual_review_attempts"]
+
+    assert len(gateway.masked_calls) == 1
+    assert len(gateway.review_calls) == 2
+    assert len({call.idempotency_key for call in gateway.review_calls}) == 1
+    assert attempts == [
+        {
+            "attempt": 1,
+            "provider_request_id": "offline_review_retry",
+            "http_status": 503,
+            "error_code": "LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED",
+            "retryable": True,
+            "visual_success": None,
+            "estimated_cost_micros": 10_000,
+            "actual_cost_micros": 1_000,
+        },
+        {
+            "attempt": 2,
+            "provider_request_id": "offline_review_success",
+            "http_status": 200,
+            "error_code": None,
+            "retryable": False,
+            "visual_success": True,
+            "estimated_cost_micros": 10_000,
+            "actual_cost_micros": 2_000,
+        },
+    ]
 
 
 def test_terminal_quota_settlement_releases_unused_retry_without_fake_actual_cost(
@@ -499,7 +654,7 @@ def test_non_multiple_source_and_relay_drift_map_back_without_authority_leak(
         assert metrics["geometry_mapping"] == "uniform_cover_center_crop_v1"
 
 
-def test_excessive_relay_drift_preserves_visual_success_but_fails_strict_lock(
+def test_excessive_relay_drift_fails_before_visual_review_and_keeps_raw(
     client: TestClient,
 ) -> None:
     gateway = OfflineMaskedGateway(raw_size=(1800, 900), review_success=True)
@@ -517,20 +672,21 @@ def test_excessive_relay_drift_preserves_visual_success_but_fails_strict_lock(
             select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
         ).all()
         raw_relation = next(item for item in relations if item.role == "provider_raw")
-        assert raw_relation.validation["raw_visual_success"] is True
+        assert raw_relation.validation["raw_visual_success"] is None
         assert all(item.role != "local_edit_result" for item in relations)
         usage = session.scalar(
             select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
         )
         assert usage is not None
         metrics = usage.raw_usage["metrics"]
-        assert metrics["raw_visual_success"] is True
+        assert metrics["raw_visual_success"] is None
         assert metrics["strict_lock_success"] is False
-        assert metrics["delivery_status"] == "raw_visual_success_locked_failed"
+        assert metrics["delivery_status"] == "strict_lock_failed"
         assert metrics["provider_raw_width"] == 1800
         assert metrics["provider_raw_height"] == 900
     assert len(gateway.masked_calls) == 1
-    assert len(gateway.review_calls) == 1
+    assert metrics["visual_review_requests"] == 0
+    assert len(gateway.review_calls) == 0
 
 
 def test_visual_review_unavailable_stops_before_strict_lock_and_keeps_raw(

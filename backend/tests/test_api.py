@@ -274,6 +274,35 @@ def _detail_submit_payload(asset_id: str) -> dict:
     }
 
 
+def test_detail_pack_accepts_cross_border_image_size(client: TestClient) -> None:
+    reference = upload_asset(client)
+    payload = _detail_submit_payload(reference["id"])
+    payload["configuration"]["size"] = "1600x1600"
+
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+
+    assert response.status_code == 202
+    assert response.json()["configuration"]["settings"]["size"] == "1600x1600"
+
+
+def test_detail_pack_rejects_unknown_image_size(client: TestClient) -> None:
+    reference = upload_asset(client)
+    payload = _detail_submit_payload(reference["id"])
+    payload["configuration"]["size"] = "999x999"
+
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
 def test_real_provider_quota_disabled_skips_recurring_limits(
     client: TestClient,
 ) -> None:

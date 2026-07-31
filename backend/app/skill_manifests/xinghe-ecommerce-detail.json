@@ -6,7 +6,7 @@
         "**/*.pyc"
     ],
     "skill_id": "xinghe-ecommerce-detail",
-    "content_hash": "b2977a412bddf5597945b7ec54960f330c6df652c71cba0c337a4f96eece8c64",
+    "content_hash": "c438e479eb465742115549779acd3de7b6c83e45745b9b4184fef7da6f86e932",
     "capability": "ecommerce_detail_pack",
     "input_contract": {
         "schema_id": "polaris.skill.xinghe-ecommerce-detail.input.v1",
@@ -144,7 +144,7 @@
         },
         {
             "path": "xinghe_prompt.py",
-            "sha256": "4fb58a536641791599d172733dc3865cd565f2998f278ef223c696254333e7d4"
+            "sha256": "6beacd2569dfac4c6b5b1678d5c28b679ef94269a89a0967e3385370edede131"
         },
         {
             "path": "xinghe_usage.py",

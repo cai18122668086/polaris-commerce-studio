@@ -12,6 +12,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import math
 import re
 import secrets
 import time
@@ -83,6 +84,19 @@ PLAN_SCHEMA_VERSION = "xinghe-plan-v2"
 PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v2"
 PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
 IMAGE_SIZE = "1024x1536"
+SUPPORTED_IMAGE_SIZES = frozenset(
+    {
+        IMAGE_SIZE,
+        "750x1000",
+        "1000x1000",
+        "1024x1024",
+        "1200x1200",
+        "1600x1600",
+        "2000x2000",
+        "2048x2048",
+        "2200x2200",
+    }
+)
 IMAGE_FORMAT = "jpeg"
 JPEG_QUALITY = 92
 DEFAULT_MEDIUM_PRICE_MICROS = 45_000
@@ -185,6 +199,7 @@ class PlannerRequest:
     product_name: str
     product_information: tuple[str, ...]
     platform_code: str
+    size: str
     idempotency_key: str
     system_prompt: str = ""
 
@@ -223,7 +238,7 @@ class ImageEditRequest:
     prompt: str
     quality: str
     idempotency_key: str
-    size: str = IMAGE_SIZE
+    size: str
     output_format: str = IMAGE_FORMAT
     jpeg_quality: int = JPEG_QUALITY
 
@@ -320,6 +335,7 @@ def build_resume_signature(
     product_name: str,
     product_information: Sequence[str],
     platform_code: str,
+    size: str,
     medium_price_micros: int,
     high_price_micros: int,
 ) -> str:
@@ -350,7 +366,7 @@ def build_resume_signature(
         "product_information": list(product_information),
         "platform_code": platform_code,
         "image_field_name": "image",
-        "size": IMAGE_SIZE,
+        "size": size,
         "output_format": IMAGE_FORMAT,
         "jpeg_quality": JPEG_QUALITY,
         "medium_price_micros": medium_price_micros,
@@ -588,6 +604,7 @@ def compile_page_prompt(
     product_name: str,
     product_information: Sequence[str],
     source_count: int,
+    size: str,
 ) -> str:
     """Compile the template's fidelity and prompt-density contract."""
 
@@ -622,8 +639,11 @@ def compile_page_prompt(
         sort_keys=True,
     )
     supplied = "; ".join(product_information) or "visible image facts only"
+    width, height = _parse_image_size(size)
+    divisor = math.gcd(width, height)
+    ratio = f"{width // divisor}:{height // divisor}"
     return (
-        "vertical 3:4 e-commerce detail page image\n"
+        f"e-commerce detail page image; exact canvas {width}x{height} ({ratio})\n"
         f"Page {page_number}/{page_count}. Create one independent page, not a "
         "collage or multi-panel composition.\n"
         f"All {source_count} ordered reference images are complementary angles "
@@ -790,10 +810,11 @@ class FakeXingheGateway:
                     http_status=503,
                     active_concurrency=active,
                 )
-            payload = _fake_jpeg(request.page_number)
+            payload = _fake_jpeg(request.page_number, request.size)
             artifact = _artifact_from_bytes(
                 payload,
                 filename=f"{request.group_key}-page-{request.page_number:03d}.jpg",
+                expected_size=request.size,
             )
             group_token = hashlib.sha256(request.group_key.encode()).hexdigest()[:10]
             return ImageCallResult(
@@ -1135,6 +1156,7 @@ class TengliOpenAICompatibleGateway:
             artifact = _artifact_from_bytes(
                 image_bytes,
                 filename=f"{request.group_key}-page-{request.page_number:03d}.jpg",
+                expected_size=request.size,
             )
             return ImageCallResult(
                 outcome=ProviderOutcome.SUCCEEDED,
@@ -1328,6 +1350,20 @@ class TengliOpenAICompatibleGateway:
                 reason_codes=tuple(review["reason_codes"]),
                 http_status=status,
             )
+        except (TimeoutError, URLError, OSError) as exc:
+            return MaskedVisualReviewCallResult(
+                visual_success=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                actual_cost_micros=None,
+                estimated_cost_micros=self.review_price_micros,
+                error_code="LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED",
+                error_message=(
+                    f"Local-edit visual review transport failed ({type(exc).__name__})."
+                ),
+                retryable=True,
+            )
         except XingheAgentError as exc:
             raw_usage = _raw_usage(response) if response is not None else None
             return MaskedVisualReviewCallResult(
@@ -1341,9 +1377,13 @@ class TengliOpenAICompatibleGateway:
                     _usage_cost_micros(raw_usage) if raw_usage is not None else None
                 ),
                 estimated_cost_micros=self.review_price_micros,
-                error_code="LOCAL_EDIT_VISUAL_REVIEW_INVALID",
+                error_code=(
+                    "LOCAL_EDIT_VISUAL_REVIEW_REQUEST_FAILED"
+                    if exc.retryable
+                    else "LOCAL_EDIT_VISUAL_REVIEW_INVALID"
+                ),
                 error_message=str(exc),
-                retryable=False,
+                retryable=exc.retryable,
             )
 
     def _headers(self, idempotency_key: str) -> dict[str, str]:
@@ -1529,6 +1569,7 @@ class XinghePlanningCoordinator:
             product_name=request.product_name,
             product_information=request.product_information,
             platform_code=request.platform_code,
+            size=request.size,
             idempotency_key=request.idempotency_key,
             system_prompt=request.system_prompt,
         )
@@ -1675,6 +1716,7 @@ class XinghePlanningCoordinator:
             settings.get("platform_code"),
             "platform_code",
         )
+        size = _validated_image_size(settings.get("size", IMAGE_SIZE))
         selling_points_value = settings.get("selling_points", [])
         if not isinstance(selling_points_value, list) or not all(
             isinstance(value, str) for value in selling_points_value
@@ -1750,6 +1792,7 @@ class XinghePlanningCoordinator:
             product_name=product_name,
             product_information=tuple(selling_points_value),
             platform_code=platform_code,
+            size=size,
             medium_price_micros=self.medium_price_micros,
             high_price_micros=self.high_price_micros,
         )
@@ -1768,6 +1811,7 @@ class XinghePlanningCoordinator:
                     product_name=product_name,
                     product_information=tuple(selling_points_value),
                     platform_code=platform_code,
+                    size=size,
                     idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
                 )
             )
@@ -2068,6 +2112,7 @@ class XinghePlanningCoordinator:
                 product_name=requests[0].product_name,
                 product_information=requests[0].product_information,
                 platform_code=requests[0].platform_code,
+                size=requests[0].size,
                 medium_price_micros=self.medium_price_micros,
                 high_price_micros=self.high_price_micros,
             )
@@ -2095,6 +2140,7 @@ class XinghePlanningCoordinator:
                         product_name=request.product_name,
                         product_information=request.product_information,
                         source_count=len(request.sources),
+                        size=request.size,
                     )
                     item_key = f"{request.group_key}:page-{page_index:03d}"
                     page = {
@@ -2129,7 +2175,7 @@ class XinghePlanningCoordinator:
                                 }
                                 for source in request.sources
                             ],
-                            "size": IMAGE_SIZE,
+                            "size": request.size,
                             "output_format": IMAGE_FORMAT,
                             "jpeg_quality": JPEG_QUALITY,
                         }
@@ -2350,6 +2396,7 @@ class XingheImageProvider:
             prompt=str(configuration["prompt"]),
             quality=str(configuration["quality"]),
             idempotency_key=request.idempotency_key,
+            size=str(configuration["size"]),
         )
         async with self._semaphore:
             try:
@@ -3050,6 +3097,7 @@ def synchronize_confirmed_plan(
                         ).get("selling_points", [])
                     ),
                     source_count=len(existing["source_assets"]),
+                    size=str(existing["size"]),
                 ),
             }
         )
@@ -3303,7 +3351,6 @@ def _validate_item_configuration(configuration: Mapping[str, Any]) -> None:
         "quality_policy_version": QUALITY_POLICY_VERSION,
         "prompt_policy_version": PROMPT_POLICY_VERSION,
         "resume_signature_version": RESUME_SIGNATURE_VERSION,
-        "size": IMAGE_SIZE,
         "output_format": IMAGE_FORMAT,
         "jpeg_quality": JPEG_QUALITY,
     }
@@ -3313,6 +3360,7 @@ def _validate_item_configuration(configuration: Mapping[str, Any]) -> None:
                 "RESUME_SIGNATURE_INVALID",
                 "An output-affecting Agent policy or format changed.",
             )
+    _validated_image_size(configuration.get("size"))
     signature = configuration.get("resume_signature")
     if (
         not isinstance(signature, str)
@@ -3556,14 +3604,15 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
     }
 
 
-def _fake_jpeg(page_number: int) -> bytes:
+def _fake_jpeg(page_number: int, size: str) -> bytes:
     buffer = BytesIO()
     color = (
         (page_number * 53) % 256,
         (page_number * 97) % 256,
         (page_number * 149) % 256,
     )
-    Image.new("RGB", (24, 32), color=color).save(
+    width, height = _parse_image_size(size)
+    Image.new("RGB", (width, height), color=color).save(
         buffer,
         format="JPEG",
         quality=JPEG_QUALITY,
@@ -3571,7 +3620,32 @@ def _fake_jpeg(page_number: int) -> bytes:
     return buffer.getvalue()
 
 
-def _artifact_from_bytes(payload: bytes, *, filename: str) -> ProviderArtifact:
+def _parse_image_size(size: object) -> tuple[int, int]:
+    if not isinstance(size, str) or not re.fullmatch(r"[1-9]\d*x[1-9]\d*", size):
+        raise XingheAgentError(
+            "IMAGE_REQUEST_SIZE_INVALID",
+            "Configured image size is invalid.",
+        )
+    width_text, height_text = size.split("x", maxsplit=1)
+    return int(width_text), int(height_text)
+
+
+def _validated_image_size(size: object) -> str:
+    _parse_image_size(size)
+    if size not in SUPPORTED_IMAGE_SIZES:
+        raise XingheAgentError(
+            "IMAGE_REQUEST_SIZE_INVALID",
+            "Configured image size is not supported.",
+        )
+    return str(size)
+
+
+def _artifact_from_bytes(
+    payload: bytes,
+    *,
+    filename: str,
+    expected_size: str,
+) -> ProviderArtifact:
     try:
         with Image.open(BytesIO(payload)) as image:
             width, height = image.size
@@ -3587,10 +3661,11 @@ def _artifact_from_bytes(payload: bytes, *, filename: str) -> ProviderArtifact:
             "IMAGE_RESPONSE_FORMAT_INVALID",
             "Provider did not return the requested JPEG format.",
         )
-    if width * 4 != height * 3:
+    expected_width, expected_height = _parse_image_size(expected_size)
+    if width != expected_width or height != expected_height:
         raise XingheAgentError(
-            "IMAGE_RESPONSE_ASPECT_INVALID",
-            "Provider returned a non-3:4 image.",
+            "IMAGE_RESPONSE_SIZE_INVALID",
+            "Provider returned an image outside the requested pixel dimensions.",
         )
     return ProviderArtifact(
         payload=payload,

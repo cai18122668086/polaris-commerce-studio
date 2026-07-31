@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 CATEGORY_OPTIONS = {
     "自动/通用": "general",
     "服饰/鞋包/配饰": "fashion",
@@ -53,6 +55,7 @@ def build_prompts_from_agent_plan(
     product_name: str,
     product_facts: str,
     reference_image_count: int = 1,
+    size: str = "1024x1536",
 ) -> tuple[list[dict], dict]:
     """Compile validated agent decisions into the skill's per-image prompt contract."""
     anchors = analysis.get("product_consistency_anchors", {})
@@ -77,9 +80,13 @@ def build_prompts_from_agent_plan(
         "单页最多一个局部放大框、最多两个结构标注，禁止重复展示同一部位，禁止同时出现多个裁切小窗。"
     )
     screens = agent_plan["screens"]
+    width_text, height_text = size.split("x", maxsplit=1)
+    width, height = int(width_text), int(height_text)
+    divisor = math.gcd(width, height)
+    ratio = f"{width // divisor}:{height // divisor}"
     prompts = []
     for index, screen in enumerate(screens, start=1):
-        prompt = f"""vertical 3:4 e-commerce detail page image
+        prompt = f"""e-commerce detail page image; exact canvas {width}x{height} ({ratio})
 只生成一张独立竖版电商详情页，不要拼版。第 {index}/{len(screens)} 页。
 
 【Campaign Style Lock】{campaign_lock}

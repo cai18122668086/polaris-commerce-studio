@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from math import ceil, sqrt
@@ -54,6 +56,8 @@ _PROVIDER_MAX_PIXELS = 8_294_400
 _PROVIDER_MAX_EDGE = 3_840
 _PROVIDER_MAX_RATIO = 3.0
 _MAX_RELAY_CROP_FRACTION = 0.15
+_VISUAL_REVIEW_MAX_ATTEMPTS = 2
+_VISUAL_REVIEW_RETRY_DELAY_SECONDS = 1.0
 
 
 class MaskedRepairError(RuntimeError):
@@ -226,7 +230,7 @@ class MaskedRepairProvider:
 
         usage = _usage_record(
             result,
-            review=None,
+            review_attempts=(),
             call_count=call_count,
             source_sha256=authorized.source.sha256,
             mask_sha256=authorized.mask.sha256,
@@ -308,32 +312,89 @@ class MaskedRepairProvider:
                 pricing_version=self.gateway.pricing_version,
             )
 
+        try:
+            materialized_candidate = _materialize_candidate(normalized, result.artifact)
+        except Exception as error:
+            failure = (
+                error
+                if isinstance(error, MaskedRepairError)
+                else MaskedRepairError(
+                    "LOCAL_EDIT_POSTPROCESS_FAILED",
+                    f"Local-edit postprocessing failed ({type(error).__name__}).",
+                    retryable=True,
+                )
+            )
+            metrics = dict(usage["metrics"])
+            metrics.update(
+                {
+                    "generation_id": generation_id,
+                    "raw_artifact_sha256": result.artifact.sha256,
+                    "raw_visual_success": None,
+                    "strict_lock_success": False,
+                    "visual_review_requests": 0,
+                    "provider_raw_width": result.artifact.width,
+                    "provider_raw_height": result.artifact.height,
+                    "delivery_status": (
+                        "needs_reselection_for_strict_lock"
+                        if failure.needs_reselection
+                        else "retryable_processing_failure"
+                        if failure.retryable
+                        else "strict_lock_failed"
+                    ),
+                }
+            )
+            usage["metrics"] = metrics
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                provider_request_id=result.provider_request_id,
+                error_code=failure.code,
+                error_message=str(failure),
+                usage_reported=bool(result.normalized_usage.get("reported")),
+                raw_usage=usage,
+                estimated_cost_micros=result.estimated_cost_micros,
+                actual_cost_micros=result.actual_cost_micros,
+                retryable=failure.retryable,
+                http_status=result.http_status,
+                provider_name=self.gateway.provider_name,
+                model_name=MASKED_REPAIR_MODEL,
+                pricing_version=self.gateway.pricing_version,
+            )
+
         review_request = MaskedVisualReviewRequest(
             source_png=normalized.source_png,
             authority_png=normalized.authority_png,
-            candidate_png=result.artifact.payload,
+            candidate_png=_png_bytes(materialized_candidate),
             instruction=authorized.instruction,
             idempotency_key=f"{request.idempotency_key}:visual-review",
         )
-        try:
-            review = await self.gateway.review_masked(review_request)
-        except Exception as exc:
-            review = MaskedVisualReviewCallResult(
-                visual_success=None,
-                provider_request_id=None,
-                raw_usage=None,
-                normalized_usage={"reported": False},
-                actual_cost_micros=None,
-                estimated_cost_micros=None,
-                error_code="LOCAL_EDIT_VISUAL_REVIEW_FAILED",
-                error_message=(
-                    f"Local-edit visual review failed ({type(exc).__name__})."
-                ),
-                retryable=True,
-            )
+        review_attempts: list[MaskedVisualReviewCallResult] = []
+        while len(review_attempts) < _VISUAL_REVIEW_MAX_ATTEMPTS:
+            try:
+                review = await self.gateway.review_masked(review_request)
+            except Exception as exc:
+                review = MaskedVisualReviewCallResult(
+                    visual_success=None,
+                    provider_request_id=None,
+                    raw_usage=None,
+                    normalized_usage={"reported": False},
+                    actual_cost_micros=None,
+                    estimated_cost_micros=None,
+                    error_code="LOCAL_EDIT_VISUAL_REVIEW_FAILED",
+                    error_message=(
+                        f"Local-edit visual review failed ({type(exc).__name__})."
+                    ),
+                    retryable=False,
+                )
+            review_attempts.append(review)
+            if (
+                not review.retryable
+                or len(review_attempts) >= _VISUAL_REVIEW_MAX_ATTEMPTS
+            ):
+                break
+            await asyncio.sleep(_VISUAL_REVIEW_RETRY_DELAY_SECONDS)
         usage = _usage_record(
             result,
-            review=review,
+            review_attempts=review_attempts,
             call_count=call_count,
             source_sha256=authorized.source.sha256,
             mask_sha256=authorized.mask.sha256,
@@ -354,20 +415,35 @@ class MaskedRepairProvider:
                 error_message=(
                     f"Local-edit visual review audit failed ({type(exc).__name__})."
                 ),
-                retryable=True,
+                retryable=False,
                 http_status=review.http_status,
             )
+        review_estimated_cost = (
+            sum(attempt.estimated_cost_micros for attempt in review_attempts)
+            if all(
+                attempt.estimated_cost_micros is not None for attempt in review_attempts
+            )
+            else None
+        )
+        review_actual_cost = (
+            sum(attempt.actual_cost_micros for attempt in review_attempts)
+            if all(
+                attempt.actual_cost_micros is not None for attempt in review_attempts
+            )
+            else None
+        )
         estimated_cost = _combined_cost(
             result.estimated_cost_micros,
-            review.estimated_cost_micros,
+            review_estimated_cost,
         )
         actual_cost = _combined_cost(
             result.actual_cost_micros,
-            review.actual_cost_micros,
+            review_actual_cost,
             require_complete=True,
         )
-        usage_reported = bool(result.normalized_usage.get("reported")) and bool(
-            review.normalized_usage.get("reported")
+        usage_reported = bool(result.normalized_usage.get("reported")) and all(
+            bool(attempt.normalized_usage.get("reported"))
+            for attempt in review_attempts
         )
         metrics = dict(usage["metrics"])
         metrics.update(
@@ -429,7 +505,7 @@ class MaskedRepairProvider:
         try:
             final_artifact, outside_changed_pixels = _strict_composite(
                 normalized,
-                result.artifact,
+                materialized_candidate,
                 feather_radius=self.feather_radius,
             )
         except Exception as error:
@@ -1098,12 +1174,10 @@ def _png_bytes(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def _strict_composite(
+def _materialize_candidate(
     normalized: _NormalizedInputs,
     raw: ProviderArtifact,
-    *,
-    feather_radius: int,
-) -> tuple[ProviderArtifact, int]:
+) -> Image.Image:
     try:
         generated = _normalized_rgba(raw.payload)
     except (UnidentifiedImageError, OSError, ValueError) as exc:
@@ -1111,7 +1185,25 @@ def _strict_composite(
             "LOCAL_EDIT_RAW_IMAGE_INVALID",
             "The immutable provider result is not a valid image.",
         ) from exc
-    generated = _map_raw_to_source(normalized, generated)
+    mapped = _map_raw_to_source(normalized, generated)
+    return Image.alpha_composite(
+        normalized.source_image.convert("RGBA"),
+        mapped.convert("RGBA"),
+    )
+
+
+def _strict_composite(
+    normalized: _NormalizedInputs,
+    materialized: Image.Image,
+    *,
+    feather_radius: int,
+) -> tuple[ProviderArtifact, int]:
+    generated = materialized.convert("RGBA")
+    if generated.size != normalized.source_image.size:
+        raise MaskedRepairError(
+            "LOCAL_EDIT_RAW_GEOMETRY_INVALID",
+            "The materialized provider result does not match the source canvas.",
+        )
     inward = normalized.authority
     if feather_radius:
         blurred = normalized.authority.filter(
@@ -1229,10 +1321,22 @@ def _combined_usage_value(
     return image_value + review_value
 
 
+def _aggregate_review_usage_value(
+    attempts: Sequence[MaskedVisualReviewCallResult],
+    key: str,
+) -> int | None:
+    values = [attempt.normalized_usage.get(key) for attempt in attempts]
+    if not values or any(
+        isinstance(value, bool) or not isinstance(value, int) for value in values
+    ):
+        return None
+    return sum(values)
+
+
 def _usage_record(
     result: MaskedEditCallResult,
     *,
-    review: MaskedVisualReviewCallResult | None,
+    review_attempts: Sequence[MaskedVisualReviewCallResult],
     call_count: int,
     source_sha256: str,
     mask_sha256: str,
@@ -1240,41 +1344,53 @@ def _usage_record(
     authority_sha256: str,
 ) -> dict[str, Any]:
     normalized = dict(result.normalized_usage)
-    review_normalized = dict(review.normalized_usage) if review is not None else {}
-    review_performed = review is not None
-    reported = bool(normalized.get("reported")) and (
-        not review_performed or bool(review_normalized.get("reported"))
+    attempts = tuple(review_attempts)
+    review_performed = bool(attempts)
+    reviews_reported = all(
+        bool(attempt.normalized_usage.get("reported")) for attempt in attempts
     )
+    reported = bool(normalized.get("reported")) and (
+        not review_performed or reviews_reported
+    )
+    review_input_tokens = _aggregate_review_usage_value(attempts, "input_tokens")
+    review_output_tokens = _aggregate_review_usage_value(attempts, "output_tokens")
+    review_cached_tokens = _aggregate_review_usage_value(attempts, "cached_tokens")
     return {
         "provider_type": "masked_image_edit_with_visual_review",
         "reported": reported,
         "input_tokens": _combined_usage_value(
             normalized.get("input_tokens"),
-            review_normalized.get("input_tokens"),
+            review_input_tokens,
             review_performed=review_performed,
         ),
         "output_tokens": _combined_usage_value(
             normalized.get("output_tokens"),
-            review_normalized.get("output_tokens"),
+            review_output_tokens,
             review_performed=review_performed,
         ),
         "cached_tokens": _combined_usage_value(
             normalized.get("cached_tokens"),
-            review_normalized.get("cached_tokens"),
+            review_cached_tokens,
             review_performed=review_performed,
         ),
-        "input_images": 2 + (3 if review_performed else 0),
+        "input_images": 2 + (3 * len(attempts)),
         "output_images": 1 if result.artifact is not None else 0,
-        "network_requests": call_count + (1 if review_performed else 0),
+        "network_requests": call_count + len(attempts),
         "raw": {
             "image_edit": dict(result.raw_usage or {}),
             "visual_review": (
-                dict(review.raw_usage or {}) if review is not None else None
+                [dict(attempt.raw_usage or {}) for attempt in attempts]
+                if review_performed
+                else None
             ),
         },
         "normalized": {
             "image_edit": normalized,
-            "visual_review": review_normalized if review_performed else None,
+            "visual_review": (
+                [dict(attempt.normalized_usage) for attempt in attempts]
+                if review_performed
+                else None
+            ),
         },
         "metrics": {
             "source_sha256": source_sha256,
@@ -1282,8 +1398,21 @@ def _usage_record(
             "normalized_source_sha256": normalized_source_sha256,
             "authority_sha256": authority_sha256,
             "transport_attempts": call_count,
-            "visual_review_requests": 1 if review_performed else 0,
-            "durable_idempotency_reused": call_count > 1,
+            "visual_review_requests": len(attempts),
+            "visual_review_attempts": [
+                {
+                    "attempt": index,
+                    "provider_request_id": attempt.provider_request_id,
+                    "http_status": attempt.http_status,
+                    "error_code": attempt.error_code,
+                    "retryable": attempt.retryable,
+                    "visual_success": attempt.visual_success,
+                    "estimated_cost_micros": attempt.estimated_cost_micros,
+                    "actual_cost_micros": attempt.actual_cost_micros,
+                }
+                for index, attempt in enumerate(attempts, start=1)
+            ],
+            "durable_idempotency_reused": call_count > 1 or len(attempts) > 1,
             "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
         },
     }

@@ -6,7 +6,7 @@
         "**/*.pyc"
     ],
     "skill_id": "masked-image-repair",
-    "content_hash": "ce5b8c5c265da64fe9185ef9f78305d2b0635d5c2dda4a70c2d9df5d4e723ea4",
+    "content_hash": "2578e9266e3d2ac3e7216ef4827939cc13bf66c5b7d58ae2ff9e249e4e7b7c3b",
     "capability": "masked_image_repair",
     "input_contract": {
         "schema_id": "polaris.skill.masked-image-repair.input.v1",
@@ -102,7 +102,7 @@
         },
         {
             "path": "scripts/strict_composite.py",
-            "sha256": "31d473ff96a274fed496467ea00ff556ee192e245587153326bf8075e5554121"
+            "sha256": "bf5bcb668ba6dab86c2ed45770bc7bbe20d88b3f09cfa39f5b74fe1a4c059271"
         },
         {
             "path": "scripts/verify_selection_lock.py",

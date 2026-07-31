@@ -54,6 +54,7 @@ from app.xinghe_agent import (
     TengliOpenAICompatibleGateway,
     XingheAgentError,
     XingheImageProvider,
+    _artifact_from_bytes,
     _json_pointer,
     _planner_content_payload_with_trace,
     _planner_structure_fingerprint,
@@ -348,7 +349,9 @@ def test_all_ordered_angles_reach_planner_and_every_page(
         assert call.size == IMAGE_SIZE
         assert call.output_format == IMAGE_FORMAT
         assert call.jpeg_quality == JPEG_QUALITY
-        assert call.prompt.startswith("vertical 3:4 e-commerce detail page image")
+        assert call.prompt.startswith(
+            "e-commerce detail page image; exact canvas 1024x1536 (2:3)"
+        )
         assert "source marks, never as product branding" in call.prompt
 
 
@@ -1850,14 +1853,14 @@ def test_non_mock_artifacts_remain_deliverable_without_resampling(
         )
 
     assert asset is not None
-    assert (asset.width, asset.height) == (24, 32)
+    assert (asset.width, asset.height) == (1024, 1536)
     assert output["direction"] == JobAssetDirection.OUTPUT.value
     assert output["validation"]["requested_size"] == IMAGE_SIZE
     assert output["validation"]["locally_resampled"] is False
     assert completed["items"][0]["result_source"] == "generated"
     assert usage is not None
     assert usage.provider == _OfflineNonMockGateway.provider_name
-    assert (usage.width, usage.height) == (24, 32)
+    assert (usage.width, usage.height) == (1024, 1536)
 
 
 def test_duplicate_delivery_is_idempotent_across_plan_and_generation(
@@ -2007,6 +2010,7 @@ def test_resume_signature_invalidates_every_output_affecting_change() -> None:
         "product_name": "shoe",
         "product_information": ["visible"],
         "platform_code": "amazon",
+        "size": IMAGE_SIZE,
         "medium_price_micros": 45_000,
         "high_price_micros": 90_000,
     }
@@ -2021,6 +2025,7 @@ def test_resume_signature_invalidates_every_output_affecting_change() -> None:
         {"product_name": "other"},
         {"product_information": ["changed"]},
         {"platform_code": "shopify"},
+        {"size": "1000x1000"},
         {"medium_price_micros": 46_000},
         {"high_price_micros": 91_000},
     ]
@@ -2038,6 +2043,29 @@ def test_semantic_quality_routing_is_version_stable() -> None:
     ]
     assert all(quality_for_role(role) == "high" for role in high_roles)
     assert quality_for_role("Daily use scenario") == "high"
+
+
+def _jpeg(size: tuple[int, int]) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", size, color=(1, 2, 3)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def test_image_artifact_uses_requested_canvas_size_contract() -> None:
+    artifact = _artifact_from_bytes(
+        _jpeg((1024, 1536)),
+        filename="requested-size.jpg",
+        expected_size=IMAGE_SIZE,
+    )
+
+    assert (artifact.width, artifact.height) == (1024, 1536)
+    with pytest.raises(XingheAgentError) as exc_info:
+        _artifact_from_bytes(
+            _jpeg((512, 768)),
+            filename="wrong-size.jpg",
+            expected_size=IMAGE_SIZE,
+        )
+    assert exc_info.value.code == "IMAGE_RESPONSE_SIZE_INVALID"
 
 
 class _RecordingTransport:
@@ -2064,7 +2092,11 @@ class _RecordingTransport:
     async def post_multipart(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
         self.multipart_calls.append(kwargs)
         buffer = BytesIO()
-        Image.new("RGB", (24, 32), color=(1, 2, 3)).save(
+        width, height = (
+            int(value)
+            for value in dict(kwargs["fields"])["size"].split("x")
+        )
+        Image.new("RGB", (width, height), color=(1, 2, 3)).save(
             buffer,
             format="JPEG",
             quality=92,
@@ -2081,6 +2113,7 @@ class _RecordingTransport:
 
 
 def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
+    requested_size = "1000x1000"
     transport = _RecordingTransport()
     adapter = TengliOpenAICompatibleGateway(
         api_key="test-placeholder-key",
@@ -2090,7 +2123,7 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
         transport=transport,
     )
     source_bytes = BytesIO()
-    Image.new("RGB", (24, 32), color=(4, 5, 6)).save(
+    Image.new("RGB", (1024, 1536), color=(4, 5, 6)).save(
         source_bytes,
         format="JPEG",
     )
@@ -2120,6 +2153,7 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
                     "Do not describe this product as waterproof",
                 ),
                 platform_code="amazon",
+                size=requested_size,
                 idempotency_key="planner-idem",
                 system_prompt="pinned same-source protocol",
             )
@@ -2135,9 +2169,10 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
                 page_number=1,
                 group_key="shoe",
                 sources=sources,
-                prompt="vertical 3:4 e-commerce detail page image",
+                prompt="square e-commerce product image",
                 quality="high",
                 idempotency_key="image-idem",
+                size=requested_size,
             )
         )
     )
@@ -2147,7 +2182,7 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert image.estimated_cost_micros == 90_000
     assert image.actual_cost_micros is None
     assert image.artifact is not None
-    assert (image.artifact.width, image.artifact.height) == (24, 32)
+    assert (image.artifact.width, image.artifact.height) == (1000, 1000)
     assert transport.json_calls[0]["url"].endswith("/v1/chat/completions")
     messages = transport.json_calls[0]["payload"]["messages"]
     assert messages[0] == {
@@ -2185,7 +2220,7 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     )
     assert transport.multipart_calls[0]["url"].endswith("/v1/images/edits")
     fields = dict(transport.multipart_calls[0]["fields"])
-    assert fields["size"] == IMAGE_SIZE
+    assert fields["size"] == requested_size
     assert fields["output_format"] == IMAGE_FORMAT
     assert fields["output_compression"] == str(JPEG_QUALITY)
     assert len(transport.multipart_calls[0]["files"]) == 3

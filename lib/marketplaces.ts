@@ -1,4 +1,12 @@
+import type { DetailPackJobCreate } from "@/lib/api/types";
+
 export type MarketRegion = "domestic" | "international";
+export type MarketplaceImageSize = DetailPackJobCreate["configuration"]["size"];
+
+export type MarketplaceSizePreset = {
+  value: MarketplaceImageSize;
+  label: string;
+};
 
 export type Marketplace = {
   id: string;
@@ -9,6 +17,7 @@ export type Marketplace = {
   mainImage: string;
   detailImage: string;
   note: string;
+  sizePresets?: MarketplaceSizePreset[];
 };
 
 export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
@@ -81,19 +90,10 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       shortName: "A",
       region: "international",
       format: "Listing + A+",
-      mainImage: "2000 × 2000（1:1）",
-      detailImage: "A+ 模块 970px 宽",
-      note: "主图、卖点图与 A+ 模块化内容",
-    },
-    {
-      id: "shopify",
-      name: "Shopify",
-      shortName: "S",
-      region: "international",
-      format: "品牌独立站自适应",
-      mainImage: "2048 × 2048（建议）",
-      detailImage: "1440px 内容宽 · 响应式",
-      note: "适合品牌化、模块化的商品详情页",
+      mainImage: "1600 × 1600（1:1）",
+      detailImage: "副图同尺寸 · A+ 按模块尺寸",
+      note: "主图与副图使用 1600 × 1600；A+ 不预设固定尺寸",
+      sizePresets: [{ value: "1600x1600", label: "1600 × 1600" }],
     },
     {
       id: "ebay",
@@ -101,49 +101,90 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       shortName: "e",
       region: "international",
       format: "Listing 商品图",
-      mainImage: "1600 × 1600（建议）",
-      detailImage: "1200px 内容宽 · 模块化",
-      note: "突出商品状态、规格与交付信息",
+      mainImage: "1600 × 1600（推荐）",
+      detailImage: "副图同尺寸",
+      note: "主图与副图使用 1600 × 1600",
+      sizePresets: [{ value: "1600x1600", label: "1600 × 1600" }],
     },
     {
-      id: "shopee",
-      name: "Shopee",
-      shortName: "S",
+      id: "walmart",
+      name: "Walmart",
+      shortName: "W",
       region: "international",
-      format: "移动端 1:1 优先",
-      mainImage: "1024 × 1024（1:1）",
-      detailImage: "750px 宽 · 分页卖点图",
-      note: "适合东南亚市场的紧凑卖点表达",
+      format: "1:1 商品图",
+      mainImage: "2200 × 2200（推荐）",
+      detailImage: "副图同尺寸",
+      note: "主图与副图使用 2200 × 2200",
+      sizePresets: [{ value: "2200x2200", label: "2200 × 2200" }],
     },
     {
-      id: "lazada",
-      name: "Lazada",
-      shortName: "L",
+      id: "etsy",
+      name: "Etsy",
+      shortName: "E",
       region: "international",
-      format: "1:1 商品图优先",
-      mainImage: "1000 × 1000（1:1）",
-      detailImage: "750px 宽 · 详情模块",
-      note: "兼顾商品参数与促销信息呈现",
+      format: "1:1 商品图",
+      mainImage: "2000 × 2000（推荐）",
+      detailImage: "副图同尺寸",
+      note: "主图与副图使用 2000 × 2000",
+      sizePresets: [{ value: "2000x2000", label: "2000 × 2000" }],
     },
     {
       id: "tiktok-shop",
       name: "TikTok Shop",
       shortName: "T",
       region: "international",
-      format: "社交电商竖版优先",
-      mainImage: "1080 × 1080（1:1）",
-      detailImage: "1080 × 1440（3:4）",
-      note: "强调移动端可读性与内容节奏",
+      format: "1:1 社交电商商品图",
+      mainImage: "1000 × 1000（最低 600 × 600）",
+      detailImage: "副图同尺寸",
+      note: "推荐 1000 × 1000；最低尺寸为 600 × 600",
+      sizePresets: [{ value: "1000x1000", label: "1000 × 1000" }],
     },
     {
-      id: "temu",
-      name: "TEMU",
-      shortName: "T",
+      id: "shopee",
+      name: "Shopee",
+      shortName: "S",
       region: "international",
-      format: "1:1 转化优先",
-      mainImage: "800 × 800（1:1）",
-      detailImage: "750 × 1000（3:4）",
-      note: "聚焦功能、价格价值与商品细节",
+      format: "1:1 商品图",
+      mainImage: "1024 × 1024（1:1）",
+      detailImage: "副图同尺寸",
+      note: "主图与副图使用 1024 × 1024",
+      sizePresets: [{ value: "1024x1024", label: "1024 × 1024" }],
+    },
+    {
+      id: "shopify",
+      name: "Shopify",
+      shortName: "S",
+      region: "international",
+      format: "品牌独立站商品图",
+      mainImage: "2048 × 2048（推荐）",
+      detailImage: "产品图同尺寸",
+      note: "产品图使用 2048 × 2048",
+      sizePresets: [{ value: "2048x2048", label: "2048 × 2048" }],
+    },
+    {
+      id: "mercado-libre",
+      name: "Mercado Libre",
+      shortName: "M",
+      region: "international",
+      format: "1:1 商品图",
+      mainImage: "1200 × 1200（推荐）",
+      detailImage: "副图同尺寸",
+      note: "主图与副图使用 1200 × 1200",
+      sizePresets: [{ value: "1200x1200", label: "1200 × 1200" }],
+    },
+    {
+      id: "aliexpress",
+      name: "AliExpress",
+      shortName: "A",
+      region: "international",
+      format: "1:1 商品图 · 可选竖图",
+      mainImage: "1000 × 1000（推荐）",
+      detailImage: "可补充 750 × 1000 竖图",
+      note: "默认 1000 × 1000，可按需选择 750 × 1000 竖图",
+      sizePresets: [
+        { value: "1000x1000", label: "1000 × 1000" },
+        { value: "750x1000", label: "750 × 1000" },
+      ],
     },
   ],
 };

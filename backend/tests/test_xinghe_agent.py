@@ -2059,10 +2059,24 @@ def test_image_artifact_uses_requested_canvas_size_contract() -> None:
     )
 
     assert (artifact.width, artifact.height) == (1024, 1536)
+    assert artifact.locally_resampled is False
+    assert (artifact.provider_width, artifact.provider_height) == (1024, 1536)
+
+    resampled = _artifact_from_bytes(
+        _jpeg((512, 768)),
+        filename="provider-size.jpg",
+        expected_size=IMAGE_SIZE,
+    )
+    assert (resampled.width, resampled.height) == (1024, 1536)
+    assert resampled.locally_resampled is True
+    assert (resampled.provider_width, resampled.provider_height) == (512, 768)
+    with Image.open(BytesIO(resampled.payload)) as image:
+        assert image.size == (1024, 1536)
+
     with pytest.raises(XingheAgentError) as exc_info:
         _artifact_from_bytes(
-            _jpeg((512, 768)),
-            filename="wrong-size.jpg",
+            _jpeg((512, 512)),
+            filename="wrong-ratio.jpg",
             expected_size=IMAGE_SIZE,
         )
     assert exc_info.value.code == "IMAGE_RESPONSE_SIZE_INVALID"

@@ -527,6 +527,9 @@ class ExecutionCoordinator:
         metrics_value = raw_usage.get("metrics")
         metrics = dict(metrics_value) if isinstance(metrics_value, dict) else {}
         metrics["saved_at"] = utc_now().isoformat()
+        metrics["locally_resampled"] = artifact.locally_resampled
+        metrics["provider_width"] = artifact.provider_width
+        metrics["provider_height"] = artifact.provider_height
         raw_usage["metrics"] = metrics
         return replace(
             result,
@@ -801,7 +804,11 @@ class ExecutionCoordinator:
                             "actual_width": stored.width,
                             "actual_height": stored.height,
                             "requested_size": item.configuration.get("size"),
-                            "locally_resampled": False,
+                            "locally_resampled": bool(
+                                result_metrics.get("locally_resampled", False)
+                            ),
+                            "provider_width": result_metrics.get("provider_width"),
+                            "provider_height": result_metrics.get("provider_height"),
                             "outside_changed_pixels": result_metrics.get(
                                 "outside_changed_pixels"
                             ),

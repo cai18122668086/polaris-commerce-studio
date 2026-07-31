@@ -3650,7 +3650,8 @@ def _artifact_from_bytes(
         with Image.open(BytesIO(payload)) as image:
             width, height = image.size
             image_format = image.format
-            image.verify()
+            image.load()
+            materialized = image.convert("RGB")
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise XingheAgentError(
             "IMAGE_RESPONSE_INVALID",
@@ -3662,18 +3663,35 @@ def _artifact_from_bytes(
             "Provider did not return the requested JPEG format.",
         )
     expected_width, expected_height = _parse_image_size(expected_size)
-    if width != expected_width or height != expected_height:
-        raise XingheAgentError(
-            "IMAGE_RESPONSE_SIZE_INVALID",
-            "Provider returned an image outside the requested pixel dimensions.",
+    locally_resampled = width != expected_width or height != expected_height
+    if locally_resampled:
+        if width * expected_height != height * expected_width:
+            raise XingheAgentError(
+                "IMAGE_RESPONSE_SIZE_INVALID",
+                "Provider returned an image with an incompatible aspect ratio.",
+            )
+        materialized = materialized.resize(
+            (expected_width, expected_height),
+            Image.Resampling.LANCZOS,
         )
+        output = BytesIO()
+        materialized.save(
+            output,
+            format="JPEG",
+            quality=JPEG_QUALITY,
+            optimize=True,
+        )
+        payload = output.getvalue()
     return ProviderArtifact(
         payload=payload,
         filename=filename,
         content_type="image/jpeg",
-        width=width,
-        height=height,
+        width=expected_width,
+        height=expected_height,
         sha256=hashlib.sha256(payload).hexdigest(),
+        locally_resampled=locally_resampled,
+        provider_width=width,
+        provider_height=height,
     )
 
 

@@ -40,6 +40,9 @@ class ProviderArtifact:
     width: int
     height: int
     sha256: str
+    locally_resampled: bool = False
+    provider_width: int | None = None
+    provider_height: int | None = None
 
     def __post_init__(self) -> None:
         if not self.payload:
@@ -48,6 +51,13 @@ class ProviderArtifact:
             raise ValueError("Provider artifact SHA-256 does not match its payload.")
         if self.width <= 0 or self.height <= 0:
             raise ValueError("Provider artifact dimensions must be positive.")
+        if (self.provider_width is None) != (self.provider_height is None):
+            raise ValueError("Provider artifact source dimensions must be paired.")
+        if self.provider_width is not None and self.provider_height is not None:
+            if self.provider_width <= 0 or self.provider_height <= 0:
+                raise ValueError(
+                    "Provider artifact source dimensions must be positive."
+                )
 
 
 @dataclass(frozen=True)

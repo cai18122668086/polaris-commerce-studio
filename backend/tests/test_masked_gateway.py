@@ -1,9 +1,11 @@
 import asyncio
 from collections.abc import Mapping, Sequence
+from io import BytesIO
 from typing import Any
 from urllib.error import URLError
 
 import pytest
+from PIL import Image
 
 from app.masked_repair import (
     MaskedEditGatewayRequest,
@@ -45,7 +47,13 @@ class CapturingTransport:
         return 400, {"id": "request_bad_mask", "error": {"code": "invalid_mask"}}
 
 
-def test_tengli_masked_edit_uses_dedicated_source_mask_contract() -> None:
+def _png(image: Image.Image) -> bytes:
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
+def test_tengli_masked_edit_uses_single_transparent_hole_source() -> None:
     transport = CapturingTransport()
     gateway = TengliOpenAICompatibleGateway(
         api_key="test-placeholder-key",
@@ -54,13 +62,19 @@ def test_tengli_masked_edit_uses_dedicated_source_mask_contract() -> None:
         image_model="configured-but-not-used-for-local-edit",
         transport=transport,
     )
+    source = Image.new("RGBA", (4, 4), (12, 34, 56, 255))
+    source.putpixel((0, 0), (1, 2, 3, 0))
+    api_mask = Image.new("RGBA", source.size, (255, 255, 255, 255))
+    for y in range(1, 3):
+        for x in range(1, 3):
+            api_mask.putpixel((x, y), (255, 255, 255, 0))
     request = MaskedEditGatewayRequest(
-        source_png=b"normalized-source",
-        api_mask_png=b"api-mask",
+        source_png=_png(source),
+        api_mask_png=_png(api_mask),
         prompt="master prompt with user instruction",
         quality="medium",
-        width=640,
-        height=640,
+        width=4,
+        height=4,
         idempotency_key="durable-attempt-key",
     )
 
@@ -68,21 +82,24 @@ def test_tengli_masked_edit_uses_dedicated_source_mask_contract() -> None:
 
     fields = dict(transport.fields)
     assert fields["model"] == "gpt-image-2"
-    assert fields["size"] == "640x640"
+    assert fields["size"] == "4x4"
     assert fields["output_format"] == "png"
     assert fields["response_format"] == "b64_json"
     assert "input_fidelity" not in fields
-    assert [file[0] for file in transport.files] == ["image", "mask"]
-    assert transport.files[0][1:] == (
-        "source.png",
-        "image/png",
-        b"normalized-source",
-    )
-    assert transport.files[1][1:] == (
-        "mask_api.png",
-        "image/png",
-        b"api-mask",
-    )
+    assert "transparent hole" in fields["prompt"]
+    assert "Do not render the hole as black" in fields["prompt"]
+    assert fields["prompt"].endswith(request.prompt)
+    assert [file[0] for file in transport.files] == ["image"]
+    assert transport.files[0][1:3] == ("source.png", "image/png")
+    with Image.open(BytesIO(transport.files[0][3])) as uploaded_image:
+        uploaded = uploaded_image.convert("RGBA")
+    assert uploaded.size == source.size
+    for y in range(4):
+        for x in range(4):
+            if 1 <= x < 3 and 1 <= y < 3:
+                assert uploaded.getpixel((x, y)) == (12, 34, 56, 0)
+            else:
+                assert uploaded.getpixel((x, y)) == source.getpixel((x, y))
     assert transport.headers["Idempotency-Key"] == "durable-attempt-key"
     assert result.http_status == 400
     assert result.retryable is False

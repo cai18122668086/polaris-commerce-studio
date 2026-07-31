@@ -401,7 +401,17 @@ def test_real_local_edit_locks_every_outside_pixel_and_records_raw(
             if not (2 <= x < 6 and 2 <= y < 6):
                 assert result_rgba.getpixel((x, y)) == source_rgba.getpixel((x, y))
     assert len(gateway.masked_calls) == 1
-    assert gateway.masked_calls[0].idempotency_key
+    masked_request = gateway.masked_calls[0]
+    assert masked_request.idempotency_key
+    with Image.open(BytesIO(masked_request.source_png)) as provider_source_image:
+        provider_source = provider_source_image.convert("RGBA")
+    with Image.open(BytesIO(masked_request.api_mask_png)) as api_mask_image:
+        api_mask_alpha = api_mask_image.convert("RGBA").getchannel("A")
+    selected_point = (masked_request.width // 2, masked_request.height // 2)
+    assert provider_source.getpixel(selected_point) == (10, 40, 90, 255)
+    assert provider_source.getpixel((0, 0)) == (10, 40, 90, 255)
+    assert api_mask_alpha.getpixel(selected_point) == 0
+    assert api_mask_alpha.getpixel((0, 0)) == 255
     assert len(gateway.review_calls) == 1
     assert gateway.review_calls[0].source_png == source_bytes
     assert gateway.review_calls[0].authority_png

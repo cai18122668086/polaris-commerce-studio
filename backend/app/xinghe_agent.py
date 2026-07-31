@@ -26,7 +26,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageChops, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -1191,27 +1191,30 @@ class TengliOpenAICompatibleGateway:
         self,
         request: MaskedEditGatewayRequest,
     ) -> MaskedEditCallResult:
-        """Send an exact-canvas source plus a distinct API guidance mask."""
+        """Send Tengli a single source whose editable authority is transparent."""
 
-        fields = [
-            ("model", MASKED_REPAIR_MODEL),
-            ("prompt", request.prompt),
-            ("n", "1"),
-            ("size", f"{request.width}x{request.height}"),
-            ("quality", request.quality),
-            ("output_format", "png"),
-            ("response_format", "b64_json"),
-        ]
-        files = [
-            ("image", "source.png", "image/png", request.source_png),
-            ("mask", "mask_api.png", "image/png", request.api_mask_png),
-        ]
         estimated_cost = (
             self.high_price_micros
             if request.quality == "high"
             else self.medium_price_micros
         )
         try:
+            source_with_hole = _tengli_transparent_hole_png(
+                request.source_png,
+                request.api_mask_png,
+            )
+            fields = [
+                ("model", MASKED_REPAIR_MODEL),
+                ("prompt", _tengli_masked_prompt(request.prompt)),
+                ("n", "1"),
+                ("size", f"{request.width}x{request.height}"),
+                ("quality", request.quality),
+                ("output_format", "png"),
+                ("response_format", "b64_json"),
+            ]
+            files = [
+                ("image", "source.png", "image/png", source_with_hole),
+            ]
             self.external_network_request_count += 1
             status, response = await self.transport.post_multipart(
                 url=urljoin(self.base_url, "v1/images/edits"),
@@ -3692,6 +3695,43 @@ def _artifact_from_bytes(
         locally_resampled=locally_resampled,
         provider_width=width,
         provider_height=height,
+    )
+
+
+def _tengli_transparent_hole_png(source_png: bytes, api_mask_png: bytes) -> bytes:
+    """Apply the API mask alpha to source alpha for Tengli's edit relay."""
+
+    try:
+        with Image.open(BytesIO(source_png)) as source_image:
+            source_image.load()
+            source = source_image.convert("RGBA")
+        with Image.open(BytesIO(api_mask_png)) as mask_image:
+            mask_image.load()
+            mask = mask_image.convert("RGBA")
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise XingheAgentError(
+            "LOCAL_EDIT_INPUT_INVALID",
+            "Local-edit source or mask is not a valid image.",
+        ) from exc
+    if source.size != mask.size:
+        raise XingheAgentError(
+            "LOCAL_EDIT_INPUT_SIZE_MISMATCH",
+            "Local-edit source and mask dimensions do not match.",
+        )
+
+    source.putalpha(ImageChops.multiply(source.getchannel("A"), mask.getchannel("A")))
+    output = BytesIO()
+    source.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _tengli_masked_prompt(prompt: str) -> str:
+    return (
+        "Tengli compatibility instruction: the transparent hole in the input image "
+        "is the only target area. Fill only that transparent target at its current "
+        "location. Do not render the hole as black or as a solid-color patch. Do not "
+        "change matching or similar text outside the transparent target.\n\n"
+        f"{prompt}"
     )
 
 

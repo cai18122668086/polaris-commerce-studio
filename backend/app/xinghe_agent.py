@@ -64,7 +64,13 @@ from .provider import (
     ProviderResult,
 )
 from .provider_quota import require_provider_job_quota
-from .services import canonical_hash, new_id, settle_credits, transition_job
+from .services import (
+    canonical_hash,
+    new_id,
+    quota_enabled,
+    settle_credits,
+    transition_job,
+)
 from .skill_runtime import SkillManifestRegistry, SkillRuntimeError
 from .storage import ImageStorage
 
@@ -1775,18 +1781,19 @@ class XinghePlanningCoordinator:
     ) -> None:
         registry = SkillManifestRegistry.bundled()
         registry.verify_source("xinghe-ecommerce-detail", self.skill_root)
-        reservation = session.scalar(
-            select(CreditReservationRecord).where(
-                CreditReservationRecord.job_id == job.id,
-                CreditReservationRecord.workspace_id == job.workspace_id,
-                CreditReservationRecord.status == "active",
+        if quota_enabled():
+            reservation = session.scalar(
+                select(CreditReservationRecord).where(
+                    CreditReservationRecord.job_id == job.id,
+                    CreditReservationRecord.workspace_id == job.workspace_id,
+                    CreditReservationRecord.status == "active",
+                )
             )
-        )
-        if reservation is None:
-            raise XingheAgentError(
-                "BUDGET_RESERVATION_MISSING",
-                "An active credit reservation is required before planning.",
-            )
+            if reservation is None:
+                raise XingheAgentError(
+                    "BUDGET_RESERVATION_MISSING",
+                    "An active credit reservation is required before planning.",
+                )
         if self.gateway.provider_name == "tengli":
             try:
                 require_provider_job_quota(session, job)
@@ -2494,18 +2501,19 @@ class XingheImageProvider:
                     "PLAN_NOT_CONFIRMED",
                     "A validated, confirmed plan is required before image calls.",
                 )
-            reservation = session.scalar(
-                select(CreditReservationRecord).where(
-                    CreditReservationRecord.job_id == job.id,
-                    CreditReservationRecord.workspace_id == job.workspace_id,
-                    CreditReservationRecord.status == "active",
+            if quota_enabled():
+                reservation = session.scalar(
+                    select(CreditReservationRecord).where(
+                        CreditReservationRecord.job_id == job.id,
+                        CreditReservationRecord.workspace_id == job.workspace_id,
+                        CreditReservationRecord.status == "active",
+                    )
                 )
-            )
-            if reservation is None:
-                raise XingheAgentError(
-                    "BUDGET_RESERVATION_MISSING",
-                    "An active budget reservation is required before image calls.",
-                )
+                if reservation is None:
+                    raise XingheAgentError(
+                        "BUDGET_RESERVATION_MISSING",
+                        "An active budget reservation is required before image calls.",
+                    )
             if (
                 job.estimated_cost_max_micros is None
                 or job.estimated_cost_max_micros > self.budget_limit_micros
@@ -2609,18 +2617,19 @@ class XingheImageProvider:
                     "IMAGE_CALL_NOT_AUTHORIZED",
                     "The durable attempt is not authorized for an image call.",
                 )
-            reservation = session.scalar(
-                select(CreditReservationRecord).where(
-                    CreditReservationRecord.job_id == job.id,
-                    CreditReservationRecord.workspace_id == job.workspace_id,
-                    CreditReservationRecord.status == "active",
+            if quota_enabled():
+                reservation = session.scalar(
+                    select(CreditReservationRecord).where(
+                        CreditReservationRecord.job_id == job.id,
+                        CreditReservationRecord.workspace_id == job.workspace_id,
+                        CreditReservationRecord.status == "active",
+                    )
                 )
-            )
-            if reservation is None:
-                raise XingheAgentError(
-                    "BUDGET_RESERVATION_MISSING",
-                    "An active budget reservation is required before image calls.",
-                )
+                if reservation is None:
+                    raise XingheAgentError(
+                        "BUDGET_RESERVATION_MISSING",
+                        "An active budget reservation is required before image calls.",
+                    )
             if self.gateway.provider_name == "tengli":
                 try:
                     require_provider_job_quota(session, job)

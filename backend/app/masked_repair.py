@@ -39,7 +39,7 @@ from .provider import (
     ProviderResult,
 )
 from .provider_quota import require_provider_job_quota
-from .services import new_id
+from .services import new_id, quota_enabled
 from .skill_runtime import SkillManifestRegistry, SkillRuntimeError
 from .storage import ImageStorage, ValidatedImage
 
@@ -722,18 +722,19 @@ class MaskedRepairProvider:
                     "LOCAL_EDIT_CALL_NOT_AUTHORIZED",
                     "The durable attempt is not authorized for a provider call.",
                 )
-            reservation = session.scalar(
-                select(CreditReservationRecord).where(
-                    CreditReservationRecord.workspace_id == request.workspace_id,
-                    CreditReservationRecord.job_id == job.id,
-                    CreditReservationRecord.status == "active",
+            if quota_enabled():
+                reservation = session.scalar(
+                    select(CreditReservationRecord).where(
+                        CreditReservationRecord.workspace_id == request.workspace_id,
+                        CreditReservationRecord.job_id == job.id,
+                        CreditReservationRecord.status == "active",
+                    )
                 )
-            )
-            if reservation is None:
-                raise MaskedRepairError(
-                    "BUDGET_RESERVATION_MISSING",
-                    "An active budget reservation is required before local edit.",
-                )
+                if reservation is None:
+                    raise MaskedRepairError(
+                        "BUDGET_RESERVATION_MISSING",
+                        "An active budget reservation is required before local edit.",
+                    )
             if self.gateway.provider_name == "tengli":
                 try:
                     require_provider_job_quota(session, job)

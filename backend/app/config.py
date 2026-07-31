@@ -1,8 +1,17 @@
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr
+from pydantic import BeforeValidator, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _coerce_int(v: object) -> int:
+    """Validate and coerce a value to int for Literal fields populated from env vars."""
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str):
+        return int(v)
+    raise ValueError(f"Cannot coerce {v!r} to int")
 
 
 class Settings(BaseSettings):
@@ -42,7 +51,7 @@ class Settings(BaseSettings):
     tengli_vision_model: str = "gpt-5.6-terra"
     tengli_smoke_budget_usd: float = Field(default=200, gt=0, le=200)
     provider_quota_enabled: bool = Field(default=True)
-    xinghe_concurrency: Literal[1, 2, 6] = 6
+    xinghe_concurrency: Annotated[Literal[1, 2, 6], BeforeValidator(_coerce_int)] = 6
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)
     celery_broker_url: str = "redis://localhost:6379/0"

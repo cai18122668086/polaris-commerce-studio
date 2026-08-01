@@ -125,6 +125,21 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
         "authentication_mode": "development",
         "task_runner": "mock",
         "capabilities": {
+            "features": {
+                feature: {
+                    "availability": "available",
+                    "execution": "mock",
+                    "reason_code": "TASK_RUNNER_MOCK",
+                }
+                for feature in (
+                    "local_edit",
+                    "product_image",
+                    "reference_remix",
+                    "creative_image",
+                    "detail_pack",
+                    "amazon_visual_suite",
+                )
+            },
             "asset_management": {
                 "availability": "available",
                 "execution": "local",
@@ -157,6 +172,16 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
     assert tengli.capabilities.local_edit.reason_code is None
     assert tengli.capabilities.detail_pack.execution == "provider"
     assert tengli.capabilities.detail_pack.reason_code is None
+    for feature in (
+        "product_image",
+        "reference_remix",
+        "creative_image",
+        "amazon_visual_suite",
+    ):
+        status = tengli.capabilities.features[feature]
+        assert status.availability == "unavailable"
+        assert status.execution == "none"
+        assert status.reason_code == "REAL_PROVIDER_NOT_REGISTERED"
     assert tengli.capabilities.external_authentication.availability == "unavailable"
 
 
@@ -189,6 +214,7 @@ def test_runtime_openapi_contract_is_explicit_and_stable(client: TestClient) -> 
         "capabilities",
     ]
     assert set(schemas["RuntimeCapabilities"]["properties"]) == {
+        "features",
         "asset_management",
         "local_edit",
         "detail_pack",
@@ -202,6 +228,7 @@ def test_runtime_openapi_contract_is_explicit_and_stable(client: TestClient) -> 
     assert reason_code["anyOf"][0]["enum"] == [
         "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
         "TASK_RUNNER_MOCK",
+        "REAL_PROVIDER_NOT_REGISTERED",
         "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
     ]
     assert "internal testing" in availability["description"]

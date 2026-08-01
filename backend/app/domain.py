@@ -50,7 +50,11 @@ class AssetLifecycleStatus(StrEnum):
 
 class JobType(StrEnum):
     LOCAL_EDIT = "local_edit"
+    PRODUCT_IMAGE = "product_image"
+    REFERENCE_REMIX = "reference_remix"
+    CREATIVE_IMAGE = "creative_image"
     DETAIL_PACK = "detail_pack"
+    AMAZON_VISUAL_SUITE = "amazon_visual_suite"
 
 
 class JobStatus(StrEnum):

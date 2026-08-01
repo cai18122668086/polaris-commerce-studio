@@ -8,28 +8,28 @@ import {
   Check,
   Footprints,
   Headphones,
-  PackageOpen,
   Search,
   Sparkles,
   Watch,
 } from "lucide-react";
 
-const featuredTools = [
-  {
-    title: "局部修改",
-    description: "一句话精修，只改变选中的区域",
-    href: "/workspace/local-edit",
-    icon: Headphones,
-    className: "home-feature--edit",
-  },
-  {
-    title: "商品详情图",
-    description: "从商品素材到完整电商套图",
-    href: "/workspace/detail-pack",
-    icon: PackageOpen,
-    className: "home-feature--pack",
-  },
-];
+import { FEATURE_REGISTRY, getFeatureById } from "@/lib/feature-registry";
+
+const featuredTools = FEATURE_REGISTRY.filter((feature) => feature.featured).map(
+  (feature) => ({
+    title: feature.title,
+    description: feature.description,
+    href: feature.route,
+    icon: feature.icon,
+    className:
+      feature.workspaceTemplate === "masked_edit"
+        ? "home-feature--edit"
+        : "home-feature--pack",
+    keywords: feature.searchKeywords,
+  }),
+);
+
+const detailPackRoute = getFeatureById("detail-pack")?.route ?? "/workspace/detail-pack";
 
 const categoryCards = [
   {
@@ -54,7 +54,9 @@ export function ToolDirectory() {
   const searchRef = useRef<HTMLInputElement>(null);
   const keyword = query.trim().toLowerCase();
   const visibleTools = featuredTools.filter((tool) =>
-    `${tool.title} ${tool.description}`.toLowerCase().includes(keyword),
+    `${tool.title} ${tool.description} ${tool.keywords.join(" ")}`
+      .toLowerCase()
+      .includes(keyword),
   );
 
   useEffect(() => {
@@ -130,7 +132,7 @@ export function ToolDirectory() {
         <div className="home-category-grid" aria-label="更多商品类别">
           {categoryCards.map((card) => (
             <Link
-              href="/workspace/detail-pack"
+              href={detailPackRoute}
               className="home-category-card"
               key={card.title}
             >

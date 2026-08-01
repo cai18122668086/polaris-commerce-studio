@@ -7,6 +7,7 @@ import { futureTools, toolGroups } from "@/lib/tool-registry";
 import { useJobs } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobTitle } from "@/lib/jobs/presentation";
+import { getFeatureByRoute } from "@/lib/feature-registry";
 
 export function ToolSidebar({
   open,
@@ -17,13 +18,14 @@ export function ToolSidebar({
 }) {
   const pathname = usePathname();
   const { workspace } = useWorkspace();
-  const isWorkspace = pathname.startsWith("/workspace/");
-  const currentType = pathname.includes("detail-pack") ? "detail_pack" : "local_edit";
-  const jobs = useJobs(workspace?.id, { type: currentType, limit: 4 });
+  const currentFeature = getFeatureByRoute(pathname);
+  const isWorkspace = Boolean(currentFeature);
+  const jobs = useJobs(workspace?.id, {
+    type: currentFeature?.jobType,
+    limit: 4,
+  });
   const recentJobs = jobs.data?.items ?? [];
-  const createHref = pathname.includes("detail-pack")
-    ? "/workspace/detail-pack"
-    : "/workspace/local-edit";
+  const createHref = currentFeature?.route ?? "/tools";
 
   return (
     <>

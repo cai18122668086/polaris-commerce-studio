@@ -13,11 +13,10 @@ import { unwrapApiResponse } from "@/lib/api/request";
 import {
   activeJobStatuses,
   isActiveJob,
-  type DetailPackJobCreate,
+  type JobCreate,
   type JobDetail,
   type JobStatus,
   type JobType,
-  type LocalEditJobCreate,
   type RetryScope,
 } from "@/lib/api/types";
 import { jobKeys } from "./jobs-keys";
@@ -129,22 +128,24 @@ function useJobMutation<TResult, TVariables>(
 }
 
 export function useCreateJob(workspaceId: string | undefined) {
-  return useJobMutation<
-    JobDetail,
-    LocalEditJobCreate | DetailPackJobCreate
-  >(workspaceId, "create-job", (body) => body, async (id, body, key) => {
-    const result = await apiClient.POST(
-      "/api/v1/workspaces/{workspace_id}/jobs",
-      {
-        params: {
-          path: { workspace_id: id },
-          header: { "Idempotency-Key": key },
+  return useJobMutation<JobDetail, JobCreate>(
+    workspaceId,
+    "create-job",
+    (body) => body,
+    async (id, body, key) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs",
+        {
+          params: {
+            path: { workspace_id: id },
+            header: { "Idempotency-Key": key },
+          },
+          body,
         },
-        body,
-      },
-    );
-    return unwrapApiResponse(result);
-  });
+      );
+      return unwrapApiResponse(result);
+    },
+  );
 }
 
 type AuthorizedJobAction = {

@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
-import type { RuntimeStatus } from "@/lib/api/types";
+import type { CapabilityStatus, RuntimeStatus } from "@/lib/api/types";
 
 export const runtimeKeys = {
   status: ["runtime-status"] as const,
@@ -22,33 +22,97 @@ export function useRuntimeStatus() {
   });
 }
 
-type WorkflowCapability =
-  RuntimeStatus["capabilities"]["local_edit"];
+export function resolveRuntimeCapability(
+  runtime: RuntimeStatus | null | undefined,
+  capabilityKey: string,
+): CapabilityStatus | undefined {
+  if (!runtime) return undefined;
+
+  const featureCapabilities = runtime.capabilities.features ?? {};
+  const directFeature = featureCapabilities[capabilityKey];
+  if (directFeature) return directFeature;
+
+  const familyKey = capabilityKey.split(".", 1)[0];
+  const familyFeature = featureCapabilities[familyKey];
+  if (familyFeature) return familyFeature;
+
+  if (capabilityKey === "local_edit") return runtime.capabilities.local_edit;
+  if (capabilityKey === "detail_pack") return runtime.capabilities.detail_pack;
+  return undefined;
+}
 
 export type WorkflowPresentation = {
-  mode: "provider" | "mock" | "unavailable" | "unknown";
+  mode: "provider" | "mock" | "local" | "unavailable" | "unknown";
   canDeliverImages: boolean;
+  canSubmit: boolean;
+  badge: string;
+  message: string;
+  reasonCode?: string | null;
 };
 
 export function presentWorkflow(
-  capability: WorkflowCapability | null | undefined,
+  capability: CapabilityStatus | null | undefined,
 ): WorkflowPresentation {
   if (!capability) {
-    return { mode: "unknown", canDeliverImages: false };
+    return {
+      mode: "unknown",
+      canDeliverImages: false,
+      canSubmit: false,
+      badge: "能力状态未知",
+      message: "按 fail-closed 处理：能力状态确认前不会创建任务。",
+    };
   }
   if (capability.availability !== "available") {
-    return { mode: "unavailable", canDeliverImages: false };
+    return {
+      mode: "unavailable",
+      canDeliverImages: false,
+      canSubmit: false,
+      badge: "真实 Provider 未接入",
+      message: "当前运行环境未注册此功能的真实 Provider，提交入口已关闭。",
+      reasonCode: capability.reason_code,
+    };
   }
   if (capability.execution === "provider") {
-    return { mode: "provider", canDeliverImages: true };
+    return {
+      mode: "provider",
+      canDeliverImages: true,
+      canSubmit: true,
+      badge: "Provider 可用",
+      message: "任务将由后端已注册 Provider 执行并交付图片。",
+      reasonCode: capability.reason_code,
+    };
   }
   if (capability.execution === "mock") {
-    return { mode: "mock", canDeliverImages: false };
+    return {
+      mode: "mock",
+      canDeliverImages: false,
+      canSubmit: true,
+      badge: "Mock 可用",
+      message: "可验证上传、建单和状态轮询；mock 不会伪造可交付图片。",
+      reasonCode: capability.reason_code,
+    };
   }
-  return { mode: "unavailable", canDeliverImages: false };
+  if (capability.execution === "local") {
+    return {
+      mode: "local",
+      canDeliverImages: true,
+      canSubmit: true,
+      badge: "本地能力可用",
+      message: "任务将在后端本地能力边界内执行。",
+      reasonCode: capability.reason_code,
+    };
+  }
+  return {
+    mode: "unavailable",
+    canDeliverImages: false,
+    canSubmit: false,
+    badge: "能力不可用",
+    message: "当前能力没有可执行后端，提交入口已关闭。",
+    reasonCode: capability.reason_code,
+  };
 }
 
-function supportsProvider(capability: WorkflowCapability | undefined): boolean {
+function supportsProvider(capability: CapabilityStatus | undefined): boolean {
   return (
     capability?.availability === "available" &&
     capability.execution === "provider"
@@ -82,16 +146,14 @@ export function presentRuntime(
     runtime.capabilities.local_edit,
     runtime.capabilities.detail_pack,
   ];
-  const allMock =
-    workflows.every(
-      (item) =>
-        item.availability === "available" && item.execution === "mock",
-    );
+  const allMock = workflows.every(
+    (item) => item.availability === "available" && item.execution === "mock",
+  );
 
   if (allMock) {
     return {
       badge: "内部 mock 内测",
-      summary: "资产与任务状态会真实写入零付费后端；局部修改与详情图均无可交付生成图片。",
+      summary: "资产与任务状态会真实写入零付费后端；mock 不会伪造可交付图片。",
       assurance: "真实生成未启用",
       providerGenerationEnabled: false,
     };

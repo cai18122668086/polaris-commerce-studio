@@ -1,54 +1,41 @@
-import {
-  Eraser,
-  FolderClock,
-  Images,
-  LibraryBig,
-  Paintbrush2,
-  ScanLine,
-  Sparkles,
-} from "lucide-react";
+﻿import { Eraser, FolderClock, Images, LibraryBig, ScanLine } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type ToolItem = {
+import {
+  FEATURE_GROUPS,
+  type FeatureJobType,
+} from "@/lib/feature-registry";
+
+export type ToolItem = {
   title: string;
   description: string;
   href: string;
   icon: LucideIcon;
   tone: string;
   badge?: string;
+  jobType?: FeatureJobType;
 };
 
-type ToolGroup = {
+export type ToolGroup = {
   label: string;
   items: ToolItem[];
 };
 
+const featureToolGroups: ToolGroup[] = FEATURE_GROUPS.map((group) => ({
+  label: group.label,
+  items: group.features.map((feature) => ({
+    title: feature.title,
+    description: feature.description,
+    href: feature.route,
+    icon: feature.icon,
+    tone: feature.tone,
+    badge: "badge" in feature ? feature.badge : undefined,
+    jobType: feature.jobType,
+  })),
+}));
+
 export const toolGroups: ToolGroup[] = [
-  {
-    label: "创作工具",
-    items: [
-      {
-        title: "局部修改",
-        description: "像素级锁定修改",
-        href: "/workspace/local-edit",
-        icon: Paintbrush2,
-        tone: "indigo",
-      },
-    ],
-  },
-  {
-    label: "电商套图",
-    items: [
-      {
-        title: "商品详情图",
-        description: "多平台智能成套",
-        href: "/workspace/detail-pack",
-        icon: Sparkles,
-        tone: "violet",
-        badge: "推荐",
-      },
-    ],
-  },
+  ...featureToolGroups,
   {
     label: "资产管理",
     items: [
@@ -78,8 +65,6 @@ export const toolGroups: ToolGroup[] = [
 ];
 
 export const futureTools = [
-  { label: "智能换背景", icon: LibraryBig },
-  { label: "电商白底图", icon: Sparkles },
   { label: "智能抠图", icon: ScanLine },
   { label: "瑕疵消除", icon: Eraser },
 ];

@@ -333,6 +333,62 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** AmazonVisualSuiteConfiguration */
+        AmazonVisualSuiteConfiguration: {
+            /** Brand Colors */
+            brand_colors?: string[];
+            /** Bullet Points */
+            bullet_points?: string[];
+            /**
+             * Language
+             * @default en-US
+             */
+            language: string;
+            /**
+             * Listing Title
+             * @default
+             */
+            listing_title: string;
+            /**
+             * Marketplace
+             * @default amazon-us
+             * @constant
+             */
+            marketplace: "amazon-us";
+            /** Product Name */
+            product_name: string;
+        };
+        /** AmazonVisualSuiteInput */
+        AmazonVisualSuiteInput: {
+            /** Brand Asset Ids */
+            brand_asset_ids?: string[];
+            /** Detail Asset Ids */
+            detail_asset_ids?: string[];
+            /** Package Asset Ids */
+            package_asset_ids?: string[];
+            /** Scene Asset Ids */
+            scene_asset_ids?: string[];
+            /** White Background Product Asset Ids */
+            white_background_product_asset_ids: string[];
+        };
+        /** AmazonVisualSuiteJobCreate */
+        AmazonVisualSuiteJobCreate: {
+            configuration: components["schemas"]["AmazonVisualSuiteConfiguration"];
+            /** Display Name */
+            display_name?: string | null;
+            input: components["schemas"]["AmazonVisualSuiteInput"];
+            /**
+             * Intent
+             * @default submit
+             * @enum {string}
+             */
+            intent: "draft" | "submit";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "amazon_visual_suite";
+        };
         /**
          * AssetLifecycleStatus
          * @enum {string}
@@ -418,7 +474,7 @@ export interface components {
              * Reason Code
              * @description Stable machine-readable explanation when execution is mocked or the capability is unavailable.
              */
-            reason_code: ("LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED" | "TASK_RUNNER_MOCK" | "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED") | null;
+            reason_code: ("LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED" | "TASK_RUNNER_MOCK" | "REAL_PROVIDER_NOT_REGISTERED" | "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED") | null;
         };
         /** CostSummary */
         CostSummary: {
@@ -431,6 +487,68 @@ export interface components {
             estimated_min: components["schemas"]["MoneyAmount"] | null;
             usage_completeness: components["schemas"]["UsageCompleteness"];
         };
+        /** CreativeImageConfiguration */
+        CreativeImageConfiguration: {
+            /**
+             * Aspect Ratio
+             * @default 1:1
+             * @enum {string}
+             */
+            aspect_ratio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+            /**
+             * Creative Direction
+             * @default selling_point
+             * @enum {string}
+             */
+            creative_direction: "selling_point" | "pain_point" | "scenario" | "promotion" | "premium" | "social";
+            /**
+             * Image Count
+             * @default 4
+             */
+            image_count: number;
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Language
+             * @default zh-CN
+             */
+            language: string;
+            /**
+             * Platform Code
+             * @default tmall
+             */
+            platform_code: string;
+            /** Selling Points */
+            selling_points?: string[];
+        };
+        /** CreativeImageInput */
+        CreativeImageInput: {
+            /** Competitor Asset Ids */
+            competitor_asset_ids?: string[];
+            /** Product Asset Ids */
+            product_asset_ids: string[];
+        };
+        /** CreativeImageJobCreate */
+        CreativeImageJobCreate: {
+            configuration: components["schemas"]["CreativeImageConfiguration"];
+            /** Display Name */
+            display_name?: string | null;
+            input: components["schemas"]["CreativeImageInput"];
+            /**
+             * Intent
+             * @default submit
+             * @enum {string}
+             */
+            intent: "draft" | "submit";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "creative_image";
+        };
         /** CurrentUserResponse */
         CurrentUserResponse: {
             /** Id */
@@ -439,10 +557,23 @@ export interface components {
         /** DetailPackConfiguration */
         DetailPackConfiguration: {
             /**
+             * Auto Start After Plan
+             * @default true
+             */
+            auto_start_after_plan: boolean;
+            /** Category */
+            category?: string | null;
+            /**
              * Language
              * @default zh-CN
              */
             language: string;
+            /**
+             * Market Region
+             * @default international
+             * @enum {string}
+             */
+            market_region: "domestic" | "international";
             /** Page Count */
             page_count: number;
             /** Platform Code */
@@ -456,12 +587,14 @@ export interface components {
              * @default 1024x1536
              * @enum {string}
              */
-            size: "1024x1536" | "1600x1600" | "2200x2200" | "2000x2000" | "1000x1000" | "1024x1024" | "2048x2048" | "1200x1200" | "750x1000";
+            size: "1024x1536" | "1600x1600" | "2200x2200" | "2000x2000" | "1000x1000" | "1024x1024" | "2048x2048" | "1200x1200" | "750x1000" | "1464x600" | "1600x1200";
         };
         /** DetailPackInput */
         DetailPackInput: {
             /** Product Groups */
             product_groups: components["schemas"]["ProductGroupInput"][];
+            /** Reference Asset Ids */
+            reference_asset_ids?: string[];
         };
         /** DetailPackJobCreate */
         DetailPackJobCreate: {
@@ -709,7 +842,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "local_edit" | "detail_pack";
+        JobType: "local_edit" | "product_image" | "reference_remix" | "creative_image" | "detail_pack" | "amazon_visual_suite";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /** Instruction */
@@ -806,6 +939,118 @@ export interface components {
             /** Group Key */
             group_key: string;
         };
+        /** ProductImageConfiguration */
+        ProductImageConfiguration: {
+            /**
+             * Aspect Ratio
+             * @default 1:1
+             * @enum {string}
+             */
+            aspect_ratio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+            /**
+             * Image Count
+             * @default 1
+             */
+            image_count: number;
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Platform Code
+             * @default tmall
+             */
+            platform_code: string;
+            /** Target Color */
+            target_color?: string | null;
+            /**
+             * Task Type
+             * @enum {string}
+             */
+            task_type: "scene_main" | "white_background" | "model_image" | "change_model" | "try_on" | "change_scene" | "change_background" | "change_color";
+        };
+        /** ProductImageInput */
+        ProductImageInput: {
+            /** Product Asset Ids */
+            product_asset_ids: string[];
+            /** Reference Asset Ids */
+            reference_asset_ids?: string[];
+        };
+        /** ProductImageJobCreate */
+        ProductImageJobCreate: {
+            configuration: components["schemas"]["ProductImageConfiguration"];
+            /** Display Name */
+            display_name?: string | null;
+            input: components["schemas"]["ProductImageInput"];
+            /**
+             * Intent
+             * @default submit
+             * @enum {string}
+             */
+            intent: "draft" | "submit";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "product_image";
+        };
+        /** ReferenceRemixConfiguration */
+        ReferenceRemixConfiguration: {
+            /**
+             * Aspect Ratio
+             * @default 1:1
+             * @enum {string}
+             */
+            aspect_ratio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+            /**
+             * Image Count
+             * @default 1
+             */
+            image_count: number;
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Language
+             * @default zh-CN
+             */
+            language: string;
+            /**
+             * Platform Code
+             * @default tmall
+             */
+            platform_code: string;
+            /** Selling Points */
+            selling_points?: string[];
+        };
+        /** ReferenceRemixInput */
+        ReferenceRemixInput: {
+            /** Product Asset Ids */
+            product_asset_ids: string[];
+            /** Reference Asset Ids */
+            reference_asset_ids: string[];
+        };
+        /** ReferenceRemixJobCreate */
+        ReferenceRemixJobCreate: {
+            configuration: components["schemas"]["ReferenceRemixConfiguration"];
+            /** Display Name */
+            display_name?: string | null;
+            input: components["schemas"]["ReferenceRemixInput"];
+            /**
+             * Intent
+             * @default submit
+             * @enum {string}
+             */
+            intent: "draft" | "submit";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "reference_remix";
+        };
         /** RetryRequest */
         RetryRequest: {
             /** Item Ids */
@@ -826,6 +1071,13 @@ export interface components {
             detail_pack: components["schemas"]["CapabilityStatus"];
             /** @description External authentication capability. A configured mode alone does not mean that the implementation is available. */
             external_authentication: components["schemas"]["CapabilityStatus"];
+            /**
+             * Features
+             * @description Configuration-driven workflow capability map.
+             */
+            features?: {
+                [key: string]: components["schemas"]["CapabilityStatus"];
+            };
             /** @description Local-edit workflow. It uses the mock adapter under the mock runner and the dedicated strict masked-repair provider under Tengli. */
             local_edit: components["schemas"]["CapabilityStatus"];
         };
@@ -1220,7 +1472,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["DetailPackJobCreate"];
+                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"];
             };
         };
         responses: {

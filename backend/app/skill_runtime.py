@@ -12,7 +12,9 @@ from typing import Any, Protocol
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import default_masked_skill_root, default_xinghe_skill_root
+from .config import (
+    default_skill_root,
+)
 from .domain import JobType
 from .models import AuditEventRecord
 from .provider import (
@@ -31,10 +33,20 @@ IGNORED_RUNTIME_ARTIFACTS = ("**/__pycache__/**", "**/*.pyc")
 KNOWN_SKILLS = {
     "masked-image-repair",
     "xinghe-ecommerce-detail",
+    "xinghe-wanneng-shengtu-3-0",
+    "xinghe-reference-image-remix-3",
+    "xinghe-ecommerce-creative-image",
+    "xinghe-ecommerce-detail-domestic-3",
+    "xinghe-crossborder-detail-3",
+    "xinghe-amazon-visual-suite",
 }
 OPERATION_SKILLS = {
     JobType.LOCAL_EDIT.value: "masked-image-repair",
+    JobType.PRODUCT_IMAGE.value: "xinghe-wanneng-shengtu-3-0",
+    JobType.REFERENCE_REMIX.value: "xinghe-reference-image-remix-3",
+    JobType.CREATIVE_IMAGE.value: "xinghe-ecommerce-creative-image",
     JobType.DETAIL_PACK.value: "xinghe-ecommerce-detail",
+    JobType.AMAZON_VISUAL_SUITE.value: "xinghe-amazon-visual-suite",
 }
 ALLOWED_PROVIDER_TYPES = {"fake", "mock"}
 SENSITIVE_DETAIL_KEYS = {
@@ -59,7 +71,11 @@ SENSITIVE_DETAIL_KEY_FRAGMENTS = {
 
 class SkillCapability(StrEnum):
     MASKED_IMAGE_REPAIR = "masked_image_repair"
+    PRODUCT_IMAGE = "product_image"
+    REFERENCE_REMIX = "reference_remix"
+    CREATIVE_IMAGE = "creative_image"
     ECOMMERCE_DETAIL_PACK = "ecommerce_detail_pack"
+    AMAZON_VISUAL_SUITE = "amazon_visual_suite"
 
 
 class SafeExpansionMode(StrEnum):
@@ -960,8 +976,7 @@ def build_fake_skill_runtime_provider(
         global_cost_limit_micros=0,
         real_provider_request_limit=0,
         source_roots={
-            "masked-image-repair": default_masked_skill_root(),
-            "xinghe-ecommerce-detail": default_xinghe_skill_root(),
+            skill_id: default_skill_root(skill_id) for skill_id in KNOWN_SKILLS
         },
     )
     return SkillRuntimeProvider(
@@ -1164,6 +1179,19 @@ def _validate_frozen_skill_policy(manifest: SkillManifest) -> None:
                     "SKILL_PROFILE_NOT_ALLOWED",
                     "Domestic ecommerce profiles must remain disabled.",
                 )
+        return
+    if manifest.skill_id != "masked-image-repair":
+        if (
+            policy.active_profile_id is not None
+            or policy.profiles
+            or policy.iteration is not None
+            or policy.safe_expansion_mode != SafeExpansionMode.DISABLED
+            or policy.safe_expansion is not None
+        ):
+            raise SkillRuntimeError(
+                "SKILL_POLICY_INVALID",
+                f"Manifest {manifest.skill_id} does not match the frozen policy.",
+            )
         return
     if (
         policy.active_profile_id is not None

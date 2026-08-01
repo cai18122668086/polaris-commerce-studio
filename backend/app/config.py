@@ -25,6 +25,16 @@ def default_xinghe_skill_root() -> Path:
     )
 
 
+def default_skill_root(skill_id: str) -> Path:
+    """Return a project-owned runtime source without changing existing roots."""
+
+    if skill_id == "masked-image-repair":
+        return default_masked_skill_root()
+    if skill_id == "xinghe-ecommerce-detail":
+        return default_xinghe_skill_root()
+    return Path(__file__).resolve().parents[1] / "skill_sources" / skill_id
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",

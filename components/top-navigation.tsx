@@ -13,13 +13,23 @@ import {
 } from "lucide-react";
 import { useJobs } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
+import { getFeatureById, getFeatureByRoute } from "@/lib/feature-registry";
 import { BrandMark } from "./brand-mark";
+
+const localEditFeature = getFeatureById("local-edit");
+const detailPackFeature = getFeatureById("detail-pack");
 
 const navItems = [
   { label: "首页", href: "/" },
-  { label: "一句话改图", href: "/workspace/local-edit" },
-  { label: "功能大全", href: "/#tools" },
-  { label: "电商套图", href: "/workspace/detail-pack" },
+  {
+    label: localEditFeature?.title ?? "一句话改图",
+    href: localEditFeature?.route ?? "/workspace/local-edit",
+  },
+  { label: "功能大全", href: "/tools" },
+  {
+    label: detailPackFeature?.title ?? "电商套图",
+    href: detailPackFeature?.route ?? "/workspace/detail-pack",
+  },
   { label: "素材中心", href: "/assets" },
   { label: "生成记录", href: "/jobs" },
 ];
@@ -38,6 +48,7 @@ export function TopNavigation({
   taskTriggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const pathname = usePathname();
+  const currentFeature = getFeatureByRoute(pathname);
   const { workspace } = useWorkspace();
   const jobs = useJobs(workspace?.id, { limit: 20 });
   const activeCount =
@@ -67,9 +78,14 @@ export function TopNavigation({
             const active =
               item.href === "/"
                 ? pathname === "/"
-                : item.href === "/#tools"
-                  ? false
-                  : pathname.startsWith(item.href);
+                : item.href === "/tools"
+                  ? pathname === "/tools" ||
+                    Boolean(
+                      currentFeature &&
+                        currentFeature.jobType !== "local_edit" &&
+                        currentFeature.jobType !== "detail_pack",
+                    )
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}

@@ -156,6 +156,8 @@ export default function DetailPackPage() {
       platform_code: marketplaceId,
       page_count: pageCount,
       language,
+      market_region: marketRegion,
+      auto_start_after_plan: marketRegion === "domestic",
       selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
       size: imageSize,
     };
@@ -195,11 +197,11 @@ export default function DetailPackPage() {
           <section className="marketplace-selector">
             <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>平台信息会写入详情图任务配置。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name}</span></div>
             <div className="market-region-switch" aria-label="电商地区">
-              <button className={marketRegion === "domestic" ? "active" : ""} onClick={() => selectRegion("domestic")}><MapPin size={17} /><span><strong>国内电商</strong><small>中国大陆平台</small></span></button>
-              <button className={marketRegion === "international" ? "active" : ""} onClick={() => selectRegion("international")}><Globe2 size={17} /><span><strong>国际电商</strong><small>跨境与海外市场</small></span></button>
+              <button className={marketRegion === "domestic" ? "active" : ""} onClick={() => selectRegion("domestic")} disabled={Boolean(jobId)}><MapPin size={17} /><span><strong>国内电商</strong><small>中国大陆平台</small></span></button>
+              <button className={marketRegion === "international" ? "active" : ""} onClick={() => selectRegion("international")} disabled={Boolean(jobId)}><Globe2 size={17} /><span><strong>国际电商</strong><small>跨境与海外市场</small></span></button>
             </div>
             <div className="marketplace-grid">
-              {marketplaceGroups[marketRegion].map((marketplace) => <button key={marketplace.id} className={marketplaceId === marketplace.id ? "active" : ""} onClick={() => selectMarketplace(marketplace.id)}><span className="marketplace-mark">{marketplace.shortName}</span><span><strong>{marketplace.name}</strong><small>{marketplace.format}</small></span><i>{marketplaceId === marketplace.id && <Check size={12} />}</i></button>)}
+              {marketplaceGroups[marketRegion].map((marketplace) => <button key={marketplace.id} className={marketplaceId === marketplace.id ? "active" : ""} onClick={() => selectMarketplace(marketplace.id)} disabled={Boolean(jobId)}><span className="marketplace-mark">{marketplace.shortName}</span><span><strong>{marketplace.name}</strong><small>{marketplace.format}</small></span><i>{marketplaceId === marketplace.id && <Check size={12} />}</i></button>)}
             </div>
           </section>
 

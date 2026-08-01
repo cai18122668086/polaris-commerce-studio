@@ -50,6 +50,149 @@
         "title": "AccessUrlResponse",
         "type": "object"
       },
+      "AmazonVisualSuiteConfiguration": {
+        "properties": {
+          "brand_colors": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Brand Colors",
+            "type": "array"
+          },
+          "bullet_points": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Bullet Points",
+            "type": "array"
+          },
+          "language": {
+            "default": "en-US",
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Language",
+            "type": "string"
+          },
+          "listing_title": {
+            "default": "",
+            "maxLength": 240,
+            "title": "Listing Title",
+            "type": "string"
+          },
+          "marketplace": {
+            "const": "amazon-us",
+            "default": "amazon-us",
+            "title": "Marketplace",
+            "type": "string"
+          },
+          "product_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Product Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_name"
+        ],
+        "title": "AmazonVisualSuiteConfiguration",
+        "type": "object"
+      },
+      "AmazonVisualSuiteInput": {
+        "properties": {
+          "brand_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Brand Asset Ids",
+            "type": "array"
+          },
+          "detail_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Detail Asset Ids",
+            "type": "array"
+          },
+          "package_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Package Asset Ids",
+            "type": "array"
+          },
+          "scene_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Scene Asset Ids",
+            "type": "array"
+          },
+          "white_background_product_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "White Background Product Asset Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "white_background_product_asset_ids"
+        ],
+        "title": "AmazonVisualSuiteInput",
+        "type": "object"
+      },
+      "AmazonVisualSuiteJobCreate": {
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/AmazonVisualSuiteConfiguration"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "input": {
+            "$ref": "#/components/schemas/AmazonVisualSuiteInput"
+          },
+          "intent": {
+            "default": "submit",
+            "enum": [
+              "draft",
+              "submit"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "type": {
+            "const": "amazon_visual_suite",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "input",
+          "configuration"
+        ],
+        "title": "AmazonVisualSuiteJobCreate",
+        "type": "object"
+      },
       "AssetLifecycleStatus": {
         "enum": [
           "pending",
@@ -273,6 +416,7 @@
                 "enum": [
                   "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
                   "TASK_RUNNER_MOCK",
+                  "REAL_PROVIDER_NOT_REGISTERED",
                   "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED"
                 ],
                 "type": "string"
@@ -362,6 +506,141 @@
         "title": "CostSummary",
         "type": "object"
       },
+      "CreativeImageConfiguration": {
+        "properties": {
+          "aspect_ratio": {
+            "default": "1:1",
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9"
+            ],
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "creative_direction": {
+            "default": "selling_point",
+            "enum": [
+              "selling_point",
+              "pain_point",
+              "scenario",
+              "promotion",
+              "premium",
+              "social"
+            ],
+            "title": "Creative Direction",
+            "type": "string"
+          },
+          "image_count": {
+            "default": 4,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Image Count",
+            "type": "integer"
+          },
+          "instruction": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "language": {
+            "default": "zh-CN",
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Language",
+            "type": "string"
+          },
+          "platform_code": {
+            "default": "tmall",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Platform Code",
+            "type": "string"
+          },
+          "selling_points": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Selling Points",
+            "type": "array"
+          }
+        },
+        "title": "CreativeImageConfiguration",
+        "type": "object"
+      },
+      "CreativeImageInput": {
+        "properties": {
+          "competitor_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Competitor Asset Ids",
+            "type": "array"
+          },
+          "product_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Product Asset Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_asset_ids"
+        ],
+        "title": "CreativeImageInput",
+        "type": "object"
+      },
+      "CreativeImageJobCreate": {
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/CreativeImageConfiguration"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "input": {
+            "$ref": "#/components/schemas/CreativeImageInput"
+          },
+          "intent": {
+            "default": "submit",
+            "enum": [
+              "draft",
+              "submit"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "type": {
+            "const": "creative_image",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "input",
+          "configuration"
+        ],
+        "title": "CreativeImageJobCreate",
+        "type": "object"
+      },
       "CurrentUserResponse": {
         "properties": {
           "id": {
@@ -377,11 +656,37 @@
       },
       "DetailPackConfiguration": {
         "properties": {
+          "auto_start_after_plan": {
+            "default": true,
+            "title": "Auto Start After Plan",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "language": {
             "default": "zh-CN",
             "maxLength": 16,
             "minLength": 2,
             "title": "Language",
+            "type": "string"
+          },
+          "market_region": {
+            "default": "international",
+            "enum": [
+              "domestic",
+              "international"
+            ],
+            "title": "Market Region",
             "type": "string"
           },
           "page_count": {
@@ -421,7 +726,9 @@
               "1024x1024",
               "2048x2048",
               "1200x1200",
-              "750x1000"
+              "750x1000",
+              "1464x600",
+              "1600x1200"
             ],
             "title": "Size",
             "type": "string"
@@ -444,6 +751,14 @@
             "maxItems": 1,
             "minItems": 1,
             "title": "Product Groups",
+            "type": "array"
+          },
+          "reference_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Reference Asset Ids",
             "type": "array"
           }
         },
@@ -1248,7 +1563,11 @@
       "JobType": {
         "enum": [
           "local_edit",
-          "detail_pack"
+          "product_image",
+          "reference_remix",
+          "creative_image",
+          "detail_pack",
+          "amazon_visual_suite"
         ],
         "title": "JobType",
         "type": "string"
@@ -1488,6 +1807,266 @@
         "title": "ProductGroupInput",
         "type": "object"
       },
+      "ProductImageConfiguration": {
+        "properties": {
+          "aspect_ratio": {
+            "default": "1:1",
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9"
+            ],
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "image_count": {
+            "default": 1,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Image Count",
+            "type": "integer"
+          },
+          "instruction": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "platform_code": {
+            "default": "tmall",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Platform Code",
+            "type": "string"
+          },
+          "target_color": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Color"
+          },
+          "task_type": {
+            "enum": [
+              "scene_main",
+              "white_background",
+              "model_image",
+              "change_model",
+              "try_on",
+              "change_scene",
+              "change_background",
+              "change_color"
+            ],
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_type"
+        ],
+        "title": "ProductImageConfiguration",
+        "type": "object"
+      },
+      "ProductImageInput": {
+        "properties": {
+          "product_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Product Asset Ids",
+            "type": "array"
+          },
+          "reference_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Reference Asset Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_asset_ids"
+        ],
+        "title": "ProductImageInput",
+        "type": "object"
+      },
+      "ProductImageJobCreate": {
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/ProductImageConfiguration"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ProductImageInput"
+          },
+          "intent": {
+            "default": "submit",
+            "enum": [
+              "draft",
+              "submit"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "type": {
+            "const": "product_image",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "input",
+          "configuration"
+        ],
+        "title": "ProductImageJobCreate",
+        "type": "object"
+      },
+      "ReferenceRemixConfiguration": {
+        "properties": {
+          "aspect_ratio": {
+            "default": "1:1",
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9"
+            ],
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "image_count": {
+            "default": 1,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Image Count",
+            "type": "integer"
+          },
+          "instruction": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "language": {
+            "default": "zh-CN",
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Language",
+            "type": "string"
+          },
+          "platform_code": {
+            "default": "tmall",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Platform Code",
+            "type": "string"
+          },
+          "selling_points": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Selling Points",
+            "type": "array"
+          }
+        },
+        "title": "ReferenceRemixConfiguration",
+        "type": "object"
+      },
+      "ReferenceRemixInput": {
+        "properties": {
+          "product_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Product Asset Ids",
+            "type": "array"
+          },
+          "reference_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Reference Asset Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_asset_ids",
+          "reference_asset_ids"
+        ],
+        "title": "ReferenceRemixInput",
+        "type": "object"
+      },
+      "ReferenceRemixJobCreate": {
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/ReferenceRemixConfiguration"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReferenceRemixInput"
+          },
+          "intent": {
+            "default": "submit",
+            "enum": [
+              "draft",
+              "submit"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "type": {
+            "const": "reference_remix",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "input",
+          "configuration"
+        ],
+        "title": "ReferenceRemixJobCreate",
+        "type": "object"
+      },
       "RetryRequest": {
         "properties": {
           "item_ids": {
@@ -1529,6 +2108,14 @@
           "external_authentication": {
             "$ref": "#/components/schemas/CapabilityStatus",
             "description": "External authentication capability. A configured mode alone does not mean that the implementation is available."
+          },
+          "features": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CapabilityStatus"
+            },
+            "description": "Configuration-driven workflow capability map.",
+            "title": "Features",
+            "type": "object"
           },
           "local_edit": {
             "$ref": "#/components/schemas/CapabilityStatus",
@@ -2419,8 +3006,12 @@
               "schema": {
                 "discriminator": {
                   "mapping": {
+                    "amazon_visual_suite": "#/components/schemas/AmazonVisualSuiteJobCreate",
+                    "creative_image": "#/components/schemas/CreativeImageJobCreate",
                     "detail_pack": "#/components/schemas/DetailPackJobCreate",
-                    "local_edit": "#/components/schemas/LocalEditJobCreate"
+                    "local_edit": "#/components/schemas/LocalEditJobCreate",
+                    "product_image": "#/components/schemas/ProductImageJobCreate",
+                    "reference_remix": "#/components/schemas/ReferenceRemixJobCreate"
                   },
                   "propertyName": "type"
                 },
@@ -2429,7 +3020,19 @@
                     "$ref": "#/components/schemas/LocalEditJobCreate"
                   },
                   {
+                    "$ref": "#/components/schemas/ProductImageJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReferenceRemixJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CreativeImageJobCreate"
+                  },
+                  {
                     "$ref": "#/components/schemas/DetailPackJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AmazonVisualSuiteJobCreate"
                   }
                 ],
                 "title": "Payload"

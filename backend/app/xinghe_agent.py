@@ -673,13 +673,16 @@ def compile_page_prompt(
     )
 
 
-def load_planner_system_prompt(skill_root: Path) -> str:
+def load_planner_system_prompt(
+    skill_root: Path,
+    skill_id: str = "xinghe-ecommerce-detail",
+) -> str:
     """Load the pinned direct-Codex protocol after manifest verification."""
 
     sections: list[str] = [
         (
             "You are the production runtime for the pinned "
-            "xinghe-ecommerce-detail skill. Follow every included protocol "
+            f"{skill_id} skill. Follow every included protocol "
             "as authoritative. Perform one combined product-analysis and "
             "page-planning pass; do not call images when planning is invalid."
         )
@@ -1425,6 +1428,7 @@ class XinghePlanningCoordinator:
         medium_price_micros: int = DEFAULT_MEDIUM_PRICE_MICROS,
         high_price_micros: int = DEFAULT_HIGH_PRICE_MICROS,
         budget_limit_micros: int = DEFAULT_BUDGET_LIMIT_MICROS,
+        skill_id: str = "xinghe-ecommerce-detail",
     ) -> None:
         if medium_price_micros < 0 or high_price_micros < 0:
             raise ValueError("Image prices cannot be negative.")
@@ -1438,6 +1442,7 @@ class XinghePlanningCoordinator:
         self.medium_price_micros = medium_price_micros
         self.high_price_micros = high_price_micros
         self.budget_limit_micros = budget_limit_micros
+        self.skill_id = skill_id
 
     async def plan(self, job_id: str) -> JobStatus | None:
         reserved = self._reserve(job_id)
@@ -1445,7 +1450,7 @@ class XinghePlanningCoordinator:
             return reserved
         plan_id, requests = reserved
         try:
-            system_prompt = load_planner_system_prompt(self.skill_root)
+            system_prompt = load_planner_system_prompt(self.skill_root, self.skill_id)
             requests = tuple(
                 replace(request, system_prompt=system_prompt) for request in requests
             )
@@ -1703,6 +1708,16 @@ class XinghePlanningCoordinator:
             configuration.get("settings"),
             "AGENT_CONFIGURATION_INVALID",
         )
+        if self.skill_id == "xinghe-ecommerce-detail-domestic-3":
+            from .domestic_detail_provider import (
+                domestic_detail_prompt_configuration,
+            )
+            from .new_detail_skill_provider import AdapterValidationError
+
+            try:
+                domestic_detail_prompt_configuration(settings)
+            except AdapterValidationError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
         groups = input_configuration.get("product_groups")
         if not isinstance(groups, list) or not groups:
             raise XingheAgentError(
@@ -1827,7 +1842,7 @@ class XinghePlanningCoordinator:
         requests: tuple[PlannerRequest, ...],
     ) -> None:
         registry = SkillManifestRegistry.bundled()
-        registry.verify_source("xinghe-ecommerce-detail", self.skill_root)
+        registry.verify_source(self.skill_id, self.skill_root)
         if quota_enabled():
             reservation = session.scalar(
                 select(CreditReservationRecord).where(
@@ -2360,6 +2375,7 @@ class XingheImageProvider:
         skill_root: Path,
         max_concurrency: int,
         budget_limit_micros: int = DEFAULT_BUDGET_LIMIT_MICROS,
+        skill_id: str = "xinghe-ecommerce-detail",
     ) -> None:
         if max_concurrency not in {1, 2, 6}:
             raise ValueError("Xinghe concurrency must be one of 1, 2, or 6.")
@@ -2369,6 +2385,7 @@ class XingheImageProvider:
         self.skill_root = skill_root
         self.max_concurrency = max_concurrency
         self.budget_limit_micros = budget_limit_micros
+        self.skill_id = skill_id
         self.model = gateway.image_model
         self.pricing_version = gateway.pricing_version
         self._semaphore = asyncio.Semaphore(max_concurrency)
@@ -2500,7 +2517,7 @@ class XingheImageProvider:
         request: ProviderRequest,
     ) -> tuple[dict[str, Any], tuple[SourceImage, ...]]:
         SkillManifestRegistry.bundled().verify_source(
-            "xinghe-ecommerce-detail",
+            self.skill_id,
             self.skill_root,
         )
         item_configuration = _require_mapping(

@@ -15,7 +15,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import default_masked_skill_root, default_xinghe_skill_root
+from .config import (
+    default_masked_skill_root,
+    default_skill_root,
+    default_xinghe_skill_root,
+)
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
@@ -140,9 +144,14 @@ class ExecutionCoordinator:
         if current == JobStatus.PLANNING:
             if self.detail_planner is None:
                 return self.fail_missing_detail_planner(job_id)
-            return await self.detail_planner.plan(job_id)
+            planned = await self.detail_planner.plan(job_id)
+            current = self.auto_confirm_detail_plan(job_id, planned)
+            if current != JobStatus.PROCESSING:
+                return current
         if current == JobStatus.AWAITING_CONFIRMATION:
-            return current
+            current = self.auto_confirm_detail_plan(job_id, current)
+            if current != JobStatus.PROCESSING:
+                return current
 
         while True:
             leases: list[AttemptLease] = []
@@ -199,6 +208,73 @@ class ExecutionCoordinator:
                 )
             session.commit()
             return JobStatus(job.status)
+
+    def auto_confirm_detail_plan(
+        self,
+        job_id: str,
+        planned_status: JobStatus | None,
+    ) -> JobStatus | None:
+        """Auto-confirm only the explicitly opted-in domestic detail flow."""
+
+        if planned_status != JobStatus.AWAITING_CONFIRMATION:
+            return planned_status
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            settings = job.configuration.get("settings")
+            if not isinstance(settings, dict):
+                return JobStatus(job.status)
+            if (
+                job.type != JobType.DETAIL_PACK.value
+                or settings.get("market_region") != "domestic"
+                or settings.get("auto_start_after_plan") is not True
+                or JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION
+            ):
+                return JobStatus(job.status)
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job.id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if (
+                plan is None
+                or plan.validation_status != PlanValidationStatus.VALID.value
+            ):
+                return JobStatus(job.status)
+
+            from .xinghe_agent import synchronize_confirmed_plan
+
+            synchronize_confirmed_plan(session, job, plan)
+            confirmed_at = plan.confirmed_at or utc_now()
+            plan.confirmed_at = confirmed_at
+            session.add(
+                AuditEventRecord(
+                    workspace_id=job.workspace_id,
+                    actor_user_id=None,
+                    action="detail_plan.auto_confirmed",
+                    resource_type="job_plan",
+                    resource_id=plan.id,
+                    request_id=job.id,
+                    details={
+                        "job_id": job.id,
+                        "plan_revision": plan.revision,
+                        "market_region": "domestic",
+                        "auto_start_after_plan": True,
+                        "confirmed_at": confirmed_at.isoformat(),
+                    },
+                )
+            )
+            transition_job(
+                job,
+                JobStatus.PROCESSING,
+                stage="generating",
+                progress=20,
+            )
+            session.commit()
+            return JobStatus.PROCESSING
 
     def fail_missing_detail_planner(self, job_id: str) -> JobStatus | None:
         """Fail closed; static/template planning fallback is forbidden."""
@@ -792,11 +868,7 @@ class ExecutionCoordinator:
                         job_item_id=item.id,
                         asset_id=asset_id,
                         direction=JobAssetDirection.OUTPUT.value,
-                        role=(
-                            "local_edit_result"
-                            if job.type == JobType.LOCAL_EDIT.value
-                            else "detail_page"
-                        ),
+                        role=_output_asset_role(job.type),
                         ordinal=item.ordinal,
                         is_deliverable=True,
                         validation={
@@ -1113,6 +1185,19 @@ class ExecutionCoordinator:
         return self.finalize_job(job_id)
 
 
+
+
+def _output_asset_role(job_type: str) -> str:
+    return {
+        JobType.LOCAL_EDIT.value: "local_edit_result",
+        JobType.PRODUCT_IMAGE.value: "product_image_result",
+        JobType.REFERENCE_REMIX.value: "reference_remix_result",
+        JobType.CREATIVE_IMAGE.value: "creative_image_result",
+        JobType.DETAIL_PACK.value: "detail_page",
+        JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual",
+    }.get(job_type, "generated_image")
+
+
 def build_fake_coordinator(
     session_factory: sessionmaker[Session],
     delay_seconds: float,
@@ -1125,9 +1210,19 @@ def build_fake_coordinator(
     high_price_micros: int = 90_000,
     xinghe_skill_root: Path | None = None,
 ) -> ExecutionCoordinator:
+    from .amazon_visual_suite_provider import AmazonVisualSuiteProvider
+    from .creative_image_provider import CreativeImageProvider
+    from .domestic_detail_provider import DomesticDetailProvider
+    from .new_detail_skill_provider import BundledSkillManifestValidator
+    from .product_image_provider import ProductImageProvider
+    from .provider_registry import (
+        DetailMarketRoutingPlanner,
+        RegisteredOperationRoutingProvider,
+        UnavailableProvider,
+    )
+    from .reference_remix_provider import ReferenceRemixProvider
     from .xinghe_agent import (
         FakeXingheGateway,
-        OperationRoutingProvider,
         XingheGateway,
         XingheImageProvider,
         XinghePlanningCoordinator,
@@ -1139,12 +1234,13 @@ def build_fake_coordinator(
     else:
         gateway = cast("XingheGateway", xinghe_gateway)
     skill_root = xinghe_skill_root or default_xinghe_skill_root()
+    base_url_signature = str(getattr(gateway, "base_url", "mock://local"))
     planner = XinghePlanningCoordinator(
         session_factory,
         gateway,
         storage=storage,
         skill_root=skill_root,
-        base_url_signature=str(getattr(gateway, "base_url", "mock://local")),
+        base_url_signature=base_url_signature,
         medium_price_micros=medium_price_micros,
         high_price_micros=high_price_micros,
         budget_limit_micros=budget_limit_micros,
@@ -1156,6 +1252,34 @@ def build_fake_coordinator(
         skill_root=skill_root,
         max_concurrency=xinghe_concurrency,
         budget_limit_micros=budget_limit_micros,
+    )
+    domestic_skill_id = "xinghe-ecommerce-detail-domestic-3"
+    domestic_skill_root = default_skill_root(domestic_skill_id)
+    domestic_planner = XinghePlanningCoordinator(
+        session_factory,
+        gateway,
+        storage=storage,
+        skill_root=domestic_skill_root,
+        base_url_signature=base_url_signature,
+        medium_price_micros=medium_price_micros,
+        high_price_micros=high_price_micros,
+        budget_limit_micros=budget_limit_micros,
+        skill_id=domestic_skill_id,
+    )
+    domestic_detail_delegate = XingheImageProvider(
+        session_factory,
+        gateway,
+        storage=storage,
+        skill_root=domestic_skill_root,
+        max_concurrency=xinghe_concurrency,
+        budget_limit_micros=budget_limit_micros,
+        skill_id=domestic_skill_id,
+    )
+    domestic_detail_provider = DomesticDetailProvider(domestic_detail_delegate)
+    routed_planner = DetailMarketRoutingPlanner(
+        session_factory,
+        planner,
+        domestic_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
         session_factory,
@@ -1174,15 +1298,48 @@ def build_fake_coordinator(
             budget_limit_micros=budget_limit_micros,
             skill_root=default_masked_skill_root(),
         )
-    provider = OperationRoutingProvider(
+    manifest_validator = BundledSkillManifestValidator()
+    if xinghe_gateway is None:
+        new_routes: dict[str, Provider] = {
+            JobType.PRODUCT_IMAGE.value: default_provider,
+            JobType.REFERENCE_REMIX.value: default_provider,
+            JobType.CREATIVE_IMAGE.value: default_provider,
+            JobType.AMAZON_VISUAL_SUITE.value: AmazonVisualSuiteProvider(
+                default_provider,
+                manifest_validator=manifest_validator,
+            ),
+        }
+    else:
+        unavailable = UnavailableProvider()
+        new_routes = {
+            JobType.PRODUCT_IMAGE.value: ProductImageProvider(
+                unavailable,
+                manifest_validator=manifest_validator.validate,
+            ),
+            JobType.REFERENCE_REMIX.value: ReferenceRemixProvider(
+                unavailable,
+                manifest_validator=manifest_validator.validate,
+            ),
+            JobType.CREATIVE_IMAGE.value: CreativeImageProvider(
+                unavailable,
+                manifest_validator=manifest_validator.validate,
+            ),
+            JobType.AMAZON_VISUAL_SUITE.value: AmazonVisualSuiteProvider(
+                unavailable,
+                manifest_validator=manifest_validator,
+            ),
+        }
+    provider = RegisteredOperationRoutingProvider(
         default_provider,
         detail_provider,
         local_provider,
+        new_routes,
+        domestic_detail_provider=domestic_detail_provider,
     )
     return ExecutionCoordinator(
         session_factory,
         provider,
-        detail_planner=planner,
+        detail_planner=routed_planner,
         max_concurrency=xinghe_concurrency,
         max_detail_retries=2,
         artifact_storage=storage,

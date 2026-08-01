@@ -61,10 +61,12 @@ from .provider_quota import reserve_provider_job_quota
 from .schemas_v1 import (
     AccessUrlRequest,
     AccessUrlResponse,
+    AmazonVisualSuiteJobCreate,
     AssetListResponse,
     AssetResponse,
     CancelRequest,
     CapabilityStatus,
+    CreativeImageJobCreate,
     CurrentUserResponse,
     DetailPackJobCreate,
     DraftJobUpdate,
@@ -76,6 +78,8 @@ from .schemas_v1 import (
     PlanConfirmRequest,
     PlanResponse,
     PlanUpdateRequest,
+    ProductImageJobCreate,
+    ReferenceRemixJobCreate,
     RetryRequest,
     RuntimeCapabilities,
     RuntimeStatusResponse,
@@ -313,11 +317,34 @@ def runtime_status_response(
             reason_code=None,
         )
     )
+    mock_feature_status = CapabilityStatus(
+        availability="available",
+        execution="mock",
+        reason_code="TASK_RUNNER_MOCK",
+    )
+    unregistered_provider_status = CapabilityStatus(
+        availability="unavailable",
+        execution="none",
+        reason_code="REAL_PROVIDER_NOT_REGISTERED",
+    )
+    feature_status = (
+        mock_feature_status
+        if task_runner == "mock"
+        else unregistered_provider_status
+    )
     return RuntimeStatusResponse(
         environment=environment,
         authentication_mode=authentication_mode,
         task_runner=task_runner,
         capabilities=RuntimeCapabilities(
+            features={
+                "local_edit": local_edit,
+                "product_image": feature_status,
+                "reference_remix": feature_status,
+                "creative_image": feature_status,
+                "detail_pack": detail_pack,
+                "amazon_visual_suite": feature_status,
+            },
             asset_management=CapabilityStatus(
                 availability="available",
                 execution="local",
@@ -1316,7 +1343,14 @@ def confirm_plan(
 
 def _new_job_from_payload(
     workspace_id: str,
-    payload: LocalEditJobCreate | DetailPackJobCreate,
+    payload: (
+        LocalEditJobCreate
+        | ProductImageJobCreate
+        | ReferenceRemixJobCreate
+        | CreativeImageJobCreate
+        | DetailPackJobCreate
+        | AmazonVisualSuiteJobCreate
+    ),
     *,
     detail_medium_price_micros: int = 45_000,
     detail_high_price_micros: int = 90_000,
@@ -1327,26 +1361,68 @@ def _new_job_from_payload(
             (payload.input.source_asset_id, "source", 0),
             (payload.input.selection_mask_asset_id, "selection_mask", 0),
         ]
-    else:
+    elif isinstance(payload, (ProductImageJobCreate, ReferenceRemixJobCreate)):
+        item_count = payload.configuration.image_count
+        asset_roles = [
+            *[
+                (asset_id, "product_reference", ordinal)
+                for ordinal, asset_id in enumerate(payload.input.product_asset_ids)
+            ],
+            *[
+                (asset_id, "style_reference", ordinal)
+                for ordinal, asset_id in enumerate(payload.input.reference_asset_ids)
+            ],
+        ]
+    elif isinstance(payload, CreativeImageJobCreate):
+        item_count = payload.configuration.image_count
+        asset_roles = [
+            *[
+                (asset_id, "product_reference", ordinal)
+                for ordinal, asset_id in enumerate(payload.input.product_asset_ids)
+            ],
+            *[
+                (asset_id, "competitor_reference", ordinal)
+                for ordinal, asset_id in enumerate(payload.input.competitor_asset_ids)
+            ],
+        ]
+    elif isinstance(payload, DetailPackJobCreate):
         item_count = payload.configuration.page_count * len(
             payload.input.product_groups
         )
         asset_roles = [
-            (asset_id, "product_reference", ordinal)
-            for group in payload.input.product_groups
-            for ordinal, asset_id in enumerate(group.asset_ids)
+            *[
+                (asset_id, "product_reference", ordinal)
+                for group in payload.input.product_groups
+                for ordinal, asset_id in enumerate(group.asset_ids)
+            ],
+            *[
+                (asset_id, "style_reference", ordinal)
+                for ordinal, asset_id in enumerate(payload.input.reference_asset_ids)
+            ],
         ]
+    else:
+        item_count = 21
+        asset_roles = []
+        for role, asset_ids in (
+            (
+                "white_background_product",
+                payload.input.white_background_product_asset_ids,
+            ),
+            ("product_detail", payload.input.detail_asset_ids),
+            ("package_reference", payload.input.package_asset_ids),
+            ("scene_reference", payload.input.scene_asset_ids),
+            ("brand_reference", payload.input.brand_asset_ids),
+        ):
+            asset_roles.extend(
+                (asset_id, role, ordinal) for ordinal, asset_id in enumerate(asset_ids)
+            )
     if isinstance(payload, DetailPackJobCreate):
         minimum = item_count * detail_high_price_micros
         maximum = item_count * detail_high_price_micros
-        _, _, credits = estimate_job(JobType(payload.type), item_count)
     else:
-        minimum = min(
-            detail_medium_price_micros,
-            detail_high_price_micros,
-        )
-        maximum = max(detail_medium_price_micros, detail_high_price_micros)
-        _, _, credits = estimate_job(JobType(payload.type), item_count)
+        minimum = item_count * min(detail_medium_price_micros, detail_high_price_micros)
+        maximum = item_count * max(detail_medium_price_micros, detail_high_price_micros)
+    _, _, credits = estimate_job(JobType(payload.type), item_count)
     is_submit = payload.intent == "submit"
     job = JobRecord(
         id=new_id("job"),
@@ -1370,6 +1446,16 @@ def _new_job_from_payload(
     return job, asset_roles
 
 
+_UNREGISTERED_REAL_PROVIDER_JOB_TYPES = frozenset(
+    {
+        JobType.PRODUCT_IMAGE.value,
+        JobType.REFERENCE_REMIX.value,
+        JobType.CREATIVE_IMAGE.value,
+        JobType.AMAZON_VISUAL_SUITE.value,
+    }
+)
+
+
 def _reserve_real_provider_job_if_enabled(
     session: Session,
     request: Request,
@@ -1379,6 +1465,13 @@ def _reserve_real_provider_job_if_enabled(
     settings = request.app.state.settings
     if settings.task_runner != "tengli":
         return
+    if job.type in _UNREGISTERED_REAL_PROVIDER_JOB_TYPES:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "REAL_PROVIDER_NOT_REGISTERED",
+            "?????????? Provider???????????",
+            {"job_type": job.type, "provider_called": False},
+        )
     configuration = job.configuration if isinstance(job.configuration, dict) else {}
     input_configuration = configuration.get("input")
     group_count = 0
@@ -1410,6 +1503,49 @@ def _reserve_real_provider_job_if_enabled(
     )
 
 
+
+_AMAZON_ITEM_KEYS = (
+    "MAIN-01",
+    *(f"SECONDARY-{index:02d}" for index in range(1, 7)),
+    *(f"A-DESKTOP-{index:02d}" for index in range(1, 8)),
+    *(f"A-MOBILE-{index:02d}" for index in range(1, 8)),
+)
+
+
+def _job_item_key(job_type: str, ordinal: int) -> str:
+    if job_type == JobType.LOCAL_EDIT.value:
+        return "result"
+    if job_type == JobType.AMAZON_VISUAL_SUITE.value:
+        return _AMAZON_ITEM_KEYS[ordinal]
+    if job_type in {
+        JobType.PRODUCT_IMAGE.value,
+        JobType.REFERENCE_REMIX.value,
+        JobType.CREATIVE_IMAGE.value,
+    }:
+        return f"image-{ordinal + 1:03d}"
+    return f"page-{ordinal + 1:03d}"
+
+def _job_item_configuration(job_type: str, ordinal: int) -> dict[str, object]:
+    if job_type != JobType.AMAZON_VISUAL_SUITE.value:
+        return {}
+
+    from .amazon_visual_suite_provider import AMAZON_ITEM_SPECS
+
+    try:
+        spec = AMAZON_ITEM_SPECS[ordinal]
+    except IndexError as exc:
+        raise ValueError("Amazon visual suite item ordinal is out of range.") from exc
+    return {
+        "item_key": spec.item_key,
+        "group": spec.group,
+        "group_ordinal": spec.group_ordinal,
+        "target_width": spec.width,
+        "target_height": spec.height,
+        "target_size": {"width": spec.width, "height": spec.height},
+        "contact_sheet": False,
+    }
+
+
 def _add_items_and_inputs(
     session: Session,
     job: JobRecord,
@@ -1421,14 +1557,10 @@ def _add_items_and_inputs(
                 id=new_id("item"),
                 workspace_id=job.workspace_id,
                 job_id=job.id,
-                item_key=(
-                    "result"
-                    if job.type == JobType.LOCAL_EDIT
-                    else f"page-{ordinal + 1:03d}"
-                ),
+                item_key=_job_item_key(job.type, ordinal),
                 ordinal=ordinal,
                 status=JobItemStatus.PENDING.value,
-                configuration={},
+                configuration=_job_item_configuration(job.type, ordinal),
             )
         )
     for asset_id, role, ordinal in asset_roles:

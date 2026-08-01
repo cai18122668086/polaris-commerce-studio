@@ -1,4 +1,4 @@
-import type { components } from "./generated/openapi";
+﻿import type { components } from "./generated/openapi";
 
 export type Workspace = components["schemas"]["WorkspaceResponse"];
 export type Asset = components["schemas"]["AssetResponse"];
@@ -11,8 +11,21 @@ export type JobStatus = components["schemas"]["JobStatus"];
 export type JobType = components["schemas"]["JobType"];
 export type RetryScope = components["schemas"]["RetryScope"];
 export type LocalEditJobCreate = components["schemas"]["LocalEditJobCreate"];
+export type ProductImageJobCreate = components["schemas"]["ProductImageJobCreate"];
+export type ReferenceRemixJobCreate = components["schemas"]["ReferenceRemixJobCreate"];
+export type CreativeImageJobCreate = components["schemas"]["CreativeImageJobCreate"];
 export type DetailPackJobCreate = components["schemas"]["DetailPackJobCreate"];
+export type AmazonVisualSuiteJobCreate =
+  components["schemas"]["AmazonVisualSuiteJobCreate"];
+export type JobCreate =
+  | LocalEditJobCreate
+  | ProductImageJobCreate
+  | ReferenceRemixJobCreate
+  | CreativeImageJobCreate
+  | DetailPackJobCreate
+  | AmazonVisualSuiteJobCreate;
 export type RuntimeStatus = components["schemas"]["RuntimeStatusResponse"];
+export type CapabilityStatus = components["schemas"]["CapabilityStatus"];
 
 export const activeJobStatuses: JobStatus[] = [
   "queued",

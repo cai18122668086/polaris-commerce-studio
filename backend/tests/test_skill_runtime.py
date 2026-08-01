@@ -321,7 +321,13 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
     registry = SkillManifestRegistry.bundled()
     assert registry.skill_ids == (
         "masked-image-repair",
+        "xinghe-amazon-visual-suite",
+        "xinghe-crossborder-detail-3",
+        "xinghe-ecommerce-creative-image",
         "xinghe-ecommerce-detail",
+        "xinghe-ecommerce-detail-domestic-3",
+        "xinghe-reference-image-remix-3",
+        "xinghe-wanneng-shengtu-3-0",
     )
     masked = registry.get("masked-image-repair")
     xinghe = registry.get("xinghe-ecommerce-detail")

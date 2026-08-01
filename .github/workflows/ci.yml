@@ -63,6 +63,37 @@ jobs:
       - run: python -m alembic -c alembic.ini upgrade head
         working-directory: backend
       - run: python -m pytest backend
+      - name: Test deployment preflight
+        run: python -m unittest discover -s deploy/tests -v
+      - name: Validate deployment sources
+        run: python deploy/preflight.py --mode source
+      - name: Validate deployment Compose configuration
+        env:
+          POLARIS_BACKEND_IMAGE: polaris/backend:ci
+          POLARIS_FRONTEND_IMAGE: polaris/frontend:ci
+          POLARIS_PYTHON_BASE_IMAGE: python:ci@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          POLARIS_NODE_BASE_IMAGE: node:ci@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          POLARIS_POSTGRES_IMAGE: postgres:ci@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          POLARIS_REDIS_IMAGE: redis:ci@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+          POLARIS_MINIO_IMAGE: minio/minio:ci@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+          POLARIS_CADDY_IMAGE: caddy:ci@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+          POLARIS_POSTGRES_PASSWORD: ci-not-a-real-postgres-password
+          POLARIS_REDIS_PASSWORD: ci-not-a-real-redis-password
+          POLARIS_MINIO_ROOT_USER: ci-not-a-real-minio-user
+          POLARIS_MINIO_ROOT_PASSWORD: ci-not-a-real-minio-password
+          POLARIS_ACCESS_URL_SECRET: ci-not-a-real-access-url-secret
+          POLARIS_S3_BUCKET: polaris-ci-assets
+          POLARIS_DEVELOPMENT_USER_ID: usr_ci_synthetic
+          POLARIS_DEVELOPMENT_WORKSPACE_ID: ws_ci_synthetic
+          POLARIS_DEVELOPMENT_WORKSPACE_NAME: CI Synthetic Workspace
+          POLARIS_TASK_RUNNER: mock
+          POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED: "false"
+          POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED: "false"
+          POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED: "false"
+          POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED: "false"
+          POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED: "false"
+          POLARIS_TENGLI_API_KEY: ""
+        run: docker compose -f deploy/compose.internal.yml config --quiet
 
   contract:
     name: API contract

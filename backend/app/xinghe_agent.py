@@ -26,7 +26,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
-from PIL import Image, ImageChops, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -241,6 +241,7 @@ class ImageEditRequest:
     size: str
     output_format: str = IMAGE_FORMAT
     jpeg_quality: int = JPEG_QUALITY
+    preserve_provider_artifact: bool = False
 
 
 @dataclass(frozen=True)
@@ -818,6 +819,7 @@ class FakeXingheGateway:
                 payload,
                 filename=f"{request.group_key}-page-{request.page_number:03d}.jpg",
                 expected_size=request.size,
+                preserve_provider_artifact=request.preserve_provider_artifact,
             )
             group_token = hashlib.sha256(request.group_key.encode()).hexdigest()[:10]
             return ImageCallResult(
@@ -1160,6 +1162,7 @@ class TengliOpenAICompatibleGateway:
                 image_bytes,
                 filename=f"{request.group_key}-page-{request.page_number:03d}.jpg",
                 expected_size=request.size,
+                preserve_provider_artifact=request.preserve_provider_artifact,
             )
             return ImageCallResult(
                 outcome=ProviderOutcome.SUCCEEDED,
@@ -1716,6 +1719,16 @@ class XinghePlanningCoordinator:
 
             try:
                 domestic_detail_prompt_configuration(settings)
+            except AdapterValidationError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
+        elif self.skill_id == "xinghe-crossborder-detail-3":
+            from .crossborder_detail_provider import (
+                crossborder_detail_prompt_configuration,
+            )
+            from .new_detail_skill_provider import AdapterValidationError
+
+            try:
+                crossborder_detail_prompt_configuration(settings)
             except AdapterValidationError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
         groups = input_configuration.get("product_groups")
@@ -3665,24 +3678,58 @@ def _artifact_from_bytes(
     *,
     filename: str,
     expected_size: str,
+    preserve_provider_artifact: bool = False,
 ) -> ProviderArtifact:
+    expected_width, expected_height = _parse_image_size(expected_size)
     try:
         with Image.open(BytesIO(payload)) as image:
             width, height = image.size
-            image_format = image.format
+            image_format = str(image.format)
+            if width <= 0 or height <= 0 or width * height > 100_000_000:
+                raise ValueError("unsafe image dimensions")
             image.load()
-            materialized = image.convert("RGB")
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
+            materialized = ImageOps.exif_transpose(image).copy()
+    except (
+        Image.DecompressionBombError,
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as exc:
         raise XingheAgentError(
             "IMAGE_RESPONSE_INVALID",
             "Provider returned an invalid image.",
         ) from exc
+
+    provider_formats = {
+        "JPEG": ("image/jpeg", ".jpg"),
+        "PNG": ("image/png", ".png"),
+        "WEBP": ("image/webp", ".webp"),
+    }
+    provider_format = provider_formats.get(image_format)
+    if provider_format is None:
+        raise XingheAgentError(
+            "IMAGE_RESPONSE_FORMAT_INVALID",
+            "Provider returned an unsupported image format.",
+        )
+    content_type, suffix = provider_format
+    if preserve_provider_artifact:
+        return ProviderArtifact(
+            payload=payload,
+            filename=_replace_image_suffix(filename, suffix),
+            content_type=content_type,
+            width=width,
+            height=height,
+            sha256=hashlib.sha256(payload).hexdigest(),
+            locally_resampled=False,
+            provider_width=width,
+            provider_height=height,
+        )
+
     if image_format != "JPEG":
         raise XingheAgentError(
             "IMAGE_RESPONSE_FORMAT_INVALID",
             "Provider did not return the requested JPEG format.",
         )
-    expected_width, expected_height = _parse_image_size(expected_size)
     locally_resampled = width != expected_width or height != expected_height
     if locally_resampled:
         if width * expected_height != height * expected_width:
@@ -3690,7 +3737,7 @@ def _artifact_from_bytes(
                 "IMAGE_RESPONSE_SIZE_INVALID",
                 "Provider returned an image with an incompatible aspect ratio.",
             )
-        materialized = materialized.resize(
+        materialized = materialized.convert("RGB").resize(
             (expected_width, expected_height),
             Image.Resampling.LANCZOS,
         )
@@ -3713,6 +3760,11 @@ def _artifact_from_bytes(
         provider_width=width,
         provider_height=height,
     )
+
+
+def _replace_image_suffix(filename: str, suffix: str) -> str:
+    stem = filename.rsplit(".", maxsplit=1)[0] if "." in filename else filename
+    return f"{stem}{suffix}"
 
 
 def _tengli_transparent_hole_png(source_png: bytes, api_mask_png: bytes) -> bytes:

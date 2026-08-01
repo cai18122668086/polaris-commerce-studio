@@ -1,11 +1,14 @@
 import asyncio
 import hashlib
+import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
 from app.amazon_visual_suite_provider import (
+    AMAZON_AUDIT_CONFIGURATION_KEY,
     AMAZON_EXPECTED_ITEM_COUNT,
     AMAZON_ITEM_KEYS,
     AMAZON_ITEM_SPECS,
@@ -26,6 +29,7 @@ from app.new_detail_skill_provider import (
     AdapterValidationError,
     BundledSkillManifestValidator,
 )
+from app.new_image_skill_provider import SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
 from app.provider import (
     ProviderArtifact,
     ProviderOutcome,
@@ -33,6 +37,43 @@ from app.provider import (
     ProviderResult,
 )
 from app.skill_runtime import SkillManifestRegistry, SkillRuntimeError
+from app.xinghe_single_image_provider import DEFAULT_ALLOWED_PROMPT_FIELDS
+
+
+def _assert_strict_single_image_envelope(request: ProviderRequest) -> None:
+    envelope = request.configuration[SKILL_ADAPTER_CONFIGURATION_KEY]
+    assert set(envelope) == {
+        "schema_version",
+        "skill_id",
+        "skill_content_hash",
+        "operation",
+        "item_key",
+        "item_ordinal",
+        "source_assets",
+        "target",
+        "prompt_input",
+    }
+    identifier = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}")
+    assert identifier.fullmatch(envelope["item_key"])
+    assert 1 <= len(envelope["source_assets"]) <= 8
+    target = envelope["target"]
+    assert set(target) == {
+        "width",
+        "height",
+        "aspect_ratio",
+        "quality",
+        "output_format",
+        "fit",
+    }
+    assert isinstance(target["width"], int) and target["width"] > 0
+    assert isinstance(target["height"], int) and target["height"] > 0
+    divisor = math.gcd(target["width"], target["height"])
+    assert target["aspect_ratio"] == (
+        f"{target['width'] // divisor}:{target['height'] // divisor}"
+    )
+    assert target["fit"] in {"cover", "contain", "pad"}
+    assert set(envelope["prompt_input"]) <= DEFAULT_ALLOWED_PROMPT_FIELDS
+    assert all(value not in ("", []) for value in envelope["prompt_input"].values())
 
 
 @dataclass
@@ -94,8 +135,34 @@ def _amazon_request(
     }
     return _request(
         operation,
-        {"job": {"settings": {"marketplace": marketplace}}, "item": item},
+        {
+            "job": {
+                "input": {
+                    "white_background_product_asset_ids": ["asset-white"],
+                    "detail_asset_ids": ["asset-detail"],
+                    "package_asset_ids": ["asset-package"],
+                    "scene_asset_ids": ["asset-scene"],
+                    "brand_asset_ids": ["asset-brand"],
+                },
+                "settings": {
+                    "marketplace": marketplace,
+                    "product_name": "Test product",
+                    "listing_title": "Test listing",
+                    "bullet_points": ["Point one"],
+                    "brand_colors": ["navy"],
+                    "language": "en-US",
+                    "private_note": "must-not-reach-envelope",
+                },
+            },
+            "item": item,
+        },
     )
+
+
+class StrictRecordingDelegate(RecordingDelegate):
+    async def execute(self, request: ProviderRequest) -> ProviderResult:
+        _assert_strict_single_image_envelope(request)
+        return await super().execute(request)
 
 
 def _artifact(width: int, height: int) -> ProviderArtifact:
@@ -400,7 +467,7 @@ def test_amazon_inventory_and_dimension_mapping_are_canonical() -> None:
 
 def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
     delegated_result = ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
-    delegate = RecordingDelegate(delegated_result)
+    delegate = StrictRecordingDelegate(delegated_result)
     validator = RecordingManifestValidator()
     provider = AmazonVisualSuiteProvider(
         delegate,
@@ -416,10 +483,44 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
     adapter = delegate.requests[0].configuration[
         SKILL_ADAPTER_CONFIGURATION_KEY
     ]
-    assert adapter["expected_item_count"] == 21
-    assert tuple(adapter["canonical_item_keys"]) == AMAZON_ITEM_KEYS
-    assert adapter["item"] == {
+    assert adapter["schema_version"] == SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
+    assert adapter["skill_id"] == "xinghe-amazon-visual-suite"
+    assert adapter["skill_content_hash"] == "a" * 64
+    assert adapter["operation"] == "amazon_visual_suite"
+    assert adapter["item_key"] == "A-DESKTOP-03"
+    assert adapter["item_ordinal"] == AMAZON_ITEM_KEYS.index("A-DESKTOP-03")
+    assert adapter["source_assets"] == [
+        {"asset_id": "asset-white", "role": "white_background_product"},
+        {"asset_id": "asset-detail", "role": "product_detail"},
+        {"asset_id": "asset-package", "role": "package_reference"},
+        {"asset_id": "asset-scene", "role": "scene_reference"},
+        {"asset_id": "asset-brand", "role": "brand_reference"},
+    ]
+    assert adapter["target"] == {
+        "aspect_ratio": "61:25",
+        "width": 1464,
+        "height": 600,
+        "quality": "high",
+        "output_format": "png",
+        "fit": "cover",
+    }
+    assert adapter["prompt_input"] == {
+        "marketplace": "amazon-us",
+        "product_name": "Test product",
+        "product_information": ["Test listing", "Point one"],
+        "color_palette": ["navy"],
+        "language": "en-US",
+        "composition": "a_desktop",
+        "image_count": 1,
+    }
+    assert "private_note" not in adapter["prompt_input"]
+    audit = delegate.requests[0].configuration[AMAZON_AUDIT_CONFIGURATION_KEY]
+    assert audit["expected_item_count"] == 21
+    assert tuple(audit["canonical_item_keys"]) == AMAZON_ITEM_KEYS
+    assert audit["contact_sheet"] is False
+    assert audit["item"] == {
         "item_key": "A-DESKTOP-03",
+        "delegate_item_key": "A-DESKTOP-03",
         "group": "a_desktop",
         "group_ordinal": 3,
         "target_width": 1464,

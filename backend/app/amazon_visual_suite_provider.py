@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from math import gcd
 from typing import Any
 
 from app.amazon_visual_suite_contract import (
@@ -18,13 +19,24 @@ from app.new_detail_skill_provider import (
     job_configuration_from,
     rejected_result,
 )
+from app.new_image_skill_provider import (
+    SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION,
+    NewImageSkillContractError,
+    compact_prompt_input,
+    optional_string,
+    optional_string_list,
+    require_asset_ids,
+    role_labelled_assets,
+    validate_optional_asset_ids,
+)
 from app.provider import Provider, ProviderOutcome, ProviderRequest, ProviderResult
 from app.skill_runtime import SkillRuntimeError
 
 AMAZON_VISUAL_SUITE_OPERATION = "amazon_visual_suite"
 AMAZON_VISUAL_SUITE_SKILL_ID = "xinghe-amazon-visual-suite"
-AMAZON_ADAPTER_CONTRACT_VERSION = "amazon-visual-suite-adapter-v1"
+AMAZON_ADAPTER_CONTRACT_VERSION = SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
 AMAZON_EXPECTED_ITEM_COUNT = 21
+AMAZON_AUDIT_CONFIGURATION_KEY = "amazon_visual_suite_audit"
 
 
 @dataclass(frozen=True)
@@ -130,14 +142,25 @@ class AmazonVisualSuiteProvider:
             content_hash = self.manifest_validator.validate(
                 AMAZON_VISUAL_SUITE_SKILL_ID
             )
+            if not isinstance(content_hash, str) or not content_hash.strip():
+                raise AdapterValidationError(
+                    "SKILL_MANIFEST_VALIDATION_FAILED",
+                    "The Skill manifest validator did not return a content hash.",
+                )
             routed_request, spec = self.prepare_request(
                 request,
-                content_hash=content_hash,
+                content_hash=content_hash.strip(),
             )
         except SkillRuntimeError as exc:
             return rejected_result(self, exc.code, str(exc))
-        except AdapterValidationError as exc:
+        except (AdapterValidationError, NewImageSkillContractError) as exc:
             return rejected_result(self, exc.code, str(exc))
+        except Exception as exc:
+            return rejected_result(
+                self,
+                "SKILL_MANIFEST_VALIDATION_FAILED",
+                f"Skill manifest validation failed ({type(exc).__name__}).",
+            )
 
         result = await self.delegate.execute(routed_request)
         if result.outcome != ProviderOutcome.SUCCEEDED:
@@ -172,14 +195,36 @@ class AmazonVisualSuiteProvider:
         _validate_requested_dimensions(item_configuration, spec)
         _validate_group_semantics(item_configuration, spec)
 
+        input_configuration = _job_input_configuration(request.configuration)
+        source_assets = _amazon_source_assets(input_configuration)
+        item_ordinal = AMAZON_ITEM_KEYS.index(spec.item_key)
+        prompt_input = _amazon_prompt_input(job_configuration, spec)
+        aspect_ratio = _aspect_ratio(spec.width, spec.height)
         adapter_configuration = {
             "schema_version": AMAZON_ADAPTER_CONTRACT_VERSION,
             "skill_id": AMAZON_VISUAL_SUITE_SKILL_ID,
             "skill_content_hash": content_hash,
+            "operation": AMAZON_VISUAL_SUITE_OPERATION,
+            "item_key": spec.item_key,
+            "item_ordinal": item_ordinal,
+            "source_assets": source_assets,
+            "target": {
+                "aspect_ratio": aspect_ratio,
+                "width": spec.width,
+                "height": spec.height,
+                "quality": "high",
+                "output_format": "png",
+                "fit": "cover",
+            },
+            "prompt_input": prompt_input,
+        }
+        audit_configuration = {
             "expected_item_count": AMAZON_EXPECTED_ITEM_COUNT,
             "canonical_item_keys": AMAZON_ITEM_KEYS,
+            "contact_sheet": False,
             "item": {
                 "item_key": spec.item_key,
+                "delegate_item_key": spec.item_key,
                 "group": spec.group,
                 "group_ordinal": spec.group_ordinal,
                 "target_width": spec.width,
@@ -194,6 +239,7 @@ class AmazonVisualSuiteProvider:
                 configuration={
                     **request.configuration,
                     SKILL_ADAPTER_CONFIGURATION_KEY: adapter_configuration,
+                    AMAZON_AUDIT_CONFIGURATION_KEY: audit_configuration,
                 },
             ),
             spec,
@@ -229,6 +275,7 @@ class AmazonVisualSuiteProvider:
             ),
             retryable=False,
             artifact=None,
+            persisted_artifact=None,
         )
 
 
@@ -242,6 +289,83 @@ def _item_configuration(configuration: Mapping[str, Any]) -> Mapping[str, Any]:
             "Amazon item configuration must be an object.",
         )
     return nested
+
+
+def _job_input_configuration(configuration: Mapping[str, Any]) -> Mapping[str, Any]:
+    job = configuration.get("job")
+    if job is None:
+        return {}
+    if not isinstance(job, Mapping):
+        raise AdapterValidationError(
+            "JOB_CONFIGURATION_INVALID",
+            "Provider request job configuration must be an object.",
+        )
+    value = job.get("input")
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise AdapterValidationError(
+            "JOB_INPUT_INVALID",
+            "Provider request job input must be an object.",
+        )
+    return value
+
+
+def _amazon_source_assets(
+    input_configuration: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    white_background = require_asset_ids(
+        input_configuration,
+        "white_background_product_asset_ids",
+    )
+    detail = validate_optional_asset_ids(input_configuration, "detail_asset_ids")
+    package = validate_optional_asset_ids(input_configuration, "package_asset_ids")
+    scene = validate_optional_asset_ids(input_configuration, "scene_asset_ids")
+    brand = validate_optional_asset_ids(input_configuration, "brand_asset_ids")
+    return role_labelled_assets(
+        ("white_background_product", white_background),
+        ("product_detail", detail),
+        ("package_reference", package),
+        ("scene_reference", scene),
+        ("brand_reference", brand),
+    )
+
+
+def _amazon_prompt_input(
+    job_configuration: Mapping[str, Any],
+    spec: AmazonItemSpec,
+) -> dict[str, Any]:
+    """Compile only the explicit Amazon prompt whitelist."""
+
+    listing_title = optional_string(job_configuration, "listing_title")
+    bullet_points = optional_string_list(job_configuration, "bullet_points")
+    product_information = [
+        value for value in (listing_title, *bullet_points) if value
+    ]
+    return compact_prompt_input(
+        {
+            "marketplace": optional_string(
+                job_configuration,
+                "marketplace",
+                default=AMAZON_DEFAULT_MARKETPLACE,
+            ),
+            "product_name": optional_string(job_configuration, "product_name"),
+            "product_information": product_information,
+            "color_palette": optional_string_list(
+                job_configuration, "brand_colors"
+            ),
+            "language": optional_string(
+                job_configuration, "language", default="en-US"
+            ),
+            "composition": spec.group,
+            "image_count": 1,
+        }
+    )
+
+
+def _aspect_ratio(width: int, height: int) -> str:
+    divisor = gcd(width, height)
+    return f"{width // divisor}:{height // divisor}"
 
 
 def _required_item_key(configuration: Mapping[str, Any]) -> str:

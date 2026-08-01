@@ -41,6 +41,15 @@ EXPECTED_SERVICE_NETWORKS = {
 }
 LONG_RUNNING_SERVICES = EXPECTED_SERVICES - {"migrate"}
 PROVIDER_SERVICES = {"api", "worker"}
+PROVIDER_FLAG_SERVICES = {"api", "worker", "dispatcher"}
+PROVIDER_FLAG_KEYS = (
+    "POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED",
+    "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED",
+    "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED",
+    "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED",
+    "POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED",
+)
+PROVIDER_QUOTA_KEY = "POLARIS_PROVIDER_QUOTA_ENABLED"
 MOCK_SERVICES = {"migrate", "dispatcher"}
 ALLOWED_TASK_RUNNERS = {"mock", "tengli"}
 THIRD_PARTY_IMAGE_KEYS = {
@@ -357,6 +366,18 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
     runner_expression = "POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}"
     if compose.count(runner_expression) != 1:
         errors.append("the Provider runner must be environment-selectable with mock default")
+    quota_expression = (
+        "POLARIS_PROVIDER_QUOTA_ENABLED: "
+        "${POLARIS_PROVIDER_QUOTA_ENABLED:-false}"
+    )
+    if compose.count(quota_expression) != 1:
+        errors.append(
+            "Provider quota must be environment-selectable with false default"
+        )
+    for key in PROVIDER_FLAG_KEYS:
+        expression = f"{key}: ${{{key}:-false}}"
+        if compose.count(expression) != 1:
+            errors.append(f"{key} must be environment-selectable with false default")
     if compose.count("POLARIS_ASSET_ACCESS_URL_MODE: same_origin") != 1:
         errors.append("internal S3 assets must use the same-origin access proxy")
     skill_root_expression = (
@@ -369,6 +390,9 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
     for name in PROVIDER_SERVICES:
         if provider_merge not in services.get(name, ""):
             errors.append(f"{name} is missing the shared Provider configuration")
+    for name in PROVIDER_FLAG_SERVICES:
+        if "*backend-common-environment" not in services.get(name, ""):
+            errors.append(f"{name} is missing the shared Provider feature switches")
     for name in MOCK_SERVICES:
         if "POLARIS_TASK_RUNNER: mock" not in services.get(name, ""):
             errors.append(f"{name} is not explicitly pinned to the mock runner")
@@ -592,10 +616,23 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
             )
 
     example = parse_env(deploy / ".env.internal.example")
+    backend_example_path = repo_root / "backend" / ".env.example"
+    if backend_example_path.is_file():
+        backend_example = parse_env(backend_example_path)
+    else:
+        backend_example = {}
+        errors.append("backend/.env.example is missing")
     for key in SENSITIVE_KEYS | PROVIDER_SENSITIVE_KEYS:
         value = example.get(key, "")
         if not (value.startswith("<") and value.endswith(">")):
             errors.append(f"example value for {key} must remain an unusable marker")
+    for key in PROVIDER_FLAG_KEYS:
+        for path, values in (
+            ("deploy/.env.internal.example", example),
+            ("backend/.env.example", backend_example),
+        ):
+            if values.get(key) != "false":
+                errors.append(f"{path} must default {key} to false")
     for key in THIRD_PARTY_IMAGE_KEYS | APPLICATION_IMAGE_KEYS | {"POLARIS_RELEASE_SHA"}:
         value = example.get(key, "")
         if not (value.startswith("<") or "<" in value):
@@ -741,10 +778,31 @@ def validate_deployment(
             errors.append(f"{key} is missing or still a placeholder")
 
 
+    provider_flags: dict[str, bool] = {}
+    for key in PROVIDER_FLAG_KEYS:
+        raw_value = values.get(key, "false")
+        if raw_value not in {"true", "false"}:
+            errors.append(f"{key} must be true or false")
+        provider_flags[key] = raw_value == "true"
+    any_provider_enabled = any(provider_flags.values())
+
     runner = values.get("POLARIS_TASK_RUNNER", "mock")
     if runner not in ALLOWED_TASK_RUNNERS:
         errors.append("POLARIS_TASK_RUNNER must be mock or tengli")
-    elif runner == "tengli":
+    if any_provider_enabled and runner != "tengli":
+        errors.append("Provider feature switches require POLARIS_TASK_RUNNER=tengli")
+
+    quota_raw = values.get(PROVIDER_QUOTA_KEY, "false")
+    if quota_raw not in {"true", "false"}:
+        errors.append(f"{PROVIDER_QUOTA_KEY} must be true or false")
+    quota_enabled = quota_raw == "true"
+    real_provider_requested = runner == "tengli" or any_provider_enabled
+    if real_provider_requested and not quota_enabled:
+        errors.append(
+            f"{PROVIDER_QUOTA_KEY} must be true for real Provider execution"
+        )
+
+    if real_provider_requested:
         for key in PROVIDER_SENSITIVE_KEYS:
             value = values.get(key, "")
             upper = value.upper()

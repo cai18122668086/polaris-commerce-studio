@@ -10,10 +10,16 @@ provider-egress network; the frontend never receives Provider configuration.
 
 Execution defaults to the mock runner. The API and worker can use the shared
 Tengli adapter only after daily and monthly cost limits plus a daily request
-limit are approved in the server-local environment. A real job reserves its
-maximum retry exposure before queueing, and planner/image execution fails closed
-without that durable reservation. Internal S3 downloads always use the
-same-origin content proxy; browsers never receive the `minio:9000` endpoint.
+limit are approved in the server-local environment. The five Provider feature
+switches default to `false`; API, worker, and dispatcher receive the same switch
+values, while Provider credentials remain limited to API and worker. Enabling
+any switch requires `POLARIS_TASK_RUNNER=tengli`,
+`POLARIS_PROVIDER_QUOTA_ENABLED=true`, a non-placeholder Provider API key, and
+all existing endpoint, model, budget, request-limit, reserve, and concurrency
+gates. A real job reserves its maximum retry exposure before
+queueing, and planner/image execution fails closed without that durable
+reservation. Internal S3 downloads always use the same-origin content proxy;
+browsers never receive the `minio:9000` endpoint.
 
 ## Non-negotiable boundaries
 
@@ -26,7 +32,9 @@ same-origin content proxy; browsers never receive the `minio:9000` endpoint.
   images, build contexts, logs, command output, or support bundles.
 - Never use this development identity profile as a public site.
 - Do not enable transport-upgrade policy on this HTTP-only staging endpoint.
-- Do not enable the real Provider runner without approved daily/monthly cost and daily request caps.
+- Do not enable the real Provider runner or any Provider feature switch without
+  `POLARIS_PROVIDER_QUOTA_ENABLED=true`, a replaced API-key placeholder, and
+  approved daily/monthly cost and daily request caps.
 
 The real environment file exists only as `/etc/polaris/polaris.env`, owned by
 `root:root` with mode `0600`. Create it in place on the server with `sudoedit`;
@@ -46,9 +54,11 @@ python deploy/preflight.py --mode source
 python -m unittest discover -s deploy/tests -v
 ```
 
-Source validation checks the service set, default-mock runner selection,
-worker-only Provider egress, loopback binding, image indirection, resource and
-log limits, hardening, CSP, security headers, and secret placeholders.
+Source validation checks the service set, default-mock runner selection, all
+five default-false Provider switches in both environment examples, consistent
+API/worker/dispatcher switch propagation, worker-only Provider egress, loopback
+binding, image indirection, resource and log limits, hardening, CSP, security
+headers, and secret placeholders.
 
 The product supplies `backend/requirements.lock` with exact versions and real
 SHA-256 hashes. The backend image performs exactly one dependency installation
@@ -178,9 +188,12 @@ docker compose \
 
 Inspect the rendered output without copying it off the server. Confirm exactly
 nine services and four networks; migrate and dispatcher pinned to mock; API and
-worker using the shared default-mock Provider settings; only worker on
+worker using the shared default-mock Provider settings; API, worker, and
+dispatcher receiving identical values for all five Provider feature switches;
+only API and worker receiving Provider credentials; only worker on
 provider-egress; only Caddy on ingress; edge and backend internal; and only
-`127.0.0.1:8080:8080` published.
+`127.0.0.1:8080:8080` published. With all five switches at `false`, this config
+supports internal validation without authorizing a Provider request.
 
 The server is not assumed to have a Caddy CLI or cached image. After the fixed
 Caddy image has been acquired under explicit authorization, validate with that
@@ -260,11 +273,15 @@ The following phase is documentation, not authorization:
 9. Confirm the only listener is loopback 8080 and all non-Caddy services have
    no host port.
 10. Through the SSH tunnel, run live/ready checks and complete both workflows in
-    mock mode. After recurring beta limits are explicitly approved, set the
-    daily/monthly cost caps and daily request cap, switch only the server-local
-    runner to `tengli`, and restart API and worker. Confirm a bounded front-end
-    job reserves quota once, successful pages are not re-billed, downloads use
-    the same-origin proxy, and local-edit reports zero changed pixels outside
+    mock mode with all five Provider feature switches set to `false`. After
+    recurring beta limits are explicitly approved, replace the Provider API-key
+    placeholder, set the daily/monthly cost caps and daily request cap, set
+    `POLARIS_PROVIDER_QUOTA_ENABLED=true`, switch the server-local runner to
+    `tengli`, enable only the approved feature
+    switch(es), and restart API, worker, and dispatcher. Confirm a bounded
+    front-end job reserves quota once, successful pages are not re-billed,
+    downloads use the same-origin proxy, and local-edit reports zero changed
+    pixels outside
     the authority mask.
 11. Observe logs, restarts, queue depth, API errors, disk, inodes, memory, and
     CPU for the approved observation window before accepting the release.

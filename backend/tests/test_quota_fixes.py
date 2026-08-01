@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 from io import BytesIO
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -18,8 +19,14 @@ from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import routes_v1, services
 from app.config import Settings
-from app.domain import CreditReservationStatus, JobStatus, JobType, RetryScope
+from app.domain import (
+    CreditReservationStatus,
+    JobItemStatus,
+    JobStatus,
+    JobType,
+)
 from app.main import create_app
 from app.models import (
     CreditLedgerEntryRecord,
@@ -27,8 +34,8 @@ from app.models import (
     JobItemRecord,
     JobRecord,
     WorkspaceCreditAccountRecord,
+    utc_now,
 )
-from app import services
 from app.services import (
     new_id,
     release_credits,
@@ -330,6 +337,95 @@ def test_quota_enabled_flag_is_read_from_config(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 # Integration — retry endpoint releases source reservation
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("job_type", "provider_flag", "total_items", "selected_count"),
+    [
+        (JobType.PRODUCT_IMAGE, "product_image_provider_enabled", 4, 1),
+        (
+            JobType.AMAZON_VISUAL_SUITE,
+            "amazon_visual_suite_provider_enabled",
+            21,
+            2,
+        ),
+    ],
+)
+def test_partial_retry_reserves_only_runnable_provider_requests(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    job_type: JobType,
+    provider_flag: str,
+    total_items: int,
+    selected_count: int,
+) -> None:
+    quota_calls: list[dict[str, Any]] = []
+
+    def record_quota(_session: Session, **kwargs: Any) -> None:
+        quota_calls.append(kwargs)
+
+    monkeypatch.setattr(routes_v1, "reserve_provider_job_quota", record_quota)
+    client.app.state.settings.task_runner = "tengli"
+    setattr(client.app.state.settings, provider_flag, True)
+
+    with client.app.state.session_factory() as session:
+        source = JobRecord(
+            id=new_id("job"),
+            workspace_id=WORKSPACE_ID,
+            type=job_type.value,
+            status=JobStatus.FAILED.value,
+            stage="failed",
+            configuration={"input": {}, "settings": {}},
+            expected_item_count=total_items,
+            failed_item_count=total_items,
+            estimated_cost_min_micros=total_items * 45_000,
+            estimated_cost_max_micros=total_items * 90_000,
+            estimated_credits=total_items,
+            currency="USD",
+            finished_at=utc_now(),
+        )
+        session.add(source)
+        session.flush()
+        source_items = [
+            JobItemRecord(
+                id=new_id("item"),
+                workspace_id=WORKSPACE_ID,
+                job_id=source.id,
+                item_key=routes_v1._job_item_key(job_type.value, ordinal),
+                ordinal=ordinal,
+                status=JobItemStatus.FAILED.value,
+                stage="failed",
+            )
+            for ordinal in range(total_items)
+        ]
+        session.add_all(source_items)
+        session.commit()
+        source_id = source.id
+        selected_ids = [item.id for item in source_items[:selected_count]]
+
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{source_id}/retry",
+        headers=_idem(),
+        json={"scope": "selected", "item_ids": selected_ids},
+    )
+
+    assert response.status_code == 201, response.text
+    assert len(quota_calls) == 1
+    reservation = quota_calls[0]
+    assert reservation["provider_request_count"] == selected_count
+    assert reservation["job"].expected_item_count == total_items
+
+    retried_job_id = response.json()["id"]
+    with client.app.state.session_factory() as session:
+        runnable_count = session.scalar(
+            select(func.count())
+            .select_from(JobItemRecord)
+            .where(
+                JobItemRecord.job_id == retried_job_id,
+                JobItemRecord.status == JobItemStatus.PENDING.value,
+            )
+        )
+    assert runnable_count == selected_count
 
 
 def _image_payload(

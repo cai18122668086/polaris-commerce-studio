@@ -28,6 +28,11 @@ class MockTaskRunner:
         medium_price_micros: int = 45_000,
         high_price_micros: int = 90_000,
         xinghe_skill_root: Path | None = None,
+        product_image_provider_enabled: bool = False,
+        reference_remix_provider_enabled: bool = False,
+        creative_image_provider_enabled: bool = False,
+        amazon_visual_suite_provider_enabled: bool = False,
+        crossborder_detail_provider_enabled: bool = False,
     ) -> None:
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
@@ -39,6 +44,15 @@ class MockTaskRunner:
             medium_price_micros=medium_price_micros,
             high_price_micros=high_price_micros,
             xinghe_skill_root=xinghe_skill_root,
+            product_image_provider_enabled=product_image_provider_enabled,
+            reference_remix_provider_enabled=reference_remix_provider_enabled,
+            creative_image_provider_enabled=creative_image_provider_enabled,
+            amazon_visual_suite_provider_enabled=(
+                amazon_visual_suite_provider_enabled
+            ),
+            crossborder_detail_provider_enabled=(
+                crossborder_detail_provider_enabled
+            ),
         )
 
     @property
@@ -55,6 +69,24 @@ class MockTaskRunner:
 def validate_task_runner_settings(settings: Settings) -> None:
     """Reject unsafe real-provider configuration without exposing secret values."""
 
+    provider_feature_enabled = any(
+        (
+            settings.product_image_provider_enabled,
+            settings.reference_remix_provider_enabled,
+            settings.creative_image_provider_enabled,
+            settings.amazon_visual_suite_provider_enabled,
+            settings.crossborder_detail_provider_enabled,
+        )
+    )
+    real_provider_requested = (
+        settings.task_runner == "tengli" or provider_feature_enabled
+    )
+    if not real_provider_requested:
+        return
+    if not settings.provider_quota_enabled:
+        raise RuntimeError(
+            "real Provider execution requires provider quota to be enabled"
+        )
     if settings.task_runner == "mock":
         return
     if not settings.tengli_api_key.get_secret_value().strip():
@@ -100,6 +132,7 @@ def build_task_runner(
 ) -> MockTaskRunner:
     """Build the configured runner for every API and worker startup path."""
 
+    validate_task_runner_settings(settings)
     set_quota_enabled(settings.provider_quota_enabled)
     if settings.task_runner == "mock":
         return MockTaskRunner(
@@ -113,7 +146,6 @@ def build_task_runner(
             xinghe_skill_root=settings.xinghe_skill_root,
         )
 
-    validate_task_runner_settings(settings)
     return build_tengli_task_runner(
         session_factory,
         settings,
@@ -143,4 +175,13 @@ def build_tengli_task_runner(
         medium_price_micros=settings.xinghe_medium_price_micros,
         high_price_micros=settings.xinghe_high_price_micros,
         xinghe_skill_root=settings.xinghe_skill_root,
+        product_image_provider_enabled=settings.product_image_provider_enabled,
+        reference_remix_provider_enabled=settings.reference_remix_provider_enabled,
+        creative_image_provider_enabled=settings.creative_image_provider_enabled,
+        amazon_visual_suite_provider_enabled=(
+            settings.amazon_visual_suite_provider_enabled
+        ),
+        crossborder_detail_provider_enabled=(
+            settings.crossborder_detail_provider_enabled
+        ),
     )

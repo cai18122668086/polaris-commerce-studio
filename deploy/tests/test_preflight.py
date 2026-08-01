@@ -52,6 +52,18 @@ class SourcePreflightTests(unittest.TestCase):
     def test_allowed_task_runners_are_explicit(self) -> None:
         self.assertEqual(PREFLIGHT.ALLOWED_TASK_RUNNERS, {"mock", "tengli"})
 
+    def test_provider_feature_switches_are_explicit(self) -> None:
+        self.assertEqual(
+            PREFLIGHT.PROVIDER_FLAG_KEYS,
+            (
+                "POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED",
+                "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED",
+                "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED",
+                "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED",
+                "POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED",
+            ),
+        )
+
     def write_fixture(self, target: Path, filename: str, transform: object) -> None:
         (target / "deploy").mkdir()
         (target / "backend").mkdir()
@@ -63,6 +75,15 @@ class SourcePreflightTests(unittest.TestCase):
                 encoding="utf-8"
             ),
             encoding="utf-8",
+        )
+        backend_env_text = (self.repo_root / "backend" / ".env.example").read_text(
+            encoding="utf-8"
+        )
+        if filename == "backend/.env.example":
+            self.assertTrue(callable(transform))
+            backend_env_text = transform(backend_env_text)
+        (target / "backend" / ".env.example").write_text(
+            backend_env_text, encoding="utf-8"
         )
         source_deploy = self.repo_root / "deploy"
         package_text = (self.repo_root / "package.json").read_text(encoding="utf-8")
@@ -133,6 +154,54 @@ class SourcePreflightTests(unittest.TestCase):
             ),
         )
         self.assertTrue(any("environment-selectable" in item for item in errors))
+
+    def test_provider_quota_expression_is_fail_closed(self) -> None:
+        errors = self.validate_mutation(
+            "compose.internal.yml",
+            lambda text: text.replace(
+                "POLARIS_PROVIDER_QUOTA_ENABLED: "
+                "${POLARIS_PROVIDER_QUOTA_ENABLED:-false}",
+                "POLARIS_PROVIDER_QUOTA_ENABLED: true",
+                1,
+            ),
+        )
+        self.assertTrue(any("Provider quota" in item for item in errors))
+
+    def test_provider_switch_defaults_are_fail_closed(self) -> None:
+        for key in PREFLIGHT.PROVIDER_FLAG_KEYS:
+            with self.subTest(key=key):
+                errors = self.validate_mutation(
+                    "compose.internal.yml",
+                    lambda text, key=key: text.replace(
+                        f"{key}: ${{{key}:-false}}",
+                        f"{key}: ${{{key}:-true}}",
+                        1,
+                    ),
+                )
+                self.assertTrue(any(key in item for item in errors))
+
+    def test_provider_switch_examples_default_false(self) -> None:
+        for filename in ("backend/.env.example", ".env.internal.example"):
+            for key in PREFLIGHT.PROVIDER_FLAG_KEYS:
+                with self.subTest(filename=filename, key=key):
+                    errors = self.validate_mutation(
+                        filename,
+                        lambda text, key=key: text.replace(
+                            f"{key}=false", f"{key}=true", 1
+                        ),
+                    )
+                    self.assertTrue(any(key in item and "default" in item for item in errors))
+
+    def test_provider_switches_reach_runtime_services(self) -> None:
+        compose = (self.repo_root / "deploy" / "compose.internal.yml").read_text(
+            encoding="utf-8"
+        )
+        services = PREFLIGHT.parse_services(compose)
+        for service in PREFLIGHT.PROVIDER_FLAG_SERVICES:
+            with self.subTest(service=service):
+                self.assertIn("*backend-common-environment", services[service])
+        for key in PREFLIGHT.PROVIDER_FLAG_KEYS:
+            self.assertEqual(compose.count(f"{key}: ${{{key}:-false}}"), 1)
 
     def test_internal_asset_access_is_pinned_to_same_origin(self) -> None:
         errors = self.validate_mutation(
@@ -442,7 +511,7 @@ class SourcePreflightTests(unittest.TestCase):
         )
         self.assertEqual(errors, [])
 
-    def test_synthetic_deployment_black_box_passes(self) -> None:
+    def synthetic_deployment_values(self) -> dict[str, str]:
         digest_bases = (
             "0123456789abcdef",
             "123456789abcdef0",
@@ -452,36 +521,143 @@ class SourcePreflightTests(unittest.TestCase):
             "56789abcdef01234",
         )
         release = "1a07d3ad6b75c93037d519f040839fe685957d00"
-        lines = [
-            f"POLARIS_RELEASE_SHA={release}",
-            f"POLARIS_BACKEND_IMAGE=polaris/backend:{release}",
-            f"POLARIS_FRONTEND_IMAGE=polaris/frontend:{release}",
-            f"POLARIS_PYTHON_BASE_IMAGE=python:3.13.14-slim@sha256:{digest_bases[0] * 4}",
-            f"POLARIS_NODE_BASE_IMAGE=node:22.22.0-bookworm-slim@sha256:{digest_bases[1] * 4}",
-            f"POLARIS_POSTGRES_IMAGE=postgres:18.4-alpine@sha256:{digest_bases[2] * 4}",
-            f"POLARIS_REDIS_IMAGE=redis:8.6.4-alpine@sha256:{digest_bases[3] * 4}",
-            (
-                "POLARIS_MINIO_IMAGE="
+        values = {
+            "POLARIS_RELEASE_SHA": release,
+            "POLARIS_BACKEND_IMAGE": f"polaris/backend:{release}",
+            "POLARIS_FRONTEND_IMAGE": f"polaris/frontend:{release}",
+            "POLARIS_PYTHON_BASE_IMAGE": f"python:3.13.14-slim@sha256:{digest_bases[0] * 4}",
+            "POLARIS_NODE_BASE_IMAGE": f"node:22.22.0-bookworm-slim@sha256:{digest_bases[1] * 4}",
+            "POLARIS_POSTGRES_IMAGE": f"postgres:18.4-alpine@sha256:{digest_bases[2] * 4}",
+            "POLARIS_REDIS_IMAGE": f"redis:8.6.4-alpine@sha256:{digest_bases[3] * 4}",
+            "POLARIS_MINIO_IMAGE": (
                 "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
                 f"{digest_bases[4] * 4}"
             ),
-            f"POLARIS_CADDY_IMAGE=caddy:2.10.2-alpine@sha256:{digest_bases[5] * 4}",
-            "POLARIS_POSTGRES_PASSWORD=synthetic-postgres-value",
-            "POLARIS_REDIS_PASSWORD=synthetic-redis-value",
-            "POLARIS_MINIO_ROOT_USER=synthetic-minio-user",
-            "POLARIS_MINIO_ROOT_PASSWORD=synthetic-minio-value",
-            "POLARIS_ACCESS_URL_SECRET=synthetic-signing-value",
-            "POLARIS_TASK_RUNNER=tengli",
-            "POLARIS_TENGLI_API_KEY=synthetic-provider-key",
-            "POLARIS_TENGLI_BASE_URL=https://provider.example.test/v1",
-            "POLARIS_TENGLI_IMAGE_MODEL=synthetic-image-model",
-            "POLARIS_TENGLI_VISION_MODEL=synthetic-vision-model",
-            "POLARIS_TENGLI_SMOKE_BUDGET_USD=2",
-            "POLARIS_TENGLI_DAILY_BUDGET_USD=2",
-            "POLARIS_TENGLI_MONTHLY_BUDGET_USD=10",
-            "POLARIS_TENGLI_DAILY_REQUEST_LIMIT=20",
-            "POLARIS_TENGLI_PLANNER_RESERVE_MICROS=250000",
-            "POLARIS_XINGHE_CONCURRENCY=2",
+            "POLARIS_CADDY_IMAGE": f"caddy:2.10.2-alpine@sha256:{digest_bases[5] * 4}",
+            "POLARIS_POSTGRES_PASSWORD": "synthetic-postgres-value",
+            "POLARIS_REDIS_PASSWORD": "synthetic-redis-value",
+            "POLARIS_MINIO_ROOT_USER": "synthetic-minio-user",
+            "POLARIS_MINIO_ROOT_PASSWORD": "synthetic-minio-value",
+            "POLARIS_ACCESS_URL_SECRET": "synthetic-signing-value",
+            "POLARIS_TASK_RUNNER": "tengli",
+            "POLARIS_PROVIDER_QUOTA_ENABLED": "true",
+            "POLARIS_TENGLI_API_KEY": "synthetic-provider-key",
+            "POLARIS_TENGLI_BASE_URL": "https://provider.example.test/v1",
+            "POLARIS_TENGLI_IMAGE_MODEL": "synthetic-image-model",
+            "POLARIS_TENGLI_VISION_MODEL": "synthetic-vision-model",
+            "POLARIS_TENGLI_SMOKE_BUDGET_USD": "2",
+            "POLARIS_TENGLI_DAILY_BUDGET_USD": "2",
+            "POLARIS_TENGLI_MONTHLY_BUDGET_USD": "10",
+            "POLARIS_TENGLI_DAILY_REQUEST_LIMIT": "20",
+            "POLARIS_TENGLI_PLANNER_RESERVE_MICROS": "250000",
+            "POLARIS_XINGHE_CONCURRENCY": "2",
+        }
+        values.update({key: "false" for key in PREFLIGHT.PROVIDER_FLAG_KEYS})
+        return values
+
+    def validate_synthetic_deployment(self, **overrides: str) -> list[str]:
+        values = self.synthetic_deployment_values()
+        values.update(overrides)
+        with tempfile.TemporaryDirectory() as temporary:
+            env_file = Path(temporary) / "synthetic.env"
+            env_file.write_text(
+                "".join(f"{key}={value}\n" for key, value in values.items()),
+                encoding="utf-8",
+            )
+            errors, _, _ = PREFLIGHT.validate_deployment(
+                repo_root=self.repo_root,
+                env_file=env_file,
+                host_memory_mib=4096,
+                host_cpus=4,
+                free_disk_mib=40960,
+                free_inode_percent=50,
+                candidate_images_mib=4096,
+                paired_backup_mib=4096,
+            )
+        return errors
+
+    def test_provider_switches_require_tengli(self) -> None:
+        for key in PREFLIGHT.PROVIDER_FLAG_KEYS:
+            with self.subTest(key=key):
+                errors = self.validate_synthetic_deployment(
+                    POLARIS_TASK_RUNNER="mock",
+                    **{key: "true"},
+                )
+                self.assertTrue(
+                    any("require POLARIS_TASK_RUNNER=tengli" in item for item in errors)
+                )
+
+    def test_tengli_runner_requires_provider_quota(self) -> None:
+        errors = self.validate_synthetic_deployment(
+            POLARIS_PROVIDER_QUOTA_ENABLED="false",
+        )
+        self.assertTrue(
+            any(
+                "POLARIS_PROVIDER_QUOTA_ENABLED must be true" in item
+                for item in errors
+            )
+        )
+
+    def test_tengli_runner_with_provider_quota_passes(self) -> None:
+        errors = self.validate_synthetic_deployment(
+            POLARIS_PROVIDER_QUOTA_ENABLED="true",
+        )
+        self.assertEqual(errors, [])
+
+    def test_provider_switches_require_provider_quota(self) -> None:
+        for key in PREFLIGHT.PROVIDER_FLAG_KEYS:
+            with self.subTest(key=key):
+                errors = self.validate_synthetic_deployment(
+                    POLARIS_PROVIDER_QUOTA_ENABLED="false",
+                    **{key: "true"},
+                )
+                self.assertTrue(
+                    any(
+                        "POLARIS_PROVIDER_QUOTA_ENABLED must be true" in item
+                        for item in errors
+                    )
+                )
+
+    def test_invalid_provider_quota_value_is_rejected(self) -> None:
+        errors = self.validate_synthetic_deployment(
+            POLARIS_PROVIDER_QUOTA_ENABLED="yes",
+        )
+        self.assertTrue(
+            any(
+                "POLARIS_PROVIDER_QUOTA_ENABLED must be true or false" in item
+                for item in errors
+            )
+        )
+
+    def test_enabled_provider_switch_rejects_placeholder_credential(self) -> None:
+        key = PREFLIGHT.PROVIDER_FLAG_KEYS[0]
+        errors = self.validate_synthetic_deployment(
+            POLARIS_TENGLI_API_KEY="<SET_ON_SERVER_PROVIDER_API_KEY>",
+            **{key: "true"},
+        )
+        self.assertTrue(any("POLARIS_TENGLI_API_KEY" in item for item in errors))
+
+    def test_disabled_provider_switches_allow_mock_without_provider_credential(self) -> None:
+        errors = self.validate_synthetic_deployment(
+            POLARIS_TASK_RUNNER="mock",
+            POLARIS_PROVIDER_QUOTA_ENABLED="false",
+            POLARIS_TENGLI_API_KEY="<SET_ON_SERVER_PROVIDER_API_KEY>",
+        )
+        self.assertEqual(errors, [])
+
+    def test_invalid_provider_switch_value_is_rejected(self) -> None:
+        key = PREFLIGHT.PROVIDER_FLAG_KEYS[0]
+        errors = self.validate_synthetic_deployment(**{key: "yes"})
+        self.assertTrue(any(f"{key} must be true or false" in item for item in errors))
+
+    def test_enabled_provider_switch_with_valid_tengli_configuration_passes(self) -> None:
+        key = PREFLIGHT.PROVIDER_FLAG_KEYS[0]
+        errors = self.validate_synthetic_deployment(**{key: "true"})
+        self.assertEqual(errors, [])
+
+    def test_synthetic_deployment_black_box_passes(self) -> None:
+        lines = [
+            f"{key}={value}" for key, value in self.synthetic_deployment_values().items()
         ]
         with tempfile.TemporaryDirectory() as temporary:
             env_file = Path(temporary) / "synthetic.env"

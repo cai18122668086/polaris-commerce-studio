@@ -290,6 +290,11 @@ def runtime_status_response(
     environment: Literal["development", "test", "production"],
     authentication_mode: Literal["development", "external"],
     task_runner: Literal["mock", "tengli"],
+    product_image_provider_enabled: bool = False,
+    reference_remix_provider_enabled: bool = False,
+    creative_image_provider_enabled: bool = False,
+    amazon_visual_suite_provider_enabled: bool = False,
+    crossborder_detail_provider_enabled: bool = False,
 ) -> RuntimeStatusResponse:
     local_edit = (
         CapabilityStatus(
@@ -327,24 +332,38 @@ def runtime_status_response(
         execution="none",
         reason_code="REAL_PROVIDER_NOT_REGISTERED",
     )
-    feature_status = (
-        mock_feature_status
-        if task_runner == "mock"
-        else unregistered_provider_status
+    registered_provider_status = CapabilityStatus(
+        availability="available",
+        execution="provider",
+        reason_code=None,
     )
+
+    def feature_status(enabled: bool) -> CapabilityStatus:
+        if task_runner == "mock":
+            return mock_feature_status
+        return registered_provider_status if enabled else unregistered_provider_status
+
+    features = {
+        "local_edit": local_edit,
+        "product_image": feature_status(product_image_provider_enabled),
+        "reference_remix": feature_status(reference_remix_provider_enabled),
+        "creative_image": feature_status(creative_image_provider_enabled),
+        "detail_pack": detail_pack,
+        "amazon_visual_suite": feature_status(
+            amazon_visual_suite_provider_enabled
+        ),
+    }
+    if task_runner == "tengli":
+        features["crossborder_detail"] = feature_status(
+            crossborder_detail_provider_enabled
+        )
+
     return RuntimeStatusResponse(
         environment=environment,
         authentication_mode=authentication_mode,
         task_runner=task_runner,
         capabilities=RuntimeCapabilities(
-            features={
-                "local_edit": local_edit,
-                "product_image": feature_status,
-                "reference_remix": feature_status,
-                "creative_image": feature_status,
-                "detail_pack": detail_pack,
-                "amazon_visual_suite": feature_status,
-            },
+            features=features,
             asset_management=CapabilityStatus(
                 availability="available",
                 execution="local",
@@ -381,6 +400,15 @@ def get_runtime_status(
         environment=settings.environment,
         authentication_mode=settings.auth_mode,
         task_runner=settings.task_runner,
+        product_image_provider_enabled=settings.product_image_provider_enabled,
+        reference_remix_provider_enabled=settings.reference_remix_provider_enabled,
+        creative_image_provider_enabled=settings.creative_image_provider_enabled,
+        amazon_visual_suite_provider_enabled=(
+            settings.amazon_visual_suite_provider_enabled
+        ),
+        crossborder_detail_provider_enabled=(
+            settings.crossborder_detail_provider_enabled
+        ),
     )
 
 
@@ -1098,6 +1126,7 @@ def retry_job(
         request,
         retried,
         workspace.principal.user_id,
+        runnable_item_count=len(selected),
     )
     reserve_credits(
         session,
@@ -1446,14 +1475,12 @@ def _new_job_from_payload(
     return job, asset_roles
 
 
-_UNREGISTERED_REAL_PROVIDER_JOB_TYPES = frozenset(
-    {
-        JobType.PRODUCT_IMAGE.value,
-        JobType.REFERENCE_REMIX.value,
-        JobType.CREATIVE_IMAGE.value,
-        JobType.AMAZON_VISUAL_SUITE.value,
-    }
-)
+_REAL_PROVIDER_ENABLE_FLAGS = {
+    JobType.PRODUCT_IMAGE.value: "product_image_provider_enabled",
+    JobType.REFERENCE_REMIX.value: "reference_remix_provider_enabled",
+    JobType.CREATIVE_IMAGE.value: "creative_image_provider_enabled",
+    JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual_suite_provider_enabled",
+}
 
 
 def _reserve_real_provider_job_if_enabled(
@@ -1461,11 +1488,14 @@ def _reserve_real_provider_job_if_enabled(
     request: Request,
     job: JobRecord,
     actor_user_id: str,
+    *,
+    runnable_item_count: int | None = None,
 ) -> None:
     settings = request.app.state.settings
     if settings.task_runner != "tengli":
         return
-    if job.type in _UNREGISTERED_REAL_PROVIDER_JOB_TYPES:
+    enable_flag = _REAL_PROVIDER_ENABLE_FLAGS.get(job.type)
+    if enable_flag is not None and not bool(getattr(settings, enable_flag, False)):
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "REAL_PROVIDER_NOT_REGISTERED",
@@ -1480,7 +1510,14 @@ def _reserve_real_provider_job_if_enabled(
         if isinstance(groups, list):
             group_count = len(groups)
     image_cost = int(job.estimated_cost_max_micros or 0)
-    if job.type == JobType.DETAIL_PACK.value:
+    if enable_flag is not None:
+        estimated_cost = image_cost
+        provider_requests = (
+            runnable_item_count
+            if runnable_item_count is not None
+            else job.expected_item_count
+        )
+    elif job.type == JobType.DETAIL_PACK.value:
         estimated_cost = (
             image_cost * 2 + group_count * settings.tengli_planner_reserve_micros
         )

@@ -127,7 +127,7 @@ def test_factory_tengli_selects_existing_real_builder(
     assert runner is sentinel
 
 
-def test_tengli_quota_disabled_accepts_zero_recurring_limits(
+def test_tengli_quota_disabled_fails_before_provider_construction(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -135,20 +135,61 @@ def test_tengli_quota_disabled_accepts_zero_recurring_limits(
         tmp_path,
         task_runner="tengli",
         provider_quota_enabled=False,
-        tengli_daily_budget_usd=0,
-        tengli_monthly_budget_usd=0,
-        tengli_daily_request_limit=0,
     )
-    sentinel = object()
+    provider_calls = 0
 
-    monkeypatch.setattr(
-        task_runner,
-        "build_tengli_task_runner",
-        lambda *args, **kwargs: sentinel,
+    def deny_provider(*args: object, **kwargs: object) -> MockTaskRunner:
+        nonlocal provider_calls
+        del args, kwargs
+        provider_calls += 1
+        raise AssertionError("provider construction must follow quota validation")
+
+    monkeypatch.setattr(task_runner, "build_tengli_task_runner", deny_provider)
+
+    for _, session_factory, storage in _factory_dependencies(settings):
+        with pytest.raises(RuntimeError, match="provider quota"):
+            task_runner.build_task_runner(session_factory, settings, storage)
+
+    assert provider_calls == 0
+
+
+@pytest.mark.parametrize(
+    "provider_flag",
+    [
+        "product_image_provider_enabled",
+        "reference_remix_provider_enabled",
+        "creative_image_provider_enabled",
+        "amazon_visual_suite_provider_enabled",
+        "crossborder_detail_provider_enabled",
+    ],
+)
+def test_enabled_provider_feature_requires_quota_even_with_mock_runner(
+    tmp_path: Path,
+    provider_flag: str,
+) -> None:
+    settings = _settings(
+        tmp_path,
+        task_runner="mock",
+        provider_quota_enabled=False,
+        **{provider_flag: True},
     )
 
     for _, session_factory, storage in _factory_dependencies(settings):
-        assert task_runner.build_task_runner(session_factory, settings, storage) is sentinel
+        with pytest.raises(RuntimeError, match="provider quota"):
+            task_runner.build_task_runner(session_factory, settings, storage)
+
+
+def test_default_mock_runner_still_allows_quota_disabled(tmp_path: Path) -> None:
+    settings = _settings(
+        tmp_path,
+        task_runner="mock",
+        provider_quota_enabled=False,
+    )
+
+    for _, session_factory, storage in _factory_dependencies(settings):
+        runner = task_runner.build_task_runner(session_factory, settings, storage)
+
+    assert isinstance(runner, MockTaskRunner)
 
 
 @pytest.mark.parametrize(

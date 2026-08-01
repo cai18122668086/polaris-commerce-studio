@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from math import ceil, sqrt
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from PIL import Image, ImageChops, ImageFilter, ImageOps, UnidentifiedImageError
 from sqlalchemy import func, select
@@ -419,14 +419,20 @@ class MaskedRepairProvider:
                 http_status=review.http_status,
             )
         review_estimated_cost = (
-            sum(attempt.estimated_cost_micros for attempt in review_attempts)
+            sum(
+                cast(int, attempt.estimated_cost_micros)
+                for attempt in review_attempts
+            )
             if all(
                 attempt.estimated_cost_micros is not None for attempt in review_attempts
             )
             else None
         )
         review_actual_cost = (
-            sum(attempt.actual_cost_micros for attempt in review_attempts)
+            sum(
+                cast(int, attempt.actual_cost_micros)
+                for attempt in review_attempts
+            )
             if all(
                 attempt.actual_cost_micros is not None for attempt in review_attempts
             )
@@ -1330,7 +1336,7 @@ def _aggregate_review_usage_value(
         isinstance(value, bool) or not isinstance(value, int) for value in values
     ):
         return None
-    return sum(values)
+    return sum(cast(int, value) for value in values)
 
 
 def _usage_record(

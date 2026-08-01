@@ -604,7 +604,10 @@ def release_credits(session: Session, job: JobRecord) -> None:
             CreditReservationRecord.job_id == job.id
         )
     )
-    if reservation is None or reservation.status != CreditReservationStatus.ACTIVE.value:
+    if (
+        reservation is None
+        or reservation.status != CreditReservationStatus.ACTIVE.value
+    ):
         return
 
     account = session.get(

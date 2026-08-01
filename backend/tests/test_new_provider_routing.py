@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
@@ -8,15 +8,22 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from app.amazon_visual_suite_provider import AmazonVisualSuiteProvider
+from app.amazon_visual_suite_provider import (
+    AMAZON_VISUAL_SUITE_SKILL_ID,
+    AmazonVisualSuiteProvider,
+)
 from app.config import default_skill_root, default_xinghe_skill_root
 from app.creative_image_provider import CreativeImageProvider
-from app.crossborder_detail_provider import CrossborderDetailProvider
+from app.crossborder_detail_provider import (
+    CROSSBORDER_DETAIL_SKILL_ID,
+    CrossborderDetailProvider,
+)
 from app.domain import JobStatus, JobType
 from app.domestic_detail_provider import (
     DOMESTIC_DETAIL_SKILL_ID,
     DomesticDetailProvider,
 )
+from app.execution import build_fake_coordinator
 from app.product_image_provider import ProductImageProvider
 from app.provider import (
     FakeProvider,
@@ -31,7 +38,13 @@ from app.provider_registry import (
 )
 from app.reference_remix_provider import ReferenceRemixProvider
 from app.skill_runtime import SkillRuntimeProvider
-from app.xinghe_agent import XingheImageProvider, XinghePlanningCoordinator
+from app.task_runner import build_tengli_task_runner
+from app.xinghe_agent import (
+    FakeXingheGateway,
+    XingheImageProvider,
+    XinghePlanningCoordinator,
+)
+from app.xinghe_single_image_provider import XingheSingleImageProvider
 from tests.test_api import WORKSPACE_ID, idem, upload_asset
 
 
@@ -87,6 +100,8 @@ def _create_detail_job(
     client: TestClient,
     asset_id: str,
     market_region: str,
+    *,
+    platform_code: str | None = None,
 ) -> str:
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
@@ -101,7 +116,8 @@ def _create_detail_job(
             },
             "configuration": {
                 "product_name": f"{market_region} routing",
-                "platform_code": "tmall" if market_region == "domestic" else "amazon",
+                "platform_code": platform_code
+                or ("tmall" if market_region == "domestic" else "amazon"),
                 "market_region": market_region,
                 "language": "zh-CN" if market_region == "domestic" else "en",
                 "page_count": 1,
@@ -185,7 +201,10 @@ def test_real_unregistered_new_image_routes_fail_closed_without_fake_fallback(
 ) -> None:
     fallback = FakeProvider()
     unavailable = TrackingUnavailableProvider()
-    route = adapter_type(unavailable, manifest_validator=lambda _skill_id: True)
+    route = adapter_type(
+        unavailable,
+        manifest_validator=lambda _skill_id: "a" * 64,
+    )
     detail = RecordingProvider("stable-detail")
     local = RecordingProvider("stable-local")
     domestic = RecordingProvider("domestic-detail")
@@ -302,3 +321,259 @@ def test_built_routing_keeps_international_legacy_and_domestic_skill_identity(
     assert domestic_delegate.skill_id == DOMESTIC_DETAIL_SKILL_ID
     assert domestic_delegate.skill_root == default_skill_root(DOMESTIC_DETAIL_SKILL_ID)
     assert Path(domestic_delegate.skill_root).is_dir()
+
+
+def _build_real_coordinator(
+    client: TestClient,
+    **provider_flags: bool,
+):
+    return build_fake_coordinator(
+        client.app.state.session_factory,
+        0,
+        storage=client.app.state.storage,
+        xinghe_gateway=FakeXingheGateway(),
+        xinghe_concurrency=2,
+        **provider_flags,
+    )
+
+
+@pytest.mark.parametrize(
+    ("operation", "flag_name", "adapter_type", "skill_id"),
+    [
+        (
+            JobType.PRODUCT_IMAGE.value,
+            "product_image_provider_enabled",
+            ProductImageProvider,
+            ProductImageProvider.skill_id,
+        ),
+        (
+            JobType.REFERENCE_REMIX.value,
+            "reference_remix_provider_enabled",
+            ReferenceRemixProvider,
+            ReferenceRemixProvider.skill_id,
+        ),
+        (
+            JobType.CREATIVE_IMAGE.value,
+            "creative_image_provider_enabled",
+            CreativeImageProvider,
+            CreativeImageProvider.skill_id,
+        ),
+        (
+            JobType.AMAZON_VISUAL_SUITE.value,
+            "amazon_visual_suite_provider_enabled",
+            AmazonVisualSuiteProvider,
+            AMAZON_VISUAL_SUITE_SKILL_ID,
+        ),
+    ],
+)
+def test_real_single_image_route_uses_its_own_skill_delegate_when_enabled(
+    client: TestClient,
+    operation: str,
+    flag_name: str,
+    adapter_type: type[object],
+    skill_id: str,
+) -> None:
+    coordinator = _build_real_coordinator(
+        client,
+        **{flag_name: True},
+    )
+    router = cast(RegisteredOperationRoutingProvider, coordinator.provider)
+    adapter = router.routes[operation]
+
+    assert isinstance(adapter, adapter_type)
+    delegate = adapter.delegate
+    assert isinstance(delegate, XingheSingleImageProvider)
+    assert delegate.operation == operation
+    assert delegate.skill_id == skill_id
+    assert delegate.storage is client.app.state.storage
+    validator = getattr(delegate.manifest_validator, "__self__", None)
+    assert validator is not None
+    assert validator.source_roots == {skill_id: default_skill_root(skill_id)}
+
+    for other_operation, other_adapter in router.routes.items():
+        if other_operation != operation:
+            assert isinstance(other_adapter.delegate, UnavailableProvider)
+
+
+def test_real_single_image_routes_receive_independent_delegates(
+    client: TestClient,
+) -> None:
+    coordinator = _build_real_coordinator(
+        client,
+        product_image_provider_enabled=True,
+        reference_remix_provider_enabled=True,
+        creative_image_provider_enabled=True,
+        amazon_visual_suite_provider_enabled=True,
+    )
+    router = cast(RegisteredOperationRoutingProvider, coordinator.provider)
+    delegates = [adapter.delegate for adapter in router.routes.values()]
+
+    assert all(
+        isinstance(delegate, XingheSingleImageProvider)
+        for delegate in delegates
+    )
+    assert len({id(delegate) for delegate in delegates}) == 4
+    assert {delegate.skill_id for delegate in delegates} == {
+        ProductImageProvider.skill_id,
+        ReferenceRemixProvider.skill_id,
+        CreativeImageProvider.skill_id,
+        AMAZON_VISUAL_SUITE_SKILL_ID,
+    }
+
+
+def test_crossborder_detail_flag_switches_only_the_international_real_route(
+    client: TestClient,
+) -> None:
+    enabled = _build_real_coordinator(
+        client,
+        crossborder_detail_provider_enabled=True,
+    )
+    enabled_planners = cast(DetailMarketRoutingPlanner, enabled.detail_planner)
+    enabled_router = cast(RegisteredOperationRoutingProvider, enabled.provider)
+    crossborder_planner = cast(
+        XinghePlanningCoordinator,
+        enabled_planners.international,
+    )
+    crossborder_adapter = cast(
+        CrossborderDetailProvider,
+        enabled_router.detail_provider,
+    )
+
+    assert crossborder_planner.skill_id == CROSSBORDER_DETAIL_SKILL_ID
+    assert crossborder_planner.skill_root == default_skill_root(
+        CROSSBORDER_DETAIL_SKILL_ID
+    )
+    assert isinstance(crossborder_adapter, CrossborderDetailProvider)
+    crossborder_delegate = cast(XingheImageProvider, crossborder_adapter.delegate)
+    assert crossborder_delegate.skill_id == CROSSBORDER_DETAIL_SKILL_ID
+    assert crossborder_delegate.skill_root == default_skill_root(
+        CROSSBORDER_DETAIL_SKILL_ID
+    )
+    assert enabled_planners.domestic.skill_id == DOMESTIC_DETAIL_SKILL_ID
+    assert (
+        enabled_router.domestic_detail_provider.route.skill_id
+        == DOMESTIC_DETAIL_SKILL_ID
+    )
+
+    disabled = _build_real_coordinator(client)
+    disabled_planners = cast(DetailMarketRoutingPlanner, disabled.detail_planner)
+    disabled_router = cast(RegisteredOperationRoutingProvider, disabled.provider)
+    legacy_planner = cast(XinghePlanningCoordinator, disabled_planners.international)
+    legacy_provider = cast(XingheImageProvider, disabled_router.detail_provider)
+
+    assert legacy_planner.skill_id == "xinghe-ecommerce-detail"
+    assert legacy_planner.skill_root == default_xinghe_skill_root()
+    assert isinstance(legacy_provider, XingheImageProvider)
+    assert legacy_provider.skill_id == "xinghe-ecommerce-detail"
+    assert legacy_provider.skill_root == default_xinghe_skill_root()
+    assert not isinstance(disabled_router.detail_provider, CrossborderDetailProvider)
+    assert disabled_planners.domestic.skill_id == DOMESTIC_DETAIL_SKILL_ID
+    assert (
+        disabled_router.domestic_detail_provider.route.skill_id
+        == DOMESTIC_DETAIL_SKILL_ID
+    )
+
+
+def test_crossborder_unsupported_platform_fails_before_provider_calls(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="crossborder-unsupported-platform.png")
+    job_id = _create_detail_job(
+        client,
+        source["id"],
+        "international",
+        platform_code="unsupported-marketplace",
+    )
+    gateway = FakeXingheGateway()
+    coordinator = build_fake_coordinator(
+        client.app.state.session_factory,
+        0,
+        storage=client.app.state.storage,
+        xinghe_gateway=gateway,
+        crossborder_detail_provider_enabled=True,
+    )
+
+    status = asyncio.run(coordinator.run(job_id))
+    current = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+
+    assert status == JobStatus.FAILED
+    assert current["status"] == JobStatus.FAILED.value
+    assert current["error_code"] == "DETAIL_PLATFORM_UNSUPPORTED"
+    assert gateway.planner_calls == []
+    assert gateway.image_calls == []
+    assert current.get("plan") is None
+
+
+def test_mock_coordinator_ignores_real_provider_flags(
+    client: TestClient,
+) -> None:
+    coordinator = build_fake_coordinator(
+        client.app.state.session_factory,
+        0,
+        storage=client.app.state.storage,
+        product_image_provider_enabled=True,
+        reference_remix_provider_enabled=True,
+        creative_image_provider_enabled=True,
+        amazon_visual_suite_provider_enabled=True,
+        crossborder_detail_provider_enabled=True,
+    )
+    router = cast(RegisteredOperationRoutingProvider, coordinator.provider)
+    planner_router = cast(DetailMarketRoutingPlanner, coordinator.detail_planner)
+
+    for operation in (
+        JobType.PRODUCT_IMAGE.value,
+        JobType.REFERENCE_REMIX.value,
+        JobType.CREATIVE_IMAGE.value,
+    ):
+        assert router.routes[operation] is router.default_provider
+    amazon = router.routes[JobType.AMAZON_VISUAL_SUITE.value]
+    assert amazon.delegate is router.default_provider
+    assert planner_router.international.skill_id == "xinghe-ecommerce-detail"
+    assert isinstance(router.detail_provider, XingheImageProvider)
+    assert not isinstance(router.detail_provider, CrossborderDetailProvider)
+
+
+def test_tengli_task_runner_propagates_all_provider_switches(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.xinghe_agent as xinghe_agent
+
+    monkeypatch.setattr(
+        xinghe_agent,
+        "build_tengli_gateway",
+        lambda _settings: FakeXingheGateway(),
+    )
+    enabled_settings = client.app.state.settings.model_copy(
+        update={
+            "product_image_provider_enabled": True,
+            "reference_remix_provider_enabled": True,
+            "creative_image_provider_enabled": True,
+            "amazon_visual_suite_provider_enabled": True,
+            "crossborder_detail_provider_enabled": True,
+        }
+    )
+
+    runner = build_tengli_task_runner(
+        client.app.state.session_factory,
+        enabled_settings,
+        client.app.state.storage,
+        concurrency=2,
+    )
+    router = cast(
+        RegisteredOperationRoutingProvider,
+        runner.coordinator.provider,
+    )
+    planner_router = cast(
+        DetailMarketRoutingPlanner,
+        runner.coordinator.detail_planner,
+    )
+
+    assert all(
+        isinstance(adapter.delegate, XingheSingleImageProvider)
+        for adapter in router.routes.values()
+    )
+    assert isinstance(router.detail_provider, CrossborderDetailProvider)
+    assert planner_router.international.skill_id == CROSSBORDER_DETAIL_SKILL_ID

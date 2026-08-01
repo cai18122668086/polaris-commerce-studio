@@ -114,6 +114,14 @@ def test_health_identity_and_empty_collections(client: TestClient) -> None:
     assert jobs.json()["items"] == []
 
 
+def test_real_provider_switches_default_to_fail_closed(settings) -> None:
+    assert settings.product_image_provider_enabled is False
+    assert settings.reference_remix_provider_enabled is False
+    assert settings.creative_image_provider_enabled is False
+    assert settings.amazon_visual_suite_provider_enabled is False
+    assert settings.crossborder_detail_provider_enabled is False
+
+
 def test_runtime_capabilities_report_mock_and_tengli_execution(
     client: TestClient,
 ) -> None:
@@ -177,12 +185,46 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
         "reference_remix",
         "creative_image",
         "amazon_visual_suite",
+        "crossborder_detail",
     ):
         status = tengli.capabilities.features[feature]
         assert status.availability == "unavailable"
         assert status.execution == "none"
         assert status.reason_code == "REAL_PROVIDER_NOT_REGISTERED"
     assert tengli.capabilities.external_authentication.availability == "unavailable"
+
+
+@pytest.mark.parametrize(
+    ("setting_name", "feature_name"),
+    [
+        ("product_image_provider_enabled", "product_image"),
+        ("reference_remix_provider_enabled", "reference_remix"),
+        ("creative_image_provider_enabled", "creative_image"),
+        ("amazon_visual_suite_provider_enabled", "amazon_visual_suite"),
+        ("crossborder_detail_provider_enabled", "crossborder_detail"),
+    ],
+)
+def test_runtime_capabilities_enable_only_the_selected_real_provider(
+    setting_name: str,
+    feature_name: str,
+) -> None:
+    runtime = runtime_status_response(
+        environment="production",
+        authentication_mode="external",
+        task_runner="tengli",
+        **{setting_name: True},
+    )
+
+    selected = runtime.capabilities.features[feature_name]
+    assert selected.availability == "available"
+    assert selected.execution == "provider"
+    assert selected.reason_code is None
+    for name, capability in runtime.capabilities.features.items():
+        if name in {"local_edit", "detail_pack", feature_name}:
+            continue
+        assert capability.availability == "unavailable"
+        assert capability.execution == "none"
+        assert capability.reason_code == "REAL_PROVIDER_NOT_REGISTERED"
 
 
 def test_runtime_requires_an_authenticated_principal(settings) -> None:

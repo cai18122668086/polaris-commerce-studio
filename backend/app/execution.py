@@ -1209,8 +1209,16 @@ def build_fake_coordinator(
     medium_price_micros: int = 45_000,
     high_price_micros: int = 90_000,
     xinghe_skill_root: Path | None = None,
+    product_image_provider_enabled: bool = False,
+    reference_remix_provider_enabled: bool = False,
+    creative_image_provider_enabled: bool = False,
+    amazon_visual_suite_provider_enabled: bool = False,
+    crossborder_detail_provider_enabled: bool = False,
 ) -> ExecutionCoordinator:
-    from .amazon_visual_suite_provider import AmazonVisualSuiteProvider
+    from .amazon_visual_suite_provider import (
+        AMAZON_VISUAL_SUITE_SKILL_ID,
+        AmazonVisualSuiteProvider,
+    )
     from .creative_image_provider import CreativeImageProvider
     from .domestic_detail_provider import DomesticDetailProvider
     from .new_detail_skill_provider import BundledSkillManifestValidator
@@ -1245,7 +1253,7 @@ def build_fake_coordinator(
         high_price_micros=high_price_micros,
         budget_limit_micros=budget_limit_micros,
     )
-    detail_provider = XingheImageProvider(
+    detail_provider: Provider = XingheImageProvider(
         session_factory,
         gateway,
         storage=storage,
@@ -1253,6 +1261,35 @@ def build_fake_coordinator(
         max_concurrency=xinghe_concurrency,
         budget_limit_micros=budget_limit_micros,
     )
+    international_planner = planner
+    if xinghe_gateway is not None and crossborder_detail_provider_enabled:
+        from .crossborder_detail_provider import (
+            CROSSBORDER_DETAIL_SKILL_ID,
+            CrossborderDetailProvider,
+        )
+
+        crossborder_skill_root = default_skill_root(CROSSBORDER_DETAIL_SKILL_ID)
+        international_planner = XinghePlanningCoordinator(
+            session_factory,
+            gateway,
+            storage=storage,
+            skill_root=crossborder_skill_root,
+            base_url_signature=base_url_signature,
+            medium_price_micros=medium_price_micros,
+            high_price_micros=high_price_micros,
+            budget_limit_micros=budget_limit_micros,
+            skill_id=CROSSBORDER_DETAIL_SKILL_ID,
+        )
+        crossborder_detail_delegate = XingheImageProvider(
+            session_factory,
+            gateway,
+            storage=storage,
+            skill_root=crossborder_skill_root,
+            max_concurrency=xinghe_concurrency,
+            budget_limit_micros=budget_limit_micros,
+            skill_id=CROSSBORDER_DETAIL_SKILL_ID,
+        )
+        detail_provider = CrossborderDetailProvider(crossborder_detail_delegate)
     domestic_skill_id = "xinghe-ecommerce-detail-domestic-3"
     domestic_skill_root = default_skill_root(domestic_skill_id)
     domestic_planner = XinghePlanningCoordinator(
@@ -1278,7 +1315,7 @@ def build_fake_coordinator(
     domestic_detail_provider = DomesticDetailProvider(domestic_detail_delegate)
     routed_planner = DetailMarketRoutingPlanner(
         session_factory,
-        planner,
+        international_planner,
         domestic_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
@@ -1310,22 +1347,62 @@ def build_fake_coordinator(
             ),
         }
     else:
-        unavailable = UnavailableProvider()
+        def single_image_delegate(
+            enabled: bool,
+            operation: str,
+            skill_id: str,
+        ) -> Provider:
+            if not enabled:
+                return UnavailableProvider()
+            if storage is None:
+                raise ValueError("Real single-image provider requires image storage.")
+            from .xinghe_single_image_provider import XingheSingleImageProvider
+
+            skill_root = default_skill_root(skill_id)
+            delegate_manifest_validator = BundledSkillManifestValidator(
+                source_roots={skill_id: skill_root}
+            )
+            return XingheSingleImageProvider(
+                session_factory,
+                gateway,
+                storage=storage,
+                operation=operation,
+                skill_id=skill_id,
+                manifest_validator=delegate_manifest_validator.validate,
+                max_concurrency=xinghe_concurrency,
+            )
+
         new_routes = {
             JobType.PRODUCT_IMAGE.value: ProductImageProvider(
-                unavailable,
+                single_image_delegate(
+                    product_image_provider_enabled,
+                    JobType.PRODUCT_IMAGE.value,
+                    ProductImageProvider.skill_id,
+                ),
                 manifest_validator=manifest_validator.validate,
             ),
             JobType.REFERENCE_REMIX.value: ReferenceRemixProvider(
-                unavailable,
+                single_image_delegate(
+                    reference_remix_provider_enabled,
+                    JobType.REFERENCE_REMIX.value,
+                    ReferenceRemixProvider.skill_id,
+                ),
                 manifest_validator=manifest_validator.validate,
             ),
             JobType.CREATIVE_IMAGE.value: CreativeImageProvider(
-                unavailable,
+                single_image_delegate(
+                    creative_image_provider_enabled,
+                    JobType.CREATIVE_IMAGE.value,
+                    CreativeImageProvider.skill_id,
+                ),
                 manifest_validator=manifest_validator.validate,
             ),
             JobType.AMAZON_VISUAL_SUITE.value: AmazonVisualSuiteProvider(
-                unavailable,
+                single_image_delegate(
+                    amazon_visual_suite_provider_enabled,
+                    JobType.AMAZON_VISUAL_SUITE.value,
+                    AMAZON_VISUAL_SUITE_SKILL_ID,
+                ),
                 manifest_validator=manifest_validator,
             ),
         }

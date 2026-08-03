@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from app import main as main_module
 from app import outbox_worker, task_runner, tasks
@@ -198,7 +198,7 @@ def test_default_mock_runner_still_allows_quota_disabled(tmp_path: Path) -> None
         ({"tengli_api_key": SecretStr("")}, "API key"),
         ({"tengli_api_key": SecretStr("   ")}, "API key"),
         ({"tengli_smoke_budget_usd": 0}, "budget"),
-        ({"tengli_smoke_budget_usd": 2.01}, "budget"),
+        ({"tengli_smoke_budget_usd": 20_000_001}, "budget"),
         ({"tengli_smoke_budget_usd": float("nan")}, "budget"),
         ({"xinghe_concurrency": 1}, "concurrency"),
         ({"xinghe_concurrency": 6}, "concurrency"),
@@ -299,6 +299,36 @@ def test_xinghe_concurrency_uses_prefixed_environment_setting(
     settings = Settings(_env_file=None)
 
     assert settings.xinghe_concurrency == 2
+
+
+def test_settings_accept_maximum_provider_allowance() -> None:
+    maximum = 20_000_000
+    settings = Settings(
+        _env_file=None,
+        tengli_smoke_budget_usd=maximum,
+        tengli_daily_budget_usd=maximum,
+        tengli_monthly_budget_usd=maximum,
+        tengli_daily_request_limit=maximum,
+    )
+
+    assert settings.tengli_smoke_budget_usd == maximum
+    assert settings.tengli_daily_budget_usd == maximum
+    assert settings.tengli_monthly_budget_usd == maximum
+    assert settings.tengli_daily_request_limit == maximum
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "tengli_daily_budget_usd",
+        "tengli_monthly_budget_usd",
+        "tengli_daily_request_limit",
+        "tengli_smoke_budget_usd",
+    ),
+)
+def test_settings_reject_provider_allowance_above_maximum(field: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{field: 20_000_001})
 
 
 def test_api_rejects_invalid_tengli_before_building_dependencies(

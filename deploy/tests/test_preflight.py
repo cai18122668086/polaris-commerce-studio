@@ -604,6 +604,33 @@ class SourcePreflightTests(unittest.TestCase):
         )
         self.assertEqual(errors, [])
 
+    def test_maximum_provider_allowance_passes(self) -> None:
+        maximum = str(PREFLIGHT.MAX_PROVIDER_ALLOWANCE)
+        errors = self.validate_synthetic_deployment(
+            POLARIS_TENGLI_SMOKE_BUDGET_USD=maximum,
+            POLARIS_TENGLI_DAILY_BUDGET_USD=maximum,
+            POLARIS_TENGLI_MONTHLY_BUDGET_USD=maximum,
+            POLARIS_TENGLI_DAILY_REQUEST_LIMIT=maximum,
+        )
+        self.assertEqual(errors, [])
+
+    def test_provider_allowance_above_maximum_is_rejected(self) -> None:
+        above_maximum = str(PREFLIGHT.MAX_PROVIDER_ALLOWANCE + 1)
+        for key in (
+            "POLARIS_TENGLI_DAILY_BUDGET_USD",
+            "POLARIS_TENGLI_MONTHLY_BUDGET_USD",
+            "POLARIS_TENGLI_DAILY_REQUEST_LIMIT",
+            "POLARIS_TENGLI_SMOKE_BUDGET_USD",
+        ):
+            with self.subTest(key=key):
+                overrides = {
+                    "POLARIS_TENGLI_DAILY_BUDGET_USD": "2",
+                    "POLARIS_TENGLI_MONTHLY_BUDGET_USD": "10",
+                    key: above_maximum,
+                }
+                errors = self.validate_synthetic_deployment(**overrides)
+                self.assertTrue(any(key in item for item in errors))
+
     def test_provider_switches_require_provider_quota(self) -> None:
         for key in PREFLIGHT.PROVIDER_FLAG_KEYS:
             with self.subTest(key=key):

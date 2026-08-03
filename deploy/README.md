@@ -21,6 +21,11 @@ queueing, and planner/image execution fails closed without that durable
 reservation. Internal S3 downloads always use the same-origin content proxy;
 browsers never receive the `minio:9000` endpoint.
 
+The deployment accepts an approved allowance up to `20,000,000` for each of
+the per-job USD budget, daily USD budget, monthly USD budget, and daily request
+count. Provider account balance, upstream rate limits, and billing remain
+external constraints.
+
 ## Non-negotiable boundaries
 
 - Never publish Caddy on `0.0.0.0`, public IPv6, or a non-loopback interface.

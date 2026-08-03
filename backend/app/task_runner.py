@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import Settings
+from .config import MAX_PROVIDER_ALLOWANCE, Settings
 from .domain import JobStatus
 from .execution import ExecutionCoordinator, build_fake_coordinator
 from .services import set_quota_enabled
@@ -92,9 +92,14 @@ def validate_task_runner_settings(settings: Settings) -> None:
     if not settings.tengli_api_key.get_secret_value().strip():
         raise RuntimeError("tengli task runner requires a non-empty API key")
     budget = settings.tengli_smoke_budget_usd
-    if not math.isfinite(budget) or budget <= 0 or budget > 2:
+    if (
+        not math.isfinite(budget)
+        or budget <= 0
+        or budget > MAX_PROVIDER_ALLOWANCE
+    ):
         raise RuntimeError(
-            "tengli task runner budget must be greater than 0 and at most USD 2"
+            "tengli task runner budget must be greater than 0 and at most "
+            f"USD {MAX_PROVIDER_ALLOWANCE}"
         )
     if settings.xinghe_concurrency != 2:
         raise RuntimeError("tengli task runner concurrency must be exactly 2")

@@ -4,6 +4,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+MAX_PROVIDER_ALLOWANCE = 20_000_000
+
 
 def default_masked_skill_root() -> Path:
     """Return the project-owned, distributable masked repair runtime source."""
@@ -76,11 +78,27 @@ class Settings(BaseSettings):
     tengli_base_url: str = "https://api.tengliapi.xyz:8443"
     tengli_image_model: str = "gpt-image-2"
     tengli_vision_model: str = "gpt-5.6-terra"
-    tengli_smoke_budget_usd: float = Field(default=200, gt=0, le=200)
+    tengli_smoke_budget_usd: float = Field(
+        default=200,
+        gt=0,
+        le=MAX_PROVIDER_ALLOWANCE,
+    )
     provider_quota_enabled: bool = Field(default=True)
-    tengli_daily_budget_usd: float = Field(default=0, ge=0, le=2)
-    tengli_monthly_budget_usd: float = Field(default=0, ge=0, le=20)
-    tengli_daily_request_limit: int = Field(default=0, ge=0, le=100)
+    tengli_daily_budget_usd: float = Field(
+        default=0,
+        ge=0,
+        le=MAX_PROVIDER_ALLOWANCE,
+    )
+    tengli_monthly_budget_usd: float = Field(
+        default=0,
+        ge=0,
+        le=MAX_PROVIDER_ALLOWANCE,
+    )
+    tengli_daily_request_limit: int = Field(
+        default=0,
+        ge=0,
+        le=MAX_PROVIDER_ALLOWANCE,
+    )
     tengli_planner_reserve_micros: int = Field(
         default=250_000,
         ge=1,

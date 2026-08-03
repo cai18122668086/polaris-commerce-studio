@@ -52,6 +52,7 @@ PROVIDER_FLAG_KEYS = (
 PROVIDER_QUOTA_KEY = "POLARIS_PROVIDER_QUOTA_ENABLED"
 MOCK_SERVICES = {"migrate", "dispatcher"}
 ALLOWED_TASK_RUNNERS = {"mock", "tengli"}
+MAX_PROVIDER_ALLOWANCE = 20_000_000
 THIRD_PARTY_IMAGE_KEYS = {
     "POLARIS_PYTHON_BASE_IMAGE",
     "POLARIS_NODE_BASE_IMAGE",
@@ -826,9 +827,10 @@ def validate_deployment(
             budget = float(values.get("POLARIS_TENGLI_SMOKE_BUDGET_USD", ""))
         except ValueError:
             budget = 0
-        if not 0 < budget <= 2:
+        if not 0 < budget <= MAX_PROVIDER_ALLOWANCE:
             errors.append(
-                "POLARIS_TENGLI_SMOKE_BUDGET_USD must be greater than 0 and at most 2"
+                "POLARIS_TENGLI_SMOKE_BUDGET_USD must be greater than 0 and "
+                f"at most {MAX_PROVIDER_ALLOWANCE}"
             )
         try:
             daily_budget = float(values.get("POLARIS_TENGLI_DAILY_BUDGET_USD", ""))
@@ -838,13 +840,15 @@ def validate_deployment(
         except ValueError:
             daily_budget = 0
             monthly_budget = 0
-        if not 0 < daily_budget <= 2:
+        if not 0 < daily_budget <= MAX_PROVIDER_ALLOWANCE:
             errors.append(
-                "POLARIS_TENGLI_DAILY_BUDGET_USD must be greater than 0 and at most 2"
+                "POLARIS_TENGLI_DAILY_BUDGET_USD must be greater than 0 and "
+                f"at most {MAX_PROVIDER_ALLOWANCE}"
             )
-        if not daily_budget <= monthly_budget <= 20:
+        if not daily_budget <= monthly_budget <= MAX_PROVIDER_ALLOWANCE:
             errors.append(
-                "POLARIS_TENGLI_MONTHLY_BUDGET_USD must be at least the daily budget and at most 20"
+                "POLARIS_TENGLI_MONTHLY_BUDGET_USD must be at least the daily "
+                f"budget and at most {MAX_PROVIDER_ALLOWANCE}"
             )
         try:
             daily_requests = int(
@@ -852,9 +856,10 @@ def validate_deployment(
             )
         except ValueError:
             daily_requests = 0
-        if not 0 < daily_requests <= 100:
+        if not 0 < daily_requests <= MAX_PROVIDER_ALLOWANCE:
             errors.append(
-                "POLARIS_TENGLI_DAILY_REQUEST_LIMIT must be between 1 and 100"
+                "POLARIS_TENGLI_DAILY_REQUEST_LIMIT must be between 1 and "
+                f"{MAX_PROVIDER_ALLOWANCE}"
             )
         try:
             planner_reserve = int(

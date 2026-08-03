@@ -355,7 +355,10 @@ export interface components {
              * @constant
              */
             marketplace: "amazon-us";
-            /** Product Name */
+            /**
+             * Product Name
+             * @default
+             */
             product_name: string;
         };
         /** AmazonVisualSuiteInput */
@@ -494,7 +497,7 @@ export interface components {
              * @default 1:1
              * @enum {string}
              */
-            aspect_ratio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+            aspect_ratio: "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
             /**
              * Creative Direction
              * @default selling_point
@@ -503,7 +506,7 @@ export interface components {
             creative_direction: "selling_point" | "pain_point" | "scenario" | "promotion" | "premium" | "social";
             /**
              * Image Count
-             * @default 4
+             * @default 1
              */
             image_count: number;
             /**
@@ -587,7 +590,7 @@ export interface components {
              * @default 1024x1536
              * @enum {string}
              */
-            size: "1024x1536" | "1600x1600" | "2200x2200" | "2000x2000" | "1000x1000" | "1024x1024" | "2048x2048" | "1200x1200" | "750x1000" | "1464x600" | "1600x1200";
+            size: "1024x1536" | "1600x1600" | "2200x2200" | "2000x2000" | "1000x1000" | "1024x1024" | "2048x2048" | "1200x1200" | "750x1000" | "1200x1600" | "1464x600" | "1600x1200";
         };
         /** DetailPackInput */
         DetailPackInput: {
@@ -946,7 +949,7 @@ export interface components {
              * @default 1:1
              * @enum {string}
              */
-            aspect_ratio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+            aspect_ratio: "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
             /**
              * Image Count
              * @default 1
@@ -999,10 +1002,10 @@ export interface components {
         ReferenceRemixConfiguration: {
             /**
              * Aspect Ratio
-             * @default 1:1
+             * @default follow-reference
              * @enum {string}
              */
-            aspect_ratio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+            aspect_ratio: "follow-reference" | "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
             /**
              * Image Count
              * @default 1

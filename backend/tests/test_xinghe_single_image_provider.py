@@ -35,6 +35,7 @@ from app.models import (
     WorkspaceRecord,
 )
 from app.provider import ProviderArtifact, ProviderOutcome, ProviderRequest
+from app.skill_protocol import SkillProtocolError
 from app.xinghe_agent import (
     ImageCallResult,
     ImageEditRequest,
@@ -300,7 +301,11 @@ def _asset_record(
     with Image.open(BytesIO(payload)) as image:
         width, height = image.size
         image_format = image.format
-    content_type = "image/jpeg" if image_format == "JPEG" else "image/png"
+    content_type = {
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "WEBP": "image/webp",
+    }[str(image_format)]
     return AssetRecord(
         id=asset_id,
         workspace_id=workspace_id,
@@ -381,6 +386,63 @@ def _request(
     return ProviderRequest(**values)
 
 
+def _reference_follow_request(
+    harness: Harness,
+    *,
+    reference_payload: bytes,
+) -> tuple[XingheSingleImageProvider, ProviderRequest]:
+    operation = "reference_remix"
+    skill_id = "xinghe-reference-image-remix-3"
+    with harness.session_factory() as session:
+        job = session.get(JobRecord, "job_test")
+        attempt = session.get(JobAttemptRecord, "attempt_test")
+        product_binding = session.query(JobAssetRecord).one()
+        assert job is not None and attempt is not None
+        job.type = operation
+        attempt.operation = operation
+        product_binding.role = "product_reference"
+        session.add(
+            _asset_record(
+                asset_id="asset_style",
+                workspace_id="ws_test",
+                object_key="ws_test/style-reference",
+                payload=reference_payload,
+            )
+        )
+        session.add(
+            JobAssetRecord(
+                workspace_id="ws_test",
+                job_id="job_test",
+                asset_id="asset_style",
+                direction=JobAssetDirection.INPUT.value,
+                role="style_reference",
+                ordinal=0,
+                is_deliverable=False,
+                validation={},
+            )
+        )
+        session.commit()
+    harness.storage.objects["ws_test/style-reference"] = reference_payload
+    envelope = _envelope(
+        asset_ids=[
+            ("asset_product", "product_reference"),
+            ("asset_style", "style_reference"),
+        ],
+        fit="contain",
+    )
+    envelope.update({"skill_id": skill_id, "operation": operation})
+    envelope["target"] = {
+        "width": None,
+        "height": None,
+        "aspect_ratio": "follow-reference",
+        "quality": "high",
+        "output_format": "png",
+        "fit": "contain",
+    }
+    provider = harness.provider(operation=operation, skill_id=skill_id)
+    return provider, _request(envelope, operation=operation)
+
+
 def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -> None:
     provider = harness.provider()
 
@@ -395,6 +457,10 @@ def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -
     assert result.raw_usage["output_tokens"] == 7
     assert result.raw_usage["request_count"] == 1
     assert result.raw_usage["artifact_kind"] == "image"
+    assert len(result.raw_usage["skill_protocol_sha256"]) == 64
+    assert result.raw_usage["skill_protocol_length"] > 0
+    assert "documents" not in result.raw_usage
+    assert "skill_protocol" not in result.raw_usage
     assert SECRET not in json.dumps(result.raw_usage)
     assert result.artifact is harness.gateway.result.artifact
     assert len(harness.gateway.requests) == 1
@@ -409,6 +475,94 @@ def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -
     assert SECRET not in image_request.prompt
     assert "must never be used" not in image_request.prompt
     assert harness.manifest.calls == [SKILL_ID]
+
+
+@pytest.mark.parametrize(
+    ("reference_size", "reference_format"),
+    [
+        ((333, 777), "PNG"),
+        ((1279, 853), "JPEG"),
+        ((641, 641), "WEBP"),
+    ],
+)
+def test_reference_follow_target_uses_real_first_style_canvas_for_final_delivery(
+    harness: Harness,
+    reference_size: tuple[int, int],
+    reference_format: str,
+) -> None:
+    reference_payload = _image_bytes(
+        reference_size,
+        image_format=reference_format,
+    )
+    harness.gateway.result = _success_result(
+        artifact=_artifact((257, 113), image_format="WEBP")
+    )
+    provider, request = _reference_follow_request(
+        harness,
+        reference_payload=reference_payload,
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert result.artifact is not None
+    assert (result.artifact.width, result.artifact.height) == reference_size
+    assert result.artifact.locally_resampled is True
+    with Image.open(BytesIO(result.artifact.payload)) as delivered:
+        assert delivered.size == reference_size
+    assert harness.manifest.calls == ["xinghe-reference-image-remix-3"]
+    assert harness.storage.reads == [
+        "ws_test/product.png",
+        "ws_test/style-reference",
+    ]
+    prompt = json.loads(harness.gateway.requests[0].prompt)
+    assert prompt["target"]["width"] == reference_size[0]
+    assert prompt["target"]["height"] == reference_size[1]
+    assert prompt["target"]["fit"] == "contain"
+
+
+def test_reference_follow_target_fails_closed_when_real_canvas_is_unsafe(
+    harness: Harness,
+) -> None:
+    provider, request = _reference_follow_request(
+        harness,
+        reference_payload=_image_bytes((8193, 2), image_format="PNG"),
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == "TARGET_CONFIGURATION_INVALID"
+    assert harness.gateway.requests == []
+    assert harness.manifest.calls == ["xinghe-reference-image-remix-3"]
+    assert harness.storage.reads == [
+        "ws_test/product.png",
+        "ws_test/style-reference",
+    ]
+
+
+def test_missing_protocol_fails_closed_after_manifest_and_before_asset_read(
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_protocol(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise SkillProtocolError(
+            "SKILL_PROTOCOL_SOURCE_MISSING",
+            "Skill protocol source is unavailable.",
+        )
+
+    monkeypatch.setattr(
+        "app.xinghe_single_image_provider.load_skill_protocol",
+        missing_protocol,
+    )
+
+    result = asyncio.run(harness.provider().execute(_request()))
+
+    assert result.error_code == "SKILL_PROTOCOL_SOURCE_MISSING"
+    assert harness.manifest.calls == [SKILL_ID]
+    assert harness.storage.reads == []
+    assert harness.gateway.requests == []
 
 
 def test_two_job_items_each_make_one_call(harness: Harness) -> None:
@@ -802,8 +956,13 @@ def test_prompt_is_deterministic_and_uses_only_whitelisted_envelope(
     first_request = _request(_envelope(prompt_input=first_prompt))
     second_request = _request(_envelope(prompt_input=second_prompt))
 
-    first = provider._compile_prompt(provider._parse_envelope(first_request))
-    second = provider._compile_prompt(provider._parse_envelope(second_request))
+    protocol = provider._load_protocol(CONTENT_HASH)
+    first = provider._compile_prompt(
+        provider._parse_envelope(first_request), protocol
+    )
+    second = provider._compile_prompt(
+        provider._parse_envelope(second_request), protocol
+    )
 
     assert first == second
     decoded = json.loads(first)
@@ -816,9 +975,41 @@ def test_prompt_is_deterministic_and_uses_only_whitelisted_envelope(
         "source_roles",
         "target",
         "instructions",
+        "skill_protocol",
     }
+    assert decoded["skill_protocol"]["skill_id"] == SKILL_ID
+    assert decoded["skill_protocol"]["source_content_hash"] == CONTENT_HASH
+    assert decoded["skill_protocol"]["documents"][0]["path"] == "SKILL.md"
     assert SECRET not in first
     assert "untrusted_prompt" not in first
+
+
+@pytest.mark.parametrize(
+    ("operation", "skill_id"),
+    [
+        ("product_image", "xinghe-wanneng-shengtu-3-0"),
+        ("reference_remix", "xinghe-reference-image-remix-3"),
+        ("creative_image", "xinghe-ecommerce-creative-image"),
+        ("amazon_visual_suite", "xinghe-amazon-visual-suite"),
+    ],
+)
+def test_each_single_image_skill_compiles_its_complete_protocol_into_prompt(
+    harness: Harness,
+    operation: str,
+    skill_id: str,
+) -> None:
+    provider = harness.provider(operation=operation, skill_id=skill_id)
+    envelope = _envelope()
+    envelope["operation"] = operation
+    envelope["skill_id"] = skill_id
+    request = _request(envelope, operation=operation)
+    protocol = provider._load_protocol(CONTENT_HASH)
+
+    prompt = provider._compile_prompt(provider._parse_envelope(request), protocol)
+    decoded = json.loads(prompt)
+
+    assert decoded["skill_protocol"] == protocol.prompt_payload()
+    assert decoded["skill_protocol"]["documents"][0]["path"] == "SKILL.md"
 
 
 def test_unknown_or_sensitive_prompt_fields_fail_closed(harness: Harness) -> None:
@@ -1098,10 +1289,10 @@ def test_amazon_adapter_to_delegate_preserves_durable_key_and_calls_gateway_once
     assert result.outcome == ProviderOutcome.SUCCEEDED
     assert result.artifact is not None
     assert (result.artifact.width, result.artifact.height) == (1464, 600)
-    assert result.artifact.content_type == "image/png"
+    assert result.artifact.content_type == "image/jpeg"
     assert len(harness.gateway.requests) == 1
     gateway_request = harness.gateway.requests[0]
     assert gateway_request.group_key == "A-DESKTOP-01"
-    assert gateway_request.size == "1536x1024"
+    assert gateway_request.size == "1536x640"
     assert gateway_request.output_format == "jpeg"
     assert gateway_request.preserve_provider_artifact is True

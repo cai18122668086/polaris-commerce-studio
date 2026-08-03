@@ -37,7 +37,11 @@ class ReferenceRemixProvider(NewImageSkillProvider):
             ("style_reference", reference_asset_ids),
         )
         require_image_count(settings)
-        controlled_target(settings)
+        controlled_target(
+            settings,
+            default_aspect_ratio="follow-reference",
+            allow_follow_reference=True,
+        )
         optional_string(settings, "platform_code", default="tmall")
         optional_string(settings, "language", default="zh-CN")
         optional_string_list(settings, "selling_points")
@@ -56,6 +60,13 @@ class ReferenceRemixProvider(NewImageSkillProvider):
                 "style_reference",
                 require_asset_ids(input_config, "reference_asset_ids"),
             ),
+        )
+
+    def target(self, settings: Mapping[str, Any]) -> dict[str, Any]:
+        return controlled_target(
+            settings,
+            default_aspect_ratio="follow-reference",
+            allow_follow_reference=True,
         )
 
     def prompt_input(

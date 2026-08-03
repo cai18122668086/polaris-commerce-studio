@@ -38,11 +38,39 @@ test("standalone workspaces submit the exact backend job families", async () => 
   assert.match(workspace, /brand_asset_ids: selections\.brand/);
 });
 
-test("creative image defaults to four and remains bounded at four", async () => {
+test("creative and reference workspaces preserve the full count and aspect-ratio controls", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
-  assert.match(workspace, /featureId === "creative-image" \? 4 : 1/);
-  assert.match(workspace, /image_count: Math\.min\(4, imageCount\)/);
-  assert.match(workspace, /\[1, 2, 3, 4\]/);
+  assert.match(workspace, /const \[imageCount, setImageCount\] = useState\(1\)/);
+  assert.match(workspace, /image_count: imageCount/);
+  assert.doesNotMatch(workspace, /image_count: Math\.min/);
+  assert.match(workspace, /Array\.from\(\{ length: 12 \}/);
+  assert.match(workspace, /setImageCount\(count\)/);
+  assert.match(workspace, /value: "4:5"/);
+  assert.match(workspace, /value: "follow-reference"/);
+  assert.match(workspace, /featureId === "reference-remix" \? "follow-reference" : "1:1"/);
+  for (const size of [
+    "1024 × 1024",
+    "768 × 1024",
+    "1024 × 1280",
+    "1024 × 768",
+    "576 × 1024",
+    "1024 × 576",
+  ]) {
+    assert.match(workspace, new RegExp(size));
+  }
+  assert.match(workspace, /严格交付尺寸：\{selectedSizeLabel\}/);
+  assert.match(
+    workspace,
+    /主图 2000 × 2000；副图 1200 × 1600；桌面 A\+ 1464 × 600；移动 A\+ 1600 × 1200/,
+  );
+});
+
+test("commerce workspaces do not require a guessed product name", async () => {
+  const workspace = await utf8("components/commerce-skill-workspace.tsx");
+  assert.match(workspace, /product_name: productName\.trim\(\)/);
+  assert.doesNotMatch(workspace, /PRODUCT_NAME_NOT_PROVIDED/);
+  assert.doesNotMatch(workspace, /amazonProductNameMissing/);
+  assert.doesNotMatch(workspace, /Amazon 套图必须填写商品名称/);
 });
 
 test("Amazon fixed pack delegates all 21 JobItems to the backend", async () => {
@@ -95,6 +123,9 @@ test("public navigation uses registry route matching instead of local-edit fallb
 
 test("detail workspace submits the selected market and only auto-starts domestic", async () => {
   const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1200x1600"/);
+  assert.match(detail, /严格交付 \{imageSize\}/);
+  assert.match(detail, /\{selectedMarketplace\.name\} · \{imageSize\}/);
   assert.match(detail, /market_region: marketRegion/);
   assert.match(detail, /auto_start_after_plan: marketRegion === "domestic"/);
   assert.doesNotMatch(detail, /market_region: "international" as const/);

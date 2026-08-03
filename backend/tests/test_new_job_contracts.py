@@ -81,22 +81,66 @@ def test_reference_remix_requires_product_and_style_assets(
         )
 
 
-def test_creative_image_defaults_to_four_and_caps_at_four() -> None:
+def test_creative_image_defaults_to_one_and_caps_at_twelve() -> None:
     payload = CreativeImageJobCreate(
         type="creative_image",
         input={"product_asset_ids": ["product"]},
         configuration={},
     )
     job, _ = _new_job_from_payload("ws-contract", payload)
-    assert payload.configuration.image_count == 4
-    assert job.expected_item_count == 4
+    assert payload.configuration.image_count == 1
+    assert job.expected_item_count == 1
+
+    maximum = CreativeImageJobCreate(
+        type="creative_image",
+        input={"product_asset_ids": ["product"]},
+        configuration={"image_count": 12},
+    )
+    maximum_job, _ = _new_job_from_payload("ws-contract", maximum)
+    assert maximum_job.expected_item_count == 12
 
     with pytest.raises(ValidationError):
         CreativeImageJobCreate(
             type="creative_image",
             input={"product_asset_ids": ["product"]},
-            configuration={"image_count": 5},
+            configuration={"image_count": 13},
         )
+
+
+@pytest.mark.parametrize(
+    "job_model,input_payload",
+    [
+        (ProductImageJobCreate, {"product_asset_ids": ["product"]}),
+        (
+            ReferenceRemixJobCreate,
+            {
+                "product_asset_ids": ["product"],
+                "reference_asset_ids": ["style"],
+            },
+        ),
+        (CreativeImageJobCreate, {"product_asset_ids": ["product"]}),
+    ],
+)
+def test_single_image_families_preserve_twelve_requested_items(
+    job_model: object,
+    input_payload: dict[str, list[str]],
+) -> None:
+    configuration: dict[str, object] = {"image_count": 12}
+    if job_model is ProductImageJobCreate:
+        configuration["task_type"] = "scene_main"
+    payload = job_model(  # type: ignore[operator]
+        type=(
+            "product_image"
+            if job_model is ProductImageJobCreate
+            else "reference_remix"
+            if job_model is ReferenceRemixJobCreate
+            else "creative_image"
+        ),
+        input=input_payload,
+        configuration=configuration,
+    )
+    job, _ = _new_job_from_payload("ws-contract", payload)
+    assert job.expected_item_count == 12
 
 
 def test_detail_market_region_is_stored_without_changing_job_type() -> None:
@@ -154,6 +198,19 @@ def test_amazon_contract_has_fixed_21_items_and_input_roles() -> None:
         ("scene", "scene_reference", 0),
         ("brand", "brand_reference", 0),
     ]
+
+
+def test_amazon_contract_accepts_image_only_analysis_without_product_name() -> None:
+    payload = AmazonVisualSuiteJobCreate(
+        type="amazon_visual_suite",
+        input={"white_background_product_asset_ids": ["white"]},
+        configuration={},
+    )
+
+    job, _ = _new_job_from_payload("ws-contract", payload)
+
+    assert job.configuration.get("product_name") is None
+    assert job.expected_item_count == 21
 
 
 def test_amazon_contract_rejects_non_amazon_marketplace() -> None:

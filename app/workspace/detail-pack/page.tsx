@@ -30,7 +30,8 @@ import {
 type UploadedSource = { asset: Asset; previewUrl: string };
 type PlanPage = { title: string; description?: string; quality?: string };
 
-const DEFAULT_DETAIL_SIZE: MarketplaceImageSize = "1024x1536";
+const DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1200x1600";
+const INTERNATIONAL_FALLBACK_SIZE: MarketplaceImageSize = "1024x1536";
 
 function readPlanPages(payload: Record<string, unknown> | undefined): PlanPage[] {
   if (!payload) return [];
@@ -86,7 +87,7 @@ export default function DetailPackPage() {
   const [pageCount, setPageCount] = useState(6);
   const [marketRegion, setMarketRegion] = useState<MarketRegion>("domestic");
   const [marketplaceId, setMarketplaceId] = useState("tmall");
-  const [imageSize, setImageSize] = useState<MarketplaceImageSize>(DEFAULT_DETAIL_SIZE);
+  const [imageSize, setImageSize] = useState<MarketplaceImageSize>(DOMESTIC_DETAIL_SIZE);
   const [language, setLanguage] = useState<"zh-CN" | "en-US">("zh-CN");
   const [productName, setProductName] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
@@ -116,14 +117,22 @@ export default function DetailPackPage() {
     const marketplace = marketplaceGroups[region][0];
     setMarketRegion(region);
     setMarketplaceId(marketplace.id);
-    setImageSize(region === "international" ? marketplace.sizePresets?.[0]?.value ?? DEFAULT_DETAIL_SIZE : DEFAULT_DETAIL_SIZE);
+    setImageSize(
+      region === "international"
+        ? marketplace.sizePresets?.[0]?.value ?? INTERNATIONAL_FALLBACK_SIZE
+        : DOMESTIC_DETAIL_SIZE,
+    );
     setLanguage(region === "domestic" ? "zh-CN" : "en-US");
   };
 
   const selectMarketplace = (marketplaceId: string) => {
     const marketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId);
     setMarketplaceId(marketplaceId);
-    setImageSize(marketRegion === "international" ? marketplace?.sizePresets?.[0]?.value ?? DEFAULT_DETAIL_SIZE : DEFAULT_DETAIL_SIZE);
+    setImageSize(
+      marketRegion === "international"
+        ? marketplace?.sizePresets?.[0]?.value ?? INTERNATIONAL_FALLBACK_SIZE
+        : DOMESTIC_DETAIL_SIZE,
+    );
   };
 
   const addFiles = async (files: FileList | null) => {
@@ -195,7 +204,7 @@ export default function DetailPackPage() {
           />
 
           <section className="marketplace-selector">
-            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>平台信息会写入详情图任务配置。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name}</span></div>
+            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>平台信息会写入详情图任务配置。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name} · 严格交付 {imageSize}</span></div>
             <div className="market-region-switch" aria-label="电商地区">
               <button className={marketRegion === "domestic" ? "active" : ""} onClick={() => selectRegion("domestic")} disabled={Boolean(jobId)}><MapPin size={17} /><span><strong>国内电商</strong><small>中国大陆平台</small></span></button>
               <button className={marketRegion === "international" ? "active" : ""} onClick={() => selectRegion("international")} disabled={Boolean(jobId)}><Globe2 size={17} /><span><strong>国际电商</strong><small>跨境与海外市场</small></span></button>
@@ -222,7 +231,7 @@ export default function DetailPackPage() {
             <div className="form-section-head"><span className="number-chip">2</span><div><h2>商品信息</h2><p>内容按 typed contract 写入任务配置。</p></div></div>
             <div className="form-grid">
               <label><span>商品名称 <i>*</i></span><input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：鎏金焕亮精华液" /></label>
-              <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name}</strong></div></label>
+              <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize}</strong></div></label>
               <label className="full"><span>核心卖点</span><textarea value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
             </div>
           </section>

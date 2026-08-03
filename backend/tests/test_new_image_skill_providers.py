@@ -11,7 +11,10 @@ import pytest
 
 from app.creative_image_provider import CreativeImageProvider
 from app.new_detail_skill_provider import SKILL_ADAPTER_CONFIGURATION_KEY
-from app.new_image_skill_provider import SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
+from app.new_image_skill_provider import (
+    SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION,
+    NewImageSkillProvider,
+)
 from app.product_image_provider import PRODUCT_IMAGE_PRESETS, ProductImageProvider
 from app.provider import (
     ProviderArtifact,
@@ -86,12 +89,17 @@ def _assert_strict_single_image_envelope(request: ProviderRequest) -> None:
         "output_format",
         "fit",
     }
-    assert isinstance(target["width"], int) and target["width"] > 0
-    assert isinstance(target["height"], int) and target["height"] > 0
-    divisor = math.gcd(target["width"], target["height"])
-    assert target["aspect_ratio"] == (
-        f"{target['width'] // divisor}:{target['height'] // divisor}"
-    )
+    if target["aspect_ratio"] == "follow-reference":
+        assert target["width"] is None
+        assert target["height"] is None
+        assert target["fit"] == "contain"
+    else:
+        assert isinstance(target["width"], int) and target["width"] > 0
+        assert isinstance(target["height"], int) and target["height"] > 0
+        divisor = math.gcd(target["width"], target["height"])
+        assert target["aspect_ratio"] == (
+            f"{target['width'] // divisor}:{target['height'] // divisor}"
+        )
     assert target["fit"] in {"cover", "contain", "pad"}
     assert set(envelope["prompt_input"]) <= DEFAULT_ALLOWED_PROMPT_FIELDS
     assert all(value not in ("", []) for value in envelope["prompt_input"].values())
@@ -227,7 +235,7 @@ def test_reference_remix_requires_product_and_style_clues(
     assert validator.calls == []
 
 
-@pytest.mark.parametrize("image_count", [0, 5, True, "4"])
+@pytest.mark.parametrize("image_count", [0, 13, True, "12"])
 def test_creative_image_rejects_out_of_range_image_count(
     image_count: object,
 ) -> None:
@@ -481,6 +489,87 @@ def test_creative_adapter_uses_competitor_reference_role_and_whitelist() -> None
         "language": "zh-CN",
         "product_information": ["Premium finish"],
         "negative_constraints": "No unverified claims.",
+    }
+
+
+@pytest.mark.parametrize(
+    ("provider_class", "operation", "input_config", "extra_settings"),
+    [
+        (
+            ProductImageProvider,
+            "product_image",
+            {"product_asset_ids": ["asset-product"]},
+            {"task_type": "scene_main"},
+        ),
+        (
+            ReferenceRemixProvider,
+            "reference_remix",
+            {
+                "product_asset_ids": ["asset-product"],
+                "reference_asset_ids": ["asset-reference"],
+            },
+            {},
+        ),
+        (
+            CreativeImageProvider,
+            "creative_image",
+            {"product_asset_ids": ["asset-product"]},
+            {},
+        ),
+    ],
+)
+def test_single_image_adapters_map_four_by_five_to_exact_delivery_dimensions(
+    provider_class: type[NewImageSkillProvider],
+    operation: str,
+    input_config: dict[str, list[str]],
+    extra_settings: dict[str, str],
+) -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = provider_class(delegate, manifest_validator=ManifestSpy())
+    request = _request(
+        operation,
+        input_config=input_config,
+        settings={"aspect_ratio": "4:5", "image_count": 12, **extra_settings},
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert _adapter_request(delegate)["target"] == {
+        "aspect_ratio": "4:5",
+        "width": 1024,
+        "height": 1280,
+        "quality": "high",
+        "output_format": "png",
+        "fit": "cover",
+    }
+
+
+def test_reference_remix_defaults_to_follow_reference_wire_contract() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = ReferenceRemixProvider(delegate, manifest_validator=ManifestSpy())
+
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "reference_remix",
+                input_config={
+                    "product_asset_ids": ["asset-product"],
+                    "reference_asset_ids": ["asset-reference"],
+                },
+                settings={"image_count": 1},
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert _adapter_request(delegate)["target"] == {
+        "aspect_ratio": "follow-reference",
+        "width": None,
+        "height": None,
+        "quality": "high",
+        "output_format": "png",
+        "fit": "contain",
     }
 
 

@@ -19,6 +19,14 @@ from app.provider import Provider
 DOMESTIC_DETAIL_SKILL_ID = "xinghe-ecommerce-detail-domestic-3"
 DOMESTIC_MARKET_REGION = "domestic"
 DOMESTIC_DEFAULT_PLATFORM = "taobao_tmall"
+DOMESTIC_DEFAULT_SIZE = "1200x1600"
+
+_DOMESTIC_SUPPORTED_SIZES = frozenset(
+    {
+        "750x1000",
+        DOMESTIC_DEFAULT_SIZE,
+    }
+)
 
 _DOMESTIC_PLATFORM_ALIASES = {
     "taobao": "taobao_tmall",
@@ -45,6 +53,27 @@ _DOMESTIC_PLATFORM_ALIASES = {
 }
 
 
+def resolve_domestic_detail_size(configuration: Mapping[str, Any]) -> str:
+    """Resolve the original Skill's strict 3:4 delivery canvas."""
+
+    requested_size = configuration.get("size")
+    if requested_size is None:
+        return DOMESTIC_DEFAULT_SIZE
+    size = str(requested_size).strip().lower()
+    if size not in _DOMESTIC_SUPPORTED_SIZES:
+        raise AdapterValidationError(
+            "DETAIL_SIZE_UNSUPPORTED",
+            "Domestic detail size must be an approved exact 3:4 canvas.",
+        )
+    width_text, height_text = size.split("x", maxsplit=1)
+    if int(width_text) * 4 != int(height_text) * 3:
+        raise AdapterValidationError(
+            "DETAIL_SIZE_ASPECT_RATIO_MISMATCH",
+            "Domestic detail size must use the strict 3:4 aspect ratio.",
+        )
+    return size
+
+
 def domestic_detail_prompt_configuration(
     configuration: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -59,6 +88,8 @@ def domestic_detail_prompt_configuration(
             "DETAIL_PLATFORM_UNSUPPORTED",
             f"Unsupported domestic platform: {requested_platform}.",
         )
+    resolved_size = resolve_domestic_detail_size(configuration)
+    width_text, height_text = resolved_size.split("x", maxsplit=1)
     return {
         "profile_id": f"domestic_{platform_code}_v1",
         "platform_code": platform_code,
@@ -67,9 +98,12 @@ def domestic_detail_prompt_configuration(
         "default_page_count": 8,
         "aspect_ratio": "3:4",
         "target_size": {
-            "mode": "aspect_ratio",
+            "mode": "exact",
+            "width": int(width_text),
+            "height": int(height_text),
             "aspect_ratio": "3:4",
         },
+        "resolved_size": resolved_size,
         "module_rule": "one_buyer_demand_per_page",
         "independent_page_generation": True,
         "successful_page_auto_redraw_allowed": False,

@@ -21,6 +21,7 @@ from app.crossborder_detail_provider import (
     CrossborderDetailProvider,
 )
 from app.domestic_detail_provider import (
+    DOMESTIC_DEFAULT_SIZE,
     DOMESTIC_DETAIL_SKILL_ID,
     DomesticDetailProvider,
 )
@@ -177,6 +178,18 @@ def _artifact(width: int, height: int) -> ProviderArtifact:
     )
 
 
+def _jpeg_artifact(width: int, height: int) -> ProviderArtifact:
+    payload = b"amazon-ready-jpeg-test-payload"
+    return ProviderArtifact(
+        payload=payload,
+        filename="result.jpg",
+        content_type="image/jpeg",
+        width=width,
+        height=height,
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+
+
 def test_bundled_manifest_validator_verifies_three_new_sources() -> None:
     registry = SkillManifestRegistry.bundled()
     source_base = Path(__file__).resolve().parents[1] / "skill_sources"
@@ -231,6 +244,13 @@ def test_domestic_adapter_attaches_auto_plan_contract_and_defaults() -> None:
     assert adapter["prompt"]["platform_code"] == "jd"
     assert adapter["prompt"]["language"] == "zh-CN"
     assert adapter["prompt"]["aspect_ratio"] == "3:4"
+    assert adapter["prompt"]["resolved_size"] == DOMESTIC_DEFAULT_SIZE
+    assert adapter["prompt"]["target_size"] == {
+        "mode": "exact",
+        "width": 1200,
+        "height": 1600,
+        "aspect_ratio": "3:4",
+    }
     assert adapter["prompt"]["requested_page_count"] == 6
 
 
@@ -284,9 +304,9 @@ def test_crossborder_russian_platform_prompt_defaults(platform_code: str) -> Non
     result = asyncio.run(provider.execute(request))
 
     assert result is delegate.result
-    prompt = delegate.requests[0].configuration[
-        SKILL_ADAPTER_CONFIGURATION_KEY
-    ]["prompt"]
+    prompt = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY][
+        "prompt"
+    ]
     assert prompt["language"] == "ru"
     assert prompt["aspect_ratio"] == "3:4"
     assert prompt["target_size"] == {
@@ -321,9 +341,9 @@ def test_crossborder_generic_prompt_uses_2k_english_defaults() -> None:
     )
 
     assert result is delegate.result
-    prompt = delegate.requests[0].configuration[
-        SKILL_ADAPTER_CONFIGURATION_KEY
-    ]["prompt"]
+    prompt = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY][
+        "prompt"
+    ]
     assert prompt["platform_code"] == "amazon"
     assert prompt["language"] == "en"
     assert prompt["aspect_ratio"] == "16:9"
@@ -332,6 +352,33 @@ def test_crossborder_generic_prompt_uses_2k_english_defaults() -> None:
         "quality": "2K",
         "aspect_ratio": "16:9",
     }
+
+
+def test_domestic_rejects_explicit_non_three_by_four_size() -> None:
+    delegate = RecordingDelegate()
+    provider = DomesticDetailProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "detail_pack",
+                {
+                    "job": {
+                        "market_region": "domestic",
+                        "platform_code": "tmall",
+                        "size": "1600x1600",
+                    }
+                },
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == "DETAIL_SIZE_UNSUPPORTED"
+    assert delegate.requests == []
 
 
 @pytest.mark.parametrize(
@@ -374,9 +421,7 @@ def test_detail_adapter_rejects_operation_mismatch() -> None:
     provider = DomesticDetailProvider(delegate, manifest_validator=validator)
 
     result = asyncio.run(
-        provider.execute(
-            _request("local_edit", {"job": {"market_region": "domestic"}})
-        )
+        provider.execute(_request("local_edit", {"job": {"market_region": "domestic"}}))
     )
 
     assert result.outcome == ProviderOutcome.FAILED
@@ -474,15 +519,11 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
         manifest_validator=validator,
     )
 
-    result = asyncio.run(
-        provider.execute(_amazon_request("A-DESKTOP-03", 1464, 600))
-    )
+    result = asyncio.run(provider.execute(_amazon_request("A-DESKTOP-03", 1464, 600)))
 
     assert result is delegated_result
     assert validator.calls == ["xinghe-amazon-visual-suite"]
-    adapter = delegate.requests[0].configuration[
-        SKILL_ADAPTER_CONFIGURATION_KEY
-    ]
+    adapter = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY]
     assert adapter["schema_version"] == SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
     assert adapter["skill_id"] == "xinghe-amazon-visual-suite"
     assert adapter["skill_content_hash"] == "a" * 64
@@ -501,19 +542,39 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
         "width": 1464,
         "height": 600,
         "quality": "high",
-        "output_format": "png",
-        "fit": "cover",
+        "output_format": "jpeg",
+        "fit": "contain",
     }
-    assert adapter["prompt_input"] == {
-        "marketplace": "amazon-us",
-        "product_name": "Test product",
-        "product_information": ["Test listing", "Point one"],
-        "color_palette": ["navy"],
-        "language": "en-US",
-        "composition": "a_desktop",
-        "image_count": 1,
-    }
-    assert "private_note" not in adapter["prompt_input"]
+    prompt = adapter["prompt_input"]
+    assert prompt["marketplace"] == "amazon-us"
+    assert prompt["product_name"] == "Test product"
+    assert prompt["product_information"] == ["Test listing", "Point one"]
+    assert prompt["color_palette"] == ["navy"]
+    assert prompt["language"] == "en-US"
+    assert prompt["composition"] == "a_desktop"
+    assert prompt["image_count"] == 1
+    assert prompt["creative_direction"] == [
+        "Asset type: Desktop A+ core-feature module",
+        (
+            "Layout direction: Wide structure or macro composition with "
+            "evidence larger than text."
+        ),
+    ]
+    assert prompt["copy_requirements"] == [
+        (
+            "Headline: One short differentiation headline grounded in "
+            "confirmed evidence."
+        ),
+        "Subcopy: Use sparse feature labels only where legible.",
+    ]
+    assert prompt["reference_guidance"][0] == (
+        "Buyer question: What makes it different?"
+    )
+    assert prompt["reference_guidance"][3] == (
+        "Visual proof: Use mechanism, structure, craft, or close-detail evidence."
+    )
+    assert len(prompt["negative_constraints"]) == 2
+    assert "private_note" not in prompt
     audit = delegate.requests[0].configuration[AMAZON_AUDIT_CONFIGURATION_KEY]
     assert audit["expected_item_count"] == 21
     assert tuple(audit["canonical_item_keys"]) == AMAZON_ITEM_KEYS
@@ -527,7 +588,111 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
         "target_height": 600,
         "deliverable_counted": True,
         "contact_sheet": False,
+        "task": {
+            "id": "A-DESKTOP-03",
+            "asset_type": "Desktop A+ core-feature module",
+            "final_size": "1464x600",
+            "buyer_question": "What makes it different?",
+            "selling_point": (
+                "Explain one confirmed mechanism, structure, technology, craft, "
+                "or detail."
+            ),
+            "information_confidence": (
+                "Use confirmed facts first; soften reasonable inferences; omit "
+                "every needs-confirmation claim from the image."
+            ),
+            "visual_proof": (
+                "Use mechanism, structure, craft, or close-detail evidence."
+            ),
+            "headline": (
+                "One short differentiation headline grounded in confirmed evidence."
+            ),
+            "subcopy": "Use sparse feature labels only where legible.",
+            "layout_direction": (
+                "Wide structure or macro composition with evidence larger than text."
+            ),
+            "source_material": (
+                "Prioritize product_detail and white_background_product references."
+            ),
+            "risk_note": (
+                "Do not invent materials, construction, technology, patents, or "
+                "lab evidence."
+            ),
+        },
     }
+
+
+def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> None:
+    delegate = StrictRecordingDelegate(
+        ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
+    )
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+
+    for spec in AMAZON_ITEM_SPECS:
+        asyncio.run(
+            provider.execute(_amazon_request(spec.item_key, spec.width, spec.height))
+        )
+
+    required_task_fields = {
+        "id",
+        "asset_type",
+        "final_size",
+        "buyer_question",
+        "selling_point",
+        "information_confidence",
+        "visual_proof",
+        "headline",
+        "subcopy",
+        "layout_direction",
+        "source_material",
+        "risk_note",
+    }
+    task_rows: list[tuple[tuple[str, str], ...]] = []
+    for ordinal, (spec, request) in enumerate(
+        zip(AMAZON_ITEM_SPECS, delegate.requests, strict=True)
+    ):
+        adapter = request.configuration[SKILL_ADAPTER_CONFIGURATION_KEY]
+        audit = request.configuration[AMAZON_AUDIT_CONFIGURATION_KEY]
+        task = audit["item"]["task"]
+        prompt = adapter["prompt_input"]
+
+        assert adapter["item_key"] == AMAZON_ITEM_KEYS[ordinal] == spec.item_key
+        assert adapter["item_ordinal"] == ordinal
+        assert adapter["target"]["width"] == spec.width
+        assert adapter["target"]["height"] == spec.height
+        assert adapter["target"]["output_format"] == "jpeg"
+        assert adapter["target"]["fit"] == (
+            "pad" if spec.group == "main" else "contain"
+        )
+        assert set(task) == required_task_fields
+        assert task["id"] == spec.item_key
+        assert task["final_size"] == f"{spec.width}x{spec.height}"
+        assert all(isinstance(value, str) and value for value in task.values())
+        assert prompt["product_information"] == ["Test listing", "Point one"]
+        assert prompt["reference_guidance"][0] == (
+            f"Buyer question: {task['buyer_question']}"
+        )
+        assert prompt["reference_guidance"][1] == (
+            f"Selling point: {task['selling_point']}"
+        )
+        assert prompt["reference_guidance"][3] == (
+            f"Visual proof: {task['visual_proof']}"
+        )
+        assert prompt["creative_direction"][1] == (
+            f"Layout direction: {task['layout_direction']}"
+        )
+        assert prompt["copy_requirements"] == [
+            f"Headline: {task['headline']}",
+            f"Subcopy: {task['subcopy']}",
+        ]
+        assert prompt["negative_constraints"][1] == task["risk_note"]
+        task_rows.append(tuple(sorted(task.items())))
+
+    assert len(delegate.requests) == AMAZON_EXPECTED_ITEM_COUNT
+    assert len(set(task_rows)) == AMAZON_EXPECTED_ITEM_COUNT
 
 
 @pytest.mark.parametrize(
@@ -624,13 +789,50 @@ def test_amazon_output_dimension_mismatch_fails_without_placeholder() -> None:
         manifest_validator=RecordingManifestValidator(),
     )
 
-    result = asyncio.run(
-        provider.execute(_amazon_request("MAIN-01", 2000, 2000))
-    )
+    result = asyncio.run(provider.execute(_amazon_request("MAIN-01", 2000, 2000)))
 
     assert result.outcome == ProviderOutcome.FAILED
     assert result.error_code == "AMAZON_OUTPUT_DIMENSIONS_INVALID"
     assert result.artifact is None
+
+
+def test_amazon_exact_size_png_fails_amazon_ready_format_contract() -> None:
+    delegate = RecordingDelegate(
+        ProviderResult(
+            outcome=ProviderOutcome.SUCCEEDED,
+            artifact=_artifact(2000, 2000),
+        )
+    )
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+
+    result = asyncio.run(provider.execute(_amazon_request("MAIN-01", 2000, 2000)))
+
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == "AMAZON_OUTPUT_FORMAT_INVALID"
+    assert result.retryable is False
+    assert result.artifact is None
+
+
+def test_amazon_exact_size_jpeg_is_preserved_as_final_deliverable() -> None:
+    artifact = _jpeg_artifact(1600, 1200)
+    delegated_result = ProviderResult(
+        outcome=ProviderOutcome.SUCCEEDED,
+        artifact=artifact,
+    )
+    delegate = RecordingDelegate(delegated_result)
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+
+    result = asyncio.run(provider.execute(_amazon_request("A-MOBILE-07", 1600, 1200)))
+
+    assert result is delegated_result
+    assert result.artifact is artifact
+    assert result.artifact.content_type == "image/jpeg"
 
 
 def test_amazon_success_without_artifact_fails_closed() -> None:
@@ -683,9 +885,7 @@ def test_domestic_detail_accepts_execution_coordinator_envelope() -> None:
 
     assert result.outcome == ProviderOutcome.SUCCEEDED
     assert len(delegate.requests) == 1
-    adapter = delegate.requests[0].configuration[
-        SKILL_ADAPTER_CONFIGURATION_KEY
-    ]
+    adapter = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY]
     assert adapter["market_region"] == "domestic"
     assert adapter["prompt"]["platform_code"] == "jd"
     assert adapter["prompt"]["requested_page_count"] == 6

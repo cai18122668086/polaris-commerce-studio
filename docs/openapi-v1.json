@@ -88,15 +88,12 @@
             "type": "string"
           },
           "product_name": {
+            "default": "",
             "maxLength": 160,
-            "minLength": 1,
             "title": "Product Name",
             "type": "string"
           }
         },
-        "required": [
-          "product_name"
-        ],
         "title": "AmazonVisualSuiteConfiguration",
         "type": "object"
       },
@@ -514,6 +511,7 @@
               "1:1",
               "3:4",
               "4:3",
+              "4:5",
               "9:16",
               "16:9"
             ],
@@ -534,8 +532,8 @@
             "type": "string"
           },
           "image_count": {
-            "default": 4,
-            "maximum": 4.0,
+            "default": 1,
+            "maximum": 12.0,
             "minimum": 1.0,
             "title": "Image Count",
             "type": "integer"
@@ -727,6 +725,7 @@
               "2048x2048",
               "1200x1200",
               "750x1000",
+              "1200x1600",
               "1464x600",
               "1600x1200"
             ],
@@ -1815,6 +1814,7 @@
               "1:1",
               "3:4",
               "4:3",
+              "4:5",
               "9:16",
               "16:9"
             ],
@@ -1823,7 +1823,7 @@
           },
           "image_count": {
             "default": 1,
-            "maximum": 4.0,
+            "maximum": 12.0,
             "minimum": 1.0,
             "title": "Image Count",
             "type": "integer"
@@ -1946,11 +1946,13 @@
       "ReferenceRemixConfiguration": {
         "properties": {
           "aspect_ratio": {
-            "default": "1:1",
+            "default": "follow-reference",
             "enum": [
+              "follow-reference",
               "1:1",
               "3:4",
               "4:3",
+              "4:5",
               "9:16",
               "16:9"
             ],
@@ -1959,7 +1961,7 @@
           },
           "image_count": {
             "default": 1,
-            "maximum": 4.0,
+            "maximum": 12.0,
             "minimum": 1.0,
             "title": "Image Count",
             "type": "integer"

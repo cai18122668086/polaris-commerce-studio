@@ -11,7 +11,7 @@ import boto3
 from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 from fastapi import UploadFile
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .config import Settings
 from .errors import UploadValidationError
@@ -179,6 +179,11 @@ class LocalImageStorage:
         return await self.save_validated(image)
 
     async def save_validated(self, image: ValidatedImage) -> StoredImage:
+        validate_prepared_image(
+            image,
+            max_bytes=self.validator.max_upload_bytes,
+            max_pixels=self.validator.max_image_pixels,
+        )
         destination = (self.root / image.object_key).resolve()
         self._require_safe_path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -258,6 +263,11 @@ class S3ImageStorage:
         return await self.save_validated(image)
 
     async def save_validated(self, image: ValidatedImage) -> StoredImage:
+        validate_prepared_image(
+            image,
+            max_bytes=self.validator.max_upload_bytes,
+            max_pixels=self.validator.max_image_pixels,
+        )
         result = await asyncio.to_thread(self._put_image, image)
         raw_etag = result.get("ETag")
         return _stored_image(
@@ -363,6 +373,80 @@ def _stored_image(
         object_version=version,
         etag=etag,
     )
+
+
+def validate_prepared_image(
+    image: ValidatedImage,
+    *,
+    max_bytes: int,
+    max_pixels: int,
+) -> None:
+    """Fail closed unless prepared output metadata matches the actual pixels.
+
+    ``ValidatedImage`` is also used for generated artifacts.  Treating its
+    fields as trusted would allow a provider metadata bug to cross the final
+    persistence boundary, so both local and S3 storage re-open the exact bytes
+    immediately before writing them.
+    """
+
+    if not image.payload:
+        raise UploadValidationError("EMPTY_FILE", "Prepared image is empty.")
+    if len(image.payload) > max_bytes:
+        raise UploadValidationError(
+            "FILE_TOO_LARGE",
+            "Prepared image exceeds the configured byte limit.",
+        )
+    if hashlib.sha256(image.payload).hexdigest() != image.sha256:
+        raise UploadValidationError(
+            "IMAGE_HASH_MISMATCH",
+            "Prepared image bytes do not match the declared SHA-256.",
+        )
+    try:
+        with Image.open(BytesIO(image.payload)) as opened:
+            image_format = str(opened.format or "")
+            opened.load()
+            width, height = ImageOps.exif_transpose(opened).size
+    except (
+        Image.DecompressionBombError,
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as exc:
+        raise UploadValidationError(
+            "INVALID_IMAGE",
+            "Prepared output is not a valid supported image.",
+        ) from exc
+    format_contract = ALLOWED_IMAGE_FORMATS.get(image_format)
+    if format_contract is None:
+        raise UploadValidationError(
+            "UNSUPPORTED_IMAGE_TYPE",
+            "Prepared output uses an unsupported image format.",
+        )
+    canonical_suffix, canonical_content_type = format_contract
+    if (width, height) != (image.width, image.height):
+        raise UploadValidationError(
+            "IMAGE_DIMENSIONS_MISMATCH",
+            "Prepared image pixels do not match the declared dimensions.",
+        )
+    if width * height > max_pixels:
+        raise UploadValidationError(
+            "IMAGE_DIMENSIONS_TOO_LARGE",
+            "Prepared image exceeds the configured pixel limit.",
+        )
+    if image.content_type.lower() != canonical_content_type:
+        raise UploadValidationError(
+            "IMAGE_CONTENT_TYPE_MISMATCH",
+            "Prepared image bytes do not match the declared content type.",
+        )
+    allowed_suffixes = (
+        {".jpg", ".jpeg"} if canonical_suffix == ".jpg" else {canonical_suffix}
+    )
+    object_suffix = Path(image.object_key).suffix.lower()
+    if object_suffix not in allowed_suffixes:
+        raise UploadValidationError(
+            "IMAGE_FILENAME_MISMATCH",
+            "Prepared image storage key has the wrong extension.",
+        )
 
 
 def _safe_filename(filename: str) -> str:

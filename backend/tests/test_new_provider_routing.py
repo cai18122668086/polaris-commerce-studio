@@ -435,6 +435,22 @@ def test_crossborder_planner_loads_its_pinned_protocol() -> None:
     assert "references/category-router.md" not in prompt
 
 
+def test_domestic_planner_loads_every_pinned_reference_in_stable_order() -> None:
+    skill_root = default_skill_root(DOMESTIC_DETAIL_SKILL_ID)
+    prompt = load_planner_system_prompt(skill_root, DOMESTIC_DETAIL_SKILL_ID)
+    expected_references = sorted(
+        path.relative_to(skill_root).as_posix()
+        for path in (skill_root / "references").glob("*.md")
+    )
+
+    markers = [f"--- BEGIN {relative} ---" for relative in expected_references]
+    assert "--- BEGIN SKILL.md ---" in prompt
+    assert all(marker in prompt for marker in markers)
+    assert [prompt.index(marker) for marker in markers] == sorted(
+        prompt.index(marker) for marker in markers
+    )
+
+
 def test_crossborder_detail_flag_switches_only_the_international_real_route(
     client: TestClient,
 ) -> None:

@@ -12,7 +12,9 @@ from app.provider import Provider, ProviderOutcome, ProviderRequest, ProviderRes
 from app.skill_runtime import SkillRuntimeError
 
 SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION = "single-image-skill-adapter-v1"
-SUPPORTED_ASPECT_RATIOS = frozenset({"1:1", "3:4", "4:3", "9:16", "16:9"})
+SUPPORTED_ASPECT_RATIOS = frozenset(
+    {"1:1", "3:4", "4:3", "4:5", "9:16", "16:9"}
+)
 SUPPORTED_IMAGE_QUALITIES = frozenset({"low", "medium", "high"})
 SUPPORTED_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
 SUPPORTED_TARGET_FITS = frozenset({"cover", "contain", "pad"})
@@ -20,6 +22,7 @@ TARGET_DIMENSIONS = {
     "1:1": (1024, 1024),
     "3:4": (768, 1024),
     "4:3": (1024, 768),
+    "4:5": (1024, 1280),
     "9:16": (576, 1024),
     "16:9": (1024, 576),
 }
@@ -157,6 +160,11 @@ class NewImageSkillProvider:
 
         raise NotImplementedError
 
+    def target(self, settings: Mapping[str, Any]) -> dict[str, Any]:
+        """Return the operation-specific deterministic delivery target."""
+
+        return controlled_target(settings)
+
     def build_adapter_envelope(
         self,
         input_config: Mapping[str, Any],
@@ -175,7 +183,7 @@ class NewImageSkillProvider:
             "item_key": item_key,
             "item_ordinal": item_ordinal,
             "source_assets": self.source_assets(input_config),
-            "target": controlled_target(settings),
+            "target": self.target(settings),
             "prompt_input": self.prompt_input(settings, item_config),
         }
 
@@ -306,10 +314,10 @@ def role_labelled_assets(
 
 def require_image_count(settings: Mapping[str, Any]) -> int:
     value = settings.get("image_count")
-    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 12:
         raise NewImageSkillContractError(
             "IMAGE_COUNT_OUT_OF_RANGE",
-            "image_count must be between 1 and 4.",
+            "image_count must be between 1 and 12.",
         )
     return value
 
@@ -392,13 +400,52 @@ def normalized_item_key(
     return value.strip()
 
 
-def controlled_target(settings: Mapping[str, Any]) -> dict[str, Any]:
-    aspect_ratio = settings.get("aspect_ratio", "1:1")
+def controlled_target(
+    settings: Mapping[str, Any],
+    *,
+    default_aspect_ratio: str = "1:1",
+    allow_follow_reference: bool = False,
+) -> dict[str, Any]:
+    aspect_ratio = settings.get("aspect_ratio", default_aspect_ratio)
+    if aspect_ratio == "follow-reference":
+        if not allow_follow_reference:
+            raise NewImageSkillContractError(
+                "ASPECT_RATIO_NOT_SUPPORTED",
+                "The requested aspect_ratio is not supported.",
+            )
+        quality, output_format = _controlled_image_encoding(settings)
+        return {
+            "aspect_ratio": "follow-reference",
+            "width": None,
+            "height": None,
+            "quality": quality,
+            "output_format": output_format,
+            "fit": "contain",
+        }
     if not isinstance(aspect_ratio, str) or aspect_ratio not in SUPPORTED_ASPECT_RATIOS:
         raise NewImageSkillContractError(
             "ASPECT_RATIO_NOT_SUPPORTED",
             "The requested aspect_ratio is not supported.",
         )
+    quality, output_format = _controlled_image_encoding(settings)
+    fit = settings.get("fit", "cover")
+    if not isinstance(fit, str) or fit not in SUPPORTED_TARGET_FITS:
+        raise NewImageSkillContractError(
+            "TARGET_FIT_NOT_SUPPORTED",
+            "The requested target fit is not supported.",
+        )
+    width, height = TARGET_DIMENSIONS[aspect_ratio]
+    return {
+        "aspect_ratio": aspect_ratio,
+        "width": width,
+        "height": height,
+        "quality": quality,
+        "output_format": output_format,
+        "fit": fit,
+    }
+
+
+def _controlled_image_encoding(settings: Mapping[str, Any]) -> tuple[str, str]:
     quality = settings.get("quality", "high")
     if not isinstance(quality, str) or quality not in SUPPORTED_IMAGE_QUALITIES:
         raise NewImageSkillContractError(
@@ -419,21 +466,7 @@ def controlled_target(settings: Mapping[str, Any]) -> dict[str, Any]:
             "OUTPUT_FORMAT_NOT_SUPPORTED",
             "The requested output format is not supported.",
         )
-    fit = settings.get("fit", "cover")
-    if not isinstance(fit, str) or fit not in SUPPORTED_TARGET_FITS:
-        raise NewImageSkillContractError(
-            "TARGET_FIT_NOT_SUPPORTED",
-            "The requested target fit is not supported.",
-        )
-    width, height = TARGET_DIMENSIONS[aspect_ratio]
-    return {
-        "aspect_ratio": aspect_ratio,
-        "width": width,
-        "height": height,
-        "quality": quality,
-        "output_format": output_format,
-        "fit": fit,
-    }
+    return quality, output_format
 
 
 def _has_independent_image_artifact(result: ProviderResult) -> bool:

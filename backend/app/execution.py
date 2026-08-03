@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import socket
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -731,6 +732,28 @@ class ExecutionCoordinator:
             ):
                 return False
 
+            expected_dimensions = _expected_delivery_dimensions(item, result)
+            if (
+                result.outcome == ProviderOutcome.SUCCEEDED
+                and result.persisted_artifact is not None
+                and expected_dimensions is not None
+                and (
+                    result.persisted_artifact.width,
+                    result.persisted_artifact.height,
+                )
+                != expected_dimensions
+            ):
+                result = replace(
+                    result,
+                    outcome=ProviderOutcome.FAILED,
+                    error_code="OUTPUT_DIMENSIONS_INVALID",
+                    error_message=(
+                        "Generated output does not match the canonical "
+                        "delivery dimensions."
+                    ),
+                    retryable=False,
+                )
+
             if result.persisted_artifact is not None:
                 limits = session.get(
                     WorkspaceLimitRecord,
@@ -830,6 +853,7 @@ class ExecutionCoordinator:
                     if isinstance(metrics_value, dict)
                     else {}
                 )
+                canonical_dimensions = _expected_delivery_dimensions(item, result)
                 session.add(
                     AssetRecord(
                         id=asset_id,
@@ -876,6 +900,16 @@ class ExecutionCoordinator:
                             "actual_width": stored.width,
                             "actual_height": stored.height,
                             "requested_size": item.configuration.get("size"),
+                            "canonical_width": (
+                                canonical_dimensions[0]
+                                if canonical_dimensions is not None
+                                else None
+                            ),
+                            "canonical_height": (
+                                canonical_dimensions[1]
+                                if canonical_dimensions is not None
+                                else None
+                            ),
                             "locally_resampled": bool(
                                 result_metrics.get("locally_resampled", False)
                             ),
@@ -1196,6 +1230,44 @@ def _output_asset_role(job_type: str) -> str:
         JobType.DETAIL_PACK.value: "detail_page",
         JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual",
     }.get(job_type, "generated_image")
+
+
+def _expected_delivery_dimensions(
+    item: JobItemRecord,
+    result: ProviderResult,
+) -> tuple[int, int] | None:
+    """Resolve the immutable per-item output contract at the final DB boundary."""
+
+    configuration = (
+        item.configuration if isinstance(item.configuration, dict) else {}
+    )
+    size = configuration.get("size")
+    if isinstance(size, str) and re.fullmatch(r"[1-9]\d*x[1-9]\d*", size):
+        width_text, height_text = size.split("x", maxsplit=1)
+        return int(width_text), int(height_text)
+    width = configuration.get("target_width")
+    height = configuration.get("target_height")
+    if (
+        isinstance(width, int)
+        and not isinstance(width, bool)
+        and width > 0
+        and isinstance(height, int)
+        and not isinstance(height, bool)
+        and height > 0
+    ):
+        return width, height
+    usage_width = result.raw_usage.get("target_width")
+    usage_height = result.raw_usage.get("target_height")
+    if (
+        isinstance(usage_width, int)
+        and not isinstance(usage_width, bool)
+        and usage_width > 0
+        and isinstance(usage_height, int)
+        and not isinstance(usage_height, bool)
+        and usage_height > 0
+    ):
+        return usage_width, usage_height
+    return None
 
 
 def build_fake_coordinator(

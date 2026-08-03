@@ -34,6 +34,7 @@ from .config import Settings
 from .domain import (
     AssetLifecycleStatus,
     AttemptStatus,
+    JobAssetDirection,
     JobItemStatus,
     JobStatus,
     PlanValidationStatus,
@@ -50,6 +51,7 @@ from .models import (
     AssetRecord,
     AuditEventRecord,
     CreditReservationRecord,
+    JobAssetRecord,
     JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
@@ -91,6 +93,7 @@ SUPPORTED_IMAGE_SIZES = frozenset(
         "1000x1000",
         "1024x1024",
         "1200x1200",
+        "1200x1600",
         "1600x1600",
         "2000x2000",
         "2048x2048",
@@ -105,6 +108,14 @@ DEFAULT_BUDGET_LIMIT_MICROS = 200_000_000
 MAX_PAGE_RETRIES = 2
 PLANNER_LEASE_SECONDS = 900
 _MISSING_JSON_VALUE = object()
+_MAX_PROTOCOL_JSON_BYTES = 48 * 1024
+_MAX_PROTOCOL_STRING_LENGTH = 4_000
+_MAX_PROTOCOL_COLLECTION_LENGTH = 96
+_MAX_PROTOCOL_DEPTH = 8
+_SENSITIVE_PROTOCOL_KEY = re.compile(
+    r"(?:api[_-]?key|authorization|cookie|credential|password|secret|token)",
+    re.IGNORECASE,
+)
 
 _PLANNER_JSON_FENCE = re.compile(
     r"\A```(?:json)?[ \t]*\r?\n"
@@ -166,6 +177,9 @@ _CROSSBORDER_PLANNER_PROTOCOL_FILES = (
     "references/prompt-contract.md",
     "references/prompt-templates.md",
 )
+_COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset(
+    {"xinghe-ecommerce-detail-domestic-3"}
+)
 _PLANNER_PROTOCOL_FILES_BY_SKILL = {
     "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
 }
@@ -205,6 +219,7 @@ class SourceImage:
     content_type: str
     sha256: str
     payload: bytes
+    source_role: str = "product_reference"
 
 
 @dataclass(frozen=True)
@@ -221,6 +236,7 @@ class PlannerRequest:
     size: str
     idempotency_key: str
     system_prompt: str = ""
+    domestic_protocol: bool = False
 
 
 @dataclass(frozen=True)
@@ -346,7 +362,9 @@ def cost_range(
 
 def build_resume_signature(
     *,
-    groups: Sequence[tuple[str, Sequence[tuple[str, str]]]],
+    groups: Sequence[
+        tuple[str, Sequence[tuple[str, str] | tuple[str, str, str]]]
+    ],
     base_url: str,
     planner_model: str,
     image_model: str,
@@ -367,8 +385,16 @@ def build_resume_signature(
             {
                 "label": label,
                 "sources": [
-                    {"filename": filename, "sha256": sha256}
-                    for filename, sha256 in sources
+                    (
+                        {
+                            "role": source[0],
+                            "filename": source[1],
+                            "sha256": source[2],
+                        }
+                        if len(source) == 3
+                        else {"filename": source[0], "sha256": source[1]}
+                    )
+                    for source in sources
                 ],
             }
             for label, sources in groups
@@ -395,7 +421,112 @@ def build_resume_signature(
     return canonical_hash(payload)
 
 
-def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]:
+def _safe_protocol_value(
+    value: object,
+    *,
+    path: str,
+    depth: int = 0,
+) -> Any:
+    """Return bounded JSON data while omitting unknown credential-like keys."""
+
+    if depth > _MAX_PROTOCOL_DEPTH:
+        raise XingheAgentError(
+            "PLANNER_SCHEMA_INVALID",
+            "Planner protocol data exceeds the nesting limit.",
+            json_pointer=path,
+        )
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Planner protocol numbers must be finite.",
+                json_pointer=path,
+            )
+        return value
+    if isinstance(value, str):
+        if len(value) > _MAX_PROTOCOL_STRING_LENGTH:
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Planner protocol text exceeds the field limit.",
+                json_pointer=path,
+            )
+        return value
+    if isinstance(value, list):
+        if len(value) > _MAX_PROTOCOL_COLLECTION_LENGTH:
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Planner protocol arrays exceed the item limit.",
+                json_pointer=path,
+            )
+        return [
+            _safe_protocol_value(
+                item,
+                path=f"{path}/{index}",
+                depth=depth + 1,
+            )
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, Mapping):
+        if len(value) > _MAX_PROTOCOL_COLLECTION_LENGTH:
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Planner protocol objects exceed the member limit.",
+                json_pointer=path,
+            )
+        normalized: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key or len(key) > 160:
+                raise XingheAgentError(
+                    "PLANNER_SCHEMA_INVALID",
+                    "Planner protocol object keys are invalid.",
+                    json_pointer=path,
+                )
+            if _SENSITIVE_PROTOCOL_KEY.search(key):
+                continue
+            normalized[key] = _safe_protocol_value(
+                item,
+                path=f"{path}/{key.replace('~', '~0').replace('/', '~1')}",
+                depth=depth + 1,
+            )
+        return normalized
+    raise XingheAgentError(
+        "PLANNER_SCHEMA_INVALID",
+        "Planner protocol fields must contain JSON values only.",
+        json_pointer=path,
+    )
+
+
+def _bounded_protocol_mapping(value: Mapping[str, Any], *, path: str) -> dict[str, Any]:
+    normalized = _safe_protocol_value(value, path=path)
+    if not isinstance(normalized, dict):  # pragma: no cover - mapping invariant
+        raise XingheAgentError(
+            "PLANNER_SCHEMA_INVALID",
+            "Planner protocol field must be an object.",
+            json_pointer=path,
+        )
+    encoded = json.dumps(
+        normalized,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(encoded) > _MAX_PROTOCOL_JSON_BYTES:
+        raise XingheAgentError(
+            "PLANNER_SCHEMA_INVALID",
+            "Planner protocol object exceeds the serialized size limit.",
+            json_pointer=path,
+        )
+    return normalized
+
+
+def validate_planner_payload(
+    payload: object,
+    page_count: int,
+    *,
+    preserve_protocol_fields: bool = False,
+) -> dict[str, Any]:
     """Validate the mandatory structured plan and exact screen count."""
 
     root = _require_mapping(
@@ -513,7 +644,17 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
             "Planner rhythm map must contain one entry per screen.",
             json_pointer=_json_pointer("plan", "design_strength_lock", "rhythm_map"),
         )
-    normalized_screens: list[dict[str, str]] = []
+    safe_analysis = (
+        _bounded_protocol_mapping(analysis, path="/analysis")
+        if preserve_protocol_fields
+        else {}
+    )
+    safe_plan = (
+        _bounded_protocol_mapping(plan, path="/plan")
+        if preserve_protocol_fields
+        else {}
+    )
+    normalized_screens: list[dict[str, Any]] = []
     for screen_index, screen in enumerate(screens):
         screen_path = _json_pointer("plan", "screens", screen_index)
         screen_mapping = _require_mapping(
@@ -521,7 +662,12 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
             "PLANNER_SCHEMA_INVALID",
             path=screen_path,
         )
-        normalized = {
+        normalized: dict[str, Any] = (
+            _bounded_protocol_mapping(screen_mapping, path=screen_path)
+            if preserve_protocol_fields
+            else {}
+        )
+        normalized.update({
             key: _require_nonempty_string(
                 screen_mapping.get(key),
                 key,
@@ -537,7 +683,7 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
                 "structure",
                 "subject_scale",
             )
-        }
+        })
         if normalized["subject_scale"] not in _SUBJECT_SCALES:
             raise XingheAgentError(
                 "PLANNER_SCHEMA_INVALID",
@@ -596,22 +742,42 @@ def validate_planner_payload(payload: object, page_count: int) -> dict[str, Any]
             "The final screen must be the non-consultative closing summary.",
             json_pointer=_json_pointer("plan", "screens", page_count - 1, "role"),
         )
-    return {
-        "analysis": {
+    if not preserve_protocol_fields:
+        return {
+            "analysis": {
+                "category_key": str(analysis["category_key"]),
+                "category_reason": str(analysis["category_reason"]),
+                "product_image_analysis": dict(analysis["product_image_analysis"]),
+                "product_consistency_anchors": dict(
+                    analysis["product_consistency_anchors"]
+                ),
+                "buyer_objections": list(objections),
+            },
+            "plan": {
+                "campaign_style_lock": dict(campaign_lock),
+                "design_strength_lock": dict(design_lock),
+                "screens": normalized_screens,
+            },
+        }
+    safe_analysis.update(
+        {
             "category_key": str(analysis["category_key"]),
             "category_reason": str(analysis["category_reason"]),
-            "product_image_analysis": dict(analysis["product_image_analysis"]),
+            "product_image_analysis": dict(safe_analysis["product_image_analysis"]),
             "product_consistency_anchors": dict(
-                analysis["product_consistency_anchors"]
+                safe_analysis["product_consistency_anchors"]
             ),
-            "buyer_objections": list(objections),
-        },
-        "plan": {
-            "campaign_style_lock": dict(campaign_lock),
-            "design_strength_lock": dict(design_lock),
+            "buyer_objections": list(safe_analysis["buyer_objections"]),
+        }
+    )
+    safe_plan.update(
+        {
+            "campaign_style_lock": dict(safe_plan["campaign_style_lock"]),
+            "design_strength_lock": dict(safe_plan["design_strength_lock"]),
             "screens": normalized_screens,
-        },
-    }
+        }
+    )
+    return {"analysis": safe_analysis, "plan": safe_plan}
 
 
 def compile_page_prompt(
@@ -625,6 +791,8 @@ def compile_page_prompt(
     product_information: Sequence[str],
     source_count: int,
     size: str,
+    source_roles: Sequence[str] | None = None,
+    include_protocol_fields: bool = False,
 ) -> str:
     """Compile the template's fidelity and prompt-density contract."""
 
@@ -662,18 +830,122 @@ def compile_page_prompt(
     width, height = _parse_image_size(size)
     divisor = math.gcd(width, height)
     ratio = f"{width // divisor}:{height // divisor}"
+    if not include_protocol_fields:
+        return (
+            f"e-commerce detail page image; exact canvas {width}x{height} ({ratio})\n"
+            f"Page {page_number}/{page_count}. Create one independent page, not a "
+            "collage or multi-panel composition.\n"
+            f"All {source_count} ordered reference images are complementary angles "
+            "of the same product. Reconcile them into one consistent identity; "
+            "mark visible conflicts needs_confirmation.\n"
+            f"Product: {product_name}. User-provided information: {supplied}.\n"
+            f"Product Consistency Anchors: {anchors}\n"
+            f"Visible-fact boundary: {facts}\n"
+            f"Campaign Style Lock: {campaign_lock}\n"
+            f"Design Strength Lock: {design_lock}\n"
+            f"Role: {screen['role']}\n"
+            f"Page structure: {screen['structure']}\n"
+            f"Subject scale: {screen['subject_scale']}\n"
+            f"Main title ({language}): {screen['title']}\n"
+            f"One short label ({language}): {screen['label']}\n"
+            f"One visual hero and composition: {screen['composition']}\n"
+            f"Visual device: {screen['device']}\n"
+            f"Difference from adjacent pages: {screen['difference']}\n"
+            "One core selling point only. Exactly one main title and one short "
+            "label. At most one zoom window and at most two structural callouts. "
+            "No repeated local window, no repeated display of the same part, no "
+            "multi-panel collage, and no multiple crop windows. Use only supplied "
+            "information and visible facts. Do not invent functions, parameters, "
+            "materials, certifications, efficacy, sales, reviews, tests, rankings, "
+            "comfort, durability, or authenticity claims. Treat visible source "
+            "watermarks as source marks, never as product branding or page copy."
+        )
+    analysis_protocol = json.dumps(
+        {
+            key: value
+            for key, value in analysis.items()
+            if key
+            not in {
+                "category_key",
+                "category_reason",
+                "product_image_analysis",
+                "product_consistency_anchors",
+            }
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    plan_protocol = json.dumps(
+        {
+            key: value
+            for key, value in plan.items()
+            if key
+            not in {
+                "campaign_style_lock",
+                "design_strength_lock",
+                "screens",
+            }
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    screen_protocol = json.dumps(
+        {
+            key: value
+            for key, value in screen.items()
+            if key
+            not in {
+                "role",
+                "title",
+                "label",
+                "composition",
+                "device",
+                "difference",
+                "structure",
+                "subject_scale",
+            }
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    protocol_bytes = sum(
+        len(value.encode("utf-8"))
+        for value in (analysis_protocol, plan_protocol, screen_protocol)
+    )
+    if protocol_bytes > _MAX_PROTOCOL_JSON_BYTES:
+        raise XingheAgentError(
+            "PLANNER_SCHEMA_INVALID",
+            "Compiled planner protocol context exceeds the prompt size limit.",
+        )
+    visible_product_name = (
+        product_name.strip() or "visible product from supplied images"
+    )
+    roles = tuple(source_roles or ("product_reference",) * source_count)
+    product_source_count = sum(role == "product_reference" for role in roles)
+    style_source_count = sum(role == "style_reference" for role in roles)
     return (
         f"e-commerce detail page image; exact canvas {width}x{height} ({ratio})\n"
         f"Page {page_number}/{page_count}. Create one independent page, not a "
         "collage or multi-panel composition.\n"
-        f"All {source_count} ordered reference images are complementary angles "
-        "of the same product. Reconcile them into one consistent identity; "
-        "mark visible conflicts needs_confirmation.\n"
-        f"Product: {product_name}. User-provided information: {supplied}.\n"
+        f"Sources: {product_source_count} product_reference image(s) and "
+        f"{style_source_count} style_reference image(s), {source_count} total. "
+        "Only product_reference images define product identity, visible facts, "
+        "materials, structure, labels, and claims. Reconcile product sources as "
+        "complementary angles of the same product and mark visible conflicts "
+        "needs_confirmation. style_reference images provide layout, hierarchy, "
+        "mood, color rhythm, lighting direction, and composition devices only; "
+        "never treat their depicted product, brand, wording, marks, ratings, "
+        "claims, or specifications as facts about the user's product.\n"
+        f"Product: {visible_product_name}. User-provided information: {supplied}.\n"
         f"Product Consistency Anchors: {anchors}\n"
         f"Visible-fact boundary: {facts}\n"
+        f"Analysis Protocol Fields: {analysis_protocol}\n"
         f"Campaign Style Lock: {campaign_lock}\n"
         f"Design Strength Lock: {design_lock}\n"
+        f"Plan Protocol Fields: {plan_protocol}\n"
         f"Role: {screen['role']}\n"
         f"Page structure: {screen['structure']}\n"
         f"Subject scale: {screen['subject_scale']}\n"
@@ -682,6 +954,7 @@ def compile_page_prompt(
         f"One visual hero and composition: {screen['composition']}\n"
         f"Visual device: {screen['device']}\n"
         f"Difference from adjacent pages: {screen['difference']}\n"
+        f"Current Screen Protocol Fields: {screen_protocol}\n"
         "One core selling point only. Exactly one main title and one short "
         "label. At most one zoom window and at most two structural callouts. "
         "No repeated local window, no repeated display of the same part, no "
@@ -708,10 +981,21 @@ def load_planner_system_prompt(
         )
     ]
     try:
-        protocol_files = _PLANNER_PROTOCOL_FILES_BY_SKILL.get(
-            skill_id,
-            _DEFAULT_PLANNER_PROTOCOL_FILES,
-        )
+        if skill_id in _COMPLETE_REFERENCE_PROTOCOL_SKILLS:
+            references_root = skill_root / "references"
+            reference_files = tuple(
+                path.relative_to(skill_root).as_posix()
+                for path in sorted(
+                    references_root.glob("*.md"),
+                    key=lambda candidate: candidate.name,
+                )
+            )
+            protocol_files = ("SKILL.md", *reference_files)
+        else:
+            protocol_files = _PLANNER_PROTOCOL_FILES_BY_SKILL.get(
+                skill_id,
+                _DEFAULT_PLANNER_PROTOCOL_FILES,
+            )
         for relative in protocol_files:
             path = skill_root / Path(relative)
             sections.append(
@@ -1521,7 +1805,11 @@ class XinghePlanningCoordinator:
                 )
             try:
                 validated.append(
-                    validate_planner_payload(result.payload, request.page_count)
+                    validate_planner_payload(
+                        result.payload,
+                        request.page_count,
+                        preserve_protocol_fields=request.domestic_protocol,
+                    )
                 )
             except XingheAgentError as exc:
                 return self._fail_planning(
@@ -1591,6 +1879,7 @@ class XinghePlanningCoordinator:
                     content_type=source.content_type,
                     sha256=source.sha256,
                     payload=payload,
+                    source_role=source.source_role,
                 )
             )
         return PlannerRequest(
@@ -1606,6 +1895,7 @@ class XinghePlanningCoordinator:
             size=request.size,
             idempotency_key=request.idempotency_key,
             system_prompt=request.system_prompt,
+            domestic_protocol=request.domestic_protocol,
         )
 
     def _reserve(
@@ -1734,14 +2024,17 @@ class XinghePlanningCoordinator:
             configuration.get("settings"),
             "AGENT_CONFIGURATION_INVALID",
         )
-        if self.skill_id == "xinghe-ecommerce-detail-domestic-3":
+        domestic_protocol = self.skill_id == "xinghe-ecommerce-detail-domestic-3"
+        if domestic_protocol:
             from .domestic_detail_provider import (
                 domestic_detail_prompt_configuration,
             )
             from .new_detail_skill_provider import AdapterValidationError
 
             try:
-                domestic_detail_prompt_configuration(settings)
+                detail_prompt_configuration = (
+                    domestic_detail_prompt_configuration(settings)
+                )
             except AdapterValidationError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
         elif self.skill_id == "xinghe-crossborder-detail-3":
@@ -1751,7 +2044,9 @@ class XinghePlanningCoordinator:
             from .new_detail_skill_provider import AdapterValidationError
 
             try:
-                crossborder_detail_prompt_configuration(settings)
+                detail_prompt_configuration = (
+                    crossborder_detail_prompt_configuration(settings)
+                )
             except AdapterValidationError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
         groups = input_configuration.get("product_groups")
@@ -1761,16 +2056,28 @@ class XinghePlanningCoordinator:
                 "At least one product group is required.",
             )
         page_count = _strict_page_count(settings.get("page_count"))
-        product_name = _require_nonempty_string(
-            settings.get("product_name"),
-            "product_name",
-        )
+        product_name_value = settings.get("product_name")
+        if domestic_protocol and isinstance(product_name_value, str):
+            product_name = (
+                product_name_value.strip()
+                or "visible product from supplied images"
+            )
+        else:
+            product_name = _require_nonempty_string(
+                product_name_value,
+                "product_name",
+            )
         language = _require_nonempty_string(settings.get("language"), "language")
         platform_code = _require_nonempty_string(
             settings.get("platform_code"),
             "platform_code",
         )
-        size = _validated_image_size(settings.get("size", IMAGE_SIZE))
+        if domestic_protocol:
+            size = _validated_image_size(
+                detail_prompt_configuration["resolved_size"]
+            )
+        else:
+            size = _validated_image_size(settings.get("size") or IMAGE_SIZE)
         selling_points_value = settings.get("selling_points", [])
         if not isinstance(selling_points_value, list) or not all(
             isinstance(value, str) for value in selling_points_value
@@ -1779,8 +2086,40 @@ class XinghePlanningCoordinator:
                 "AGENT_CONFIGURATION_INVALID",
                 "Product information must be an array of strings.",
             )
+        reference_asset_ids: list[str] = []
+        durable_roles: set[tuple[str, str]] = set()
+        if domestic_protocol:
+            reference_value = input_configuration.get("reference_asset_ids", [])
+            if not isinstance(reference_value, list) or any(
+                not isinstance(value, str) or not value
+                for value in reference_value
+            ):
+                raise XingheAgentError(
+                    "AGENT_CONFIGURATION_INVALID",
+                    "Style reference asset identifiers must be strings.",
+                )
+            reference_asset_ids = list(reference_value)
+            durable_roles = {
+                (relation.asset_id, relation.role)
+                for relation in session.scalars(
+                    select(JobAssetRecord)
+                    .where(
+                        JobAssetRecord.workspace_id == job.workspace_id,
+                        JobAssetRecord.job_id == job.id,
+                        JobAssetRecord.job_item_id.is_(None),
+                        JobAssetRecord.direction
+                        == JobAssetDirection.INPUT.value,
+                    )
+                    .order_by(JobAssetRecord.role, JobAssetRecord.ordinal)
+                ).all()
+            }
         requests: list[PlannerRequest] = []
-        signature_groups: list[tuple[str, Sequence[tuple[str, str]]]] = []
+        signature_groups: list[
+            tuple[
+                str,
+                Sequence[tuple[str, str] | tuple[str, str, str]],
+            ]
+        ] = []
         source_groups: list[tuple[str, tuple[SourceImage, ...]]] = []
         for group_index, group_value in enumerate(groups, start=1):
             group = _require_mapping(
@@ -1798,11 +2137,28 @@ class XinghePlanningCoordinator:
                     f"Product group {group_index} has no source assets.",
                 )
             sources: list[SourceImage] = []
-            for asset_id_value in asset_ids:
+            role_asset_ids = [
+                ("product_reference", asset_id_value)
+                for asset_id_value in asset_ids
+            ]
+            if domestic_protocol:
+                role_asset_ids.extend(
+                    ("style_reference", asset_id)
+                    for asset_id in reference_asset_ids
+                )
+            for source_role, asset_id_value in role_asset_ids:
                 if not isinstance(asset_id_value, str):
                     raise XingheAgentError(
                         "AGENT_CONFIGURATION_INVALID",
                         "Product source asset identifiers must be strings.",
+                    )
+                if domestic_protocol and (
+                    asset_id_value,
+                    source_role,
+                ) not in durable_roles:
+                    raise XingheAgentError(
+                        "RESUME_SIGNATURE_INVALID",
+                        "A source role no longer matches its durable job binding.",
                     )
                 asset = session.scalar(
                     select(AssetRecord).where(
@@ -1826,16 +2182,24 @@ class XinghePlanningCoordinator:
                         content_type=asset.content_type,
                         sha256=asset.sha256,
                         payload=b"",
+                        source_role=source_role,
                     )
                 )
             source_tuple = tuple(sources)
             source_groups.append((group_key, source_tuple))
-            signature_groups.append(
-                (
-                    group_key,
-                    tuple((source.filename, source.sha256) for source in source_tuple),
+            signature_sources: Sequence[
+                tuple[str, str] | tuple[str, str, str]
+            ]
+            if domestic_protocol:
+                signature_sources = tuple(
+                    (source.source_role, source.filename, source.sha256)
+                    for source in source_tuple
                 )
-            )
+            else:
+                signature_sources = tuple(
+                    (source.filename, source.sha256) for source in source_tuple
+                )
+            signature_groups.append((group_key, signature_sources))
         signature = build_resume_signature(
             groups=signature_groups,
             base_url=self.base_url_signature,
@@ -1867,6 +2231,7 @@ class XinghePlanningCoordinator:
                     platform_code=platform_code,
                     size=size,
                     idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
+                    domestic_protocol=domestic_protocol,
                 )
             )
         return tuple(requests)
@@ -2150,8 +2515,20 @@ class XinghePlanningCoordinator:
             all_signature_groups = [
                 (
                     request.group_key,
-                    tuple(
-                        (source.filename, source.sha256) for source in request.sources
+                    (
+                        tuple(
+                            (
+                                source.source_role,
+                                source.filename,
+                                source.sha256,
+                            )
+                            for source in request.sources
+                        )
+                        if request.domestic_protocol
+                        else tuple(
+                            (source.filename, source.sha256)
+                            for source in request.sources
+                        )
                     ),
                 )
                 for request in requests
@@ -2195,6 +2572,14 @@ class XinghePlanningCoordinator:
                         product_information=request.product_information,
                         source_count=len(request.sources),
                         size=request.size,
+                        source_roles=(
+                            tuple(
+                                source.source_role for source in request.sources
+                            )
+                            if request.domestic_protocol
+                            else None
+                        ),
+                        include_protocol_fields=request.domestic_protocol,
                     )
                     item_key = f"{request.group_key}:page-{page_index:03d}"
                     page = {
@@ -2226,6 +2611,11 @@ class XinghePlanningCoordinator:
                                     "filename": source.filename,
                                     "content_type": source.content_type,
                                     "sha256": source.sha256,
+                                    **(
+                                        {"role": source.source_role}
+                                        if request.domestic_protocol
+                                        else {}
+                                    ),
                                 }
                                 for source in request.sources
                             ],
@@ -2238,6 +2628,22 @@ class XinghePlanningCoordinator:
                     {
                         "group_key": request.group_key,
                         "analysis": structured["analysis"],
+                        **(
+                            {
+                                "plan_protocol_fields": {
+                                    key: value
+                                    for key, value in structured["plan"].items()
+                                    if key
+                                    not in {
+                                        "campaign_style_lock",
+                                        "design_strength_lock",
+                                        "screens",
+                                    }
+                                }
+                            }
+                            if request.domestic_protocol
+                            else {}
+                        ),
                         "campaign_style_lock": structured["plan"][
                             "campaign_style_lock"
                         ],
@@ -2460,6 +2866,9 @@ class XingheImageProvider:
                     request,
                     configuration,
                     source_count=len(sources),
+                    source_roles=tuple(
+                        source.source_role for source in sources
+                    ),
                 )
             except XingheAgentError as exc:
                 return _provider_rejection(exc.code, str(exc), self.gateway)
@@ -2560,7 +2969,11 @@ class XingheImageProvider:
             request.configuration.get("item"),
             "AGENT_CONFIGURATION_INVALID",
         )
-        _validate_item_configuration(item_configuration)
+        domestic_protocol = self.skill_id == "xinghe-ecommerce-detail-domestic-3"
+        _validate_item_configuration(
+            item_configuration,
+            require_source_roles=domestic_protocol,
+        )
         with self.session_factory() as session:
             job = session.get(JobRecord, request.job_id, with_for_update=True)
             item = session.get(
@@ -2626,6 +3039,22 @@ class XingheImageProvider:
                     "The durable maximum cost is outside the job budget.",
                 )
             source_records = item_configuration["source_assets"]
+            durable_roles = (
+                {
+                    (relation.asset_id, relation.role)
+                    for relation in session.scalars(
+                        select(JobAssetRecord).where(
+                            JobAssetRecord.workspace_id == job.workspace_id,
+                            JobAssetRecord.job_id == job.id,
+                            JobAssetRecord.job_item_id.is_(None),
+                            JobAssetRecord.direction
+                            == JobAssetDirection.INPUT.value,
+                        )
+                    ).all()
+                }
+                if domestic_protocol
+                else set()
+            )
             sources: list[SourceImage] = []
             for source_value in source_records:
                 source = _require_mapping(
@@ -2636,6 +3065,19 @@ class XingheImageProvider:
                     source.get("asset_id"),
                     "asset_id",
                 )
+                source_role = (
+                    _require_nonempty_string(source.get("role"), "role")
+                    if domestic_protocol
+                    else "product_reference"
+                )
+                if domestic_protocol and (
+                    asset_id,
+                    source_role,
+                ) not in durable_roles:
+                    raise XingheAgentError(
+                        "RESUME_SIGNATURE_INVALID",
+                        "A planned source role no longer matches its durable binding.",
+                    )
                 asset = session.scalar(
                     select(AssetRecord).where(
                         AssetRecord.id == asset_id,
@@ -2662,6 +3104,7 @@ class XingheImageProvider:
                         content_type=asset.content_type,
                         sha256=asset.sha256,
                         payload=b"",
+                        source_role=source_role,
                     )
                 )
             return dict(item_configuration), tuple(sources)
@@ -2672,6 +3115,7 @@ class XingheImageProvider:
         configuration: Mapping[str, Any],
         *,
         source_count: int,
+        source_roles: Sequence[str] = (),
     ) -> None:
         """Atomically reserve one attempt's worst-case image-call exposure."""
 
@@ -2791,6 +3235,17 @@ class XingheImageProvider:
                 "idempotency_key_sha256": hashlib.sha256(
                     request.idempotency_key.encode()
                 ).hexdigest(),
+                **(
+                    {
+                        "source_role_counts": {
+                            role: source_roles.count(role)
+                            for role in sorted(set(source_roles))
+                        }
+                    }
+                    if self.skill_id
+                    == "xinghe-ecommerce-detail-domestic-3"
+                    else {}
+                ),
             }
             if cumulative_exposure > self.budget_limit_micros:
                 session.add(
@@ -2870,6 +3325,7 @@ class XingheImageProvider:
                     content_type=source.content_type,
                     sha256=source.sha256,
                     payload=payload,
+                    source_role=source.source_role,
                 )
             )
         return tuple(loaded)
@@ -3082,6 +3538,10 @@ def synchronize_confirmed_plan(
         for group in groups
         if isinstance(group, dict) and isinstance(group.get("group_key"), str)
     }
+    domestic_protocol = any(
+        isinstance(group, dict) and "plan_protocol_fields" in group
+        for group in groups
+    )
     output_plan_signature = canonical_hash(
         {
             "version": RESUME_SIGNATURE_VERSION,
@@ -3090,6 +3550,15 @@ def synchronize_confirmed_plan(
                 {
                     "group_key": group.get("group_key"),
                     "analysis": group.get("analysis"),
+                    **(
+                        {
+                            "plan_protocol_fields": group.get(
+                                "plan_protocol_fields"
+                            )
+                        }
+                        if domestic_protocol
+                        else {}
+                    ),
                     "campaign_style_lock": group.get("campaign_style_lock"),
                     "design_strength_lock": group.get("design_strength_lock"),
                 }
@@ -3115,9 +3584,36 @@ def synchronize_confirmed_plan(
                 "PLAN_INVALID",
                 "A page references a missing product-group plan.",
             )
+        analysis_value = group.get("analysis")
+        safe_analysis = (
+            _bounded_protocol_mapping(
+                _require_mapping(
+                    analysis_value,
+                    "PLANNER_SCHEMA_INVALID",
+                ),
+                path="/analysis",
+            )
+            if domestic_protocol
+            else analysis_value
+        )
+        plan_protocol_value = group.get("plan_protocol_fields")
+        safe_plan_protocol = (
+            _bounded_protocol_mapping(
+                plan_protocol_value,
+                path="/plan",
+            )
+            if domestic_protocol and isinstance(plan_protocol_value, Mapping)
+            else {}
+        )
+        prompt_page = (
+            _bounded_protocol_mapping(page, path="/screen")
+            if domestic_protocol
+            else page
+        )
         structured = {
-            "analysis": group.get("analysis"),
+            "analysis": safe_analysis,
             "plan": {
+                **safe_plan_protocol,
                 "campaign_style_lock": group.get("campaign_style_lock"),
                 "design_strength_lock": group.get("design_strength_lock"),
             },
@@ -3131,7 +3627,7 @@ def synchronize_confirmed_plan(
                 "quality": quality,
                 "prompt": compile_page_prompt(
                     structured_plan=structured,
-                    screen=page,
+                    screen=prompt_page,
                     page_number=int(page["page"]),
                     page_count=int(existing["page_count"]),
                     language=str(
@@ -3154,6 +3650,16 @@ def synchronize_confirmed_plan(
                     ),
                     source_count=len(existing["source_assets"]),
                     size=str(existing["size"]),
+                    source_roles=(
+                        tuple(
+                            str(source.get("role"))
+                            for source in existing["source_assets"]
+                            if isinstance(source, Mapping)
+                        )
+                        if domestic_protocol
+                        else None
+                    ),
+                    include_protocol_fields=domestic_protocol,
                 ),
             }
         )
@@ -3400,7 +3906,11 @@ def _fail_pending_items(
     job.failed_item_count = len(items)
 
 
-def _validate_item_configuration(configuration: Mapping[str, Any]) -> None:
+def _validate_item_configuration(
+    configuration: Mapping[str, Any],
+    *,
+    require_source_roles: bool = False,
+) -> None:
     expected_versions = {
         "workflow_version": WORKFLOW_VERSION,
         "planning_policy_version": PLANNING_POLICY_VERSION,
@@ -3452,6 +3962,22 @@ def _validate_item_configuration(configuration: Mapping[str, Any]) -> None:
             "AGENT_CONFIGURATION_INVALID",
             "Every page requires all ordered source angles.",
         )
+    if require_source_roles:
+        roles = [
+            source.get("role") if isinstance(source, Mapping) else None
+            for source in sources
+        ]
+        if (
+            "product_reference" not in roles
+            or any(
+                role not in {"product_reference", "style_reference"}
+                for role in roles
+            )
+        ):
+            raise XingheAgentError(
+                "AGENT_CONFIGURATION_INVALID",
+                "Domestic detail sources require explicit product/style roles.",
+            )
 
 
 def _provider_rejection(
@@ -3928,6 +4454,57 @@ def _validate_masked_visual_review_payload(payload: object) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if not request.domestic_protocol:
+        return _legacy_planner_prompt(request)
+    product_source_count = sum(
+        source.source_role == "product_reference" for source in request.sources
+    )
+    style_source_count = sum(
+        source.source_role == "style_reference" for source in request.sources
+    )
+    visible_request = replace(
+        request,
+        product_name=(
+            request.product_name.strip()
+            or "visible product from supplied images"
+        ),
+    )
+    prompt = _legacy_planner_prompt(visible_request)
+    legacy_source_contract = (
+        f"All {len(request.sources)} attached images are ordered complementary "
+        "angles of the same product. Analyze all angles together in this one "
+    )
+    domestic_source_contract = (
+        f"The {product_source_count} product_reference image(s) are ordered "
+        "complementary angles of the user's product and are the only images "
+        "allowed to establish product identity or facts. The "
+        f"{style_source_count} style_reference image(s) may provide only layout, "
+        "hierarchy, mood, lighting direction, page rhythm, and composition "
+        "devices. Never infer the user's product, brand, words, marks, materials, "
+        "functions, specifications, ratings, claims, or other facts from a "
+        "style_reference image. Analyze the product angles together in this one "
+    )
+    protocol_contract = (
+        "needs_confirmation. Preserve all applicable skill-protocol objects in "
+        "the JSON, including information confidence, buyer demand map, demand-"
+        "to-selling-point match, product type strategy, reference visual style "
+        "lock, page strategy, module plan, buyer demand, matched selling point, "
+        "visual proof, required proof, risk reminder, and product identity or "
+        "physical-logic locks. Put set-level fields under analysis or plan and "
+        "current-page fields on the corresponding screen. Required object:"
+    )
+    return prompt.replace(
+        legacy_source_contract,
+        domestic_source_contract,
+        1,
+    ).replace(
+        "needs_confirmation. Required object:",
+        protocol_contract,
+        1,
+    )
+
+
+def _legacy_planner_prompt(request: PlannerRequest) -> str:
     return (
         f"Return exactly one JSON object for product group {request.group_key!r}. "
         f"All {len(request.sources)} attached images are ordered complementary "

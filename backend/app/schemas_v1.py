@@ -198,8 +198,8 @@ ProductImageTaskType = Literal[
 class ProductImageConfiguration(BaseModel):
     task_type: ProductImageTaskType
     platform_code: str = Field(default="tmall", min_length=1, max_length=32)
-    aspect_ratio: Literal["1:1", "3:4", "4:3", "9:16", "16:9"] = "1:1"
-    image_count: int = Field(default=1, ge=1, le=4)
+    aspect_ratio: Literal["1:1", "3:4", "4:3", "4:5", "9:16", "16:9"] = "1:1"
+    image_count: int = Field(default=1, ge=1, le=12)
     instruction: str = Field(default="", max_length=4000)
     target_color: str | None = Field(default=None, max_length=120)
 
@@ -226,8 +226,10 @@ class ReferenceRemixConfiguration(BaseModel):
     platform_code: str = Field(default="tmall", min_length=1, max_length=32)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
-    aspect_ratio: Literal["1:1", "3:4", "4:3", "9:16", "16:9"] = "1:1"
-    image_count: int = Field(default=1, ge=1, le=4)
+    aspect_ratio: Literal[
+        "follow-reference", "1:1", "3:4", "4:3", "4:5", "9:16", "16:9"
+    ] = "follow-reference"
+    image_count: int = Field(default=1, ge=1, le=12)
     instruction: str = Field(default="", max_length=4000)
 
 
@@ -255,8 +257,8 @@ class CreativeImageConfiguration(BaseModel):
     platform_code: str = Field(default="tmall", min_length=1, max_length=32)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
-    aspect_ratio: Literal["1:1", "3:4", "4:3", "9:16", "16:9"] = "1:1"
-    image_count: int = Field(default=4, ge=1, le=4)
+    aspect_ratio: Literal["1:1", "3:4", "4:3", "4:5", "9:16", "16:9"] = "1:1"
+    image_count: int = Field(default=1, ge=1, le=12)
     instruction: str = Field(default="", max_length=4000)
 
 
@@ -284,9 +286,16 @@ class DetailPackConfiguration(BaseModel):
         "2048x2048",
         "1200x1200",
         "750x1000",
+        "1200x1600",
         "1464x600",
         "1600x1200",
     ] = "1024x1536"
+
+    @model_validator(mode="after")
+    def default_domestic_delivery_size(self) -> "DetailPackConfiguration":
+        if self.market_region == "domestic" and "size" not in self.model_fields_set:
+            self.size = "1200x1600"
+        return self
 
 
 class AmazonVisualSuiteInput(BaseModel):
@@ -312,7 +321,7 @@ class AmazonVisualSuiteInput(BaseModel):
 
 class AmazonVisualSuiteConfiguration(BaseModel):
     marketplace: AmazonMarketplace = AMAZON_DEFAULT_MARKETPLACE
-    product_name: str = Field(min_length=1, max_length=160)
+    product_name: str = Field(default="", max_length=160)
     listing_title: str = Field(default="", max_length=240)
     bullet_points: list[str] = Field(default_factory=list, max_length=12)
     brand_colors: list[str] = Field(default_factory=list, max_length=8)

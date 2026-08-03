@@ -14,7 +14,7 @@ import json
 import math
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from typing import Any, Protocol
 
@@ -40,6 +40,11 @@ from .models import (
     WorkspaceRecord,
 )
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
+from .skill_protocol import (
+    SkillProtocol,
+    SkillProtocolError,
+    load_skill_protocol,
+)
 from .storage import ImageStorage
 from .xinghe_agent import (
     ImageCallResult,
@@ -125,7 +130,7 @@ _MAX_TARGET_PIXELS = 64_000_000
 _MAX_PROMPT_FIELDS = 32
 _MAX_PROMPT_STRING_LENGTH = 2_000
 _MAX_PROMPT_LIST_LENGTH = 32
-_MAX_COMPILED_PROMPT_LENGTH = 16_000
+_MAX_COMPILED_PROMPT_BYTES = 256 * 1024
 _MAX_SOURCE_PIXELS = 100_000_000
 
 
@@ -150,16 +155,26 @@ class SourceAssetSpec:
 
 @dataclass(frozen=True)
 class TargetSpec:
-    width: int
-    height: int
+    width: int | None
+    height: int | None
     aspect_ratio: str
     quality: str
     output_format: str
     fit: str
 
     @property
+    def dimensions(self) -> tuple[int, int]:
+        if self.width is None or self.height is None:
+            raise SingleImageProviderError(
+                "TARGET_CONFIGURATION_INVALID",
+                "The delivery target has not been resolved.",
+            )
+        return self.width, self.height
+
+    @property
     def size(self) -> str:
-        return f"{self.width}x{self.height}"
+        width, height = self.dimensions
+        return f"{width}x{height}"
 
 
 @dataclass(frozen=True)
@@ -223,10 +238,12 @@ class XingheSingleImageProvider:
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         try:
             envelope = self._parse_envelope(request)
-            self._verify_manifest(envelope)
+            source_content_hash = self._verify_manifest(envelope)
+            protocol = self._load_protocol(source_content_hash)
             source_records = self._authorize_durable_records(request, envelope)
             sources = await self._load_sources(source_records)
-            prompt = self._compile_prompt(envelope)
+            envelope = self._resolve_follow_reference_target(envelope, sources)
+            prompt = self._compile_prompt(envelope, protocol)
         except SingleImageProviderError as exc:
             return self._rejection(exc.code, str(exc))
         except Exception as exc:
@@ -246,7 +263,10 @@ class XingheSingleImageProvider:
             prompt=prompt,
             quality=envelope.target.quality,
             idempotency_key=request.idempotency_key,
-            size=_provider_generation_size(envelope.target),
+            size=_provider_generation_size(
+                envelope.target,
+                skill_id=envelope.skill_id,
+            ),
             output_format="jpeg",
             preserve_provider_artifact=True,
         )
@@ -268,6 +288,8 @@ class XingheSingleImageProvider:
                         target=envelope.target,
                         prompt_sha256=prompt_sha256,
                         prompt_length=len(prompt),
+                        protocol_sha256=protocol.sha256,
+                        protocol_length=protocol.byte_length,
                         measured_latency=elapsed,
                     ),
                     estimated_cost_micros=None,
@@ -284,6 +306,8 @@ class XingheSingleImageProvider:
             source_count=len(sources),
             prompt_sha256=prompt_sha256,
             prompt_length=len(prompt),
+            protocol_sha256=protocol.sha256,
+            protocol_length=protocol.byte_length,
             measured_latency=elapsed,
         )
 
@@ -388,28 +412,71 @@ class XingheSingleImageProvider:
             required=_ALLOWED_TARGET_KEYS,
             code="TARGET_CONFIGURATION_INVALID",
         )
+        quality = _require_choice(target["quality"], _ALLOWED_QUALITIES, "quality")
+        output_format = _require_choice(
+            target["output_format"], _ALLOWED_OUTPUT_FORMATS, "output_format"
+        )
+        fit = _require_choice(target["fit"], _ALLOWED_FITS, "fit")
+        if target["aspect_ratio"] == "follow-reference":
+            if target["width"] is not None or target["height"] is not None:
+                raise SingleImageProviderError(
+                    "TARGET_CONFIGURATION_INVALID",
+                    "A follow-reference target cannot declare fixed dimensions.",
+                )
+            if fit != "contain":
+                raise SingleImageProviderError(
+                    "TARGET_CONFIGURATION_INVALID",
+                    "A follow-reference target must preserve composition.",
+                )
+            return TargetSpec(
+                width=None,
+                height=None,
+                aspect_ratio="follow-reference",
+                quality=quality,
+                output_format=output_format,
+                fit=fit,
+            )
         width = _require_positive_int(target["width"], "width")
         height = _require_positive_int(target["height"], "height")
-        if (
-            width > _MAX_TARGET_DIMENSION
-            or height > _MAX_TARGET_DIMENSION
-            or width * height > _MAX_TARGET_PIXELS
-        ):
-            raise SingleImageProviderError(
-                "TARGET_CONFIGURATION_INVALID",
-                "The target dimensions exceed the local safety limit.",
-            )
+        _validate_target_dimensions(width, height)
         return TargetSpec(
             width=width,
             height=height,
             aspect_ratio=_require_aspect_ratio(
                 target["aspect_ratio"], width, height
             ),
-            quality=_require_choice(target["quality"], _ALLOWED_QUALITIES, "quality"),
-            output_format=_require_choice(
-                target["output_format"], _ALLOWED_OUTPUT_FORMATS, "output_format"
-            ),
-            fit=_require_choice(target["fit"], _ALLOWED_FITS, "fit"),
+            quality=quality,
+            output_format=output_format,
+            fit=fit,
+        )
+
+    def _resolve_follow_reference_target(
+        self,
+        envelope: SingleImageEnvelope,
+        sources: tuple[SourceImage, ...],
+    ) -> SingleImageEnvelope:
+        if envelope.target.aspect_ratio != "follow-reference":
+            return envelope
+        for spec, source in zip(envelope.source_assets, sources, strict=True):
+            if spec.role != "style_reference":
+                continue
+            width, height, _ = _inspect_image(source.payload)
+            _validate_target_dimensions(width, height)
+            divisor = math.gcd(width, height)
+            return replace(
+                envelope,
+                target=TargetSpec(
+                    width=width,
+                    height=height,
+                    aspect_ratio=f"{width // divisor}:{height // divisor}",
+                    quality=envelope.target.quality,
+                    output_format=envelope.target.output_format,
+                    fit="contain",
+                ),
+            )
+        raise SingleImageProviderError(
+            "FOLLOW_REFERENCE_SOURCE_REQUIRED",
+            "A follow-reference target requires a readable style reference.",
         )
 
     def _parse_prompt_input(self, value: object) -> dict[str, Any]:
@@ -437,7 +504,7 @@ class XingheSingleImageProvider:
         }
 
 
-    def _verify_manifest(self, envelope: SingleImageEnvelope) -> None:
+    def _verify_manifest(self, envelope: SingleImageEnvelope) -> str:
         try:
             validate_method = getattr(self.manifest_validator, "validate", None)
             if callable(validate_method):
@@ -449,11 +516,22 @@ class XingheSingleImageProvider:
                 "SKILL_MANIFEST_VALIDATION_FAILED",
                 f"Skill manifest validation failed ({type(exc).__name__}).",
             ) from None
-        if _manifest_content_hash(result) != envelope.skill_content_hash:
+        content_hash = _manifest_content_hash(result)
+        if content_hash != envelope.skill_content_hash:
             raise SingleImageProviderError(
                 "SKILL_CONTENT_HASH_MISMATCH",
                 "The adapter Skill content hash does not match the installed source.",
             )
+        return content_hash
+
+    def _load_protocol(self, source_content_hash: str) -> SkillProtocol:
+        try:
+            return load_skill_protocol(
+                self.skill_id,
+                source_content_hash=source_content_hash,
+            )
+        except SkillProtocolError as exc:
+            raise SingleImageProviderError(exc.code, str(exc)) from None
 
     def _authorize_durable_records(
         self,
@@ -619,7 +697,11 @@ class XingheSingleImageProvider:
             )
         return tuple(sources)
 
-    def _compile_prompt(self, envelope: SingleImageEnvelope) -> str:
+    def _compile_prompt(
+        self,
+        envelope: SingleImageEnvelope,
+        protocol: SkillProtocol,
+    ) -> str:
         prompt_contract = {
             "schema_version": SINGLE_IMAGE_PROMPT_SCHEMA_VERSION,
             "skill_id": envelope.skill_id,
@@ -635,6 +717,7 @@ class XingheSingleImageProvider:
                 "width": envelope.target.width,
             },
             "instructions": envelope.prompt_input,
+            "skill_protocol": protocol.prompt_payload(),
         }
         prompt = json.dumps(
             prompt_contract,
@@ -642,7 +725,7 @@ class XingheSingleImageProvider:
             sort_keys=True,
             separators=(",", ":"),
         )
-        if len(prompt) > _MAX_COMPILED_PROMPT_LENGTH:
+        if len(prompt.encode("utf-8")) > _MAX_COMPILED_PROMPT_BYTES:
             raise SingleImageProviderError(
                 "PROMPT_INPUT_INVALID",
                 "The compiled prompt exceeds the local safety limit.",
@@ -657,6 +740,8 @@ class XingheSingleImageProvider:
         source_count: int,
         prompt_sha256: str,
         prompt_length: int,
+        protocol_sha256: str,
+        protocol_length: int,
         measured_latency: float,
     ) -> ProviderResult:
         if not isinstance(call_result, ImageCallResult):
@@ -669,6 +754,8 @@ class XingheSingleImageProvider:
                     target=envelope.target,
                     prompt_sha256=prompt_sha256,
                     prompt_length=prompt_length,
+                    protocol_sha256=protocol_sha256,
+                    protocol_length=protocol_length,
                     measured_latency=measured_latency,
                 ),
             )
@@ -678,6 +765,8 @@ class XingheSingleImageProvider:
             target=envelope.target,
             prompt_sha256=prompt_sha256,
             prompt_length=prompt_length,
+            protocol_sha256=protocol_sha256,
+            protocol_length=protocol_length,
             measured_latency=measured_latency,
         )
         provider_request_id = _safe_request_id(call_result.provider_request_id)
@@ -766,6 +855,8 @@ class XingheSingleImageProvider:
         target: TargetSpec,
         prompt_sha256: str,
         prompt_length: int,
+        protocol_sha256: str,
+        protocol_length: int,
         measured_latency: float,
     ) -> dict[str, Any]:
         normalized = normalize_usage(
@@ -810,6 +901,8 @@ class XingheSingleImageProvider:
             "api_latency_seconds": _safe_latency(provider_latency, measured_latency),
             "prompt_sha256": prompt_sha256,
             "prompt_length": prompt_length,
+            "skill_protocol_sha256": protocol_sha256,
+            "skill_protocol_length": protocol_length,
         }
 
     def _rejection(
@@ -901,6 +994,18 @@ def _require_positive_int(value: object, field: str) -> int:
             "TARGET_CONFIGURATION_INVALID", f"The target {field} is invalid."
         )
     return value
+
+
+def _validate_target_dimensions(width: int, height: int) -> None:
+    if (
+        width > _MAX_TARGET_DIMENSION
+        or height > _MAX_TARGET_DIMENSION
+        or width * height > _MAX_TARGET_PIXELS
+    ):
+        raise SingleImageProviderError(
+            "TARGET_CONFIGURATION_INVALID",
+            "The target dimensions exceed the local safety limit.",
+        )
 
 
 def _require_aspect_ratio(value: object, width: int, height: int) -> str:
@@ -1007,10 +1112,20 @@ def _inspect_image(payload: bytes) -> tuple[int, int, str]:
     return width, height, content_type
 
 
-def _provider_generation_size(target: TargetSpec) -> str:
-    if target.width == target.height:
+def _provider_generation_size(target: TargetSpec, *, skill_id: str = "") -> str:
+    target_width, target_height = target.dimensions
+    if skill_id == "xinghe-amazon-visual-suite":
+        amazon_canvas = {
+            (2000, 2000): "2048x2048",
+            (1200, 1600): "1200x1600",
+            (1464, 600): "1536x640",
+            (1600, 1200): "1600x1200",
+        }.get((target_width, target_height))
+        if amazon_canvas is not None:
+            return amazon_canvas
+    if target_width == target_height:
         return "1024x1024"
-    if target.width > target.height:
+    if target_width > target_height:
         return "1536x1024"
     return "1024x1536"
 
@@ -1019,6 +1134,7 @@ def _target_artifact(
     artifact: ProviderArtifact,
     target: TargetSpec,
 ) -> ProviderArtifact:
+    target_width, target_height = target.dimensions
     try:
         with Image.open(BytesIO(artifact.payload)) as opened:
             image_format = str(opened.format)
@@ -1050,7 +1166,7 @@ def _target_artifact(
         )
     requested_format, content_type, suffix = _OUTPUT_FORMATS[target.output_format]
     if (
-        (provider_width, provider_height) == (target.width, target.height)
+        (provider_width, provider_height) == (target_width, target_height)
         and image_format == requested_format
     ):
         return artifact
@@ -1058,18 +1174,18 @@ def _target_artifact(
     if target.fit == "cover":
         rendered = ImageOps.fit(
             materialized,
-            (target.width, target.height),
+            (target_width, target_height),
             method=Image.Resampling.LANCZOS,
             centering=(0.5, 0.5),
         )
     else:
         contained = ImageOps.contain(
             materialized,
-            (target.width, target.height),
+            (target_width, target_height),
             method=Image.Resampling.LANCZOS,
         )
         if target.output_format == "jpeg":
-            rendered = Image.new("RGB", (target.width, target.height), "white")
+            rendered = Image.new("RGB", (target_width, target_height), "white")
             offset = _center_offset(rendered, contained)
             if "A" in contained.getbands():
                 rendered.paste(contained, offset, contained)
@@ -1077,7 +1193,7 @@ def _target_artifact(
                 rendered.paste(contained, offset)
         else:
             rendered = Image.new(
-                "RGBA", (target.width, target.height), (0, 0, 0, 0)
+                "RGBA", (target_width, target_height), (0, 0, 0, 0)
             )
             offset = _center_offset(rendered, contained)
             if "A" in contained.getbands():
@@ -1090,8 +1206,8 @@ def _target_artifact(
         payload=payload,
         filename=_replace_suffix(artifact.filename, suffix),
         content_type=content_type,
-        width=target.width,
-        height=target.height,
+        width=target_width,
+        height=target_height,
         sha256=hashlib.sha256(payload).hexdigest(),
         locally_resampled=True,
         provider_width=provider_width,

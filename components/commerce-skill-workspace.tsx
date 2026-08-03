@@ -41,7 +41,7 @@ type WorkspaceFeatureId =
   | "reference-remix"
   | "creative-image"
   | "amazon-visual-suite";
-type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+type AspectRatio = "follow-reference" | "1:1" | "3:4" | "4:5" | "4:3" | "9:16" | "16:9";
 type CreativeDirection =
   | "selling_point"
   | "pain_point"
@@ -71,12 +71,20 @@ type RoleDefinition = {
 };
 
 const aspectRatios: { value: AspectRatio; label: string; note: string }[] = [
-  { value: "1:1", label: "1:1", note: "方形主图" },
-  { value: "3:4", label: "3:4", note: "电商竖图" },
-  { value: "4:3", label: "4:3", note: "横向展示" },
-  { value: "9:16", label: "9:16", note: "短视频封面" },
-  { value: "16:9", label: "16:9", note: "横屏视觉" },
+  { value: "1:1", label: "1:1", note: "1024 × 1024" },
+  { value: "3:4", label: "3:4", note: "768 × 1024" },
+  { value: "4:5", label: "4:5", note: "1024 × 1280" },
+  { value: "4:3", label: "4:3", note: "1024 × 768" },
+  { value: "9:16", label: "9:16", note: "576 × 1024" },
+  { value: "16:9", label: "16:9", note: "1024 × 576" },
 ];
+
+const referenceAspectRatios: { value: AspectRatio; label: string; note: string }[] = [
+  { value: "follow-reference", label: "跟随参考图", note: "首张参考图实际尺寸" },
+  ...aspectRatios,
+];
+
+const imageCountOptions = Array.from({ length: 12 }, (_, index) => index + 1);
 
 const platforms = [
   { value: "tmall", label: "天猫 / 淘宝" },
@@ -264,8 +272,10 @@ export function CommerceSkillWorkspace({
   const [language, setLanguage] = useState(
     featureId === "amazon-visual-suite" ? "en-US" : "zh-CN",
   );
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
-  const [imageCount, setImageCount] = useState(featureId === "creative-image" ? 4 : 1);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(
+    featureId === "reference-remix" ? "follow-reference" : "1:1",
+  );
+  const [imageCount, setImageCount] = useState(1);
   const [creativeDirection, setCreativeDirection] =
     useState<CreativeDirection>("selling_point");
   const [instruction, setInstruction] = useState("");
@@ -281,6 +291,11 @@ export function CommerceSkillWorkspace({
   const requestError = workspaceError ?? upload.error ?? job.error;
   const isAmazon = featureId === "amazon-visual-suite";
   const isCreative = featureId === "creative-image";
+  const selectedSizeLabel = isAmazon
+    ? "主图 2000 × 2000；副图 1200 × 1600；桌面 A+ 1464 × 600；移动 A+ 1600 × 1200"
+    : aspectRatio === "follow-reference"
+      ? "跟随首张参考图实际尺寸"
+      : aspectRatios.find((ratio) => ratio.value === aspectRatio)?.note ?? "未选择";
   const expectedCount = job.data?.expected_item_count ?? (isAmazon ? 21 : imageCount);
 
   const selectedIds = useMemo(
@@ -290,13 +305,11 @@ export function CommerceSkillWorkspace({
   const missingRequiredRole = roleDefinitions.find(
     (role) => role.required && selections[role.key].length === 0,
   );
-  const amazonProductNameMissing = isAmazon && !productName.trim();
   const canSubmit = Boolean(
     workspace &&
       workflow.canSubmit &&
       !runtime.isPending &&
       !missingRequiredRole &&
-      !amazonProductNameMissing &&
       !upload.isPending &&
       !createJob.isPending,
   );
@@ -372,8 +385,8 @@ export function CommerceSkillWorkspace({
           platform_code: platformCode,
           language,
           selling_points: splitList(sellingPoints),
-          aspect_ratio: aspectRatio,
-          image_count: Math.min(4, imageCount),
+          aspect_ratio: aspectRatio as Exclude<AspectRatio, "follow-reference">,
+          image_count: imageCount,
           instruction: instruction.trim(),
         },
       };
@@ -512,7 +525,7 @@ export function CommerceSkillWorkspace({
                       <option key={platform.value} value={platform.value}>{platform.label}</option>
                     ))}
                   </select>
-                  <small>{isAmazon ? "写入 marketplace。" : "用于渠道构图与视觉约束。"}</small>
+                  <small>{isAmazon ? "写入 marketplace。" : "用于渠道构图与视觉约束。"} 严格交付尺寸：{selectedSizeLabel}。</small>
                 </label>
                 <label>
                   <span>语言</span>
@@ -552,16 +565,15 @@ export function CommerceSkillWorkspace({
               {isAmazon ? (
                 <>
                   <label className={styles.colorField}>
-                    <span>商品名称 <i>必填</i></span>
+                    <span>商品名称 <i>可选</i></span>
                     <input
                       value={productName}
                       onChange={(event) => setProductName(event.target.value)}
                       maxLength={160}
-                      placeholder="例如：便携式降噪蓝牙耳机"
+                      placeholder="可留空，系统将仅依据上传素材分析"
                       disabled={Boolean(jobId)}
-                      aria-invalid={amazonProductNameMissing}
                     />
-                    <small>后端 product_name，最多 160 字符。</small>
+                    <small>留空不会阻塞提交，也不会虚构商品名称或属性。</small>
                   </label>
                   <label className={styles.colorField}>
                     <span>Listing 标题</span>
@@ -591,7 +603,7 @@ export function CommerceSkillWorkspace({
                   <fieldset className={styles.optionGroup} disabled={Boolean(jobId)}>
                     <legend>画面比例</legend>
                     <div className={styles.ratioGrid}>
-                      {aspectRatios.map((ratio) => (
+                      {(featureId === "reference-remix" ? referenceAspectRatios : aspectRatios).map((ratio) => (
                         <label key={ratio.value} data-selected={aspectRatio === ratio.value || undefined}>
                           <input
                             type="radio"
@@ -609,14 +621,14 @@ export function CommerceSkillWorkspace({
                   <fieldset className={styles.optionGroup} disabled={Boolean(jobId)}>
                     <legend>生成数量</legend>
                     <div className={styles.countOptions}>
-                      {[1, 2, 3, 4].map((count) => (
+                      {imageCountOptions.map((count) => (
                         <label key={count} data-selected={imageCount === count || undefined}>
                           <input
                             type="radio"
                             name={`${featureId}-image-count`}
                             value={count}
                             checked={imageCount === count}
-                            onChange={() => setImageCount(Math.min(4, count))}
+                            onChange={() => setImageCount(count)}
                           />
                           <strong>{count}</strong><span>张</span>
                         </label>
@@ -727,7 +739,7 @@ export function CommerceSkillWorkspace({
               <ul>
                 <li>不在浏览器直连图片 Provider</li>
                 <li>mock 不生成或伪造交付图片</li>
-                <li>{isAmazon ? "21 个固定 JobItem 仅由后端创建" : "结果数量最大 4 张"}</li>
+                <li>{isAmazon ? "21 个固定 JobItem 仅由后端创建" : "按界面选择原样提交 1–12 张"}</li>
               </ul>
             </section>
           </aside>
@@ -748,8 +760,6 @@ export function CommerceSkillWorkspace({
               <p role="alert"><Info size={15} />{workflow.message}</p>
             ) : missingRequiredRole ? (
               <p><Info size={15} />请先选择：{missingRequiredRole.title}。</p>
-            ) : amazonProductNameMissing ? (
-              <p><Info size={15} />Amazon 套图必须填写商品名称。</p>
             ) : (
               <p><CheckCircle2 size={15} />素材与参数已就绪。</p>
             )}

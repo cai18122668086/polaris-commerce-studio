@@ -135,7 +135,7 @@ _HIGH_ROLE_PATTERNS = tuple(
     )
 )
 
-_PLANNER_PROTOCOL_FILES = (
+_DEFAULT_PLANNER_PROTOCOL_FILES = (
     "SKILL.md",
     "references/category-router.md",
     "references/design-strength-system.md",
@@ -150,6 +150,25 @@ _PLANNER_PROTOCOL_FILES = (
     "references/electronics-structures.md",
     "references/general-page-structures.md",
 )
+_CROSSBORDER_PLANNER_PROTOCOL_FILES = (
+    "SKILL.md",
+    "references/buyer-demand-strategy.md",
+    "references/platform-profiles.md",
+    "references/reference-page-analysis.md",
+    "references/page-planning-strategy.md",
+    "references/page-task-table.md",
+    "references/scene-layout-standard.md",
+    "references/style-system-standard.md",
+    "references/design-strength-system.md",
+    "references/visual-quality-rules.md",
+    "references/product-consistency-physics.md",
+    "references/anti-template-check.md",
+    "references/prompt-contract.md",
+    "references/prompt-templates.md",
+)
+_PLANNER_PROTOCOL_FILES_BY_SKILL = {
+    "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
+}
 _SUBJECT_SCALES = {
     "hero",
     "medium",
@@ -689,7 +708,11 @@ def load_planner_system_prompt(
         )
     ]
     try:
-        for relative in _PLANNER_PROTOCOL_FILES:
+        protocol_files = _PLANNER_PROTOCOL_FILES_BY_SKILL.get(
+            skill_id,
+            _DEFAULT_PLANNER_PROTOCOL_FILES,
+        )
+        for relative in protocol_files:
             path = skill_root / Path(relative)
             sections.append(
                 f"\n\n--- BEGIN {relative} ---\n"

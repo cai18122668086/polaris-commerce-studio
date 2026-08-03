@@ -43,6 +43,7 @@ from app.xinghe_agent import (
     FakeXingheGateway,
     XingheImageProvider,
     XinghePlanningCoordinator,
+    load_planner_system_prompt,
 )
 from app.xinghe_single_image_provider import XingheSingleImageProvider
 from tests.test_api import WORKSPACE_ID, idem, upload_asset
@@ -419,6 +420,19 @@ def test_real_single_image_routes_receive_independent_delegates(
         CreativeImageProvider.skill_id,
         AMAZON_VISUAL_SUITE_SKILL_ID,
     }
+
+
+def test_crossborder_planner_loads_its_pinned_protocol() -> None:
+    prompt = load_planner_system_prompt(
+        default_skill_root(CROSSBORDER_DETAIL_SKILL_ID),
+        CROSSBORDER_DETAIL_SKILL_ID,
+    )
+
+    assert "--- BEGIN SKILL.md ---" in prompt
+    assert "--- BEGIN references/platform-profiles.md ---" in prompt
+    assert "--- BEGIN references/page-planning-strategy.md ---" in prompt
+    assert "--- BEGIN references/prompt-contract.md ---" in prompt
+    assert "references/category-router.md" not in prompt
 
 
 def test_crossborder_detail_flag_switches_only_the_international_real_route(

@@ -70,7 +70,7 @@ def test_tengli_rejects_unregistered_provider_before_quota_or_dispatch(
     ("job_type", "flag_name"),
     list(NEW_PROVIDER_FLAGS.items()),
 )
-def test_enabled_single_image_provider_reserves_one_request_per_expected_item(
+def test_enabled_single_image_provider_reserves_expected_provider_requests(
     job_type: str,
     flag_name: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -99,10 +99,13 @@ def test_enabled_single_image_provider_reserves_one_request_per_expected_item(
     assert len(quota_calls) == 1
     reservation = quota_calls[0]
     assert reservation["job"] is job
-    assert reservation["estimated_cost_micros"] == 360_000
-    assert reservation["provider_request_count"] == 4
+    planner_required = job_type == JobType.AMAZON_VISUAL_SUITE.value
+    assert reservation["estimated_cost_micros"] == (
+        360_000 + (settings.tengli_planner_reserve_micros if planner_required else 0)
+    )
+    assert reservation["provider_request_count"] == 4 + int(planner_required)
     assert reservation["image_budget_micros"] == 360_000
-    assert reservation["group_count"] == 0
+    assert reservation["group_count"] == int(planner_required)
 
 
 @pytest.mark.parametrize(

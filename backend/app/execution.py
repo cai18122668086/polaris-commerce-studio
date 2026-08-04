@@ -9,7 +9,7 @@ import socket
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from sqlalchemy import func, select, update
@@ -53,7 +53,7 @@ from .provider import (
     ProviderRequest,
     ProviderResult,
 )
-from .services import new_id, settle_credits, transition_job
+from .services import canonical_hash, new_id, settle_credits, transition_job
 from .skill_runtime import build_fake_skill_runtime_provider
 from .storage import ImageStorage, ValidatedImage
 
@@ -214,7 +214,10 @@ class ExecutionCoordinator:
                 JobStatus.AWAITING_CONFIRMATION,
             }:
                 return current
-            if current == JobStatus.QUEUED and job.type == JobType.DETAIL_PACK.value:
+            if current == JobStatus.QUEUED and job.type in {
+                JobType.DETAIL_PACK.value,
+                JobType.AMAZON_VISUAL_SUITE.value,
+            }:
                 confirmed_plan = session.scalar(
                     select(JobPlanRecord.id)
                     .where(
@@ -967,6 +970,9 @@ class ExecutionCoordinator:
                             "delivery_status": result_metrics.get(
                                 "delivery_status"
                             ),
+                            "perceptual_dhash": result.raw_usage.get(
+                                "perceptual_dhash"
+                            ),
                         },
                     )
                 )
@@ -1008,7 +1014,10 @@ class ExecutionCoordinator:
             )
             try:
                 self.usage_writer.add(session, usage_event)
-                if job.type == JobType.DETAIL_PACK.value:
+                if job.type in {
+                    JobType.DETAIL_PACK.value,
+                    JobType.AMAZON_VISUAL_SUITE.value,
+                }:
                     from .xinghe_agent import update_job_metrics
 
                     update_job_metrics(session, job)
@@ -1138,7 +1147,10 @@ class ExecutionCoordinator:
             planner_known_cost = 0
             planner_cost = 0
             planner_real_calls = 0
-            if job.type == JobType.DETAIL_PACK.value:
+            if job.type in {
+                JobType.DETAIL_PACK.value,
+                JobType.AMAZON_VISUAL_SUITE.value,
+            }:
                 from .xinghe_agent import planner_accounting
 
                 latest_plan = session.scalar(
@@ -1196,8 +1208,22 @@ class ExecutionCoordinator:
                 target = JobStatus.CANCELLED
             else:
                 target = JobStatus.FAILED
-            transition_job(job, target, stage=target.value, progress=100)
-            if job.type == JobType.DETAIL_PACK.value:
+            terminal_stage = target.value
+            if (
+                job.type == JobType.AMAZON_VISUAL_SUITE.value
+                and target == JobStatus.COMPLETED
+            ):
+                business_quality = _update_amazon_business_quality(session, job)
+                terminal_stage = (
+                    "completed_quality_failed"
+                    if business_quality == "failed"
+                    else "completed_needs_review"
+                )
+            transition_job(job, target, stage=terminal_stage, progress=100)
+            if job.type in {
+                JobType.DETAIL_PACK.value,
+                JobType.AMAZON_VISUAL_SUITE.value,
+            }:
                 from .xinghe_agent import update_job_metrics
 
                 update_job_metrics(session, job)
@@ -1266,6 +1292,129 @@ def _output_asset_role(job_type: str) -> str:
         JobType.DETAIL_PACK.value: "detail_page",
         JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual",
     }.get(job_type, "generated_image")
+
+
+def _update_amazon_business_quality(
+    session: Session,
+    job: JobRecord,
+) -> str:
+    """Persist technical-vs-business delivery state without hiding artifacts."""
+
+    from .amazon_visual_suite_provider import AMAZON_PLANNING_POLICY_VERSION
+
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if plan is None:
+        return "failed"
+    output_rows = session.execute(
+        select(
+            JobItemRecord.item_key,
+            AssetRecord.sha256,
+            JobAssetRecord.validation,
+        )
+        .join(JobAssetRecord, JobAssetRecord.job_item_id == JobItemRecord.id)
+        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
+        .where(
+            JobAssetRecord.job_id == job.id,
+            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+            JobAssetRecord.is_deliverable.is_(True),
+        )
+        .order_by(JobItemRecord.ordinal)
+    ).all()
+    input_rows = session.execute(
+        select(JobAssetRecord.role, JobAssetRecord.ordinal, AssetRecord.sha256)
+        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
+        .where(
+            JobAssetRecord.job_id == job.id,
+            JobAssetRecord.direction == JobAssetDirection.INPUT.value,
+        )
+        .order_by(JobAssetRecord.role, JobAssetRecord.ordinal)
+    ).all()
+    hashes = [sha256 for _, sha256, _ in output_rows]
+    duplicate_hashes = sorted(
+        {sha256 for sha256 in hashes if hashes.count(sha256) > 1}
+    )
+    findings: list[dict[str, Any]] = []
+    if duplicate_hashes:
+        findings.append(
+            {
+                "code": "AMAZON_EXACT_DUPLICATE_OUTPUT",
+                "severity": "failed",
+                "count": len(duplicate_hashes),
+            }
+        )
+    perceptual_rows = [
+        (item_key, sha256, validation.get("perceptual_dhash"))
+        for item_key, sha256, validation in output_rows
+        if isinstance(validation, dict)
+        and isinstance(validation.get("perceptual_dhash"), str)
+        and len(validation["perceptual_dhash"]) == 16
+    ]
+    near_duplicate_pairs: list[list[str]] = []
+    for index, (left_key, left_sha, left_hash) in enumerate(perceptual_rows):
+        for right_key, right_sha, right_hash in perceptual_rows[index + 1 :]:
+            if left_sha == right_sha:
+                continue
+            try:
+                distance = (
+                    int(cast(str, left_hash), 16)
+                    ^ int(cast(str, right_hash), 16)
+                ).bit_count()
+            except ValueError:
+                continue
+            if distance <= 4:
+                near_duplicate_pairs.append([left_key, right_key])
+    if near_duplicate_pairs:
+        findings.append(
+            {
+                "code": "AMAZON_PERCEPTUAL_NEAR_DUPLICATE_OUTPUT",
+                "severity": "needs_review",
+                "pairs": near_duplicate_pairs[:20],
+                "threshold": 4,
+            }
+        )
+    findings.append(
+        {
+            "code": "AMAZON_PRODUCT_IDENTITY_MANUAL_REVIEW_REQUIRED",
+            "severity": "needs_review",
+            "message": (
+                "Product identity is locked in planning and prompts but cannot be "
+                "proven by deterministic file checks alone."
+            ),
+        }
+    )
+    quality_status = "failed" if duplicate_hashes else "needs_review"
+    payload = dict(plan.payload)
+    payload["business_quality"] = {
+        "status": quality_status,
+        "policy_version": AMAZON_PLANNING_POLICY_VERSION,
+        "technical_delivery_status": "completed",
+        "manual_review_required": True,
+        "automatic_redraw_enabled": False,
+        "input_asset_set_hash": canonical_hash(
+            [
+                {"role": role, "ordinal": ordinal, "sha256": sha256}
+                for role, ordinal, sha256 in input_rows
+            ]
+        ),
+        "output_asset_set_hash": canonical_hash(
+            [
+                {"item_key": item_key, "sha256": sha256}
+                for item_key, sha256, _ in output_rows
+            ]
+        ),
+        "deterministic_findings": findings,
+        "reviewed_at": None,
+        "reviewed_by": None,
+    }
+    plan.payload = payload
+    plan.payload_hash = canonical_hash(payload)
+    return quality_status
 
 
 def _expected_delivery_dimensions(
@@ -1421,10 +1570,23 @@ def build_fake_coordinator(
         skill_id=domestic_skill_id,
     )
     domestic_detail_provider = DomesticDetailProvider(domestic_detail_delegate)
+    amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)
+    amazon_planner = XinghePlanningCoordinator(
+        session_factory,
+        gateway,
+        storage=storage,
+        skill_root=amazon_skill_root,
+        base_url_signature=base_url_signature,
+        medium_price_micros=medium_price_micros,
+        high_price_micros=high_price_micros,
+        budget_limit_micros=budget_limit_micros,
+        skill_id=AMAZON_VISUAL_SUITE_SKILL_ID,
+    )
     routed_planner = DetailMarketRoutingPlanner(
         session_factory,
         international_planner,
         domestic_planner,
+        amazon_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
         session_factory,
@@ -1526,7 +1688,9 @@ def build_fake_coordinator(
         provider,
         detail_planner=routed_planner,
         max_concurrency=xinghe_concurrency,
-        max_detail_retries=2,
+        # Product-wide consistency failures require explicit user-approved retry;
+        # never redraw a page automatically after the Provider boundary.
+        max_detail_retries=0,
         artifact_storage=storage,
     )
 

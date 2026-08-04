@@ -20,7 +20,7 @@ import { ResultGrid } from "@/components/result-grid";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useUploadAsset } from "@/features/assets/api/assets";
-import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
+import { useConfirmPlan, useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import {
   presentWorkflow,
   resolveRuntimeCapability,
@@ -34,6 +34,7 @@ import type {
   ReferenceRemixJobCreate,
 } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
+import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./product-image-workspace.module.css";
 
@@ -68,6 +69,15 @@ type RoleDefinition = {
   title: string;
   description: string;
   required: boolean;
+};
+
+type AmazonPlanPage = {
+  itemKey: string;
+  finalSize?: string;
+  headline?: string;
+  sellingPoint?: string;
+  visualProof?: string;
+  layoutDirection?: string;
 };
 
 const aspectRatios: { value: AspectRatio; label: string; note: string }[] = [
@@ -125,6 +135,33 @@ function splitList(value: string, maxItems = 12): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function readAmazonPlanPages(payload: Record<string, unknown> | undefined): AmazonPlanPage[] {
+  if (!payload || !Array.isArray(payload.pages)) return [];
+  return payload.pages.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const page = value as Record<string, unknown>;
+    if (typeof page.item_key !== "string" || !page.item_key.trim()) return [];
+    const optionalText = (key: string) =>
+      typeof page[key] === "string" && page[key].trim() ? page[key].trim() : undefined;
+    return [{
+      itemKey: page.item_key.trim(),
+      finalSize: optionalText("final_size"),
+      headline: optionalText("headline"),
+      sellingPoint: optionalText("selling_point"),
+      visualProof: optionalText("visual_proof"),
+      layoutDirection: optionalText("layout_direction"),
+    }];
+  });
+}
+
+function readAmazonBusinessQuality(payload: Record<string, unknown> | undefined) {
+  if (!payload || !payload.business_quality || typeof payload.business_quality !== "object") return undefined;
+  const quality = payload.business_quality as Record<string, unknown>;
+  const status = quality.status;
+  if (status !== "needs_review" && status !== "passed" && status !== "failed") return undefined;
+  return { status };
 }
 
 function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
@@ -264,6 +301,7 @@ export function CommerceSkillWorkspace({
   );
   const workflow = presentWorkflow(capability);
   const createJob = useCreateJob(workspace?.id);
+  const confirmPlan = useConfirmPlan(workspace?.id);
 
   const [selections, setSelections] = useState(emptySelections);
   const [platformCode, setPlatformCode] = useState(
@@ -288,7 +326,7 @@ export function CommerceSkillWorkspace({
 
   const job = useJob(workspace?.id, jobId);
   const resultAssets = selectJobResultAssets(job.data);
-  const requestError = workspaceError ?? upload.error ?? job.error;
+  const requestError = workspaceError ?? upload.error ?? confirmPlan.error ?? job.error;
   const isAmazon = featureId === "amazon-visual-suite";
   const isCreative = featureId === "creative-image";
   const selectedSizeLabel = isAmazon
@@ -297,6 +335,19 @@ export function CommerceSkillWorkspace({
       ? "跟随首张参考图实际尺寸"
       : aspectRatios.find((ratio) => ratio.value === aspectRatio)?.note ?? "未选择";
   const expectedCount = job.data?.expected_item_count ?? (isAmazon ? 21 : imageCount);
+  const amazonPlanPages = isAmazon
+    ? readAmazonPlanPages(job.data?.plan?.payload)
+    : [];
+  const amazonBusinessQuality = isAmazon
+    ? readAmazonBusinessQuality(job.data?.plan?.payload)
+    : undefined;
+  const canConfirmAmazonPlan = Boolean(
+    isAmazon &&
+      job.data?.status === "awaiting_confirmation" &&
+      job.data.plan &&
+      amazonPlanPages.length > 0 &&
+      allowsJobAction(job.data.allowed_actions, "confirm_plan"),
+  );
 
   const selectedIds = useMemo(
     () => Object.values(selections).flat(),
@@ -703,6 +754,86 @@ export function CommerceSkillWorkspace({
                     ) : null}
                   </div>
                 ) : null}
+              </section>
+            ) : null}
+
+            {isAmazon && job.data?.status === "awaiting_confirmation" && amazonPlanPages.length > 0 ? (
+              <section className={styles.card} aria-labelledby="amazon-plan-review-title">
+                <div className={styles.sectionHeading}>
+                  <div>
+                    <span>04</span>
+                    <div>
+                      <h2 id="amazon-plan-review-title">确认 21 项页面规划</h2>
+                      <p>生成开始前，请逐项核对尺寸、卖点、视觉证明与布局方向。</p>
+                    </div>
+                  </div>
+                  <strong>{amazonPlanPages.length} / 21 项</strong>
+                </div>
+                <div className={styles.planReview}>
+                  {amazonPlanPages.map((page, index) => (
+                    <article key={`${page.itemKey}-${index}`}>
+                      <i>{String(index + 1).padStart(2, "0")}</i>
+                      <div>
+                        <div className={styles.planRowHeading}>
+                          <strong>{page.itemKey}</strong>
+                          {page.finalSize ? <span>{page.finalSize}</span> : null}
+                        </div>
+                        <h3>{page.headline ?? page.sellingPoint ?? "待核对页面规划"}</h3>
+                        {page.sellingPoint && page.sellingPoint !== page.headline ? (
+                          <p><b>卖点</b>{page.sellingPoint}</p>
+                        ) : null}
+                        {page.visualProof ? <p><b>视觉证明</b>{page.visualProof}</p> : null}
+                        {page.layoutDirection ? <p><b>布局</b>{page.layoutDirection}</p> : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <div className={styles.planConfirmation}>
+                  <p><Info size={15} />确认后任务将继续轮询并进入 21 项图片生成；Provider 模式可能产生真实费用。</p>
+                  <button
+                    type="button"
+                    className={styles.primaryAction}
+                    disabled={!canConfirmAmazonPlan || confirmPlan.isPending}
+                    onClick={() => {
+                      if (!job.data?.plan) return;
+                      confirmPlan.mutate({
+                        jobId: job.data.id,
+                        revision: job.data.plan.revision,
+                        allowedActions: job.data.allowed_actions,
+                      });
+                    }}
+                  >
+                    {confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />}
+                    {confirmPlan.isPending ? "正在确认计划" : "确认计划并开始生成"}
+                    <ArrowRight size={17} />
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {isAmazon && job.data?.status === "completed" && amazonBusinessQuality ? (
+              <section
+                className={styles.businessQuality}
+                data-status={amazonBusinessQuality.status}
+                aria-live="polite"
+              >
+                <ShieldCheck size={19} />
+                <div>
+                  <strong>
+                    {amazonBusinessQuality.status === "passed"
+                      ? "技术交付与业务审核均已通过"
+                      : amazonBusinessQuality.status === "failed"
+                        ? "技术交付完成，业务质量检查未通过"
+                        : "技术交付完成，业务质量等待人工审核"}
+                  </strong>
+                  <p>
+                    {amazonBusinessQuality.status === "failed"
+                      ? "系统发现确定性重复等风险；文件仍可下载核对，但不会自动重做。"
+                      : amazonBusinessQuality.status === "needs_review"
+                        ? "SKU 身份与跨页视觉一致性需要人工确认；文件可下载，重做必须由你明确发起。"
+                        : "已确认 Product Master、SKU 一致性和跨页质量。"}
+                  </p>
+                </div>
               </section>
             ) : null}
 

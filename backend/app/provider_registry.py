@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from .domain import JobStatus
+from .domain import JobStatus, JobType
 from .models import JobRecord
 from .provider import Provider, ProviderOutcome, ProviderRequest, ProviderResult
 from .xinghe_agent import OperationRoutingProvider
@@ -107,10 +107,12 @@ class DetailMarketRoutingPlanner:
         session_factory: sessionmaker[Session],
         international: DetailPlanner,
         domestic: DetailPlanner,
+        amazon: DetailPlanner | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.international = international
         self.domestic = domestic
+        self.amazon = amazon
 
     def __getattr__(self, name: str) -> object:
         return getattr(self.international, name)
@@ -120,12 +122,17 @@ class DetailMarketRoutingPlanner:
             job = session.get(JobRecord, job_id)
             if job is None:
                 return None
+            is_amazon = job.type == JobType.AMAZON_VISUAL_SUITE.value
             settings = job.configuration.get("settings")
             market_region = (
                 str(settings.get("market_region", "international")).strip().lower()
                 if isinstance(settings, Mapping)
                 else "international"
             )
+        if is_amazon:
+            if self.amazon is None:
+                return JobStatus.FAILED
+            return await self.amazon.plan(job_id)
         planner = self.domestic if market_region == "domestic" else self.international
         return await planner.plan(job_id)
 

@@ -1440,6 +1440,18 @@ def confirm_plan(
             "PLAN_INVALID",
             "计划未通过校验，不能开始生成。",
         )
+    current_status = JobStatus(job.status)
+    if (
+        current_status == JobStatus.PROCESSING
+        and plan.confirmed_at is not None
+    ):
+        return job_detail_response(session, job)
+    if current_status != JobStatus.AWAITING_CONFIRMATION:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "JOB_NOT_AWAITING_CONFIRMATION",
+            "任务当前状态不允许确认计划。",
+        )
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -1466,6 +1478,22 @@ def confirm_plan(
                 status.HTTP_409_CONFLICT,
                 "PLAN_INVALID",
                 "The plan is invalid and cannot be confirmed.",
+                {"reason": exc.code},
+            ) from exc
+    elif job.type == JobType.AMAZON_VISUAL_SUITE.value:
+        from .amazon_visual_suite_provider import (
+            AdapterValidationError,
+            synchronize_confirmed_amazon_plan,
+        )
+        from .xinghe_agent import XingheAgentError
+
+        try:
+            synchronize_confirmed_amazon_plan(session, job, plan)
+        except (AdapterValidationError, XingheAgentError) as exc:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "PLAN_INVALID",
+                "The Amazon plan is invalid and cannot be confirmed.",
                 {"reason": exc.code},
             ) from exc
     plan.confirmed_at = utc_now()
@@ -1625,7 +1653,33 @@ def _reserve_real_provider_job_if_enabled(
         if isinstance(groups, list):
             group_count = len(groups)
     image_cost = int(job.estimated_cost_max_micros or 0)
-    if enable_flag is not None:
+    if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+        job_id = getattr(job, "id", None)
+        reusable_plan = (
+            session.scalar(
+                select(JobPlanRecord.id)
+                .where(
+                    JobPlanRecord.job_id == job_id,
+                    JobPlanRecord.validation_status
+                    == PlanValidationStatus.VALID.value,
+                    JobPlanRecord.confirmed_at.is_not(None),
+                )
+                .limit(1)
+            )
+            if isinstance(job_id, str) and hasattr(session, "scalar")
+            else None
+        )
+        planner_required = reusable_plan is None
+        estimated_cost = image_cost + (
+            settings.tengli_planner_reserve_micros if planner_required else 0
+        )
+        provider_requests = (
+            runnable_item_count
+            if runnable_item_count is not None
+            else job.expected_item_count
+        ) + int(planner_required)
+        group_count = int(planner_required)
+    elif enable_flag is not None:
         estimated_cost = image_cost
         provider_requests = (
             runnable_item_count
@@ -1860,7 +1914,10 @@ def _copy_job_relations_for_retry(
                     validation=relation.validation,
                 )
             )
-    if source.type == JobType.DETAIL_PACK.value:
+    if source.type in {
+        JobType.DETAIL_PACK.value,
+        JobType.AMAZON_VISUAL_SUITE.value,
+    }:
         source_plan = session.scalar(
             select(JobPlanRecord)
             .where(
@@ -1912,6 +1969,16 @@ def _copy_job_relations_for_retry(
                 "actual_concurrency": 0,
                 "usage_missing_count": 0,
             }
+            if source.type == JobType.AMAZON_VISUAL_SUITE.value:
+                copied_payload["business_quality"] = {
+                    "status": "pending_generation",
+                    "policy_version": source_plan.validator_version,
+                    "technical_delivery_status": "pending",
+                    "manual_review_required": True,
+                    "automatic_redraw_enabled": False,
+                    "deterministic_findings": [],
+                    "reused_from_job_id": source.id,
+                }
             session.add(
                 JobPlanRecord(
                     id=new_id("plan"),
@@ -1949,6 +2016,12 @@ def _validate_plan_payload(
         from .xinghe_agent import validate_editable_plan_payload
 
         return validate_editable_plan_payload(payload, job.expected_item_count)
+    if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+        from .amazon_visual_suite_provider import (
+            validate_editable_amazon_plan_payload,
+        )
+
+        return validate_editable_amazon_plan_payload(payload)
     return []
 
 

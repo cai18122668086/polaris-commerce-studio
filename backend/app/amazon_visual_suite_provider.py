@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import json
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from math import gcd
@@ -41,6 +43,8 @@ AMAZON_VISUAL_SUITE_SKILL_ID = "xinghe-amazon-visual-suite"
 AMAZON_ADAPTER_CONTRACT_VERSION = SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
 AMAZON_EXPECTED_ITEM_COUNT = 21
 AMAZON_AUDIT_CONFIGURATION_KEY = "amazon_visual_suite_audit"
+AMAZON_PLAN_CONFIGURATION_KEY = "amazon_visual_suite_plan"
+AMAZON_PLANNING_POLICY_VERSION = "amazon-visual-suite-planning-v1"
 
 
 @dataclass(frozen=True)
@@ -492,6 +496,219 @@ def validate_amazon_item_keys(item_keys: Sequence[str]) -> tuple[str, ...]:
     return normalized
 
 
+def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
+    """Validate one auditable Product Master and the canonical 21-row plan."""
+
+    from app.xinghe_agent import XingheAgentError, validate_planner_payload
+
+    structured = validate_planner_payload(
+        payload,
+        AMAZON_EXPECTED_ITEM_COUNT,
+        preserve_protocol_fields=True,
+        require_cross_page_locks=True,
+    )
+    analysis = structured["analysis"]
+    plan = structured["plan"]
+    product_master = analysis.get("product_master_description")
+    if not isinstance(product_master, Mapping) or not product_master:
+        raise XingheAgentError(
+            "AMAZON_PRODUCT_MASTER_INVALID",
+            "Amazon planning requires a non-empty Product Master Description.",
+            json_pointer="/analysis/product_master_description",
+        )
+    for key in (
+        "silhouette_and_proportions",
+        "color_and_material_appearance",
+        "logos_labels_and_patterns",
+        "structural_parts",
+        "scale_and_physics",
+        "unknowns",
+    ):
+        value = product_master.get(key)
+        valid = (
+            isinstance(value, list)
+            if key == "unknowns"
+            else isinstance(value, str) and bool(value.strip())
+        )
+        if not valid:
+            raise XingheAgentError(
+                "AMAZON_PRODUCT_MASTER_INVALID",
+                f"Product Master Description has an invalid {key}.",
+                json_pointer=f"/analysis/product_master_description/{key}",
+            )
+    consistency_lock = plan.get("product_consistency_lock")
+    if not isinstance(consistency_lock, Mapping) or not consistency_lock:
+        raise XingheAgentError(
+            "AMAZON_PRODUCT_CONSISTENCY_LOCK_INVALID",
+            "Amazon planning requires a Product Consistency Lock.",
+            json_pointer="/plan/product_consistency_lock",
+        )
+    screens = plan["screens"]
+    expected = {spec.item_key: spec for spec in AMAZON_ITEM_SPECS}
+    actual_keys = [screen.get("item_key") for screen in screens]
+    if actual_keys != list(AMAZON_ITEM_KEYS):
+        raise XingheAgentError(
+            "AMAZON_ITEM_INVENTORY_INVALID",
+            "Amazon planner must return the canonical 21 item keys in order.",
+            json_pointer="/plan/screens",
+        )
+    required = (
+        "asset_type",
+        "final_size",
+        "selling_point",
+        "information_confidence",
+        "visual_proof",
+        "headline",
+        "subcopy",
+        "layout_direction",
+        "source_material",
+        "risk_note",
+    )
+    for index, screen in enumerate(screens):
+        item_key = str(screen["item_key"])
+        spec = expected[item_key]
+        for key in required:
+            value = screen.get(key)
+            if not isinstance(value, str) or (key != "subcopy" and not value.strip()):
+                raise XingheAgentError(
+                    "AMAZON_PLAN_SCREEN_INVALID",
+                    f"Amazon plan screen requires {key}.",
+                    json_pointer=f"/plan/screens/{index}/{key}",
+                )
+        if screen["final_size"] != f"{spec.width}x{spec.height}":
+            raise XingheAgentError(
+                "AMAZON_TARGET_SIZE_MISMATCH",
+                f"{item_key} has the wrong final_size.",
+                json_pointer=f"/plan/screens/{index}/final_size",
+            )
+    maximum = int(plan["layout_diversity_lock"]["max_same_layout_family"])
+    selling = [screen for screen in screens if screen["item_key"] != "MAIN-01"]
+    for key in ("layout_family", "background_system"):
+        counts = Counter(str(screen[key]).strip().casefold() for screen in selling)
+        if counts and max(counts.values()) > maximum:
+            raise XingheAgentError(
+                "AMAZON_LAYOUT_DIVERSITY_INVALID",
+                f"Amazon selling images repeat {key} too often.",
+                json_pointer="/plan/screens",
+            )
+    return structured
+
+
+def editable_amazon_structured_plan(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Reconstruct the planner object from the durable editable plan payload."""
+
+    groups = payload.get("groups")
+    pages = payload.get("pages")
+    if not isinstance(groups, list) or len(groups) != 1 or not isinstance(pages, list):
+        raise AdapterValidationError(
+            "AMAZON_PLAN_INVALID",
+            "Amazon plan requires exactly one product group and 21 pages.",
+        )
+    group = groups[0]
+    if not isinstance(group, Mapping):
+        raise AdapterValidationError(
+            "AMAZON_PLAN_INVALID",
+            "Amazon product-group plan must be an object.",
+        )
+    return {
+        "analysis": group.get("analysis"),
+        "plan": {
+            "campaign_style_lock": group.get("campaign_style_lock"),
+            "design_strength_lock": group.get("design_strength_lock"),
+            "product_consistency_lock": group.get("product_consistency_lock"),
+            "layout_diversity_lock": group.get("layout_diversity_lock"),
+            "screens": pages,
+        },
+    }
+
+
+def validate_editable_amazon_plan_payload(
+    payload: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    from app.xinghe_agent import XingheAgentError
+
+    try:
+        validate_amazon_planner_payload(editable_amazon_structured_plan(payload))
+    except (AdapterValidationError, XingheAgentError) as exc:
+        return [
+            {
+                "field": getattr(exc, "json_pointer", None) or "plan",
+                "message": str(exc),
+                "code": getattr(exc, "code", "AMAZON_PLAN_INVALID"),
+            }
+        ]
+    return []
+
+
+def synchronize_confirmed_amazon_plan(
+    session: Any,
+    job: Any,
+    plan: Any,
+) -> None:
+    """Apply the confirmed Product Master and 21-row plan to every JobItem."""
+
+    from sqlalchemy import select
+
+    from app.models import JobItemRecord
+    from app.services import canonical_hash
+    from app.xinghe_agent import XingheAgentError
+
+    try:
+        structured = validate_amazon_planner_payload(
+            editable_amazon_structured_plan(plan.payload)
+        )
+    except (AdapterValidationError, XingheAgentError):
+        raise
+    items = session.scalars(
+        select(JobItemRecord)
+        .where(JobItemRecord.job_id == job.id)
+        .order_by(JobItemRecord.ordinal)
+        .with_for_update()
+    ).all()
+    if [item.item_key for item in items] != list(AMAZON_ITEM_KEYS):
+        raise AdapterValidationError(
+            "AMAZON_ITEM_INVENTORY_INVALID",
+            "Durable Amazon items do not match the confirmed plan.",
+        )
+    payload = dict(plan.payload)
+    resume_signature = canonical_hash(
+        {
+            "version": AMAZON_PLANNING_POLICY_VERSION,
+            "input_signature": payload.get("input_signature"),
+            "structured_plan": structured,
+        }
+    )
+    context = {
+        "schema_version": AMAZON_PLANNING_POLICY_VERSION,
+        "analysis": structured["analysis"],
+        "campaign_style_lock": structured["plan"]["campaign_style_lock"],
+        "design_strength_lock": structured["plan"]["design_strength_lock"],
+        "product_consistency_lock": structured["plan"]["product_consistency_lock"],
+        "layout_diversity_lock": structured["plan"]["layout_diversity_lock"],
+        "input_signature": payload.get("input_signature"),
+        "resume_signature": resume_signature,
+    }
+    for item, screen in zip(items, structured["plan"]["screens"], strict=True):
+        configuration = dict(item.configuration)
+        configuration.update(
+            {
+                "workflow_version": AMAZON_PLANNING_POLICY_VERSION,
+                "planning_policy_version": AMAZON_PLANNING_POLICY_VERSION,
+                "resume_signature": resume_signature,
+                "quality": "high",
+                AMAZON_PLAN_CONFIGURATION_KEY: {**context, "screen": screen},
+            }
+        )
+        item.configuration = configuration
+        item.quality = "high"
+        item.stage = "queued"
+        item.state_version += 1
+    payload["resume_signature"] = resume_signature
+    payload["state"] = "confirmed"
+    plan.payload = payload
+    plan.payload_hash = canonical_hash(payload)
+
+
 class AmazonVisualSuiteProvider:
     """Validate one Amazon JobItem and delegate real or fake generation.
 
@@ -572,7 +789,8 @@ class AmazonVisualSuiteProvider:
         input_configuration = _job_input_configuration(request.configuration)
         source_assets = _amazon_source_assets(input_configuration)
         item_ordinal = AMAZON_ITEM_KEYS.index(spec.item_key)
-        prompt_input = _amazon_prompt_input(job_configuration, spec)
+        plan_context = _amazon_plan_context(item_configuration, spec)
+        prompt_input = _amazon_prompt_input(job_configuration, spec, plan_context)
         aspect_ratio = _aspect_ratio(spec.width, spec.height)
         adapter_configuration = {
             "schema_version": AMAZON_ADAPTER_CONTRACT_VERSION,
@@ -606,6 +824,7 @@ class AmazonVisualSuiteProvider:
                 "deliverable_counted": True,
                 "contact_sheet": False,
                 "task": _amazon_task_contract(spec),
+                "plan_resume_signature": plan_context["resume_signature"],
             },
         }
         return (
@@ -719,13 +938,14 @@ def _amazon_source_assets(
 def _amazon_prompt_input(
     job_configuration: Mapping[str, Any],
     spec: AmazonItemSpec,
+    plan_context: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Compile only the explicit Amazon prompt whitelist."""
 
     listing_title = optional_string(job_configuration, "listing_title")
     bullet_points = optional_string_list(job_configuration, "bullet_points")
     product_information = [value for value in (listing_title, *bullet_points) if value]
-    task = _amazon_task_contract(spec)
+    screen = plan_context["screen"]
     return compact_prompt_input(
         {
             "marketplace": optional_string(
@@ -740,26 +960,110 @@ def _amazon_prompt_input(
             "composition": spec.group,
             "creative_direction": [
                 f"Asset type: {spec.asset_type}",
-                f"Layout direction: {spec.layout_direction}",
+                f"Layout direction: {screen['layout_direction']}",
+                f"Layout family: {screen['layout_family']}",
+                f"Camera angle: {screen['camera_angle']}",
+                f"Product position: {screen['product_position']}",
+                f"Background system: {screen['background_system']}",
+                f"Prop strategy: {screen['prop_strategy']}",
+                f"Copy density: {screen['copy_density']}",
             ],
             "copy_requirements": [
-                f"Headline: {spec.headline}",
-                f"Subcopy: {spec.subcopy}",
+                f"Headline: {screen['headline']}",
+                f"Subcopy: {screen['subcopy']}",
             ],
             "reference_guidance": [
-                f"Buyer question: {task['buyer_question']}",
-                f"Selling point: {task['selling_point']}",
-                f"Information confidence: {task['information_confidence']}",
-                f"Visual proof: {task['visual_proof']}",
-                f"Source material: {task['source_material']}",
+                "Product Master Description: " + _stable_json(
+                    plan_context["analysis"]["product_master_description"]
+                ),
+                "Product Consistency Anchors: " + _stable_json(
+                    plan_context["analysis"]["product_consistency_anchors"]
+                ),
+                "Product Consistency Lock: " + _stable_json(
+                    plan_context["product_consistency_lock"]
+                ),
+                "Campaign Style Lock: " + _stable_json(
+                    plan_context["campaign_style_lock"]
+                ),
+                "Design Strength Lock: " + _stable_json(
+                    plan_context["design_strength_lock"]
+                ),
+                "Layout Diversity Lock: " + _stable_json(
+                    plan_context["layout_diversity_lock"]
+                ),
+                f"Buyer question: {screen['buyer_question']}",
+                f"Selling point: {screen['selling_point']}",
+                f"Information confidence: {screen['information_confidence']}",
+                f"Visual proof: {screen['visual_proof']}",
+                f"Source material: {screen['source_material']}",
             ],
             "negative_constraints": [
                 _GLOBAL_RISK_GUARD,
                 spec.risk_note,
+                str(screen["risk_note"]),
             ],
             "image_count": 1,
         }
     )
+
+
+def _stable_json(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _amazon_plan_context(
+    item_configuration: Mapping[str, Any],
+    spec: AmazonItemSpec,
+) -> Mapping[str, Any]:
+    value = item_configuration.get(AMAZON_PLAN_CONFIGURATION_KEY)
+    if not isinstance(value, Mapping):
+        raise AdapterValidationError(
+            "AMAZON_PLAN_CONTEXT_MISSING",
+            "Amazon generation requires a confirmed persisted plan context.",
+        )
+    required_mappings = (
+        "analysis",
+        "campaign_style_lock",
+        "design_strength_lock",
+        "product_consistency_lock",
+        "layout_diversity_lock",
+        "screen",
+    )
+    for key in required_mappings:
+        if not isinstance(value.get(key), Mapping) or not value[key]:
+            raise AdapterValidationError(
+                "AMAZON_PLAN_CONTEXT_MISSING",
+                f"Amazon confirmed plan context is missing {key}.",
+            )
+    resume_signature = value.get("resume_signature")
+    if not isinstance(resume_signature, str) or len(resume_signature) != 64:
+        raise AdapterValidationError(
+            "AMAZON_PLAN_CONTEXT_MISSING",
+            "Amazon confirmed plan context has no valid resume signature.",
+        )
+    screen = value["screen"]
+    if screen.get("item_key") != spec.item_key:
+        raise AdapterValidationError(
+            "AMAZON_PLAN_ITEM_MISMATCH",
+            "Amazon confirmed plan screen does not match the durable item.",
+        )
+    analysis = value["analysis"]
+    if not isinstance(analysis.get("product_master_description"), Mapping):
+        raise AdapterValidationError(
+            "AMAZON_PLAN_CONTEXT_MISSING",
+            "Amazon confirmed plan has no Product Master Description.",
+        )
+    if not isinstance(analysis.get("product_consistency_anchors"), Mapping):
+        raise AdapterValidationError(
+            "AMAZON_PLAN_CONTEXT_MISSING",
+            "Amazon confirmed plan has no Product Consistency Anchors.",
+        )
+    return value
 
 
 def _amazon_task_contract(spec: AmazonItemSpec) -> dict[str, str]:

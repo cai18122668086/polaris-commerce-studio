@@ -832,6 +832,7 @@ class XingheSingleImageProvider:
         raw_usage["provider_height"] = artifact.provider_height
         raw_usage["output_images"] = 1
         raw_usage["artifact_kind"] = "image"
+        raw_usage["perceptual_dhash"] = _perceptual_dhash(artifact.payload)
         return ProviderResult(
             outcome=ProviderOutcome.SUCCEEDED,
             artifact=artifact,
@@ -846,7 +847,6 @@ class XingheSingleImageProvider:
             model_name=self.model,
             pricing_version=self.pricing_version,
         )
-
     def _safe_usage(
         self,
         call_result: ImageCallResult | None,
@@ -1241,6 +1241,25 @@ def _replace_suffix(filename: str, suffix: str) -> str:
     stem = filename.rsplit(".", maxsplit=1)[0] if "." in filename else filename
     safe_stem = re.sub(r"[^A-Za-z0-9._-]", "_", stem)[:100] or "image"
     return f"{safe_stem}{suffix}"
+
+
+def _perceptual_dhash(payload: bytes) -> str:
+    """Return a deterministic 64-bit difference hash for zero-cost set QA."""
+
+    with Image.open(BytesIO(payload)) as image:
+        grayscale = ImageOps.grayscale(image).resize(
+            (9, 8),
+            Image.Resampling.LANCZOS,
+        )
+        pixels = list(grayscale.get_flattened_data())
+    value = 0
+    for row in range(8):
+        offset = row * 9
+        for column in range(8):
+            value = (value << 1) | int(
+                pixels[offset + column] > pixels[offset + column + 1]
+            )
+    return f"{value:016x}"
 
 
 def _safe_usage_integer(value: object) -> int | None:

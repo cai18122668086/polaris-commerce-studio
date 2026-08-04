@@ -434,7 +434,7 @@ def test_postgres_agent_concurrency_retry_and_usage_are_durable(
     assert all(len(call.sources) == 3 for call in gateway.image_calls)
 
 
-def test_failed_pages_retry_twice_and_successes_never_retry(
+def test_failed_pages_wait_for_explicit_retry_and_successes_are_reused(
     client: TestClient,
 ) -> None:
     gateway = _gateway(client)
@@ -461,9 +461,9 @@ def test_failed_pages_retry_twice_and_successes_never_retry(
     }
 
     assert partial["status"] == JobStatus.PARTIAL.value
-    assert page_calls == {1: 1, 2: 3, 3: 3}
-    assert partial["succeeded_item_count"] == 2
-    assert partial["failed_item_count"] == 1
+    assert page_calls == {1: 1, 2: 1, 3: 1}
+    assert partial["succeeded_item_count"] == 1
+    assert partial["failed_item_count"] == 2
 
     retried = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/retry",
@@ -474,9 +474,10 @@ def test_failed_pages_retry_twice_and_successes_never_retry(
     retry_cost = retried.json()["plan"]["payload"]["cost"]
     assert (
         retry_cost["pending_medium_count"] + retry_cost["pending_high_count"]
-        == 1
+        == 2
     )
     assert retried.json()["plan"]["payload"]["usage"]["planner"] == []
+    gateway.image_failures = {}
     assert dispatch_pending(client) == 1
     resumed = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{retried.json()['id']}"
@@ -485,9 +486,9 @@ def test_failed_pages_retry_twice_and_successes_never_retry(
     assert resumed["status"] == JobStatus.COMPLETED.value
     assert len(gateway.planner_calls) == 1
     assert sum(call.page_number == 1 for call in gateway.image_calls) == 1
-    assert sum(call.page_number == 2 for call in gateway.image_calls) == 3
-    assert sum(call.page_number == 3 for call in gateway.image_calls) == 4
-    assert sum(item["result_source"] == "reused" for item in resumed["items"]) == 2
+    assert sum(call.page_number == 2 for call in gateway.image_calls) == 2
+    assert sum(call.page_number == 3 for call in gateway.image_calls) == 2
+    assert sum(item["result_source"] == "reused" for item in resumed["items"]) == 1
 
 
 def test_plan_edit_changes_quality_and_resume_signature_before_dispatch(
@@ -1515,7 +1516,7 @@ def _confirm_job(client: TestClient, job_id: str) -> None:
     assert response.status_code == 202
 
 
-def test_retry_budget_is_cumulative_and_fails_before_extra_provider_call(
+def test_failed_call_does_not_auto_retry_or_reserve_another_call(
     settings: Settings,
 ) -> None:
     configured = settings.model_copy(
@@ -1584,17 +1585,16 @@ def test_retry_budget_is_cumulative_and_fails_before_extra_provider_call(
             if event.action == "xinghe.image_budget_rejected"
         ]
         assert len(reserved) == 1
-        assert len(rejected) == 1
+        assert rejected == []
         assert sum(
             int(event.details["estimated_cost_micros"])
             for event in reserved
         ) == 90_000
-        assert rejected[0].details["cumulative_exposure_micros"] == 180_000
         assert sum(event.estimated_cost_micros or 0 for event in usages) == 90_000
         assert sorted(
             bool(event.raw_usage["metrics"]["provider_called"])
             for event in usages
-        ) == [False, True]
+        ) == [True]
         assert credit_reservation is not None
         assert credit_reservation.status == "settled"
         assert credit_reservation.settled_credits == 0

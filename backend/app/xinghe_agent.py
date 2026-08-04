@@ -37,6 +37,7 @@ from .domain import (
     JobAssetDirection,
     JobItemStatus,
     JobStatus,
+    JobType,
     PlanValidationStatus,
     UsageCompleteness,
 )
@@ -177,11 +178,20 @@ _CROSSBORDER_PLANNER_PROTOCOL_FILES = (
     "references/prompt-contract.md",
     "references/prompt-templates.md",
 )
+_AMAZON_PLANNER_PROTOCOL_FILES = (
+    "SKILL.md",
+    "references/workflow.md",
+    "references/image-specs.md",
+    "references/page-task-table.md",
+    "references/quality-rules.md",
+    "references/generation-backend.md",
+)
 _COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset(
     {"xinghe-ecommerce-detail-domestic-3"}
 )
 _PLANNER_PROTOCOL_FILES_BY_SKILL = {
     "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
+    "xinghe-amazon-visual-suite": _AMAZON_PLANNER_PROTOCOL_FILES,
 }
 _SUBJECT_SCALES = {
     "hero",
@@ -237,6 +247,7 @@ class PlannerRequest:
     idempotency_key: str
     system_prompt: str = ""
     domestic_protocol: bool = False
+    planning_profile: str = "detail_pack"
 
 
 @dataclass(frozen=True)
@@ -526,6 +537,7 @@ def validate_planner_payload(
     page_count: int,
     *,
     preserve_protocol_fields: bool = False,
+    require_cross_page_locks: bool = False,
 ) -> dict[str, Any]:
     """Validate the mandatory structured plan and exact screen count."""
 
@@ -562,6 +574,22 @@ def validate_planner_payload(
             "PLANNER_SCHEMA_INVALID",
             path=_json_pointer("analysis", key),
         )
+    product_master: Mapping[str, Any] | None = None
+    product_consistency_lock: Mapping[str, Any] | None = None
+    if require_cross_page_locks:
+        product_master = _require_mapping(
+            analysis.get("product_master_description"),
+            "PLANNER_SCHEMA_INVALID",
+            path=_json_pointer("analysis", "product_master_description"),
+        )
+        if not product_master:
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Product Master Description cannot be empty.",
+                json_pointer=_json_pointer(
+                    "analysis", "product_master_description"
+                ),
+            )
     objections = analysis.get("buyer_objections")
     if not isinstance(objections, list) or not objections:
         raise XingheAgentError(
@@ -593,6 +621,38 @@ def validate_planner_payload(
         "PLANNER_SCHEMA_INVALID",
         path=_json_pointer("plan", "design_strength_lock"),
     )
+    layout_diversity_lock: Mapping[str, Any] | None = None
+    if require_cross_page_locks:
+        product_consistency_lock = _require_mapping(
+            plan.get("product_consistency_lock"),
+            "PLANNER_SCHEMA_INVALID",
+            path=_json_pointer("plan", "product_consistency_lock"),
+        )
+        if not product_consistency_lock:
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Product Consistency Lock cannot be empty.",
+                json_pointer=_json_pointer("plan", "product_consistency_lock"),
+            )
+        layout_diversity_lock = _require_mapping(
+            plan.get("layout_diversity_lock"),
+            "PLANNER_SCHEMA_INVALID",
+            path=_json_pointer("plan", "layout_diversity_lock"),
+        )
+        maximum = layout_diversity_lock.get("max_same_layout_family")
+        if (
+            not isinstance(maximum, int)
+            or isinstance(maximum, bool)
+            or maximum < 1
+            or maximum > 3
+        ):
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                "Layout diversity lock requires max_same_layout_family from 1 to 3.",
+                json_pointer=_json_pointer(
+                    "plan", "layout_diversity_lock", "max_same_layout_family"
+                ),
+            )
     for key in (
         "category_visual_motif",
         "composition_contrast",
@@ -667,22 +727,35 @@ def validate_planner_payload(
             if preserve_protocol_fields
             else {}
         )
+        required_screen_fields = [
+            "role",
+            "title",
+            "label",
+            "composition",
+            "device",
+            "difference",
+            "structure",
+            "subject_scale",
+        ]
+        if require_cross_page_locks:
+            required_screen_fields.extend(
+                [
+                    "buyer_question",
+                    "layout_family",
+                    "camera_angle",
+                    "product_position",
+                    "background_system",
+                    "prop_strategy",
+                    "copy_density",
+                ]
+            )
         normalized.update({
             key: _require_nonempty_string(
                 screen_mapping.get(key),
                 key,
                 path=_json_pointer("plan", "screens", screen_index, key),
             )
-            for key in (
-                "role",
-                "title",
-                "label",
-                "composition",
-                "device",
-                "difference",
-                "structure",
-                "subject_scale",
-            )
+            for key in required_screen_fields
         })
         if normalized["subject_scale"] not in _SUBJECT_SCALES:
             raise XingheAgentError(
@@ -729,6 +802,51 @@ def validate_planner_payload(
             "Planner did not provide enough distinct signature devices.",
             json_pointer=_json_pointer("plan", "screens"),
         )
+    if require_cross_page_locks:
+        assert layout_diversity_lock is not None
+        maximum = int(layout_diversity_lock["max_same_layout_family"])
+        for field in ("layout_family", "background_system"):
+            counts: dict[str, int] = {}
+            for item in normalized_screens:
+                value = str(item[field]).strip().casefold()
+                counts[value] = counts.get(value, 0) + 1
+            if counts and max(counts.values()) > maximum:
+                raise XingheAgentError(
+                    "PLANNER_CROSS_PAGE_DIVERSITY_INVALID",
+                    f"Planner repeats {field} more than the approved maximum.",
+                    json_pointer=_json_pointer("plan", "screens"),
+                )
+        buyer_questions = [
+            str(item["buyer_question"]).strip().casefold()
+            for item in normalized_screens
+        ]
+        if len(set(buyer_questions)) != len(buyer_questions):
+            raise XingheAgentError(
+                "PLANNER_CROSS_PAGE_DIVERSITY_INVALID",
+                "Planner buyer questions must be unique across the set.",
+                json_pointer=_json_pointer("plan", "screens"),
+            )
+        combinations = {
+            tuple(
+                str(item[field]).strip().casefold()
+                for field in (
+                    "layout_family",
+                    "subject_scale",
+                    "camera_angle",
+                    "product_position",
+                    "background_system",
+                    "prop_strategy",
+                    "copy_density",
+                )
+            )
+            for item in normalized_screens
+        }
+        if len(combinations) != len(normalized_screens):
+            raise XingheAgentError(
+                "PLANNER_CROSS_PAGE_DIVERSITY_INVALID",
+                "Planner contains duplicate cross-page composition signatures.",
+                json_pointer=_json_pointer("plan", "screens"),
+            )
     hero_count = sum(item["subject_scale"] == "hero" for item in normalized_screens)
     if page_count > 1 and hero_count > (page_count + 1) // 2:
         raise XingheAgentError(
@@ -743,21 +861,35 @@ def validate_planner_payload(
             json_pointer=_json_pointer("plan", "screens", page_count - 1, "role"),
         )
     if not preserve_protocol_fields:
+        normalized_plan = {
+            "campaign_style_lock": dict(campaign_lock),
+            "design_strength_lock": dict(design_lock),
+            "screens": normalized_screens,
+        }
+        if layout_diversity_lock is not None:
+            normalized_plan["layout_diversity_lock"] = dict(
+                layout_diversity_lock
+            )
+        if product_consistency_lock is not None:
+            normalized_plan["product_consistency_lock"] = dict(
+                product_consistency_lock
+            )
+        normalized_analysis = {
+            "category_key": str(analysis["category_key"]),
+            "category_reason": str(analysis["category_reason"]),
+            "product_image_analysis": dict(analysis["product_image_analysis"]),
+            "product_consistency_anchors": dict(
+                analysis["product_consistency_anchors"]
+            ),
+            "buyer_objections": list(objections),
+        }
+        if product_master is not None:
+            normalized_analysis["product_master_description"] = dict(
+                product_master
+            )
         return {
-            "analysis": {
-                "category_key": str(analysis["category_key"]),
-                "category_reason": str(analysis["category_reason"]),
-                "product_image_analysis": dict(analysis["product_image_analysis"]),
-                "product_consistency_anchors": dict(
-                    analysis["product_consistency_anchors"]
-                ),
-                "buyer_objections": list(objections),
-            },
-            "plan": {
-                "campaign_style_lock": dict(campaign_lock),
-                "design_strength_lock": dict(design_lock),
-                "screens": normalized_screens,
-            },
+            "analysis": normalized_analysis,
+            "plan": normalized_plan,
         }
     safe_analysis.update(
         {
@@ -826,6 +958,35 @@ def compile_page_prompt(
         ensure_ascii=False,
         sort_keys=True,
     )
+    product_master = json.dumps(
+        analysis.get("product_master_description", {}),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    layout_lock = json.dumps(
+        plan.get("layout_diversity_lock", {}),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    consistency_lock = json.dumps(
+        plan.get("product_consistency_lock", {}),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    cross_page_fields = "\n".join(
+        f"{key.replace('_', ' ').title()}: {screen[key]}"
+        for key in (
+            "buyer_question",
+            "layout_family",
+            "camera_angle",
+            "product_position",
+            "background_system",
+            "prop_strategy",
+            "copy_density",
+        )
+        if key in screen
+    )
     supplied = "; ".join(product_information) or "visible image facts only"
     width, height = _parse_image_size(size)
     divisor = math.gcd(width, height)
@@ -840,9 +1001,12 @@ def compile_page_prompt(
             "mark visible conflicts needs_confirmation.\n"
             f"Product: {product_name}. User-provided information: {supplied}.\n"
             f"Product Consistency Anchors: {anchors}\n"
+            f"Product Master Description: {product_master}\n"
+            f"Product Consistency Lock: {consistency_lock}\n"
             f"Visible-fact boundary: {facts}\n"
             f"Campaign Style Lock: {campaign_lock}\n"
             f"Design Strength Lock: {design_lock}\n"
+            f"Layout Diversity Lock: {layout_lock}\n"
             f"Role: {screen['role']}\n"
             f"Page structure: {screen['structure']}\n"
             f"Subject scale: {screen['subject_scale']}\n"
@@ -851,6 +1015,7 @@ def compile_page_prompt(
             f"One visual hero and composition: {screen['composition']}\n"
             f"Visual device: {screen['device']}\n"
             f"Difference from adjacent pages: {screen['difference']}\n"
+            f"{cross_page_fields}\n"
             "One core selling point only. Exactly one main title and one short "
             "label. At most one zoom window and at most two structural callouts. "
             "No repeated local window, no repeated display of the same part, no "
@@ -941,10 +1106,13 @@ def compile_page_prompt(
         "claims, or specifications as facts about the user's product.\n"
         f"Product: {visible_product_name}. User-provided information: {supplied}.\n"
         f"Product Consistency Anchors: {anchors}\n"
+        f"Product Master Description: {product_master}\n"
+        f"Product Consistency Lock: {consistency_lock}\n"
         f"Visible-fact boundary: {facts}\n"
         f"Analysis Protocol Fields: {analysis_protocol}\n"
         f"Campaign Style Lock: {campaign_lock}\n"
         f"Design Strength Lock: {design_lock}\n"
+        f"Layout Diversity Lock: {layout_lock}\n"
         f"Plan Protocol Fields: {plan_protocol}\n"
         f"Role: {screen['role']}\n"
         f"Page structure: {screen['structure']}\n"
@@ -954,6 +1122,7 @@ def compile_page_prompt(
         f"One visual hero and composition: {screen['composition']}\n"
         f"Visual device: {screen['device']}\n"
         f"Difference from adjacent pages: {screen['difference']}\n"
+        f"{cross_page_fields}\n"
         f"Current Screen Protocol Fields: {screen_protocol}\n"
         "One core selling point only. Exactly one main title and one short "
         "label. At most one zoom window and at most two structural callouts. "
@@ -1804,13 +1973,23 @@ class XinghePlanningCoordinator:
                     error_path=result.error_path,
                 )
             try:
-                validated.append(
-                    validate_planner_payload(
-                        result.payload,
-                        request.page_count,
-                        preserve_protocol_fields=request.domestic_protocol,
+                if request.planning_profile == "amazon_visual_suite":
+                    from .amazon_visual_suite_provider import (
+                        validate_amazon_planner_payload,
                     )
-                )
+
+                    validated.append(validate_amazon_planner_payload(result.payload))
+                else:
+                    validated.append(
+                        validate_planner_payload(
+                            result.payload,
+                            request.page_count,
+                            preserve_protocol_fields=request.domestic_protocol,
+                            require_cross_page_locks=(
+                                request.planning_profile == "crossborder_detail"
+                            ),
+                        )
+                    )
             except XingheAgentError as exc:
                 return self._fail_planning(
                     job_id,
@@ -1896,6 +2075,7 @@ class XinghePlanningCoordinator:
             idempotency_key=request.idempotency_key,
             system_prompt=request.system_prompt,
             domestic_protocol=request.domestic_protocol,
+            planning_profile=request.planning_profile,
         )
 
     def _reserve(
@@ -2024,6 +2204,13 @@ class XinghePlanningCoordinator:
             configuration.get("settings"),
             "AGENT_CONFIGURATION_INVALID",
         )
+        if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+            return self._amazon_planning_requests(
+                session,
+                job,
+                input_configuration,
+                settings,
+            )
         domestic_protocol = self.skill_id == "xinghe-ecommerce-detail-domestic-3"
         if domestic_protocol:
             from .domestic_detail_provider import (
@@ -2232,9 +2419,129 @@ class XinghePlanningCoordinator:
                     size=size,
                     idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
                     domestic_protocol=domestic_protocol,
+                    planning_profile=(
+                        "crossborder_detail"
+                        if self.skill_id == "xinghe-crossborder-detail-3"
+                        else "detail_pack"
+                    ),
                 )
             )
         return tuple(requests)
+
+    def _amazon_planning_requests(
+        self,
+        session: Session,
+        job: JobRecord,
+        input_configuration: Mapping[str, Any],
+        settings: Mapping[str, Any],
+    ) -> tuple[PlannerRequest, ...]:
+        from .amazon_visual_suite_provider import (
+            AMAZON_EXPECTED_ITEM_COUNT,
+            AMAZON_VISUAL_SUITE_SKILL_ID,
+        )
+
+        if self.skill_id != AMAZON_VISUAL_SUITE_SKILL_ID:
+            raise XingheAgentError(
+                "AMAZON_PLANNER_UNAVAILABLE",
+                "The Amazon visual-suite planner is not registered.",
+            )
+        relations = session.scalars(
+            select(JobAssetRecord)
+            .where(
+                JobAssetRecord.workspace_id == job.workspace_id,
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.job_item_id.is_(None),
+                JobAssetRecord.direction == JobAssetDirection.INPUT.value,
+            )
+            .order_by(JobAssetRecord.role, JobAssetRecord.ordinal)
+        ).all()
+        if not relations or not any(
+            relation.role == "white_background_product" for relation in relations
+        ):
+            raise XingheAgentError(
+                "AMAZON_WHITE_BACKGROUND_SOURCE_REQUIRED",
+                "Amazon planning requires a real white-background product source.",
+            )
+        sources: list[SourceImage] = []
+        for relation in relations:
+            asset = session.scalar(
+                select(AssetRecord).where(
+                    AssetRecord.id == relation.asset_id,
+                    AssetRecord.workspace_id == job.workspace_id,
+                    AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+                    AssetRecord.deleted_at.is_(None),
+                )
+            )
+            if asset is None:
+                raise XingheAgentError(
+                    "INPUT_ASSET_NOT_FOUND",
+                    "An Amazon source asset is missing or outside the workspace.",
+                )
+            sources.append(
+                SourceImage(
+                    asset_id=asset.id,
+                    group_key="amazon-product",
+                    filename=asset.original_filename,
+                    content_type=asset.content_type,
+                    sha256=asset.sha256,
+                    payload=b"",
+                    source_role=relation.role,
+                )
+            )
+        product_name = str(settings.get("product_name") or "").strip()
+        listing_title = str(settings.get("listing_title") or "").strip()
+        bullet_points = settings.get("bullet_points", [])
+        if not isinstance(bullet_points, list) or any(
+            not isinstance(value, str) for value in bullet_points
+        ):
+            raise XingheAgentError(
+                "AGENT_CONFIGURATION_INVALID",
+                "Amazon bullet points must be an array of strings.",
+            )
+        language = _require_nonempty_string(settings.get("language"), "language")
+        marketplace = _require_nonempty_string(
+            settings.get("marketplace"), "marketplace"
+        )
+        information = tuple(
+            value
+            for value in (listing_title, *(value.strip() for value in bullet_points))
+            if value
+        )
+        signature = canonical_hash(
+            {
+                "version": "amazon-visual-suite-planning-v1",
+                "base_url": self.base_url_signature.rstrip("/"),
+                "planner_model": self.gateway.planner_model,
+                "image_model": self.gateway.image_model,
+                "skill_id": self.skill_id,
+                "sources": [
+                    {
+                        "role": source.source_role,
+                        "filename": source.filename,
+                        "sha256": source.sha256,
+                    }
+                    for source in sources
+                ],
+                "input": dict(input_configuration),
+                "settings": dict(settings),
+            }
+        )
+        return (
+            PlannerRequest(
+                workspace_id=job.workspace_id,
+                job_id=job.id,
+                group_key="amazon-product",
+                sources=tuple(sources),
+                page_count=AMAZON_EXPECTED_ITEM_COUNT,
+                language=language,
+                product_name=product_name or "visible product from supplied images",
+                product_information=information,
+                platform_code=marketplace,
+                size="amazon-canonical-multi-size-v1",
+                idempotency_key=f"{job.id}:planner:amazon:{signature}",
+                planning_profile="amazon_visual_suite",
+            ),
+        )
 
     def _authorize_planning(
         self,
@@ -2509,6 +2816,15 @@ class XinghePlanningCoordinator:
                 plan.validated_at = utc_now()
                 session.commit()
                 return current
+            if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+                return self._complete_amazon_planning_locked(
+                    session,
+                    job,
+                    plan,
+                    requests,
+                    results,
+                    validated,
+                )
             group_plans: list[dict[str, Any]] = []
             flattened_pages: list[dict[str, Any]] = []
             item_configurations: list[dict[str, Any]] = []
@@ -2650,6 +2966,24 @@ class XinghePlanningCoordinator:
                         "design_strength_lock": structured["plan"][
                             "design_strength_lock"
                         ],
+                        **(
+                            {
+                                "layout_diversity_lock": structured["plan"][
+                                    "layout_diversity_lock"
+                                ]
+                            }
+                            if "layout_diversity_lock" in structured["plan"]
+                            else {}
+                        ),
+                        **(
+                            {
+                                "product_consistency_lock": structured["plan"][
+                                    "product_consistency_lock"
+                                ]
+                            }
+                            if "product_consistency_lock" in structured["plan"]
+                            else {}
+                        ),
                         "pages": pages,
                         "planner_usage": _planner_usage_record(
                             results[group_index - 1]
@@ -2801,6 +3135,229 @@ class XinghePlanningCoordinator:
             )
             session.commit()
             return JobStatus.AWAITING_CONFIRMATION
+
+    def _complete_amazon_planning_locked(
+        self,
+        session: Session,
+        job: JobRecord,
+        plan: JobPlanRecord,
+        requests: Sequence[PlannerRequest],
+        results: Sequence[PlannerCallResult],
+        validated: Sequence[dict[str, Any]],
+    ) -> JobStatus:
+        from .amazon_visual_suite_provider import (
+            AMAZON_EXPECTED_ITEM_COUNT,
+            AMAZON_ITEM_KEYS,
+            AMAZON_PLAN_CONFIGURATION_KEY,
+            AMAZON_PLANNING_POLICY_VERSION,
+        )
+
+        if len(requests) != 1 or len(validated) != 1:
+            self._fail_planning_locked(
+                session,
+                job,
+                plan,
+                "AMAZON_PLANNER_REQUEST_COUNT_INVALID",
+                "Amazon visual-suite planning requires exactly one planning call.",
+                results,
+            )
+            session.commit()
+            return JobStatus.FAILED
+        request = requests[0]
+        structured = validated[0]
+        screens = structured["plan"]["screens"]
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job.id)
+            .order_by(JobItemRecord.ordinal)
+            .with_for_update()
+        ).all()
+        if (
+            len(items) != AMAZON_EXPECTED_ITEM_COUNT
+            or [item.item_key for item in items] != list(AMAZON_ITEM_KEYS)
+        ):
+            self._fail_planning_locked(
+                session,
+                job,
+                plan,
+                "AMAZON_ITEM_INVENTORY_INVALID",
+                "Durable Amazon items do not match the canonical inventory.",
+                results,
+            )
+            session.commit()
+            return JobStatus.FAILED
+        input_signature = canonical_hash(
+            {
+                "version": AMAZON_PLANNING_POLICY_VERSION,
+                "base_url": self.base_url_signature.rstrip("/"),
+                "planner_model": self.gateway.planner_model,
+                "image_model": self.gateway.image_model,
+                "sources": [
+                    {
+                        "role": source.source_role,
+                        "filename": source.filename,
+                        "sha256": source.sha256,
+                    }
+                    for source in request.sources
+                ],
+                "language": request.language,
+                "product_name": request.product_name,
+                "product_information": list(request.product_information),
+                "marketplace": request.platform_code,
+                "item_keys": list(AMAZON_ITEM_KEYS),
+            }
+        )
+        resume_signature = canonical_hash(
+            {
+                "version": AMAZON_PLANNING_POLICY_VERSION,
+                "input_signature": input_signature,
+                "structured_plan": structured,
+            }
+        )
+        plan_context_base = {
+            "schema_version": AMAZON_PLANNING_POLICY_VERSION,
+            "analysis": structured["analysis"],
+            "campaign_style_lock": structured["plan"]["campaign_style_lock"],
+            "design_strength_lock": structured["plan"]["design_strength_lock"],
+            "product_consistency_lock": structured["plan"][
+                "product_consistency_lock"
+            ],
+            "layout_diversity_lock": structured["plan"][
+                "layout_diversity_lock"
+            ],
+            "input_signature": input_signature,
+            "resume_signature": resume_signature,
+        }
+        for item, screen in zip(items, screens, strict=True):
+            configuration = dict(item.configuration)
+            configuration.update(
+                {
+                    "workflow_version": AMAZON_PLANNING_POLICY_VERSION,
+                    "planning_policy_version": AMAZON_PLANNING_POLICY_VERSION,
+                    "resume_signature": resume_signature,
+                    "quality": "high",
+                    AMAZON_PLAN_CONFIGURATION_KEY: {
+                        **plan_context_base,
+                        "screen": screen,
+                    },
+                }
+            )
+            item.configuration = configuration
+            item.quality = "high"
+            item.stage = "awaiting_confirmation"
+            item.state_version += 1
+        estimated_pending_cost = (
+            AMAZON_EXPECTED_ITEM_COUNT * self.high_price_micros
+        )
+        payload = {
+            "workflow_version": AMAZON_PLANNING_POLICY_VERSION,
+            "state": "awaiting_confirmation",
+            "requested_page_count": AMAZON_EXPECTED_ITEM_COUNT,
+            "group_count": 1,
+            "provider": {
+                "type": self.gateway.provider_name,
+                "planner_model": self.gateway.planner_model,
+                "image_model": self.gateway.image_model,
+                "pricing_version": self.gateway.pricing_version,
+            },
+            "groups": [
+                {
+                    "group_key": "amazon-product",
+                    "analysis": structured["analysis"],
+                    "campaign_style_lock": structured["plan"][
+                        "campaign_style_lock"
+                    ],
+                    "design_strength_lock": structured["plan"][
+                        "design_strength_lock"
+                    ],
+                    "product_consistency_lock": structured["plan"][
+                        "product_consistency_lock"
+                    ],
+                    "layout_diversity_lock": structured["plan"][
+                        "layout_diversity_lock"
+                    ],
+                    "pages": screens,
+                    "planner_usage": _planner_usage_record(results[0]),
+                    "planning_time": results[0].api_latency_seconds,
+                }
+            ],
+            "pages": screens,
+            "input_signature": input_signature,
+            "resume_signature": resume_signature,
+            "controls": {
+                "automatic_review_enabled": False,
+                "automatic_redraw_enabled": False,
+                "successful_page_auto_redraw_enabled": False,
+                "manual_confirmation_required": True,
+            },
+            "business_quality": {
+                "status": "pending_generation",
+                "policy_version": AMAZON_PLANNING_POLICY_VERSION,
+                "technical_delivery_status": "pending",
+                "manual_review_required": True,
+                "automatic_redraw_enabled": False,
+                "deterministic_findings": [],
+            },
+            "cost": {
+                "currency": "USD",
+                "medium_unit_micros": self.medium_price_micros,
+                "high_unit_micros": self.high_price_micros,
+                "pending_medium_count": 0,
+                "pending_high_count": AMAZON_EXPECTED_ITEM_COUNT,
+                "estimated_pending_micros": estimated_pending_cost,
+                "budget_limit_micros": self.budget_limit_micros,
+            },
+            "usage": {
+                "planner": [_planner_usage_record(results[0])],
+                "image": {"reported_requests": 0, "unreported_requests": 0},
+            },
+            "planner_diagnostics": [_planner_diagnostics_record(results[0])],
+            "metrics": {
+                "planning_time": results[0].api_latency_seconds,
+                "image_wall_time": None,
+                "average_api_latency": None,
+                "effective_seconds_per_page": None,
+                "job_wall_time": None,
+                "success_count": 0,
+                "failure_count": 0,
+                "rate_limit_429_count": 0,
+                "actual_concurrency": 0,
+                "usage_missing_count": int(
+                    not results[0].normalized_usage["reported"]
+                ),
+            },
+        }
+        plan.payload = payload
+        plan.payload_hash = canonical_hash(payload)
+        plan.validation_status = PlanValidationStatus.VALID.value
+        plan.validation_errors = []
+        plan.validated_at = utc_now()
+        job.prompt_version = AMAZON_PLANNING_POLICY_VERSION
+        job.strategy_version = AMAZON_PLANNING_POLICY_VERSION
+        job.release_version = AMAZON_PLANNING_POLICY_VERSION
+        transition_job(
+            job,
+            JobStatus.AWAITING_CONFIRMATION,
+            stage="awaiting_confirmation",
+            progress=15,
+        )
+        session.add(
+            AuditEventRecord(
+                workspace_id=job.workspace_id,
+                action="amazon_visual_suite.planning_completed",
+                resource_type="job",
+                resource_id=job.id,
+                request_id=plan.id,
+                details={
+                    "page_count": AMAZON_EXPECTED_ITEM_COUNT,
+                    "high_count": AMAZON_EXPECTED_ITEM_COUNT,
+                    "estimated_pending_micros": estimated_pending_cost,
+                    "manual_confirmation_required": True,
+                },
+            )
+        )
+        session.commit()
+        return JobStatus.AWAITING_CONFIRMATION
 
 
 class XingheImageProvider:
@@ -3519,7 +4076,7 @@ def synchronize_confirmed_plan(
 ) -> None:
     """Apply the latest user-edited plan to durable page items before dispatch."""
 
-    if job.type != "detail_pack":
+    if job.type != JobType.DETAIL_PACK.value:
         return
     errors = validate_editable_plan_payload(
         plan.payload,
@@ -3561,6 +4118,12 @@ def synchronize_confirmed_plan(
                     ),
                     "campaign_style_lock": group.get("campaign_style_lock"),
                     "design_strength_lock": group.get("design_strength_lock"),
+                    "layout_diversity_lock": group.get(
+                        "layout_diversity_lock"
+                    ),
+                    "product_consistency_lock": group.get(
+                        "product_consistency_lock"
+                    ),
                 }
                 for group in groups
                 if isinstance(group, dict)
@@ -3616,6 +4179,12 @@ def synchronize_confirmed_plan(
                 **safe_plan_protocol,
                 "campaign_style_lock": group.get("campaign_style_lock"),
                 "design_strength_lock": group.get("design_strength_lock"),
+                "layout_diversity_lock": group.get(
+                    "layout_diversity_lock", {}
+                ),
+                "product_consistency_lock": group.get(
+                    "product_consistency_lock", {}
+                ),
             },
         }
         existing = dict(item.configuration)
@@ -3691,7 +4260,10 @@ def synchronize_confirmed_plan(
 def update_job_metrics(session: Session, job: JobRecord) -> None:
     """Persist Agent metrics in the existing plan JSON without a migration."""
 
-    if job.type != "detail_pack":
+    if job.type not in {
+        JobType.DETAIL_PACK.value,
+        JobType.AMAZON_VISUAL_SUITE.value,
+    }:
         return
     plan = session.scalar(
         select(JobPlanRecord)
@@ -4083,6 +4655,8 @@ def _fake_usage(
 
 
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "amazon_visual_suite":
+        return _fake_amazon_plan(request)
     roles = (
         "Cover hero",
         "Structure detail",
@@ -4117,6 +4691,13 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "decorative_elements": "Preserve visible relative positions.",
                 "crop_to_whole": "Crops must come from the same product.",
             },
+            "product_master_description": {
+                "sku_identity": "One exact product from all ordered source angles.",
+                "silhouette": "Preserve visible silhouette and proportions.",
+                "color_material": "Preserve visible color-area ratio and finish.",
+                "structure": "Preserve every visible structural part.",
+                "unknowns": [],
+            },
             "buyer_objections": [
                 "What is visibly distinctive?",
                 "How does the structure look from multiple angles?",
@@ -4150,6 +4731,15 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "color_contrast": "Alternate light field and accent field.",
                 "template_ban": "Never repeat the same centered-product template.",
             },
+            "layout_diversity_lock": {
+                "max_same_layout_family": 2,
+                "layout_rule": "Rotate layout families across adjacent pages.",
+                "background_rule": "No background system appears more than twice.",
+            },
+            "product_consistency_lock": {
+                "sku_identity": "Never change the SKU across pages.",
+                "physical_logic": "Preserve scale, contact, perspective, and gravity.",
+            },
             "screens": [
                 {
                     "role": (
@@ -4179,11 +4769,112 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                         "scene",
                         "information",
                     )[index % 5],
+                    "buyer_question": f"Unique buyer question {index + 1}?",
+                    "layout_family": (
+                        "editorial",
+                        "offset-evidence",
+                        "grounded-scene",
+                        "technical-proof",
+                    )[index % 4],
+                    "camera_angle": (
+                        "front",
+                        "three-quarter",
+                        "macro-side",
+                        "overhead",
+                    )[index % 4],
+                    "product_position": (
+                        "center",
+                        "left-third",
+                        "right-third",
+                        "lower-center",
+                    )[index % 4],
+                    "background_system": (
+                        "clean-field",
+                        "context-scene",
+                        "material-surface",
+                        "contrast-field",
+                    )[index % 4],
+                    "prop_strategy": f"Page-specific prop strategy {index + 1}",
+                    "copy_density": (
+                        "sparse" if index % 2 == 0 else "moderate"
+                    ),
                 }
                 for index in range(request.page_count)
             ],
         },
     }
+
+
+def _fake_amazon_plan(request: PlannerRequest) -> dict[str, Any]:
+    from .amazon_visual_suite_provider import AMAZON_ITEM_SPECS
+
+    payload = _fake_plan(replace(request, planning_profile="detail_pack"))
+    payload["analysis"].update(
+        {
+            "information_confidence": {
+                "confirmed": ["visible source facts"],
+                "reasonable_inference": [],
+                "needs_confirmation": [],
+            },
+            "buyer_demand_map": [
+                "recognition",
+                "understanding",
+                "trust",
+                "comparison",
+                "purchase",
+            ],
+            "demand_to_selling_point_match": {
+                "recognition": "Show the exact supplied SKU."
+            },
+            "product_master_description": {
+                "silhouette_and_proportions": "Preserve the supplied silhouette.",
+                "color_and_material_appearance": "Use visible color and finish only.",
+                "logos_labels_and_patterns": "Preserve visible placement exactly.",
+                "structural_parts": "Do not add or remove parts.",
+                "scale_and_physics": (
+                    "Keep scale, contact, shadows, and gravity credible."
+                ),
+                "unknowns": [],
+            },
+        }
+    )
+    payload["plan"]["product_consistency_lock"] = {
+        "sku_identity": "One exact SKU across all 21 images.",
+        "physical_logic": "Preserve structure, scale, contact, and perspective.",
+    }
+    payload["plan"]["layout_diversity_lock"] = {
+        "max_same_layout_family": 3,
+        "layout_rule": "Use independent compositions across all selling images.",
+        "background_rule": "Rotate backgrounds without changing the SKU.",
+    }
+    for index, (screen, spec) in enumerate(
+        zip(payload["plan"]["screens"], AMAZON_ITEM_SPECS, strict=True)
+    ):
+        screen.update(
+            {
+                "item_key": spec.item_key,
+                "asset_type": spec.asset_type,
+                "final_size": f"{spec.width}x{spec.height}",
+                "buyer_question": f"{spec.buyer_question} [{spec.item_key}]",
+                "selling_point": spec.selling_point,
+                "information_confidence": "confirmed visible facts only",
+                "visual_proof": spec.visual_proof,
+                "headline": spec.headline,
+                "subcopy": spec.subcopy,
+                "layout_direction": spec.layout_direction,
+                "source_material": spec.source_material,
+                "risk_note": spec.risk_note,
+                "layout_family": f"amazon-family-{index % 10}",
+                "background_system": f"amazon-background-{index % 10}",
+                "camera_angle": f"planned-angle-{index + 1}",
+                "product_position": f"planned-position-{index + 1}",
+                "prop_strategy": f"planned-props-{index + 1}",
+                "copy_density": "none" if index == 0 else (
+                    "sparse" if index % 2 else "moderate"
+                ),
+            }
+        )
+    return payload
 
 
 def _fake_jpeg(page_number: int, size: str) -> bytes:
@@ -4454,6 +5145,10 @@ def _validate_masked_visual_review_payload(payload: object) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "amazon_visual_suite":
+        return _amazon_planner_prompt(request)
+    if request.planning_profile == "crossborder_detail":
+        return _legacy_planner_prompt(request) + _cross_page_lock_prompt_contract()
     if not request.domestic_protocol:
         return _legacy_planner_prompt(request)
     product_source_count = sum(
@@ -4501,6 +5196,74 @@ def _planner_prompt(request: PlannerRequest) -> str:
         "needs_confirmation. Required object:",
         protocol_contract,
         1,
+    )
+
+
+def _cross_page_lock_prompt_contract() -> str:
+    return (
+        " analysis.product_master_description is REQUIRED as a non-empty "
+        "object that locks the exact SKU across all pages. "
+        "plan.product_consistency_lock is REQUIRED as a non-empty object. "
+        "plan.layout_diversity_lock is REQUIRED and must contain integer "
+        "max_same_layout_family from 1 to 3 plus concise rules for varied "
+        "layout, background, scale, camera, product position, props, and copy "
+        "density. Every screen additionally requires buyer_question, "
+        "layout_family, camera_angle, product_position, background_system, "
+        "prop_strategy, and copy_density. Buyer questions must be unique. No "
+        "layout_family or background_system may occur more often than "
+        "max_same_layout_family, and the combined composition signature must "
+        "be unique across all screens."
+    )
+
+
+def _amazon_planner_prompt(request: PlannerRequest) -> str:
+    from .amazon_visual_suite_provider import AMAZON_ITEM_SPECS
+
+    task_table = [
+        {
+            "item_key": spec.item_key,
+            "asset_type": spec.asset_type,
+            "final_size": f"{spec.width}x{spec.height}",
+            "default_buyer_question": spec.buyer_question,
+            "default_selling_point": spec.selling_point,
+            "source_material": spec.source_material,
+            "risk_note": spec.risk_note,
+        }
+        for spec in AMAZON_ITEM_SPECS
+    ]
+    return (
+        "Return exactly one JSON object for one Amazon product visual suite. "
+        f"Analyze all {len(request.sources)} attached role-labelled images as "
+        "complementary evidence for one SKU. Only supplied text and visible "
+        "facts may establish claims. Return exactly 21 screens in the exact "
+        "item_key order from the canonical task table below. Required analysis: "
+        "category_key, category_reason, product_image_analysis, "
+        "product_consistency_anchors, buyer_objections, information_confidence, "
+        "buyer_demand_map, demand_to_selling_point_match, and a non-empty object "
+        "product_master_description locking silhouette, proportions, color and "
+        "material appearance, logos and labels, structural parts, scale and "
+        "physics, plus unknowns. Required plan: campaign_style_lock, "
+        "design_strength_lock, product_consistency_lock, "
+        "layout_diversity_lock, and screens. campaign_style_lock and "
+        "design_strength_lock must satisfy the same fields as the detail planner. "
+        "layout_diversity_lock.max_same_layout_family must be an integer from 1 "
+        "to 3. Every screen requires role, title, label, composition, device, "
+        "difference, structure, subject_scale, buyer_question, layout_family, "
+        "camera_angle, product_position, background_system, prop_strategy, "
+        "copy_density, item_key, asset_type, final_size, selling_point, "
+        "information_confidence, visual_proof, headline, subcopy, "
+        "layout_direction, source_material, and risk_note. Buyer questions must "
+        "be unique within each of main, secondary, desktop A+, and mobile A+; "
+        "paired desktop/mobile selling logic may correspond but composition must "
+        "remain independent. No layout family or background system may repeat "
+        "more than the lock maximum. MAIN-01 must prescribe no on-image text, "
+        "props, badges, or invented accessories. Preserve the exact SKU across "
+        "all screens. Product="
+        f"{request.product_name!r}; marketplace={request.platform_code!r}; "
+        f"language={request.language!r}; supplied information="
+        f"{list(request.product_information)!r}; canonical task table="
+        f"{json.dumps(task_table, ensure_ascii=False, separators=(',', ':'))}."
+        + _cross_page_lock_prompt_contract()
     )
 
 

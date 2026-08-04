@@ -92,6 +92,30 @@ test("Amazon fixed pack delegates all 21 JobItems to the backend", async () => {
   assert.doesNotMatch(amazonBody, /item_key|MAIN-01|SECONDARY-01|A-DESKTOP-01/);
 });
 
+test("Amazon workflow reviews and confirms the backend 21-page plan", async () => {
+  const workspace = await utf8("components/commerce-skill-workspace.tsx");
+  const jobApi = await utf8("features/jobs/api/jobs.ts");
+
+  assert.match(workspace, /readAmazonPlanPages\(job\.data\?\.plan\?\.payload\)/);
+  assert.match(workspace, /job\.data\?\.status === "awaiting_confirmation"/);
+  assert.match(workspace, /确认 21 项页面规划/);
+  assert.match(workspace, /amazonPlanPages\.map/);
+  assert.match(workspace, /useConfirmPlan\(workspace\?\.id\)/);
+  assert.match(workspace, /allowsJobAction\(job\.data\.allowed_actions, "confirm_plan"\)/);
+  assert.match(workspace, /revision: job\.data\.plan\.revision/);
+  assert.match(workspace, /确认计划并开始生成/);
+  assert.match(jobApi, /invalidateQueries/);
+  assert.match(jobApi, /status && isActiveJob\(status\) \? 1_500 : false/);
+});
+
+test("Amazon distinguishes technical completion from business quality review", async () => {
+  const workspace = await utf8("components/commerce-skill-workspace.tsx");
+  assert.match(workspace, /readAmazonBusinessQuality/);
+  assert.match(workspace, /技术交付完成，业务质量等待人工审核/);
+  assert.match(workspace, /技术交付完成，业务质量检查未通过/);
+  assert.match(workspace, /不会自动重做/);
+});
+
 test("new workspaces are runtime gated and never fabricate output", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
   const runtime = await utf8("features/runtime/api/runtime.ts");

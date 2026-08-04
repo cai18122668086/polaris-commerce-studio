@@ -13,7 +13,11 @@ from PIL import Image
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.amazon_visual_suite_provider import AmazonVisualSuiteProvider
+from app.amazon_visual_suite_provider import (
+    AMAZON_PLAN_CONFIGURATION_KEY,
+    AmazonVisualSuiteProvider,
+    amazon_item_spec,
+)
 from app.database import Base
 from app.domain import (
     AssetLifecycleStatus,
@@ -1250,6 +1254,36 @@ def test_amazon_adapter_to_delegate_preserves_durable_key_and_calls_gateway_once
         delegate,
         manifest_validator=harness.manifest,
     )
+    spec = amazon_item_spec("A-DESKTOP-01")
+    plan_context = {
+        "analysis": {
+            "product_master_description": {"identity": "one exact SKU"},
+            "product_consistency_anchors": {"silhouette": "preserve shape"},
+        },
+        "campaign_style_lock": {"style": "consistent"},
+        "design_strength_lock": {"strength": "evidence-led"},
+        "product_consistency_lock": {"sku": "one exact SKU"},
+        "layout_diversity_lock": {"maximum": 3},
+        "screen": {
+            "item_key": spec.item_key,
+            "layout_direction": spec.layout_direction,
+            "layout_family": "wide-evidence",
+            "camera_angle": "three-quarter",
+            "product_position": "left-third",
+            "background_system": "clean-field",
+            "prop_strategy": "no props",
+            "copy_density": "sparse",
+            "headline": spec.headline,
+            "subcopy": spec.subcopy,
+            "buyer_question": spec.buyer_question,
+            "selling_point": spec.selling_point,
+            "information_confidence": "confirmed visible facts only",
+            "visual_proof": spec.visual_proof,
+            "source_material": spec.source_material,
+            "risk_note": spec.risk_note,
+        },
+        "resume_signature": "b" * 64,
+    }
     request = ProviderRequest(
         workspace_id="ws_test",
         job_id="job_test",
@@ -1280,6 +1314,7 @@ def test_amazon_adapter_to_delegate_preserves_durable_key_and_calls_gateway_once
                 "group": "a_desktop",
                 "group_ordinal": 1,
                 "contact_sheet": False,
+                AMAZON_PLAN_CONFIGURATION_KEY: plan_context,
             },
         },
     )

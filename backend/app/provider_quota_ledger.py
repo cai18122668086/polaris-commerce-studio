@@ -195,7 +195,10 @@ def _planner_charges(
     reservation: AuditEventRecord,
     reserved_cost: int,
 ) -> tuple[list[dict[str, Any]], int, int, int]:
-    if job.type != JobType.DETAIL_PACK.value:
+    if job.type not in {
+        JobType.DETAIL_PACK.value,
+        JobType.AMAZON_VISUAL_SUITE.value,
+    }:
         return [], 0, 0, 0
     plan = session.scalar(
         select(JobPlanRecord)

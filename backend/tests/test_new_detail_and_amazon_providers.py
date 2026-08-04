@@ -12,6 +12,7 @@ from app.amazon_visual_suite_provider import (
     AMAZON_EXPECTED_ITEM_COUNT,
     AMAZON_ITEM_KEYS,
     AMAZON_ITEM_SPECS,
+    AMAZON_PLAN_CONFIGURATION_KEY,
     AmazonVisualSuiteProvider,
     amazon_item_spec,
     validate_amazon_item_keys,
@@ -134,6 +135,49 @@ def _amazon_request(
         "target_height": height,
         **item_overrides,
     }
+    try:
+        spec = amazon_item_spec(item_key)
+    except AdapterValidationError:
+        spec = None
+    if spec is not None:
+        item[AMAZON_PLAN_CONFIGURATION_KEY] = {
+            "analysis": {
+                "product_master_description": {
+                    "silhouette_and_proportions": "Preserve the supplied shape.",
+                    "color_and_material_appearance": "Preserve visible appearance.",
+                    "logos_labels_and_patterns": "Preserve visible markings.",
+                    "structural_parts": "Do not add or remove parts.",
+                    "scale_and_physics": "Keep scale and physical logic credible.",
+                    "unknowns": [],
+                },
+                "product_consistency_anchors": {
+                    "overall_silhouette": "One exact SKU.",
+                },
+            },
+            "campaign_style_lock": {"style": "consistent campaign"},
+            "design_strength_lock": {"strength": "product-led evidence"},
+            "product_consistency_lock": {"sku_identity": "one exact SKU"},
+            "layout_diversity_lock": {"max_same_layout_family": 3},
+            "screen": {
+                "item_key": spec.item_key,
+                "buyer_question": spec.buyer_question,
+                "selling_point": spec.selling_point,
+                "information_confidence": "confirmed visible facts only",
+                "visual_proof": spec.visual_proof,
+                "headline": spec.headline,
+                "subcopy": spec.subcopy,
+                "layout_direction": spec.layout_direction,
+                "layout_family": f"planned-{spec.group}",
+                "camera_angle": "planned camera angle",
+                "product_position": "planned product position",
+                "background_system": "planned background system",
+                "prop_strategy": "planned prop strategy",
+                "copy_density": "sparse",
+                "source_material": spec.source_material,
+                "risk_note": spec.risk_note,
+            },
+            "resume_signature": "b" * 64,
+        }
     return _request(
         operation,
         {
@@ -559,6 +603,12 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
             "Layout direction: Wide structure or macro composition with "
             "evidence larger than text."
         ),
+        "Layout family: planned-a_desktop",
+        "Camera angle: planned camera angle",
+        "Product position: planned product position",
+        "Background system: planned background system",
+        "Prop strategy: planned prop strategy",
+        "Copy density: sparse",
     ]
     assert prompt["copy_requirements"] == [
         (
@@ -567,13 +617,18 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
         ),
         "Subcopy: Use sparse feature labels only where legible.",
     ]
-    assert prompt["reference_guidance"][0] == (
+    assert (
         "Buyer question: What makes it different?"
+        in prompt["reference_guidance"]
     )
-    assert prompt["reference_guidance"][3] == (
+    assert (
         "Visual proof: Use mechanism, structure, craft, or close-detail evidence."
+        in prompt["reference_guidance"]
     )
-    assert len(prompt["negative_constraints"]) == 2
+    assert prompt["reference_guidance"][0].startswith(
+        "Product Master Description: "
+    )
+    assert len(prompt["negative_constraints"]) == 3
     assert "private_note" not in prompt
     audit = delegate.requests[0].configuration[AMAZON_AUDIT_CONFIGURATION_KEY]
     assert audit["expected_item_count"] == 21
@@ -588,6 +643,7 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
         "target_height": 600,
         "deliverable_counted": True,
         "contact_sheet": False,
+        "plan_resume_signature": "b" * 64,
         "task": {
             "id": "A-DESKTOP-03",
             "asset_type": "Desktop A+ core-feature module",
@@ -672,14 +728,17 @@ def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> 
         assert task["final_size"] == f"{spec.width}x{spec.height}"
         assert all(isinstance(value, str) and value for value in task.values())
         assert prompt["product_information"] == ["Test listing", "Point one"]
-        assert prompt["reference_guidance"][0] == (
+        assert (
             f"Buyer question: {task['buyer_question']}"
+            in prompt["reference_guidance"]
         )
-        assert prompt["reference_guidance"][1] == (
+        assert (
             f"Selling point: {task['selling_point']}"
+            in prompt["reference_guidance"]
         )
-        assert prompt["reference_guidance"][3] == (
+        assert (
             f"Visual proof: {task['visual_proof']}"
+            in prompt["reference_guidance"]
         )
         assert prompt["creative_direction"][1] == (
             f"Layout direction: {task['layout_direction']}"

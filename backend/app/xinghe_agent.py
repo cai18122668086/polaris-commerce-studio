@@ -84,7 +84,7 @@ QUALITY_POLICY_VERSION = "xinghe-all-high-v2"
 PROMPT_POLICY_VERSION = "xinghe-skill-parity-prompt-v2"
 RESUME_SIGNATURE_VERSION = "xinghe-resume-v2"
 PLAN_SCHEMA_VERSION = "xinghe-plan-v2"
-PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v2"
+PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v3"
 PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
 IMAGE_SIZE = "1024x1536"
 SUPPORTED_IMAGE_SIZES = frozenset(
@@ -263,6 +263,7 @@ class PlannerCallResult:
     http_status: int | None = None
     parse_trace: tuple[str, ...] = ()
     structure_fingerprint: str | None = None
+    structure_profile: dict[str, Any] | None = None
     error_path: str | None = None
     provider_envelope: dict[str, Any] | None = None
     content_utf8_bytes: int | None = None
@@ -4597,6 +4598,7 @@ def _planner_diagnostics_record(result: PlannerCallResult) -> dict[str, Any]:
         "version": PLANNER_OBSERVABILITY_VERSION,
         "parse_trace": list(result.parse_trace),
         "structure_fingerprint": result.structure_fingerprint,
+        "structure_profile": result.structure_profile,
         "provider_envelope": result.provider_envelope,
         "content_utf8_bytes": result.content_utf8_bytes,
         "content_sha256": result.content_sha256,
@@ -5233,6 +5235,12 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
     ]
     return (
         "Return exactly one JSON object for one Amazon product visual suite. "
+        "The response object MUST contain exactly two top-level members named "
+        "analysis and plan. The value of analysis MUST be a JSON object, never "
+        "a JSON-encoded string, array, null, or prose. The value of plan MUST "
+        "also be a JSON object, never a JSON-encoded string, array, null, or "
+        "prose. Put every required analysis field inside the top-level analysis "
+        "object and every required plan field inside the top-level plan object. "
         f"Analyze all {len(request.sources)} attached role-labelled images as "
         "complementary evidence for one SKU. Only supplied text and visible "
         "facts may establish claims. Return exactly 21 screens in the exact "
@@ -5406,10 +5414,14 @@ def _with_planner_observability(
     fingerprint = result.structure_fingerprint
     if fingerprint is None and result.error_code is None:
         fingerprint = _planner_structure_fingerprint(result.payload)
+    profile = result.structure_profile
+    if profile is None and result.error_code is None:
+        profile = _planner_structure_profile(result.payload)
     return replace(
         result,
         parse_trace=trace,
         structure_fingerprint=fingerprint,
+        structure_profile=profile,
         provider_envelope=(
             result.provider_envelope
             if result.provider_envelope is not None
@@ -5532,16 +5544,22 @@ def _planner_usage_is_complete(value: object) -> bool:
 def _planner_structure_fingerprint(payload: object) -> str:
     """Hash a value-free schema profile for safe response correlation."""
 
+    return canonical_hash(
+        {
+            "version": PLANNER_OBSERVABILITY_VERSION,
+            "profile": _planner_structure_profile(payload),
+        }
+    )
+
+
+def _planner_structure_profile(payload: object) -> dict[str, Any]:
+    """Return a bounded, value-free profile of the planner response shape."""
+
     profile: dict[str, Any] = {
         "root": _json_shape_summary(payload),
     }
     if not isinstance(payload, Mapping):
-        return canonical_hash(
-            {
-                "version": PLANNER_OBSERVABILITY_VERSION,
-                "profile": profile,
-            }
-        )
+        return profile
     profile["root"] = _known_fields_profile(
         payload,
         ("analysis", "plan"),
@@ -5555,6 +5573,10 @@ def _planner_structure_fingerprint(payload: object) -> str:
             "product_image_analysis",
             "product_consistency_anchors",
             "buyer_objections",
+            "information_confidence",
+            "buyer_demand_map",
+            "demand_to_selling_point_match",
+            "product_master_description",
         ),
     )
     plan = payload.get("plan", _MISSING_JSON_VALUE)
@@ -5563,6 +5585,8 @@ def _planner_structure_fingerprint(payload: object) -> str:
         (
             "campaign_style_lock",
             "design_strength_lock",
+            "product_consistency_lock",
+            "layout_diversity_lock",
             "screens",
         ),
     )
@@ -5580,16 +5604,31 @@ def _planner_structure_fingerprint(payload: object) -> str:
                         "composition",
                         "device",
                         "difference",
+                        "structure",
+                        "subject_scale",
+                        "buyer_question",
+                        "layout_family",
+                        "camera_angle",
+                        "product_position",
+                        "background_system",
+                        "prop_strategy",
+                        "copy_density",
+                        "item_key",
+                        "asset_type",
+                        "final_size",
+                        "selling_point",
+                        "information_confidence",
+                        "visual_proof",
+                        "headline",
+                        "subcopy",
+                        "layout_direction",
+                        "source_material",
+                        "risk_note",
                     ),
                 )
-                for screen in screens
+                for screen in screens[:_MAX_PROTOCOL_COLLECTION_LENGTH]
             ]
-    return canonical_hash(
-        {
-            "version": PLANNER_OBSERVABILITY_VERSION,
-            "profile": profile,
-        }
-    )
+    return profile
 
 
 def _known_fields_profile(
@@ -5624,13 +5663,16 @@ def _json_shape_summary(value: object) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return {"type": "object", "field_count": len(value)}
     if isinstance(value, list):
+        sampled = value[:_MAX_PROTOCOL_COLLECTION_LENGTH]
         item_types: dict[str, int] = {}
-        for item in value:
+        for item in sampled:
             item_type = str(_json_shape_summary(item)["type"])
             item_types[item_type] = item_types.get(item_type, 0) + 1
         return {
             "type": "array",
             "item_count": len(value),
+            "profiled_item_count": len(sampled),
+            "truncated": len(sampled) != len(value),
             "item_types": dict(sorted(item_types.items())),
         }
     return {"type": "non_json"}

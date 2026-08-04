@@ -54,10 +54,12 @@ from app.xinghe_agent import (
     TengliOpenAICompatibleGateway,
     XingheAgentError,
     XingheImageProvider,
+    _amazon_planner_prompt,
     _artifact_from_bytes,
     _json_pointer,
     _planner_content_payload_with_trace,
     _planner_structure_fingerprint,
+    _planner_structure_profile,
     build_resume_signature,
     normalize_usage,
     quality_for_role,
@@ -758,6 +760,66 @@ def _valid_planner_content(page_count: int) -> dict[str, Any]:
     }
 
 
+def test_amazon_planner_prompt_requires_exact_object_envelope() -> None:
+    prompt = _amazon_planner_prompt(
+        PlannerRequest(
+            workspace_id="ws-contract",
+            job_id="job-contract",
+            group_key="amazon-product",
+            sources=(),
+            page_count=21,
+            language="en-US",
+            product_name="Visible product",
+            product_information=("Visible facts only",),
+            platform_code="amazon-us",
+            size="amazon-canonical-multi-size-v1",
+            idempotency_key="job-contract:planner",
+            planning_profile="amazon_visual_suite",
+        )
+    )
+
+    assert (
+        "The response object MUST contain exactly two top-level members named "
+        "analysis and plan."
+    ) in prompt
+    assert (
+        "The value of analysis MUST be a JSON object, never a JSON-encoded "
+        "string, array, null, or prose."
+    ) in prompt
+    assert (
+        "The value of plan MUST also be a JSON object, never a JSON-encoded "
+        "string, array, null, or prose."
+    ) in prompt
+    assert (
+        "Put every required analysis field inside the top-level analysis object "
+        "and every required plan field inside the top-level plan object."
+    ) in prompt
+
+    analysis_contract, plan_contract = prompt.split("Required analysis: ", 1)[
+        1
+    ].split("Required plan: ", 1)
+    for field in (
+        "category_key",
+        "category_reason",
+        "product_image_analysis",
+        "product_consistency_anchors",
+        "buyer_objections",
+        "information_confidence",
+        "buyer_demand_map",
+        "demand_to_selling_point_match",
+        "product_master_description",
+    ):
+        assert field in analysis_contract
+    for field in (
+        "campaign_style_lock",
+        "design_strength_lock",
+        "product_consistency_lock",
+        "layout_diversity_lock",
+        "screens",
+    ):
+        assert field in plan_contract
+
+
 def _planner_validation_path_cases() -> list[Any]:
     cases: list[Any] = [
         pytest.param(7, 1, "/", id="root"),
@@ -882,6 +944,42 @@ def test_valid_planner_mapping_with_consistency_anchors_passes() -> None:
     assert validated["analysis"]["product_consistency_anchors"] == {}
 
 
+@pytest.mark.parametrize(
+    ("analysis_present", "analysis"),
+    [
+        pytest.param(
+            True,
+            json.dumps(_valid_planner_content(1)["analysis"]),
+            id="json-encoded-string",
+        ),
+        pytest.param(
+            True,
+            [_valid_planner_content(1)["analysis"]],
+            id="array",
+        ),
+        pytest.param(True, None, id="null"),
+        pytest.param(False, None, id="missing"),
+    ],
+)
+def test_planner_analysis_non_object_or_missing_fails_closed_without_decoding(
+    analysis_present: bool,
+    analysis: object,
+) -> None:
+    payload = _valid_planner_content(1)
+    if analysis_present:
+        payload["analysis"] = analysis
+    else:
+        del payload["analysis"]
+    original = deepcopy(payload)
+
+    with pytest.raises(XingheAgentError) as exc_info:
+        validate_planner_payload(payload, 1)
+
+    assert exc_info.value.code == "PLANNER_SCHEMA_INVALID"
+    assert exc_info.value.json_pointer == "/analysis"
+    assert payload == original
+
+
 def test_json_pointer_escapes_reference_tokens() -> None:
     assert _json_pointer() == "/"
     assert _json_pointer("a/b", "~key", 0) == "/a~1b/~0key/0"
@@ -970,6 +1068,97 @@ def test_planner_structure_fingerprint_uses_shape_not_values() -> None:
     assert _planner_structure_fingerprint(changed_shape) != first_fingerprint
     assert len(first_fingerprint) == 64
     assert "secret" not in first_fingerprint
+
+
+@pytest.mark.parametrize(
+    ("analysis_present", "analysis", "expected_type", "expected_metrics"),
+    [
+        pytest.param(
+            True,
+            {
+                "category_key": "SENSITIVE-CATEGORY-MARKER",
+                "category_reason": "SENSITIVE-RAW-TEXT-MARKER",
+                "SENSITIVE-UNKNOWN-FIELD-MARKER": (
+                    "SENSITIVE-RAW-TEXT-MARKER"
+                ),
+            },
+            "object",
+            {"field_count": 3, "unknown_field_count": 1},
+            id="object",
+        ),
+        pytest.param(
+            True,
+            "SENSITIVE-RAW-TEXT-MARKER",
+            "string",
+            {},
+            id="string",
+        ),
+        pytest.param(
+            True,
+            ["SENSITIVE-RAW-TEXT-MARKER", None, {}],
+            "array",
+            {
+                "item_count": 3,
+                "profiled_item_count": 3,
+                "truncated": False,
+                "item_types": {"null": 1, "object": 1, "string": 1},
+            },
+            id="array",
+        ),
+        pytest.param(True, None, "null", {}, id="null"),
+        pytest.param(False, None, "missing", {}, id="missing"),
+    ],
+)
+def test_planner_structure_profile_records_analysis_shape_without_values(
+    analysis_present: bool,
+    analysis: object,
+    expected_type: str,
+    expected_metrics: dict[str, Any],
+) -> None:
+    payload: dict[str, Any] = {"plan": {}}
+    if analysis_present:
+        payload["analysis"] = analysis
+
+    profile = _planner_structure_profile(payload)
+    analysis_profile = profile["analysis"]
+
+    assert analysis_profile["type"] == expected_type
+    for key, value in expected_metrics.items():
+        assert analysis_profile[key] == value
+    if expected_type == "object":
+        assert set(analysis_profile) == {
+            "type",
+            "field_count",
+            "unknown_field_count",
+            "fields",
+        }
+        assert analysis_profile["fields"]["category_key"] == {
+            "type": "string"
+        }
+        assert analysis_profile["fields"]["category_reason"] == {
+            "type": "string"
+        }
+        assert analysis_profile["fields"]["product_image_analysis"] == {
+            "type": "missing"
+        }
+    elif expected_type == "array":
+        assert set(analysis_profile) == {
+            "type",
+            "item_count",
+            "profiled_item_count",
+            "truncated",
+            "item_types",
+        }
+    else:
+        assert analysis_profile == {"type": expected_type}
+
+    serialized = json.dumps(profile, ensure_ascii=False, sort_keys=True)
+    for forbidden in (
+        "SENSITIVE-CATEGORY-MARKER",
+        "SENSITIVE-RAW-TEXT-MARKER",
+        "SENSITIVE-UNKNOWN-FIELD-MARKER",
+    ):
+        assert forbidden not in serialized
 
 
 class _PlannerContentTransport(_Budget429Transport):
@@ -1247,11 +1436,17 @@ def test_raw_planner_envelope_diagnostics_are_safe_and_durable(
             if expected_bytes not in (None, 0)
             else ["provider_payload:rejected_before_json_parse"]
         )
+        expected_structure_profile = (
+            {"root": {"type": "string"}}
+            if expected_bytes not in (None, 0)
+            else None
+        )
         assert diagnostics == {
             "schema": "xinghe-planner-diagnostics",
-            "version": "xinghe-planner-observability-v2",
+            "version": "xinghe-planner-observability-v3",
             "parse_trace": expected_trace,
             "structure_fingerprint": diagnostics["structure_fingerprint"],
+            "structure_profile": expected_structure_profile,
             "provider_envelope": expected_envelope,
             "content_utf8_bytes": expected_bytes,
             "content_sha256": expected_sha256,
@@ -1321,7 +1516,10 @@ def test_strict_planner_content_reaches_confirmation_gate(
         diagnostics = plan_payload["planner_diagnostics"]
         assert len(diagnostics) == 1
         assert diagnostics[0]["schema"] == "xinghe-planner-diagnostics"
-        assert diagnostics[0]["version"] == "xinghe-planner-observability-v2"
+        assert diagnostics[0]["version"] == "xinghe-planner-observability-v3"
+        assert diagnostics[0]["structure_profile"] == (
+            _planner_structure_profile(_valid_planner_content(page_count))
+        )
         assert diagnostics[0]["parse_trace"][-2].endswith(":decoded")
         assert diagnostics[0]["parse_trace"][-1].endswith(
             ":decoded_kind:mapping"
@@ -1454,7 +1652,7 @@ def test_unsafe_planner_content_fails_closed_before_image(
         diagnostics = plan_payload["planner_diagnostics"]
         assert len(diagnostics) == 1
         assert diagnostics[0]["schema"] == "xinghe-planner-diagnostics"
-        assert diagnostics[0]["version"] == "xinghe-planner-observability-v2"
+        assert diagnostics[0]["version"] == "xinghe-planner-observability-v3"
         assert diagnostics[0]["parse_trace"]
         assert len(diagnostics[0]["structure_fingerprint"]) == 64
         with client.app.state.session_factory() as session:

@@ -13,10 +13,10 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from io import BytesIO
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import or_, select
@@ -1251,7 +1251,9 @@ def _perceptual_dhash(payload: bytes) -> str:
             (9, 8),
             Image.Resampling.LANCZOS,
         )
-        pixels = list(grayscale.get_flattened_data())
+        pixels = list(
+            cast(Sequence[int], grayscale.get_flattened_data())
+        )
     value = 0
     for row in range(8):
         offset = row * 9

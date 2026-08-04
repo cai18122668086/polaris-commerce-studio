@@ -819,6 +819,56 @@ def test_amazon_planner_prompt_requires_exact_object_envelope() -> None:
     ):
         assert field in plan_contract
 
+def test_amazon_planner_prompt_lists_each_required_style_lock_field() -> None:
+    prompt = _amazon_planner_prompt(
+        PlannerRequest(
+            workspace_id="ws-lock-contract",
+            job_id="job-lock-contract",
+            group_key="amazon-product",
+            sources=(),
+            page_count=21,
+            language="en-US",
+            product_name="Visible product",
+            product_information=("Visible facts only",),
+            platform_code="amazon-us",
+            size="amazon-canonical-multi-size-v1",
+            idempotency_key="job-lock-contract:planner",
+            planning_profile="amazon_visual_suite",
+        )
+    )
+
+    required_plan_contract = prompt.split("Required plan: ", 1)[1].split(
+        "Every screen requires", 1
+    )[0]
+    assert "same fields as the detail planner" not in required_plan_contract
+
+    campaign_contract = required_plan_contract.split(
+        "campaign_style_lock MUST", 1
+    )[1].split("design_strength_lock", 1)[0]
+    for field in (
+        "palette",
+        "typography",
+        "background",
+        "lighting",
+        "icon_style",
+        "whitespace",
+        "product_scale",
+    ):
+        assert field in campaign_contract
+
+    design_contract = required_plan_contract.split(
+        "design_strength_lock MUST", 1
+    )[1]
+    for field in (
+        "category_visual_motif",
+        "composition_contrast",
+        "signature_devices",
+        "color_contrast",
+        "template_ban",
+        "rhythm_map",
+    ):
+        assert field in design_contract
+
 
 def _planner_validation_path_cases() -> list[Any]:
     cases: list[Any] = [

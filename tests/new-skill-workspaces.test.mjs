@@ -132,3 +132,20 @@ test("detail workspace submits the selected market and only auto-starts domestic
   assert.match(detail, /selectRegion\("domestic"\).*disabled=\{Boolean\(jobId\)\}/);
   assert.match(detail, /selectRegion\("international"\).*disabled=\{Boolean\(jobId\)\}/);
 });
+
+test("completed detail and Amazon packs expose real attachment and ZIP downloads", async () => {
+  const assetApi = await utf8("features/assets/api/assets.ts");
+  const jobApi = await utf8("features/jobs/api/jobs.ts");
+  const result = await utf8("components/job-result-image.tsx");
+  const archive = await utf8("components/job-deliverables-download.tsx");
+  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const commerce = await utf8("components/commerce-skill-workspace.tsx");
+
+  assert.match(assetApi, /disposition: "inline" \| "attachment"/);
+  assert.match(result, /getAssetAccessUrl[\s\S]*"attachment"/);
+  assert.doesNotMatch(result, /href=\{access\.data\.url\} download/);
+  assert.match(jobApi, /jobs\/\{job_id\}\/deliverables\.zip/);
+  assert.match(archive, /下载整套 ZIP/);
+  assert.match(detail, /JobDeliverablesDownload/);
+  assert.match(commerce, /archiveJobId=\{[\s\S]*isAmazon/);
+});

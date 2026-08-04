@@ -9,6 +9,7 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
+import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
@@ -264,6 +265,7 @@ export default function DetailPackPage() {
           {resultAssets.length > 0 && <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>结果来自任务详情的可交付 output Asset，并通过 access-url API 访问。</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
             <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} />)}</div>
+            {job.data?.status === "completed" && resultAssets.length === job.data.expected_item_count ? <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} /> : null}
           </section>}
           {job.data?.status === "completed" && workflow.mode === "mock" && resultAssets.length === 0 && <div className="api-state"><ImagePlus size={22} /><p>mock 流程已完成，但不会产生真实图片产物。</p></div>}
 

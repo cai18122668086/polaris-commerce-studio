@@ -112,12 +112,13 @@ export function useUploadAsset(workspaceId: string | undefined) {
 export async function getAssetAccessUrl(
   workspaceId: string,
   assetId: string,
+  disposition: "inline" | "attachment" = "inline",
 ) {
   const result = await apiClient.POST(
     "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/access-url",
     {
       params: { path: { workspace_id: workspaceId, asset_id: assetId } },
-      body: { disposition: "inline", variant: "original" },
+      body: { disposition, variant: "original" },
     },
   );
   return unwrapApiResponse(result);
@@ -128,7 +129,7 @@ export function useAssetAccessUrl(
   assetId: string | undefined,
 ) {
   return useQuery({
-    queryKey: ["asset-access-url", workspaceId, assetId],
+    queryKey: ["asset-access-url", workspaceId, assetId, "inline"],
     enabled: Boolean(workspaceId && assetId),
     queryFn: () => getAssetAccessUrl(workspaceId!, assetId!),
     staleTime: 4 * 60_000,

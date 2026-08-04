@@ -3,7 +3,9 @@ import hashlib
 import hmac
 import logging
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from typing import Annotated, Any, Literal, cast
+from zipfile import ZIP_STORED, ZipFile
 
 from fastapi import (
     APIRouter,
@@ -895,6 +897,117 @@ def get_job(
 ) -> JobDetailResponse:
     return job_detail_response(
         session, get_workspace_job(session, workspace.workspace_id, job_id)
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {
+                "application/zip": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
+            "description": "Complete canonical deliverables archive.",
+        }
+    },
+    tags=["jobs"],
+)
+async def download_job_deliverables(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> Response:
+    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    if job.type not in {
+        JobType.DETAIL_PACK.value,
+        JobType.AMAZON_VISUAL_SUITE.value,
+    }:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DELIVERABLE_ARCHIVE_UNSUPPORTED",
+            "该任务类型暂不支持整套下载。",
+        )
+    if JobStatus(job.status) != JobStatus.COMPLETED:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DELIVERABLE_ARCHIVE_NOT_READY",
+            "套图尚未完整生成，请在全部图片完成后下载。",
+        )
+
+    deliverables = session.execute(
+        select(JobAssetRecord, JobItemRecord, AssetRecord)
+        .join(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
+        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
+        .where(
+            JobAssetRecord.workspace_id == workspace.workspace_id,
+            JobAssetRecord.job_id == job.id,
+            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+            JobAssetRecord.is_deliverable.is_(True),
+        )
+        .order_by(JobAssetRecord.ordinal)
+    ).all()
+    if len(deliverables) != job.expected_item_count:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DELIVERABLE_ARCHIVE_INCOMPLETE",
+            "套图文件数量与任务合同不一致，暂不能打包下载。",
+            {
+                "expected_item_count": job.expected_item_count,
+                "deliverable_count": len(deliverables),
+            },
+        )
+
+    archive = BytesIO()
+    member_names: set[str] = set()
+    with ZipFile(archive, mode="w", compression=ZIP_STORED) as bundle:
+        for _, item, asset in deliverables:
+            extension = {
+                "image/jpeg": ".jpg",
+                "image/png": ".png",
+                "image/webp": ".webp",
+            }.get(asset.content_type.lower())
+            member_name = f"{item.item_key}{extension or ''}"
+            if (
+                extension is None
+                or member_name in member_names
+                or asset.lifecycle_status != AssetLifecycleStatus.READY.value
+                or item.status
+                not in {
+                    JobItemStatus.SUCCEEDED.value,
+                    JobItemStatus.REUSED.value,
+                }
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "DELIVERABLE_ARCHIVE_INVALID",
+                    "套图中存在不可交付或命名冲突的文件，暂不能打包下载。",
+                )
+            payload = await request.app.state.storage.read_bytes(asset.object_key)
+            if (
+                len(payload) != asset.byte_size
+                or hashlib.sha256(payload).hexdigest() != asset.sha256
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "DELIVERABLE_INTEGRITY_FAILED",
+                    "套图文件完整性校验失败，请联系管理员处理。",
+                )
+            member_names.add(member_name)
+            bundle.writestr(member_name, payload)
+
+    archive_name = f"{job.type.replace('_', '-')}-{job.id}.zip"
+    return Response(
+        archive.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": build_content_disposition(
+                "attachment", archive_name
+            )
+        },
     )
 
 

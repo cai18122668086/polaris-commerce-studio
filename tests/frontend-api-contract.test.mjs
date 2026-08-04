@@ -16,6 +16,7 @@ test("OpenAPI exposes every frontend integration operation", async () => {
     "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/access-url": ["post"],
     "/api/v1/workspaces/{workspace_id}/jobs": ["get", "post"],
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}": ["get"],
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip": ["get"],
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel": ["post"],
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/retry": ["post"],
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/confirm": ["post"],

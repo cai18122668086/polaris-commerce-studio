@@ -3389,6 +3389,74 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip": {
+      "get": {
+        "operationId": "download_job_deliverables_api_v1_workspaces__workspace_id__jobs__job_id__deliverables_zip_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Complete canonical deliverables archive."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Job Deliverables",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan": {
       "put": {
         "operationId": "update_plan_api_v1_workspaces__workspace_id__jobs__job_id__plan_put",

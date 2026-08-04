@@ -1,8 +1,10 @@
 import asyncio
+import hashlib
 from datetime import timedelta
 from io import BytesIO
 from unittest.mock import AsyncMock
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +15,9 @@ from app.domain import JobStatus, OutboxStatus, PlanValidationStatus
 from app.main import create_app
 from app.models import (
     AuditEventRecord,
+    JobAssetRecord,
     JobAttemptRecord,
+    JobItemRecord,
     JobPlanRecord,
     JobRecord,
     OutboxEventRecord,
@@ -931,6 +935,14 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
     assert planned["status"] == "awaiting_confirmation"
     assert planned["plan"]["validation_status"] == "valid"
     assert len(planned["plan"]["payload"]["pages"]) == 3
+    unavailable_archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+    assert unavailable_archive.status_code == 409
+    assert (
+        unavailable_archive.json()["error"]["code"]
+        == "DELIVERABLE_ARCHIVE_NOT_READY"
+    )
 
     confirmed = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/plan/confirm",
@@ -942,6 +954,62 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
     assert completed["status"] == "completed"
     assert completed["succeeded_item_count"] == 3
+
+    # The mock runner intentionally creates no image outputs. Attach the uploaded
+    # test image as each canonical deliverable so the archive path stays zero-cost.
+    with client.app.state.session_factory() as session:
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job_id)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        for item in items:
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    job_item_id=item.id,
+                    asset_id=reference["id"],
+                    direction="output",
+                    role="detail_page",
+                    ordinal=item.ordinal,
+                    is_deliverable=True,
+                    validation={"sha256": reference["sha256"]},
+                )
+            )
+        session.commit()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+    assert archive.status_code == 200, archive.text
+    assert archive.headers["content-type"] == "application/zip"
+    assert "attachment" in archive.headers["content-disposition"]
+    with ZipFile(BytesIO(archive.content)) as bundle:
+        assert bundle.namelist() == [
+            "page-001.png",
+            "page-002.png",
+            "page-003.png",
+        ]
+        deliverables = {
+            asset["ordinal"]: asset
+            for asset in completed["assets"]
+            if asset["direction"] == "output" and asset["is_deliverable"]
+        }
+        for ordinal, name in enumerate(bundle.namelist()):
+            assert hashlib.sha256(bundle.read(name)).hexdigest() == (
+                deliverables[ordinal]["validation"]["sha256"]
+            )
+
+    repeated = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+    assert repeated.status_code == 200
+    after_download = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+    assert after_download["api_request_count"] == completed["api_request_count"]
 
 
 def test_missing_assets_and_unknown_workspace_do_not_leak(client: TestClient) -> None:

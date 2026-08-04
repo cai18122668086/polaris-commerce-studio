@@ -3,6 +3,7 @@
 import { Image as ImageIcon } from "lucide-react";
 
 import { JobResultImage } from "@/components/job-result-image";
+import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import styles from "./product-image-workspace.module.css";
 
 export type DeliverableResult = {
@@ -16,11 +17,13 @@ export function ResultGrid({
   assets,
   expectedCount,
   title = "生成结果",
+  archiveJobId,
 }: {
   workspaceId?: string;
   assets: DeliverableResult[];
   expectedCount?: number;
   title?: string;
+  archiveJobId?: string;
 }) {
   if (!assets.length) {
     return (
@@ -52,6 +55,9 @@ export function ResultGrid({
           />
         ))}
       </div>
+      {archiveJobId ? (
+        <JobDeliverablesDownload workspaceId={workspaceId} jobId={archiveJobId} />
+      ) : null}
     </section>
   );
 }

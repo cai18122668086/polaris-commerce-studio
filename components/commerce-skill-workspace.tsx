@@ -711,6 +711,13 @@ export function CommerceSkillWorkspace({
               assets={resultAssets}
               expectedCount={expectedCount}
               title={`${feature.title}结果`}
+              archiveJobId={
+                isAmazon &&
+                job.data?.status === "completed" &&
+                resultAssets.length === expectedCount
+                  ? job.data.id
+                  : undefined
+              }
             />
           </main>
 

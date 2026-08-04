@@ -10,6 +10,7 @@ import {
   type IdempotentOperation,
 } from "@/lib/api/idempotency";
 import { unwrapApiResponse } from "@/lib/api/request";
+import { mapApiError } from "@/lib/api/error-mapper";
 import {
   activeJobStatuses,
   isActiveJob,
@@ -86,6 +87,34 @@ export function useJob(
       return status && isActiveJob(status) ? 1_500 : false;
     },
   });
+}
+
+export async function getJobDeliverablesArchive(
+  workspaceId: string,
+  jobId: string,
+): Promise<Blob> {
+  const result = await apiClient.GET(
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip",
+    {
+      params: { path: { workspace_id: workspaceId, job_id: jobId } },
+      parseAs: "blob",
+    },
+  );
+  if (result.error !== undefined || !result.response.ok) {
+    let error: unknown = result.error;
+    if (error instanceof Blob) {
+      try {
+        error = JSON.parse(await error.text());
+      } catch {
+        error = undefined;
+      }
+    }
+    throw mapApiError(error, result.response);
+  }
+  if (!(result.data instanceof Blob)) {
+    throw new Error("整套下载返回了无法识别的文件格式。");
+  }
+  return result.data;
 }
 
 function useJobMutation<TResult, TVariables>(

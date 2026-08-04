@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import quote
 from uuid import uuid4
 
 import boto3
@@ -339,7 +340,7 @@ class S3ImageStorage:
         disposition: str,
         expires_seconds: int,
     ) -> str | None:
-        content_disposition = f'{disposition}; filename="{_safe_filename(filename)}"'
+        content_disposition = build_content_disposition(disposition, filename)
         return await asyncio.to_thread(
             self.client.generate_presigned_url,
             "get_object",
@@ -452,3 +453,17 @@ def validate_prepared_image(
 def _safe_filename(filename: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", Path(filename).name)
     return cleaned[:120] or "download"
+
+
+def build_content_disposition(disposition: str, filename: str) -> str:
+    """Return an ASCII-safe Content-Disposition with a UTF-8 filename."""
+
+    if disposition not in {"inline", "attachment"}:
+        raise ValueError("Unsupported content disposition.")
+    basename = Path(filename).name or "download"
+    fallback = _safe_filename(basename)
+    encoded = quote(basename, safe="!#$&+-.^_`|~")
+    return (
+        f'{disposition}; filename="{fallback}"; '
+        f"filename*=UTF-8''{encoded}"
+    )

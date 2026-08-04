@@ -325,6 +325,37 @@ def test_same_origin_access_mode_never_returns_internal_s3_url(
     assert content.content == image_payload()
 
 
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "中文文件名.png",
+        "中文 mixed name.png",
+        "商品🌟预览.png",
+        f"{'长文件名' * 30}.png",
+    ],
+)
+def test_asset_content_disposition_supports_utf8_filenames(
+    client: TestClient,
+    filename: str,
+) -> None:
+    client.app.state.settings.asset_access_url_mode = "same_origin"
+    asset = upload_asset(client, filename=filename)
+
+    access = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets/{asset['id']}/access-url",
+        json={"disposition": "attachment", "variant": "original"},
+    )
+    assert access.status_code == 200
+
+    content = client.get(access.json()["url"])
+    assert content.status_code == 200
+    assert content.content == image_payload()
+    header = content.headers["content-disposition"]
+    assert header.isascii()
+    assert header.startswith('attachment; filename="')
+    assert "; filename*=UTF-8''" in header
+
+
 def _detail_submit_payload(asset_id: str) -> dict:
     return {
         "type": "detail_pack",

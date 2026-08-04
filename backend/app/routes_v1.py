@@ -109,7 +109,7 @@ from .services import (
     settle_credits,
     transition_job,
 )
-from .storage import ImageStorage, StoredImage
+from .storage import ImageStorage, StoredImage, build_content_disposition
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
@@ -720,12 +720,14 @@ async def get_signed_asset_content(
             "访问地址无效或已过期。",
         )
     asset = get_workspace_asset(session, workspace_id, asset_id)
+    content_disposition = build_content_disposition(
+        disposition, asset.original_filename
+    )
     body = await request.app.state.storage.read_bytes(asset.object_key)
-    safe_name = asset.original_filename.replace('"', "_")
     return Response(
         body,
         media_type=asset.content_type,
-        headers={"Content-Disposition": f'{disposition}; filename="{safe_name}"'},
+        headers={"Content-Disposition": content_disposition},
     )
 
 

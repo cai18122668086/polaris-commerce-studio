@@ -870,6 +870,99 @@ def test_amazon_planner_prompt_lists_each_required_style_lock_field() -> None:
         assert field in design_contract
 
 
+def _amazon_planner_contract_prompt() -> str:
+    return _amazon_planner_prompt(
+        PlannerRequest(
+            workspace_id="ws-explicit-contract",
+            job_id="job-explicit-contract",
+            group_key="amazon-product",
+            sources=(),
+            page_count=21,
+            language="en-US",
+            product_name="Visible product",
+            product_information=("Visible facts only",),
+            platform_code="amazon-us",
+            size="amazon-canonical-multi-size-v1",
+            idempotency_key="job-explicit-contract:planner",
+            planning_profile="amazon_visual_suite",
+        )
+    )
+
+
+def test_amazon_planner_prompt_spells_out_analysis_value_contracts() -> None:
+    prompt = _amazon_planner_contract_prompt()
+    analysis_contract = prompt.split("Required analysis: ", 1)[1].split(
+        "Required plan: ", 1
+    )[0]
+
+    assert (
+        "product_master_description MUST be a non-empty JSON object"
+        in analysis_contract
+    )
+    product_master_contract = analysis_contract.split(
+        "product_master_description MUST", 1
+    )[1].split("unknowns MUST", 1)[0]
+    assert "non-empty string members" in product_master_contract
+    for field in (
+        "silhouette_and_proportions",
+        "color_and_material_appearance",
+        "logos_labels_and_patterns",
+        "structural_parts",
+        "scale_and_physics",
+    ):
+        assert field in product_master_contract
+    assert "unknowns MUST be a JSON array" in analysis_contract
+
+    assert "category_key and category_reason MUST be non-empty strings" in prompt
+    assert (
+        "product_image_analysis and product_consistency_anchors MUST be JSON objects"
+        in prompt
+    )
+    assert "buyer_objections MUST be a non-empty JSON array" in prompt
+
+
+def test_amazon_planner_prompt_spells_out_screen_set_contracts() -> None:
+    prompt = _amazon_planner_contract_prompt()
+
+    assert (
+        "subject_scale MUST be exactly one of hero, medium, macro, scene, "
+        "information, cutaway, or overhead."
+    ) in prompt
+    assert "The final screen role MUST be exactly closing_summary" in prompt
+    diversity_contract = prompt.split("Across all 21 screens", 1)[1].split(";", 1)[0]
+    assert "at least" in diversity_contract
+    diversity_contracts = (
+        ("5 distinct roles", "five distinct role values"),
+        ("4 distinct structures", "four distinct structure values"),
+        ("3 distinct subject_scale values", "three distinct subject_scale values"),
+        ("2 distinct screen device values", "two distinct device values"),
+    )
+    for equivalent_phrasings in diversity_contracts:
+        assert any(phrase in diversity_contract for phrase in equivalent_phrasings)
+    assert any(
+        phrase in prompt
+        for phrase in (
+            "No more than 11 screens may use hero",
+            "no more than 11 screens may use subject_scale hero",
+        )
+    )
+
+
+def test_amazon_planner_prompt_spells_out_global_and_canonical_contracts() -> None:
+    prompt = _amazon_planner_contract_prompt()
+
+    assert (
+        "Every buyer_question MUST be globally unique across all 21 screens"
+        in prompt
+    )
+    assert "including paired desktop and mobile A+ screens" in prompt
+
+    assert (
+        "For every canonical row, copy item_key and final_size verbatim without "
+        "translation, normalization, alternate separators, or reformatting."
+    ) in prompt
+
+
 def _planner_validation_path_cases() -> list[Any]:
     cases: list[Any] = [
         pytest.param(7, 1, "/", id="root"),

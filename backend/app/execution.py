@@ -79,6 +79,40 @@ SUCCESS_ITEM_STATUSES = {
 }
 
 
+def _synchronize_job_item_aggregates(
+    session: Session,
+    job: JobRecord,
+) -> None:
+    """Keep user-visible counters current without terminalizing the job early."""
+
+    count_rows = session.execute(
+        select(JobItemRecord.status, func.count())
+        .where(JobItemRecord.job_id == job.id)
+        .group_by(JobItemRecord.status)
+    ).all()
+    counts = {item_status: int(count) for item_status, count in count_rows}
+    succeeded = sum(counts.get(value, 0) for value in SUCCESS_ITEM_STATUSES)
+    failed = counts.get(JobItemStatus.FAILED.value, 0)
+    terminal = sum(
+        count
+        for item_status, count in counts.items()
+        if item_status in TERMINAL_ITEM_STATUSES
+    )
+    progress = min(
+        99,
+        max(job.progress, 20 + (80 * terminal // job.expected_item_count)),
+    )
+    if (
+        job.succeeded_item_count,
+        job.failed_item_count,
+        job.progress,
+    ) != (succeeded, failed, progress):
+        job.succeeded_item_count = succeeded
+        job.failed_item_count = failed
+        job.progress = progress
+        job.state_version += 1
+
+
 @dataclass(frozen=True)
 class AttemptLease:
     workspace_id: str
@@ -978,6 +1012,7 @@ class ExecutionCoordinator:
                     from .xinghe_agent import update_job_metrics
 
                     update_job_metrics(session, job)
+                _synchronize_job_item_aggregates(session, job)
                 session.commit()
                 return True
             except Exception as exc:
@@ -1042,6 +1077,7 @@ class ExecutionCoordinator:
                     },
                 )
             )
+            _synchronize_job_item_aggregates(session, job)
             session.commit()
             return True
 

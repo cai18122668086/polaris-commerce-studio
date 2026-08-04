@@ -87,6 +87,26 @@ def _coordinator(
     )
 
 
+def _expand_job_to_three_items(client: TestClient, job_id: str) -> None:
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        job.expected_item_count = 3
+        for ordinal in (1, 2):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"result-{ordinal + 1}",
+                    ordinal=ordinal,
+                    status=JobItemStatus.PENDING.value,
+                    configuration={},
+                )
+            )
+        session.commit()
+
+
 def _counts(client: TestClient, job_id: str) -> tuple[int, int]:
     with client.app.state.session_factory() as session:
         attempts = session.scalar(
@@ -124,6 +144,62 @@ def test_ten_concurrent_deliveries_execute_provider_once(
         assert job.status == JobStatus.COMPLETED.value
     assert sum(provider.call_count for provider in providers) == 1
     assert _counts(client, job_id) == (1, 1)
+
+
+def test_running_job_aggregates_follow_terminal_item_statuses(
+    client: TestClient,
+) -> None:
+    job_id = _create_job(client)
+    _expand_job_to_three_items(client, job_id)
+    coordinator = _coordinator(client, FakeProvider(), "aggregate-worker")
+    assert coordinator.prepare(job_id) == JobStatus.PROCESSING
+
+    first = coordinator.claim_next_item(job_id)
+    assert first is not None
+    assert asyncio.run(coordinator.execute_lease(first))
+    after_first = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+    assert after_first["status"] == JobStatus.PROCESSING.value
+    assert after_first["succeeded_item_count"] == 1
+    assert after_first["failed_item_count"] == 0
+    assert after_first["progress"] == 46
+
+    second = coordinator.claim_next_item(job_id)
+    assert second is not None
+    assert coordinator.mark_provider_started(second)
+    assert coordinator.finish_attempt(
+        second,
+        ProviderResult(
+            outcome=ProviderOutcome.FAILED,
+            error_code="TEST_FAILURE",
+            error_message="Controlled test failure.",
+            retryable=False,
+        ),
+    )
+    after_second = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+    assert after_second["succeeded_item_count"] == 1
+    assert after_second["failed_item_count"] == 1
+    assert after_second["progress"] == 73
+
+    third = coordinator.claim_next_item(job_id)
+    assert third is not None
+    assert asyncio.run(coordinator.execute_lease(third))
+    before_finalize = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+    assert before_finalize["status"] == JobStatus.PROCESSING.value
+    assert before_finalize["succeeded_item_count"] == 2
+    assert before_finalize["failed_item_count"] == 1
+    assert before_finalize["progress"] == 99
+
+    assert coordinator.finalize_job(job_id) == JobStatus.PARTIAL
+    finalized = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+    assert finalized["progress"] == 100
 
 
 def test_expired_claim_is_released_to_one_new_worker_without_new_attempt(

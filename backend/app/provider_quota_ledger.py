@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, TypeGuard
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .domain import TERMINAL_JOB_STATUSES, JobStatus, JobType
+from .domain import (
+    TERMINAL_JOB_STATUSES,
+    JobStatus,
+    JobType,
+    UsageCompleteness,
+)
 from .models import (
     AuditEventRecord,
     JobPlanRecord,
@@ -22,6 +27,7 @@ ATTEMPTS_ACTION = "provider.beta_job_attempts_recorded"
 SETTLEMENT_ACTION = "provider.beta_job_settled"
 RELEASE_ACTION = "provider.beta_job_released"
 LEDGER_VERSION = 2
+LEGACY_AMAZON_PREPLANNER_CUTOFF = datetime(2026, 8, 4, 7, 12, tzinfo=UTC)
 
 
 class ProviderQuotaLedgerError(RuntimeError):
@@ -137,7 +143,15 @@ def _append_settlement(
         )
 
     planner_sources, planner_requests, planner_charge, planner_actual = (
-        _planner_charges(session, job, reservation, reserved_cost)
+        _planner_charges(
+            session,
+            job,
+            reservation,
+            reserved_cost,
+            reserved_requests,
+            requests,
+            usage_events,
+        )
     )
     sources.extend(planner_sources)
     requests += planner_requests
@@ -194,6 +208,9 @@ def _planner_charges(
     job: JobRecord,
     reservation: AuditEventRecord,
     reserved_cost: int,
+    reserved_requests: int,
+    observed_usage_requests: int,
+    usage_events: Sequence[UsageEventRecord],
 ) -> tuple[list[dict[str, Any]], int, int, int]:
     if job.type not in {
         JobType.DETAIL_PACK.value,
@@ -208,6 +225,18 @@ def _planner_charges(
     )
     if plan is None:
         if _was_rejected_before_provider(session, job):
+            return [], 0, 0, 0
+        if _is_legacy_preplanner_amazon_reservation(
+            job,
+            reservation,
+            reserved_cost,
+            reserved_requests,
+            usage_events,
+        ):
+            if observed_usage_requests != reserved_requests:
+                raise ProviderQuotaLedgerError(
+                    "Legacy pre-planner Amazon usage is incomplete."
+                )
             return [], 0, 0, 0
         raise ProviderQuotaLedgerError(
             "A terminal detail job has no provider-attempt evidence."
@@ -273,6 +302,65 @@ def _planner_charges(
             }
         )
     return sources, len(planner), total, actual_count
+
+
+def _is_legacy_preplanner_amazon_reservation(
+    job: JobRecord,
+    reservation: AuditEventRecord,
+    reserved_cost: int,
+    reserved_requests: int,
+    usage_events: Sequence[UsageEventRecord],
+) -> bool:
+    """Recognize complete image-only Amazon jobs from before planner gating."""
+
+    if (
+        job.type != JobType.AMAZON_VISUAL_SUITE.value
+        or _aware_utc(reservation.occurred_at)
+        >= LEGACY_AMAZON_PREPLANNER_CUTOFF
+        or job.retry_of_job_id is not None
+        or job.root_job_id is not None
+        or job.status != JobStatus.COMPLETED.value
+        or job.usage_completeness != UsageCompleteness.COMPLETE.value
+    ):
+        return False
+    expected = int(job.expected_item_count or 0)
+    if (
+        expected <= 0
+        or int(job.succeeded_item_count or 0) != expected
+        or int(job.failed_item_count or 0) != 0
+        or int(job.api_request_count or 0) != reserved_requests
+        or reserved_requests != expected
+        or len(usage_events) != reserved_requests
+    ):
+        return False
+    details = _details(reservation)
+    ledger_version = details.get("ledger_version")
+    group_count = details.get("group_count")
+    image_budget = details.get("image_budget_micros")
+    if not (
+        _is_non_negative_int(ledger_version)
+        and int(ledger_version) == LEDGER_VERSION
+        and details.get("job_type") == JobType.AMAZON_VISUAL_SUITE.value
+        and _is_non_negative_int(group_count)
+        and int(group_count) == 0
+        and _is_positive_int(details.get("planner_reserve_micros"))
+        and _is_non_negative_int(image_budget)
+        and int(image_budget) == reserved_cost
+    ):
+        return False
+    item_ids = [usage.job_item_id for usage in usage_events]
+    attempt_ids = [usage.attempt_id for usage in usage_events]
+    return (
+        all(
+            usage.operation == JobType.AMAZON_VISUAL_SUITE.value
+            and _usage_request_count(usage) == 1
+            for usage in usage_events
+        )
+        and all(isinstance(value, str) and value for value in item_ids)
+        and all(isinstance(value, str) and value for value in attempt_ids)
+        and len(set(item_ids)) == reserved_requests
+        and len(set(attempt_ids)) == reserved_requests
+    )
 
 
 def _was_rejected_before_provider(session: Session, job: JobRecord) -> bool:

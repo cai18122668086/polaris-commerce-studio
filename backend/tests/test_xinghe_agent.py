@@ -39,6 +39,7 @@ from app.provider import ProviderRequest
 from app.provider_quota import PROVIDER_JOB_QUOTA_ACTION
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
+    _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES,
     IMAGE_FORMAT,
     IMAGE_SIZE,
     JPEG_QUALITY,
@@ -944,6 +945,15 @@ def test_amazon_planner_prompt_spells_out_screen_set_contracts() -> None:
     prompt = _amazon_planner_contract_prompt()
 
     assert (
+        "screens MUST be a JSON array containing exactly 21 complete objects in "
+        "canonical task-table order."
+    ) in prompt
+    assert (
+        "Never return an empty screens array, a placeholder, a screen blueprint, "
+        "a count-only summary, or a promise to provide screens later."
+    ) in prompt
+    assert "never omit a screen or required field" in prompt
+    assert (
         "subject_scale MUST be exactly one of hero, medium, macro, scene, "
         "information, cutaway, or overhead."
     ) in prompt
@@ -979,6 +989,28 @@ def test_amazon_planner_prompt_spells_out_global_and_canonical_contracts() -> No
     assert "same non-empty responsive_concept" in prompt
     assert "share the same layout_family and background_system" in prompt
     assert "composition signature remain distinct" in prompt
+    assert (
+        "responsive-pair subject_scale assignments are exact requirements, "
+        "not suggestions"
+    ) in prompt
+    assert _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES == (
+        (1, "hero", "medium"),
+        (2, "scene", "macro"),
+        (3, "macro", "information"),
+        (4, "scene", "overhead"),
+        (5, "macro", "cutaway"),
+        (6, "information", "medium"),
+        (7, "hero", "medium"),
+    )
+    for pair_index, desktop_scale, mobile_scale in (
+        _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES
+    ):
+        assert desktop_scale != mobile_scale
+        assert (
+            f"A-DESKTOP-{pair_index:02d} subject_scale={desktop_scale}, "
+            f"A-MOBILE-{pair_index:02d} subject_scale={mobile_scale}"
+        ) in prompt
+    assert "Do not swap, repeat within a pair, or replace" in prompt
     assert "MAIN-01 is the exception" in prompt
     assert "background_system MUST be exactly pure-white-compliance" in prompt
 
@@ -2510,6 +2542,57 @@ class _RecordingTransport:
         )
 
 
+def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None:
+    transport = _RecordingTransport()
+    adapter = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://api.example.test",
+        planner_model="gpt-5.6-terra",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+
+    asyncio.run(
+        adapter.plan(
+            PlannerRequest(
+                workspace_id="ws_amazon_contract",
+                job_id="job_amazon_contract",
+                group_key="amazon-product",
+                sources=(),
+                page_count=21,
+                language="en-US",
+                product_name="Visible product",
+                product_information=("Visible facts only",),
+                platform_code="amazon-us",
+                size="amazon-canonical-multi-size-v1",
+                idempotency_key="amazon-planner-idem",
+                system_prompt="pinned amazon protocol",
+                planning_profile="amazon_visual_suite",
+            )
+        )
+    )
+
+    assert len(transport.json_calls) == 1
+    payload = transport.json_calls[0]["payload"]
+    assert payload["max_completion_tokens"] == 12_000
+    assert payload["temperature"] == 0
+
+    response_format = payload["response_format"]
+    assert response_format["type"] == "json_schema"
+    json_schema = response_format["json_schema"]
+    assert json_schema["name"] == "amazon_visual_suite_plan"
+    assert json_schema["strict"] is True
+
+    schema = json_schema["schema"]
+    assert schema["additionalProperties"] is False
+    plan_schema = schema["properties"]["plan"]
+    assert plan_schema["additionalProperties"] is False
+    screens_schema = plan_schema["properties"]["screens"]
+    assert screens_schema["type"] == "array"
+    assert screens_schema["minItems"] == 21
+    assert screens_schema["maxItems"] == 21
+
+
 def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     requested_size = "1000x1000"
     transport = _RecordingTransport()
@@ -2582,7 +2665,11 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert image.artifact is not None
     assert (image.artifact.width, image.artifact.height) == (1000, 1000)
     assert transport.json_calls[0]["url"].endswith("/v1/chat/completions")
-    messages = transport.json_calls[0]["payload"]["messages"]
+    planner_payload = transport.json_calls[0]["payload"]
+    assert planner_payload["response_format"] == {"type": "json_object"}
+    assert "max_completion_tokens" not in planner_payload
+    assert "temperature" not in planner_payload
+    messages = planner_payload["messages"]
     assert messages[0] == {
         "role": "system",
         "content": "pinned same-source protocol",

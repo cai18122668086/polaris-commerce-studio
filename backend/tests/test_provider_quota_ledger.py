@@ -194,8 +194,8 @@ def _seed_terminal_amazon_job_with_image_usage(
     return job
 
 
-def _period_starts() -> tuple[datetime, datetime]:
-    now = utc_now()
+def _period_starts(reference: datetime | None = None) -> tuple[datetime, datetime]:
+    now = reference or utc_now()
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
     return (
@@ -212,7 +212,7 @@ def test_legacy_pre_planner_amazon_usage_settles_without_plan(
             session,
             modern_reservation=False,
         )
-        day_start, month_start = _period_starts()
+        day_start, month_start = _period_starts(LEGACY_RESERVATION_OCCURRED_AT)
 
         totals = reconcile_and_total(
             session,
@@ -249,7 +249,7 @@ def test_modern_amazon_reservation_without_plan_fails_closed(
             session,
             modern_reservation=True,
         )
-        day_start, month_start = _period_starts()
+        day_start, month_start = _period_starts(MODERN_RESERVATION_OCCURRED_AT)
 
         with pytest.raises(
             ProviderQuotaLedgerError,
@@ -272,7 +272,7 @@ def test_legacy_pre_planner_amazon_incomplete_usage_fails_without_settlement(
             modern_reservation=False,
             usage_event_count=IMAGE_REQUEST_COUNT - 1,
         )
-        day_start, month_start = _period_starts()
+        day_start, month_start = _period_starts(LEGACY_RESERVATION_OCCURRED_AT)
 
         with pytest.raises(ProviderQuotaLedgerError):
             reconcile_and_total(
@@ -300,7 +300,7 @@ def test_legacy_pre_planner_amazon_excess_usage_fails_without_settlement(
             modern_reservation=False,
             doubled_network_request_ordinal=0,
         )
-        day_start, month_start = _period_starts()
+        day_start, month_start = _period_starts(LEGACY_RESERVATION_OCCURRED_AT)
 
         with pytest.raises(ProviderQuotaLedgerError):
             reconcile_and_total(
@@ -330,7 +330,7 @@ def test_modern_plan_reuse_retry_without_plan_fails_closed(
         )
         assert job.root_job_id is not None
         assert job.retry_of_job_id is not None
-        day_start, month_start = _period_starts()
+        day_start, month_start = _period_starts(MODERN_RESERVATION_OCCURRED_AT)
 
         with pytest.raises(
             ProviderQuotaLedgerError,

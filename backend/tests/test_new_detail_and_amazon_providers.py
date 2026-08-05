@@ -157,7 +157,23 @@ def _amazon_request(
             "campaign_style_lock": {"style": "consistent campaign"},
             "design_strength_lock": {"strength": "product-led evidence"},
             "product_consistency_lock": {"sku_identity": "one exact SKU"},
-            "layout_diversity_lock": {"max_same_layout_family": 3},
+            "suite_cohesion_lock": {
+                "primary_palette": "warm white and charcoal",
+                "accent_palette": "restrained product-led navy",
+                "typography_mood": "confident editorial sans-serif",
+                "icon_stroke": "minimal monoline",
+                "corner_radius": "consistent medium radius",
+                "shadow_system": "soft short shadow",
+                "lighting_system": "soft upper-left studio light",
+                "brand_motif": "geometric crop and evidence ribbon",
+                "background_systems": [
+                    "pure-white-compliance",
+                    "warm-clean-field",
+                    "soft-context-field",
+                ],
+                "responsive_pair_rule": "same concept, responsive composition",
+            },
+            "layout_diversity_lock": {"max_same_layout_family": 2},
             "screen": {
                 "item_key": spec.item_key,
                 "buyer_question": spec.buyer_question,
@@ -170,11 +186,16 @@ def _amazon_request(
                 "layout_family": f"planned-{spec.group}",
                 "camera_angle": "planned camera angle",
                 "product_position": "planned product position",
-                "background_system": "planned background system",
+                "background_system": "warm-clean-field",
                 "prop_strategy": "planned prop strategy",
                 "copy_density": "sparse",
                 "source_material": spec.source_material,
                 "risk_note": spec.risk_note,
+                **(
+                    {"responsive_concept": f"responsive-{spec.group_ordinal:02d}"}
+                    if spec.group in {"a_desktop", "a_mobile"}
+                    else {}
+                ),
             },
             "resume_signature": "b" * 64,
         }
@@ -606,9 +627,10 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
         "Layout family: planned-a_desktop",
         "Camera angle: planned camera angle",
         "Product position: planned product position",
-        "Background system: planned background system",
+        "Background system: warm-clean-field",
         "Prop strategy: planned prop strategy",
         "Copy density: sparse",
+        "Responsive concept: responsive-03",
     ]
     assert prompt["copy_requirements"] == [
         (
@@ -627,6 +649,14 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
     )
     assert prompt["reference_guidance"][0].startswith(
         "Product Master Description: "
+    )
+    assert any(
+        value.startswith("Suite Cohesion Lock: ")
+        for value in prompt["reference_guidance"]
+    )
+    assert any(
+        value == 'Layout Diversity Lock: {"max_same_layout_family":2}'
+        for value in prompt["reference_guidance"]
     )
     assert len(prompt["negative_constraints"]) == 3
     assert "private_note" not in prompt
@@ -678,6 +708,37 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
     }
 
 
+def test_amazon_provider_keeps_v1_confirmed_plan_retry_compatible() -> None:
+    delegate = StrictRecordingDelegate(
+        ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
+    )
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+    spec = amazon_item_spec("A-DESKTOP-03")
+    request = _amazon_request(spec.item_key, spec.width, spec.height)
+    context = request.configuration["item"][AMAZON_PLAN_CONFIGURATION_KEY]
+    context["schema_version"] = "amazon-visual-suite-planning-v1"
+    context.pop("suite_cohesion_lock")
+    context["screen"].pop("responsive_concept")
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+    prompt = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY][
+        "prompt_input"
+    ]
+    assert not any(
+        value.startswith("Suite Cohesion Lock: ")
+        for value in prompt["reference_guidance"]
+    )
+    assert not any(
+        value.startswith("Responsive concept: ")
+        for value in prompt["creative_direction"]
+    )
+
+
 def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> None:
     delegate = StrictRecordingDelegate(
         ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
@@ -707,6 +768,7 @@ def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> 
         "risk_note",
     }
     task_rows: list[tuple[tuple[str, str], ...]] = []
+    suite_locks: set[str] = set()
     for ordinal, (spec, request) in enumerate(
         zip(AMAZON_ITEM_SPECS, delegate.requests, strict=True)
     ):
@@ -748,10 +810,23 @@ def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> 
             f"Subcopy: {task['subcopy']}",
         ]
         assert prompt["negative_constraints"][1] == task["risk_note"]
+        suite_locks.add(
+            next(
+                value
+                for value in prompt["reference_guidance"]
+                if value.startswith("Suite Cohesion Lock: ")
+            )
+        )
+        if spec.group in {"a_desktop", "a_mobile"}:
+            assert (
+                f"Responsive concept: responsive-{spec.group_ordinal:02d}"
+                in prompt["creative_direction"]
+            )
         task_rows.append(tuple(sorted(task.items())))
 
     assert len(delegate.requests) == AMAZON_EXPECTED_ITEM_COUNT
     assert len(set(task_rows)) == AMAZON_EXPECTED_ITEM_COUNT
+    assert len(suite_locks) == 1
 
 
 @pytest.mark.parametrize(

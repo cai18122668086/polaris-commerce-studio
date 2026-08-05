@@ -44,7 +44,7 @@ AMAZON_ADAPTER_CONTRACT_VERSION = SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
 AMAZON_EXPECTED_ITEM_COUNT = 21
 AMAZON_AUDIT_CONFIGURATION_KEY = "amazon_visual_suite_audit"
 AMAZON_PLAN_CONFIGURATION_KEY = "amazon_visual_suite_plan"
-AMAZON_PLANNING_POLICY_VERSION = "amazon-visual-suite-planning-v1"
+AMAZON_PLANNING_POLICY_VERSION = "amazon-visual-suite-planning-v2"
 
 
 @dataclass(frozen=True)
@@ -499,13 +499,41 @@ def validate_amazon_item_keys(item_keys: Sequence[str]) -> tuple[str, ...]:
 def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
     """Validate one auditable Product Master and the canonical 21-row plan."""
 
-    from app.xinghe_agent import XingheAgentError, validate_planner_payload
+    from app.xinghe_agent import (
+        _AMAZON_SCREEN_BACKGROUND_SYSTEMS,
+        XingheAgentError,
+        validate_planner_payload,
+    )
+
+    if isinstance(payload, Mapping):
+        raw_plan = payload.get("plan")
+        if isinstance(raw_plan, Mapping):
+            raw_diversity_lock = raw_plan.get("layout_diversity_lock")
+            if isinstance(raw_diversity_lock, Mapping):
+                raw_maximum = raw_diversity_lock.get("max_same_layout_family")
+                if (
+                    isinstance(raw_maximum, int)
+                    and not isinstance(raw_maximum, bool)
+                    and raw_maximum != 2
+                ):
+                    raise XingheAgentError(
+                        "AMAZON_LAYOUT_DIVERSITY_INVALID",
+                        (
+                            "Amazon planning requires "
+                            "max_same_layout_family to be exactly 2."
+                        ),
+                        json_pointer=(
+                            "/plan/layout_diversity_lock/"
+                            "max_same_layout_family"
+                        ),
+                    )
 
     structured = validate_planner_payload(
         payload,
         AMAZON_EXPECTED_ITEM_COUNT,
         preserve_protocol_fields=True,
         require_cross_page_locks=True,
+        enforce_background_repeat_limit=False,
     )
     analysis = structured["analysis"]
     plan = structured["plan"]
@@ -542,6 +570,44 @@ def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
             "AMAZON_PRODUCT_CONSISTENCY_LOCK_INVALID",
             "Amazon planning requires a Product Consistency Lock.",
             json_pointer="/plan/product_consistency_lock",
+        )
+    suite_lock = plan.get("suite_cohesion_lock")
+    if not isinstance(suite_lock, Mapping) or not suite_lock:
+        raise XingheAgentError(
+            "AMAZON_SUITE_COHESION_LOCK_INVALID",
+            "Amazon planning requires a Suite Cohesion Lock.",
+            json_pointer="/plan/suite_cohesion_lock",
+        )
+    for key in (
+        "primary_palette",
+        "accent_palette",
+        "typography_mood",
+        "icon_stroke",
+        "corner_radius",
+        "shadow_system",
+        "lighting_system",
+        "brand_motif",
+        "responsive_pair_rule",
+    ):
+        value = suite_lock.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise XingheAgentError(
+                "AMAZON_SUITE_COHESION_LOCK_INVALID",
+                f"Suite Cohesion Lock has an invalid {key}.",
+                json_pointer=f"/plan/suite_cohesion_lock/{key}",
+            )
+    background_systems = suite_lock.get("background_systems")
+    if (
+        not isinstance(background_systems, list)
+        or not 2 <= len(background_systems) <= 4
+        or any(not isinstance(value, str) or not value.strip() for value in background_systems)
+        or len({value.strip().casefold() for value in background_systems})
+        != len(background_systems)
+    ):
+        raise XingheAgentError(
+            "AMAZON_SUITE_COHESION_LOCK_INVALID",
+            "Suite Cohesion Lock requires two to four distinct background systems.",
+            json_pointer="/plan/suite_cohesion_lock/background_systems",
         )
     screens = plan["screens"]
     expected = {spec.item_key: spec for spec in AMAZON_ITEM_SPECS}
@@ -582,14 +648,110 @@ def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
                 json_pointer=f"/plan/screens/{index}/final_size",
             )
     maximum = int(plan["layout_diversity_lock"]["max_same_layout_family"])
+    if maximum != 2:
+        raise XingheAgentError(
+            "AMAZON_LAYOUT_DIVERSITY_INVALID",
+            "Amazon planning requires max_same_layout_family to be exactly 2.",
+            json_pointer="/plan/layout_diversity_lock/max_same_layout_family",
+        )
     selling = [screen for screen in screens if screen["item_key"] != "MAIN-01"]
-    for key in ("layout_family", "background_system"):
-        counts = Counter(str(screen[key]).strip().casefold() for screen in selling)
-        if counts and max(counts.values()) > maximum:
+    layout_counts = Counter(
+        str(screen["layout_family"]).strip().casefold() for screen in selling
+    )
+    if layout_counts and max(layout_counts.values()) > maximum:
+        raise XingheAgentError(
+            "AMAZON_LAYOUT_DIVERSITY_INVALID",
+            "Amazon selling images repeat layout_family too often.",
+            json_pointer="/plan/screens",
+        )
+    approved_backgrounds = {
+        value.strip().casefold() for value in background_systems
+    }
+    canonical_backgrounds = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
+    for index, screen in enumerate(screens):
+        item_key = str(screen["item_key"])
+        background_system = str(screen["background_system"]).strip().casefold()
+        if item_key == "MAIN-01":
+            if background_system != "pure-white-compliance":
+                raise XingheAgentError(
+                    "AMAZON_MAIN_IMAGE_INVALID",
+                    "MAIN-01 background_system must be pure-white-compliance.",
+                    json_pointer=f"/plan/screens/{index}/background_system",
+                )
+            continue
+        if background_system not in approved_backgrounds:
             raise XingheAgentError(
-                "AMAZON_LAYOUT_DIVERSITY_INVALID",
-                f"Amazon selling images repeat {key} too often.",
-                json_pointer="/plan/screens",
+                "AMAZON_SUITE_COHESION_INVALID",
+                "Amazon selling-screen background_system is outside the Suite Cohesion Lock.",
+                json_pointer=f"/plan/screens/{index}/background_system",
+            )
+        expected_background = canonical_backgrounds[item_key]
+        if background_system != expected_background.casefold():
+            raise XingheAgentError(
+                "AMAZON_SUITE_BACKGROUND_ASSIGNMENT_INVALID",
+                (
+                    f"{item_key} background_system must be "
+                    f"{expected_background}."
+                ),
+                json_pointer=f"/plan/screens/{index}/background_system",
+            )
+    by_item_key = {str(screen["item_key"]): screen for screen in screens}
+    index_by_item_key = {
+        str(screen["item_key"]): index for index, screen in enumerate(screens)
+    }
+    for pair_index in range(1, 8):
+        desktop_key = f"A-DESKTOP-{pair_index:02d}"
+        mobile_key = f"A-MOBILE-{pair_index:02d}"
+        desktop = by_item_key[desktop_key]
+        mobile = by_item_key[mobile_key]
+        desktop_concept = desktop.get("responsive_concept")
+        mobile_concept = mobile.get("responsive_concept")
+        same_concept = (
+            isinstance(desktop_concept, str)
+            and bool(desktop_concept.strip())
+            and isinstance(mobile_concept, str)
+            and bool(mobile_concept.strip())
+            and desktop_concept.strip().casefold()
+            == mobile_concept.strip().casefold()
+        )
+        same_layout_family = (
+            str(desktop["layout_family"]).strip().casefold()
+            == str(mobile["layout_family"]).strip().casefold()
+        )
+        same_background_system = (
+            str(desktop["background_system"]).strip().casefold()
+            == str(mobile["background_system"]).strip().casefold()
+        )
+        different_subject_scale = (
+            str(desktop["subject_scale"]).strip().casefold()
+            != str(mobile["subject_scale"]).strip().casefold()
+        )
+        if not (
+            same_concept
+            and same_layout_family
+            and same_background_system
+            and different_subject_scale
+        ):
+            invalid_field = (
+                "responsive_concept"
+                if not same_concept
+                else "layout_family"
+                if not same_layout_family
+                else "background_system"
+                if not same_background_system
+                else "subject_scale"
+            )
+            raise XingheAgentError(
+                "AMAZON_RESPONSIVE_PAIR_INVALID",
+                (
+                    "Paired desktop and mobile A+ screens must share "
+                    "responsive_concept, layout_family, and background_system, "
+                    "and use different subject_scale values."
+                ),
+                json_pointer=(
+                    f"/plan/screens/{index_by_item_key[mobile_key]}/"
+                    f"{invalid_field}"
+                ),
             )
     return structured
 
@@ -616,6 +778,7 @@ def editable_amazon_structured_plan(payload: Mapping[str, Any]) -> dict[str, Any
             "campaign_style_lock": group.get("campaign_style_lock"),
             "design_strength_lock": group.get("design_strength_lock"),
             "product_consistency_lock": group.get("product_consistency_lock"),
+            "suite_cohesion_lock": group.get("suite_cohesion_lock"),
             "layout_diversity_lock": group.get("layout_diversity_lock"),
             "screens": pages,
         },
@@ -684,6 +847,7 @@ def synchronize_confirmed_amazon_plan(
         "campaign_style_lock": structured["plan"]["campaign_style_lock"],
         "design_strength_lock": structured["plan"]["design_strength_lock"],
         "product_consistency_lock": structured["plan"]["product_consistency_lock"],
+        "suite_cohesion_lock": structured["plan"]["suite_cohesion_lock"],
         "layout_diversity_lock": structured["plan"]["layout_diversity_lock"],
         "input_signature": payload.get("input_signature"),
         "resume_signature": resume_signature,
@@ -967,6 +1131,13 @@ def _amazon_prompt_input(
                 f"Background system: {screen['background_system']}",
                 f"Prop strategy: {screen['prop_strategy']}",
                 f"Copy density: {screen['copy_density']}",
+                *(
+                    [f"Responsive concept: {screen['responsive_concept']}"]
+                    if spec.group in {"a_desktop", "a_mobile"}
+                    and isinstance(screen.get("responsive_concept"), str)
+                    and screen["responsive_concept"].strip()
+                    else []
+                ),
             ],
             "copy_requirements": [
                 f"Headline: {screen['headline']}",
@@ -987,6 +1158,15 @@ def _amazon_prompt_input(
                 ),
                 "Design Strength Lock: " + _stable_json(
                     plan_context["design_strength_lock"]
+                ),
+                *(
+                    [
+                        "Suite Cohesion Lock: "
+                        + _stable_json(plan_context["suite_cohesion_lock"])
+                    ]
+                    if isinstance(plan_context.get("suite_cohesion_lock"), Mapping)
+                    and plan_context["suite_cohesion_lock"]
+                    else []
                 ),
                 "Layout Diversity Lock: " + _stable_json(
                     plan_context["layout_diversity_lock"]
@@ -1026,14 +1206,16 @@ def _amazon_plan_context(
             "AMAZON_PLAN_CONTEXT_MISSING",
             "Amazon generation requires a confirmed persisted plan context.",
         )
-    required_mappings = (
+    required_mappings = [
         "analysis",
         "campaign_style_lock",
         "design_strength_lock",
         "product_consistency_lock",
         "layout_diversity_lock",
         "screen",
-    )
+    ]
+    if value.get("schema_version") == AMAZON_PLANNING_POLICY_VERSION:
+        required_mappings.append("suite_cohesion_lock")
     for key in required_mappings:
         if not isinstance(value.get(key), Mapping) or not value[key]:
             raise AdapterValidationError(

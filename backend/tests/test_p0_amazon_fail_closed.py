@@ -216,6 +216,166 @@ def test_amazon_validator_rejects_empty_product_consistency_lock() -> None:
     assert raised.value.json_pointer == "/plan/product_consistency_lock"
 
 
+def test_amazon_validator_requires_suite_cohesion_lock() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"].pop("suite_cohesion_lock")
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_SUITE_COHESION_LOCK_INVALID"
+    assert raised.value.json_pointer == "/plan/suite_cohesion_lock"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "primary_palette",
+        "accent_palette",
+        "typography_mood",
+        "icon_stroke",
+        "corner_radius",
+        "shadow_system",
+        "lighting_system",
+        "brand_motif",
+        "responsive_pair_rule",
+    ],
+)
+def test_amazon_validator_rejects_incomplete_suite_cohesion_lock(
+    field: str,
+) -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["suite_cohesion_lock"][field] = "   "
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_SUITE_COHESION_LOCK_INVALID"
+    assert raised.value.json_pointer == f"/plan/suite_cohesion_lock/{field}"
+
+
+def test_amazon_validator_rejects_background_outside_suite_lock() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][1]["background_system"] = "unrelated-background"
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_SUITE_COHESION_INVALID"
+    assert raised.value.json_pointer == "/plan/screens/1/background_system"
+
+
+def test_amazon_validator_requires_main_pure_white_compliance_background() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][0]["background_system"] = "dark-lifestyle-scene"
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_MAIN_IMAGE_INVALID"
+    assert raised.value.json_pointer == "/plan/screens/0/background_system"
+
+
+@pytest.mark.parametrize("maximum", [1, 3])
+def test_amazon_validator_requires_layout_family_limit_two(maximum: int) -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["layout_diversity_lock"]["max_same_layout_family"] = maximum
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_LAYOUT_DIVERSITY_INVALID"
+    assert raised.value.json_pointer == (
+        "/plan/layout_diversity_lock/max_same_layout_family"
+    )
+
+
+def test_amazon_validator_rejects_third_layout_family_reuse() -> None:
+    payload = _valid_amazon_payload()
+    for screen in payload["plan"]["screens"][1:4]:
+        screen["layout_family"] = "overused-family"
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "PLANNER_CROSS_PAGE_DIVERSITY_INVALID"
+    assert raised.value.json_pointer == "/plan/screens"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("responsive_concept", "unrelated-mobile-concept"),
+        ("layout_family", "unrelated-mobile-family"),
+    ],
+)
+def test_amazon_validator_rejects_unrelated_responsive_pair(
+    field: str,
+    value: str,
+) -> None:
+    payload = _valid_amazon_payload()
+    mobile_index = AMAZON_ITEM_KEYS.index("A-MOBILE-01")
+    payload["plan"]["screens"][mobile_index][field] = value
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_RESPONSIVE_PAIR_INVALID"
+    assert raised.value.json_pointer == f"/plan/screens/{mobile_index}/{field}"
+
+
+def test_amazon_validator_requires_responsive_pair_subject_scale_difference() -> None:
+    payload = _valid_amazon_payload()
+    desktop_index = AMAZON_ITEM_KEYS.index("A-DESKTOP-01")
+    mobile_index = AMAZON_ITEM_KEYS.index("A-MOBILE-01")
+    payload["plan"]["screens"][mobile_index]["subject_scale"] = payload["plan"][
+        "screens"
+    ][desktop_index]["subject_scale"]
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_RESPONSIVE_PAIR_INVALID"
+    assert raised.value.json_pointer == f"/plan/screens/{mobile_index}/subject_scale"
+
+
+def test_amazon_validator_allows_shared_suite_backgrounds() -> None:
+    payload = _valid_amazon_payload()
+
+    structured = validate_amazon_planner_payload(payload)
+
+    selling_backgrounds = {
+        screen["background_system"]
+        for screen in structured["plan"]["screens"]
+        if screen["item_key"] != "MAIN-01"
+    }
+    assert selling_backgrounds == {
+        "suite-brand-stage",
+        "suite-soft-context",
+        "suite-technical-proof",
+        "suite-lifestyle-context",
+    }
+
+
+def test_amazon_validator_rejects_wrong_canonical_background_assignment() -> None:
+    payload = _valid_amazon_payload()
+    screen_index = AMAZON_ITEM_KEYS.index("SECONDARY-01")
+    payload["plan"]["screens"][screen_index][
+        "background_system"
+    ] = "suite-soft-context"
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_SUITE_BACKGROUND_ASSIGNMENT_INVALID"
+    assert str(raised.value) == (
+        "SECONDARY-01 background_system must be suite-brand-stage."
+    )
+    assert raised.value.json_pointer == (
+        f"/plan/screens/{screen_index}/background_system"
+    )
+
+
 def test_amazon_validator_rejects_wrong_item_key() -> None:
     payload = _valid_amazon_payload()
     payload["plan"]["screens"][4]["item_key"] = "SECONDARY-99"
@@ -227,7 +387,34 @@ def test_amazon_validator_rejects_wrong_item_key() -> None:
     assert raised.value.json_pointer == "/plan/screens"
 
 
-@pytest.mark.parametrize("field", ["layout_family", "background_system"])
+def test_amazon_validator_rejects_missing_headline_with_exact_path() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][0].pop("headline")
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_PLAN_SCREEN_INVALID"
+    assert str(raised.value) == "Amazon plan screen requires headline."
+    assert raised.value.json_pointer == "/plan/screens/0/headline"
+
+
+@pytest.mark.parametrize("invalid_headline", [None, [], "", "   "])
+def test_amazon_validator_rejects_invalid_headline_values(
+    invalid_headline: object,
+) -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][0]["headline"] = invalid_headline
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_PLAN_SCREEN_INVALID"
+    assert str(raised.value) == "Amazon plan screen requires headline."
+    assert raised.value.json_pointer == "/plan/screens/0/headline"
+
+
+@pytest.mark.parametrize("field", ["layout_family"])
 def test_amazon_validator_rejects_excessive_composition_reuse(field: str) -> None:
     payload = _valid_amazon_payload()
     for screen in payload["plan"]["screens"]:
@@ -383,6 +570,7 @@ def test_amazon_job_persists_product_master_and_plan_before_confirmation(
             "campaign_style_lock",
             "design_strength_lock",
             "product_consistency_lock",
+            "suite_cohesion_lock",
             "layout_diversity_lock",
             "screen",
             "resume_signature",
@@ -461,6 +649,7 @@ def test_confirmed_amazon_plan_drives_all_prompts_and_retry_reuses_plan(
         assert "Product Master Description:" in call.prompt
         assert "Product Consistency Lock:" in call.prompt
         assert "Campaign Style Lock:" in call.prompt
+        assert "Suite Cohesion Lock:" in call.prompt
         assert "Layout Diversity Lock:" in call.prompt
     business_quality = completed["plan"]["payload"]["business_quality"]
     assert business_quality["status"] == "needs_review"

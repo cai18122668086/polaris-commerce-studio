@@ -39,6 +39,9 @@ from app.provider import ProviderRequest
 from app.provider_quota import PROVIDER_JOB_QUOTA_ACTION
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
+    _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES,
+    _AMAZON_SCREEN_BACKGROUND_SYSTEMS,
+    _AMAZON_SUITE_BACKGROUND_SYSTEMS,
     IMAGE_FORMAT,
     IMAGE_SIZE,
     JPEG_QUALITY,
@@ -56,6 +59,8 @@ from app.xinghe_agent import (
     XingheImageProvider,
     _amazon_planner_prompt,
     _artifact_from_bytes,
+    _cross_page_lock_prompt_contract,
+    _fake_amazon_plan,
     _json_pointer,
     _planner_content_payload_with_trace,
     _planner_structure_fingerprint,
@@ -760,6 +765,44 @@ def _valid_planner_content(page_count: int) -> dict[str, Any]:
     }
 
 
+def test_fake_amazon_plan_uses_production_background_contract() -> None:
+    payload = _fake_amazon_plan(
+        PlannerRequest(
+            workspace_id="ws-fake-amazon-backgrounds",
+            job_id="job-fake-amazon-backgrounds",
+            group_key="amazon-product",
+            sources=(),
+            page_count=21,
+            language="en-US",
+            product_name="Visible product",
+            product_information=("Visible facts only",),
+            platform_code="amazon-us",
+            size="amazon-canonical-multi-size-v1",
+            idempotency_key="job-fake-amazon-backgrounds:planner",
+            planning_profile="amazon_visual_suite",
+        )
+    )
+
+    suite_backgrounds = payload["plan"]["suite_cohesion_lock"][
+        "background_systems"
+    ]
+    screens = payload["plan"]["screens"]
+    backgrounds_by_item_key = {
+        screen["item_key"]: screen["background_system"] for screen in screens
+    }
+    expected_backgrounds = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
+
+    assert suite_backgrounds == list(_AMAZON_SUITE_BACKGROUND_SYSTEMS)
+    assert len(screens) == len(expected_backgrounds) == 21
+    assert len(backgrounds_by_item_key) == 21
+    assert backgrounds_by_item_key == expected_backgrounds
+    for pair_index in range(1, 8):
+        assert (
+            backgrounds_by_item_key[f"A-DESKTOP-{pair_index:02d}"]
+            == backgrounds_by_item_key[f"A-MOBILE-{pair_index:02d}"]
+        )
+
+
 def test_amazon_planner_prompt_requires_exact_object_envelope() -> None:
     prompt = _amazon_planner_prompt(
         PlannerRequest(
@@ -814,6 +857,7 @@ def test_amazon_planner_prompt_requires_exact_object_envelope() -> None:
         "campaign_style_lock",
         "design_strength_lock",
         "product_consistency_lock",
+        "suite_cohesion_lock",
         "layout_diversity_lock",
         "screens",
     ):
@@ -858,7 +902,7 @@ def test_amazon_planner_prompt_lists_each_required_style_lock_field() -> None:
 
     design_contract = required_plan_contract.split(
         "design_strength_lock MUST", 1
-    )[1]
+    )[1].split("suite_cohesion_lock MUST", 1)[0]
     for field in (
         "category_visual_motif",
         "composition_contrast",
@@ -868,6 +912,24 @@ def test_amazon_planner_prompt_lists_each_required_style_lock_field() -> None:
         "rhythm_map",
     ):
         assert field in design_contract
+
+    suite_contract = required_plan_contract.split(
+        "suite_cohesion_lock MUST", 1
+    )[1]
+    for field in (
+        "primary_palette",
+        "accent_palette",
+        "typography_mood",
+        "icon_stroke",
+        "corner_radius",
+        "shadow_system",
+        "lighting_system",
+        "brand_motif",
+        "background_systems",
+        "responsive_pair_rule",
+    ):
+        assert field in suite_contract
+    assert "max_same_layout_family MUST be exactly 2" in suite_contract
 
 
 def _amazon_planner_contract_prompt() -> str:
@@ -925,6 +987,15 @@ def test_amazon_planner_prompt_spells_out_screen_set_contracts() -> None:
     prompt = _amazon_planner_contract_prompt()
 
     assert (
+        "screens MUST be a JSON array containing exactly 21 complete objects in "
+        "canonical task-table order."
+    ) in prompt
+    assert (
+        "Never return an empty screens array, a placeholder, a screen blueprint, "
+        "a count-only summary, or a promise to provide screens later."
+    ) in prompt
+    assert "never omit a screen or required field" in prompt
+    assert (
         "subject_scale MUST be exactly one of hero, medium, macro, scene, "
         "information, cutaway, or overhead."
     ) in prompt
@@ -956,11 +1027,138 @@ def test_amazon_planner_prompt_spells_out_global_and_canonical_contracts() -> No
         in prompt
     )
     assert "including paired desktop and mobile A+ screens" in prompt
+    assert "A-DESKTOP-0N and A-MOBILE-0N pair" in prompt
+    assert "same non-empty responsive_concept" in prompt
+    assert "share the same layout_family and background_system" in prompt
+    assert "composition signature remain distinct" in prompt
+    assert (
+        "responsive-pair subject_scale assignments are exact requirements, "
+        "not suggestions"
+    ) in prompt
+    assert _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES == (
+        (1, "hero", "medium"),
+        (2, "scene", "macro"),
+        (3, "macro", "information"),
+        (4, "scene", "overhead"),
+        (5, "macro", "cutaway"),
+        (6, "information", "medium"),
+        (7, "hero", "medium"),
+    )
+    for pair_index, desktop_scale, mobile_scale in (
+        _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES
+    ):
+        assert desktop_scale != mobile_scale
+        assert (
+            f"A-DESKTOP-{pair_index:02d} subject_scale={desktop_scale}, "
+            f"A-MOBILE-{pair_index:02d} subject_scale={mobile_scale}"
+        ) in prompt
+    assert "Do not swap, repeat within a pair, or replace" in prompt
+    assert "MAIN-01 is the exception" in prompt
+    assert "background_system MUST be exactly pure-white-compliance" in prompt
 
     assert (
         "For every canonical row, copy item_key and final_size verbatim without "
         "translation, normalization, alternate separators, or reformatting."
     ) in prompt
+
+
+def test_amazon_planner_prompt_limits_layout_reuse_but_exempts_backgrounds() -> None:
+    prompt = _amazon_planner_contract_prompt()
+    combined_repeat_limit = (
+        "No layout_family or background_system may occur more often than "
+        "max_same_layout_family"
+    )
+
+    assert combined_repeat_limit not in prompt
+    assert (
+        "Approved Suite Cohesion background systems are intentionally reused "
+        "across selling screens and are exempt from max_same_layout_family"
+    ) in prompt
+    assert "that limit applies only to layout_family" in prompt
+    assert "No layout family may repeat more than twice" in prompt
+
+
+def test_cross_page_lock_prompt_contract_supports_layout_only_limit() -> None:
+    combined_repeat_limit = (
+        "No layout_family or background_system may occur more often than "
+        "max_same_layout_family"
+    )
+    layout_only_repeat_limit = (
+        "No layout_family may occur more often than max_same_layout_family"
+    )
+
+    default_contract = _cross_page_lock_prompt_contract()
+    amazon_contract = _cross_page_lock_prompt_contract(
+        enforce_background_repeat_limit=False
+    )
+
+    assert combined_repeat_limit in default_contract
+    assert layout_only_repeat_limit not in default_contract
+    assert combined_repeat_limit not in amazon_contract
+    assert layout_only_repeat_limit in amazon_contract
+    assert "combined composition signature must be unique" in default_contract
+    assert "combined composition signature must be unique" in amazon_contract
+
+
+def test_amazon_planner_prompt_assigns_selling_backgrounds_canonically() -> None:
+    prompt = _amazon_planner_contract_prompt()
+    task_table_json = prompt.split("canonical task table=", 1)[1].split(
+        ". analysis.product_master_description", 1
+    )[0]
+    task_table = json.loads(task_table_json)
+    rows_by_key = {row["item_key"]: row for row in task_table}
+    selling_rows = [row for row in task_table if row["item_key"] != "MAIN-01"]
+    approved_backgrounds = {
+        "suite-brand-stage",
+        "suite-soft-context",
+        "suite-technical-proof",
+        "suite-lifestyle-context",
+    }
+
+    assert len(selling_rows) == 20
+    assert rows_by_key["MAIN-01"]["background_system"] == "pure-white-compliance"
+    assert {
+        row["background_system"] for row in selling_rows
+    } == approved_backgrounds
+    for pair_index in range(1, 8):
+        assert (
+            rows_by_key[f"A-DESKTOP-{pair_index:02d}"]["background_system"]
+            == rows_by_key[f"A-MOBILE-{pair_index:02d}"]["background_system"]
+        )
+    missing_assignments = [
+        row["item_key"]
+        for row in selling_rows
+        if not isinstance(row.get("background_system"), str)
+        or not row["background_system"].strip()
+    ]
+    exact_copy_contract = (
+        "Every selling-screen background_system MUST copy the background_system "
+        "from its canonical task-table row exactly, and that assigned value MUST "
+        "appear in suite_cohesion_lock.background_systems."
+    ) in prompt
+
+    assert not missing_assignments and exact_copy_contract, (
+        f"missing canonical background_system assignments={missing_assignments}; "
+        f"exact-copy Suite Cohesion Lock contract present={exact_copy_contract}"
+    )
+
+
+def test_amazon_planner_prompt_makes_headline_contract_unambiguous() -> None:
+    prompt = _amazon_planner_contract_prompt()
+
+    assert "exact path /plan/screens/<index>/headline" in prompt
+    assert "headline MUST be a non-empty JSON string" in prompt
+    assert "never omit, rename, move, set to null, or leave it blank" in prompt
+    assert "actual shopper-facing on-image headline" in prompt
+    assert (
+        "MAIN-01 MUST still include the exact non-empty headline string "
+        "'No headline or other on-image copy.'"
+    ) in prompt
+    assert prompt.count('"headline_requirement":') == 21
+    assert (
+        '"headline_requirement":"No headline or other on-image copy."'
+        in prompt
+    )
 
 
 def _planner_validation_path_cases() -> list[Any]:
@@ -2467,6 +2665,81 @@ class _RecordingTransport:
         )
 
 
+def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None:
+    transport = _RecordingTransport()
+    adapter = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://api.example.test",
+        planner_model="gpt-5.6-terra",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+
+    asyncio.run(
+        adapter.plan(
+            PlannerRequest(
+                workspace_id="ws_amazon_contract",
+                job_id="job_amazon_contract",
+                group_key="amazon-product",
+                sources=(),
+                page_count=21,
+                language="en-US",
+                product_name="Visible product",
+                product_information=("Visible facts only",),
+                platform_code="amazon-us",
+                size="amazon-canonical-multi-size-v1",
+                idempotency_key="amazon-planner-idem",
+                system_prompt="pinned amazon protocol",
+                planning_profile="amazon_visual_suite",
+            )
+        )
+    )
+
+    assert len(transport.json_calls) == 1
+    payload = transport.json_calls[0]["payload"]
+    assert payload["max_completion_tokens"] == 12_000
+    assert payload["temperature"] == 0
+
+    response_format = payload["response_format"]
+    assert response_format["type"] == "json_schema"
+    json_schema = response_format["json_schema"]
+    assert json_schema["name"] == "amazon_visual_suite_plan"
+    assert json_schema["strict"] is True
+
+    schema = json_schema["schema"]
+    assert schema["additionalProperties"] is False
+    plan_schema = schema["properties"]["plan"]
+    assert plan_schema["additionalProperties"] is False
+    screens_schema = plan_schema["properties"]["screens"]
+    assert screens_schema["type"] == "array"
+    assert screens_schema["minItems"] == 21
+    assert screens_schema["maxItems"] == 21
+
+    expected_suite_backgrounds = [
+        "suite-brand-stage",
+        "suite-soft-context",
+        "suite-technical-proof",
+        "suite-lifestyle-context",
+    ]
+    suite_backgrounds_schema = plan_schema["properties"]["suite_cohesion_lock"][
+        "properties"
+    ]["background_systems"]
+    assert suite_backgrounds_schema["minItems"] == 4
+    assert suite_backgrounds_schema["maxItems"] == 4
+    assert suite_backgrounds_schema["items"] == {
+        "type": "string",
+        "enum": expected_suite_backgrounds,
+    }
+
+    screen_background_schema = screens_schema["items"]["properties"][
+        "background_system"
+    ]
+    assert screen_background_schema == {
+        "type": "string",
+        "enum": ["pure-white-compliance", *expected_suite_backgrounds],
+    }
+
+
 def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     requested_size = "1000x1000"
     transport = _RecordingTransport()
@@ -2539,7 +2812,11 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert image.artifact is not None
     assert (image.artifact.width, image.artifact.height) == (1000, 1000)
     assert transport.json_calls[0]["url"].endswith("/v1/chat/completions")
-    messages = transport.json_calls[0]["payload"]["messages"]
+    planner_payload = transport.json_calls[0]["payload"]
+    assert planner_payload["response_format"] == {"type": "json_object"}
+    assert "max_completion_tokens" not in planner_payload
+    assert "temperature" not in planner_payload
+    messages = planner_payload["messages"]
     assert messages[0] == {
         "role": "system",
         "content": "pinned same-source protocol",

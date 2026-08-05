@@ -814,6 +814,7 @@ def test_amazon_planner_prompt_requires_exact_object_envelope() -> None:
         "campaign_style_lock",
         "design_strength_lock",
         "product_consistency_lock",
+        "suite_cohesion_lock",
         "layout_diversity_lock",
         "screens",
     ):
@@ -858,7 +859,7 @@ def test_amazon_planner_prompt_lists_each_required_style_lock_field() -> None:
 
     design_contract = required_plan_contract.split(
         "design_strength_lock MUST", 1
-    )[1]
+    )[1].split("suite_cohesion_lock MUST", 1)[0]
     for field in (
         "category_visual_motif",
         "composition_contrast",
@@ -868,6 +869,24 @@ def test_amazon_planner_prompt_lists_each_required_style_lock_field() -> None:
         "rhythm_map",
     ):
         assert field in design_contract
+
+    suite_contract = required_plan_contract.split(
+        "suite_cohesion_lock MUST", 1
+    )[1]
+    for field in (
+        "primary_palette",
+        "accent_palette",
+        "typography_mood",
+        "icon_stroke",
+        "corner_radius",
+        "shadow_system",
+        "lighting_system",
+        "brand_motif",
+        "background_systems",
+        "responsive_pair_rule",
+    ):
+        assert field in suite_contract
+    assert "max_same_layout_family MUST be exactly 2" in suite_contract
 
 
 def _amazon_planner_contract_prompt() -> str:
@@ -956,6 +975,12 @@ def test_amazon_planner_prompt_spells_out_global_and_canonical_contracts() -> No
         in prompt
     )
     assert "including paired desktop and mobile A+ screens" in prompt
+    assert "A-DESKTOP-0N and A-MOBILE-0N pair" in prompt
+    assert "same non-empty responsive_concept" in prompt
+    assert "share the same layout_family and background_system" in prompt
+    assert "composition signature remain distinct" in prompt
+    assert "MAIN-01 is the exception" in prompt
+    assert "background_system MUST be exactly pure-white-compliance" in prompt
 
     assert (
         "For every canonical row, copy item_key and final_size verbatim without "

@@ -539,6 +539,7 @@ def validate_planner_payload(
     *,
     preserve_protocol_fields: bool = False,
     require_cross_page_locks: bool = False,
+    enforce_background_repeat_limit: bool = True,
 ) -> dict[str, Any]:
     """Validate the mandatory structured plan and exact screen count."""
 
@@ -806,7 +807,10 @@ def validate_planner_payload(
     if require_cross_page_locks:
         assert layout_diversity_lock is not None
         maximum = int(layout_diversity_lock["max_same_layout_family"])
-        for field in ("layout_family", "background_system"):
+        repeat_limited_fields = ["layout_family"]
+        if enforce_background_repeat_limit:
+            repeat_limited_fields.append("background_system")
+        for field in repeat_limited_fields:
             counts: dict[str, int] = {}
             for item in normalized_screens:
                 value = str(item[field]).strip().casefold()
@@ -2510,7 +2514,7 @@ class XinghePlanningCoordinator:
         )
         signature = canonical_hash(
             {
-                "version": "amazon-visual-suite-planning-v1",
+                "version": "amazon-visual-suite-planning-v2",
                 "base_url": self.base_url_signature.rstrip("/"),
                 "planner_model": self.gateway.planner_model,
                 "image_model": self.gateway.image_model,
@@ -3223,6 +3227,7 @@ class XinghePlanningCoordinator:
             "product_consistency_lock": structured["plan"][
                 "product_consistency_lock"
             ],
+            "suite_cohesion_lock": structured["plan"]["suite_cohesion_lock"],
             "layout_diversity_lock": structured["plan"][
                 "layout_diversity_lock"
             ],
@@ -3273,6 +3278,9 @@ class XinghePlanningCoordinator:
                     ],
                     "product_consistency_lock": structured["plan"][
                         "product_consistency_lock"
+                    ],
+                    "suite_cohesion_lock": structured["plan"][
+                        "suite_cohesion_lock"
                     ],
                     "layout_diversity_lock": structured["plan"][
                         "layout_diversity_lock"
@@ -4845,9 +4853,26 @@ def _fake_amazon_plan(request: PlannerRequest) -> dict[str, Any]:
         "physical_logic": "Preserve structure, scale, contact, and perspective.",
     }
     payload["plan"]["layout_diversity_lock"] = {
-        "max_same_layout_family": 3,
-        "layout_rule": "Use independent compositions across all selling images.",
-        "background_rule": "Rotate backgrounds without changing the SKU.",
+        "max_same_layout_family": 2,
+        "layout_rule": "Reuse each layout family at most twice.",
+        "background_rule": "Reuse only the approved suite background systems.",
+    }
+    payload["plan"]["suite_cohesion_lock"] = {
+        "primary_palette": "Warm white and product-led charcoal.",
+        "accent_palette": "One restrained product-derived accent.",
+        "typography_mood": "Confident editorial sans-serif hierarchy.",
+        "icon_stroke": "Consistent minimal monoline icons.",
+        "corner_radius": "One restrained medium-radius system.",
+        "shadow_system": "Soft short shadows with consistent density.",
+        "lighting_system": "Soft directional studio light from upper left.",
+        "brand_motif": "Product-led geometric crop and evidence ribbon.",
+        "background_systems": [
+            "warm-clean-field",
+            "soft-context-field",
+        ],
+        "responsive_pair_rule": (
+            "Desktop and mobile A+ pairs share one concept as responsive variants."
+        ),
     }
     for index, (screen, spec) in enumerate(
         zip(payload["plan"]["screens"], AMAZON_ITEM_SPECS, strict=True)
@@ -4866,13 +4891,38 @@ def _fake_amazon_plan(request: PlannerRequest) -> dict[str, Any]:
                 "layout_direction": spec.layout_direction,
                 "source_material": spec.source_material,
                 "risk_note": spec.risk_note,
-                "layout_family": f"amazon-family-{index % 10}",
-                "background_system": f"amazon-background-{index % 10}",
+                "layout_family": (
+                    "main-compliance"
+                    if spec.group == "main"
+                    else (
+                        f"secondary-family-{(spec.group_ordinal - 1) // 2:02d}"
+                        if spec.group == "secondary"
+                        else f"a-plus-family-{spec.group_ordinal:02d}"
+                    )
+                ),
+                "background_system": (
+                    "pure-white-compliance"
+                    if spec.group == "main"
+                    else (
+                        "warm-clean-field"
+                        if spec.group_ordinal % 2
+                        else "soft-context-field"
+                    )
+                ),
                 "camera_angle": f"planned-angle-{index + 1}",
                 "product_position": f"planned-position-{index + 1}",
                 "prop_strategy": f"planned-props-{index + 1}",
                 "copy_density": "none" if index == 0 else (
                     "sparse" if index % 2 else "moderate"
+                ),
+                **(
+                    {
+                        "responsive_concept": (
+                            f"a-plus-responsive-concept-{spec.group_ordinal:02d}"
+                        )
+                    }
+                    if spec.group in {"a_desktop", "a_mobile"}
+                    else {}
                 ),
             }
         )
@@ -5257,7 +5307,7 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
         "silhouette_and_proportions, color_and_material_appearance, "
         "logos_labels_and_patterns, structural_parts, and scale_and_physics; "
         "unknowns MUST be a JSON array. Required plan: campaign_style_lock, "
-        "design_strength_lock, product_consistency_lock, "
+        "design_strength_lock, product_consistency_lock, suite_cohesion_lock, "
         "layout_diversity_lock, and screens. campaign_style_lock MUST be a JSON "
         "object containing non-empty string members palette, typography, "
         "background, lighting, icon_style, whitespace, and product_scale; do "
@@ -5267,8 +5317,14 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
         "template_ban; signature_devices MUST be an array containing at least "
         "two distinct non-empty strings, and rhythm_map MUST be an array of "
         "exactly 21 non-empty strings in canonical screen order. "
-        "layout_diversity_lock.max_same_layout_family must be an integer from 1 "
-        "to 3. Every screen requires role, title, label, composition, device, "
+        "suite_cohesion_lock MUST be a JSON object containing non-empty string "
+        "members primary_palette, accent_palette, typography_mood, icon_stroke, "
+        "corner_radius, shadow_system, lighting_system, brand_motif, and "
+        "responsive_pair_rule; background_systems MUST be an array of two to "
+        "four distinct non-empty strings. Keep those palette, typography, icon, "
+        "radius, shadow, lighting, and motif decisions fixed across all 21 "
+        "screens. layout_diversity_lock.max_same_layout_family MUST be exactly "
+        "2. Every screen requires role, title, label, composition, device, "
         "difference, structure, subject_scale, buyer_question, layout_family, "
         "camera_angle, product_position, background_system, prop_strategy, "
         "copy_density, item_key, asset_type, final_size, selling_point, "
@@ -5291,10 +5347,17 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
         "values, and two distinct device values; no more than 11 screens may "
         "use subject_scale hero. The final screen role MUST be exactly "
         "closing_summary. Every buyer_question MUST be globally unique across "
-        "all 21 screens, including paired desktop and mobile A+ screens; paired "
-        "desktop/mobile selling logic may correspond but composition must remain "
-        "independent. No layout family or background system may repeat more than "
-        "the lock maximum. MAIN-01 must prescribe no on-image text, props, "
+        "all 21 screens, including paired desktop and mobile A+ screens. Every "
+        "A-DESKTOP-0N and A-MOBILE-0N pair MUST include the same non-empty "
+        "responsive_concept string so they are responsive variants of one design "
+        "concept and MUST also share the same layout_family and background_system, "
+        "while their buyer question wording, subject scale, and complete "
+        "composition signature remain distinct. Every selling-screen "
+        "background_system MUST copy one suite_cohesion_lock.background_systems "
+        "value exactly; MAIN-01 is the exception and its background_system MUST "
+        "be exactly pure-white-compliance. No "
+        "layout family may repeat more than twice. MAIN-01 must prescribe no "
+        "on-image text, props, "
         "badges, or invented accessories. Preserve the exact SKU across "
         "all screens. Product="
         f"{request.product_name!r}; marketplace={request.platform_code!r}; "
@@ -5616,6 +5679,7 @@ def _planner_structure_profile(payload: object) -> dict[str, Any]:
             "campaign_style_lock",
             "design_strength_lock",
             "product_consistency_lock",
+            "suite_cohesion_lock",
             "layout_diversity_lock",
             "screens",
         ),

@@ -963,6 +963,24 @@ def test_amazon_planner_prompt_spells_out_global_and_canonical_contracts() -> No
     ) in prompt
 
 
+def test_amazon_planner_prompt_makes_headline_contract_unambiguous() -> None:
+    prompt = _amazon_planner_contract_prompt()
+
+    assert "exact path /plan/screens/<index>/headline" in prompt
+    assert "headline MUST be a non-empty JSON string" in prompt
+    assert "never omit, rename, move, set to null, or leave it blank" in prompt
+    assert "actual shopper-facing on-image headline" in prompt
+    assert (
+        "MAIN-01 MUST still include the exact non-empty headline string "
+        "'No headline or other on-image copy.'"
+    ) in prompt
+    assert prompt.count('"headline_requirement":') == 21
+    assert (
+        '"headline_requirement":"No headline or other on-image copy."'
+        in prompt
+    )
+
+
 def _planner_validation_path_cases() -> list[Any]:
     cases: list[Any] = [
         pytest.param(7, 1, "/", id="root"),

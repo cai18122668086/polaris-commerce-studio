@@ -5228,6 +5228,7 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
             "final_size": f"{spec.width}x{spec.height}",
             "default_buyer_question": spec.buyer_question,
             "default_selling_point": spec.selling_point,
+            "headline_requirement": spec.headline,
             "source_material": spec.source_material,
             "risk_note": spec.risk_note,
         }
@@ -5272,7 +5273,18 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
         "camera_angle, product_position, background_system, prop_strategy, "
         "copy_density, item_key, asset_type, final_size, selling_point, "
         "information_confidence, visual_proof, headline, subcopy, "
-        "layout_direction, source_material, and risk_note. subject_scale MUST be "
+        "layout_direction, source_material, and risk_note. On every screen, "
+        "asset_type, final_size, selling_point, information_confidence, "
+        "visual_proof, headline, layout_direction, source_material, and risk_note "
+        "MUST each be non-empty JSON strings. subcopy MUST be a JSON string and "
+        "may be empty. Every one of the 21 screen objects MUST contain headline "
+        "at the exact path /plan/screens/<index>/headline. headline MUST be a "
+        "non-empty JSON string; never omit, rename, move, set to null, or leave "
+        "it blank. Except for MAIN-01, headline MUST contain the actual "
+        "shopper-facing on-image headline, not an instruction about writing a "
+        "headline. MAIN-01 MUST still include the exact non-empty headline "
+        "string 'No headline or other on-image copy.' as an instruction not to "
+        "render copy. subject_scale MUST be "
         "exactly one of hero, medium, macro, scene, information, cutaway, or "
         "overhead. Across all 21 screens, use at least five distinct role "
         "values, four distinct structure values, three distinct subject_scale "

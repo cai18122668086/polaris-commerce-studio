@@ -227,6 +227,33 @@ def test_amazon_validator_rejects_wrong_item_key() -> None:
     assert raised.value.json_pointer == "/plan/screens"
 
 
+def test_amazon_validator_rejects_missing_headline_with_exact_path() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][0].pop("headline")
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_PLAN_SCREEN_INVALID"
+    assert str(raised.value) == "Amazon plan screen requires headline."
+    assert raised.value.json_pointer == "/plan/screens/0/headline"
+
+
+@pytest.mark.parametrize("invalid_headline", [None, [], "", "   "])
+def test_amazon_validator_rejects_invalid_headline_values(
+    invalid_headline: object,
+) -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][0]["headline"] = invalid_headline
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_PLAN_SCREEN_INVALID"
+    assert str(raised.value) == "Amazon plan screen requires headline."
+    assert raised.value.json_pointer == "/plan/screens/0/headline"
+
+
 @pytest.mark.parametrize("field", ["layout_family", "background_system"])
 def test_amazon_validator_rejects_excessive_composition_reuse(field: str) -> None:
     payload = _valid_amazon_payload()

@@ -57,6 +57,7 @@ from app.xinghe_agent import (
     XingheImageProvider,
     _amazon_planner_prompt,
     _artifact_from_bytes,
+    _cross_page_lock_prompt_contract,
     _json_pointer,
     _planner_content_payload_with_trace,
     _planner_structure_fingerprint,
@@ -1018,6 +1019,87 @@ def test_amazon_planner_prompt_spells_out_global_and_canonical_contracts() -> No
         "For every canonical row, copy item_key and final_size verbatim without "
         "translation, normalization, alternate separators, or reformatting."
     ) in prompt
+
+
+def test_amazon_planner_prompt_limits_layout_reuse_but_exempts_backgrounds() -> None:
+    prompt = _amazon_planner_contract_prompt()
+    combined_repeat_limit = (
+        "No layout_family or background_system may occur more often than "
+        "max_same_layout_family"
+    )
+
+    assert combined_repeat_limit not in prompt
+    assert (
+        "Approved Suite Cohesion background systems are intentionally reused "
+        "across selling screens and are exempt from max_same_layout_family"
+    ) in prompt
+    assert "that limit applies only to layout_family" in prompt
+    assert "No layout family may repeat more than twice" in prompt
+
+
+def test_cross_page_lock_prompt_contract_supports_layout_only_limit() -> None:
+    combined_repeat_limit = (
+        "No layout_family or background_system may occur more often than "
+        "max_same_layout_family"
+    )
+    layout_only_repeat_limit = (
+        "No layout_family may occur more often than max_same_layout_family"
+    )
+
+    default_contract = _cross_page_lock_prompt_contract()
+    amazon_contract = _cross_page_lock_prompt_contract(
+        enforce_background_repeat_limit=False
+    )
+
+    assert combined_repeat_limit in default_contract
+    assert layout_only_repeat_limit not in default_contract
+    assert combined_repeat_limit not in amazon_contract
+    assert layout_only_repeat_limit in amazon_contract
+    assert "combined composition signature must be unique" in default_contract
+    assert "combined composition signature must be unique" in amazon_contract
+
+
+def test_amazon_planner_prompt_assigns_selling_backgrounds_canonically() -> None:
+    prompt = _amazon_planner_contract_prompt()
+    task_table_json = prompt.split("canonical task table=", 1)[1].split(
+        ". analysis.product_master_description", 1
+    )[0]
+    task_table = json.loads(task_table_json)
+    rows_by_key = {row["item_key"]: row for row in task_table}
+    selling_rows = [row for row in task_table if row["item_key"] != "MAIN-01"]
+    approved_backgrounds = {
+        "suite-brand-stage",
+        "suite-soft-context",
+        "suite-technical-proof",
+        "suite-lifestyle-context",
+    }
+
+    assert len(selling_rows) == 20
+    assert rows_by_key["MAIN-01"]["background_system"] == "pure-white-compliance"
+    assert {
+        row["background_system"] for row in selling_rows
+    } == approved_backgrounds
+    for pair_index in range(1, 8):
+        assert (
+            rows_by_key[f"A-DESKTOP-{pair_index:02d}"]["background_system"]
+            == rows_by_key[f"A-MOBILE-{pair_index:02d}"]["background_system"]
+        )
+    missing_assignments = [
+        row["item_key"]
+        for row in selling_rows
+        if not isinstance(row.get("background_system"), str)
+        or not row["background_system"].strip()
+    ]
+    exact_copy_contract = (
+        "Every selling-screen background_system MUST copy the background_system "
+        "from its canonical task-table row exactly, and that assigned value MUST "
+        "appear in suite_cohesion_lock.background_systems."
+    ) in prompt
+
+    assert not missing_assignments and exact_copy_contract, (
+        f"missing canonical background_system assignments={missing_assignments}; "
+        f"exact-copy Suite Cohesion Lock contract present={exact_copy_contract}"
+    )
 
 
 def test_amazon_planner_prompt_makes_headline_contract_unambiguous() -> None:
@@ -2591,6 +2673,30 @@ def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None
     assert screens_schema["type"] == "array"
     assert screens_schema["minItems"] == 21
     assert screens_schema["maxItems"] == 21
+
+    expected_suite_backgrounds = [
+        "suite-brand-stage",
+        "suite-soft-context",
+        "suite-technical-proof",
+        "suite-lifestyle-context",
+    ]
+    suite_backgrounds_schema = plan_schema["properties"]["suite_cohesion_lock"][
+        "properties"
+    ]["background_systems"]
+    assert suite_backgrounds_schema["minItems"] == 4
+    assert suite_backgrounds_schema["maxItems"] == 4
+    assert suite_backgrounds_schema["items"] == {
+        "type": "string",
+        "enum": expected_suite_backgrounds,
+    }
+
+    screen_background_schema = screens_schema["items"]["properties"][
+        "background_system"
+    ]
+    assert screen_background_schema == {
+        "type": "string",
+        "enum": ["pure-white-compliance", *expected_suite_backgrounds],
+    }
 
 
 def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:

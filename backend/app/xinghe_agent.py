@@ -211,6 +211,35 @@ _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES = (
     (6, "information", "medium"),
     (7, "hero", "medium"),
 )
+_AMAZON_SUITE_BACKGROUND_SYSTEMS = (
+    "suite-brand-stage",
+    "suite-soft-context",
+    "suite-technical-proof",
+    "suite-lifestyle-context",
+)
+_AMAZON_SCREEN_BACKGROUND_SYSTEMS = (
+    ("MAIN-01", "pure-white-compliance"),
+    ("SECONDARY-01", "suite-brand-stage"),
+    ("SECONDARY-02", "suite-lifestyle-context"),
+    ("SECONDARY-03", "suite-technical-proof"),
+    ("SECONDARY-04", "suite-soft-context"),
+    ("SECONDARY-05", "suite-soft-context"),
+    ("SECONDARY-06", "suite-brand-stage"),
+    ("A-DESKTOP-01", "suite-brand-stage"),
+    ("A-DESKTOP-02", "suite-lifestyle-context"),
+    ("A-DESKTOP-03", "suite-technical-proof"),
+    ("A-DESKTOP-04", "suite-soft-context"),
+    ("A-DESKTOP-05", "suite-lifestyle-context"),
+    ("A-DESKTOP-06", "suite-technical-proof"),
+    ("A-DESKTOP-07", "suite-brand-stage"),
+    ("A-MOBILE-01", "suite-brand-stage"),
+    ("A-MOBILE-02", "suite-lifestyle-context"),
+    ("A-MOBILE-03", "suite-technical-proof"),
+    ("A-MOBILE-04", "suite-soft-context"),
+    ("A-MOBILE-05", "suite-lifestyle-context"),
+    ("A-MOBILE-06", "suite-technical-proof"),
+    ("A-MOBILE-07", "suite-brand-stage"),
+)
 
 
 class XingheAgentError(RuntimeError):
@@ -5324,7 +5353,15 @@ def _amazon_planner_json_schema() -> dict[str, Any]:
             "shadow_system": string,
             "lighting_system": string,
             "brand_motif": string,
-            "background_systems": _string_array_schema(minimum=2, maximum=4),
+            "background_systems": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": list(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
+                },
+                "minItems": len(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
+                "maxItems": len(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
+            },
             "responsive_pair_rule": string,
         }
     )
@@ -5357,7 +5394,13 @@ def _amazon_planner_json_schema() -> dict[str, Any]:
             "layout_family": string,
             "camera_angle": string,
             "product_position": string,
-            "background_system": string,
+            "background_system": {
+                "type": "string",
+                "enum": [
+                    "pure-white-compliance",
+                    *_AMAZON_SUITE_BACKGROUND_SYSTEMS,
+                ],
+            },
             "prop_strategy": string,
             "copy_density": string,
             "item_key": string,
@@ -5460,7 +5503,16 @@ def _planner_prompt(request: PlannerRequest) -> str:
     )
 
 
-def _cross_page_lock_prompt_contract() -> str:
+def _cross_page_lock_prompt_contract(
+    *,
+    enforce_background_repeat_limit: bool = True,
+) -> str:
+    repeat_limit = (
+        "No layout_family or background_system may occur more often than "
+        "max_same_layout_family"
+        if enforce_background_repeat_limit
+        else "No layout_family may occur more often than max_same_layout_family"
+    )
     return (
         " analysis.product_master_description is REQUIRED as a non-empty "
         "object that locks the exact SKU across all pages. "
@@ -5470,16 +5522,16 @@ def _cross_page_lock_prompt_contract() -> str:
         "layout, background, scale, camera, product position, props, and copy "
         "density. Every screen additionally requires buyer_question, "
         "layout_family, camera_angle, product_position, background_system, "
-        "prop_strategy, and copy_density. Buyer questions must be unique. No "
-        "layout_family or background_system may occur more often than "
-        "max_same_layout_family, and the combined composition signature must "
-        "be unique across all screens."
+        "prop_strategy, and copy_density. Buyer questions must be unique. "
+        f"{repeat_limit}, and the combined composition signature must be "
+        "unique across all screens."
     )
 
 
 def _amazon_planner_prompt(request: PlannerRequest) -> str:
     from .amazon_visual_suite_provider import AMAZON_ITEM_SPECS
 
+    required_background_systems = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
     responsive_pair_scale_assignments = "; ".join(
         (
             f"A-DESKTOP-{pair_index:02d} subject_scale={desktop_scale}, "
@@ -5499,6 +5551,7 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
             "headline_requirement": spec.headline,
             "source_material": spec.source_material,
             "risk_note": spec.risk_note,
+            "background_system": required_background_systems[spec.item_key],
         }
         for spec in AMAZON_ITEM_SPECS
     ]
@@ -5544,8 +5597,9 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
         "suite_cohesion_lock MUST be a JSON object containing non-empty string "
         "members primary_palette, accent_palette, typography_mood, icon_stroke, "
         "corner_radius, shadow_system, lighting_system, brand_motif, and "
-        "responsive_pair_rule; background_systems MUST be an array of two to "
-        "four distinct non-empty strings. Keep those palette, typography, icon, "
+        "responsive_pair_rule; background_systems MUST equal the exact ordered "
+        f"reference-key array {list(_AMAZON_SUITE_BACKGROUND_SYSTEMS)!r}. Keep "
+        "those palette, typography, icon, "
         "radius, shadow, lighting, and motif decisions fixed across all 21 "
         "screens. layout_diversity_lock.max_same_layout_family MUST be exactly "
         "2. Every screen requires role, title, label, composition, device, "
@@ -5583,10 +5637,18 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
         "them exactly by item_key: "
         f"{responsive_pair_scale_assignments}. Do not swap, repeat within a pair, "
         "or replace any assigned subject_scale. Every selling-screen "
-        "background_system MUST copy one suite_cohesion_lock.background_systems "
-        "value exactly; MAIN-01 is the exception and its background_system MUST "
-        "be exactly pure-white-compliance. No "
-        "layout family may repeat more than twice. MAIN-01 must prescribe no "
+        "background_system MUST copy the background_system from its canonical "
+        "task-table row exactly, and that assigned value MUST appear in "
+        "suite_cohesion_lock.background_systems. MAIN-01 is the exception to "
+        "Suite Cohesion Lock membership and its background_system MUST be exactly "
+        "pure-white-compliance. Do not rename, paraphrase, qualify, prefix, "
+        "suffix, or create a variant of the assigned key. Every selling screen "
+        "MUST use its assigned key "
+        "from suite_cohesion_lock.background_systems. Approved Suite Cohesion "
+        "background systems are intentionally reused across selling screens and "
+        "are exempt from max_same_layout_family; that limit applies only to "
+        "layout_family. No layout family may repeat more than twice. MAIN-01 must "
+        "prescribe no "
         "on-image text, props, "
         "badges, or invented accessories. Preserve the exact SKU across "
         "all screens. Product="
@@ -5594,7 +5656,9 @@ def _amazon_planner_prompt(request: PlannerRequest) -> str:
         f"language={request.language!r}; supplied information="
         f"{list(request.product_information)!r}; canonical task table="
         f"{json.dumps(task_table, ensure_ascii=False, separators=(',', ':'))}."
-        + _cross_page_lock_prompt_contract()
+        + _cross_page_lock_prompt_contract(
+            enforce_background_repeat_limit=False,
+        )
     )
 
 

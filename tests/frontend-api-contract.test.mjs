@@ -44,8 +44,8 @@ test("business UI is API-backed and runtime capability is fail-closed", async ()
   const runtime = await utf8("features/runtime/api/runtime.ts");
   assert.match(runtime, /availability === "available"/);
   assert.match(runtime, /execution === "provider"/);
-  assert.match(runtime, /按 fail-closed 处理/);
-  assert.match(runtime, /真实生成未启用/);
+  assert.match(runtime, /canSubmit: false/);
+  assert.match(runtime, /当前生成服务暂不可用/);
 });
 
 test("browser API client defaults to the same-origin edge proxy", async () => {
@@ -70,22 +70,22 @@ test("runtime sources contain no non-loopback remote URLs", async () => {
   }
 });
 
-test("mock copy stays honest and icon actions have stable names", async () => {
+test("public service copy stays honest and icon actions have stable names", async () => {
   const detail = await utf8("app/workspace/detail-pack/page.tsx");
   const local = await utf8("app/workspace/local-edit/page.tsx");
   const helpPanel = await utf8("components/help-panel.tsx");
   const jobs = await utf8("app/jobs/page.tsx");
 
-  assert.doesNotMatch(detail, /待 mock 流转/);
-  assert.match(detail, /模拟流程完成 · 无真实图片产物/);
-  assert.match(detail, /任务状态已完成 · 图片能力未知/);
-  assert.match(detail, /runtime 已报告 Provider 执行/);
-  assert.match(detail, /能力状态未知，确认入口保持关闭/);
-  assert.match(local, /mock 模式不会调用图片 Provider，也没有真实产物/);
-  assert.match(local, /能力状态未知，按 fail-closed 处理/);
-  assert.match(helpPanel, /真实生成接入后才可下载/);
-  assert.match(helpPanel, /能力状态未知，按 fail-closed 处理/);
-  assert.match(helpPanel, /Provider 交付/);
+  assert.match(detail, /任务已完成 · 暂无图片结果/);
+  assert.match(detail, /服务状态确认中 · 生成服务暂不可用/);
+  assert.match(detail, /生成服务状态确认中，确认入口暂时关闭/);
+  assert.match(local, /当前支持上传、蒙版编辑和任务保存/);
+  assert.match(local, /服务状态确认中，暂不可创建/);
+  assert.match(helpPanel, /当前可预览操作流程，暂不生成图片/);
+  assert.match(helpPanel, /生成服务暂不可用/);
+  for (const source of [detail, local, helpPanel]) {
+    assert.doesNotMatch(source, /模拟流程|能力未知|真实生成未启用|Provider 交付/);
+  }
   assert.match(
     await utf8("components/task-drawer.tsx"),
     /inert=\{open \? undefined : true\}/,

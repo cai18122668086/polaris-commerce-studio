@@ -215,7 +215,7 @@ async function assertBrowserFocusContract(origin) {
       cdp,
       `document.activeElement?.getAttribute("aria-label") === "关闭任务抽屉" && document.querySelector("#task-drawer")?.classList.contains("open")`,
     );
-    assert.equal(await accessibleName(cdp, "dialog", "内部 mock 进度"), "内部 mock 进度");
+    assert.equal(await accessibleName(cdp, "dialog", "创作进度"), "创作进度");
     await evaluate(
       cdp,
       `document.querySelector("#task-drawer .drawer-head button")?.click()`,

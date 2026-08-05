@@ -105,7 +105,7 @@ export default function AssetsPage() {
           <div>
             <span>资产管理 · API 已连接</span>
             <h1>个人素材库</h1>
-            <p>素材会写入内部 mock 后端；此环境不会触发真实图片生成。</p>
+            <p>上传后的素材会保存到当前工作区，可用于后续创作。</p>
           </div>
           <button className="primary-button" onClick={chooseFile} disabled={!workspace || upload.isPending}>
             {upload.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}
@@ -124,7 +124,7 @@ export default function AssetsPage() {
           <div className="storage-card">
             <span><FolderOpen size={21} /></span>
             <div><p>当前工作区</p><strong>{workspace?.name ?? "正在连接"}</strong></div>
-            <em>内部 mock</em>
+            <em>素材中心</em>
           </div>
           <div><ImageIcon size={19} /><span><p>已加载素材</p><strong>{assetsQuery.data?.total ?? assets.length}</strong></span></div>
           <div><Sparkles size={19} /><span><p>任务产物</p><strong>{assets.filter((item) => item.origin_kind !== "upload").length}</strong></span></div>
@@ -158,7 +158,7 @@ export default function AssetsPage() {
           {!requestError && !assetsQuery.isPending && assets.length === 0 && (
             <div className="empty-state">
               <Upload size={28} /><h3>{query ? "没有匹配素材" : "还没有素材"}</h3>
-              <p>{query ? "清除搜索后再试。" : "上传一张图片即可开始零付费 mock 内测。"}</p>
+              <p>{query ? "清除搜索后再试。" : "上传一张图片即可开始管理和创作素材。"}</p>
               <button className="secondary-button" onClick={query ? () => setQuery("") : chooseFile}>{query ? "清除搜索" : "上传第一张素材"}</button>
             </div>
           )}

@@ -491,7 +491,7 @@ export function CommerceSkillWorkspace({
           description={feature.description}
           meta={
             <span className={styles.safetyBadge}>
-              <ShieldCheck size={15} /> 后端 Job contract 驱动
+              <ShieldCheck size={15} /> 任务进度自动保存
             </span>
           }
         />
@@ -789,7 +789,7 @@ export function CommerceSkillWorkspace({
                   ))}
                 </div>
                 <div className={styles.planConfirmation}>
-                  <p><Info size={15} />确认后任务将继续轮询并进入 21 项图片生成；Provider 模式可能产生真实费用。</p>
+                  <p><Info size={15} />确认后任务将继续处理并进入整套图片生成，请在提交前核对方案。</p>
                   <button
                     type="button"
                     className={styles.primaryAction}
@@ -875,8 +875,8 @@ export function CommerceSkillWorkspace({
               <div><ShieldCheck size={19} /><strong>执行边界</strong></div>
               <p>浏览器只上传素材、创建后端 Job、轮询状态并读取 deliverable output Asset。</p>
               <ul>
-                <li>不在浏览器直连图片 Provider</li>
-                <li>mock 不生成或伪造交付图片</li>
+                <li>图片生成与交付均通过安全的任务服务完成</li>
+                <li>仅在生成服务可用时提供可交付图片</li>
                 <li>{isAmazon ? "21 个固定 JobItem 仅由后端创建" : "按界面选择原样提交 1–12 张"}</li>
               </ul>
             </section>

@@ -77,7 +77,7 @@ function JobDetailPanel({
             </dl>
             <p>{jobNote(detail.data)}</p>
             {detail.data.error_message && <div className="api-inline-error">{detail.data.error_message}</div>}
-            <small>此详情来自零付费 mock 后端，不代表真实图片 Provider 已启用。</small>
+            <small>任务详情与处理状态会持续同步更新。</small>
           </div>
         )}
       </aside>
@@ -107,7 +107,7 @@ export default function JobsPage() {
   const runCancel = (job: Job) => {
     if (
       !allowsJobAction(job.allowed_actions, "cancel") ||
-      !window.confirm("确认取消此内部 mock 任务？已进入终态的项目不会回滚。")
+      !window.confirm("确认取消此任务？已经完成的任务不会回滚。")
     ) {
       return;
     }
@@ -123,11 +123,11 @@ export default function JobsPage() {
     <AppShell>
       <div className="content-page">
         <div className="page-title-row">
-          <div><span>资产管理 · API 已连接</span><h1>生成记录</h1><p>查看真实持久化的 mock 任务状态、错误与恢复动作。</p></div>
+          <div><span>资产管理 · API 已连接</span><h1>生成记录</h1><p>查看任务状态、生成结果、错误信息与可用操作。</p></div>
         </div>
         <section className="job-stats">
           <div><span className="stat-icon stat-icon--violet"><Sparkles size={19} /></span><p>当前加载</p><strong>{jobsQuery.data?.total ?? allJobs.length}</strong><small>由 API 列表派生</small></div>
-          <div><span className="stat-icon stat-icon--green"><CheckCircle2 size={19} /></span><p>已完成</p><strong>{allJobs.filter((job) => job.status === "completed").length}</strong><small>mock runner 终态</small></div>
+          <div><span className="stat-icon stat-icon--green"><CheckCircle2 size={19} /></span><p>已完成</p><strong>{allJobs.filter((job) => job.status === "completed").length}</strong><small>已完成任务</small></div>
           <div><span className="stat-icon stat-icon--blue"><Clock3 size={19} /></span><p>处理中</p><strong>{allJobs.filter((job) => ["queued", "planning", "processing"].includes(job.status)).length}</strong><small>每 2 秒轮询</small></div>
           <div><span className="stat-icon stat-icon--orange"><TimerReset size={19} /></span><p>需处理</p><strong>{allJobs.filter((job) => ["partial", "failed", "awaiting_confirmation"].includes(job.status)).length}</strong><small>可恢复或确认</small></div>
         </section>
@@ -164,7 +164,7 @@ export default function JobsPage() {
           {actionError && <div className="api-inline-error" role="alert">{errorMessage(actionError)}</div>}
           {jobsQuery.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在加载任务…</p></div>}
           {!jobsQuery.isPending && !jobsQuery.error && jobs.length === 0 && (
-            <div className="empty-state"><Search size={28} /><h3>没有匹配任务</h3><p>可从两个工作台创建第一条内部 mock 任务。</p><button className="secondary-button" onClick={() => { setQuery(""); setTab("all"); }}>清除筛选</button></div>
+            <div className="empty-state"><Search size={28} /><h3>没有匹配任务</h3><p>可以从首页选择一个功能创建第一条任务。</p><button className="secondary-button" onClick={() => { setQuery(""); setTab("all"); }}>清除筛选</button></div>
           )}
           {jobs.length > 0 && (
             <div className={view === "grid" ? "records-grid" : "records-list"}>

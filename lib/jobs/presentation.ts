@@ -26,11 +26,11 @@ export function jobNote(job: Job | JobDetail): string {
   if (job.status === "failed") {
     return ("error_message" in job && job.error_message) || "任务失败，可查看详情后重试。";
   }
-  if (job.status === "awaiting_confirmation") return "规划已就绪，等待在 mock 内测环境确认。";
+  if (job.status === "awaiting_confirmation") return "生成方案已就绪，等待确认。";
   if (job.status === "cancelling") return "正在安全取消任务。";
   if (job.status === "cancelled") return "任务已取消，未继续处理。";
-  if (job.status === "completed") return "零付费 mock runner 已完成任务状态流转。";
-  return job.stage ? `当前阶段：${job.stage}` : "任务正在内部 mock runner 中处理。";
+  if (job.status === "completed") return "任务已完成。";
+  return job.stage ? `当前阶段：${job.stage}` : "任务正在处理中。";
 }
 
 export function formatDate(value: string): string {

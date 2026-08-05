@@ -29,7 +29,7 @@ test("server-renders the finished product shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>首页｜极光商绘<\/title>/i);
-  assert.match(html, /一键直达创作任务/);
+  assert.match(html, /一键直达任务/);
   assert.match(html, /全品类/);
   assert.match(html, /一句话改图/);
   assert.match(html, /商品详情图/);

@@ -301,7 +301,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               <div className={styles.sectionHeading}>
                 <div>
                   <span>02</span>
-                  <div><h2>配置生成任务</h2><p>8 个入口共用同一个 product_image Job contract。</p></div>
+                  <div><h2>配置生成任务</h2><p>选择创作参数，快速生成符合电商平台需求的商品图片。</p></div>
                 </div>
                 <strong>{feature.shortTitle}</strong>
               </div>
@@ -473,7 +473,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               <div><ShieldCheck size={19} /><strong>执行边界</strong></div>
               <p>前端只经工作区 API 上传素材、创建 Job 和读取 deliverable output。</p>
               <ul>
-                <li>不在浏览器直连图片 Provider</li>
+                <li>图片生成与交付均通过安全的任务服务完成</li>
                 <li>每张结果必须是独立 output Asset</li>
                 <li>失败项不会用拼图或占位图替代</li>
               </ul>

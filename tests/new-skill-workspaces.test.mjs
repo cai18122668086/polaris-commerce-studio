@@ -125,7 +125,7 @@ test("new workspaces are runtime gated and never fabricate output", async () => 
   assert.match(workspace, /selectJobResultAssets\(job\.data\)/);
   assert.match(runtime, /execution === "mock"/);
   assert.match(runtime, /canSubmit: true/);
-  assert.match(runtime, /REAL_PROVIDER_NOT_REGISTERED|真实 Provider 未接入/);
+  assert.match(runtime, /reasonCode: capability\.reason_code/);
   assert.doesNotMatch(workspace, /data:image|placeholder.*asset|mock.*image/i);
 });
 
@@ -133,6 +133,7 @@ test("public navigation uses registry route matching instead of local-edit fallb
   const toolRegistry = await utf8("lib/tool-registry.ts");
   const sidebar = await utf8("components/tool-sidebar.tsx");
   const navigation = await utf8("components/top-navigation.tsx");
+  const navigationRegistry = await utf8("lib/navigation-registry.ts");
   const directory = await utf8("components/tool-directory.tsx");
 
   assert.match(toolRegistry, /FEATURE_GROUPS\.map/);
@@ -140,9 +141,11 @@ test("public navigation uses registry route matching instead of local-edit fallb
   assert.match(sidebar, /currentFeature\?\.jobType/);
   assert.match(sidebar, /currentFeature\?\.route \?\? "\/tools"/);
   assert.doesNotMatch(sidebar, /pathname\.includes\("detail-pack"\) \? "detail_pack" : "local_edit"/);
-  assert.match(navigation, /href: "\/tools"/);
+  assert.match(navigation, /AI_FEATURES_MENU/);
+  assert.match(navigationRegistry, /href: "\/tools"/);
   assert.doesNotMatch(navigation, /\/\#tools/);
-  assert.match(directory, /FEATURE_REGISTRY\.filter/);
+  assert.match(directory, /FEATURE_REGISTRY\.map/);
+  assert.match(directory, /searchableTools\.filter/);
 });
 
 test("detail workspace submits the selected market and only auto-starts domestic", async () => {

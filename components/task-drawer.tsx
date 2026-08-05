@@ -10,6 +10,28 @@ import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { StatusBadge } from "./status-badge";
 
+const stageLabels: Record<string, string> = {
+  draft: "草稿",
+  queued: "排队中",
+  planning: "正在规划",
+  awaiting_confirmation: "等待确认",
+  processing: "正在生成",
+  generating: "正在生成",
+  retry: "正在重试",
+  retrying: "正在重试",
+  reused: "已复用",
+  partial: "部分完成",
+  completed: "已完成",
+  failed: "生成失败",
+  planning_failed: "生成方案规划失败",
+  cancelling: "正在取消",
+  cancelled: "已取消",
+};
+
+function presentJobStage(stage: string | null | undefined, status: string) {
+  return stageLabels[stage ?? ""] ?? stageLabels[status] ?? "处理中";
+}
+
 const focusableSelector = [
   "a[href]",
   "button:not([disabled])",
@@ -111,7 +133,7 @@ export function TaskDrawer({
         tabIndex={-1}
       >
         <div className="drawer-head">
-          <div><p>任务中心 · API</p><h2 id="task-drawer-title">内部 mock 进度</h2></div>
+          <div><p>任务中心</p><h2 id="task-drawer-title">创作进度</h2></div>
           <button ref={closeButtonRef} className="icon-button" onClick={onClose} aria-label="关闭任务抽屉"><X size={19} /></button>
         </div>
         <div className="drawer-summary">
@@ -121,7 +143,7 @@ export function TaskDrawer({
         </div>
         <div className="drawer-list">
           {jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
-          {!jobs.isPending && visibleJobs.length === 0 && <div className="api-state"><p>尚无内部 mock 任务。</p></div>}
+          {!jobs.isPending && visibleJobs.length === 0 && <div className="api-state"><p>暂无生成任务。</p></div>}
           {visibleJobs.map((job) => (
             <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">
@@ -129,7 +151,7 @@ export function TaskDrawer({
                 <strong>{jobTitle(job)}</strong><p>{jobNote(job)}</p>
                 {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">
-                  <span>{jobCount(job)}</span><span>{job.stage ?? "—"}</span>
+                  <span>{jobCount(job)}</span><span>{presentJobStage(job.stage, job.status)}</span>
                   {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} onClick={() => runCancel(job)}><Ban size={14} /></button>}
                   {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试失败项 ${jobTitle(job)}`} onClick={() => runRetry(job)}><RotateCcw size={14} /></button>}
                 </div>

@@ -123,10 +123,10 @@ export default function LocalEditPage() {
       <div className="workspace-page">
         <div className="workspace-main">
           <WorkspaceHeader
-            eyebrow={workflow.mode === "provider" ? "商品图工具 · Provider" : workflow.mode === "mock" ? "商品图工具 · 内部 mock" : "商品图工具 · 能力未知"}
+            eyebrow={workflow.mode === "provider" ? "商品图工具 · 在线生成" : workflow.mode === "mock" ? "商品图工具 · 基础流程" : "商品图工具 · 服务状态确认中"}
             title="局部修改"
-            description={workflow.mode === "provider" ? "runtime 已报告 Provider 执行；前端仅经后端任务 API 提交，可能产生真实生成与费用。" : workflow.mode === "mock" ? "上传、真实蒙版与任务状态写入 API；mock 模式不会调用图片 Provider，也没有真实产物。" : "runtime 能力状态未知，按 fail-closed 处理；不会提交图片生成。"}
-            meta={<span className="autosave-state"><ShieldCheck size={15} />{workflow.mode === "provider" ? "Provider 已报告启用" : workflow.mode === "mock" ? "零付费 mock runner" : "真实生成未启用"}</span>}
+            description={workflow.mode === "provider" ? "当前生成服务可用；提交任务后将开始图片处理。" : workflow.mode === "mock" ? "当前支持上传、蒙版编辑和任务保存，图片生成服务暂不可用。" : "当前无法确认生成服务状态，图片生成入口暂时关闭。"}
+            meta={<span className="autosave-state"><ShieldCheck size={15} />{workflow.mode === "provider" ? "生成服务可用" : workflow.mode === "mock" ? "编辑功能可用" : "服务状态确认中"}</span>}
           />
           <div className="workflow-steps">
             {["上传原图", "绘制选区", "创建任务", "查看结果"].map((step, index) => {
@@ -153,12 +153,12 @@ export default function LocalEditPage() {
                 <div className="textarea-wrap"><textarea value={prompt} maxLength={500} onChange={(event) => setPrompt(event.target.value)} aria-label="修改要求" /><span>{prompt.length} / 500</span></div>
               </section>
               <section className="control-card">
-                <div className="control-card__heading"><span>3</span><div><strong>质量标签</strong><p>{workflow.mode === "provider" ? "真实执行参数，可能影响费用" : "用于 mock 任务契约验证"}</p></div></div>
+                <div className="control-card__heading"><span>3</span><div><strong>质量标签</strong><p>{workflow.mode === "provider" ? "生成质量设置，可能影响费用" : "用于控制生成质量"}</p></div></div>
                 <div className="quality-options">
                   {qualities.map((item) => <button key={item.key} className={quality === item.key ? "selected" : ""} onClick={() => setQuality(item.key)} aria-pressed={quality === item.key}><i>{quality === item.key && <Check size={12} />}</i><span><strong>{item.label}</strong></span><em>{workflow.mode === "provider" ? "可能计费" : "不计费"}</em></button>)}
                 </div>
               </section>
-              <div className="cost-bar"><span>本次环境<Info size={14} /></span><strong>{workflow.mode === "provider" ? "Provider · 可能计费" : workflow.mode === "mock" ? "零付费 mock" : "能力未知 · 不执行"}</strong></div>
+              <div className="cost-bar"><span>本次服务<Info size={14} /></span><strong>{workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "生成服务暂不可用"}</strong></div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}
               {job.data && <div className={`generation-feedback ${["failed", "partial"].includes(job.data.status) ? "error" : job.data.status === "completed" ? "success" : "active"}`} aria-live="polite"><span>{job.data.status === "completed" ? <CheckCircle2 size={16} /> : <LoaderCircle size={16} className={["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} />}</span><div><strong><StatusBadge status={job.data.status} /></strong><p>{jobNote(job.data)} · {job.data.progress}%</p></div></div>}
               {rawCandidateAsset && (
@@ -174,16 +174,16 @@ export default function LocalEditPage() {
                 <button className="primary-button generate-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : (
                 <button className="primary-button generate-button" onClick={() => void submit()} disabled={!workflowAvailable || !sourceAsset || !hasSelection || !prompt.trim() || busy} aria-busy={busy}>
-                  {busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{busy ? "正在写入 API" : workflow.mode === "provider" ? "创建 Provider 任务" : workflow.mode === "mock" ? "创建内部 mock 任务" : "能力未知，暂不可创建"}
+                  {busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{busy ? "正在创建任务" : workflow.mode === "provider" ? "开始生成" : workflow.mode === "mock" ? "保存任务" : "服务状态确认中，暂不可创建"}
                 </button>
               )}
               <p className="privacy-line"><ShieldCheck size={13} />黑色区域锁定，白色区域授权；服务端仍会校验尺寸与像素锁。</p>
             </aside>
           </div>
 
-          {resultAsset && previewUrl && <section className="result-preview-card"><div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>生成结果</h2><p>拖动滑块对比标准化原图与后端生成资产。</p></div></div></div><BeforeAfterResult workspaceId={workspace?.id} sourceUrl={previewUrl} assetId={resultAsset.asset_id} /></section>}
-          {rawCandidateAsset && <section className="detail-form-card"><div className="form-section-head"><span className="number-chip number-chip--violet">R</span><div><h2>Provider 原始候选</h2><p>仅供视觉诊断，不是像素锁定后的可交付结果。</p></div></div><div className="job-results-grid"><JobResultImage workspaceId={workspace?.id} assetId={rawCandidateAsset.asset_id} alt="局部修改 Provider 原始候选" label="原始候选 · 不可交付" /></div></section>}
-          {job.data?.status === "completed" && workflow.mode === "mock" && !resultAsset && <div className="api-state"><ImagePlus size={22} /><p>mock 流程已完成，但不会产生真实图片产物。</p></div>}
+          {resultAsset && previewUrl && <section className="result-preview-card"><div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>生成结果</h2><p>拖动滑块对比原图与生成结果。</p></div></div></div><BeforeAfterResult workspaceId={workspace?.id} sourceUrl={previewUrl} assetId={resultAsset.asset_id} /></section>}
+          {rawCandidateAsset && <section className="detail-form-card"><div className="form-section-head"><span className="number-chip number-chip--violet">R</span><div><h2>原始生成候选</h2><p>仅供视觉诊断，不是像素锁定后的可交付结果。</p></div></div><div className="job-results-grid"><JobResultImage workspaceId={workspace?.id} assetId={rawCandidateAsset.asset_id} alt="局部修改原始候选" label="原始候选 · 不可交付" /></div></section>}
+          {job.data?.status === "completed" && workflow.mode === "mock" && !resultAsset && <div className="api-state"><ImagePlus size={22} /><p>任务流程已完成，当前生成服务未返回图片结果。</p></div>}
         </div>
         <HelpPanel mode="local-edit" />
       </div>

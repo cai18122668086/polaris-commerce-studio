@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useQuery } from "@tanstack/react-query";
 
@@ -58,8 +58,8 @@ export function presentWorkflow(
       mode: "unknown",
       canDeliverImages: false,
       canSubmit: false,
-      badge: "能力状态未知",
-      message: "按 fail-closed 处理：能力状态确认前不会创建任务。",
+      badge: "服务状态确认中",
+      message: "正在确认生成服务状态，暂时无法创建任务。",
     };
   }
   if (capability.availability !== "available") {
@@ -67,8 +67,8 @@ export function presentWorkflow(
       mode: "unavailable",
       canDeliverImages: false,
       canSubmit: false,
-      badge: "真实 Provider 未接入",
-      message: "当前运行环境未注册此功能的真实 Provider，提交入口已关闭。",
+      badge: "当前服务不可用",
+      message: "当前生成服务暂不可用，提交入口已关闭。",
       reasonCode: capability.reason_code,
     };
   }
@@ -77,8 +77,8 @@ export function presentWorkflow(
       mode: "provider",
       canDeliverImages: true,
       canSubmit: true,
-      badge: "Provider 可用",
-      message: "任务将由后端已注册 Provider 执行并交付图片。",
+      badge: "生成服务可用",
+      message: "任务将由生成服务处理并交付图片。",
       reasonCode: capability.reason_code,
     };
   }
@@ -87,8 +87,8 @@ export function presentWorkflow(
       mode: "mock",
       canDeliverImages: false,
       canSubmit: true,
-      badge: "Mock 可用",
-      message: "可验证上传、建单和状态轮询；mock 不会伪造可交付图片。",
+      badge: "基础流程可用",
+      message: "当前支持素材上传与任务流程，暂不生成可交付图片。",
       reasonCode: capability.reason_code,
     };
   }
@@ -97,8 +97,8 @@ export function presentWorkflow(
       mode: "local",
       canDeliverImages: true,
       canSubmit: true,
-      badge: "本地能力可用",
-      message: "任务将在后端本地能力边界内执行。",
+      badge: "生成服务可用",
+      message: "任务将由当前可用的生成服务处理。",
       reasonCode: capability.reason_code,
     };
   }
@@ -106,8 +106,8 @@ export function presentWorkflow(
     mode: "unavailable",
     canDeliverImages: false,
     canSubmit: false,
-    badge: "能力不可用",
-    message: "当前能力没有可执行后端，提交入口已关闭。",
+    badge: "当前服务不可用",
+    message: "当前生成服务暂不可用，提交入口已关闭。",
     reasonCode: capability.reason_code,
   };
 }
@@ -135,9 +135,9 @@ export function presentRuntime(
 
   if (!runtime) {
     return {
-      badge: "能力状态未知",
-      summary: "按 fail-closed 处理：内部接口可测试，真实图片生成未启用。",
-      assurance: "不调用付费 Provider",
+      badge: "服务状态确认中",
+      summary: "当前生成服务暂不可用，图片生成入口已关闭。",
+      assurance: "不会启动图片生成",
       providerGenerationEnabled: false,
     };
   }
@@ -152,21 +152,21 @@ export function presentRuntime(
 
   if (allMock) {
     return {
-      badge: "内部 mock 内测",
-      summary: "资产与任务状态会真实写入零付费后端；mock 不会伪造可交付图片。",
-      assurance: "真实生成未启用",
+      badge: "基础流程可用",
+      summary: "素材与任务状态会正常保存，当前暂不生成可交付图片。",
+      assurance: "图片生成暂不可用",
       providerGenerationEnabled: false,
     };
   }
 
   return {
-    badge: runtime.environment === "production" ? "运行能力" : "内部能力",
+    badge: "服务状态",
     summary: providerGenerationEnabled
-      ? "部分工作流报告为 Provider 执行；请按各工作流能力状态操作。"
-      : "当前工作流不可用或仅支持本地/mock 执行，无可交付 Provider 生成图片。",
+      ? "部分图片生成功能当前可用，请按各功能页面提示操作。"
+      : "部分图片生成功能当前不可用，请稍后重试。",
     assurance: providerGenerationEnabled
-      ? "按 runtime 能力执行"
-      : "真实生成未启用",
+      ? "按服务状态执行"
+      : "图片生成暂不可用",
     providerGenerationEnabled,
   };
 }

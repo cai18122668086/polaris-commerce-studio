@@ -40,6 +40,8 @@ from app.provider_quota import PROVIDER_JOB_QUOTA_ACTION
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
     _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES,
+    _AMAZON_SCREEN_BACKGROUND_SYSTEMS,
+    _AMAZON_SUITE_BACKGROUND_SYSTEMS,
     IMAGE_FORMAT,
     IMAGE_SIZE,
     JPEG_QUALITY,
@@ -58,6 +60,7 @@ from app.xinghe_agent import (
     _amazon_planner_prompt,
     _artifact_from_bytes,
     _cross_page_lock_prompt_contract,
+    _fake_amazon_plan,
     _json_pointer,
     _planner_content_payload_with_trace,
     _planner_structure_fingerprint,
@@ -760,6 +763,44 @@ def _valid_planner_content(page_count: int) -> dict[str, Any]:
             "screens": screens,
         },
     }
+
+
+def test_fake_amazon_plan_uses_production_background_contract() -> None:
+    payload = _fake_amazon_plan(
+        PlannerRequest(
+            workspace_id="ws-fake-amazon-backgrounds",
+            job_id="job-fake-amazon-backgrounds",
+            group_key="amazon-product",
+            sources=(),
+            page_count=21,
+            language="en-US",
+            product_name="Visible product",
+            product_information=("Visible facts only",),
+            platform_code="amazon-us",
+            size="amazon-canonical-multi-size-v1",
+            idempotency_key="job-fake-amazon-backgrounds:planner",
+            planning_profile="amazon_visual_suite",
+        )
+    )
+
+    suite_backgrounds = payload["plan"]["suite_cohesion_lock"][
+        "background_systems"
+    ]
+    screens = payload["plan"]["screens"]
+    backgrounds_by_item_key = {
+        screen["item_key"]: screen["background_system"] for screen in screens
+    }
+    expected_backgrounds = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
+
+    assert suite_backgrounds == list(_AMAZON_SUITE_BACKGROUND_SYSTEMS)
+    assert len(screens) == len(expected_backgrounds) == 21
+    assert len(backgrounds_by_item_key) == 21
+    assert backgrounds_by_item_key == expected_backgrounds
+    for pair_index in range(1, 8):
+        assert (
+            backgrounds_by_item_key[f"A-DESKTOP-{pair_index:02d}"]
+            == backgrounds_by_item_key[f"A-MOBILE-{pair_index:02d}"]
+        )
 
 
 def test_amazon_planner_prompt_requires_exact_object_envelope() -> None:

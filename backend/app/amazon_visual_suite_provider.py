@@ -499,7 +499,11 @@ def validate_amazon_item_keys(item_keys: Sequence[str]) -> tuple[str, ...]:
 def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
     """Validate one auditable Product Master and the canonical 21-row plan."""
 
-    from app.xinghe_agent import XingheAgentError, validate_planner_payload
+    from app.xinghe_agent import (
+        _AMAZON_SCREEN_BACKGROUND_SYSTEMS,
+        XingheAgentError,
+        validate_planner_payload,
+    )
 
     if isinstance(payload, Mapping):
         raw_plan = payload.get("plan")
@@ -663,9 +667,11 @@ def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
     approved_backgrounds = {
         value.strip().casefold() for value in background_systems
     }
+    canonical_backgrounds = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
     for index, screen in enumerate(screens):
+        item_key = str(screen["item_key"])
         background_system = str(screen["background_system"]).strip().casefold()
-        if screen["item_key"] == "MAIN-01":
+        if item_key == "MAIN-01":
             if background_system != "pure-white-compliance":
                 raise XingheAgentError(
                     "AMAZON_MAIN_IMAGE_INVALID",
@@ -677,6 +683,16 @@ def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
             raise XingheAgentError(
                 "AMAZON_SUITE_COHESION_INVALID",
                 "Amazon selling-screen background_system is outside the Suite Cohesion Lock.",
+                json_pointer=f"/plan/screens/{index}/background_system",
+            )
+        expected_background = canonical_backgrounds[item_key]
+        if background_system != expected_background.casefold():
+            raise XingheAgentError(
+                "AMAZON_SUITE_BACKGROUND_ASSIGNMENT_INVALID",
+                (
+                    f"{item_key} background_system must be "
+                    f"{expected_background}."
+                ),
                 json_pointer=f"/plan/screens/{index}/background_system",
             )
     by_item_key = {str(screen["item_key"]): screen for screen in screens}

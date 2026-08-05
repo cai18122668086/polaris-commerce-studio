@@ -307,7 +307,6 @@ def test_amazon_validator_rejects_third_layout_family_reuse() -> None:
     [
         ("responsive_concept", "unrelated-mobile-concept"),
         ("layout_family", "unrelated-mobile-family"),
-        ("background_system", "soft-context-field"),
     ],
 )
 def test_amazon_validator_rejects_unrelated_responsive_pair(
@@ -350,7 +349,31 @@ def test_amazon_validator_allows_shared_suite_backgrounds() -> None:
         for screen in structured["plan"]["screens"]
         if screen["item_key"] != "MAIN-01"
     }
-    assert selling_backgrounds == {"warm-clean-field", "soft-context-field"}
+    assert selling_backgrounds == {
+        "suite-brand-stage",
+        "suite-soft-context",
+        "suite-technical-proof",
+        "suite-lifestyle-context",
+    }
+
+
+def test_amazon_validator_rejects_wrong_canonical_background_assignment() -> None:
+    payload = _valid_amazon_payload()
+    screen_index = AMAZON_ITEM_KEYS.index("SECONDARY-01")
+    payload["plan"]["screens"][screen_index][
+        "background_system"
+    ] = "suite-soft-context"
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_SUITE_BACKGROUND_ASSIGNMENT_INVALID"
+    assert str(raised.value) == (
+        "SECONDARY-01 background_system must be suite-brand-stage."
+    )
+    assert raised.value.json_pointer == (
+        f"/plan/screens/{screen_index}/background_system"
+    )
 
 
 def test_amazon_validator_rejects_wrong_item_key() -> None:

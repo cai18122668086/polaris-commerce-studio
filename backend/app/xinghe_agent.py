@@ -4911,14 +4911,12 @@ def _fake_amazon_plan(request: PlannerRequest) -> dict[str, Any]:
         "shadow_system": "Soft short shadows with consistent density.",
         "lighting_system": "Soft directional studio light from upper left.",
         "brand_motif": "Product-led geometric crop and evidence ribbon.",
-        "background_systems": [
-            "warm-clean-field",
-            "soft-context-field",
-        ],
+        "background_systems": list(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
         "responsive_pair_rule": (
             "Desktop and mobile A+ pairs share one concept as responsive variants."
         ),
     }
+    required_background_systems = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
     for index, (screen, spec) in enumerate(
         zip(payload["plan"]["screens"], AMAZON_ITEM_SPECS, strict=True)
     ):
@@ -4945,15 +4943,7 @@ def _fake_amazon_plan(request: PlannerRequest) -> dict[str, Any]:
                         else f"a-plus-family-{spec.group_ordinal:02d}"
                     )
                 ),
-                "background_system": (
-                    "pure-white-compliance"
-                    if spec.group == "main"
-                    else (
-                        "warm-clean-field"
-                        if spec.group_ordinal % 2
-                        else "soft-context-field"
-                    )
-                ),
+                "background_system": required_background_systems[spec.item_key],
                 "camera_angle": f"planned-angle-{index + 1}",
                 "product_position": f"planned-position-{index + 1}",
                 "prop_strategy": f"planned-props-{index + 1}",

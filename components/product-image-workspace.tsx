@@ -344,7 +344,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                       <option key={platform.value} value={platform.value}>{platform.label}</option>
                     ))}
                   </select>
-                  <small>用于约束构图、留白和渠道风格。</small>
                 </label>
               </div>
 

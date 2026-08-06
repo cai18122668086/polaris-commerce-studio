@@ -42,6 +42,7 @@ test("workspace uploads role-based assets and submits a bounded product_image jo
   assert.match(workspace, /disabled=\{!canSubmit\}/);
   assert.doesNotMatch(workspace, /fetch\s*\(/, "workspace must use the shared API client");
   assert.doesNotMatch(workspace, /apiClient/, "workspace must use the shared create-job hook");
+  assert.doesNotMatch(workspace, /用于约束构图、留白和渠道风格/, "paired selectors must stay visually aligned");
 });
 
 test("asset picker prevents cross-role duplication and result grid uses deliverable assets", async () => {

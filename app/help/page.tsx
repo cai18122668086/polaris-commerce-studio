@@ -23,7 +23,7 @@ import { AppShell } from "@/components/app-shell";
 
 const faqs = [
   {
-    question: "局部修改为什么需要确认授权选区？",
+    question: "一句话改图为什么需要确认授权选区？",
     answer:
       "选区会作为本次任务的修改边界，用于明确允许调整的区域；请尽量准确圈选需要修改的位置。",
   },
@@ -76,7 +76,7 @@ export default function HelpPage() {
                   <span><Paintbrush2 size={22} /></span>
                   <div>
                     <small>约 2 分钟</small>
-                    <h3>完成一次局部修改</h3>
+                    <h3>完成一次“一句话改图”</h3>
                   </div>
                 </div>
                 <ol>
@@ -86,7 +86,7 @@ export default function HelpPage() {
                   <li><i><ShieldCheck size={16} /></i><span><strong>查看任务处理状态</strong><small>结果可用后即可下载处理图片</small></span></li>
                 </ol>
                 <Link href="/workspace/local-edit">
-                  打开局部修改
+                  打开一句话改图
                   <ArrowRight size={16} />
                 </Link>
               </article>
@@ -105,7 +105,7 @@ export default function HelpPage() {
                   <li><i><CheckCircle2 size={16} /></i><span><strong>检查任务处理结果</strong><small>如暂无图片，请稍后查看任务状态</small></span></li>
                 </ol>
                 <Link href="/workspace/detail-pack">
-                  创建详情套图
+                  创建商品详情图
                   <ArrowRight size={16} />
                 </Link>
               </article>
@@ -122,7 +122,7 @@ export default function HelpPage() {
             <div className="guide-grid">
               {[
                 { icon: PlayCircle, title: "新手入门", count: "6 篇指南", tone: "blue", text: "了解工作台、额度与任务状态" },
-                { icon: Paintbrush2, title: "局部修改", count: "12 篇指南", tone: "indigo", text: "选区技巧、提示词与任务状态" },
+                { icon: Paintbrush2, title: "一句话改图", count: "12 篇指南", tone: "indigo", text: "选区技巧、提示词与任务状态" },
                 { icon: Sparkles, title: "商品详情图", count: "9 篇指南", tone: "violet", text: "平台选择、素材分组、页面规划与断点续作" },
                 { icon: ImageIcon, title: "素材与文件", count: "5 篇指南", tone: "cyan", text: "格式规范、清晰度与资产复用" },
                 { icon: ShieldCheck, title: "安全与隐私", count: "4 篇指南", tone: "green", text: "图片处理、权限与数据保护" },

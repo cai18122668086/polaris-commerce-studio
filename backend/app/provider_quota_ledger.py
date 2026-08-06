@@ -124,7 +124,7 @@ def _append_settlement(
     fallback_count = 0
     sources: list[dict[str, Any]] = []
     for usage in usage_events:
-        event_requests = _usage_request_count(usage)
+        event_requests = usage_request_count(usage)
         event_charge, basis = _usage_charge(job, usage, event_requests)
         requests += event_requests
         charge += event_charge
@@ -353,7 +353,7 @@ def _is_legacy_preplanner_amazon_reservation(
     return (
         all(
             usage.operation == JobType.AMAZON_VISUAL_SUITE.value
-            and _usage_request_count(usage) == 1
+            and usage_request_count(usage) == 1
             for usage in usage_events
         )
         and all(isinstance(value, str) and value for value in item_ids)
@@ -429,10 +429,10 @@ def _planner_unit_reserve(
     return remainder // int(groups)
 
 
-def _usage_request_count(usage: UsageEventRecord) -> int:
+def usage_request_count(usage: UsageEventRecord) -> int:
     raw = usage.raw_usage if isinstance(usage.raw_usage, dict) else {}
     value = raw.get("network_requests")
-    return int(value) if _is_positive_int(value) else 1
+    return int(value) if _is_non_negative_int(value) else 1
 
 
 def _usage_charge(

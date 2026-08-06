@@ -60,10 +60,10 @@ function JobDetailPanel({
       <button className="drawer-overlay" onClick={onClose} aria-label="关闭任务详情" />
       <aside className="task-drawer open" aria-label="任务详情">
         <div className="drawer-head">
-          <div><p>API 任务详情</p><strong>{detail.data ? jobTitle(detail.data) : "正在加载"}</strong></div>
+          <div><p>任务详情</p><strong>{detail.data ? jobTitle(detail.data) : "正在加载"}</strong></div>
           <button className="icon-button" onClick={onClose} aria-label="关闭任务详情"><X size={19} /></button>
         </div>
-        {detail.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在轮询任务详情…</p></div>}
+        {detail.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在更新任务详情…</p></div>}
         {detail.error && <div className="api-state api-state--error"><FileWarning /><p>{errorMessage(detail.error)}</p></div>}
         {detail.data && (
           <div className="job-detail-content">
@@ -72,8 +72,6 @@ function JobDetailPanel({
               <div><dt>任务编号</dt><dd>{detail.data.id}</dd></div>
               <div><dt>进度</dt><dd>{detail.data.progress}%</dd></div>
               <div><dt>成功 / 失败</dt><dd>{detail.data.succeeded_item_count} / {detail.data.failed_item_count}</dd></div>
-              <div><dt>阶段</dt><dd>{detail.data.stage ?? "—"}</dd></div>
-              <div><dt>API 请求数</dt><dd>{detail.data.api_request_count}</dd></div>
             </dl>
             <p>{jobNote(detail.data)}</p>
             {detail.data.error_message && <div className="api-inline-error">{detail.data.error_message}</div>}
@@ -123,12 +121,12 @@ export default function JobsPage() {
     <AppShell>
       <div className="content-page">
         <div className="page-title-row">
-          <div><span>资产管理 · API 已连接</span><h1>生成记录</h1><p>查看任务状态、生成结果、错误信息与可用操作。</p></div>
+          <div><span>创作管理</span><h1>生成记录</h1><p>查看任务状态、生成结果、错误信息与可用操作。</p></div>
         </div>
         <section className="job-stats">
-          <div><span className="stat-icon stat-icon--violet"><Sparkles size={19} /></span><p>当前加载</p><strong>{jobsQuery.data?.total ?? allJobs.length}</strong><small>由 API 列表派生</small></div>
+          <div><span className="stat-icon stat-icon--violet"><Sparkles size={19} /></span><p>当前加载</p><strong>{jobsQuery.data?.total ?? allJobs.length}</strong><small>由任务列表统计</small></div>
           <div><span className="stat-icon stat-icon--green"><CheckCircle2 size={19} /></span><p>已完成</p><strong>{allJobs.filter((job) => job.status === "completed").length}</strong><small>已完成任务</small></div>
-          <div><span className="stat-icon stat-icon--blue"><Clock3 size={19} /></span><p>处理中</p><strong>{allJobs.filter((job) => ["queued", "planning", "processing"].includes(job.status)).length}</strong><small>每 2 秒轮询</small></div>
+          <div><span className="stat-icon stat-icon--blue"><Clock3 size={19} /></span><p>处理中</p><strong>{allJobs.filter((job) => ["queued", "planning", "processing"].includes(job.status)).length}</strong><small>状态自动同步</small></div>
           <div><span className="stat-icon stat-icon--orange"><TimerReset size={19} /></span><p>需处理</p><strong>{allJobs.filter((job) => ["partial", "failed", "awaiting_confirmation"].includes(job.status)).length}</strong><small>可恢复或确认</small></div>
         </section>
 
@@ -176,7 +174,7 @@ export default function JobsPage() {
                     <h3>{jobTitle(job)}</h3><p>{jobNote(job)}</p>
                     {["queued", "planning", "processing", "cancelling"].includes(job.status) && <div className="record-progress"><i style={{ width: `${job.progress}%` }} /><span>{job.progress}%</span></div>}
                   </div>
-                  <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>{job.stage ?? "等待阶段更新"}</small></div>
+                  <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>状态自动同步</small></div>
                   <div className="record-actions">
                     {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={() => runRetry(job)} disabled={retry.isPending}><RotateCcw size={16} /></button>}
                     {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} title="取消任务" onClick={() => runCancel(job)} disabled={cancel.isPending}><Ban size={16} /></button>}

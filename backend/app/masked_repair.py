@@ -695,6 +695,11 @@ class MaskedRepairProvider:
                     "LOCAL_EDIT_INSTRUCTION_INVALID",
                     "A concrete local-edit instruction is required.",
                 )
+            if _instruction_has_encoding_damage(instruction):
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_INSTRUCTION_ENCODING_INVALID",
+                    "The local-edit instruction appears to contain encoding damage.",
+                )
             if quality not in {"preview", "balanced", "final"}:
                 raise MaskedRepairError(
                     "LOCAL_EDIT_QUALITY_INVALID",
@@ -1263,6 +1268,14 @@ def _outside_changed_pixels(
         if source_bytes[start : start + 4] != result_bytes[start : start + 4]:
             changed += 1
     return changed
+
+
+def _instruction_has_encoding_damage(instruction: str) -> bool:
+    value = instruction.strip()
+    if "\ufffd" in value:
+        return True
+    question_count = value.count("?")
+    return question_count >= 3 and question_count * 4 >= len(value)
 
 
 def _provider_quality(quality: str) -> str:

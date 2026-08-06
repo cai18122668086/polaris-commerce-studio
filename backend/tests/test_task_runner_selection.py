@@ -202,9 +202,7 @@ def test_default_mock_runner_still_allows_quota_disabled(tmp_path: Path) -> None
         ({"tengli_smoke_budget_usd": float("nan")}, "budget"),
         ({"xinghe_concurrency": 1}, "concurrency"),
         ({"xinghe_concurrency": 6}, "concurrency"),
-        ({"tengli_daily_budget_usd": 0}, "daily budget"),
         ({"tengli_monthly_budget_usd": 0.5}, "monthly budget"),
-        ({"tengli_daily_request_limit": 0}, "daily request limit"),
         ({"tengli_base_url": ""}, "base URL"),
         ({"tengli_base_url": "ftp://provider.example"}, "base URL"),
         ({"tengli_base_url": "http://["}, "base URL"),
@@ -263,7 +261,7 @@ def test_tengli_failure_does_not_expose_api_key(
     assert api_key not in exposed_text
 
 
-def test_tengli_omitted_budget_uses_unsafe_default_and_fails_closed(
+def test_tengli_default_recurring_limits_are_unlimited(
     tmp_path: Path,
 ) -> None:
     settings = Settings(
@@ -277,8 +275,10 @@ def test_tengli_omitted_budget_uses_unsafe_default_and_fails_closed(
     )
 
     assert settings.tengli_smoke_budget_usd == 200
-    with pytest.raises(RuntimeError, match="budget"):
-        task_runner.validate_task_runner_settings(settings)
+    assert settings.tengli_daily_budget_usd == 0
+    assert settings.tengli_monthly_budget_usd == 0
+    assert settings.tengli_daily_request_limit == 0
+    task_runner.validate_task_runner_settings(settings)
 
 
 def test_task_runner_mode_uses_explicit_prefixed_environment_setting(

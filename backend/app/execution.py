@@ -53,6 +53,7 @@ from .provider import (
     ProviderRequest,
     ProviderResult,
 )
+from .provider_quota_ledger import usage_request_count
 from .services import canonical_hash, new_id, settle_credits, transition_job
 from .skill_runtime import build_fake_skill_runtime_provider
 from .storage import ImageStorage, ValidatedImage
@@ -1176,17 +1177,16 @@ class ExecutionCoordinator:
                 else None
             )
             job.actual_credits = 0 if usage_count else None
-            job.api_request_count = (
-                session.scalar(
-                    select(func.count())
-                    .select_from(UsageEventRecord)
-                    .where(
-                        UsageEventRecord.job_id == job.id,
-                        UsageEventRecord.provider != "mock",
-                    )
+            real_usage_events = session.scalars(
+                select(UsageEventRecord).where(
+                    UsageEventRecord.job_id == job.id,
+                    UsageEventRecord.provider != "mock",
                 )
-                or 0
-            ) + planner_real_calls
+            ).all()
+            job.api_request_count = (
+                sum(usage_request_count(event) for event in real_usage_events)
+                + planner_real_calls
+            )
             job.usage_completeness = (
                 UsageCompleteness.COMPLETE.value
                 if total_usage_count

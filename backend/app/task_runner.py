@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from .config import MAX_PROVIDER_ALLOWANCE, Settings
 from .domain import JobStatus
 from .execution import ExecutionCoordinator, build_fake_coordinator
-from .services import set_quota_enabled
+from .services import set_credit_enforcement_enabled, set_quota_enabled
 from .storage import ImageStorage
 
 
@@ -103,17 +103,15 @@ def validate_task_runner_settings(settings: Settings) -> None:
         )
     if settings.xinghe_concurrency != 2:
         raise RuntimeError("tengli task runner concurrency must be exactly 2")
-    if settings.provider_quota_enabled:
-        if settings.tengli_daily_budget_usd <= 0:
-            raise RuntimeError("tengli task runner daily budget must be configured")
-        if settings.tengli_monthly_budget_usd < settings.tengli_daily_budget_usd:
-            raise RuntimeError(
-                "tengli task runner monthly budget must cover the daily budget"
-            )
-        if settings.tengli_daily_request_limit <= 0:
-            raise RuntimeError(
-                "tengli task runner daily request limit must be configured"
-            )
+    if (
+        settings.provider_quota_enabled
+        and settings.tengli_daily_budget_usd > 0
+        and settings.tengli_monthly_budget_usd > 0
+        and settings.tengli_monthly_budget_usd < settings.tengli_daily_budget_usd
+    ):
+        raise RuntimeError(
+            "tengli task runner monthly budget must cover the daily budget"
+        )
 
     try:
         endpoint = urlsplit(settings.tengli_base_url)
@@ -139,6 +137,7 @@ def build_task_runner(
 
     validate_task_runner_settings(settings)
     set_quota_enabled(settings.provider_quota_enabled)
+    set_credit_enforcement_enabled(settings.workspace_credit_enforcement_enabled)
     if settings.task_runner == "mock":
         return MockTaskRunner(
             session_factory,

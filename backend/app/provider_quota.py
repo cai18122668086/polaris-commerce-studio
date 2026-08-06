@@ -53,24 +53,40 @@ def reserve_provider_job_quota(
     if (
         estimated_cost_micros <= 0
         or provider_request_count <= 0
-        or daily_limit_micros <= 0
-        or monthly_limit_micros < daily_limit_micros
-        or daily_request_limit <= 0
+        or daily_limit_micros < 0
+        or monthly_limit_micros < 0
+        or daily_request_limit < 0
+        or (
+            daily_limit_micros > 0
+            and monthly_limit_micros > 0
+            and monthly_limit_micros < daily_limit_micros
+        )
     ):
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "PROVIDER_QUOTA_NOT_CONFIGURED",
-            "Real-provider quotas are not configured.",
+            "PROVIDER_QUOTA_INVALID",
+            "Real-provider quota values are invalid.",
         )
 
+    # A zero recurring limit means unlimited during the internal beta. Keep the
+    # durable reservation and settlement ledger active so provider usage and
+    # costs remain auditable; only the membership-era rejection gate is skipped.
     limits = lock_workspace_limits(session, job.workspace_id)
-    effective_daily_limit = min(
-        daily_limit_micros,
-        int(limits.daily_provider_cost_limit_micros),
+    effective_daily_limit = (
+        min(
+            daily_limit_micros,
+            int(limits.daily_provider_cost_limit_micros),
+        )
+        if daily_limit_micros > 0
+        else 0
     )
-    effective_monthly_limit = min(
-        monthly_limit_micros,
-        int(limits.monthly_provider_cost_limit_micros),
+    effective_monthly_limit = (
+        min(
+            monthly_limit_micros,
+            int(limits.monthly_provider_cost_limit_micros),
+        )
+        if monthly_limit_micros > 0
+        else 0
     )
     now = utc_now()
     if now.tzinfo is None:
@@ -91,19 +107,28 @@ def reserve_provider_job_quota(
             str(exc),
         ) from exc
 
-    if daily_cost + estimated_cost_micros > effective_daily_limit:
+    if (
+        effective_daily_limit > 0
+        and daily_cost + estimated_cost_micros > effective_daily_limit
+    ):
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "PROVIDER_DAILY_BUDGET_EXCEEDED",
             "The daily real-provider budget is exhausted.",
         )
-    if monthly_cost + estimated_cost_micros > effective_monthly_limit:
+    if (
+        effective_monthly_limit > 0
+        and monthly_cost + estimated_cost_micros > effective_monthly_limit
+    ):
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "PROVIDER_MONTHLY_BUDGET_EXCEEDED",
             "The monthly real-provider budget is exhausted.",
         )
-    if daily_requests + provider_request_count > daily_request_limit:
+    if (
+        daily_request_limit > 0
+        and daily_requests + provider_request_count > daily_request_limit
+    ):
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "PROVIDER_DAILY_REQUEST_LIMIT_EXCEEDED",

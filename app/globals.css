@@ -3214,6 +3214,10 @@ select:focus-visible {
   padding: 15px;
 }
 
+.control-card--source .local-edit-upload-actions {
+  margin-top: 13px;
+}
+
 .control-card__heading {
   display: grid;
   grid-template-columns: 27px 1fr auto;
@@ -3326,6 +3330,11 @@ select:focus-visible {
   min-height: 92px;
   padding: 10px 11px 22px;
   font-size: 10px;
+}
+
+.textarea-wrap textarea::placeholder {
+  color: var(--ink-400);
+  opacity: 1;
 }
 
 .textarea-wrap textarea:focus,

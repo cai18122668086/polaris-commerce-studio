@@ -3,7 +3,6 @@ import { getFeatureById } from "@/lib/feature-registry";
 function navigationFeature(
   featureId: string,
   options: {
-    label?: string;
     description: string;
   },
 ) {
@@ -16,7 +15,7 @@ function navigationFeature(
   return {
     featureId: feature.id,
     href: feature.route,
-    label: options.label ?? feature.title,
+    label: feature.title,
     description: options.description,
     icon: feature.icon,
     tone: feature.tone,
@@ -62,7 +61,6 @@ export const AI_FEATURES_MENU = {
           description: "快速替换商品背景，适配不同展示需求",
         }),
         navigationFeature("reference-remix", {
-          label: "一键模仿",
           description: "快速复刻参考图的构图与氛围",
         }),
       ],
@@ -74,7 +72,6 @@ export const AI_FEATURES_MENU = {
           description: "生成国内、国际全平台详情图",
         }),
         navigationFeature("amazon-visual-suite", {
-          label: "亚马逊套图",
           description: "生成亚马逊主图、副图与 A+ 内容",
         }),
       ],

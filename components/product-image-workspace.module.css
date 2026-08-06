@@ -1,4 +1,4 @@
-﻿.workspacePage {
+.workspacePage {
   min-height: calc(100vh - var(--nav-height));
   padding: 0 0 112px;
   color: var(--ink-900);
@@ -88,6 +88,10 @@
   gap: 22px;
   width: min(1240px, calc(100% - 48px));
   margin: 0 auto;
+}
+
+.workspaceGrid[data-single-column] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .mainColumn,
@@ -238,9 +242,15 @@
   color: var(--ink-400);
 }
 
-.uploadPanel > button {
+.uploadActions {
+  display: grid;
+  gap: 7px;
+}
+
+.uploadActions > button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 9px 10px;
   border: 1px solid var(--ink-200);
@@ -249,15 +259,26 @@
   color: var(--ink-700);
   font-size: 11px;
   font-weight: 750;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.uploadPanel > button:hover:not(:disabled) {
+.uploadActions > button[data-library] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--studio-orange-dark, var(--violet-700));
+}
+
+.uploadActions > button:hover:not(:disabled) {
   border-color: var(--studio-orange, var(--violet-500));
   color: var(--studio-orange-dark, var(--violet-700));
 }
 
-.uploadPanel > button:disabled {
+.uploadActions > button[data-library]:hover:not(:disabled) {
+  background: var(--studio-orange-soft, var(--violet-50));
+}
+
+.uploadActions > button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -402,6 +423,140 @@
   font-size: 11px;
 }
 
+.libraryDialogBackdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgb(15 23 42 / 56%);
+  backdrop-filter: blur(3px);
+}
+
+.libraryDialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(1120px, 100%);
+  height: min(720px, calc(100vh - 64px));
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 68%);
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 28%);
+}
+
+.libraryDialogHeader,
+.libraryDialogFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+}
+
+.libraryDialogHeader {
+  border-bottom: 1px solid var(--ink-150);
+}
+
+.libraryDialogHeader h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.libraryDialogHeader p {
+  margin: 5px 0 0;
+  color: var(--ink-500);
+  font-size: 11px;
+}
+
+.libraryDialogHeader > button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-500);
+  cursor: pointer;
+}
+
+.libraryDialogHeader > button:hover {
+  background: var(--ink-100);
+  color: var(--ink-900);
+}
+
+.libraryDialogBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 22px 22px;
+}
+
+.libraryDialogBody .assetPicker {
+  min-height: 100%;
+  margin-top: 18px;
+  border: 0;
+  border-radius: 0;
+}
+
+.libraryDialogBody .assetPickerHeading {
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--ink-150);
+  background: white;
+}
+
+.libraryDialogBody .libraryGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  max-height: none;
+  padding: 18px 0 0;
+}
+
+.libraryDialogBody .libraryState {
+  min-height: 300px;
+}
+
+.libraryDialogFooter {
+  border-top: 1px solid var(--ink-150);
+  background: var(--ink-50);
+}
+
+.libraryDialogFooter > span {
+  color: var(--ink-500);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.libraryDialogFooter > div {
+  display: flex;
+  gap: 10px;
+}
+
+.libraryDialogFooter button {
+  min-width: 72px;
+  padding: 9px 16px;
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  background: white;
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.libraryDialogFooter button[data-primary] {
+  border-color: var(--studio-orange, var(--violet-600));
+  background: var(--studio-orange, var(--violet-600));
+  color: white;
+}
+
+.libraryDialogFooter button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -517,8 +672,11 @@
 .countOptions label {
   display: flex;
   min-height: 48px;
+  align-items: center;
+  justify-content: center;
   flex-direction: row;
   gap: 3px;
+  text-align: center;
 }
 
 .countOptions strong {
@@ -1050,8 +1208,15 @@
   .formGrid,
   .sideColumn { grid-template-columns: 1fr; }
   .uploadPanel { grid-template-columns: auto minmax(0, 1fr); }
-  .uploadPanel > button { grid-column: 1 / -1; justify-content: center; }
+  .uploadActions { grid-column: 1 / -1; }
+  .uploadActions[data-has-library] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .libraryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .libraryDialogBackdrop { padding: 14px; }
+  .libraryDialog { height: calc(100vh - 28px); border-radius: 14px; }
+  .libraryDialogHeader,
+  .libraryDialogFooter { padding: 15px 16px; }
+  .libraryDialogBody { padding: 2px 16px 16px; }
+  .libraryDialogBody .libraryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ratioGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .countOptions { grid-template-columns: repeat(4, 1fr); }
   .resultGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1066,6 +1231,13 @@
   .card,
   .resultSection { padding: 18px; }
   .libraryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .uploadActions[data-has-library] { grid-template-columns: 1fr; }
+  .libraryDialogHeader { align-items: flex-start; }
+  .libraryDialogHeader p { line-height: 1.5; }
+  .libraryDialogFooter { align-items: stretch; flex-direction: column; }
+  .libraryDialogFooter > div { display: grid; grid-template-columns: repeat(2, 1fr); }
+  .libraryDialogFooter button { width: 100%; }
+  .libraryDialogBody .libraryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ratioGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .resultGrid { grid-template-columns: 1fr; }
   .sectionHeading { align-items: flex-start; flex-direction: column; }

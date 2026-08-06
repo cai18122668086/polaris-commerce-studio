@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import {
   ArrowRight,
   CheckCircle2,
   Clock3,
   ImagePlus,
+  Images,
   Info,
   LoaderCircle,
   RefreshCcw,
@@ -15,7 +16,7 @@ import {
 import { useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { AssetLibraryPicker } from "@/components/asset-library-picker";
+import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
@@ -238,7 +239,9 @@ function UploadPanel({
   required,
   uploading,
   disabled,
+  uploadLabel = "本地上传",
   onFiles,
+  onOpenLibrary,
 }: {
   title: string;
   description: string;
@@ -246,7 +249,9 @@ function UploadPanel({
   required: boolean;
   uploading: boolean;
   disabled: boolean;
+  uploadLabel?: string;
   onFiles: (files: File[]) => void;
+  onOpenLibrary?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
@@ -260,14 +265,28 @@ function UploadPanel({
         <p>{description}</p>
         <small>{count ? `已选择 ${count} 张素材` : "支持 JPG、PNG、WebP"}</small>
       </div>
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={uploading || disabled}
-      >
-        {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
-        本地上传
-      </button>
+      <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading || disabled}
+        >
+          {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
+          {uploadLabel}
+        </button>
+        {onOpenLibrary ? (
+          <button
+            type="button"
+            data-library
+            aria-haspopup="dialog"
+            onClick={onOpenLibrary}
+            disabled={disabled}
+          >
+            <Images size={16} />
+            从素材库选择
+          </button>
+        ) : null}
+      </div>
       <input
         ref={inputRef}
         className={styles.hiddenInput}
@@ -323,12 +342,14 @@ export function CommerceSkillWorkspace({
   const [brandColors, setBrandColors] = useState("");
   const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
+  const [libraryRole, setLibraryRole] = useState<RoleKey>();
 
   const job = useJob(workspace?.id, jobId);
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = workspaceError ?? upload.error ?? confirmPlan.error ?? job.error;
   const isAmazon = featureId === "amazon-visual-suite";
   const isCreative = featureId === "creative-image";
+  const activeLibraryRole = roleDefinitions.find((role) => role.key === libraryRole);
   const selectedSizeLabel = isAmazon
     ? "主图 2000 × 2000；副图 1200 × 1600；桌面 A+ 1464 × 600；移动 A+ 1600 × 1200"
     : aspectRatio === "follow-reference"
@@ -371,7 +392,7 @@ export function CommerceSkillWorkspace({
   }, [job.data]);
 
   if (!feature) return null;
-  const FeatureIcon = feature.icon;
+
 
   const replaceRoleSelection = (role: RoleKey, ids: string[]) => {
     const unique = [...new Set(ids)].slice(0, 8);
@@ -388,15 +409,23 @@ export function CommerceSkillWorkspace({
 
   const addUploadedAssets = async (files: File[], role: RoleKey) => {
     setUiError(undefined);
-    try {
-      const uploadedIds: string[] = [];
-      for (const file of files.slice(0, 8)) {
+    const uploadedIds: string[] = [];
+    const failures: string[] = [];
+    for (const file of files.slice(0, 8)) {
+      try {
         const asset = await upload.mutateAsync({ file, mediaKind: "image" });
         uploadedIds.push(asset.id);
+      } catch (error) {
+        failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
       }
+    }
+    if (uploadedIds.length) {
       replaceRoleSelection(role, [...selections[role], ...uploadedIds]);
-    } catch (error) {
-      setUiError(errorMessage(error));
+    }
+    if (failures.length) {
+      const uploadedNote = uploadedIds.length ? `已成功上传 ${uploadedIds.length} 张；` : "";
+      const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
+      setUiError(`${uploadedNote}${failures[0]}${remaining}`);
     }
   };
 
@@ -499,11 +528,11 @@ export function CommerceSkillWorkspace({
         <div className={styles.stepBar} aria-label="创作步骤">
           <span data-active={!jobId || undefined}><i>1</i>选择素材</span>
           <span data-active={!jobId || undefined}><i>2</i>配置参数</span>
-          <span data-active={Boolean(jobId) || undefined}><i>3</i>任务轮询</span>
+          <span data-active={Boolean(jobId) || undefined}><i>3</i>生成进度</span>
           <span data-active={resultAssets.length > 0 || undefined}><i>4</i>结果交付</span>
         </div>
 
-        <div className={styles.workspaceGrid}>
+        <div className={styles.workspaceGrid} data-single-column>
           <main className={styles.mainColumn}>
             <section className={styles.card}>
               <div className={styles.sectionHeading}>
@@ -527,25 +556,12 @@ export function CommerceSkillWorkspace({
                     required={role.required}
                     uploading={upload.isPending}
                     disabled={Boolean(jobId)}
+                    uploadLabel="上传图片"
                     onFiles={(files) => void addUploadedAssets(files, role.key)}
+                    onOpenLibrary={() => setLibraryRole(role.key)}
                   />
                 ))}
               </div>
-
-              {roleDefinitions.map((role) => (
-                <AssetLibraryPicker
-                  key={role.key}
-                  workspaceId={workspace?.id}
-                  title={`从素材库选择：${role.title}`}
-                  description={role.description}
-                  selectedIds={selections[role.key]}
-                  excludedIds={selectedIds.filter(
-                    (id) => !selections[role.key].includes(id),
-                  )}
-                  onChange={(ids) => replaceRoleSelection(role.key, ids)}
-                  disabled={Boolean(jobId)}
-                />
-              ))}
             </section>
 
             <section className={styles.card}>
@@ -556,8 +572,8 @@ export function CommerceSkillWorkspace({
                     <h2>配置生成任务</h2>
                     <p>
                       {isAmazon
-                        ? "前端只提交素材和商品信息，固定 21 个 JobItem 由后端创建。"
-                        : "每张结果对应独立 JobItem，不使用拼图或占位输出。"}
+                        ? "填写商品与品牌信息，生成完整的 21 张亚马逊套图。"
+                        : "设置平台、比例和生成数量，每张结果均为独立图片。"}
                     </p>
                   </div>
                 </div>
@@ -576,7 +592,7 @@ export function CommerceSkillWorkspace({
                       <option key={platform.value} value={platform.value}>{platform.label}</option>
                     ))}
                   </select>
-                  <small>{isAmazon ? "写入 marketplace。" : "用于渠道构图与视觉约束。"} 严格交付尺寸：{selectedSizeLabel}。</small>
+                  <small>{isAmazon ? "用于匹配 Amazon US 的画面与文案规范。" : "用于匹配不同渠道的构图与视觉规范。"} 图片尺寸：{selectedSizeLabel}。</small>
                 </label>
                 <label>
                   <span>语言</span>
@@ -590,7 +606,7 @@ export function CommerceSkillWorkspace({
                     <option value="ja-JP">日本語</option>
                     <option value="de-DE">Deutsch</option>
                   </select>
-                  <small>仅提交后端 contract 支持的语言代码。</small>
+                  <small>用于生成图片中的文案语言。</small>
                 </label>
                 {isCreative ? (
                   <label>
@@ -608,7 +624,7 @@ export function CommerceSkillWorkspace({
                         </option>
                       ))}
                     </select>
-                    <small>写入 creative_direction。</small>
+                    <small>用于确定画面的主要表达方向。</small>
                   </label>
                 ) : null}
               </div>
@@ -646,7 +662,7 @@ export function CommerceSkillWorkspace({
                       placeholder="每行一个色名或色号，最多 8 项"
                       disabled={Boolean(jobId)}
                     />
-                    <small>将按行拆分为 brand_colors。</small>
+                    <small>每行填写一种品牌色。</small>
                   </label>
                 </>
               ) : (
@@ -852,43 +868,33 @@ export function CommerceSkillWorkspace({
             />
           </main>
 
-          <aside className={styles.sideColumn}>
-            <section className={styles.summaryCard}>
-              <span className={styles.summaryIcon}><FeatureIcon size={24} /></span>
-              <p>当前功能</p>
-              <h2>{feature.title}</h2>
-              <small>{feature.guidance}</small>
-              <dl>
-                <div><dt>输入</dt><dd>{feature.inputHint}</dd></div>
-                <div><dt>输出</dt><dd>{feature.outputHint}</dd></div>
-                <div><dt>Skill</dt><dd>{feature.skillId}</dd></div>
-              </dl>
-            </section>
-
-            <section className={styles.guardrailCard} data-runtime-mode={workflow.mode}>
-              <div><ShieldCheck size={19} /><strong>{workflow.badge}</strong></div>
-              <p>{workflow.message}</p>
-              {workflow.reasonCode ? <small>{workflow.reasonCode}</small> : null}
-            </section>
-
-            <section className={styles.guardrailCard}>
-              <div><ShieldCheck size={19} /><strong>执行边界</strong></div>
-              <p>浏览器只上传素材、创建后端 Job、轮询状态并读取 deliverable output Asset。</p>
-              <ul>
-                <li>图片生成与交付均通过安全的任务服务完成</li>
-                <li>仅在生成服务可用时提供可交付图片</li>
-                <li>{isAmazon ? "21 个固定 JobItem 仅由后端创建" : "按界面选择原样提交 1–12 张"}</li>
-              </ul>
-            </section>
-          </aside>
         </div>
+
+        {activeLibraryRole ? (
+          <AssetLibraryDialog
+            key={activeLibraryRole.key}
+            workspaceId={workspace?.id}
+            title={`选择${activeLibraryRole.title}`}
+            description={activeLibraryRole.description}
+            selectedIds={selections[activeLibraryRole.key]}
+            excludedIds={selectedIds.filter(
+              (id) => !selections[activeLibraryRole.key].includes(id),
+            )}
+            onClose={() => setLibraryRole(undefined)}
+            onConfirm={(ids) => {
+              replaceRoleSelection(activeLibraryRole.key, ids);
+              setLibraryRole(undefined);
+            }}
+            disabled={Boolean(jobId)}
+          />
+        ) : null}
 
         <footer className={styles.stickyBar}>
           <div>
             <span>{workspacePending ? <LoaderCircle className="spin" size={17} /> : <Clock3 size={17} />}</span>
             <p>
               <strong>{workspace?.name ?? "正在连接工作区"}</strong>
-              <small>{jobId ? progressText : isAmazon ? "后端将创建固定 21 个 JobItem" : `将创建 ${imageCount} 个独立 JobItem`}</small>
+              <small>{jobId ? progressText : isAmazon ? "预计生成 21 张套图" : `预计生成 ${imageCount} 张图片`}</small>
             </p>
           </div>
           <div className={styles.stickyActions}>

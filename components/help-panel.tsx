@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Lightbulb,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 
 import {
@@ -17,8 +16,14 @@ import {
 
 export function HelpPanel({
   mode,
+  taskTitle,
+  assetSummary,
+  outputSummary,
 }: {
   mode: "local-edit" | "detail-pack";
+  taskTitle?: string;
+  assetSummary?: string;
+  outputSummary?: string;
 }) {
   const local = mode === "local-edit";
   const runtime = useRuntimeStatus();
@@ -71,12 +76,12 @@ export function HelpPanel({
       <section className="help-card current-summary">
         <div className="help-card__head">
           <span>当前任务</span>
-          <em>已自动保存</em>
+          <em>{local ? "随输入更新" : "已自动保存"}</em>
         </div>
-        <strong>{local ? "耳机材质精修" : "LUMIÈRE 精华液详情套图"}</strong>
+        <strong>{taskTitle || (local ? "等待填写修改要求" : "等待填写商品名称")}</strong>
         <div className="summary-row">
           <span>{local ? "编辑画布" : "商品素材"}</span>
-          <b>{local ? "1 张 · 已选区" : "4 张 · 同一分组"}</b>
+          <b>{assetSummary || "尚未上传"}</b>
         </div>
         <div className="summary-row">
           <span>{local ? "生成服务" : "输出规格"}</span>
@@ -87,7 +92,7 @@ export function HelpPanel({
                 : mockEnabled
                   ? "流程预览 · 暂无图片"
                   : "暂不可用 · 暂无图片"
-              : "天猫 · 中文 · 6页"}
+              : outputSummary || "等待选择输出规格"}
           </b>
         </div>
       </section>
@@ -125,43 +130,39 @@ export function HelpPanel({
           </p>
         </div>
       </section>
-      <section className="help-card safety-card">
-        <div className="help-card__icon">
-          {local ? <ShieldCheck size={17} /> : <Sparkles size={17} />}
-        </div>
-        <div>
-          <strong>{local ? "授权边界状态" : "流程恢复"}</strong>
-          <p>
-            {local
-              ? providerEnabled
+      {local ? (
+        <section className="help-card safety-card">
+          <div className="help-card__icon">
+            <ShieldCheck size={17} />
+          </div>
+          <div>
+            <strong>授权边界状态</strong>
+            <p>
+              {providerEnabled
                 ? "原图是唯一画布，选区外像素将经过严格比对，不合格结果不会覆盖原始产物。"
                 : mockEnabled
                   ? "当前可检查原图、选区与任务流程；暂不提供生成结果下载。"
-                  : "生成服务暂不可用；不会提交生成任务或提供下载结果。"
-              : providerEnabled
-                ? "已完成页面会被保留。遇到失败时，只重试缺失页面。"
-                : mockEnabled
-                  ? "当前可预览任务流程；暂不生成可下载图片。"
-                  : "生成服务暂不可用；不会进入图片生成。"}
-          </p>
-        </div>
-      </section>
+                  : "生成服务暂不可用；不会提交生成任务或提供下载结果。"}
+            </p>
+          </div>
+        </section>
+      ) : null}
       <button className="help-more">
         查看完整使用指南
         <ChevronRight size={16} />
       </button>
-      <div className="risk-note">
-        <AlertTriangle size={15} />
-        <p>
-          {local
-            ? "复杂透明边缘建议使用更高质量档位。"
-            : providerEnabled
-              ? "规划未通过结构校验前，不会进入图片生成。"
+      {!local && (
+        <div className="risk-note">
+          <AlertTriangle size={15} />
+          <p>
+            {providerEnabled
+              ? "页面规划确认完成前，不会开始图片生成。"
               : mockEnabled
                 ? "确认规划后可继续预览流程，当前暂不生成图片。"
                 : "生成服务暂不可用，规划确认入口暂时关闭。"}
-        </p>
-      </div>
+          </p>
+        </div>
+      )}
     </aside>
   );
 }

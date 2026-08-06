@@ -127,7 +127,7 @@ test("workflow pages submit the bounded inputs and failed-only retry scope", asy
   );
   assert.match(
     local,
-    /configuration: \{ instruction: prompt\.trim\(\), output_format: "png", quality \}/,
+    /configuration: \{ instruction: prompt\.trim\(\), output_format: "png", quality: "balanced" \}/,
   );
   assert.match(
     detail,
@@ -139,6 +139,24 @@ test("workflow pages submit the bounded inputs and failed-only retry scope", asy
 });
 
 
+test("upload inputs match the backend image contract and recover from file-level failures", async () => {
+  const assets = await utf8("app/assets/page.tsx");
+  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const commerce = await utf8("components/commerce-skill-workspace.tsx");
+  const product = await utf8("components/product-image-workspace.tsx");
+
+  assert.match(detail, /accept="image\/jpeg,image\/png,image\/webp"/);
+  assert.doesNotMatch(detail, /accept="image\/\*"/);
+  assert.match(assets, /fileInput\.current\.value = "";\s*upload\.mutate\(\{ file \}\)/);
+  assert.match(detail, /const failures: string\[\] = \[\]/);
+  assert.match(detail, /event\.currentTarget\.value = ""/);
+  assert.match(detail, /setUploadError\(/);
+  for (const source of [commerce, product]) {
+    assert.match(source, /const failures: string\[\] = \[\]/);
+    assert.match(source, /if \(uploadedIds\.length\)/);
+    assert.match(source, /failures\.push\(/);
+  }
+});
 test("mask editor exposes brush, eraser, and rectangle authority tools", async () => {
   const editor = await utf8("components/mask-editor.tsx");
   assert.match(editor, /"brush" \| "eraser" \| "rectangle"/);

@@ -25,9 +25,9 @@ export default function DashboardPage() {
           <Link href="/#tools" className="primary-button"><Sparkles size={16} />新建创作</Link>
         </div>
         <section className="overview-strip">
-          <div><p>已加载任务</p><strong>{jobs.data?.total ?? items.length}</strong><span>API 当前窗口</span></div>
+          <div><p>已加载任务</p><strong>{jobs.data?.total ?? items.length}</strong><span>当前任务列表</span></div>
           <div><p>已完成</p><strong>{completed}</strong><span>已完成任务</span></div>
-          <div><p>正在处理</p><strong>{active}</strong><span>自动轮询更新</span></div>
+          <div><p>正在处理</p><strong>{active}</strong><span>状态自动同步</span></div>
           <div className="overview-strip__progress"><ProgressRing value={items.length ? Math.round((completed / items.length) * 100) : 0} label="完成率" /><span><p>任务完成率</p><strong>{items.length ? `${Math.round((completed / items.length) * 100)}%` : "暂无任务"}</strong><small>根据当前任务列表统计</small></span></div>
         </section>
         <section className="dashboard-grid">
@@ -46,7 +46,7 @@ export default function DashboardPage() {
           </div>
           <div className="dashboard-shortcuts">
             <div className="card-heading"><div><span>快捷开始</span><h2>常用创作工具</h2></div><ImagePlus size={22} /></div>
-            <Link href="/workspace/local-edit"><strong>局部修改</strong><span>上传素材并进行局部精修</span><ArrowRight size={16} /></Link>
+            <Link href="/workspace/local-edit"><strong>一句话改图</strong><span>上传素材并进行局部精修</span><ArrowRight size={16} /></Link>
             <Link href="/workspace/detail-pack"><strong>商品详情图</strong><span>自动规划并生成商品详情套图</span><ArrowRight size={16} /></Link>
           </div>
         </section>

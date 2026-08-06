@@ -1,12 +1,12 @@
 import type { Job, JobDetail, JobType } from "@/lib/api/types";
 
 const JOB_TYPE_LABELS: Record<JobType, string> = {
-  local_edit: "局部修改",
+  local_edit: "一句话改图",
   product_image: "万能生图",
-  reference_remix: "参考图二创",
+  reference_remix: "一键模仿",
   creative_image: "电商创意图",
-  detail_pack: "详情套图",
-  amazon_visual_suite: "Amazon 视觉套图",
+  detail_pack: "商品详情图",
+  amazon_visual_suite: "亚马逊套图",
 };
 
 export function jobTypeLabel(type: JobType): string {

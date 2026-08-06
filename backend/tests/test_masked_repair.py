@@ -94,11 +94,16 @@ def _create_job(
     client: TestClient,
     source_id: str,
     mask_id: str,
+    *,
+    instruction: str | None = None,
 ) -> tuple[int, dict]:
+    payload = local_edit_payload(source_id, mask_id)
+    if instruction is not None:
+        payload["configuration"]["instruction"] = instruction
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
         headers={"Idempotency-Key": str(uuid4())},
-        json=local_edit_payload(source_id, mask_id),
+        json=payload,
     )
     return response.status_code, response.json()
 
@@ -484,6 +489,10 @@ def test_visual_review_retries_once_without_regenerating_and_records_attempts(
     status_code, job = _create_job(client, source["id"], mask["id"])
     assert status_code == 202
     assert _dispatch(client) == 1
+    body = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert body["api_request_count"] == 3
 
     with client.app.state.session_factory() as session:
         usage = session.scalar(
@@ -529,7 +538,7 @@ def test_terminal_quota_settlement_releases_unused_retry_without_fake_actual_cos
     settings.task_runner = "tengli"
     settings.tengli_daily_budget_usd = 0.6
     settings.tengli_monthly_budget_usd = 5
-    settings.tengli_daily_request_limit = 5
+    settings.tengli_daily_request_limit = 6
     settings.tengli_planner_reserve_micros = 250_000
     gateway = OfflineMaskedGateway(report_actual_cost=False)
     _install_runner(client, gateway)
@@ -542,6 +551,7 @@ def test_terminal_quota_settlement_releases_unused_retry_without_fake_actual_cos
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}"
     ).json()
     assert first_body["status"] == "completed"
+    assert first_body["api_request_count"] == 2
 
     second_status, _ = _create_job(client, source["id"], mask["id"])
     assert second_status == 202
@@ -572,12 +582,15 @@ def test_terminal_quota_settlement_releases_unused_retry_without_fake_actual_cos
         assert attempts is not None
         assert usage is not None
         assert usage.actual_cost_micros is None
+        assert usage.raw_usage["network_requests"] == 2
+        assert usage.raw_usage["metrics"]["transport_attempts"] == 1
+        assert usage.raw_usage["metrics"]["visual_review_requests"] == 1
         assert settlement.details["charged_cost_micros"] == 90_000
         assert settlement.details["actual_provider_request_count"] == 2
         assert settlement.details["cost_basis"] == "estimated_fallback"
         assert settlement.details["actual_cost_reported_count"] == 0
         assert release.details["released_cost_micros"] == 340_000
-        assert release.details["released_request_count"] == 1
+        assert release.details["released_request_count"] == 2
         assert attempts.details["attempts"][0]["actual_cost_reported"] is False
 
 
@@ -857,6 +870,69 @@ def test_empty_and_full_masks_fail_before_provider(
     assert failed_item["error_details"]["needs_reselection"] is True
     assert gateway.masked_calls == []
 
+
+
+def test_encoding_damaged_instruction_fails_before_provider_calls(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 2
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 20
+    gateway = OfflineMaskedGateway()
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+
+    status_code, job = _create_job(
+        client,
+        source["id"],
+        mask["id"],
+        instruction=(
+            "???????????????;??????????POLARIS ????????????????"
+        ),
+    )
+    assert status_code == 202
+    assert _dispatch(client) == 1
+
+    body = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert body["status"] == "failed"
+    assert body["items"][0]["error_code"] == (
+        "LOCAL_EDIT_INSTRUCTION_ENCODING_INVALID"
+    )
+    assert body["api_request_count"] == 0
+    assert gateway.masked_calls == []
+    assert gateway.review_calls == []
+    with client.app.state.session_factory() as session:
+        usage = session.scalar(
+            select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
+        )
+        assert usage is not None
+        assert usage.raw_usage["network_requests"] == 0
+        assert usage.actual_cost_micros == 0
+
+    second_status, _ = _create_job(client, source["id"], mask["id"])
+    assert second_status == 202
+    with client.app.state.session_factory() as session:
+        settlement = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job["id"],
+                AuditEventRecord.action == "provider.beta_job_settled",
+            )
+        )
+        release = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job["id"],
+                AuditEventRecord.action == "provider.beta_job_released",
+            )
+        )
+        assert settlement is not None
+        assert release is not None
+        assert settlement.details["charged_cost_micros"] == 0
+        assert settlement.details["actual_provider_request_count"] == 0
+        assert release.details["released_request_count"] == 4
 
 def test_dimensions_kind_and_cross_workspace_are_rejected_at_api(
     client: TestClient,

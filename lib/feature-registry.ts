@@ -82,7 +82,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "local-edit",
     title: "一句话改图",
-    shortTitle: "局部改图",
+    shortTitle: "一句话改图",
     description: "涂选允许修改的区域，用一句话完成像素级局部精修。",
     category: "quick_edit",
     route: "/workspace/local-edit",
@@ -109,7 +109,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "change-color",
     title: "商品换色",
-    shortTitle: "换色",
+    shortTitle: "商品换色",
     description: "保留商品纹理、材质和品牌细节，快速生成目标配色。",
     category: "quick_edit",
     route: "/workspace/product-image/change-color",
@@ -138,7 +138,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "change-background",
     title: "更换背景",
-    shortTitle: "换背景",
+    shortTitle: "更换背景",
     description: "保留商品主体与边缘细节，替换为更匹配渠道的背景。",
     category: "quick_edit",
     route: "/workspace/product-image/change-background",
@@ -167,7 +167,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "change-scene",
     title: "更换场景",
-    shortTitle: "换场景",
+    shortTitle: "更换场景",
     description: "在保留商品构图的前提下，重建光线、反射与环境氛围。",
     category: "quick_edit",
     route: "/workspace/product-image/change-scene",
@@ -195,7 +195,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "change-model",
     title: "更换模特",
-    shortTitle: "换模特",
+    shortTitle: "更换模特",
     description: "保留商品、服装和姿态，替换更符合目标人群的模特。",
     category: "quick_edit",
     route: "/workspace/product-image/change-model",
@@ -252,7 +252,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "white-background",
     title: "电商白底图",
-    shortTitle: "白底图",
+    shortTitle: "电商白底图",
     description: "生成主体比例稳定、阴影可控、适配平台规范的商品白底图。",
     category: "product_image",
     route: "/workspace/product-image/white-background",
@@ -280,7 +280,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "model-image",
     title: "模特商品图",
-    shortTitle: "模特图",
+    shortTitle: "模特商品图",
     description: "根据商品类型生成模特、姿态、景别与场景一致的商品图。",
     category: "product_image",
     route: "/workspace/product-image/model-image",
@@ -308,7 +308,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "try-on",
     title: "商品试穿",
-    shortTitle: "试穿",
+    shortTitle: "商品试穿",
     description: "将服饰商品自然适配到模特，控制身份、姿态和穿着效果。",
     category: "product_image",
     route: "/workspace/product-image/try-on",
@@ -335,8 +335,8 @@ export const FEATURE_REGISTRY = [
   },
   {
     id: "reference-remix",
-    title: "参考图二创",
-    shortTitle: "参考二创",
+    title: "一键模仿",
+    shortTitle: "一键模仿",
     description: "借鉴参考图的构图与光影，替换为自己的商品、品牌和卖点。",
     category: "product_image",
     route: "/workspace/reference-remix",
@@ -363,7 +363,7 @@ export const FEATURE_REGISTRY = [
   {
     id: "creative-image",
     title: "电商创意图",
-    shortTitle: "创意图",
+    shortTitle: "电商创意图",
     description: "从卖点、痛点、场景和活动方向生成成组电商创意素材。",
     category: "product_image",
     route: "/workspace/creative-image",
@@ -383,13 +383,13 @@ export const FEATURE_REGISTRY = [
     searchKeywords: ["电商创意图", "卖点", "广告", "活动图"],
     featured: false,
     inputHint: "商品图；竞品图可选",
-    outputHint: "默认 4 张，最多 4 张",
+    outputHint: "默认 1 张，最多 12 张",
     guidance: "每张结果是独立可交付图片，不以拼图或提示词占位。",
   },
   {
     id: "detail-pack",
     title: "商品详情图",
-    shortTitle: "详情套图",
+    shortTitle: "商品详情图",
     description: "在同一页面选择国内或国际市场，自动规划并逐页生成详情套图。",
     category: "commerce_pack",
     route: "/workspace/detail-pack",
@@ -415,8 +415,8 @@ export const FEATURE_REGISTRY = [
   },
   {
     id: "amazon-visual-suite",
-    title: "亚马逊主副图 A+",
-    shortTitle: "Amazon A+",
+    title: "亚马逊套图",
+    shortTitle: "亚马逊套图",
     description: "一次生成主图、副图和桌面/移动 A+ 的固定 21 张视觉套图。",
     category: "commerce_pack",
     route: "/workspace/amazon-visual-suite",

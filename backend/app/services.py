@@ -57,6 +57,7 @@ def new_id(prefix: str) -> str:
 
 
 _quota_enabled: bool = True
+_credit_enforcement_enabled: bool = True
 
 
 def set_quota_enabled(enabled: bool) -> None:
@@ -66,6 +67,23 @@ def set_quota_enabled(enabled: bool) -> None:
 
 def quota_enabled() -> bool:
     return _quota_enabled
+
+
+def set_credit_enforcement_enabled(enabled: bool) -> None:
+    """Toggle membership-style workspace balance enforcement.
+
+    Credit reservations and ledger entries remain active whenever provider quota
+    tracking is enabled. Disabling enforcement only turns reservations into
+    accounting-only records so internal beta usage is never rejected for an
+    exhausted workspace balance.
+    """
+
+    global _credit_enforcement_enabled
+    _credit_enforcement_enabled = enabled
+
+
+def credit_enforcement_enabled() -> bool:
+    return _credit_enforcement_enabled
 
 
 def canonical_hash(value: Any) -> str:
@@ -495,6 +513,24 @@ def enforce_active_job_limit(session: Session, workspace_id: str) -> None:
         )
 
 
+def _credit_reservation_is_enforced(
+    session: Session,
+    reservation: CreditReservationRecord,
+) -> bool:
+    """Recover the reservation's original enforcement mode from its ledger."""
+
+    reserve_entry = session.scalar(
+        select(CreditLedgerEntryRecord).where(
+            CreditLedgerEntryRecord.reservation_id == reservation.id,
+            CreditLedgerEntryRecord.entry_type == "reserve",
+        )
+    )
+    if reserve_entry is None:
+        # Legacy reservations predate the tracking-only mode and were enforced.
+        return True
+    return reserve_entry.delta_reserved_credits > 0
+
+
 def reserve_credits(
     session: Session, workspace_id: str, job: JobRecord, credits: int
 ) -> CreditReservationRecord | None:
@@ -524,8 +560,9 @@ def reserve_credits(
             "CREDIT_ACCOUNT_NOT_CONFIGURED",
             "工作区额度账户尚未配置。",
         )
+    enforced = _credit_enforcement_enabled
     available = account.balance_credits - account.reserved_credits
-    if available < credits:
+    if enforced and available < credits:
         raise ApiError(
             status.HTTP_402_PAYMENT_REQUIRED,
             "BUDGET_LIMIT_EXCEEDED",
@@ -540,8 +577,10 @@ def reserve_credits(
         settled_credits=0,
         status=CreditReservationStatus.ACTIVE.value,
     )
-    account.reserved_credits += credits
-    account.version += 1
+    reserved_delta = credits if enforced else 0
+    if enforced:
+        account.reserved_credits += credits
+        account.version += 1
     session.add(reservation)
     session.flush()
     session.add(
@@ -551,7 +590,7 @@ def reserve_credits(
             job_id=job.id,
             entry_type="reserve",
             delta_balance_credits=0,
-            delta_reserved_credits=credits,
+            delta_reserved_credits=reserved_delta,
             balance_after_credits=account.balance_credits,
             reserved_after_credits=account.reserved_credits,
         )
@@ -574,9 +613,11 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
     if account is None:
         return
     charged = min(actual_credits, reservation.reserved_credits)
-    account.reserved_credits -= reservation.reserved_credits
-    account.balance_credits -= charged
-    account.version += 1
+    enforced = _credit_reservation_is_enforced(session, reservation)
+    if enforced:
+        account.reserved_credits -= reservation.reserved_credits
+        account.balance_credits -= charged
+        account.version += 1
     reservation.settled_credits = charged
     reservation.status = CreditReservationStatus.SETTLED.value
     session.add(
@@ -585,8 +626,10 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
             reservation_id=reservation.id,
             job_id=job.id,
             entry_type="settle",
-            delta_balance_credits=-charged,
-            delta_reserved_credits=-reservation.reserved_credits,
+            delta_balance_credits=-charged if enforced else 0,
+            delta_reserved_credits=(
+                -reservation.reserved_credits if enforced else 0
+            ),
             balance_after_credits=account.balance_credits,
             reserved_after_credits=account.reserved_credits,
         )
@@ -619,8 +662,10 @@ def release_credits(session: Session, job: JobRecord) -> None:
         return
 
     released = reservation.reserved_credits
-    account.reserved_credits -= released
-    account.version += 1
+    enforced = _credit_reservation_is_enforced(session, reservation)
+    if enforced:
+        account.reserved_credits -= released
+        account.version += 1
     reservation.status = CreditReservationStatus.RELEASED.value
     session.add(
         CreditLedgerEntryRecord(
@@ -629,7 +674,7 @@ def release_credits(session: Session, job: JobRecord) -> None:
             job_id=job.id,
             entry_type="release",
             delta_balance_credits=0,
-            delta_reserved_credits=-released,
+            delta_reserved_credits=-released if enforced else 0,
             balance_after_credits=account.balance_credits,
             reserved_after_credits=account.reserved_credits,
         )

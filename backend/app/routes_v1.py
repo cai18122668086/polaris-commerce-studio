@@ -1315,6 +1315,13 @@ def clone_job(
     session.flush()
     _copy_job_relations_for_retry(session, source, cloned, selected)
     release_credits(session, source)
+    _reserve_real_provider_job_if_enabled(
+        session,
+        request,
+        cloned,
+        workspace.principal.user_id,
+        runnable_item_count=len(selected),
+    )
     reserve_credits(
         session,
         workspace.workspace_id,
@@ -1693,7 +1700,9 @@ def _reserve_real_provider_job_if_enabled(
         provider_requests = job.expected_item_count * 2 + group_count
     else:
         estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros
-        provider_requests = 3
+        # Masked repair can make up to two edit calls and two visual-review
+        # calls. Reserve the full fail-closed request envelope.
+        provider_requests = 4
     reserve_provider_job_quota(
         session,
         job=job,

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   ArrowRight,
@@ -6,10 +6,10 @@ import {
   Clock3,
   ImagePlus,
   Info,
+  Images,
   LoaderCircle,
   Palette,
   RefreshCcw,
-  ShieldCheck,
   Sparkles,
   Upload,
 } from "lucide-react";
@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { AssetLibraryPicker } from "@/components/asset-library-picker";
+import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
@@ -63,14 +63,20 @@ function UploadPanel({
   count,
   required,
   uploading,
+  disabled = false,
+  uploadLabel = "本地上传",
   onFiles,
+  onOpenLibrary,
 }: {
   title: string;
   description: string;
   count: number;
   required?: boolean;
   uploading: boolean;
+  disabled?: boolean;
+  uploadLabel?: string;
   onFiles: (files: File[]) => void;
+  onOpenLibrary?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
@@ -84,14 +90,28 @@ function UploadPanel({
         <p>{description}</p>
         <small>{count ? `已选择 ${count} 张素材` : "支持 JPG、PNG、WebP"}</small>
       </div>
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={uploading}
-      >
-        {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
-        本地上传
-      </button>
+      <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading || disabled}
+        >
+          {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
+          {uploadLabel}
+        </button>
+        {onOpenLibrary ? (
+          <button
+            type="button"
+            data-library
+            aria-haspopup="dialog"
+            onClick={onOpenLibrary}
+            disabled={disabled}
+          >
+            <Images size={16} />
+            从素材库选择
+          </button>
+        ) : null}
+      </div>
       <input
         ref={inputRef}
         className={styles.hiddenInput}
@@ -115,6 +135,8 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const upload = useUploadAsset(workspace?.id);
   const [productAssetIds, setProductAssetIds] = useState<string[]>([]);
   const [referenceAssetIds, setReferenceAssetIds] = useState<string[]>([]);
+  const [productLibraryOpen, setProductLibraryOpen] = useState(false);
+  const [referenceLibraryOpen, setReferenceLibraryOpen] = useState(false);
   const [platformCode, setPlatformCode] = useState("tmall");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
   const [imageCount, setImageCount] = useState(1);
@@ -131,21 +153,25 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const requestError = workspaceError ?? upload.error ?? job.error;
 
   const progressText = useMemo(() => {
-    if (!job.data) return "任务创建后将自动轮询状态";
-    return `${job.data.succeeded_item_count} / ${job.data.expected_item_count} 项完成`;
+    if (!job.data) return "正在准备生成";
+    return `${job.data.succeeded_item_count} / ${job.data.expected_item_count} 张已完成`;
   }, [job.data]);
 
   if (!feature) return null;
-  const FeatureIcon = feature.icon;
 
   const addUploadedAssets = async (files: File[], role: "product" | "reference") => {
     setUiError(undefined);
-    try {
-      const uploadedIds: string[] = [];
-      for (const file of files.slice(0, 8)) {
+    const uploadedIds: string[] = [];
+    const failures: string[] = [];
+    for (const file of files.slice(0, 8)) {
+      try {
         const asset = await upload.mutateAsync({ file, mediaKind: "image" });
         uploadedIds.push(asset.id);
+      } catch (error) {
+        failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
       }
+    }
+    if (uploadedIds.length) {
       if (role === "product") {
         setProductAssetIds((current) =>
           [...new Set([...current, ...uploadedIds])].slice(0, 8),
@@ -161,8 +187,11 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
           current.filter((id) => !uploadedIds.includes(id)),
         );
       }
-    } catch (error) {
-      setUiError(errorMessage(error));
+    }
+    if (failures.length) {
+      const uploadedNote = uploadedIds.length ? `已成功上传 ${uploadedIds.length} 张；` : "";
+      const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
+      setUiError(`${uploadedNote}${failures[0]}${remaining}`);
     }
   };
 
@@ -220,19 +249,14 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
           eyebrow="万能生图 · 统一工作台"
           title={feature.title}
           description={feature.description}
-          meta={
-            <span className={styles.safetyBadge}>
-              <ShieldCheck size={15} /> 素材与任务 API 隔离
-            </span>
-          }
         />
 
         <nav className={styles.stepBar} aria-label="创作步骤">
           {[
             ["01", "选择素材"],
             ["02", "生成设置"],
-            ["03", "创建任务"],
-            ["04", "交付结果"],
+            ["03", "开始生成"],
+            ["04", "生成结果"],
           ].map(([number, label], index) => (
             <span
               key={number}
@@ -248,7 +272,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
           ))}
         </nav>
 
-        <div className={styles.workspaceGrid}>
+        <div className={styles.workspaceGrid} data-single-column>
           <main className={styles.mainColumn}>
             <section className={styles.card}>
               <div className={styles.sectionHeading}>
@@ -266,35 +290,23 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   count={productAssetIds.length}
                   required
                   uploading={upload.isPending}
+                  disabled={Boolean(jobId)}
+                  uploadLabel="上传图片"
                   onFiles={(files) => void addUploadedAssets(files, "product")}
+                  onOpenLibrary={() => setProductLibraryOpen(true)}
                 />
                 <UploadPanel
                   title="参考图"
                   description="可选场景、背景、模特或颜色参考，不会替代商品主体。"
                   count={referenceAssetIds.length}
                   uploading={upload.isPending}
+                  disabled={Boolean(jobId)}
+                  uploadLabel="上传图片"
                   onFiles={(files) => void addUploadedAssets(files, "reference")}
+                  onOpenLibrary={() => setReferenceLibraryOpen(true)}
                 />
               </div>
 
-              <AssetLibraryPicker
-                workspaceId={workspace?.id}
-                title="从素材库选择商品图"
-                description="至少选择 1 张，最多 8 张。"
-                selectedIds={productAssetIds}
-                excludedIds={referenceAssetIds}
-                onChange={setProductAssetIds}
-                disabled={Boolean(jobId)}
-              />
-              <AssetLibraryPicker
-                workspaceId={workspace?.id}
-                title="从素材库选择可选参考图"
-                description="用于提供场景、风格、模特或颜色线索。"
-                selectedIds={referenceAssetIds}
-                excludedIds={productAssetIds}
-                onChange={setReferenceAssetIds}
-                disabled={Boolean(jobId)}
-              />
             </section>
 
             <section className={styles.card}>
@@ -308,7 +320,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
 
               <div className={styles.formGrid}>
                 <label>
-                  <span>功能 preset</span>
+                  <span>创作功能</span>
                   <select
                     value={feature.presetSlug}
                     onChange={(event) =>
@@ -320,7 +332,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                       <option key={item.taskPreset} value={item.presetSlug}>{item.title}</option>
                     ))}
                   </select>
-                  <small>路由会映射为后端 task_type：{feature.taskPreset}</small>
                 </label>
                 <label>
                   <span>目标平台</span>
@@ -407,7 +418,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                 <div className={styles.sectionHeading}>
                   <div>
                     <span>03</span>
-                    <div><h2>任务状态</h2><p>任务详情约每 1.5 秒自动轮询。</p></div>
+                    <div><h2>生成进度</h2><p>生成进度会自动更新。</p></div>
                   </div>
                   {job.data ? <StatusBadge status={job.data.status} /> : null}
                 </div>
@@ -420,7 +431,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                     <div className={styles.progressRow}>
                       <div>
                         <strong>{progressText}</strong>
-                        <span>{job.data.stage ? `当前阶段：${job.data.stage}` : "等待执行器更新阶段"}</span>
+                        <span>正在生成，请稍候。</span>
                       </div>
                       <em>{Math.round(job.data.progress)}%</em>
                     </div>
@@ -428,9 +439,9 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                       <i style={{ width: `${Math.max(0, Math.min(100, job.data.progress))}%` }} />
                     </div>
                     <div className={styles.itemGrid}>
-                      {job.data.items.map((item) => (
+                      {job.data.items.map((item, index) => (
                         <span key={item.id} data-status={item.status}>
-                          <i /> {item.item_key}
+                          <i /> 图片 {index + 1}
                         </span>
                       ))}
                     </div>
@@ -450,43 +461,48 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
             />
           </main>
 
-          <aside className={styles.sideColumn}>
-            <section className={styles.summaryCard}>
-              <span className={styles.summaryIcon}><FeatureIcon size={24} /></span>
-              <p>当前功能</p>
-              <h2>{feature.title}</h2>
-              <small>{feature.guidance}</small>
-              <dl>
-                <div><dt>输入</dt><dd>{feature.inputHint}</dd></div>
-                <div><dt>输出</dt><dd>{feature.outputHint}</dd></div>
-                <div><dt>Skill</dt><dd>{feature.skillId}</dd></div>
-              </dl>
-            </section>
-
-            <section className={styles.guardrailCard} data-runtime-mode={workflow.mode}>
-              <div><ShieldCheck size={19} /><strong>{workflow.badge}</strong></div>
-              <p>{workflow.message}</p>
-              {workflow.reasonCode ? <small>{workflow.reasonCode}</small> : null}
-            </section>
-
-            <section className={styles.guardrailCard}>
-              <div><ShieldCheck size={19} /><strong>执行边界</strong></div>
-              <p>前端只经工作区 API 上传素材、创建 Job 和读取 deliverable output。</p>
-              <ul>
-                <li>图片生成与交付均通过安全的任务服务完成</li>
-                <li>每张结果必须是独立 output Asset</li>
-                <li>失败项不会用拼图或占位图替代</li>
-              </ul>
-            </section>
-          </aside>
         </div>
+
+        {productLibraryOpen ? (
+          <AssetLibraryDialog
+            workspaceId={workspace?.id}
+            title="选择商品图"
+            description="从个人素材库中选择清晰、主体完整的商品图片。"
+            selectedIds={productAssetIds}
+            excludedIds={referenceAssetIds}
+            onClose={() => setProductLibraryOpen(false)}
+            onConfirm={(assetIds) => {
+              setProductAssetIds(assetIds);
+              setReferenceAssetIds((current) => current.filter((id) => !assetIds.includes(id)));
+              setProductLibraryOpen(false);
+            }}
+            disabled={Boolean(jobId)}
+          />
+        ) : null}
+
+        {referenceLibraryOpen ? (
+          <AssetLibraryDialog
+            workspaceId={workspace?.id}
+            title="选择参考图"
+            description="选择用于场景、背景、风格或光线参考的图片。"
+            selectedIds={referenceAssetIds}
+            excludedIds={productAssetIds}
+            onClose={() => setReferenceLibraryOpen(false)}
+            onConfirm={(assetIds) => {
+              setReferenceAssetIds(assetIds);
+              setProductAssetIds((current) => current.filter((id) => !assetIds.includes(id)));
+              setReferenceLibraryOpen(false);
+            }}
+            disabled={Boolean(jobId)}
+          />
+        ) : null}
 
         <footer className={styles.stickyBar}>
           <div>
             <span>{workspacePending ? <LoaderCircle className="spin" size={17} /> : <Clock3 size={17} />}</span>
             <p>
               <strong>{workspace?.name ?? "正在连接工作区"}</strong>
-              <small>{jobId ? progressText : `将创建 ${imageCount} 个独立 JobItem`}</small>
+              <small>{jobId ? progressText : `预计生成 ${imageCount} 张图片`}</small>
             </p>
           </div>
           <div className={styles.stickyActions}>

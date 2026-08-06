@@ -196,7 +196,7 @@ export function useCancelJob(workspaceId: string | undefined) {
             path: { workspace_id: id, job_id: input.jobId },
             header: { "Idempotency-Key": key },
           },
-          body: { reason: "用户在内部 mock 内测界面取消" },
+          body: { reason: "用户主动取消任务" },
         },
       );
       return unwrapApiResponse(result);

@@ -15,6 +15,7 @@ from app.domain import JobStatus, OutboxStatus, PlanValidationStatus
 from app.main import create_app
 from app.models import (
     AuditEventRecord,
+    CreditReservationRecord,
     JobAssetRecord,
     JobAttemptRecord,
     JobItemRecord,
@@ -22,11 +23,12 @@ from app.models import (
     JobRecord,
     OutboxEventRecord,
     UsageEventRecord,
+    WorkspaceCreditAccountRecord,
     utc_now,
 )
 from app.outbox import publish_pending_events
 from app.routes_v1 import runtime_status_response
-from app.services import set_quota_enabled
+from app.services import set_credit_enforcement_enabled, set_quota_enabled
 
 WORKSPACE_ID = "ws_test"
 
@@ -438,6 +440,60 @@ def test_real_provider_quota_disabled_skips_recurring_limits(
         set_quota_enabled(True)
 
 
+def test_real_provider_zero_recurring_limits_keep_usage_ledger_unbounded(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.provider_quota_enabled = True
+    settings.workspace_credit_enforcement_enabled = False
+    settings.tengli_daily_budget_usd = 0
+    settings.tengli_monthly_budget_usd = 0
+    settings.tengli_daily_request_limit = 0
+    set_quota_enabled(True)
+    set_credit_enforcement_enabled(False)
+    try:
+        asset = upload_asset(client)
+        with client.app.state.session_factory() as session:
+            account = session.get(WorkspaceCreditAccountRecord, WORKSPACE_ID)
+            assert account is not None
+            account.balance_credits = 0
+            account.reserved_credits = 0
+            session.commit()
+
+        response = client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+            headers=idem(),
+            json=_detail_submit_payload(asset["id"]),
+        )
+
+        assert response.status_code == 202, response.text
+        job_id = response.json()["id"]
+        with client.app.state.session_factory() as session:
+            provider_reservation = session.scalar(
+                select(AuditEventRecord).where(
+                    AuditEventRecord.action == "provider.beta_job_reserved",
+                    AuditEventRecord.resource_id == job_id,
+                )
+            )
+            credit_reservation = session.scalar(
+                select(CreditReservationRecord).where(
+                    CreditReservationRecord.job_id == job_id
+                )
+            )
+            account = session.get(WorkspaceCreditAccountRecord, WORKSPACE_ID)
+        assert provider_reservation is not None
+        assert provider_reservation.details["daily_limit_micros"] == 0
+        assert provider_reservation.details["monthly_limit_micros"] == 0
+        assert provider_reservation.details["daily_request_limit"] == 0
+        assert credit_reservation is not None
+        assert account is not None
+        assert account.balance_credits == 0
+        assert account.reserved_credits == 0
+    finally:
+        settings.workspace_credit_enforcement_enabled = True
+        set_credit_enforcement_enabled(True)
+
 def test_real_provider_job_reservation_is_idempotent_and_daily_bounded(
     client: TestClient,
 ) -> None:
@@ -802,11 +858,22 @@ def test_upload_rejects_missing_idempotency_and_invalid_images(
         headers=idem(),
         files={"file": ("fake.png", b"not-an-image", "image/png")},
     )
+    corrupt_png = bytearray(image_payload(size=(2, 2)))
+    idat_offset = corrupt_png.index(b"IDAT")
+    idat_length = int.from_bytes(corrupt_png[idat_offset - 4 : idat_offset], "big")
+    corrupt_png[idat_offset + 4 + idat_length] ^= 1
+    corrupt = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        headers=idem(),
+        files={"file": ("corrupt.png", bytes(corrupt_png), "image/png")},
+    )
     assert missing_key.status_code == 400
     assert missing_key.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
     assert invalid.status_code == 400
     assert invalid.json()["error"]["code"] == "INVALID_IMAGE"
     assert invalid.json()["error"]["request_id"].startswith("req_")
+    assert corrupt.status_code == 400
+    assert corrupt.json()["error"]["code"] == "INVALID_IMAGE"
 
 
 def test_idempotency_key_reuse_with_different_request_is_rejected(
@@ -892,6 +959,40 @@ def test_cancel_is_terminal_and_retry_creates_a_new_job(client: TestClient) -> N
     assert retried.json()["id"] != job["id"]
     assert retried.json()["retry_of_job_id"] == job["id"]
     assert retried.json()["root_job_id"] == job["id"]
+
+
+def test_clone_real_provider_job_reserves_quota_before_dispatch(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="source.png")
+    mask = upload_asset(client, filename="mask.png", media_kind="mask")
+    job = create_local_edit_job(client, source["id"], mask["id"])
+    assert dispatch_pending(client) == 1
+
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.tengli_daily_budget_usd = 2
+    settings.tengli_monthly_budget_usd = 5
+    settings.tengli_daily_request_limit = 20
+    settings.tengli_planner_reserve_micros = 250_000
+
+    cloned = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/clone",
+        headers=idem(),
+    )
+
+    assert cloned.status_code == 201, cloned.text
+    cloned_id = cloned.json()["id"]
+    with client.app.state.session_factory() as session:
+        reservation = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.action == "provider.beta_job_reserved",
+                AuditEventRecord.resource_id == cloned_id,
+                AuditEventRecord.request_id == cloned_id,
+            )
+        )
+    assert reservation is not None
+    assert reservation.details["provider_request_count"] == 4
 
 
 def test_detail_pack_stops_for_validated_plan_confirmation(

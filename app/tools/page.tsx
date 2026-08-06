@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { ArrowRight, Search, Sparkles, WandSparkles, X } from "lucide-react";
 import Link from "next/link";
@@ -69,7 +69,7 @@ export default function ToolsPage() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索功能，例如：换背景、白底图、Amazon A+"
+            placeholder="搜索功能，例如：更换背景、电商白底图、亚马逊套图"
             aria-label="搜索 AI 创作功能"
           />
           {query ? (

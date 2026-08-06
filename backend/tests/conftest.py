@@ -24,6 +24,7 @@ def settings(tmp_path) -> Settings:
         auto_process_jobs=False,
         task_dispatcher="inline",
         mock_job_delay_seconds=0,
+        workspace_credit_enforcement_enabled=True,
         max_upload_bytes=2 * 1024 * 1024,
         max_image_pixels=2_000_000,
     )

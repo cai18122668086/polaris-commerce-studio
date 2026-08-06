@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Image as ImageIcon } from "lucide-react";
 
@@ -29,8 +29,8 @@ export function ResultGrid({
     return (
       <div className={styles.resultEmpty}>
         <span><ImageIcon size={24} /></span>
-        <strong>可交付图片将在这里显示</strong>
-        <p>任务成功后，只展示标记为 deliverable 的独立 output Asset。</p>
+        <strong>生成结果</strong>
+        <p>结果图有效期30天，请尽快保存</p>
       </div>
     );
   }

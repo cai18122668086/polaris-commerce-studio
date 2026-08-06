@@ -124,7 +124,7 @@ class ImageValidator:
                 image_format = image.format
                 width, height = image.size
                 image.verify()
-        except (UnidentifiedImageError, OSError, ValueError) as exc:
+        except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
             raise UploadValidationError(
                 "INVALID_IMAGE",
                 "文件不是可识别的 PNG、JPEG 或 WebP 图片。",

@@ -93,7 +93,8 @@ export default function AssetsPage() {
   const chooseFile = () => fileInput.current?.click();
   const onFile = (file?: File) => {
     if (!file) return;
-    upload.mutate({ file }, { onSuccess: () => { if (fileInput.current) fileInput.current.value = ""; } });
+    if (fileInput.current) fileInput.current.value = "";
+    upload.mutate({ file });
   };
   const toggleSelected = (id: string) =>
     setSelected((items) => (items.includes(id) ? items.filter((item) => item !== id) : [...items, id]));
@@ -103,7 +104,7 @@ export default function AssetsPage() {
       <div className="content-page assets-page">
         <div className="page-title-row">
           <div>
-            <span>资产管理 · API 已连接</span>
+            <span>素材管理</span>
             <h1>个人素材库</h1>
             <p>上传后的素材会保存到当前工作区，可用于后续创作。</p>
           </div>
@@ -153,7 +154,7 @@ export default function AssetsPage() {
             </div>
           )}
           {(workspacePending || assetsQuery.isPending) && (
-            <div className="api-state"><LoaderCircle className="spin" size={24} /><p>正在从 API 加载素材…</p></div>
+            <div className="api-state"><LoaderCircle className="spin" size={24} /><p>正在加载素材…</p></div>
           )}
           {!requestError && !assetsQuery.isPending && assets.length === 0 && (
             <div className="empty-state">
@@ -165,8 +166,8 @@ export default function AssetsPage() {
           {selected.length > 0 && (
             <div className="selection-toolbar">
               <span><i><Check size={13} /></i>已选择 {selected.length} 项</span>
-              <button><Paintbrush2 size={15} />带入局部修改</button>
-              <button><Sparkles size={15} />创建详情套图</button>
+              <button><Paintbrush2 size={15} />带入一句话改图</button>
+              <button><Sparkles size={15} />创建商品详情图</button>
               <button onClick={() => setSelected([])}>取消选择</button>
             </div>
           )}

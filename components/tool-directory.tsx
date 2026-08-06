@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Search, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Search, Sparkles, type LucideIcon } from "lucide-react";
 
 import { HomeAiToolbox } from "@/components/home-ai-toolbox";
 import { HomeBannerCarousel } from "@/components/home-banner-carousel";
@@ -12,31 +12,30 @@ import {
   useRuntimeStatus,
 } from "@/features/runtime/api/runtime";
 import { FEATURE_REGISTRY } from "@/lib/feature-registry";
+import {
+  HOME_FEATURE_VISUALS,
+  type HomeFeatureImage,
+} from "@/lib/home-feature-visuals";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
-  { title?: string; description?: string }
+  { description?: string }
 > = {
   "local-edit": {
-    description: "局部修改，让你的出图更加精美",
+    description: "用一句话完成局部精修，让你的出图更加精美",
   },
-  "reference-remix": {
-    title: "一键模仿",
-  },
+
   "detail-pack": {
     description: "一键生成国内、国际全平台详情图",
   },
-  "amazon-visual-suite": {
-    title: "亚马逊套图",
-  },
+
 };
 
 const searchableTools = FEATURE_REGISTRY.map((feature) => {
   const presentation = FEATURE_PRESENTATION_OVERRIDES[feature.id];
   return {
     id: feature.id,
-    title: presentation?.title ?? feature.title,
-    registryTitle: feature.title,
+    title: feature.title,
     description: presentation?.description ?? feature.description,
     href: feature.route,
     icon: feature.icon,
@@ -52,17 +51,94 @@ const searchableTools = FEATURE_REGISTRY.map((feature) => {
 
 const featuredTools = searchableTools.filter((tool) => tool.featured);
 
+function FeatureVisualImage({
+  image,
+  className,
+}: {
+  image: HomeFeatureImage;
+  className: string;
+}) {
+  return (
+    <img
+      src={image.src}
+      width={image.width}
+      height={image.height}
+      className={className}
+      alt=""
+      loading="eager"
+      decoding="async"
+      draggable={false}
+    />
+  );
+}
+
+function HomeFeatureCardArt({
+  featureId,
+  FallbackIcon,
+}: {
+  featureId: string;
+  FallbackIcon: LucideIcon;
+}) {
+  const visual = HOME_FEATURE_VISUALS[featureId];
+
+  if (!visual) {
+    return (
+      <span
+        className="home-feature-card__art home-feature-card__art--fallback"
+        aria-hidden="true"
+      >
+        <FallbackIcon size={68} />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`home-feature-card__art home-feature-card__art--${visual.kind}`}
+      aria-hidden="true"
+    >
+      <span className="home-feature-card__visual-stage">
+        <FeatureVisualImage
+          image={visual.before}
+          className="home-feature-card__image home-feature-card__image--before"
+        />
+        <FeatureVisualImage
+          image={visual.after}
+          className={`home-feature-card__image home-feature-card__image--after${
+            visual.kind === "detail-scroll"
+              ? " home-feature-card__image--detail-long"
+              : ""
+          }`}
+        />
+        {visual.kind === "wipe" ? (
+          <span className="home-feature-card__wipe-line" />
+        ) : null}
+        {visual.kind === "detail-scroll" ? (
+          <FeatureVisualImage
+            image={visual.reducedMotionCover}
+            className="home-feature-card__image home-feature-card__image--detail-cover"
+          />
+        ) : null}
+        {visual.kind === "amazon" ? (
+          <span className="home-feature-card__count-badge">{"21 \u5f20"}</span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
 export function ToolDirectory() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const featureGridRef = useRef<HTMLDivElement>(null);
   const runtime = useRuntimeStatus();
   const keyword = query.trim().toLowerCase();
   const searchResults = keyword
     ? searchableTools
         .filter((tool) =>
-          `${tool.title} ${tool.registryTitle} ${tool.description} ${tool.keywords.join(" ")}`
+          `${tool.title} ${tool.description} ${tool.keywords.join(" ")}`
             .toLowerCase()
             .includes(keyword),
         )
@@ -78,6 +154,35 @@ export function ToolDirectory() {
     };
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
+
+  useEffect(() => {
+    const grid = featureGridRef.current;
+    if (
+      !grid ||
+      typeof IntersectionObserver === "undefined" ||
+      !window.matchMedia("(hover: none), (pointer: coarse)").matches
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-mobile-played");
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.45 },
+    );
+
+    const cards = grid.querySelectorAll<HTMLElement>(
+      ".home-feature-card[data-feature-visual]",
+    );
+    cards.forEach((card) => observer.observe(card));
+
+    return () => observer.disconnect();
   }, []);
 
 
@@ -99,7 +204,7 @@ export function ToolDirectory() {
           <p>快速定位，保留你熟悉的电商工作流程</p>
         </header>
 
-        <div className="home-feature-grid">
+        <div className="home-feature-grid" ref={featureGridRef}>
           {featuredTools.map((tool) => {
               const capability = resolveRuntimeCapability(
                 runtime.data,
@@ -117,6 +222,7 @@ export function ToolDirectory() {
                     unavailable ? " is-unavailable" : ""
                   }`}
                   data-feature-id={tool.id}
+                  data-feature-visual={HOME_FEATURE_VISUALS[tool.id]?.kind}
                   data-runtime-capability={tool.runtimeCapability}
                   data-capability-state={capability?.availability ?? "unknown"}
                   aria-disabled={unavailable || undefined}
@@ -130,9 +236,10 @@ export function ToolDirectory() {
                   }
                   key={tool.id}
                 >
-                  <span className="home-feature-card__art" aria-hidden="true">
-                    <Icon size={68} />
-                  </span>
+                  <HomeFeatureCardArt
+                    featureId={tool.id}
+                    FallbackIcon={Icon}
+                  />
                   <div>
                     <strong>{tool.title}</strong>
                     <span>{tool.description}</span>

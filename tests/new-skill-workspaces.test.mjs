@@ -58,7 +58,7 @@ test("creative and reference workspaces preserve the full count and aspect-ratio
   ]) {
     assert.match(workspace, new RegExp(size));
   }
-  assert.match(workspace, /严格交付尺寸：\{selectedSizeLabel\}/);
+  assert.match(workspace, /图片尺寸：\{selectedSizeLabel\}/);
   assert.match(
     workspace,
     /主图 2000 × 2000；副图 1200 × 1600；桌面 A\+ 1464 × 600；移动 A\+ 1600 × 1200/,
@@ -84,7 +84,7 @@ test("Amazon fixed pack delegates all 21 JobItems to the backend", async () => {
     workspace.indexOf("const submit = async"),
   );
   assert.match(workspace, /isAmazon \? 21 : imageCount/);
-  assert.match(workspace, /固定 21 个 JobItem 由后端创建/);
+  assert.match(workspace, /预计生成 21 张套图/);
   assert.match(amazonPlatforms, /value: "amazon-us"/);
   assert.doesNotMatch(amazonPlatforms, /tmall|jd|douyin|xiaohongshu|generic/);
   assert.match(workspace, /isAmazon \? amazonPlatforms : platforms/);

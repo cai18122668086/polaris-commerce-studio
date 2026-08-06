@@ -40,6 +40,7 @@ from app.services import (
     new_id,
     release_credits,
     reserve_credits,
+    set_credit_enforcement_enabled,
     set_quota_enabled,
     settle_credits,
 )
@@ -247,6 +248,103 @@ def test_reserve_credits_rejects_after_settle(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 # Fix 3 — quota_enabled switch
 # ---------------------------------------------------------------------------
+# Internal beta: unlimited workspace credits with full accounting
+# ---------------------------------------------------------------------------
+
+
+def test_tracking_only_credits_ignore_balance_and_keep_accounting(
+    client: TestClient,
+) -> None:
+    with client.app.state.session_factory() as session:
+        set_quota_enabled(True)
+        set_credit_enforcement_enabled(False)
+        try:
+            account = _seed_account(session)
+            account.balance_credits = 1
+            session.flush()
+            job = _make_job(session, estimated_credits=42)
+
+            reservation = reserve_credits(session, WORKSPACE_ID, job, 42)
+
+            assert reservation is not None
+            assert reservation.reserved_credits == 42
+            assert account.balance_credits == 1
+            assert account.reserved_credits == 0
+            reserve_entry = session.scalar(
+                select(CreditLedgerEntryRecord).where(
+                    CreditLedgerEntryRecord.reservation_id == reservation.id,
+                    CreditLedgerEntryRecord.entry_type == "reserve",
+                )
+            )
+            assert reserve_entry is not None
+            assert reserve_entry.delta_balance_credits == 0
+            assert reserve_entry.delta_reserved_credits == 0
+
+            settle_credits(session, job, 40)
+
+            assert reservation.status == CreditReservationStatus.SETTLED.value
+            assert reservation.settled_credits == 40
+            assert job.actual_credits == 40
+            assert account.balance_credits == 1
+            assert account.reserved_credits == 0
+            settle_entry = session.scalar(
+                select(CreditLedgerEntryRecord).where(
+                    CreditLedgerEntryRecord.reservation_id == reservation.id,
+                    CreditLedgerEntryRecord.entry_type == "settle",
+                )
+            )
+            assert settle_entry is not None
+            assert settle_entry.delta_balance_credits == 0
+            assert settle_entry.delta_reserved_credits == 0
+        finally:
+            set_credit_enforcement_enabled(True)
+
+
+def test_tracking_only_reservation_keeps_its_mode_if_runtime_flag_changes(
+    client: TestClient,
+) -> None:
+    with client.app.state.session_factory() as session:
+        set_quota_enabled(True)
+        set_credit_enforcement_enabled(False)
+        account = _seed_account(session)
+        job = _make_job(session, estimated_credits=150)
+        reservation = reserve_credits(session, WORKSPACE_ID, job, 150)
+        assert reservation is not None
+
+        set_credit_enforcement_enabled(True)
+        release_credits(session, job)
+
+        assert reservation.status == CreditReservationStatus.RELEASED.value
+        assert account.balance_credits == 100
+        assert account.reserved_credits == 0
+        release_entry = session.scalar(
+            select(CreditLedgerEntryRecord).where(
+                CreditLedgerEntryRecord.reservation_id == reservation.id,
+                CreditLedgerEntryRecord.entry_type == "release",
+            )
+        )
+        assert release_entry is not None
+        assert release_entry.delta_reserved_credits == 0
+
+
+def test_enforced_workspace_credits_still_reject_insufficient_balance(
+    client: TestClient,
+) -> None:
+    from app.errors import ApiError
+
+    with client.app.state.session_factory() as session:
+        set_quota_enabled(True)
+        set_credit_enforcement_enabled(True)
+        _seed_account(session)
+        job = _make_job(session, estimated_credits=101)
+
+        with pytest.raises(ApiError) as exc_info:
+            reserve_credits(session, WORKSPACE_ID, job, 101)
+
+        assert exc_info.value.code == "BUDGET_LIMIT_EXCEEDED"
+
+
+# ---------------------------------------------------------------------------
 
 
 def test_quota_disabled_reserve_returns_none(
@@ -326,12 +424,15 @@ def test_quota_enabled_flag_is_read_from_config(tmp_path) -> None:
         task_dispatcher="inline",
         mock_job_delay_seconds=0,
         provider_quota_enabled=False,
+        workspace_credit_enforcement_enabled=False,
     )
     with TestClient(create_app(settings)):
         assert services._quota_enabled is False
+        assert services._credit_enforcement_enabled is False
 
     # reset so other tests don't see the disabled state
     set_quota_enabled(True)
+    set_credit_enforcement_enabled(True)
 
 
 # ---------------------------------------------------------------------------

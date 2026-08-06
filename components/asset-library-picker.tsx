@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { Check, FileWarning, Image as ImageIcon, LoaderCircle } from "lucide-react";
+import { Check, FileWarning, Image as ImageIcon, LoaderCircle, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { useAssetAccessUrl, useAssets } from "@/features/assets/api/assets";
 import type { Asset } from "@/lib/api/types";
@@ -125,5 +126,100 @@ export function AssetLibraryPicker({
         </div>
       )}
     </section>
+  );
+}
+
+export function AssetLibraryDialog({
+  workspaceId,
+  title,
+  description,
+  selectedIds,
+  excludedIds = [],
+  onConfirm,
+  onClose,
+  maxItems = 8,
+  disabled = false,
+}: {
+  workspaceId?: string;
+  title: string;
+  description: string;
+  selectedIds: string[];
+  excludedIds?: string[];
+  onConfirm: (assetIds: string[], assets: Asset[]) => void;
+  onClose: () => void;
+  maxItems?: number;
+  disabled?: boolean;
+}) {
+  const [draftIds, setDraftIds] = useState(selectedIds);
+  const assetsQuery = useAssets(workspaceId, { limit: 60 });
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div className={styles.libraryDialogBackdrop} onMouseDown={onClose}>
+      <section
+        className={styles.libraryDialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="asset-library-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className={styles.libraryDialogHeader}>
+          <div>
+            <h2 id="asset-library-dialog-title">{title}</h2>
+            <p>{description}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭素材库">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className={styles.libraryDialogBody}>
+          <AssetLibraryPicker
+            workspaceId={workspaceId}
+            title="个人素材库"
+            description={`选择需要使用的图片，最多 ${maxItems} 张。`}
+            selectedIds={draftIds}
+            excludedIds={excludedIds}
+            onChange={setDraftIds}
+            maxItems={maxItems}
+            disabled={disabled}
+          />
+        </div>
+
+        <footer className={styles.libraryDialogFooter}>
+          <span>已选择 {draftIds.length} / {maxItems} 张</span>
+          <div>
+            <button type="button" onClick={onClose}>取消</button>
+            <button
+              type="button"
+              data-primary
+              disabled={disabled}
+              onClick={() => onConfirm(
+                draftIds,
+                draftIds.flatMap((assetId) => {
+                  const asset = assetsQuery.data?.items.find((item) => item.id === assetId);
+                  return asset ? [asset] : [];
+                }),
+              )}
+            >
+              确定
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
   );
 }

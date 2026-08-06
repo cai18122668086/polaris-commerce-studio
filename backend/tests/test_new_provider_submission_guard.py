@@ -125,7 +125,7 @@ def test_enabled_single_image_provider_reserves_expected_provider_requests(
             1,
             90_000,
             430_000,
-            3,
+            4,
             0,
         ),
         (
@@ -146,7 +146,7 @@ def test_enabled_single_image_provider_reserves_expected_provider_requests(
         ),
     ],
 )
-def test_legacy_provider_quota_formulas_are_unchanged(
+def test_provider_quota_formulas_match_current_fail_closed_contract(
     job_type: str,
     configuration: dict[str, object],
     expected_item_count: int,

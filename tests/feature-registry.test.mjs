@@ -59,5 +59,5 @@ test("product-image registry includes the exact agreed preset set", () => {
     ]),
   );
   assert.equal(getFeatureById("change-color")?.inputHint.includes("颜色参考"), true);
-  assert.equal(getFeatureById("creative-image")?.outputHint, "默认 4 张，最多 4 张");
+  assert.equal(getFeatureById("creative-image")?.outputHint, "默认 1 张，最多 12 张");
 });

@@ -93,6 +93,7 @@ export default function DetailPackPage() {
   const [productName, setProductName] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
   const [sources, setSources] = useState<UploadedSource[]>([]);
+  const [uploadError, setUploadError] = useState<string>();
   const [jobId, setJobId] = useState<string>();
   const { workspace } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
@@ -106,7 +107,7 @@ export default function DetailPackPage() {
   const selectedMarketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId) ?? marketplaceGroups[marketRegion][0];
   const planPages = readPlanPages(job.data?.plan?.payload);
   const resultAssets = selectJobResultAssets(job.data);
-  const requestError = upload.error ?? createJob.error ?? confirmPlan.error ?? retryJob.error ?? job.error;
+  const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? job.error;
 
   const sourcesRef = useRef(sources);
   useEffect(() => { sourcesRef.current = sources; }, [sources]);
@@ -136,19 +137,24 @@ export default function DetailPackPage() {
     );
   };
 
-  const addFiles = async (files: FileList | null) => {
-    if (!files) return;
-    for (const file of Array.from(files).slice(0, 8 - sources.length)) {
+  const addFiles = async (files: File[]) => {
+    if (!files.length) return;
+    setUploadError(undefined);
+    const failures: string[] = [];
+    for (const file of files.slice(0, 8 - sources.length)) {
       const previewUrl = URL.createObjectURL(file);
       try {
         const asset = await upload.mutateAsync({ file, mediaKind: "image" });
         setSources((items) => [...items, { asset, previewUrl }]);
-      } catch {
+      } catch (error) {
         URL.revokeObjectURL(previewUrl);
-        break;
+        failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
       }
     }
-    if (fileInput.current) fileInput.current.value = "";
+    if (failures.length) {
+      const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
+      setUploadError(`${failures[0]}${remaining}`);
+    }
   };
 
   const removeSource = (assetId: string) => {
@@ -174,7 +180,7 @@ export default function DetailPackPage() {
     const created = await createJob.mutateAsync({
       type: "detail_pack",
       intent: "submit",
-      display_name: `详情套图 · ${productName.trim()}`,
+      display_name: `商品详情图 · ${productName.trim()}`,
       input: { product_groups: [{ group_key: "primary-product", asset_ids: sources.map((source) => source.asset.id) }] },
       configuration,
     });
@@ -205,7 +211,7 @@ export default function DetailPackPage() {
           />
 
           <section className="marketplace-selector">
-            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>平台信息会写入详情图任务配置。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name} · 严格交付 {imageSize}</span></div>
+            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>所选渠道会影响图片尺寸、构图和文案规范。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name} · 严格交付 {imageSize}</span></div>
             <div className="market-region-switch" aria-label="电商地区">
               <button className={marketRegion === "domestic" ? "active" : ""} onClick={() => selectRegion("domestic")} disabled={Boolean(jobId)}><MapPin size={17} /><span><strong>国内电商</strong><small>中国大陆平台</small></span></button>
               <button className={marketRegion === "international" ? "active" : ""} onClick={() => selectRegion("international")} disabled={Boolean(jobId)}><Globe2 size={17} /><span><strong>国际电商</strong><small>跨境与海外市场</small></span></button>
@@ -224,8 +230,9 @@ export default function DetailPackPage() {
             <div className="multi-uploader">
               {sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>角度 {index + 1}</span><button aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button><i><GripVertical size={14} /></i></div>)}
               {sources.length < 8 && <button className="upload-more" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>{upload.isPending ? <LoaderCircle className="spin" size={23} /> : <ImagePlus size={23} />}<strong>{upload.isPending ? "上传中" : "添加素材"}</strong><small>最多 8 张</small></button>}
-              <input ref={fileInput} className="visually-hidden" type="file" multiple accept="image/*" onChange={(event) => void addFiles(event.target.files)} />
+              <input ref={fileInput} className="visually-hidden" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
             </div>
+            {uploadError && <div className="api-state api-state--error" role="alert"><AlertCircle size={20} /><div><strong>部分素材未能上传</strong><p>{uploadError}</p></div></div>}
           </section>
 
           <section className="detail-form-card">
@@ -251,7 +258,7 @@ export default function DetailPackPage() {
           <section className="planning-card" aria-busy={job.isFetching}>
             <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
-            {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>planner 处理中，正在轮询…</p></div>}
+            {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在准备页面规划，请稍候…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
             {planPages.length > 0 && <div className="plan-list">
               {planPages.map((page, index) => {
@@ -272,7 +279,7 @@ export default function DetailPackPage() {
           <section className="generation-footer">
             <div className="estimate-grid">
               <span><CircleDollarSign size={18} /><div><p>本次服务</p><strong>{workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "服务暂不可用"}</strong></div></span>
-              <span><Clock3 size={18} /><div><p>状态更新</p><strong>约每 1.5 秒轮询</strong></div></span>
+              <span><Clock3 size={18} /><div><p>状态更新</p><strong>状态自动同步</strong></div></span>
               <span><ShieldCheck size={18} /><div><p>图片产物</p><strong>{workflow.canDeliverImages ? "已生成图片" : "暂无图片结果"}</strong></div></span>
             </div>
             <div className="generation-actions">
@@ -289,7 +296,12 @@ export default function DetailPackPage() {
             </div>
           </section>
         </div>
-        <HelpPanel mode="detail-pack" />
+        <HelpPanel
+          mode="detail-pack"
+          taskTitle={productName.trim() ? `${productName.trim()}详情套图` : "等待填写商品名称"}
+          assetSummary={sources.length ? `${sources.length} 张 · 同一分组` : "尚未上传"}
+          outputSummary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "中文" : "English"} · ${pageCount} 页`}
+        />
       </div>
     </AppShell>
   );

@@ -15,7 +15,7 @@ from .errors import ApiError
 from .models import WorkspaceLimitRecord
 from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse
-from .services import set_quota_enabled
+from .services import set_credit_enforcement_enabled, set_quota_enabled
 from .storage import (
     ImageStorage,
     LocalImageStorage,
@@ -42,6 +42,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings.validate_runtime_safety()
     validate_task_runner_settings(app_settings)
     set_quota_enabled(app_settings.provider_quota_enabled)
+    set_credit_enforcement_enabled(
+        app_settings.workspace_credit_enforcement_enabled
+    )
     engine, session_factory = build_database(app_settings.database_url)
     storage: ImageStorage = build_image_storage(app_settings)
     validator = storage.validator

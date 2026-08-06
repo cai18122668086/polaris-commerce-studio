@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Check, CheckCircle2, ImagePlus, Info, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, ImagePlus, Images, Info, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { BeforeAfterResult } from "@/components/before-after-result";
 import { HelpPanel } from "@/components/help-panel";
 import { JobResultImage } from "@/components/job-result-image";
 import { MaskEditor, normalizeRasterImage, type MaskEditorHandle } from "@/components/mask-editor";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
-import { useUploadAsset } from "@/features/assets/api/assets";
+import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -19,25 +20,25 @@ import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
 import { selectJobResultAssets } from "@/lib/jobs/results";
-
-const qualities = [
-  { key: "preview", label: "快速预览" },
-  { key: "balanced", label: "均衡" },
-  { key: "final", label: "最终质量" },
-] as const;
+import workspaceStyles from "@/components/product-image-workspace.module.css";
 
 export default function LocalEditPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const maskEditor = useRef<MaskEditorHandle>(null);
-  const [quality, setQuality] = useState<"preview" | "balanced" | "final">("final");
-  const [prompt, setPrompt] = useState("将授权选区改为深灰色磨砂金属，保留商品结构与光影。");
+  const [prompt, setPrompt] = useState("");
   const [sourceAsset, setSourceAsset] = useState<Asset>();
   const [previewUrl, setPreviewUrl] = useState<string>();
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [hasSelection, setHasSelection] = useState(false);
   const [editorError, setEditorError] = useState<string>();
   const [jobId, setJobId] = useState<string>();
   const { workspace } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
+  const sourceAccess = useAssetAccessUrl(
+    workspace?.id,
+    previewUrl ? undefined : sourceAsset?.id,
+  );
+  const sourceUrl = previewUrl ?? sourceAccess.data?.url;
   const createJob = useCreateJob(workspace?.id);
   const retryJob = useRetryJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
@@ -94,9 +95,9 @@ export default function LocalEditPage() {
       const created = await createJob.mutateAsync({
         type: "local_edit",
         intent: "submit",
-        display_name: `局部修改 · ${sourceAsset.original_filename}`,
+        display_name: `一句话改图 · ${sourceAsset.original_filename}`,
         input: { source_asset_id: sourceAsset.id, selection_mask_asset_id: mask.id },
-        configuration: { instruction: prompt.trim(), output_format: "png", quality },
+        configuration: { instruction: prompt.trim(), output_format: "png", quality: "balanced" },
       });
       setJobId(created.id);
     } catch (error) {
@@ -114,7 +115,7 @@ export default function LocalEditPage() {
     setJobId(retried.id);
   };
 
-  const requestError = upload.error ?? createJob.error ?? retryJob.error ?? job.error;
+  const requestError = sourceAccess.error ?? upload.error ?? createJob.error ?? retryJob.error ?? job.error;
   const busy = upload.isPending || createJob.isPending || retryJob.isPending;
   const canRetry = job.data && allowsJobAction(job.data.allowed_actions, "retry");
 
@@ -124,7 +125,7 @@ export default function LocalEditPage() {
         <div className="workspace-main">
           <WorkspaceHeader
             eyebrow={workflow.mode === "provider" ? "商品图工具 · 在线生成" : workflow.mode === "mock" ? "商品图工具 · 基础流程" : "商品图工具 · 服务状态确认中"}
-            title="局部修改"
+            title="一句话改图"
             description={workflow.mode === "provider" ? "当前生成服务可用；提交任务后将开始图片处理。" : workflow.mode === "mock" ? "当前支持上传、蒙版编辑和任务保存，图片生成服务暂不可用。" : "当前无法确认生成服务状态，图片生成入口暂时关闭。"}
             meta={<span className="autosave-state"><ShieldCheck size={15} />{workflow.mode === "provider" ? "生成服务可用" : workflow.mode === "mock" ? "编辑功能可用" : "服务状态确认中"}</span>}
           />
@@ -137,26 +138,27 @@ export default function LocalEditPage() {
 
           <div className="local-edit-layout">
             <section className="editor-card">
-              <MaskEditor ref={maskEditor} sourceUrl={previewUrl} sourceName={sourceAsset?.original_filename} onChange={onMaskChange} onError={onMaskError} />
+              <MaskEditor ref={maskEditor} sourceUrl={sourceUrl} sourceName={sourceAsset?.original_filename} onChange={onMaskChange} onError={onMaskError} />
             </section>
 
             <aside className="edit-controls">
-              <section className="control-card">
+              <section className="control-card control-card--source">
                 <div className="control-card__heading"><span>1</span><div><strong>原始图片</strong><p>{sourceAsset ? `${sourceAsset.width} × ${sourceAsset.height} 标准化画布` : "选择 JPG / PNG / WEBP"}</p></div></div>
-                <button className="link-button" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>
-                  {upload.isPending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}{sourceAsset ? "重新上传" : "上传素材"}
-                </button>
+                <div className={`${workspaceStyles.uploadActions} local-edit-upload-actions`} data-has-library>
+                  <button type="button" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>
+                    {upload.isPending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
+                    {sourceAsset ? "重新上传" : "上传图片"}
+                  </button>
+                  <button type="button" data-library aria-haspopup="dialog" onClick={() => setLibraryOpen(true)} disabled={!workspace || upload.isPending}>
+                    <Images size={15} />
+                    从素材库选择
+                  </button>
+                </div>
                 <input ref={fileInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void onSourceFile(event.target.files?.[0])} />
               </section>
               <section className="control-card">
                 <div className="control-card__heading"><span>2</span><div><strong>修改要求</strong><p>蒙版外像素会由服务端锁定</p></div></div>
-                <div className="textarea-wrap"><textarea value={prompt} maxLength={500} onChange={(event) => setPrompt(event.target.value)} aria-label="修改要求" /><span>{prompt.length} / 500</span></div>
-              </section>
-              <section className="control-card">
-                <div className="control-card__heading"><span>3</span><div><strong>质量标签</strong><p>{workflow.mode === "provider" ? "生成质量设置，可能影响费用" : "用于控制生成质量"}</p></div></div>
-                <div className="quality-options">
-                  {qualities.map((item) => <button key={item.key} className={quality === item.key ? "selected" : ""} onClick={() => setQuality(item.key)} aria-pressed={quality === item.key}><i>{quality === item.key && <Check size={12} />}</i><span><strong>{item.label}</strong></span><em>{workflow.mode === "provider" ? "可能计费" : "不计费"}</em></button>)}
-                </div>
+                <div className="textarea-wrap"><textarea value={prompt} placeholder="例如：将授权选区改为深灰色磨砂金属，保留商品结构与光影。" maxLength={500} onChange={(event) => setPrompt(event.target.value)} aria-label="修改要求" /><span>{prompt.length} / 500</span></div>
               </section>
               <div className="cost-bar"><span>本次服务<Info size={14} /></span><strong>{workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "生成服务暂不可用"}</strong></div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}
@@ -181,11 +183,37 @@ export default function LocalEditPage() {
             </aside>
           </div>
 
-          {resultAsset && previewUrl && <section className="result-preview-card"><div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>生成结果</h2><p>拖动滑块对比原图与生成结果。</p></div></div></div><BeforeAfterResult workspaceId={workspace?.id} sourceUrl={previewUrl} assetId={resultAsset.asset_id} /></section>}
-          {rawCandidateAsset && <section className="detail-form-card"><div className="form-section-head"><span className="number-chip number-chip--violet">R</span><div><h2>原始生成候选</h2><p>仅供视觉诊断，不是像素锁定后的可交付结果。</p></div></div><div className="job-results-grid"><JobResultImage workspaceId={workspace?.id} assetId={rawCandidateAsset.asset_id} alt="局部修改原始候选" label="原始候选 · 不可交付" /></div></section>}
+          {resultAsset && sourceUrl && <section className="result-preview-card"><div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>生成结果</h2><p>拖动滑块对比原图与生成结果。</p></div></div></div><BeforeAfterResult workspaceId={workspace?.id} sourceUrl={sourceUrl} assetId={resultAsset.asset_id} /></section>}
+          {rawCandidateAsset && <section className="detail-form-card"><div className="form-section-head"><span className="number-chip number-chip--violet">R</span><div><h2>原始生成候选</h2><p>仅供视觉诊断，不是像素锁定后的可交付结果。</p></div></div><div className="job-results-grid"><JobResultImage workspaceId={workspace?.id} assetId={rawCandidateAsset.asset_id} alt="一句话改图原始候选" label="原始候选 · 不可交付" /></div></section>}
           {job.data?.status === "completed" && workflow.mode === "mock" && !resultAsset && <div className="api-state"><ImagePlus size={22} /><p>任务流程已完成，当前生成服务未返回图片结果。</p></div>}
         </div>
-        <HelpPanel mode="local-edit" />
+        {libraryOpen ? (
+          <AssetLibraryDialog
+            workspaceId={workspace?.id}
+            title="选择原始图片"
+            description="选择需要进行一句话改图的图片。"
+            selectedIds={sourceAsset ? [sourceAsset.id] : []}
+            maxItems={1}
+            disabled={upload.isPending}
+            onClose={() => setLibraryOpen(false)}
+            onConfirm={(_, assets) => {
+              const selectedAsset = assets[0];
+              if (!selectedAsset) return;
+              setSourceAsset(selectedAsset);
+              setHasSelection(false);
+              setEditorError(undefined);
+              setJobId(undefined);
+              if (previewUrl) URL.revokeObjectURL(previewUrl);
+              setPreviewUrl(undefined);
+              setLibraryOpen(false);
+            }}
+          />
+        ) : null}
+        <HelpPanel
+          mode="local-edit"
+          taskTitle={prompt.trim() || "等待填写修改要求"}
+          assetSummary={!sourceAsset ? "尚未上传" : hasSelection ? "1 张 · 已选区" : "1 张 · 待绘制选区"}
+        />
       </div>
     </AppShell>
   );

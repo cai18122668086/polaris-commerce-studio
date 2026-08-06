@@ -604,6 +604,15 @@ class SourcePreflightTests(unittest.TestCase):
         )
         self.assertEqual(errors, [])
 
+    def test_zero_recurring_provider_limits_mean_unlimited(self) -> None:
+        errors = self.validate_synthetic_deployment(
+            POLARIS_TENGLI_SMOKE_BUDGET_USD="200",
+            POLARIS_TENGLI_DAILY_BUDGET_USD="0",
+            POLARIS_TENGLI_MONTHLY_BUDGET_USD="0",
+            POLARIS_TENGLI_DAILY_REQUEST_LIMIT="0",
+        )
+        self.assertEqual(errors, [])
+
     def test_maximum_provider_allowance_passes(self) -> None:
         maximum = str(PREFLIGHT.MAX_PROVIDER_ALLOWANCE)
         errors = self.validate_synthetic_deployment(

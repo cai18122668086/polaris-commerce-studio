@@ -838,28 +838,37 @@ def validate_deployment(
                 values.get("POLARIS_TENGLI_MONTHLY_BUDGET_USD", "")
             )
         except ValueError:
-            daily_budget = 0
-            monthly_budget = 0
-        if not 0 < daily_budget <= MAX_PROVIDER_ALLOWANCE:
+            daily_budget = -1
+            monthly_budget = -1
+        if not 0 <= daily_budget <= MAX_PROVIDER_ALLOWANCE:
             errors.append(
-                "POLARIS_TENGLI_DAILY_BUDGET_USD must be greater than 0 and "
+                "POLARIS_TENGLI_DAILY_BUDGET_USD must be 0 (unlimited) or "
                 f"at most {MAX_PROVIDER_ALLOWANCE}"
             )
-        if not daily_budget <= monthly_budget <= MAX_PROVIDER_ALLOWANCE:
+        if not 0 <= monthly_budget <= MAX_PROVIDER_ALLOWANCE:
             errors.append(
-                "POLARIS_TENGLI_MONTHLY_BUDGET_USD must be at least the daily "
-                f"budget and at most {MAX_PROVIDER_ALLOWANCE}"
+                "POLARIS_TENGLI_MONTHLY_BUDGET_USD must be 0 (unlimited) or "
+                f"at most {MAX_PROVIDER_ALLOWANCE}"
+            )
+        elif (
+            daily_budget > 0
+            and monthly_budget > 0
+            and monthly_budget < daily_budget
+        ):
+            errors.append(
+                "POLARIS_TENGLI_MONTHLY_BUDGET_USD must be unlimited or at "
+                "least the daily budget"
             )
         try:
             daily_requests = int(
                 values.get("POLARIS_TENGLI_DAILY_REQUEST_LIMIT", "")
             )
         except ValueError:
-            daily_requests = 0
-        if not 0 < daily_requests <= MAX_PROVIDER_ALLOWANCE:
+            daily_requests = -1
+        if not 0 <= daily_requests <= MAX_PROVIDER_ALLOWANCE:
             errors.append(
-                "POLARIS_TENGLI_DAILY_REQUEST_LIMIT must be between 1 and "
-                f"{MAX_PROVIDER_ALLOWANCE}"
+                "POLARIS_TENGLI_DAILY_REQUEST_LIMIT must be 0 (unlimited) or "
+                f"at most {MAX_PROVIDER_ALLOWANCE}"
             )
         try:
             planner_reserve = int(

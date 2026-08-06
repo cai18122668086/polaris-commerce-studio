@@ -9,9 +9,10 @@ service joins that bridge. Only the worker attaches to the separate
 provider-egress network; the frontend never receives Provider configuration.
 
 Execution defaults to the mock runner. The API and worker can use the shared
-Tengli adapter only after daily and monthly cost limits plus a daily request
-limit are approved in the server-local environment. The five Provider feature
-switches default to `false`; API, worker, and dispatcher receive the same switch
+Tengli adapter after the server-local Provider configuration is explicitly
+approved. Internal-beta daily/monthly cost and daily request limits stay at
+`0` (unlimited). The five Provider feature switches default to `false`; API,
+worker, and dispatcher receive the same switch
 values, while Provider credentials remain limited to API and worker. Enabling
 any switch requires `POLARIS_TASK_RUNNER=tengli`,
 `POLARIS_PROVIDER_QUOTA_ENABLED=true`, a non-placeholder Provider API key, and
@@ -22,9 +23,12 @@ reservation. Internal S3 downloads always use the same-origin content proxy;
 browsers never receive the `minio:9000` endpoint.
 
 The deployment accepts an approved allowance up to `20,000,000` for each of
-the per-job USD budget, daily USD budget, monthly USD budget, and daily request
-count. Provider account balance, upstream rate limits, and billing remain
-external constraints.
+the per-job technical safety envelope and optional recurring Provider limits.
+During the internal beta, daily/monthly cost and daily request values are `0`
+(unlimited), and `POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED=false` prevents
+membership-style workspace balances from rejecting jobs. Provider quota and
+credit reservation, settlement, usage, and cost records remain active. Provider
+account balance, upstream rate limits, and billing remain external constraints.
 
 ## Non-negotiable boundaries
 
@@ -38,8 +42,10 @@ external constraints.
 - Never use this development identity profile as a public site.
 - Do not enable transport-upgrade policy on this HTTP-only staging endpoint.
 - Do not enable the real Provider runner or any Provider feature switch without
-  `POLARIS_PROVIDER_QUOTA_ENABLED=true`, a replaced API-key placeholder, and
-  approved daily/monthly cost and daily request caps.
+  `POLARIS_PROVIDER_QUOTA_ENABLED=true` and a replaced API-key placeholder.
+  Internal-beta recurring limits remain `0` (unlimited) and workspace credit
+  enforcement remains `false`; positive caps are only introduced with an
+  explicitly approved membership policy.
 
 The real environment file exists only as `/etc/polaris/polaris.env`, owned by
 `root:root` with mode `0600`. Create it in place on the server with `sudoedit`;
@@ -279,11 +285,11 @@ The following phase is documentation, not authorization:
    no host port.
 10. Through the SSH tunnel, run live/ready checks and complete both workflows in
     mock mode with all five Provider feature switches set to `false`. After
-    recurring beta limits are explicitly approved, replace the Provider API-key
-    placeholder, set the daily/monthly cost caps and daily request cap, set
+    real Provider path is explicitly approved, replace the Provider API-key
+    placeholder, keep the internal-beta daily/monthly/request limits at `0`, set
     `POLARIS_PROVIDER_QUOTA_ENABLED=true`, switch the server-local runner to
-    `tengli`, enable only the approved feature
-    switch(es), and restart API, worker, and dispatcher. Confirm a bounded
+    `tengli`, enable only the approved feature switch(es), and restart API,
+    worker, and dispatcher. Confirm a single controlled
     front-end job reserves quota once, successful pages are not re-billed,
     downloads use the same-origin proxy, and local-edit reports zero changed
     pixels outside

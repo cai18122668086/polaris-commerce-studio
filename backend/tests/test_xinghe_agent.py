@@ -870,6 +870,9 @@ def test_amazon_planner_schema_contains_only_original_skill_fields() -> None:
         "source_material",
         "risk_note",
     }
+    screen_properties = screens["items"]["properties"]
+    assert screen_properties["headline"] == {"type": "string"}
+    assert screen_properties["subcopy"] == {"type": "string"}
 
 
 def _planner_validation_path_cases() -> list[Any]:

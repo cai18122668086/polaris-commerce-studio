@@ -5683,6 +5683,7 @@ def _amazon_planner_json_schema() -> dict[str, Any]:
     """Return only the planning fields required by the bundled Amazon Skill."""
 
     string = {"type": "string", "minLength": 1}
+    copy_string = {"type": "string"}
     confidence = {
         "type": "string",
         "enum": ["confirmed", "reasonable inference", "needs confirmation"],
@@ -5762,8 +5763,8 @@ def _amazon_planner_json_schema() -> dict[str, Any]:
             "selling_point": string,
             "information_confidence": confidence,
             "visual_proof": string,
-            "headline": string,
-            "subcopy": {"type": "string"},
+            "headline": copy_string,
+            "subcopy": copy_string,
             "layout_direction": string,
             "source_material": string,
             "risk_note": string,

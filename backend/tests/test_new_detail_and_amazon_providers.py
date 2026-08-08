@@ -685,6 +685,9 @@ def test_amazon_main_uses_all_product_truth_sources_without_optional_references(
     )
 
     request = _amazon_request("MAIN-01", 2000, 2000)
+    screen = request.configuration["item"][AMAZON_PLAN_CONFIGURATION_KEY]["screen"]
+    screen["headline"] = ""
+    screen["subcopy"] = ""
     request.configuration["job"]["input"]["white_background_product_asset_ids"] = [
         "asset-white",
         "asset-white-side",
@@ -704,7 +707,9 @@ def test_amazon_main_uses_all_product_truth_sources_without_optional_references(
         {"asset_id": "asset-detail", "role": "product_detail"},
         {"asset_id": "asset-detail-close", "role": "product_detail"},
     ]
-    constraints = envelope["prompt_input"]["negative_constraints"]
+    prompt = envelope["prompt_input"]
+    assert "copy_requirements" not in prompt
+    constraints = prompt["negative_constraints"]
     assert any("authentic trademark, logo, label" in value for value in constraints)
     assert any("surrounding background to pure white" in value for value in constraints)
     assert any("empty or pure-color canvas" in value for value in constraints)
@@ -926,10 +931,13 @@ def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> 
             f"Layout direction: {task['layout_direction']}",
             f"Visual proof method: {task['visual_proof']}",
         ]
-        assert prompt["copy_requirements"] == [
-            f"Headline: {task['headline']}",
-            f"Subcopy: {task['subcopy']}",
-        ]
+        if spec.item_key == "MAIN-01":
+            assert "copy_requirements" not in prompt
+        else:
+            assert prompt["copy_requirements"] == [
+                f"Headline: {task['headline']}",
+                f"Subcopy: {task['subcopy']}",
+            ]
         assert prompt["negative_constraints"][1] == task["risk_note"]
         for prefix in required_guidance_prefixes:
             assert any(

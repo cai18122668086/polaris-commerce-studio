@@ -309,6 +309,26 @@ def test_amazon_validator_rejects_missing_required_row_field() -> None:
     assert raised.value.json_pointer == "/plan/screens/0/headline"
 
 
+def test_amazon_validator_allows_blank_main_image_headline() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][0]["headline"] = ""
+
+    structured = validate_amazon_planner_payload(payload)
+
+    assert structured["plan"]["screens"][0]["headline"] == ""
+
+
+def test_amazon_validator_rejects_blank_non_main_headline() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][1]["headline"] = "  "
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_PLAN_SCREEN_INVALID"
+    assert raised.value.json_pointer == "/plan/screens/1/headline"
+
+
 def test_amazon_validator_rejects_needs_confirmation_claim_in_copy() -> None:
     payload = _valid_amazon_payload()
     payload["analysis"]["information_confidence"]["needs_confirmation"] = [

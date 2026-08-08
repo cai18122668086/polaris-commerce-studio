@@ -607,7 +607,10 @@ def validate_amazon_planner_payload(
         screen = dict(raw_screen)
         for key in required:
             value = screen.get(key)
-            if not isinstance(value, str) or (key != "subcopy" and not value.strip()):
+            allows_blank = key == "subcopy" or (
+                spec.item_key == "MAIN-01" and key == "headline"
+            )
+            if not isinstance(value, str) or (not allows_blank and not value.strip()):
                 raise XingheAgentError(
                     "AMAZON_PLAN_SCREEN_INVALID",
                     f"Amazon Skill row requires {key}.",
@@ -1155,7 +1158,12 @@ def _amazon_prompt_input(
         ),
     ]
     main_constraints: list[str] = []
+    copy_requirements = [
+        f"Headline: {screen['headline']}",
+        f"Subcopy: {screen['subcopy']}",
+    ]
     if spec.item_key == "MAIN-01":
+        copy_requirements = []
         main_constraints = [
             "Use the real user-provided white_background_product source as product truth.",
             "Preserve the exact SKU, silhouette, proportions, color, structure, authentic trademark, logo, label, pattern, and readable product text already present on the product.",
@@ -1191,10 +1199,7 @@ def _amazon_prompt_input(
                 f"Layout direction: {screen['layout_direction']}",
                 f"Visual proof method: {screen['visual_proof']}",
             ],
-            "copy_requirements": [
-                f"Headline: {screen['headline']}",
-                f"Subcopy: {screen['subcopy']}",
-            ],
+            "copy_requirements": copy_requirements,
             "reference_guidance": [
                 *analysis_guidance,
                 *_serialized_guidance(

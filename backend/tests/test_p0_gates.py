@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
@@ -560,6 +561,24 @@ def test_external_mode_returns_401_and_readiness_reports_configuration(
     settings: Settings,
     tmp_path: Path,
 ) -> None:
+    from app.supertokens_auth import ExternalAuthenticationError, ExternalIdentity
+
+    class UnauthenticatedBackend:
+        def initialize(self) -> None:
+            return None
+
+        def install_middleware(self, application: FastAPI) -> None:
+            return None
+
+        def cors_headers(self) -> list[str]:
+            return []
+
+        def is_ready(self) -> bool:
+            return True
+
+        async def authenticate(self, request: Request) -> ExternalIdentity:
+            raise ExternalAuthenticationError("missing session")
+
     external_settings = settings.model_copy(
         update={
             "auth_mode": "external",
@@ -567,15 +586,17 @@ def test_external_mode_returns_401_and_readiness_reports_configuration(
             "storage_dir": tmp_path / "external-storage",
         }
     )
-    with TestClient(create_app(external_settings)) as external:
+    with TestClient(
+        create_app(external_settings, UnauthenticatedBackend())
+    ) as external:
         unauthenticated = external.get("/api/v1/me")
         ready = external.get("/health/ready")
 
     assert unauthenticated.status_code == 401
     assert unauthenticated.json()["error"]["code"] == "UNAUTHENTICATED"
-    assert ready.status_code == 503
-    assert ready.json()["status"] == "degraded"
+    assert ready.status_code == 200
+    assert ready.json()["status"] == "ok"
     assert ready.json()["checks"] == {
         "database": "ok",
-        "authentication": "not_configured",
+        "authentication": "ok",
     }

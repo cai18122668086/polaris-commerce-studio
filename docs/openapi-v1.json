@@ -727,13 +727,46 @@
       },
       "CurrentUserResponse": {
         "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "email_verified": {
+            "title": "Email Verified",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserStatus"
           }
         },
         "required": [
-          "id"
+          "id",
+          "email",
+          "display_name",
+          "status",
+          "email_verified"
         ],
         "title": "CurrentUserResponse",
         "type": "object"
@@ -2268,6 +2301,15 @@
         "title": "UsageCompleteness",
         "type": "string"
       },
+      "UserStatus": {
+        "enum": [
+          "active",
+          "suspended",
+          "deleted"
+        ],
+        "title": "UserStatus",
+        "type": "string"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2330,6 +2372,14 @@
         "title": "WorkspaceResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "SuperTokensSession": {
+        "description": "SuperTokens HttpOnly session cookie managed by the authentication SDK.",
+        "in": "cookie",
+        "name": "sAccessToken",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
@@ -2342,24 +2392,6 @@
     "/api/v1/me": {
       "get": {
         "operationId": "current_user_api_v1_me_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -2370,18 +2402,13 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Current User",
         "tags": [
           "identity"
@@ -2392,24 +2419,6 @@
       "get": {
         "description": "Reports internal-test workflow availability and execution mode. availability=available only means the workflow/API can be exercised; clients must read execution before describing real generation support.",
         "operationId": "get_runtime_status_api_v1_runtime_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -2430,18 +2439,13 @@
               }
             },
             "description": "Unauthorized"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Get Runtime Status",
         "tags": [
           "system"
@@ -2451,24 +2455,6 @@
     "/api/v1/workspaces": {
       "get": {
         "operationId": "list_workspaces_api_v1_workspaces_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -2483,18 +2469,13 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "List Workspaces",
         "tags": [
           "identity"
@@ -2512,22 +2493,6 @@
             "schema": {
               "title": "Workspace Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
             }
           }
         ],
@@ -2553,6 +2518,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Get Workspace",
         "tags": [
           "identity"
@@ -2641,22 +2611,6 @@
               "title": "Include Total",
               "type": "boolean"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "responses": {
@@ -2681,6 +2635,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "List Assets",
         "tags": [
           "assets"
@@ -2712,22 +2671,6 @@
                 }
               ],
               "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
             }
           }
         ],
@@ -2763,6 +2706,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Upload Asset",
         "tags": [
           "assets"
@@ -2790,22 +2738,6 @@
               "title": "Workspace Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "responses": {
@@ -2830,6 +2762,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Get Asset",
         "tags": [
           "assets"
@@ -2856,22 +2793,6 @@
             "schema": {
               "title": "Workspace Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
             }
           }
         ],
@@ -2907,6 +2828,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Create Asset Access Url",
         "tags": [
           "assets"
@@ -2998,22 +2924,6 @@
               "title": "Include Total",
               "type": "boolean"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "responses": {
@@ -3038,6 +2948,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "List Jobs",
         "tags": [
           "jobs"
@@ -3069,22 +2984,6 @@
                 }
               ],
               "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
             }
           }
         ],
@@ -3151,6 +3050,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Create Job",
         "tags": [
           "jobs"
@@ -3178,22 +3082,6 @@
               "title": "Workspace Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "responses": {
@@ -3218,6 +3106,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Get Job",
         "tags": [
           "jobs"
@@ -3242,22 +3135,6 @@
             "schema": {
               "title": "Workspace Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
             }
           }
         ],
@@ -3293,6 +3170,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Update Draft Job",
         "tags": [
           "jobs"
@@ -3336,22 +3218,6 @@
               ],
               "title": "Idempotency-Key"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "requestBody": {
@@ -3386,6 +3252,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Cancel Job",
         "tags": [
           "jobs"
@@ -3429,22 +3300,6 @@
               ],
               "title": "Idempotency-Key"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "responses": {
@@ -3469,6 +3324,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Clone Job",
         "tags": [
           "jobs"
@@ -3496,22 +3356,6 @@
               "title": "Workspace Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "responses": {
@@ -3537,6 +3381,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Download Job Deliverables",
         "tags": [
           "jobs"
@@ -3563,22 +3412,6 @@
             "schema": {
               "title": "Workspace Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
             }
           }
         ],
@@ -3614,6 +3447,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Update Plan",
         "tags": [
           "jobs"
@@ -3657,22 +3495,6 @@
               ],
               "title": "Idempotency-Key"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "requestBody": {
@@ -3707,6 +3529,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Confirm Plan",
         "tags": [
           "jobs"
@@ -3750,22 +3577,6 @@
               ],
               "title": "Idempotency-Key"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "requestBody": {
@@ -3800,6 +3611,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Retry Job",
         "tags": [
           "jobs"
@@ -3843,22 +3659,6 @@
               ],
               "title": "Idempotency-Key"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User-Id"
-            }
           }
         ],
         "responses": {
@@ -3883,6 +3683,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
         "summary": "Submit Job",
         "tags": [
           "jobs"

@@ -286,7 +286,13 @@ def _commit_staged_asset(
 
 @router.get("/me", response_model=CurrentUserResponse, tags=["identity"])
 def current_user(principal: PrincipalDependency) -> CurrentUserResponse:
-    return CurrentUserResponse(id=principal.user_id)
+    return CurrentUserResponse(
+        id=principal.user_id,
+        email=principal.email,
+        display_name=principal.display_name,
+        status=principal.status,
+        email_verified=principal.email_verified,
+    )
 
 
 def runtime_status_response(
@@ -1752,7 +1758,7 @@ def _reserve_real_provider_job_if_enabled(
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "REAL_PROVIDER_NOT_REGISTERED",
-            "?????????? Provider???????????",
+            "The real Provider for this job type is not enabled.",
             {"job_type": job.type, "provider_called": False},
         )
     configuration = job.configuration if isinstance(job.configuration, dict) else {}

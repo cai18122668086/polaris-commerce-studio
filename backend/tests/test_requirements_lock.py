@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -30,12 +31,18 @@ def _verify(lock: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _drop_first_requirement(text: str) -> str:
+def _drop_first_production_requirement(text: str) -> str:
+    project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]
+    first_direct = project["dependencies"][0]
+    match = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", first_direct)
+    assert match is not None
+    direct_name = match.group(0)
+
     lines = text.splitlines(keepends=True)
     first = next(
         index
         for index, line in enumerate(lines)
-        if line.strip() and not line.lstrip().startswith("#")
+        if re.match(rf"(?i)^{re.escape(direct_name)}==", line)
     )
     end = first + 1
     while end < len(lines) and (
@@ -80,7 +87,7 @@ def test_production_requirements_lock_verifies() -> None:
             "    --hash=sha256:" + ("0" * 64) + "\n",
             "dev-only dependencies",
         ),
-        (_drop_first_requirement, "missing production dependencies"),
+        (_drop_first_production_requirement, "missing production dependencies"),
     ],
 )
 def test_requirements_lock_rejects_invalid_content(

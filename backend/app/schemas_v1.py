@@ -304,6 +304,11 @@ class AmazonVisualSuiteInput(BaseModel):
     package_asset_ids: list[str] = Field(default_factory=list, max_length=8)
     scene_asset_ids: list[str] = Field(default_factory=list, max_length=8)
     brand_asset_ids: list[str] = Field(default_factory=list, max_length=8)
+    reference_asset_ids: list[str] = Field(default_factory=list, max_length=8)
+    competitor_reference_asset_ids: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+    )
 
     @model_validator(mode="after")
     def unique_assets(self) -> "AmazonVisualSuiteInput":
@@ -313,18 +318,32 @@ class AmazonVisualSuiteInput(BaseModel):
             + self.package_asset_ids
             + self.scene_asset_ids
             + self.brand_asset_ids
+            + self.reference_asset_ids
+            + self.competitor_reference_asset_ids
         )
         if len(combined) != len(set(combined)):
             raise ValueError("input assets must not contain duplicates")
+        if len(combined) > 8:
+            raise ValueError("Amazon visual suite accepts at most 8 source images")
         return self
 
 
 class AmazonVisualSuiteConfiguration(BaseModel):
     marketplace: AmazonMarketplace = AMAZON_DEFAULT_MARKETPLACE
     product_name: str = Field(default="", max_length=160)
+    category: str = Field(default="", max_length=120)
+    target_buyer: str = Field(default="", max_length=500)
     listing_title: str = Field(default="", max_length=240)
     bullet_points: list[str] = Field(default_factory=list, max_length=12)
+    listing_description: str = Field(default="", max_length=4000)
+    a_plus_copy: str = Field(default="", max_length=4000)
+    product_facts: list[str] = Field(default_factory=list, max_length=24)
+    parameters: list[str] = Field(default_factory=list, max_length=24)
+    certifications_or_evidence: list[str] = Field(default_factory=list, max_length=24)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=24)
     brand_colors: list[str] = Field(default_factory=list, max_length=8)
+    style_preferences: list[str] = Field(default_factory=list, max_length=12)
+    instruction: str = Field(default="", max_length=4000)
     language: str = Field(default="en-US", min_length=2, max_length=16)
 
 

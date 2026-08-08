@@ -12,22 +12,28 @@ from sqlalchemy import select
 from app.amazon_visual_suite_provider import (
     AMAZON_EXPECTED_ITEM_COUNT,
     AMAZON_ITEM_KEYS,
+    AMAZON_ITEM_ROLES,
     AMAZON_ITEM_SPECS,
     AMAZON_PLAN_CONFIGURATION_KEY,
+    AMAZON_SKILL_ROW_IDS,
     AmazonVisualSuiteProvider,
     validate_amazon_planner_payload,
 )
 from app.domain import JobStatus, PlanValidationStatus
-from app.models import JobItemRecord, JobPlanRecord
+from app.models import JobAssetRecord, JobItemRecord, JobPlanRecord
 from app.provider import ProviderOutcome, ProviderRequest, ProviderResult
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
+    AmazonVisualReviewCallResult,
+    AmazonVisualReviewRequest,
     FakeXingheGateway,
     ImageCallResult,
     ImageEditRequest,
     PlannerCallResult,
     PlannerRequest,
+    SourceImage,
     XingheAgentError,
+    _fake_amazon_plan,
     _fake_plan,
     validate_planner_payload,
 )
@@ -87,6 +93,37 @@ class _OneFailureGateway(_CountingGateway):
         super().__init__(image_failures={1: 1})
 
 
+class _ReviewProtocolErrorGateway(_CountingGateway):
+    async def review_amazon(
+        self, request: AmazonVisualReviewRequest
+    ) -> AmazonVisualReviewCallResult:
+        result = await super().review_amazon(request)
+        return replace(
+            result,
+            visual_success=None,
+            error_code="AMAZON_VISUAL_REVIEW_INVALID",
+            error_message="Amazon visual review named an unknown candidate item.",
+            retryable=False,
+        )
+
+
+class _ReviewQualityFailureGateway(_CountingGateway):
+    failed_item_key = AMAZON_ITEM_KEYS[1]
+
+    async def review_amazon(
+        self, request: AmazonVisualReviewRequest
+    ) -> AmazonVisualReviewCallResult:
+        result = await super().review_amazon(request)
+        return replace(
+            result,
+            visual_success=False,
+            summary="The listed image has a real visual quality defect.",
+            reason_codes=("AMAZON_PRODUCT_IDENTITY_MISMATCH",),
+            retry_guidance="Redraw only the listed item with the confirmed product.",
+            failed_item_keys=(self.failed_item_key,),
+        )
+
+
 def _install_counting_runner(
     client: TestClient,
     *,
@@ -127,7 +164,7 @@ def _planner_request(
 
 
 def _valid_amazon_payload() -> dict[str, Any]:
-    return _fake_plan(_planner_request())
+    return _fake_amazon_plan(_planner_request())
 
 
 def _provider_request_without_plan_context() -> ProviderRequest:
@@ -159,226 +196,89 @@ def _provider_request_without_plan_context() -> ProviderRequest:
     )
 
 
-def test_amazon_validator_requires_product_master() -> None:
+def _white_product_source(*, asset_id: str = "asset-white") -> SourceImage:
+    return SourceImage(
+        asset_id=asset_id,
+        group_key="amazon-product",
+        filename="white.jpg",
+        content_type="image/jpeg",
+        sha256="a" * 64,
+        payload=b"real-product-source",
+        source_role="white_background_product",
+    )
+
+
+def test_amazon_validator_accepts_original_skill_contract_without_extra_locks() -> None:
     payload = _valid_amazon_payload()
-    payload["analysis"].pop("product_master_description")
+    original = deepcopy(payload)
 
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
+    structured = validate_amazon_planner_payload(
+        payload,
+        sources=(_white_product_source(),),
+    )
 
-    assert raised.value.code in {
-        "PLANNER_SCHEMA_INVALID",
-        "AMAZON_PRODUCT_MASTER_INVALID",
+    assert payload == original
+    assert set(structured["plan"]) == {
+        "campaign_style_lock",
+        "product_consistency_lock",
+        "layout_diversity_lock",
+        "screens",
     }
-    assert raised.value.json_pointer == "/analysis/product_master_description"
+    assert [screen["id"] for screen in structured["plan"]["screens"]] == list(
+        AMAZON_SKILL_ROW_IDS
+    )
+    assert [screen["item_key"] for screen in structured["plan"]["screens"]] == list(
+        AMAZON_ITEM_KEYS
+    )
+    assert [screen["role"] for screen in structured["plan"]["screens"]] == list(
+        AMAZON_ITEM_ROLES
+    )
 
 
-def test_amazon_validator_rejects_incomplete_product_master() -> None:
+def test_amazon_validator_requires_a_real_primary_product_source_role() -> None:
     payload = _valid_amazon_payload()
-    payload["analysis"]["product_master_description"].pop("structural_parts")
+    scene_source = replace(
+        _white_product_source(),
+        source_role="scene_reference",
+    )
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload, sources=(scene_source,))
+
+    assert raised.value.code == "AMAZON_WHITE_BACKGROUND_SOURCE_REQUIRED"
+    assert raised.value.json_pointer == "/analysis/product_image_analysis"
+
+
+def test_amazon_validator_does_not_reject_authentic_logo_or_label_evidence() -> None:
+    payload = _valid_amazon_payload()
+    payload["analysis"]["product_image_analysis"]["visible_facts"].append(
+        "Authentic trademark and readable product label are visible."
+    )
+
+    structured = validate_amazon_planner_payload(
+        payload,
+        sources=(_white_product_source(),),
+    )
+
+    assert structured["plan"]["screens"][0]["item_key"] == "MAIN-01"
+
+
+def test_amazon_validator_requires_complete_product_master() -> None:
+    payload = _valid_amazon_payload()
+    payload["analysis"]["product_master_description"].pop("silhouette_and_proportions")
 
     with pytest.raises(XingheAgentError) as raised:
         validate_amazon_planner_payload(payload)
 
-    assert raised.value.code == "AMAZON_PRODUCT_MASTER_INVALID"
-    assert raised.value.json_pointer is not None
-    assert raised.value.json_pointer.endswith("/structural_parts")
-
-
-def test_amazon_validator_rejects_blank_product_master_value() -> None:
-    payload = _valid_amazon_payload()
-    payload["analysis"]["product_master_description"][
-        "silhouette_and_proportions"
-    ] = "   "
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code in {
-        "PLANNER_SCHEMA_INVALID",
-        "AMAZON_PRODUCT_MASTER_INVALID",
-    }
-    assert raised.value.json_pointer is not None
-    assert raised.value.json_pointer.endswith("/silhouette_and_proportions")
-
-
-def test_amazon_validator_rejects_empty_product_consistency_lock() -> None:
-    payload = _valid_amazon_payload()
-    payload["plan"]["product_consistency_lock"] = {}
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code in {
-        "PLANNER_SCHEMA_INVALID",
-        "AMAZON_PRODUCT_CONSISTENCY_LOCK_INVALID",
-    }
-    assert raised.value.json_pointer == "/plan/product_consistency_lock"
-
-
-def test_amazon_validator_requires_suite_cohesion_lock() -> None:
-    payload = _valid_amazon_payload()
-    payload["plan"].pop("suite_cohesion_lock")
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_SUITE_COHESION_LOCK_INVALID"
-    assert raised.value.json_pointer == "/plan/suite_cohesion_lock"
-
-
-@pytest.mark.parametrize(
-    "field",
-    [
-        "primary_palette",
-        "accent_palette",
-        "typography_mood",
-        "icon_stroke",
-        "corner_radius",
-        "shadow_system",
-        "lighting_system",
-        "brand_motif",
-        "responsive_pair_rule",
-    ],
-)
-def test_amazon_validator_rejects_incomplete_suite_cohesion_lock(
-    field: str,
-) -> None:
-    payload = _valid_amazon_payload()
-    payload["plan"]["suite_cohesion_lock"][field] = "   "
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_SUITE_COHESION_LOCK_INVALID"
-    assert raised.value.json_pointer == f"/plan/suite_cohesion_lock/{field}"
-
-
-def test_amazon_validator_rejects_background_outside_suite_lock() -> None:
-    payload = _valid_amazon_payload()
-    payload["plan"]["screens"][1]["background_system"] = "unrelated-background"
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_SUITE_COHESION_INVALID"
-    assert raised.value.json_pointer == "/plan/screens/1/background_system"
-
-
-def test_amazon_validator_requires_main_pure_white_compliance_background() -> None:
-    payload = _valid_amazon_payload()
-    payload["plan"]["screens"][0]["background_system"] = "dark-lifestyle-scene"
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_MAIN_IMAGE_INVALID"
-    assert raised.value.json_pointer == "/plan/screens/0/background_system"
-
-
-@pytest.mark.parametrize("maximum", [1, 3])
-def test_amazon_validator_requires_layout_family_limit_two(maximum: int) -> None:
-    payload = _valid_amazon_payload()
-    payload["plan"]["layout_diversity_lock"]["max_same_layout_family"] = maximum
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_LAYOUT_DIVERSITY_INVALID"
+    assert raised.value.code == "PLANNER_SCHEMA_INVALID"
     assert raised.value.json_pointer == (
-        "/plan/layout_diversity_lock/max_same_layout_family"
+        "/analysis/product_master_description/silhouette_and_proportions"
     )
 
 
-def test_amazon_validator_rejects_third_layout_family_reuse() -> None:
+def test_amazon_validator_requires_exactly_21_canonical_skill_ids() -> None:
     payload = _valid_amazon_payload()
-    for screen in payload["plan"]["screens"][1:4]:
-        screen["layout_family"] = "overused-family"
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "PLANNER_CROSS_PAGE_DIVERSITY_INVALID"
-    assert raised.value.json_pointer == "/plan/screens"
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("responsive_concept", "unrelated-mobile-concept"),
-        ("layout_family", "unrelated-mobile-family"),
-    ],
-)
-def test_amazon_validator_rejects_unrelated_responsive_pair(
-    field: str,
-    value: str,
-) -> None:
-    payload = _valid_amazon_payload()
-    mobile_index = AMAZON_ITEM_KEYS.index("A-MOBILE-01")
-    payload["plan"]["screens"][mobile_index][field] = value
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_RESPONSIVE_PAIR_INVALID"
-    assert raised.value.json_pointer == f"/plan/screens/{mobile_index}/{field}"
-
-
-def test_amazon_validator_requires_responsive_pair_subject_scale_difference() -> None:
-    payload = _valid_amazon_payload()
-    desktop_index = AMAZON_ITEM_KEYS.index("A-DESKTOP-01")
-    mobile_index = AMAZON_ITEM_KEYS.index("A-MOBILE-01")
-    payload["plan"]["screens"][mobile_index]["subject_scale"] = payload["plan"][
-        "screens"
-    ][desktop_index]["subject_scale"]
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_RESPONSIVE_PAIR_INVALID"
-    assert raised.value.json_pointer == f"/plan/screens/{mobile_index}/subject_scale"
-
-
-def test_amazon_validator_allows_shared_suite_backgrounds() -> None:
-    payload = _valid_amazon_payload()
-
-    structured = validate_amazon_planner_payload(payload)
-
-    selling_backgrounds = {
-        screen["background_system"]
-        for screen in structured["plan"]["screens"]
-        if screen["item_key"] != "MAIN-01"
-    }
-    assert selling_backgrounds == {
-        "suite-brand-stage",
-        "suite-soft-context",
-        "suite-technical-proof",
-        "suite-lifestyle-context",
-    }
-
-
-def test_amazon_validator_rejects_wrong_canonical_background_assignment() -> None:
-    payload = _valid_amazon_payload()
-    screen_index = AMAZON_ITEM_KEYS.index("SECONDARY-01")
-    payload["plan"]["screens"][screen_index][
-        "background_system"
-    ] = "suite-soft-context"
-
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
-
-    assert raised.value.code == "AMAZON_SUITE_BACKGROUND_ASSIGNMENT_INVALID"
-    assert str(raised.value) == (
-        "SECONDARY-01 background_system must be suite-brand-stage."
-    )
-    assert raised.value.json_pointer == (
-        f"/plan/screens/{screen_index}/background_system"
-    )
-
-
-def test_amazon_validator_rejects_wrong_item_key() -> None:
-    payload = _valid_amazon_payload()
-    payload["plan"]["screens"][4]["item_key"] = "SECONDARY-99"
+    payload["plan"]["screens"][4]["id"] = "secondary-99"
 
     with pytest.raises(XingheAgentError) as raised:
         validate_amazon_planner_payload(payload)
@@ -387,7 +287,18 @@ def test_amazon_validator_rejects_wrong_item_key() -> None:
     assert raised.value.json_pointer == "/plan/screens"
 
 
-def test_amazon_validator_rejects_missing_headline_with_exact_path() -> None:
+def test_amazon_validator_rejects_wrong_skill_size() -> None:
+    payload = _valid_amazon_payload()
+    payload["plan"]["screens"][7]["final_size"] = "1600x1200"
+
+    with pytest.raises(XingheAgentError) as raised:
+        validate_amazon_planner_payload(payload)
+
+    assert raised.value.code == "AMAZON_TARGET_SIZE_MISMATCH"
+    assert raised.value.json_pointer == "/plan/screens/7/final_size"
+
+
+def test_amazon_validator_rejects_missing_required_row_field() -> None:
     payload = _valid_amazon_payload()
     payload["plan"]["screens"][0].pop("headline")
 
@@ -395,52 +306,44 @@ def test_amazon_validator_rejects_missing_headline_with_exact_path() -> None:
         validate_amazon_planner_payload(payload)
 
     assert raised.value.code == "AMAZON_PLAN_SCREEN_INVALID"
-    assert str(raised.value) == "Amazon plan screen requires headline."
     assert raised.value.json_pointer == "/plan/screens/0/headline"
 
 
-@pytest.mark.parametrize("invalid_headline", [None, [], "", "   "])
-def test_amazon_validator_rejects_invalid_headline_values(
-    invalid_headline: object,
-) -> None:
+def test_amazon_validator_rejects_needs_confirmation_claim_in_copy() -> None:
     payload = _valid_amazon_payload()
-    payload["plan"]["screens"][0]["headline"] = invalid_headline
+    payload["analysis"]["information_confidence"]["needs_confirmation"] = [
+        "Certified waterproof"
+    ]
+    payload["plan"]["screens"][1]["headline"] = "Certified waterproof"
 
     with pytest.raises(XingheAgentError) as raised:
         validate_amazon_planner_payload(payload)
 
-    assert raised.value.code == "AMAZON_PLAN_SCREEN_INVALID"
-    assert str(raised.value) == "Amazon plan screen requires headline."
-    assert raised.value.json_pointer == "/plan/screens/0/headline"
+    assert raised.value.code == "AMAZON_UNSUPPORTED_CLAIM_INVALID"
+    assert raised.value.json_pointer == "/plan/screens/1/headline"
 
 
-@pytest.mark.parametrize("field", ["layout_family"])
-def test_amazon_validator_rejects_excessive_composition_reuse(field: str) -> None:
+def test_amazon_validator_allows_safe_copy_when_other_information_is_unknown() -> None:
     payload = _valid_amazon_payload()
-    for screen in payload["plan"]["screens"]:
-        screen[field] = "same-composition-system"
+    payload["analysis"]["information_confidence"]["needs_confirmation"] = [
+        "Exact material composition"
+    ]
+    payload["plan"]["screens"][1]["information_confidence"] = "needs confirmation"
+    payload["plan"]["screens"][1]["headline"] = "See the visible structure"
 
-    with pytest.raises(XingheAgentError) as raised:
-        validate_amazon_planner_payload(payload)
+    structured = validate_amazon_planner_payload(payload)
 
-    assert raised.value.code in {
-        "PLANNER_CROSS_PAGE_DIVERSITY_INVALID",
-        "AMAZON_LAYOUT_DIVERSITY_INVALID",
-    }
-    assert raised.value.json_pointer == "/plan/screens"
+    assert structured["plan"]["screens"][1]["headline"] == ("See the visible structure")
 
 
-@pytest.mark.parametrize("field", ["layout_family", "background_system"])
-def test_crossborder_validator_rejects_excessive_composition_reuse(
-    field: str,
-) -> None:
+def test_crossborder_validator_rejects_excessive_composition_reuse() -> None:
     request = _planner_request(
         page_count=8,
         planning_profile="crossborder_detail",
     )
     payload = _fake_plan(request)
     for screen in payload["plan"]["screens"]:
-        screen[field] = "same-composition-system"
+        screen["layout_family"] = "same-composition-system"
 
     with pytest.raises(XingheAgentError) as raised:
         validate_planner_payload(
@@ -519,9 +422,7 @@ def test_amazon_job_persists_product_master_and_plan_before_confirmation(
 
     published = dispatch_pending(client)
     assert published == 1
-    planned = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert planned["stage"] == "awaiting_confirmation"
@@ -531,14 +432,13 @@ def test_amazon_job_persists_product_master_and_plan_before_confirmation(
     assert payload["state"] == "awaiting_confirmation"
     assert len(payload["pages"]) == AMAZON_EXPECTED_ITEM_COUNT
     assert tuple(page["item_key"] for page in payload["pages"]) == AMAZON_ITEM_KEYS
-    product_master = payload["groups"][0]["analysis"][
-        "product_master_description"
-    ]
+    product_master = payload["groups"][0]["analysis"]["product_master_description"]
     assert set(product_master) >= {
+        "category_and_identity",
         "silhouette_and_proportions",
-        "color_and_material_appearance",
-        "logos_labels_and_patterns",
-        "structural_parts",
+        "color_material_and_texture",
+        "structure_parts_and_accessories",
+        "logos_labels_patterns_and_packaging",
         "scale_and_physics",
         "unknowns",
     }
@@ -568,9 +468,7 @@ def test_amazon_job_persists_product_master_and_plan_before_confirmation(
         assert set(context) >= {
             "analysis",
             "campaign_style_lock",
-            "design_strength_lock",
             "product_consistency_lock",
-            "suite_cohesion_lock",
             "layout_diversity_lock",
             "screen",
             "resume_signature",
@@ -627,15 +525,11 @@ def test_confirmed_amazon_plan_drives_all_prompts_and_retry_reuses_plan(
     assert confirmed.status_code == 202, confirmed.text
     published = dispatch_pending(client)
     assert published == 1, {
-        "job": client.get(
-            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-        ).json(),
+        "job": client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json(),
         "planner_calls": len(gateway.planner_calls),
         "image_calls": len(gateway.image_calls),
     }
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert completed["status"] == JobStatus.COMPLETED.value, [
         (item["item_key"], item["status"], item.get("error_code"))
@@ -644,22 +538,24 @@ def test_confirmed_amazon_plan_drives_all_prompts_and_retry_reuses_plan(
     assert completed["api_request_count"] == 22
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
+    assert gateway.amazon_review_calls == []
     assert {call.group_key for call in gateway.image_calls} == set(AMAZON_ITEM_KEYS)
     for call in gateway.image_calls:
         assert "Product Master Description:" in call.prompt
         assert "Product Consistency Lock:" in call.prompt
         assert "Campaign Style Lock:" in call.prompt
-        assert "Suite Cohesion Lock:" in call.prompt
         assert "Layout Diversity Lock:" in call.prompt
+
     business_quality = completed["plan"]["payload"]["business_quality"]
-    assert business_quality["status"] == "needs_review"
-    assert business_quality["technical_delivery_status"] == "completed"
-    assert business_quality["manual_review_required"] is True
-    assert business_quality["automatic_redraw_enabled"] is False
+    assert business_quality["status"] == "pending_generation"
+    assert business_quality["review_round"] == 0
+    assert business_quality["visual_review"] is None
+    assert business_quality["generation_routes"] == []
 
     calls_before_redelivery = (
         len(gateway.planner_calls),
         len(gateway.image_calls),
+        len(gateway.amazon_review_calls),
     )
     asyncio.run(client.app.state.task_runner.run(job["id"]))
     redelivered = client.get(
@@ -668,15 +564,15 @@ def test_confirmed_amazon_plan_drives_all_prompts_and_retry_reuses_plan(
     assert (
         len(gateway.planner_calls),
         len(gateway.image_calls),
+        len(gateway.amazon_review_calls),
     ) == calls_before_redelivery
     assert redelivered["plan"]["payload"]["business_quality"] == business_quality
 
 
-
-def test_amazon_retry_reuses_confirmed_plan_without_second_planner_call(
+def test_amazon_transient_failure_retries_in_place_without_second_planner_call(
     client: TestClient,
 ) -> None:
-    failed_gateway = _install_counting_runner(
+    gateway = _install_counting_runner(
         client,
         gateway_type=_OneFailureGateway,
     )
@@ -690,41 +586,91 @@ def test_amazon_retry_reuses_confirmed_plan_without_second_planner_call(
     )
     assert confirmed.status_code == 202, confirmed.text
     assert dispatch_pending(client) == 1
-    partial = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
-    assert partial["status"] == JobStatus.PARTIAL.value
-    assert len(failed_gateway.planner_calls) == 1
-    assert len(failed_gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
-    retried = client.post(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/retry",
-        headers=idem(),
-        json={"scope": "full", "item_ids": []},
+    assert completed["status"] == JobStatus.COMPLETED.value
+    assert len(gateway.planner_calls) == 1
+    assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT + 1
+    assert completed["succeeded_item_count"] == AMAZON_EXPECTED_ITEM_COUNT
+    assert completed["failed_item_count"] == 0
+
+
+def test_amazon_default_path_does_not_call_review_protocol_gateway(
+    client: TestClient,
+) -> None:
+    gateway = _install_counting_runner(
+        client,
+        gateway_type=_ReviewProtocolErrorGateway,
     )
-    assert retried.status_code == 201, retried.text
-    retry_job = retried.json()
-
-    retry_gateway = _install_counting_runner(client)
+    source = upload_asset(client, filename="amazon-review-protocol-white.png")
+    job = _create_amazon_job(client, source["id"])
     assert dispatch_pending(client) == 1
-    retried_completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{retry_job['id']}"
-    ).json()
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json={"expected_revision": 1},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    assert dispatch_pending(client) == 1
 
-    assert retried_completed["status"] == JobStatus.COMPLETED.value
-    assert retry_gateway.planner_calls == []
-    assert len(retry_gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
-    retry_payload = retried_completed["plan"]["payload"]
-    assert retry_payload["usage"]["planner"] == []
-    assert retry_payload["usage"]["planner_reused_from_job_id"] == job["id"]
-    assert retry_payload["business_quality"]["status"] == "needs_review"
-    assert not any(
-        finding["code"] == "AMAZON_EXACT_DUPLICATE_OUTPUT"
-        for finding in retry_payload["business_quality"]["deterministic_findings"]
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+
+    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["succeeded_item_count"] == AMAZON_EXPECTED_ITEM_COUNT
+    assert completed["failed_item_count"] == 0
+    assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
+    assert gateway.amazon_review_calls == []
+    assert all(item["status"] == "succeeded" for item in completed["items"])
+
+    with client.app.state.session_factory() as session:
+        generated_links = session.scalars(
+            select(JobAssetRecord).where(
+                JobAssetRecord.job_id == job["id"],
+                JobAssetRecord.job_item_id.is_not(None),
+            )
+        ).all()
+
+    assert len(generated_links) == AMAZON_EXPECTED_ITEM_COUNT
+    assert all(link.is_deliverable for link in generated_links)
+    assert all(
+        not link.validation.get("superseded_by_suite_review")
+        for link in generated_links
     )
 
 
-def test_amazon_exact_duplicate_outputs_fail_business_quality_only(
+def test_amazon_default_path_does_not_apply_external_quality_redraw(
+    client: TestClient,
+) -> None:
+    gateway = _install_counting_runner(
+        client,
+        gateway_type=_ReviewQualityFailureGateway,
+    )
+    source = upload_asset(client, filename="amazon-review-quality-white.png")
+    job = _create_amazon_job(client, source["id"])
+    assert dispatch_pending(client) == 1
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json={"expected_revision": 1},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    assert dispatch_pending(client) == 1
+
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+
+    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["succeeded_item_count"] == AMAZON_EXPECTED_ITEM_COUNT
+    assert completed["failed_item_count"] == 0
+    assert gateway.amazon_review_calls == []
+    assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
+    assert all(
+        sum(call.group_key == item_key for call in gateway.image_calls) == 1
+        for item_key in AMAZON_ITEM_KEYS
+    )
+    assert all(item["status"] == "succeeded" for item in completed["items"])
+
+
+def test_amazon_default_path_does_not_redraw_duplicate_outputs(
     client: TestClient,
 ) -> None:
     gateway = _install_counting_runner(
@@ -742,27 +688,20 @@ def test_amazon_exact_duplicate_outputs_fail_business_quality_only(
     assert confirmed.status_code == 202, confirmed.text
     published = dispatch_pending(client)
     assert published == 1, {
-        "job": client.get(
-            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-        ).json(),
+        "job": client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json(),
         "planner_calls": len(gateway.planner_calls),
         "image_calls": len(gateway.image_calls),
     }
 
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
-    quality = completed["plan"]["payload"]["business_quality"]
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+
     assert completed["status"] == JobStatus.COMPLETED.value
-    assert completed["stage"] == "completed_quality_failed"
-    assert quality["status"] == "failed"
-    assert quality["technical_delivery_status"] == "completed"
-    assert any(
-        finding["code"] == "AMAZON_EXACT_DUPLICATE_OUTPUT"
-        for finding in quality["deterministic_findings"]
-    )
+    assert completed["stage"] == "completed"
+    assert completed["succeeded_item_count"] == AMAZON_EXPECTED_ITEM_COUNT
+    assert completed["failed_item_count"] == 0
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
+    assert gateway.amazon_review_calls == []
 
 
 def test_valid_amazon_payload_is_not_mutated_by_validation() -> None:
@@ -772,6 +711,7 @@ def test_valid_amazon_payload_is_not_mutated_by_validation() -> None:
     validated = validate_amazon_planner_payload(payload)
 
     assert payload == original
-    assert tuple(
-        screen["item_key"] for screen in validated["plan"]["screens"]
-    ) == AMAZON_ITEM_KEYS
+    assert (
+        tuple(screen["item_key"] for screen in validated["plan"]["screens"])
+        == AMAZON_ITEM_KEYS
+    )

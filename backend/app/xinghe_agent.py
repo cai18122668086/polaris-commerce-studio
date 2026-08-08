@@ -126,15 +126,15 @@ _PLANNER_JSON_FENCE = re.compile(
 _HIGH_ROLE_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"封面",
-        r"结构",
-        r"细节",
-        r"特写",
-        r"材质",
-        r"表面",
-        r"工艺",
-        r"纹理",
-        r"微距",
+        r"灏侀潰",
+        r"缁撴瀯",
+        r"缁嗚妭",
+        r"鐗瑰啓",
+        r"鏉愯川",
+        r"琛ㄩ潰",
+        r"宸ヨ壓",
+        r"绾圭悊",
+        r"寰窛",
         r"\bcover\b",
         r"\bstructur(?:e|al)\b",
         r"\bdetail(?:ed)?\b",
@@ -186,9 +186,7 @@ _AMAZON_PLANNER_PROTOCOL_FILES = (
     "references/quality-rules.md",
     "references/generation-backend.md",
 )
-_COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset(
-    {"xinghe-ecommerce-detail-domestic-3"}
-)
+_COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset({"xinghe-ecommerce-detail-domestic-3"})
 _PLANNER_PROTOCOL_FILES_BY_SKILL = {
     "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
     "xinghe-amazon-visual-suite": _AMAZON_PLANNER_PROTOCOL_FILES,
@@ -202,44 +200,6 @@ _SUBJECT_SCALES = {
     "cutaway",
     "overhead",
 }
-_AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES = (
-    (1, "hero", "medium"),
-    (2, "scene", "macro"),
-    (3, "macro", "information"),
-    (4, "scene", "overhead"),
-    (5, "macro", "cutaway"),
-    (6, "information", "medium"),
-    (7, "hero", "medium"),
-)
-_AMAZON_SUITE_BACKGROUND_SYSTEMS = (
-    "suite-brand-stage",
-    "suite-soft-context",
-    "suite-technical-proof",
-    "suite-lifestyle-context",
-)
-_AMAZON_SCREEN_BACKGROUND_SYSTEMS = (
-    ("MAIN-01", "pure-white-compliance"),
-    ("SECONDARY-01", "suite-brand-stage"),
-    ("SECONDARY-02", "suite-lifestyle-context"),
-    ("SECONDARY-03", "suite-technical-proof"),
-    ("SECONDARY-04", "suite-soft-context"),
-    ("SECONDARY-05", "suite-soft-context"),
-    ("SECONDARY-06", "suite-brand-stage"),
-    ("A-DESKTOP-01", "suite-brand-stage"),
-    ("A-DESKTOP-02", "suite-lifestyle-context"),
-    ("A-DESKTOP-03", "suite-technical-proof"),
-    ("A-DESKTOP-04", "suite-soft-context"),
-    ("A-DESKTOP-05", "suite-lifestyle-context"),
-    ("A-DESKTOP-06", "suite-technical-proof"),
-    ("A-DESKTOP-07", "suite-brand-stage"),
-    ("A-MOBILE-01", "suite-brand-stage"),
-    ("A-MOBILE-02", "suite-lifestyle-context"),
-    ("A-MOBILE-03", "suite-technical-proof"),
-    ("A-MOBILE-04", "suite-soft-context"),
-    ("A-MOBILE-05", "suite-lifestyle-context"),
-    ("A-MOBILE-06", "suite-technical-proof"),
-    ("A-MOBILE-07", "suite-brand-stage"),
-)
 
 
 class XingheAgentError(RuntimeError):
@@ -347,6 +307,47 @@ class ImageCallResult:
     active_concurrency: int = 0
 
 
+@dataclass(frozen=True)
+class AmazonVisualReviewImage:
+    item_key: str
+    filename: str
+    content_type: str
+    payload: bytes
+
+
+@dataclass(frozen=True)
+class AmazonVisualReviewRequest:
+    workspace_id: str
+    job_id: str
+    scope: str
+    item_key: str | None
+    references: tuple[SourceImage, ...]
+    candidates: tuple[AmazonVisualReviewImage, ...]
+    generation_contract: str
+    skill_protocol: Mapping[str, Any]
+    idempotency_key: str
+    review_item_keys: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AmazonVisualReviewCallResult:
+    visual_success: bool | None
+    provider_request_id: str | None
+    raw_usage: dict[str, Any] | None
+    normalized_usage: dict[str, Any]
+    actual_cost_micros: int | None
+    estimated_cost_micros: int | None = None
+    summary: str = ""
+    reason_codes: tuple[str, ...] = ()
+    missing_evidence: tuple[str, ...] = ()
+    retry_guidance: str = ""
+    failed_item_keys: tuple[str, ...] = ()
+    error_code: str | None = None
+    error_message: str | None = None
+    retryable: bool = False
+    http_status: int | None = None
+
+
 class XingheGateway(Protocol):
     provider_name: str
     planner_model: str
@@ -357,6 +358,10 @@ class XingheGateway(Protocol):
     async def plan(self, request: PlannerRequest) -> PlannerCallResult: ...
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult: ...
+
+    async def review_amazon(
+        self, request: AmazonVisualReviewRequest
+    ) -> AmazonVisualReviewCallResult: ...
 
 
 def normalize_usage(raw_usage: object) -> dict[str, Any]:
@@ -412,9 +417,7 @@ def cost_range(
 
 def build_resume_signature(
     *,
-    groups: Sequence[
-        tuple[str, Sequence[tuple[str, str] | tuple[str, str, str]]]
-    ],
+    groups: Sequence[tuple[str, Sequence[tuple[str, str] | tuple[str, str, str]]]],
     base_url: str,
     planner_model: str,
     image_model: str,
@@ -626,9 +629,7 @@ def validate_planner_payload(
             raise XingheAgentError(
                 "PLANNER_SCHEMA_INVALID",
                 "Product Master Description cannot be empty.",
-                json_pointer=_json_pointer(
-                    "analysis", "product_master_description"
-                ),
+                json_pointer=_json_pointer("analysis", "product_master_description"),
             )
     objections = analysis.get("buyer_objections")
     if not isinstance(objections, list) or not objections:
@@ -789,14 +790,16 @@ def validate_planner_payload(
                     "copy_density",
                 ]
             )
-        normalized.update({
-            key: _require_nonempty_string(
-                screen_mapping.get(key),
-                key,
-                path=_json_pointer("plan", "screens", screen_index, key),
-            )
-            for key in required_screen_fields
-        })
+        normalized.update(
+            {
+                key: _require_nonempty_string(
+                    screen_mapping.get(key),
+                    key,
+                    path=_json_pointer("plan", "screens", screen_index, key),
+                )
+                for key in required_screen_fields
+            }
+        )
         if normalized["subject_scale"] not in _SUBJECT_SCALES:
             raise XingheAgentError(
                 "PLANNER_SCHEMA_INVALID",
@@ -910,13 +913,9 @@ def validate_planner_payload(
             "screens": normalized_screens,
         }
         if layout_diversity_lock is not None:
-            normalized_plan["layout_diversity_lock"] = dict(
-                layout_diversity_lock
-            )
+            normalized_plan["layout_diversity_lock"] = dict(layout_diversity_lock)
         if product_consistency_lock is not None:
-            normalized_plan["product_consistency_lock"] = dict(
-                product_consistency_lock
-            )
+            normalized_plan["product_consistency_lock"] = dict(product_consistency_lock)
         normalized_analysis = {
             "category_key": str(analysis["category_key"]),
             "category_reason": str(analysis["category_reason"]),
@@ -927,9 +926,7 @@ def validate_planner_payload(
             "buyer_objections": list(objections),
         }
         if product_master is not None:
-            normalized_analysis["product_master_description"] = dict(
-                product_master
-            )
+            normalized_analysis["product_master_description"] = dict(product_master)
         return {
             "analysis": normalized_analysis,
             "plan": normalized_plan,
@@ -1245,6 +1242,7 @@ class FakeXingheGateway:
         self.usage_reported = usage_reported
         self.planner_calls: list[PlannerRequest] = []
         self.image_calls: list[ImageEditRequest] = []
+        self.amazon_review_calls: list[AmazonVisualReviewRequest] = []
         self.external_network_request_count = 0
         self._image_attempts: dict[tuple[str, int], int] = {}
         self._active_images = 0
@@ -1359,6 +1357,26 @@ class FakeXingheGateway:
         finally:
             async with self._activity_lock:
                 self._active_images -= 1
+
+    async def review_amazon(
+        self, request: AmazonVisualReviewRequest
+    ) -> AmazonVisualReviewCallResult:
+        self.amazon_review_calls.append(request)
+        raw_usage: dict[str, Any] | None = _fake_usage(
+            input_images=len(request.references) + len(request.candidates)
+        )
+        if not self.usage_reported:
+            raw_usage = None
+        return AmazonVisualReviewCallResult(
+            visual_success=True,
+            provider_request_id=f"mock_amazon_review_{len(self.amazon_review_calls)}",
+            raw_usage=raw_usage,
+            normalized_usage=normalize_usage(raw_usage),
+            actual_cost_micros=0,
+            estimated_cost_micros=0,
+            summary="The deterministic fake reviewer accepted the candidate.",
+            http_status=200,
+        )
 
 
 class OpenAICompatibleTransport(Protocol):
@@ -1513,7 +1531,18 @@ class TengliOpenAICompatibleGateway:
                 "text": _planner_prompt(request),
             }
         ]
-        for source in request.sources:
+        for ordinal, source in enumerate(request.sources, start=1):
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"Source image {ordinal}\n"
+                        f"asset_id: {source.asset_id}\n"
+                        f"role: {source.source_role}\n"
+                        f"filename: {source.filename}"
+                    ),
+                }
+            )
             encoded = base64.b64encode(source.payload).decode("ascii")
             content.append(
                 {
@@ -1535,7 +1564,6 @@ class TengliOpenAICompatibleGateway:
             payload.update(
                 {
                     "max_completion_tokens": 12_000,
-                    "temperature": 0,
                 }
             )
         response: Mapping[str, Any] | None = None
@@ -1800,6 +1828,177 @@ class TengliOpenAICompatibleGateway:
                 retryable=exc.retryable,
             )
 
+    async def review_amazon(
+        self,
+        request: AmazonVisualReviewRequest,
+    ) -> AmazonVisualReviewCallResult:
+        """Review Amazon candidates only against the bundled Skill contract."""
+
+        try:
+            review_item_keys = _amazon_visual_review_item_keys(request)
+        except XingheAgentError as exc:
+            return AmazonVisualReviewCallResult(
+                visual_success=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                actual_cost_micros=None,
+                estimated_cost_micros=self.review_price_micros,
+                error_code="AMAZON_VISUAL_REVIEW_INVALID",
+                error_message=str(exc),
+                retryable=False,
+            )
+
+        content: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": _amazon_visual_review_prompt(
+                    request,
+                    review_item_keys=review_item_keys,
+                ),
+            }
+        ]
+        for ordinal, source in enumerate(request.references, start=1):
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"Reference {ordinal}: asset_id={source.asset_id}; "
+                        f"role={source.source_role}; filename={source.filename}"
+                    ),
+                }
+            )
+            encoded = base64.b64encode(source.payload).decode("ascii")
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{source.content_type};base64,{encoded}",
+                        "detail": "high",
+                    },
+                }
+            )
+        for ordinal, candidate in enumerate(request.candidates, start=1):
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"Candidate {ordinal}: item_key={candidate.item_key}; "
+                        f"filename={candidate.filename}"
+                    ),
+                }
+            )
+            encoded = base64.b64encode(candidate.payload).decode("ascii")
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{candidate.content_type};base64,{encoded}",
+                        "detail": "high",
+                    },
+                }
+            )
+        payload = {
+            "model": self.planner_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the visual QA stage of the supplied Amazon Skill. "
+                        "Apply only the supplied Skill protocol and generation "
+                        "contract. Do not invent additional product-specific rules. "
+                        "Return JSON only."
+                    ),
+                },
+                {"role": "user", "content": content},
+            ],
+            "response_format": _amazon_visual_review_response_format(review_item_keys),
+            "temperature": 0,
+        }
+        response: Mapping[str, Any] | None = None
+        try:
+            self.external_network_request_count += 1
+            status, response = await self.transport.post_json(
+                url=urljoin(self.base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key),
+                payload=payload,
+                timeout_seconds=self.timeout_seconds,
+            )
+            raw_usage = _raw_usage(response)
+            normalized = normalize_usage(raw_usage)
+            if status >= 400:
+                return AmazonVisualReviewCallResult(
+                    visual_success=None,
+                    provider_request_id=_safe_request_id(response),
+                    raw_usage=raw_usage,
+                    normalized_usage=normalized,
+                    actual_cost_micros=_usage_cost_micros(raw_usage),
+                    estimated_cost_micros=self.review_price_micros,
+                    error_code=(
+                        "AMAZON_VISUAL_REVIEW_RATE_LIMITED"
+                        if status == 429
+                        else "AMAZON_VISUAL_REVIEW_REQUEST_FAILED"
+                    ),
+                    error_message=f"Amazon visual review failed with HTTP {status}.",
+                    retryable=status == 429 or status >= 500,
+                    http_status=status,
+                )
+            review_payload = _planner_content_payload(_planner_message_text(response))
+            review = _validate_amazon_visual_review_payload(
+                review_payload,
+                scope=request.scope,
+                review_item_keys=review_item_keys,
+            )
+            return AmazonVisualReviewCallResult(
+                visual_success=review["visual_success"],
+                provider_request_id=_safe_request_id(response),
+                raw_usage=raw_usage,
+                normalized_usage=normalized,
+                actual_cost_micros=_usage_cost_micros(raw_usage),
+                estimated_cost_micros=self.review_price_micros,
+                summary=review["summary"],
+                reason_codes=tuple(review["reason_codes"]),
+                missing_evidence=tuple(review["missing_evidence"]),
+                retry_guidance=review["retry_guidance"],
+                failed_item_keys=tuple(review["failed_item_keys"]),
+                http_status=status,
+            )
+        except (TimeoutError, URLError, OSError) as exc:
+            return AmazonVisualReviewCallResult(
+                visual_success=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                actual_cost_micros=None,
+                estimated_cost_micros=self.review_price_micros,
+                error_code="AMAZON_VISUAL_REVIEW_REQUEST_FAILED",
+                error_message=(
+                    f"Amazon visual review transport failed ({type(exc).__name__})."
+                ),
+                retryable=True,
+            )
+        except XingheAgentError as exc:
+            raw_usage = _raw_usage(response) if response is not None else None
+            return AmazonVisualReviewCallResult(
+                visual_success=None,
+                provider_request_id=(
+                    _safe_request_id(response) if response is not None else None
+                ),
+                raw_usage=raw_usage,
+                normalized_usage=normalize_usage(raw_usage),
+                actual_cost_micros=(
+                    _usage_cost_micros(raw_usage) if raw_usage is not None else None
+                ),
+                estimated_cost_micros=self.review_price_micros,
+                error_code=(
+                    "AMAZON_VISUAL_REVIEW_REQUEST_FAILED"
+                    if exc.retryable
+                    else "AMAZON_VISUAL_REVIEW_INVALID"
+                ),
+                error_message=str(exc),
+                retryable=exc.retryable,
+            )
+
     async def review_masked(
         self,
         request: MaskedVisualReviewRequest,
@@ -2028,7 +2227,12 @@ class XinghePlanningCoordinator:
                         validate_amazon_planner_payload,
                     )
 
-                    validated.append(validate_amazon_planner_payload(result.payload))
+                    validated.append(
+                        validate_amazon_planner_payload(
+                            result.payload,
+                            sources=request.sources,
+                        )
+                    )
                 else:
                     validated.append(
                         validate_planner_payload(
@@ -2111,22 +2315,7 @@ class XinghePlanningCoordinator:
                     source_role=source.source_role,
                 )
             )
-        return PlannerRequest(
-            workspace_id=request.workspace_id,
-            job_id=request.job_id,
-            group_key=request.group_key,
-            sources=tuple(loaded),
-            page_count=request.page_count,
-            language=request.language,
-            product_name=request.product_name,
-            product_information=request.product_information,
-            platform_code=request.platform_code,
-            size=request.size,
-            idempotency_key=request.idempotency_key,
-            system_prompt=request.system_prompt,
-            domestic_protocol=request.domestic_protocol,
-            planning_profile=request.planning_profile,
-        )
+        return replace(request, sources=tuple(loaded))
 
     def _reserve(
         self,
@@ -2269,8 +2458,8 @@ class XinghePlanningCoordinator:
             from .new_detail_skill_provider import AdapterValidationError
 
             try:
-                detail_prompt_configuration = (
-                    domestic_detail_prompt_configuration(settings)
+                detail_prompt_configuration = domestic_detail_prompt_configuration(
+                    settings
                 )
             except AdapterValidationError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
@@ -2281,8 +2470,8 @@ class XinghePlanningCoordinator:
             from .new_detail_skill_provider import AdapterValidationError
 
             try:
-                detail_prompt_configuration = (
-                    crossborder_detail_prompt_configuration(settings)
+                detail_prompt_configuration = crossborder_detail_prompt_configuration(
+                    settings
                 )
             except AdapterValidationError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
@@ -2296,8 +2485,7 @@ class XinghePlanningCoordinator:
         product_name_value = settings.get("product_name")
         if domestic_protocol and isinstance(product_name_value, str):
             product_name = (
-                product_name_value.strip()
-                or "visible product from supplied images"
+                product_name_value.strip() or "visible product from supplied images"
             )
         else:
             product_name = _require_nonempty_string(
@@ -2310,9 +2498,7 @@ class XinghePlanningCoordinator:
             "platform_code",
         )
         if domestic_protocol:
-            size = _validated_image_size(
-                detail_prompt_configuration["resolved_size"]
-            )
+            size = _validated_image_size(detail_prompt_configuration["resolved_size"])
         else:
             size = _validated_image_size(settings.get("size") or IMAGE_SIZE)
         selling_points_value = settings.get("selling_points", [])
@@ -2328,8 +2514,7 @@ class XinghePlanningCoordinator:
         if domestic_protocol:
             reference_value = input_configuration.get("reference_asset_ids", [])
             if not isinstance(reference_value, list) or any(
-                not isinstance(value, str) or not value
-                for value in reference_value
+                not isinstance(value, str) or not value for value in reference_value
             ):
                 raise XingheAgentError(
                     "AGENT_CONFIGURATION_INVALID",
@@ -2344,8 +2529,7 @@ class XinghePlanningCoordinator:
                         JobAssetRecord.workspace_id == job.workspace_id,
                         JobAssetRecord.job_id == job.id,
                         JobAssetRecord.job_item_id.is_(None),
-                        JobAssetRecord.direction
-                        == JobAssetDirection.INPUT.value,
+                        JobAssetRecord.direction == JobAssetDirection.INPUT.value,
                     )
                     .order_by(JobAssetRecord.role, JobAssetRecord.ordinal)
                 ).all()
@@ -2375,13 +2559,11 @@ class XinghePlanningCoordinator:
                 )
             sources: list[SourceImage] = []
             role_asset_ids = [
-                ("product_reference", asset_id_value)
-                for asset_id_value in asset_ids
+                ("product_reference", asset_id_value) for asset_id_value in asset_ids
             ]
             if domestic_protocol:
                 role_asset_ids.extend(
-                    ("style_reference", asset_id)
-                    for asset_id in reference_asset_ids
+                    ("style_reference", asset_id) for asset_id in reference_asset_ids
                 )
             for source_role, asset_id_value in role_asset_ids:
                 if not isinstance(asset_id_value, str):
@@ -2389,10 +2571,14 @@ class XinghePlanningCoordinator:
                         "AGENT_CONFIGURATION_INVALID",
                         "Product source asset identifiers must be strings.",
                     )
-                if domestic_protocol and (
-                    asset_id_value,
-                    source_role,
-                ) not in durable_roles:
+                if (
+                    domestic_protocol
+                    and (
+                        asset_id_value,
+                        source_role,
+                    )
+                    not in durable_roles
+                ):
                     raise XingheAgentError(
                         "RESUME_SIGNATURE_INVALID",
                         "A source role no longer matches its durable job binding.",
@@ -2424,9 +2610,7 @@ class XinghePlanningCoordinator:
                 )
             source_tuple = tuple(sources)
             source_groups.append((group_key, source_tuple))
-            signature_sources: Sequence[
-                tuple[str, str] | tuple[str, str, str]
-            ]
+            signature_sources: Sequence[tuple[str, str] | tuple[str, str, str]]
             if domestic_protocol:
                 signature_sources = tuple(
                     (source.source_role, source.filename, source.sha256)
@@ -2487,6 +2671,7 @@ class XinghePlanningCoordinator:
     ) -> tuple[PlannerRequest, ...]:
         from .amazon_visual_suite_provider import (
             AMAZON_EXPECTED_ITEM_COUNT,
+            AMAZON_PLANNING_POLICY_VERSION,
             AMAZON_VISUAL_SUITE_SKILL_ID,
         )
 
@@ -2539,27 +2724,53 @@ class XinghePlanningCoordinator:
                 )
             )
         product_name = str(settings.get("product_name") or "").strip()
-        listing_title = str(settings.get("listing_title") or "").strip()
-        bullet_points = settings.get("bullet_points", [])
-        if not isinstance(bullet_points, list) or any(
-            not isinstance(value, str) for value in bullet_points
-        ):
-            raise XingheAgentError(
-                "AGENT_CONFIGURATION_INVALID",
-                "Amazon bullet points must be an array of strings.",
-            )
         language = _require_nonempty_string(settings.get("language"), "language")
         marketplace = _require_nonempty_string(
             settings.get("marketplace"), "marketplace"
         )
-        information = tuple(
-            value
-            for value in (listing_title, *(value.strip() for value in bullet_points))
-            if value
+        information_parts: list[str] = []
+        scalar_information_fields = (
+            ("category", "Category"),
+            ("target_buyer", "Target buyer"),
+            ("listing_title", "Listing title"),
+            ("listing_description", "Listing description"),
+            ("a_plus_copy", "Existing A+ copy"),
+            ("instruction", "User instruction"),
         )
+        for key, label in scalar_information_fields:
+            value = settings.get(key, "")
+            if not isinstance(value, str):
+                raise XingheAgentError(
+                    "AGENT_CONFIGURATION_INVALID",
+                    f"Amazon {key} must be a string.",
+                )
+            if value.strip():
+                information_parts.append(f"{label}: {value.strip()}")
+        list_information_fields = (
+            ("bullet_points", "Bullet point"),
+            ("product_facts", "Confirmed product fact"),
+            ("parameters", "Confirmed parameter"),
+            ("certifications_or_evidence", "Provided certification or evidence"),
+            ("forbidden_claims", "HARD CONSTRAINT - forbidden claim"),
+            ("brand_colors", "Brand color"),
+            ("style_preferences", "Style preference"),
+        )
+        for key, label in list_information_fields:
+            values = settings.get(key, [])
+            if not isinstance(values, list) or any(
+                not isinstance(value, str) for value in values
+            ):
+                raise XingheAgentError(
+                    "AGENT_CONFIGURATION_INVALID",
+                    f"Amazon {key} must be an array of strings.",
+                )
+            information_parts.extend(
+                f"{label}: {value.strip()}" for value in values if value.strip()
+            )
+        information = tuple(information_parts)
         signature = canonical_hash(
             {
-                "version": "amazon-visual-suite-planning-v2",
+                "version": AMAZON_PLANNING_POLICY_VERSION,
                 "base_url": self.base_url_signature.rstrip("/"),
                 "planner_model": self.gateway.planner_model,
                 "image_model": self.gateway.image_model,
@@ -2939,9 +3150,7 @@ class XinghePlanningCoordinator:
                         source_count=len(request.sources),
                         size=request.size,
                         source_roles=(
-                            tuple(
-                                source.source_role for source in request.sources
-                            )
+                            tuple(source.source_role for source in request.sources)
                             if request.domestic_protocol
                             else None
                         ),
@@ -3222,10 +3431,9 @@ class XinghePlanningCoordinator:
             .order_by(JobItemRecord.ordinal)
             .with_for_update()
         ).all()
-        if (
-            len(items) != AMAZON_EXPECTED_ITEM_COUNT
-            or [item.item_key for item in items] != list(AMAZON_ITEM_KEYS)
-        ):
+        if len(items) != AMAZON_EXPECTED_ITEM_COUNT or [
+            item.item_key for item in items
+        ] != list(AMAZON_ITEM_KEYS):
             self._fail_planning_locked(
                 session,
                 job,
@@ -3268,14 +3476,8 @@ class XinghePlanningCoordinator:
             "schema_version": AMAZON_PLANNING_POLICY_VERSION,
             "analysis": structured["analysis"],
             "campaign_style_lock": structured["plan"]["campaign_style_lock"],
-            "design_strength_lock": structured["plan"]["design_strength_lock"],
-            "product_consistency_lock": structured["plan"][
-                "product_consistency_lock"
-            ],
-            "suite_cohesion_lock": structured["plan"]["suite_cohesion_lock"],
-            "layout_diversity_lock": structured["plan"][
-                "layout_diversity_lock"
-            ],
+            "product_consistency_lock": structured["plan"]["product_consistency_lock"],
+            "layout_diversity_lock": structured["plan"]["layout_diversity_lock"],
             "input_signature": input_signature,
             "resume_signature": resume_signature,
         }
@@ -3297,9 +3499,7 @@ class XinghePlanningCoordinator:
             item.quality = "high"
             item.stage = "awaiting_confirmation"
             item.state_version += 1
-        estimated_pending_cost = (
-            AMAZON_EXPECTED_ITEM_COUNT * self.high_price_micros
-        )
+        estimated_pending_cost = AMAZON_EXPECTED_ITEM_COUNT * self.high_price_micros
         payload = {
             "workflow_version": AMAZON_PLANNING_POLICY_VERSION,
             "state": "awaiting_confirmation",
@@ -3315,17 +3515,9 @@ class XinghePlanningCoordinator:
                 {
                     "group_key": "amazon-product",
                     "analysis": structured["analysis"],
-                    "campaign_style_lock": structured["plan"][
-                        "campaign_style_lock"
-                    ],
-                    "design_strength_lock": structured["plan"][
-                        "design_strength_lock"
-                    ],
+                    "campaign_style_lock": structured["plan"]["campaign_style_lock"],
                     "product_consistency_lock": structured["plan"][
                         "product_consistency_lock"
-                    ],
-                    "suite_cohesion_lock": structured["plan"][
-                        "suite_cohesion_lock"
                     ],
                     "layout_diversity_lock": structured["plan"][
                         "layout_diversity_lock"
@@ -3339,18 +3531,26 @@ class XinghePlanningCoordinator:
             "input_signature": input_signature,
             "resume_signature": resume_signature,
             "controls": {
-                "automatic_review_enabled": False,
-                "automatic_redraw_enabled": False,
+                "automatic_review_enabled": True,
+                "automatic_redraw_enabled": True,
                 "successful_page_auto_redraw_enabled": False,
+                "max_suite_review_rounds": 2,
                 "manual_confirmation_required": True,
             },
             "business_quality": {
                 "status": "pending_generation",
                 "policy_version": AMAZON_PLANNING_POLICY_VERSION,
                 "technical_delivery_status": "pending",
-                "manual_review_required": True,
-                "automatic_redraw_enabled": False,
+                "manual_review_required": False,
+                "automatic_redraw_enabled": True,
                 "deterministic_findings": [],
+                "visual_review": None,
+                "qa_notes": [],
+                "missing_evidence": [],
+                "failed_item_keys": [],
+                "review_round": 0,
+                "contact_sheet_asset_id": None,
+                "generation_routes": [],
             },
             "cost": {
                 "currency": "USD",
@@ -3376,9 +3576,7 @@ class XinghePlanningCoordinator:
                 "failure_count": 0,
                 "rate_limit_429_count": 0,
                 "actual_concurrency": 0,
-                "usage_missing_count": int(
-                    not results[0].normalized_usage["reported"]
-                ),
+                "usage_missing_count": int(not results[0].normalized_usage["reported"]),
             },
         }
         plan.payload = payload
@@ -3477,9 +3675,7 @@ class XingheImageProvider:
                     request,
                     configuration,
                     source_count=len(sources),
-                    source_roles=tuple(
-                        source.source_role for source in sources
-                    ),
+                    source_roles=tuple(source.source_role for source in sources),
                 )
             except XingheAgentError as exc:
                 return _provider_rejection(exc.code, str(exc), self.gateway)
@@ -3658,8 +3854,7 @@ class XingheImageProvider:
                             JobAssetRecord.workspace_id == job.workspace_id,
                             JobAssetRecord.job_id == job.id,
                             JobAssetRecord.job_item_id.is_(None),
-                            JobAssetRecord.direction
-                            == JobAssetDirection.INPUT.value,
+                            JobAssetRecord.direction == JobAssetDirection.INPUT.value,
                         )
                     ).all()
                 }
@@ -3681,10 +3876,14 @@ class XingheImageProvider:
                     if domestic_protocol
                     else "product_reference"
                 )
-                if domestic_protocol and (
-                    asset_id,
-                    source_role,
-                ) not in durable_roles:
+                if (
+                    domestic_protocol
+                    and (
+                        asset_id,
+                        source_role,
+                    )
+                    not in durable_roles
+                ):
                     raise XingheAgentError(
                         "RESUME_SIGNATURE_INVALID",
                         "A planned source role no longer matches its durable binding.",
@@ -3853,8 +4052,7 @@ class XingheImageProvider:
                             for role in sorted(set(source_roles))
                         }
                     }
-                    if self.skill_id
-                    == "xinghe-ecommerce-detail-domestic-3"
+                    if self.skill_id == "xinghe-ecommerce-detail-domestic-3"
                     else {}
                 ),
             }
@@ -4150,8 +4348,7 @@ def synchronize_confirmed_plan(
         if isinstance(group, dict) and isinstance(group.get("group_key"), str)
     }
     domestic_protocol = any(
-        isinstance(group, dict) and "plan_protocol_fields" in group
-        for group in groups
+        isinstance(group, dict) and "plan_protocol_fields" in group for group in groups
     )
     output_plan_signature = canonical_hash(
         {
@@ -4162,22 +4359,14 @@ def synchronize_confirmed_plan(
                     "group_key": group.get("group_key"),
                     "analysis": group.get("analysis"),
                     **(
-                        {
-                            "plan_protocol_fields": group.get(
-                                "plan_protocol_fields"
-                            )
-                        }
+                        {"plan_protocol_fields": group.get("plan_protocol_fields")}
                         if domestic_protocol
                         else {}
                     ),
                     "campaign_style_lock": group.get("campaign_style_lock"),
                     "design_strength_lock": group.get("design_strength_lock"),
-                    "layout_diversity_lock": group.get(
-                        "layout_diversity_lock"
-                    ),
-                    "product_consistency_lock": group.get(
-                        "product_consistency_lock"
-                    ),
+                    "layout_diversity_lock": group.get("layout_diversity_lock"),
+                    "product_consistency_lock": group.get("product_consistency_lock"),
                 }
                 for group in groups
                 if isinstance(group, dict)
@@ -4233,12 +4422,8 @@ def synchronize_confirmed_plan(
                 **safe_plan_protocol,
                 "campaign_style_lock": group.get("campaign_style_lock"),
                 "design_strength_lock": group.get("design_strength_lock"),
-                "layout_diversity_lock": group.get(
-                    "layout_diversity_lock", {}
-                ),
-                "product_consistency_lock": group.get(
-                    "product_consistency_lock", {}
-                ),
+                "layout_diversity_lock": group.get("layout_diversity_lock", {}),
+                "product_consistency_lock": group.get("product_consistency_lock", {}),
             },
         }
         existing = dict(item.configuration)
@@ -4593,12 +4778,8 @@ def _validate_item_configuration(
             source.get("role") if isinstance(source, Mapping) else None
             for source in sources
         ]
-        if (
-            "product_reference" not in roles
-            or any(
-                role not in {"product_reference", "style_reference"}
-                for role in roles
-            )
+        if "product_reference" not in roles or any(
+            role not in {"product_reference", "style_reference"} for role in roles
         ):
             raise XingheAgentError(
                 "AGENT_CONFIGURATION_INVALID",
@@ -4850,9 +5031,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                         "contrast-field",
                     )[index % 4],
                     "prop_strategy": f"Page-specific prop strategy {index + 1}",
-                    "copy_density": (
-                        "sparse" if index % 2 == 0 else "moderate"
-                    ),
+                    "copy_density": ("sparse" if index % 2 == 0 else "moderate"),
                 }
                 for index in range(request.page_count)
             ],
@@ -4861,107 +5040,111 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _fake_amazon_plan(request: PlannerRequest) -> dict[str, Any]:
-    from .amazon_visual_suite_provider import AMAZON_ITEM_SPECS
+    from .amazon_visual_suite_provider import (
+        AMAZON_ITEM_SPECS,
+        AMAZON_SKILL_ROW_ID_BY_ITEM_KEY,
+    )
 
-    payload = _fake_plan(replace(request, planning_profile="detail_pack"))
-    payload["analysis"].update(
-        {
+    return {
+        "analysis": {
+            "product_image_analysis": {
+                "visible_facts": [
+                    f"{len(request.sources)} role-labelled product source image(s)"
+                ],
+                "possible_use_contexts": ["category-appropriate daily use"],
+                "unknowns": [],
+            },
             "information_confidence": {
                 "confirmed": ["visible source facts"],
                 "reasonable_inference": [],
                 "needs_confirmation": [],
             },
             "buyer_demand_map": [
-                "recognition",
-                "understanding",
-                "trust",
-                "comparison",
-                "purchase",
+                "Attraction: recognize the exact product.",
+                "Understanding: see the core use and function.",
+                "Trust: verify visible structure and details.",
+                "Comparison: understand why this SKU fits.",
+                "Purchase: reduce choice and use risk.",
             ],
-            "demand_to_selling_point_match": {
-                "recognition": "Show the exact supplied SKU."
-            },
+            "demand_to_selling_point_match": [
+                "Recognition -> show the exact supplied SKU.",
+                "Trust -> use visible structural and detail proof.",
+            ],
             "product_master_description": {
-                "silhouette_and_proportions": "Preserve the supplied silhouette.",
-                "color_and_material_appearance": "Use visible color and finish only.",
-                "logos_labels_and_patterns": "Preserve visible placement exactly.",
-                "structural_parts": "Do not add or remove parts.",
+                "category_and_identity": "One exact product from the supplied sources.",
+                "silhouette_and_proportions": (
+                    "Preserve the supplied silhouette and proportions."
+                ),
+                "color_material_and_texture": (
+                    "Use visible color, finish, and texture only."
+                ),
+                "structure_parts_and_accessories": (
+                    "Do not add or remove visible parts or accessories."
+                ),
+                "logos_labels_patterns_and_packaging": (
+                    "Preserve visible identity placement and packaging facts."
+                ),
                 "scale_and_physics": (
-                    "Keep scale, contact, shadows, and gravity credible."
+                    "Keep scale, contact, perspective, shadows, and gravity credible."
                 ),
                 "unknowns": [],
             },
-        }
-    )
-    payload["plan"]["product_consistency_lock"] = {
-        "sku_identity": "One exact SKU across all 21 images.",
-        "physical_logic": "Preserve structure, scale, contact, and perspective.",
-    }
-    payload["plan"]["layout_diversity_lock"] = {
-        "max_same_layout_family": 2,
-        "layout_rule": "Reuse each layout family at most twice.",
-        "background_rule": "Reuse only the approved suite background systems.",
-    }
-    payload["plan"]["suite_cohesion_lock"] = {
-        "primary_palette": "Warm white and product-led charcoal.",
-        "accent_palette": "One restrained product-derived accent.",
-        "typography_mood": "Confident editorial sans-serif hierarchy.",
-        "icon_stroke": "Consistent minimal monoline icons.",
-        "corner_radius": "One restrained medium-radius system.",
-        "shadow_system": "Soft short shadows with consistent density.",
-        "lighting_system": "Soft directional studio light from upper left.",
-        "brand_motif": "Product-led geometric crop and evidence ribbon.",
-        "background_systems": list(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
-        "responsive_pair_rule": (
-            "Desktop and mobile A+ pairs share one concept as responsive variants."
-        ),
-    }
-    required_background_systems = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
-    for index, (screen, spec) in enumerate(
-        zip(payload["plan"]["screens"], AMAZON_ITEM_SPECS, strict=True)
-    ):
-        screen.update(
-            {
-                "item_key": spec.item_key,
-                "asset_type": spec.asset_type,
-                "final_size": f"{spec.width}x{spec.height}",
-                "buyer_question": f"{spec.buyer_question} [{spec.item_key}]",
-                "selling_point": spec.selling_point,
-                "information_confidence": "confirmed visible facts only",
-                "visual_proof": spec.visual_proof,
-                "headline": spec.headline,
-                "subcopy": spec.subcopy,
-                "layout_direction": spec.layout_direction,
-                "source_material": spec.source_material,
-                "risk_note": spec.risk_note,
-                "layout_family": (
-                    "main-compliance"
-                    if spec.group == "main"
-                    else (
-                        f"secondary-family-{(spec.group_ordinal - 1) // 2:02d}"
-                        if spec.group == "secondary"
-                        else f"a-plus-family-{spec.group_ordinal:02d}"
-                    )
+        },
+        "plan": {
+            "campaign_style_lock": {
+                "platform": request.platform_code,
+                "marketplace_language": request.language,
+                "design_direction": "Product-led, evidence-first Amazon visual system.",
+                "palette": (
+                    "Restrained palette derived from the product and supplied brand "
+                    "evidence."
                 ),
-                "background_system": required_background_systems[spec.item_key],
-                "camera_angle": f"planned-angle-{index + 1}",
-                "product_position": f"planned-position-{index + 1}",
-                "prop_strategy": f"planned-props-{index + 1}",
-                "copy_density": "none" if index == 0 else (
-                    "sparse" if index % 2 else "moderate"
+                "lighting": "Consistent realistic commercial lighting.",
+                "typography_mood": "Clear shopper-facing hierarchy.",
+                "label_style": "Sparse labels only when they improve proof.",
+                "density": "Readable at listing and phone size.",
+            },
+            "product_consistency_lock": {
+                "product_identity": "Preserve one exact SKU across all 21 images.",
+                "structure": "Preserve every visible structural part.",
+                "color_area_ratio": "Preserve the visible color-area ratio.",
+                "material_look": (
+                    "Preserve visible material appearance without inventing "
+                    "composition."
                 ),
-                **(
-                    {
-                        "responsive_concept": (
-                            f"a-plus-responsive-concept-{spec.group_ordinal:02d}"
-                        )
-                    }
-                    if spec.group in {"a_desktop", "a_mobile"}
-                    else {}
+                "logo_and_label_placement": (
+                    "Preserve authentic visible logo and label placement."
                 ),
-            }
-        )
-    return payload
+                "physical_scale": (
+                    "Keep product scale and physical interaction credible."
+                ),
+            },
+            "layout_diversity_lock": {
+                "structure_strategy": (
+                    "Use at least five distinct structures across secondary and A+ "
+                    "selling images."
+                ),
+                "large_product_top_title_limit": 3,
+            },
+            "screens": [
+                {
+                    "id": AMAZON_SKILL_ROW_ID_BY_ITEM_KEY[spec.item_key],
+                    "asset_type": spec.asset_type,
+                    "final_size": f"{spec.width}x{spec.height}",
+                    "buyer_question": spec.buyer_question,
+                    "selling_point": f"Mock planned selling point for {spec.item_key}.",
+                    "information_confidence": "confirmed",
+                    "visual_proof": spec.visual_proof,
+                    "headline": f"Mock planned headline for {spec.item_key}.",
+                    "subcopy": "Mock planned support copy.",
+                    "layout_direction": f"Mock planned layout for {spec.item_key}.",
+                    "source_material": ("white_background_product and product_detail"),
+                    "risk_note": "Use only confirmed source facts.",
+                }
+                for spec in AMAZON_ITEM_SPECS
+            ],
+        },
+    }
 
 
 def _fake_jpeg(page_number: int, size: str) -> bytes:
@@ -5159,6 +5342,246 @@ def _masked_png_artifact(
     )
 
 
+def _amazon_visual_review_item_keys(
+    request: AmazonVisualReviewRequest,
+) -> tuple[str, ...]:
+    if request.scope not in {"item", "suite"}:
+        raise XingheAgentError(
+            "AMAZON_VISUAL_REVIEW_INVALID",
+            "Amazon visual review request used an invalid scope.",
+        )
+    if request.scope == "suite":
+        review_item_keys = request.review_item_keys
+        if not review_item_keys:
+            raise XingheAgentError(
+                "AMAZON_VISUAL_REVIEW_INVALID",
+                "Suite review requires explicit review_item_keys.",
+            )
+    else:
+        review_item_keys = request.review_item_keys or tuple(
+            candidate.item_key for candidate in request.candidates
+        )
+    if (
+        not review_item_keys
+        or len(review_item_keys) > 64
+        or any(
+            not isinstance(item_key, str)
+            or not item_key.strip()
+            or item_key != item_key.strip()
+            or len(item_key) > 128
+            for item_key in review_item_keys
+        )
+        or len(set(review_item_keys)) != len(review_item_keys)
+    ):
+        raise XingheAgentError(
+            "AMAZON_VISUAL_REVIEW_INVALID",
+            "Amazon visual review request used invalid review_item_keys.",
+        )
+    if request.scope == "item" and (
+        not isinstance(request.item_key, str)
+        or tuple(review_item_keys) != (request.item_key,)
+    ):
+        raise XingheAgentError(
+            "AMAZON_VISUAL_REVIEW_INVALID",
+            "Item review must expose exactly its item_key in review_item_keys.",
+        )
+    return tuple(review_item_keys)
+
+
+def _amazon_visual_review_json_schema(
+    review_item_keys: tuple[str, ...],
+) -> dict[str, Any]:
+    short_string = {"type": "string", "minLength": 1, "maxLength": 300}
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "visual_success",
+            "summary",
+            "reason_codes",
+            "missing_evidence",
+            "retry_guidance",
+            "failed_item_keys",
+        ],
+        "properties": {
+            "visual_success": {"type": "boolean"},
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1200},
+            "reason_codes": {
+                "type": "array",
+                "maxItems": 64,
+                "items": {"type": "string", "minLength": 3, "maxLength": 64},
+            },
+            "missing_evidence": {
+                "type": "array",
+                "maxItems": 64,
+                "items": short_string,
+            },
+            "retry_guidance": {"type": "string", "maxLength": 1800},
+            "failed_item_keys": {
+                "type": "array",
+                "maxItems": len(review_item_keys),
+                "items": {
+                    "type": "string",
+                    "enum": list(review_item_keys),
+                },
+            },
+        },
+    }
+
+
+def _amazon_visual_review_response_format(
+    review_item_keys: tuple[str, ...],
+) -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "amazon_visual_review",
+            "strict": True,
+            "schema": _amazon_visual_review_json_schema(review_item_keys),
+        },
+    }
+
+
+def _amazon_visual_review_prompt(
+    request: AmazonVisualReviewRequest,
+    *,
+    review_item_keys: tuple[str, ...],
+) -> str:
+    display_artifact_keys = [candidate.item_key for candidate in request.candidates]
+    return (
+        "Review the supplied Amazon image candidate(s) as the QA stage defined "
+        "by the bundled Skill. Do not add stricter rules, preferences, or product "
+        "facts. Use the real reference images as product-truth evidence. For item "
+        "scope, decide whether the single candidate materially satisfies its own "
+        "planned role, product consistency, copy and claim rules, physical logic, "
+        "and target composition. For suite scope, judge the full-set requirements, "
+        "especially cross-image product consistency, layout diversity, independent "
+        "desktop/mobile composition, readable marketplace copy, and unsupported "
+        "claims. Candidate image labels identify display artifacts only. In suite "
+        "scope, the contact sheet is only a display carrier and its item_key or "
+        "filename is never a failed item identifier. Return exactly one JSON object "
+        "with: visual_success (boolean), summary (short string), reason_codes "
+        "(array of short UPPER_SNAKE_CASE strings), missing_evidence (array of short "
+        "strings), retry_guidance (short instruction derived only from the Skill; "
+        "empty on pass), and failed_item_keys (array containing only exact, "
+        "case-sensitive values from review_item_keys; empty on pass). Never emit a "
+        "contact-sheet key, filename, row label, normalized spelling, lowercase "
+        "alias, or any other string in failed_item_keys. Do not fail merely for "
+        "subjective taste.\n"
+        f"review_scope={request.scope}\n"
+        f"item_key={request.item_key or ''}\n"
+        f"display_artifact_keys={display_artifact_keys}\n"
+        f"review_item_keys={list(review_item_keys)}\n"
+        f"generation_contract={request.generation_contract}\n"
+        "skill_protocol="
+        + json.dumps(
+            request.skill_protocol,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+
+def _validate_amazon_visual_review_payload(
+    payload: object,
+    *,
+    scope: str,
+    review_item_keys: tuple[str, ...],
+) -> dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        raise XingheAgentError(
+            "AMAZON_VISUAL_REVIEW_INVALID",
+            "Amazon visual review returned a non-object payload.",
+        )
+    required = {
+        "visual_success",
+        "summary",
+        "reason_codes",
+        "missing_evidence",
+        "retry_guidance",
+        "failed_item_keys",
+    }
+    if set(payload) != required:
+        raise XingheAgentError(
+            "AMAZON_VISUAL_REVIEW_INVALID",
+            "Amazon visual review returned an invalid field set.",
+        )
+    visual_success = payload["visual_success"]
+    summary = payload["summary"]
+    retry_guidance = payload["retry_guidance"]
+    if (
+        not isinstance(visual_success, bool)
+        or not isinstance(summary, str)
+        or not summary.strip()
+        or len(summary) > 1200
+        or not isinstance(retry_guidance, str)
+        or len(retry_guidance) > 1800
+    ):
+        raise XingheAgentError(
+            "AMAZON_VISUAL_REVIEW_INVALID",
+            "Amazon visual review returned invalid scalar fields.",
+        )
+
+    def string_list(name: str, *, pattern: re.Pattern[str] | None = None) -> list[str]:
+        value = payload[name]
+        if (
+            not isinstance(value, list)
+            or len(value) > 64
+            or any(
+                not isinstance(item, str)
+                or not item.strip()
+                or len(item) > 300
+                or (pattern is not None and pattern.fullmatch(item.strip()) is None)
+                for item in value
+            )
+        ):
+            raise XingheAgentError(
+                "AMAZON_VISUAL_REVIEW_INVALID",
+                f"Amazon visual review returned invalid {name}.",
+            )
+        return [item.strip() for item in value]
+
+    reason_codes = string_list(
+        "reason_codes", pattern=re.compile(r"[A-Z][A-Z0-9_]{2,63}")
+    )
+    missing_evidence = string_list("missing_evidence")
+    failed_item_keys = string_list("failed_item_keys")
+    allowed_review_item_keys = set(review_item_keys)
+    if len(set(failed_item_keys)) != len(failed_item_keys) or any(
+        item_key not in allowed_review_item_keys for item_key in failed_item_keys
+    ):
+        raise XingheAgentError(
+            "AMAZON_VISUAL_REVIEW_INVALID",
+            "Amazon visual review named a key outside review_item_keys.",
+        )
+    if visual_success:
+        if reason_codes or failed_item_keys or retry_guidance.strip():
+            raise XingheAgentError(
+                "AMAZON_VISUAL_REVIEW_INVALID",
+                "A passing Amazon visual review cannot contain failure fields.",
+            )
+    else:
+        if not reason_codes or not failed_item_keys or not retry_guidance.strip():
+            raise XingheAgentError(
+                "AMAZON_VISUAL_REVIEW_INVALID",
+                "A failed Amazon visual review must identify reasons and items.",
+            )
+        if scope == "item" and tuple(failed_item_keys) != review_item_keys:
+            raise XingheAgentError(
+                "AMAZON_VISUAL_REVIEW_INVALID",
+                "Item review must identify exactly its review item.",
+            )
+    return {
+        "visual_success": visual_success,
+        "summary": summary.strip(),
+        "reason_codes": reason_codes,
+        "missing_evidence": missing_evidence,
+        "retry_guidance": retry_guidance.strip(),
+        "failed_item_keys": failed_item_keys,
+    }
+
+
 def _masked_visual_review_prompt(instruction: str) -> str:
     return (
         "Review exactly three ordered images: (1) source, (2) binary authority "
@@ -5257,21 +5680,18 @@ def _string_array_schema(
 
 
 def _amazon_planner_json_schema() -> dict[str, Any]:
-    string = {"type": "string"}
+    """Return only the planning fields required by the bundled Amazon Skill."""
+
+    string = {"type": "string", "minLength": 1}
+    confidence = {
+        "type": "string",
+        "enum": ["confirmed", "reasonable inference", "needs confirmation"],
+    }
     product_image_analysis = _strict_json_object(
         {
-            "visible_product": string,
-            "visible_design": string,
-            "visible_structure": string,
-            "source_quality": string,
-        }
-    )
-    product_consistency_anchors = _strict_json_object(
-        {
-            "silhouette_lock": string,
-            "colorway": string,
-            "print_lock": string,
-            "camera_opening_lock": string,
+            "visible_facts": _string_array_schema(minimum=1),
+            "possible_use_contexts": _string_array_schema(),
+            "unknowns": _string_array_schema(),
         }
     )
     information_confidence = _strict_json_object(
@@ -5283,21 +5703,18 @@ def _amazon_planner_json_schema() -> dict[str, Any]:
     )
     product_master = _strict_json_object(
         {
+            "category_and_identity": string,
             "silhouette_and_proportions": string,
-            "color_and_material_appearance": string,
-            "logos_labels_and_patterns": string,
-            "structural_parts": string,
+            "color_material_and_texture": string,
+            "structure_parts_and_accessories": string,
+            "logos_labels_patterns_and_packaging": string,
             "scale_and_physics": string,
             "unknowns": _string_array_schema(),
         }
     )
     analysis = _strict_json_object(
         {
-            "category_key": string,
-            "category_reason": string,
             "product_image_analysis": product_image_analysis,
-            "product_consistency_anchors": product_consistency_anchors,
-            "buyer_objections": _string_array_schema(minimum=1),
             "information_confidence": information_confidence,
             "buyer_demand_map": _string_array_schema(minimum=1),
             "demand_to_selling_point_match": _string_array_schema(minimum=1),
@@ -5306,113 +5723,56 @@ def _amazon_planner_json_schema() -> dict[str, Any]:
     )
     campaign_style_lock = _strict_json_object(
         {
+            "platform": string,
+            "marketplace_language": string,
+            "design_direction": string,
             "palette": string,
-            "typography": string,
-            "background": string,
             "lighting": string,
-            "icon_style": string,
-            "whitespace": string,
-            "product_scale": string,
-        }
-    )
-    design_strength_lock = _strict_json_object(
-        {
-            "category_visual_motif": string,
-            "composition_contrast": string,
-            "color_contrast": string,
-            "template_ban": string,
-            "signature_devices": _string_array_schema(minimum=2),
-            "rhythm_map": _string_array_schema(minimum=21, maximum=21),
+            "typography_mood": string,
+            "label_style": string,
+            "density": string,
         }
     )
     product_consistency_lock = _strict_json_object(
         {
-            "sku_identity": string,
-            "nonnegotiable_visible_features": string,
-            "prohibited_changes": string,
-            "physical_logic": string,
-        }
-    )
-    suite_cohesion_lock = _strict_json_object(
-        {
-            "primary_palette": string,
-            "accent_palette": string,
-            "typography_mood": string,
-            "icon_stroke": string,
-            "corner_radius": string,
-            "shadow_system": string,
-            "lighting_system": string,
-            "brand_motif": string,
-            "background_systems": {
-                "type": "array",
-                "items": {
-                    "type": "string",
-                    "enum": list(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
-                },
-                "minItems": len(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
-                "maxItems": len(_AMAZON_SUITE_BACKGROUND_SYSTEMS),
-            },
-            "responsive_pair_rule": string,
+            "product_identity": string,
+            "structure": string,
+            "color_area_ratio": string,
+            "material_look": string,
+            "logo_and_label_placement": string,
+            "physical_scale": string,
         }
     )
     layout_diversity_lock = _strict_json_object(
         {
-            "max_same_layout_family": {"type": "integer", "enum": [2]},
-            "varied_layout": string,
-            "background": string,
-            "scale": string,
-            "camera": string,
-            "product_position": string,
-            "props": string,
-            "copy_density": string,
+            "structure_strategy": string,
+            "large_product_top_title_limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3,
+            },
         }
     )
     screen = _strict_json_object(
         {
-            "role": string,
-            "title": string,
-            "label": string,
-            "composition": string,
-            "device": string,
-            "difference": string,
-            "structure": string,
-            "subject_scale": {
-                "type": "string",
-                "enum": sorted(_SUBJECT_SCALES),
-            },
-            "buyer_question": string,
-            "layout_family": string,
-            "camera_angle": string,
-            "product_position": string,
-            "background_system": {
-                "type": "string",
-                "enum": [
-                    "pure-white-compliance",
-                    *_AMAZON_SUITE_BACKGROUND_SYSTEMS,
-                ],
-            },
-            "prop_strategy": string,
-            "copy_density": string,
-            "item_key": string,
+            "id": string,
             "asset_type": string,
             "final_size": string,
+            "buyer_question": string,
             "selling_point": string,
-            "information_confidence": string,
+            "information_confidence": confidence,
             "visual_proof": string,
             "headline": string,
-            "subcopy": string,
+            "subcopy": {"type": "string"},
             "layout_direction": string,
             "source_material": string,
             "risk_note": string,
-            "responsive_concept": string,
         }
     )
     plan = _strict_json_object(
         {
             "campaign_style_lock": campaign_style_lock,
-            "design_strength_lock": design_strength_lock,
             "product_consistency_lock": product_consistency_lock,
-            "suite_cohesion_lock": suite_cohesion_lock,
             "layout_diversity_lock": layout_diversity_lock,
             "screens": {
                 "type": "array",
@@ -5454,8 +5814,7 @@ def _planner_prompt(request: PlannerRequest) -> str:
     visible_request = replace(
         request,
         product_name=(
-            request.product_name.strip()
-            or "visible product from supplied images"
+            request.product_name.strip() or "visible product from supplied images"
         ),
     )
     prompt = _legacy_planner_prompt(visible_request)
@@ -5519,136 +5878,66 @@ def _cross_page_lock_prompt_contract(
 
 
 def _amazon_planner_prompt(request: PlannerRequest) -> str:
-    from .amazon_visual_suite_provider import AMAZON_ITEM_SPECS
-
-    required_background_systems = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
-    responsive_pair_scale_assignments = "; ".join(
-        (
-            f"A-DESKTOP-{pair_index:02d} subject_scale={desktop_scale}, "
-            f"A-MOBILE-{pair_index:02d} subject_scale={mobile_scale}"
-        )
-        for pair_index, desktop_scale, mobile_scale in (
-            _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES
-        )
+    from .amazon_visual_suite_provider import (
+        AMAZON_ITEM_ROLES,
+        AMAZON_ITEM_SPECS,
+        AMAZON_SKILL_ROW_ID_BY_ITEM_KEY,
     )
+
     task_table = [
         {
-            "item_key": spec.item_key,
+            "id": AMAZON_SKILL_ROW_ID_BY_ITEM_KEY[spec.item_key],
+            "role": role,
             "asset_type": spec.asset_type,
             "final_size": f"{spec.width}x{spec.height}",
-            "default_buyer_question": spec.buyer_question,
-            "default_selling_point": spec.selling_point,
-            "headline_requirement": spec.headline,
-            "source_material": spec.source_material,
-            "risk_note": spec.risk_note,
-            "background_system": required_background_systems[spec.item_key],
+            "buyer_question": spec.buyer_question,
+            "visual_proof": spec.visual_proof,
         }
-        for spec in AMAZON_ITEM_SPECS
+        for spec, role in zip(AMAZON_ITEM_SPECS, AMAZON_ITEM_ROLES, strict=True)
+    ]
+    source_inventory = [
+        {
+            "ordinal": index,
+            "asset_id": source.asset_id,
+            "role": source.source_role,
+            "filename": source.filename,
+        }
+        for index, source in enumerate(request.sources, start=1)
     ]
     return (
-        "Return exactly one JSON object for one Amazon product visual suite. "
-        "The response object MUST contain exactly two top-level members named "
-        "analysis and plan. The value of analysis MUST be a JSON object, never "
-        "a JSON-encoded string, array, null, or prose. The value of plan MUST "
-        "also be a JSON object, never a JSON-encoded string, array, null, or "
-        "prose. Put every required analysis field inside the top-level analysis "
-        "object and every required plan field inside the top-level plan object. "
-        f"Analyze all {len(request.sources)} attached role-labelled images as "
-        "complementary evidence for one SKU. Only supplied text and visible "
-        "facts may establish claims. Return exactly 21 screens in the exact "
-        "item_key order from the canonical task table below. For every canonical "
-        "row, copy item_key and final_size verbatim without translation, "
-        "normalization, alternate separators, or reformatting. Required "
-        "analysis: category_key and category_reason MUST be non-empty strings; "
-        "product_image_analysis and product_consistency_anchors MUST be JSON "
-        "objects; buyer_objections MUST be a non-empty JSON array; also include "
-        "information_confidence, buyer_demand_map, and "
-        "demand_to_selling_point_match. product_master_description MUST be a "
-        "non-empty JSON object containing non-empty string members "
-        "silhouette_and_proportions, color_and_material_appearance, "
-        "logos_labels_and_patterns, structural_parts, and scale_and_physics; "
-        "unknowns MUST be a JSON array. Required plan: campaign_style_lock, "
-        "design_strength_lock, product_consistency_lock, suite_cohesion_lock, "
-        "layout_diversity_lock, and screens. plan MUST contain exactly those six "
-        "members and no substitutes. screens MUST be a JSON array containing "
-        "exactly 21 complete objects in canonical task-table order. Never return "
-        "an empty screens array, a placeholder, a screen blueprint, a count-only "
-        "summary, or a promise to provide screens later. If brevity is needed, "
-        "shorten text values but never omit a screen or required field. "
-        "campaign_style_lock MUST be a JSON "
-        "object containing non-empty string members palette, typography, "
-        "background, lighting, icon_style, whitespace, and product_scale; do "
-        "not rename, merge, or omit any of those keys. design_strength_lock "
-        "MUST be a JSON object containing non-empty string members "
-        "category_visual_motif, composition_contrast, color_contrast, and "
-        "template_ban; signature_devices MUST be an array containing at least "
-        "two distinct non-empty strings, and rhythm_map MUST be an array of "
-        "exactly 21 non-empty strings in canonical screen order. "
-        "suite_cohesion_lock MUST be a JSON object containing non-empty string "
-        "members primary_palette, accent_palette, typography_mood, icon_stroke, "
-        "corner_radius, shadow_system, lighting_system, brand_motif, and "
-        "responsive_pair_rule; background_systems MUST equal the exact ordered "
-        f"reference-key array {list(_AMAZON_SUITE_BACKGROUND_SYSTEMS)!r}. Keep "
-        "those palette, typography, icon, "
-        "radius, shadow, lighting, and motif decisions fixed across all 21 "
-        "screens. layout_diversity_lock.max_same_layout_family MUST be exactly "
-        "2. Every screen requires role, title, label, composition, device, "
-        "difference, structure, subject_scale, buyer_question, layout_family, "
-        "camera_angle, product_position, background_system, prop_strategy, "
-        "copy_density, item_key, asset_type, final_size, selling_point, "
-        "information_confidence, visual_proof, headline, subcopy, "
-        "layout_direction, source_material, and risk_note. On every screen, "
-        "asset_type, final_size, selling_point, information_confidence, "
-        "visual_proof, headline, layout_direction, source_material, and risk_note "
-        "MUST each be non-empty JSON strings. subcopy MUST be a JSON string and "
-        "may be empty. Every one of the 21 screen objects MUST contain headline "
-        "at the exact path /plan/screens/<index>/headline. headline MUST be a "
-        "non-empty JSON string; never omit, rename, move, set to null, or leave "
-        "it blank. Except for MAIN-01, headline MUST contain the actual "
-        "shopper-facing on-image headline, not an instruction about writing a "
-        "headline. MAIN-01 MUST still include the exact non-empty headline "
-        "string 'No headline or other on-image copy.' as an instruction not to "
-        "render copy. subject_scale MUST be "
-        "exactly one of hero, medium, macro, scene, information, cutaway, or "
-        "overhead. Across all 21 screens, use at least five distinct role "
-        "values, four distinct structure values, three distinct subject_scale "
-        "values, and two distinct device values; no more than 11 screens may "
-        "use subject_scale hero. The final screen role MUST be exactly "
-        "closing_summary. Every buyer_question MUST be globally unique across "
-        "all 21 screens, including paired desktop and mobile A+ screens. Every "
-        "screen MUST include responsive_concept; use the exact string "
-        "'not-applicable' for MAIN and SECONDARY screens. Every A-DESKTOP-0N "
-        "and A-MOBILE-0N pair MUST include the same non-empty "
-        "responsive_concept string so they are responsive variants of one design "
-        "concept and MUST also share the same layout_family and background_system, "
-        "while their buyer question wording, subject scale, and complete "
-        "composition signature remain distinct. The following responsive-pair "
-        "subject_scale assignments are exact requirements, not suggestions; copy "
-        "them exactly by item_key: "
-        f"{responsive_pair_scale_assignments}. Do not swap, repeat within a pair, "
-        "or replace any assigned subject_scale. Every selling-screen "
-        "background_system MUST copy the background_system from its canonical "
-        "task-table row exactly, and that assigned value MUST appear in "
-        "suite_cohesion_lock.background_systems. MAIN-01 is the exception to "
-        "Suite Cohesion Lock membership and its background_system MUST be exactly "
-        "pure-white-compliance. Do not rename, paraphrase, qualify, prefix, "
-        "suffix, or create a variant of the assigned key. Every selling screen "
-        "MUST use its assigned key "
-        "from suite_cohesion_lock.background_systems. Approved Suite Cohesion "
-        "background systems are intentionally reused across selling screens and "
-        "are exempt from max_same_layout_family; that limit applies only to "
-        "layout_family. No layout family may repeat more than twice. MAIN-01 must "
-        "prescribe no "
-        "on-image text, props, "
-        "badges, or invented accessories. Preserve the exact SKU across "
-        "all screens. Product="
-        f"{request.product_name!r}; marketplace={request.platform_code!r}; "
+        "The complete bundled xinghe-amazon-visual-suite protocol in the system "
+        "message is the sole authoritative creative and quality specification. "
+        "Return exactly one JSON object satisfying the strict schema. Do not add "
+        "extra locks, template systems, responsive pairing fields, final-screen "
+        "rules, or any other planning constraint not required by that Skill. "
+        "Analyze all supplied product sources together. Product, detail, package, "
+        "and brand sources may establish facts only within visible evidence. Style "
+        "and competitor references may guide category conventions and composition "
+        "only; never copy them or infer this SKU's facts from them. Classify claims "
+        "as confirmed, reasonable inference, or needs confirmation. Do not place a "
+        "needs-confirmation claim in image copy. Build Product Image Analysis, "
+        "Information Confidence, Buyer Demand Map, Demand-to-Selling-Point Match, "
+        "Product Master Description, Campaign Style Lock, Product Consistency Lock, "
+        "Layout Diversity Lock, and the complete 21-row task table. Return the rows "
+        "in the exact canonical id order and preserve each final_size. Every row must "
+        "answer one buyer question with one dominant selling point and visual proof. "
+        "MAIN-01 must use the real uploaded white_background_product source, preserve "
+        "authentic product logos, labels, and readable product text, clean the "
+        "surrounding background to white, and add no new text, props, badges, ratings, "
+        "or invented accessories. Do not reject a usable real-product source merely "
+        "because its surrounding background is imperfect or authentic branding is "
+        "visible. Desktop and mobile A+ rows may share selling logic but must describe "
+        "independent compositions for their own final aspect ratios. For each "
+        "source_material field, name the exact role labels from the supplied source "
+        "inventory that the row needs; product truth sources remain available to every "
+        "row, while optional brand, packaging, lifestyle, style, and competitor roles "
+        "are attached only when named. "
+        f"Product={request.product_name!r}; marketplace={request.platform_code!r}; "
         f"language={request.language!r}; supplied information="
-        f"{list(request.product_information)!r}; canonical task table="
+        f"{list(request.product_information)!r}; source inventory="
+        f"{json.dumps(source_inventory, ensure_ascii=False, separators=(',', ':'))}; "
+        "canonical Skill task table="
         f"{json.dumps(task_table, ensure_ascii=False, separators=(',', ':'))}."
-        + _cross_page_lock_prompt_contract(
-            enforce_background_repeat_limit=False,
-        )
     )
 
 

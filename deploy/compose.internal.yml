@@ -30,7 +30,7 @@ x-backend-common-environment: &backend-common-environment
   POLARIS_MAX_IMAGE_PIXELS: "40000000"
   POLARIS_CORS_ORIGINS: '["http://127.0.0.1:8080","http://localhost:8080"]'
 
-# Preflight requires quota=true before Tengli or any real Provider switch can run.
+# Internal development may disable quota tracking for an unrestricted test account.
 x-provider-environment: &provider-environment
   POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}
   POLARIS_PROVIDER_QUOTA_ENABLED: ${POLARIS_PROVIDER_QUOTA_ENABLED:-false}

@@ -11,7 +11,13 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
 
-from app.domain import JobStatus, OutboxStatus, PlanValidationStatus
+from app.domain import (
+    JobItemStatus,
+    JobStatus,
+    JobType,
+    OutboxStatus,
+    PlanValidationStatus,
+)
 from app.main import create_app
 from app.models import (
     AuditEventRecord,
@@ -36,9 +42,10 @@ WORKSPACE_ID = "ws_test"
 def image_payload(
     size: tuple[int, int] = (96, 96),
     color: tuple[int, int, int] = (235, 197, 64),
+    image_format: str = "PNG",
 ) -> bytes:
     output = BytesIO()
-    Image.new("RGB", size, color).save(output, format="PNG")
+    Image.new("RGB", size, color).save(output, format=image_format)
     return output.getvalue()
 
 
@@ -306,6 +313,61 @@ def test_upload_is_idempotent_private_and_accessible_by_signed_url(
     assert content.headers["content-type"] == "image/png"
 
 
+@pytest.mark.parametrize(
+    ("filename", "image_format", "declared_content_type", "expected_content_type"),
+    [
+        ("product.jpg", "JPEG", "image/jpeg", "image/jpeg"),
+        ("product.jpeg", "JPEG", "image/jpeg", "image/jpeg"),
+        ("product.png", "PNG", "image/png", "image/png"),
+        ("product.webp", "WEBP", "image/webp", "image/webp"),
+    ],
+)
+def test_upload_accepts_supported_image_formats(
+    client: TestClient,
+    filename: str,
+    image_format: str,
+    declared_content_type: str,
+    expected_content_type: str,
+) -> None:
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        headers=idem(),
+        data={"origin_kind": "upload", "media_kind": "image"},
+        files={
+            "file": (
+                filename,
+                image_payload(image_format=image_format),
+                declared_content_type,
+            )
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    asset = response.json()
+    assert asset["original_filename"] == filename
+    assert asset["content_type"] == expected_content_type
+
+
+def test_upload_rejects_unsupported_image_format(client: TestClient) -> None:
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets",
+        headers=idem(),
+        data={"origin_kind": "upload", "media_kind": "image"},
+        files={
+            "file": (
+                "product.gif",
+                image_payload(image_format="GIF"),
+                "image/gif",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "UNSUPPORTED_IMAGE_TYPE"
+    assert error["message"] == "仅支持 JPG/JPEG、PNG 和 WebP 图片。"
+
+
 def test_same_origin_access_mode_never_returns_internal_s3_url(
     client: TestClient,
 ) -> None:
@@ -376,6 +438,30 @@ def _detail_submit_payload(asset_id: str) -> dict:
             "platform_code": "amazon",
             "language": "en",
             "page_count": 1,
+        },
+    }
+
+
+def _amazon_submit_payload(asset_id: str) -> dict:
+    return {
+        "type": "amazon_visual_suite",
+        "intent": "submit",
+        "display_name": "Amazon provider quota envelope",
+        "input": {
+            "white_background_product_asset_ids": [asset_id],
+            "detail_asset_ids": [],
+            "package_asset_ids": [],
+            "scene_asset_ids": [],
+            "brand_asset_ids": [],
+            "reference_asset_ids": [],
+            "competitor_reference_asset_ids": [],
+        },
+        "configuration": {
+            "marketplace": "amazon-us",
+            "product_name": "Visible product",
+            "listing_title": "Visible product title",
+            "bullet_points": ["visible facts only"],
+            "language": "en-US",
         },
     }
 
@@ -493,6 +579,41 @@ def test_real_provider_zero_recurring_limits_keep_usage_ledger_unbounded(
     finally:
         settings.workspace_credit_enforcement_enabled = True
         set_credit_enforcement_enabled(True)
+
+def test_amazon_real_provider_reserves_complete_automation_envelope(
+    client: TestClient,
+) -> None:
+    settings = client.app.state.settings
+    settings.task_runner = "tengli"
+    settings.amazon_visual_suite_provider_enabled = True
+    settings.tengli_daily_budget_usd = 10
+    settings.tengli_monthly_budget_usd = 20
+    settings.tengli_daily_request_limit = 45
+    settings.tengli_planner_reserve_micros = 250_000
+    asset = upload_asset(client, filename="amazon-source.png")
+
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        headers=idem(),
+        json=_amazon_submit_payload(asset["id"]),
+    )
+
+    assert response.status_code == 202, response.text
+    job_id = response.json()["id"]
+    with client.app.state.session_factory() as session:
+        reservation = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.action == "provider.beta_job_reserved",
+                AuditEventRecord.resource_id == job_id,
+                AuditEventRecord.request_id == job_id,
+            )
+        )
+    assert reservation is not None
+    assert reservation.details["provider_request_count"] == 45
+    assert reservation.details["estimated_cost_micros"] == 4_530_000
+    assert reservation.details["image_budget_micros"] == 1_890_000
+    assert reservation.details["planner_reserve_micros"] == 250_000
+
 
 def test_real_provider_job_reservation_is_idempotent_and_daily_bounded(
     client: TestClient,
@@ -871,6 +992,10 @@ def test_upload_rejects_missing_idempotency_and_invalid_images(
     assert missing_key.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
     assert invalid.status_code == 400
     assert invalid.json()["error"]["code"] == "INVALID_IMAGE"
+    assert (
+        invalid.json()["error"]["message"]
+        == "文件不是可识别的 JPG/JPEG、PNG 或 WebP 图片。"
+    )
     assert invalid.json()["error"]["request_id"].startswith("req_")
     assert corrupt.status_code == 400
     assert corrupt.json()["error"]["code"] == "INVALID_IMAGE"
@@ -935,6 +1060,560 @@ def test_job_uses_relational_items_outbox_and_exact_costs(
         )
     assert attempts == 1
     assert usage_events == 1
+
+
+def _seed_partial_retry_source(
+    client: TestClient,
+    *,
+    job_type: JobType,
+    failed_error_details: dict[str, object],
+) -> tuple[str, str]:
+    job_id = f"job_{uuid4().hex}"
+    item_count = 21 if job_type == JobType.AMAZON_VISUAL_SUITE else 2
+    now = utc_now()
+    failed_item_id = ""
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=job_type.value,
+                status=JobStatus.PARTIAL.value,
+                stage=JobStatus.PARTIAL.value,
+                display_name="Retry semantics fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=item_count,
+                succeeded_item_count=item_count - 1,
+                failed_item_count=1,
+                error_code="AMAZON_VISUAL_REVIEW_INVALID",
+                error_message="Review infrastructure failed.",
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        for ordinal in range(item_count):
+            item_id = f"item_{uuid4().hex}"
+            failed = ordinal == 0
+            if failed:
+                failed_item_id = item_id
+            session.add(
+                JobItemRecord(
+                    id=item_id,
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"ITEM-{ordinal + 1:02d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if failed
+                        else JobItemStatus.SUCCEEDED.value
+                    ),
+                    stage=("suite_review_infrastructure_failed" if failed else "done"),
+                    quality="medium",
+                    configuration={},
+                    result_source="generated" if not failed else None,
+                    error_code=("AMAZON_VISUAL_REVIEW_INVALID" if failed else None),
+                    error_message=("Review infrastructure failed." if failed else None),
+                    error_details=failed_error_details if failed else None,
+                    finished_at=now,
+                )
+            )
+        session.commit()
+    return job_id, failed_item_id
+
+
+def _replace_retry_fixture_item_state(
+    client: TestClient,
+    *,
+    job_id: str,
+    item_key: str,
+    status: JobItemStatus,
+    error_details: dict[str, object] | None = None,
+) -> str:
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        item = session.scalar(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id == job_id,
+                JobItemRecord.item_key == item_key,
+            )
+        )
+        assert item is not None
+        assert item.status == JobItemStatus.SUCCEEDED.value
+
+        job.succeeded_item_count -= 1
+        if status == JobItemStatus.FAILED:
+            job.failed_item_count += 1
+        item.status = status.value
+        item.stage = "failed" if status == JobItemStatus.FAILED else status.value
+        item.result_source = None
+        item.error_code = (
+            "AMAZON_IMAGE_QUALITY_FAILED" if status == JobItemStatus.FAILED else None
+        )
+        item.error_message = (
+            "Image quality failed." if status == JobItemStatus.FAILED else None
+        )
+        item.error_details = error_details
+        session.commit()
+        return item.id
+
+
+def _retry_pending_item_keys(response_json: dict) -> set[str]:
+    return {
+        item["item_key"]
+        for item in response_json["items"]
+        if item["status"] == JobItemStatus.PENDING.value
+    }
+
+
+def _attach_retry_fixture_deliverables(
+    client: TestClient,
+    *,
+    job_id: str,
+    asset_id: str,
+    missing_item_keys: set[str] | None = None,
+    non_deliverable_item_keys: set[str] | None = None,
+) -> None:
+    missing = missing_item_keys or set()
+    non_deliverable = non_deliverable_item_keys or set()
+    with client.app.state.session_factory() as session:
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job_id)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        for item in items:
+            if item.item_key in missing:
+                continue
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    job_item_id=item.id,
+                    asset_id=asset_id,
+                    direction="output",
+                    role="amazon_visual_suite",
+                    ordinal=item.ordinal,
+                    is_deliverable=item.item_key not in non_deliverable,
+                    validation={},
+                )
+            )
+        session.commit()
+
+
+def test_amazon_partial_review_infrastructure_failure_allows_complete_archive(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="preserved-suite.png")
+    job_id, _ = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+            "retryable": False,
+        },
+    )
+    _attach_retry_fixture_deliverables(
+        client,
+        job_id=job_id,
+        asset_id=source["id"],
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 200, archive.text
+    assert archive.headers["content-type"] == "application/zip"
+    with ZipFile(BytesIO(archive.content)) as bundle:
+        assert bundle.namelist() == [
+            f"ITEM-{ordinal:02d}.png" for ordinal in range(1, 22)
+        ]
+
+
+@pytest.mark.parametrize(
+    ("missing_item_keys", "non_deliverable_item_keys"),
+    [
+        ({"ITEM-21"}, set()),
+        (set(), {"ITEM-21"}),
+    ],
+)
+def test_amazon_partial_review_infrastructure_archive_requires_all_deliverables(
+    client: TestClient,
+    missing_item_keys: set[str],
+    non_deliverable_item_keys: set[str],
+) -> None:
+    source = upload_asset(client, filename="incomplete-suite.png")
+    job_id, _ = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+        },
+    )
+    _attach_retry_fixture_deliverables(
+        client,
+        job_id=job_id,
+        asset_id=source["id"],
+        missing_item_keys=missing_item_keys,
+        non_deliverable_item_keys=non_deliverable_item_keys,
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 409
+    assert archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_INCOMPLETE"
+
+
+def test_amazon_partial_image_quality_failure_archive_remains_closed(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="quality-failed-suite.png")
+    job_id, _ = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "image_quality_failure",
+            "image_quality_failed": True,
+            "generated_asset_preserved": False,
+        },
+    )
+    _attach_retry_fixture_deliverables(
+        client,
+        job_id=job_id,
+        asset_id=source["id"],
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 409
+    assert archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
+
+
+def test_amazon_partial_mixed_failure_archive_remains_closed(
+    client: TestClient,
+) -> None:
+    source = upload_asset(client, filename="mixed-failure-suite.png")
+    job_id, _ = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+        },
+    )
+    _replace_retry_fixture_item_state(
+        client,
+        job_id=job_id,
+        item_key="ITEM-02",
+        status=JobItemStatus.FAILED,
+        error_details={
+            "failure_kind": "image_quality_failure",
+            "image_quality_failed": True,
+            "generated_asset_preserved": False,
+        },
+    )
+    _attach_retry_fixture_deliverables(
+        client,
+        job_id=job_id,
+        asset_id=source["id"],
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 409
+    assert archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
+
+
+@pytest.mark.parametrize(
+    ("job_type", "terminal_status"),
+    [
+        (JobType.DETAIL_PACK, JobStatus.PARTIAL),
+        (JobType.AMAZON_VISUAL_SUITE, JobStatus.FAILED),
+    ],
+)
+def test_preserved_review_marker_does_not_open_other_archive_states(
+    client: TestClient,
+    job_type: JobType,
+    terminal_status: JobStatus,
+) -> None:
+    source = upload_asset(client, filename="closed-archive.png")
+    job_id, _ = _seed_partial_retry_source(
+        client,
+        job_type=job_type,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+        },
+    )
+    if terminal_status != JobStatus.PARTIAL:
+        with client.app.state.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            assert job is not None
+            job.status = terminal_status.value
+            job.stage = terminal_status.value
+            if terminal_status == JobStatus.FAILED:
+                job.succeeded_item_count = 0
+                job.failed_item_count = job.expected_item_count
+            session.commit()
+    _attach_retry_fixture_deliverables(
+        client,
+        job_id=job_id,
+        asset_id=source["id"],
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 409
+    assert archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
+
+
+def test_amazon_review_infrastructure_failure_hides_and_rejects_image_retry(
+    client: TestClient,
+) -> None:
+    job_id, blocker_item_id = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+            "retryable": False,
+        },
+    )
+
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}")
+    assert detail.status_code == 200
+    assert "retry" not in detail.json()["allowed_actions"]
+    assert "clone" in detail.json()["allowed_actions"]
+
+    listed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        params={"type": JobType.AMAZON_VISUAL_SUITE.value},
+    )
+    assert listed.status_code == 200
+    listed_job = next(item for item in listed.json()["items"] if item["id"] == job_id)
+    assert "retry" not in listed_job["allowed_actions"]
+
+    retry_payloads = [
+        {"scope": "failed", "item_ids": []},
+        {"scope": "full", "item_ids": []},
+        {"scope": "missing", "item_ids": []},
+        {"scope": "selected", "item_ids": [blocker_item_id]},
+    ]
+    for payload in retry_payloads:
+        rejected = client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+            headers=idem(),
+            json=payload,
+        )
+        assert rejected.status_code == 409
+        error = rejected.json()["error"]
+        assert error["code"] == "AMAZON_REVIEW_INFRASTRUCTURE_RETRY_NOT_APPLICABLE"
+        assert "图片已成功生成并保留" in error["message"]
+        assert error["details"] == {
+            "failure_kind": "review_infrastructure_failure",
+            "generated_asset_preserved": True,
+            "blocked_item_ids": [blocker_item_id],
+        }
+
+    with client.app.state.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(JobRecord)) == 1
+
+
+@pytest.mark.parametrize(
+    ("scope", "expected_pending_keys"),
+    [
+        ("failed", {"ITEM-02"}),
+        ("missing", {"ITEM-02", "ITEM-03"}),
+        ("selected", {"ITEM-02"}),
+        ("full", {f"ITEM-{ordinal:02d}" for ordinal in range(2, 22)}),
+    ],
+)
+def test_amazon_review_blocker_is_excluded_when_real_failures_are_retryable(
+    client: TestClient,
+    scope: str,
+    expected_pending_keys: set[str],
+) -> None:
+    job_id, blocker_item_id = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+        },
+    )
+    image_failure_item_id = _replace_retry_fixture_item_state(
+        client,
+        job_id=job_id,
+        item_key="ITEM-02",
+        status=JobItemStatus.FAILED,
+        error_details={
+            "failure_kind": "image_quality_failure",
+            "image_quality_failed": True,
+            "generated_asset_preserved": False,
+        },
+    )
+    _replace_retry_fixture_item_state(
+        client,
+        job_id=job_id,
+        item_key="ITEM-03",
+        status=JobItemStatus.CANCELLED,
+    )
+
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}")
+    assert detail.status_code == 200
+    assert "retry" in detail.json()["allowed_actions"]
+
+    listed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        params={"type": JobType.AMAZON_VISUAL_SUITE.value},
+    )
+    assert listed.status_code == 200
+    listed_job = next(item for item in listed.json()["items"] if item["id"] == job_id)
+    assert "retry" in listed_job["allowed_actions"]
+
+    item_ids = [blocker_item_id, image_failure_item_id] if scope == "selected" else []
+    retried = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": scope, "item_ids": item_ids},
+    )
+    assert retried.status_code == 201, retried.text
+    pending_keys = _retry_pending_item_keys(retried.json())
+    assert pending_keys == expected_pending_keys
+    assert "ITEM-01" not in pending_keys
+
+
+def test_amazon_mixed_failure_selected_blocker_only_is_rejected(
+    client: TestClient,
+) -> None:
+    job_id, blocker_item_id = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+        },
+    )
+    _replace_retry_fixture_item_state(
+        client,
+        job_id=job_id,
+        item_key="ITEM-02",
+        status=JobItemStatus.FAILED,
+        error_details={
+            "failure_kind": "image_quality_failure",
+            "image_quality_failed": True,
+            "generated_asset_preserved": False,
+        },
+    )
+
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}")
+    assert detail.status_code == 200
+    assert "retry" in detail.json()["allowed_actions"]
+
+    rejected = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "selected", "item_ids": [blocker_item_id]},
+    )
+    assert rejected.status_code == 409
+    error = rejected.json()["error"]
+    assert error["code"] == "AMAZON_REVIEW_INFRASTRUCTURE_RETRY_NOT_APPLICABLE"
+    assert error["details"]["blocked_item_ids"] == [blocker_item_id]
+
+
+def test_amazon_image_quality_failure_remains_retryable(client: TestClient) -> None:
+    job_id, _ = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={
+            "failure_kind": "image_quality_failure",
+            "image_quality_failed": True,
+            "generated_asset_preserved": False,
+        },
+    )
+
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}")
+    assert detail.status_code == 200
+    assert "retry" in detail.json()["allowed_actions"]
+
+    retried = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "failed", "item_ids": []},
+    )
+    assert retried.status_code == 201, retried.text
+    assert retried.json()["retry_of_job_id"] == job_id
+    pending = [item for item in retried.json()["items"] if item["status"] == "pending"]
+    assert len(pending) == 1
+    assert pending[0]["item_key"] == "ITEM-01"
+
+
+@pytest.mark.parametrize(
+    ("scope", "expected_pending_keys"),
+    [
+        ("failed", {"ITEM-01"}),
+        ("missing", {"ITEM-01"}),
+        ("selected", {"ITEM-01"}),
+        ("full", {"ITEM-01", "ITEM-02"}),
+    ],
+)
+def test_review_infrastructure_marker_does_not_change_other_skill_retry(
+    client: TestClient,
+    scope: str,
+    expected_pending_keys: set[str],
+) -> None:
+    job_id, marker_item_id = _seed_partial_retry_source(
+        client,
+        job_type=JobType.LOCAL_EDIT,
+        failed_error_details={
+            "failure_kind": "review_infrastructure_failure",
+            "image_quality_failed": False,
+            "generated_asset_preserved": True,
+        },
+    )
+
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}")
+    assert detail.status_code == 200
+    assert "retry" in detail.json()["allowed_actions"]
+
+    listed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+        params={"type": JobType.LOCAL_EDIT.value},
+    )
+    assert listed.status_code == 200
+    listed_job = next(item for item in listed.json()["items"] if item["id"] == job_id)
+    assert "retry" in listed_job["allowed_actions"]
+
+    retried = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={
+            "scope": scope,
+            "item_ids": [marker_item_id] if scope == "selected" else [],
+        },
+    )
+    assert retried.status_code == 201, retried.text
+    assert _retry_pending_item_keys(retried.json()) == expected_pending_keys
 
 
 def test_cancel_is_terminal_and_retry_creates_a_new_job(client: TestClient) -> None:

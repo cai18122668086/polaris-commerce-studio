@@ -70,8 +70,8 @@ services:
       POLARIS_S3_AUTO_CREATE_BUCKET: "true"
       POLARIS_ACCESS_URL_SECRET: ${POLARIS_ACCESS_URL_SECRET:-development-access-url-secret-change-me}
       POLARIS_ASSET_ACCESS_URL_MODE: ${POLARIS_ASSET_ACCESS_URL_MODE:-same_origin}
-      # Real Provider execution remains fail-closed unless the backend-only
-      # environment explicitly enables the runner, quotas, and feature gates.
+      # Development may disable the durable quota ledger for unrestricted test
+      # accounts. Production still requires quotas whenever a Provider is enabled.
       POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}
       POLARIS_PROVIDER_QUOTA_ENABLED: ${POLARIS_PROVIDER_QUOTA_ENABLED:-false}
       # Internal beta records credits but never rejects jobs for balance exhaustion.

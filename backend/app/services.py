@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
@@ -8,13 +9,14 @@ from uuid import uuid4
 from fastapi import status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
     AssetMediaKind,
     AssetOriginKind,
+    AttemptStatus,
     CreditReservationStatus,
     IdempotencyStatus,
     JobItemStatus,
@@ -27,6 +29,7 @@ from .domain import (
 )
 from .errors import ApiError
 from .models import (
+    AmazonSuiteReviewAttemptRecord,
     AssetRecord,
     CreditLedgerEntryRecord,
     CreditReservationRecord,
@@ -236,6 +239,70 @@ def cost_summary(job: JobRecord) -> CostSummary:
     )
 
 
+_AMAZON_REVIEW_INFRASTRUCTURE_FAILURE = "review_infrastructure_failure"
+
+
+def _is_amazon_review_infrastructure_blocker(item: JobItemRecord) -> bool:
+    details = item.error_details
+    return bool(
+        item.status == JobItemStatus.FAILED.value
+        and isinstance(details, dict)
+        and details.get("failure_kind") == _AMAZON_REVIEW_INFRASTRUCTURE_FAILURE
+        and details.get("image_quality_failed") is False
+        and details.get("generated_asset_preserved") is True
+    )
+
+
+def _amazon_review_retry_state(
+    job: JobRecord, items: Sequence[JobItemRecord]
+) -> tuple[set[str], bool]:
+    if job.type != JobType.AMAZON_VISUAL_SUITE.value:
+        return set(), False
+    blocker_ids = {
+        item.id for item in items if _is_amazon_review_infrastructure_blocker(item)
+    }
+    if not blocker_ids:
+        return set(), False
+    retryable_statuses = {
+        JobItemStatus.FAILED.value,
+        JobItemStatus.CANCELLED.value,
+    }
+    has_retryable_non_blocker = any(
+        item.status in retryable_statuses and item.id not in blocker_ids
+        for item in items
+    )
+    return blocker_ids, has_retryable_non_blocker
+
+
+def _amazon_review_retry_is_available(job: JobRecord) -> bool:
+    if job.type != JobType.AMAZON_VISUAL_SUITE.value:
+        return True
+    session = object_session(job)
+    if session is None:
+        return True
+    items = session.scalars(
+        select(JobItemRecord).where(JobItemRecord.job_id == job.id)
+    ).all()
+    blocker_ids, has_retryable_non_blocker = _amazon_review_retry_state(job, items)
+    return not blocker_ids or has_retryable_non_blocker
+
+
+def _raise_amazon_review_retry_not_applicable(blocker_ids: set[str]) -> None:
+    raise ApiError(
+        status.HTTP_409_CONFLICT,
+        "AMAZON_REVIEW_INFRASTRUCTURE_RETRY_NOT_APPLICABLE",
+        (
+            "Amazon 图片已成功生成并保留；失败仅来自自动视觉审核基础设施。"
+            "为避免重复生成和收费，不能通过图片重试重新生成这些条目。"
+        ),
+        {
+            "failure_kind": _AMAZON_REVIEW_INFRASTRUCTURE_FAILURE,
+            "generated_asset_preserved": True,
+            "blocked_item_ids": sorted(blocker_ids),
+        },
+    )
+
+
 def allowed_actions(job: JobRecord) -> list[str]:
     current = JobStatus(job.status)
     actions: list[str] = []
@@ -254,7 +321,7 @@ def allowed_actions(job: JobRecord) -> list[str]:
         JobStatus.PARTIAL,
         JobStatus.FAILED,
         JobStatus.CANCELLED,
-    }:
+    } and _amazon_review_retry_is_available(job):
         actions.append("retry")
     if current in TERMINAL_JOB_STATUSES:
         actions.append("clone")
@@ -438,6 +505,57 @@ def get_workspace_job(
     return job
 
 
+def fence_amazon_suite_review_attempts(
+    session: Session,
+    job: JobRecord,
+) -> None:
+    """Invalidate live suite-review leases once a job stops accepting QA."""
+
+    if job.type != JobType.AMAZON_VISUAL_SUITE.value:
+        return
+    current = JobStatus(job.status)
+    if current != JobStatus.CANCELLING and current not in TERMINAL_JOB_STATUSES:
+        return
+
+    with session.no_autoflush:
+        attempts = session.scalars(
+            select(AmazonSuiteReviewAttemptRecord)
+            .where(
+                AmazonSuiteReviewAttemptRecord.workspace_id == job.workspace_id,
+                AmazonSuiteReviewAttemptRecord.job_id == job.id,
+                AmazonSuiteReviewAttemptRecord.status == AttemptStatus.RUNNING.value,
+            )
+            .with_for_update()
+        ).all()
+    if not attempts:
+        return
+
+    cancelled = current in {JobStatus.CANCELLING, JobStatus.CANCELLED}
+    now = utc_now()
+    for attempt in attempts:
+        attempt.status = (
+            AttemptStatus.CANCELLED.value
+            if cancelled
+            else AttemptStatus.FAILED.value
+        )
+        # Rotate the token as well as closing the row so a response already in
+        # flight cannot retain ownership through a stale in-memory lease.
+        attempt.lease_token = uuid4().hex
+        attempt.leased_by = "job-status-fence"
+        attempt.lease_expires_at = now
+        attempt.error_code = (
+            "AMAZON_SUITE_REVIEW_CANCELLED"
+            if cancelled
+            else "AMAZON_SUITE_REVIEW_JOB_TERMINAL"
+        )
+        attempt.error_message = (
+            "The Amazon suite review was fenced because the job was cancelled."
+            if cancelled
+            else "The Amazon suite review was fenced after the job became terminal."
+        )
+        attempt.finished_at = now
+
+
 def transition_job(
     job: JobRecord,
     target: JobStatus,
@@ -467,6 +585,10 @@ def transition_job(
         job.started_at = now
     if target in TERMINAL_JOB_STATUSES:
         job.finished_at = now
+    if target == JobStatus.CANCELLING or target in TERMINAL_JOB_STATUSES:
+        session = object_session(job)
+        if session is not None:
+            fence_amazon_suite_review_attempts(session, job)
 
 
 def estimate_job(job_type: JobType, item_count: int) -> tuple[int, int, int]:
@@ -736,8 +858,6 @@ def retry_item_ids(
     items = session.scalars(
         select(JobItemRecord).where(JobItemRecord.job_id == source.id)
     ).all()
-    if scope == RetryScope.FULL:
-        return [item.id for item in items]
     if scope == RetryScope.SELECTED:
         known = {item.id for item in items}
         unknown = [item_id for item_id in selected_item_ids if item_id not in known]
@@ -748,8 +868,25 @@ def retry_item_ids(
                 "所选任务条目不属于源任务。",
                 {"item_ids": unknown},
             )
-        return selected_item_ids
+
+    blocker_ids, has_retryable_non_blocker = _amazon_review_retry_state(source, items)
+    if blocker_ids and not has_retryable_non_blocker:
+        _raise_amazon_review_retry_not_applicable(blocker_ids)
+
+    if scope == RetryScope.FULL:
+        return [item.id for item in items if item.id not in blocker_ids]
+    if scope == RetryScope.SELECTED:
+        selected = [
+            item_id for item_id in selected_item_ids if item_id not in blocker_ids
+        ]
+        if selected_item_ids and not selected and blocker_ids:
+            _raise_amazon_review_retry_not_applicable(blocker_ids)
+        return selected
     statuses = {JobItemStatus.FAILED.value}
     if scope == RetryScope.MISSING:
         statuses.add(JobItemStatus.CANCELLED.value)
-    return [item.id for item in items if item.status in statuses]
+    return [
+        item.id
+        for item in items
+        if item.status in statuses and item.id not in blocker_ids
+    ]

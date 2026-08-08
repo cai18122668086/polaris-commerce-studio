@@ -127,12 +127,13 @@ def test_factory_tengli_selects_existing_real_builder(
     assert runner is sentinel
 
 
-def test_tengli_quota_disabled_fails_before_provider_construction(
+def test_production_tengli_quota_disabled_fails_before_provider_construction(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = _settings(
         tmp_path,
+        environment="production",
         task_runner="tengli",
         provider_quota_enabled=False,
     )
@@ -154,6 +155,44 @@ def test_tengli_quota_disabled_fails_before_provider_construction(
 
 
 @pytest.mark.parametrize(
+    ("environment", "provider_quota_enabled"),
+    [
+        ("development", False),
+        ("test", False),
+        ("production", True),
+    ],
+)
+def test_tengli_quota_policy_allows_provider_construction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    environment: str,
+    provider_quota_enabled: bool,
+) -> None:
+    settings = _settings(
+        tmp_path,
+        environment=environment,
+        task_runner="tengli",
+        provider_quota_enabled=provider_quota_enabled,
+    )
+    sentinel = object()
+    provider_calls = 0
+
+    def fake_provider(*args: object, **kwargs: object) -> Any:
+        nonlocal provider_calls
+        del args, kwargs
+        provider_calls += 1
+        return sentinel
+
+    monkeypatch.setattr(task_runner, "build_tengli_task_runner", fake_provider)
+
+    for _, session_factory, storage in _factory_dependencies(settings):
+        runner = task_runner.build_task_runner(session_factory, settings, storage)
+
+    assert runner is sentinel
+    assert provider_calls == 1
+
+
+@pytest.mark.parametrize(
     "provider_flag",
     [
         "product_image_provider_enabled",
@@ -169,6 +208,7 @@ def test_enabled_provider_feature_requires_quota_even_with_mock_runner(
 ) -> None:
     settings = _settings(
         tmp_path,
+        environment="production",
         task_runner="mock",
         provider_quota_enabled=False,
         **{provider_flag: True},
@@ -179,9 +219,14 @@ def test_enabled_provider_feature_requires_quota_even_with_mock_runner(
             task_runner.build_task_runner(session_factory, settings, storage)
 
 
-def test_default_mock_runner_still_allows_quota_disabled(tmp_path: Path) -> None:
+@pytest.mark.parametrize("environment", ["development", "test", "production"])
+def test_default_mock_runner_still_allows_quota_disabled(
+    tmp_path: Path,
+    environment: str,
+) -> None:
     settings = _settings(
         tmp_path,
+        environment=environment,
         task_runner="mock",
         provider_quota_enabled=False,
     )

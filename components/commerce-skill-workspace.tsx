@@ -35,6 +35,7 @@ import type {
   ReferenceRemixJobCreate,
 } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
+import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./product-image-workspace.module.css";
@@ -96,6 +97,7 @@ const referenceAspectRatios: { value: AspectRatio; label: string; note: string }
 ];
 
 const imageCountOptions = Array.from({ length: 12 }, (_, index) => index + 1);
+const AMAZON_SOURCE_ASSET_LIMIT = 8;
 
 const platforms = [
   { value: "tmall", label: "天猫 / 淘宝" },
@@ -157,12 +159,70 @@ function readAmazonPlanPages(payload: Record<string, unknown> | undefined): Amaz
   });
 }
 
+type AmazonBusinessQualityStatus =
+  | "needs_review"
+  | "passed"
+  | "failed"
+  | "review_infrastructure_failed";
+
+const AMAZON_BUSINESS_QUALITY_COPY: Record<
+  AmazonBusinessQualityStatus,
+  { title: string; description: string }
+> = {
+  passed: {
+    title: "技术交付与业务审核均已通过",
+    description: "已确认 Product Master、SKU 一致性和跨页质量。",
+  },
+  failed: {
+    title: "业务质量检查未通过",
+    description: "自动检查发现部分图片存在明确质量问题。仅状态为已完成且可交付的图片可下载，请查看失败项并按需重试。",
+  },
+  needs_review: {
+    title: "技术交付完成，业务质量等待人工审核",
+    description: "SKU 身份与跨页视觉一致性需要人工确认；文件可下载，重做必须由你明确发起。",
+  },
+  review_infrastructure_failed: {
+    title: "图片已生成，但自动视觉审核基础设施失败",
+    description: "已生成图片仍保留并可下载；本次自动审核不可用，不代表图片质量未通过，请人工核对。",
+  },
+};
+
 function readAmazonBusinessQuality(payload: Record<string, unknown> | undefined) {
   if (!payload || !payload.business_quality || typeof payload.business_quality !== "object") return undefined;
   const quality = payload.business_quality as Record<string, unknown>;
   const status = quality.status;
-  if (status !== "needs_review" && status !== "passed" && status !== "failed") return undefined;
-  return { status };
+  if (
+    typeof status !== "string" ||
+    !Object.prototype.hasOwnProperty.call(AMAZON_BUSINESS_QUALITY_COPY, status)
+  ) {
+    return undefined;
+  }
+  return { status: status as AmazonBusinessQualityStatus };
+}
+
+function shouldShowAmazonBusinessQuality(
+  jobStatus: string | undefined,
+  qualityStatus: AmazonBusinessQualityStatus,
+) {
+  return (
+    jobStatus === "completed" ||
+    (
+      jobStatus === "partial" &&
+      (qualityStatus === "failed" || qualityStatus === "review_infrastructure_failed")
+    )
+  );
+}
+
+function isPreservedAmazonReviewInfrastructureBlocker(
+  itemStatus: string,
+  errorDetails: Record<string, unknown> | null | undefined,
+) {
+  return (
+    itemStatus === "failed" &&
+    errorDetails?.failure_kind === "review_infrastructure_failure" &&
+    errorDetails.image_quality_failed === false &&
+    errorDetails.generated_asset_preserved === true
+  );
 }
 
 function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
@@ -202,7 +262,7 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
     {
       key: "whiteBackground",
       title: "白底商品图",
-      description: "必填，至少 1 张清晰白底商品图。",
+      description: "必填，至少 1 张真实清晰的商品图；白底优先，轻微背景瑕疵、真实商标、Logo 或产品标签不会阻止生成。",
       required: true,
     },
     {
@@ -229,6 +289,18 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
       description: "可选，用于 Logo、品牌色和视觉规范。",
       required: false,
     },
+    {
+      key: "reference",
+      title: "视觉风格参考",
+      description: "可选，用于理解期望的构图、光影、信息层级与视觉节奏。",
+      required: false,
+    },
+    {
+      key: "competitor",
+      title: "竞品参考",
+      description: "可选，用于理解类目表达和差异化机会，不直接复制。",
+      required: false,
+    },
   ];
 }
 
@@ -239,6 +311,7 @@ function UploadPanel({
   required,
   uploading,
   disabled,
+  addDisabled = false,
   uploadLabel = "本地上传",
   onFiles,
   onOpenLibrary,
@@ -249,6 +322,7 @@ function UploadPanel({
   required: boolean;
   uploading: boolean;
   disabled: boolean;
+  addDisabled?: boolean;
   uploadLabel?: string;
   onFiles: (files: File[]) => void;
   onOpenLibrary?: () => void;
@@ -263,13 +337,13 @@ function UploadPanel({
           {required ? <span>必填</span> : <span data-optional>可选</span>}
         </div>
         <p>{description}</p>
-        <small>{count ? `已选择 ${count} 张素材` : "支持 JPG、PNG、WebP"}</small>
+        <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
       </div>
       <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={uploading || disabled}
+          disabled={uploading || disabled || addDisabled}
         >
           {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
           {uploadLabel}
@@ -291,9 +365,9 @@ function UploadPanel({
         ref={inputRef}
         className={styles.hiddenInput}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={IMAGE_UPLOAD_ACCEPT}
         multiple
-        disabled={disabled}
+        disabled={disabled || addDisabled}
         onChange={(event) => {
           const files = Array.from(event.currentTarget.files ?? []);
           event.currentTarget.value = "";
@@ -338,8 +412,17 @@ export function CommerceSkillWorkspace({
   const [instruction, setInstruction] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
   const [productName, setProductName] = useState("");
+  const [category, setCategory] = useState("");
+  const [targetBuyer, setTargetBuyer] = useState("");
   const [listingTitle, setListingTitle] = useState("");
+  const [listingDescription, setListingDescription] = useState("");
+  const [aPlusCopy, setAPlusCopy] = useState("");
+  const [productFacts, setProductFacts] = useState("");
+  const [parameters, setParameters] = useState("");
+  const [certificationsOrEvidence, setCertificationsOrEvidence] = useState("");
+  const [forbiddenClaims, setForbiddenClaims] = useState("");
   const [brandColors, setBrandColors] = useState("");
+  const [stylePreferences, setStylePreferences] = useState("");
   const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
   const [libraryRole, setLibraryRole] = useState<RoleKey>();
@@ -355,13 +438,34 @@ export function CommerceSkillWorkspace({
     : aspectRatio === "follow-reference"
       ? "跟随首张参考图实际尺寸"
       : aspectRatios.find((ratio) => ratio.value === aspectRatio)?.note ?? "未选择";
-  const expectedCount = job.data?.expected_item_count ?? (isAmazon ? 21 : imageCount);
+  const expectedCount = isAmazon
+    ? 21
+    : job.data?.expected_item_count ?? imageCount;
   const amazonPlanPages = isAmazon
     ? readAmazonPlanPages(job.data?.plan?.payload)
     : [];
   const amazonBusinessQuality = isAmazon
     ? readAmazonBusinessQuality(job.data?.plan?.payload)
     : undefined;
+  const amazonBusinessQualityCopy = amazonBusinessQuality
+    ? AMAZON_BUSINESS_QUALITY_COPY[amazonBusinessQuality.status]
+    : undefined;
+  const showAmazonBusinessQuality = Boolean(
+    isAmazon &&
+      amazonBusinessQuality &&
+      shouldShowAmazonBusinessQuality(job.data?.status, amazonBusinessQuality.status),
+  );
+  const isAmazonReviewInfrastructureFailure = Boolean(
+    isAmazon &&
+      job.data?.status === "partial" &&
+      amazonBusinessQuality?.status === "review_infrastructure_failed" &&
+      job.data.items.some((item) =>
+        isPreservedAmazonReviewInfrastructureBlocker(
+          item.status,
+          item.error_details,
+        ),
+      ),
+  );
   const canConfirmAmazonPlan = Boolean(
     isAmazon &&
       job.data?.status === "awaiting_confirmation" &&
@@ -373,6 +477,14 @@ export function CommerceSkillWorkspace({
   const selectedIds = useMemo(
     () => Object.values(selections).flat(),
     [selections],
+  );
+  const amazonRemainingSourceSlots = isAmazon
+    ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selectedIds.length)
+    : undefined;
+  const canDownloadAmazonArchive = Boolean(
+    isAmazon &&
+      resultAssets.length === expectedCount &&
+      (job.data?.status === "completed" || isAmazonReviewInfrastructureFailure),
   );
   const missingRequiredRole = roleDefinitions.find(
     (role) => role.required && selections[role.key].length === 0,
@@ -388,30 +500,56 @@ export function CommerceSkillWorkspace({
 
   const progressText = useMemo(() => {
     if (!job.data) return "任务创建后将自动轮询状态";
+    if (isAmazonReviewInfrastructureFailure) {
+      const generatedCount = resultAssets.length;
+      return generatedCount === expectedCount
+        ? `${generatedCount} 张图片已生成，自动视觉审核未完成`
+        : `${generatedCount} / ${expectedCount} 张图片已生成，自动视觉审核未完成`;
+    }
     return `${job.data.succeeded_item_count} / ${job.data.expected_item_count} 项完成`;
-  }, [job.data]);
+  }, [expectedCount, isAmazonReviewInfrastructureFailure, job.data, resultAssets.length]);
 
   if (!feature) return null;
 
 
   const replaceRoleSelection = (role: RoleKey, ids: string[]) => {
-    const unique = [...new Set(ids)].slice(0, 8);
+    const requested = [...new Set(ids)].slice(0, AMAZON_SOURCE_ASSET_LIMIT);
     setSelections((current) => {
-      const next = { ...current, [role]: unique };
+      const next = { ...current };
       for (const key of Object.keys(next) as RoleKey[]) {
         if (key !== role) {
-          next[key] = next[key].filter((id) => !unique.includes(id));
+          next[key] = next[key].filter((id) => !requested.includes(id));
         }
       }
+      const otherRoleCount = Object.entries(next).reduce(
+        (count, [key, assetIds]) => count + (key === role ? 0 : assetIds.length),
+        0,
+      );
+      const roleLimit = isAmazon
+        ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount)
+        : AMAZON_SOURCE_ASSET_LIMIT;
+      next[role] = requested.slice(0, roleLimit);
       return next;
     });
   };
 
   const addUploadedAssets = async (files: File[], role: RoleKey) => {
     setUiError(undefined);
+    const availableSlots = isAmazon
+      ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selectedIds.length)
+      : Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selections[role].length);
+    if (availableSlots === 0) {
+      setUiError(
+        isAmazon
+          ? `Amazon 七类源图合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张；请先取消已选素材。`
+          : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张素材；请先取消已选素材。`,
+      );
+      return;
+    }
+    const filesToUpload = files.slice(0, availableSlots);
     const uploadedIds: string[] = [];
     const failures: string[] = [];
-    for (const file of files.slice(0, 8)) {
+    for (const file of filesToUpload) {
       try {
         const asset = await upload.mutateAsync({ file, mediaKind: "image" });
         uploadedIds.push(asset.id);
@@ -426,6 +564,12 @@ export function CommerceSkillWorkspace({
       const uploadedNote = uploadedIds.length ? `已成功上传 ${uploadedIds.length} 张；` : "";
       const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
       setUiError(`${uploadedNote}${failures[0]}${remaining}`);
+    } else if (files.length > filesToUpload.length) {
+      setUiError(
+        isAmazon
+          ? `Amazon 七类源图合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`
+          : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`,
+      );
     }
   };
 
@@ -480,15 +624,27 @@ export function CommerceSkillWorkspace({
         package_asset_ids: selections.package,
         scene_asset_ids: selections.scene,
         brand_asset_ids: selections.brand,
+        reference_asset_ids: selections.reference,
+        competitor_reference_asset_ids: selections.competitor,
       },
       configuration: {
         marketplace:
           amazonPlatforms.find((platform) => platform.value === platformCode)?.value ??
           amazonPlatforms[0].value,
         product_name: productName.trim(),
+        category: category.trim(),
+        target_buyer: targetBuyer.trim(),
         listing_title: listingTitle.trim(),
         bullet_points: splitList(sellingPoints),
+        listing_description: listingDescription.trim(),
+        a_plus_copy: aPlusCopy.trim(),
+        product_facts: splitList(productFacts, 24),
+        parameters: splitList(parameters, 24),
+        certifications_or_evidence: splitList(certificationsOrEvidence, 24),
+        forbidden_claims: splitList(forbiddenClaims, 24),
         brand_colors: splitList(brandColors, 8),
+        style_preferences: splitList(stylePreferences, 12),
+        instruction: instruction.trim(),
         language,
       },
     };
@@ -540,10 +696,18 @@ export function CommerceSkillWorkspace({
                   <span>01</span>
                   <div>
                     <h2>选择角色素材</h2>
-                    <p>同一素材不能跨角色重复选择，每个角色最多 8 张。</p>
+                    <p>
+                      {isAmazon
+                        ? `同一素材不能跨角色重复选择，七类源图合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
+                        : `同一素材不能跨角色重复选择，每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`}
+                    </p>
                   </div>
                 </div>
-                <strong>{selectedIds.length} 张</strong>
+                <strong>
+                  {isAmazon
+                    ? `已选 ${selectedIds.length} / ${AMAZON_SOURCE_ASSET_LIMIT} 张，剩余 ${amazonRemainingSourceSlots} 张`
+                    : `${selectedIds.length} 张`}
+                </strong>
               </div>
 
               <div className={styles.uploadGrid}>
@@ -556,6 +720,7 @@ export function CommerceSkillWorkspace({
                     required={role.required}
                     uploading={upload.isPending}
                     disabled={Boolean(jobId)}
+                    addDisabled={isAmazon && amazonRemainingSourceSlots === 0}
                     uploadLabel="上传图片"
                     onFiles={(files) => void addUploadedAssets(files, role.key)}
                     onOpenLibrary={() => setLibraryRole(role.key)}
@@ -592,7 +757,7 @@ export function CommerceSkillWorkspace({
                       <option key={platform.value} value={platform.value}>{platform.label}</option>
                     ))}
                   </select>
-                  <small>{isAmazon ? "用于匹配 Amazon US 的画面与文案规范。" : "用于匹配不同渠道的构图与视觉规范。"} 图片尺寸：{selectedSizeLabel}。</small>
+                  <small>{isAmazon ? "用于匹配 Amazon US 的画面与文案规范。" : "用于匹配不同渠道的构图与视觉规范。"} 图片尺寸：{selectedSizeLabel}</small>
                 </label>
                 <label>
                   <span>语言</span>
@@ -643,6 +808,28 @@ export function CommerceSkillWorkspace({
                     <small>留空不会阻塞提交，也不会虚构商品名称或属性。</small>
                   </label>
                   <label className={styles.colorField}>
+                    <span>商品类目</span>
+                    <input
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                      maxLength={120}
+                      placeholder="可选，例如 Travel Backpack"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>用于类目路由、买家问题和视觉证明方式选择。</small>
+                  </label>
+                  <label className={styles.colorField}>
+                    <span>目标买家</span>
+                    <input
+                      value={targetBuyer}
+                      onChange={(event) => setTargetBuyer(event.target.value)}
+                      maxLength={500}
+                      placeholder="可选，描述典型人群、场景和购买顾虑"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>用于构建 Buyer Demand Map，而不是固定套模板。</small>
+                  </label>
+                  <label className={styles.colorField}>
                     <span>Listing 标题</span>
                     <input
                       value={listingTitle}
@@ -654,6 +841,74 @@ export function CommerceSkillWorkspace({
                     <small>用于辅助 21 项套图的信息层级规划。</small>
                   </label>
                   <label className={styles.instructionField}>
+                    <span>Listing 描述</span>
+                    <textarea
+                      value={listingDescription}
+                      onChange={(event) => setListingDescription(event.target.value)}
+                      rows={4}
+                      maxLength={4000}
+                      placeholder="可选，粘贴商品描述"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>{listingDescription.length} / 4000</small>
+                  </label>
+                  <label className={styles.instructionField}>
+                    <span>A+ 文案</span>
+                    <textarea
+                      value={aPlusCopy}
+                      onChange={(event) => setAPlusCopy(event.target.value)}
+                      rows={4}
+                      maxLength={4000}
+                      placeholder="可选，粘贴已有 A+ 文案或模块要点"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>{aPlusCopy.length} / 4000</small>
+                  </label>
+                  <label className={styles.instructionField}>
+                    <span>商品事实与参数</span>
+                    <textarea
+                      value={productFacts}
+                      onChange={(event) => setProductFacts(event.target.value)}
+                      rows={4}
+                      placeholder="每行一项已确认事实，最多 24 项"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>仅填写已确认信息；尺寸、容量等参数可在下一栏单独列出。</small>
+                  </label>
+                  <label className={styles.instructionField}>
+                    <span>参数与规格</span>
+                    <textarea
+                      value={parameters}
+                      onChange={(event) => setParameters(event.target.value)}
+                      rows={4}
+                      placeholder="每行一项，例如 42 × 28 × 18 cm"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>参数会作为可核验事实进入规划和逐页提示词。</small>
+                  </label>
+                  <label className={styles.instructionField}>
+                    <span>证书与证据</span>
+                    <textarea
+                      value={certificationsOrEvidence}
+                      onChange={(event) => setCertificationsOrEvidence(event.target.value)}
+                      rows={4}
+                      placeholder="每行一项；没有证据时请留空"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>只有明确提供的证据才能支持认证、测试和性能类表达。</small>
+                  </label>
+                  <label className={styles.instructionField}>
+                    <span>禁用宣称</span>
+                    <textarea
+                      value={forbiddenClaims}
+                      onChange={(event) => setForbiddenClaims(event.target.value)}
+                      rows={4}
+                      placeholder="每行一项，明确禁止出现的功效、认证或绝对化表述"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>作为整套 21 张图的不可协商负面约束。</small>
+                  </label>
+                  <label className={styles.instructionField}>
                     <span>品牌色</span>
                     <textarea
                       value={brandColors}
@@ -663,6 +918,17 @@ export function CommerceSkillWorkspace({
                       disabled={Boolean(jobId)}
                     />
                     <small>每行填写一种品牌色。</small>
+                  </label>
+                  <label className={styles.instructionField}>
+                    <span>风格偏好</span>
+                    <textarea
+                      value={stylePreferences}
+                      onChange={(event) => setStylePreferences(event.target.value)}
+                      rows={4}
+                      placeholder="每行一项，例如 editorial、technical、warm lifestyle"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>用于动态建立 Campaign Style Lock，不会映射到固定背景模板。</small>
                   </label>
                 </>
               ) : (
@@ -717,20 +983,18 @@ export function CommerceSkillWorkspace({
                 <small>按换行或逗号拆分，最多提交 12 项。</small>
               </label>
 
-              {!isAmazon ? (
-                <label className={styles.instructionField}>
-                  <span>补充要求</span>
-                  <textarea
-                    value={instruction}
-                    onChange={(event) => setInstruction(event.target.value)}
-                    placeholder={feature.guidance}
-                    rows={5}
-                    maxLength={4000}
-                    disabled={Boolean(jobId)}
-                  />
-                  <small>{instruction.length} / 4000 · {feature.guidance}</small>
-                </label>
-              ) : null}
+              <label className={styles.instructionField}>
+                <span>补充要求</span>
+                <textarea
+                  value={instruction}
+                  onChange={(event) => setInstruction(event.target.value)}
+                  placeholder={isAmazon ? "例如：优先突出通勤收纳；避免使用具体防水等级；移动端文字更精简" : feature.guidance}
+                  rows={5}
+                  maxLength={4000}
+                  disabled={Boolean(jobId)}
+                />
+                <small>{instruction.length} / 4000 · {feature.guidance}</small>
+              </label>
             </section>
 
             {jobId ? (
@@ -759,13 +1023,27 @@ export function CommerceSkillWorkspace({
                       <i style={{ width: `${Math.max(0, Math.min(100, job.data.progress))}%` }} />
                     </div>
                     <div className={styles.itemGrid}>
-                      {job.data.items.map((item) => (
-                        <span key={item.id} data-status={item.status}>
-                          <i /> {item.item_key}
-                        </span>
-                      ))}
+                      {job.data.items.map((item) => {
+                        const isPreservedReviewBlocker =
+                          isAmazonReviewInfrastructureFailure &&
+                          isPreservedAmazonReviewInfrastructureBlocker(
+                            item.status,
+                            item.error_details,
+                          );
+                        return (
+                          <span
+                            key={item.id}
+                            data-status={isPreservedReviewBlocker ? "succeeded" : item.status}
+                          >
+                            <i /> {item.item_key}
+                            {isPreservedReviewBlocker
+                              ? " · 图片已生成，自动视觉审核未完成"
+                              : null}
+                          </span>
+                        );
+                      })}
                     </div>
-                    {job.data.error_message ? (
+                    {job.data.error_message && !isAmazonReviewInfrastructureFailure ? (
                       <div className={styles.jobError} role="alert">{job.data.error_message}</div>
                     ) : null}
                   </div>
@@ -827,28 +1105,20 @@ export function CommerceSkillWorkspace({
               </section>
             ) : null}
 
-            {isAmazon && job.data?.status === "completed" && amazonBusinessQuality ? (
+            {showAmazonBusinessQuality && amazonBusinessQuality && amazonBusinessQualityCopy ? (
               <section
                 className={styles.businessQuality}
                 data-status={amazonBusinessQuality.status}
                 aria-live="polite"
               >
-                <ShieldCheck size={19} />
+                {amazonBusinessQuality.status === "review_infrastructure_failed" ? (
+                  <Info size={19} />
+                ) : (
+                  <ShieldCheck size={19} />
+                )}
                 <div>
-                  <strong>
-                    {amazonBusinessQuality.status === "passed"
-                      ? "技术交付与业务审核均已通过"
-                      : amazonBusinessQuality.status === "failed"
-                        ? "技术交付完成，业务质量检查未通过"
-                        : "技术交付完成，业务质量等待人工审核"}
-                  </strong>
-                  <p>
-                    {amazonBusinessQuality.status === "failed"
-                      ? "系统发现确定性重复等风险；文件仍可下载核对，但不会自动重做。"
-                      : amazonBusinessQuality.status === "needs_review"
-                        ? "SKU 身份与跨页视觉一致性需要人工确认；文件可下载，重做必须由你明确发起。"
-                        : "已确认 Product Master、SKU 一致性和跨页质量。"}
-                  </p>
+                  <strong>{amazonBusinessQualityCopy.title}</strong>
+                  <p>{amazonBusinessQualityCopy.description}</p>
                 </div>
               </section>
             ) : null}
@@ -858,13 +1128,7 @@ export function CommerceSkillWorkspace({
               assets={resultAssets}
               expectedCount={expectedCount}
               title={`${feature.title}结果`}
-              archiveJobId={
-                isAmazon &&
-                job.data?.status === "completed" &&
-                resultAssets.length === expectedCount
-                  ? job.data.id
-                  : undefined
-              }
+              archiveJobId={canDownloadAmazonArchive ? job.data?.id : undefined}
             />
           </main>
 
@@ -885,6 +1149,11 @@ export function CommerceSkillWorkspace({
               replaceRoleSelection(activeLibraryRole.key, ids);
               setLibraryRole(undefined);
             }}
+            maxItems={
+              isAmazon
+                ? selections[activeLibraryRole.key].length + (amazonRemainingSourceSlots ?? 0)
+                : AMAZON_SOURCE_ASSET_LIMIT
+            }
             disabled={Boolean(jobId)}
           />
         ) : null}

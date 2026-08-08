@@ -14,21 +14,21 @@ approved. Internal-beta daily/monthly cost and daily request limits stay at
 `0` (unlimited). The five Provider feature switches default to `false`; API,
 worker, and dispatcher receive the same switch
 values, while Provider credentials remain limited to API and worker. Enabling
-any switch requires `POLARIS_TASK_RUNNER=tengli`,
-`POLARIS_PROVIDER_QUOTA_ENABLED=true`, a non-placeholder Provider API key, and
-all existing endpoint, model, budget, request-limit, reserve, and concurrency
-gates. A real job reserves its maximum retry exposure before
-queueing, and planner/image execution fails closed without that durable
-reservation. Internal S3 downloads always use the same-origin content proxy;
+any switch requires `POLARIS_TASK_RUNNER=tengli`, a non-placeholder Provider
+API key, and all existing endpoint, model, budget, and concurrency gates. This
+internal development profile may use `POLARIS_PROVIDER_QUOTA_ENABLED=false`
+for an unrestricted test account; production startup remains fail-closed in
+that configuration. Internal S3 downloads always use the same-origin proxy;
 browsers never receive the `minio:9000` endpoint.
 
 The deployment accepts an approved allowance up to `20,000,000` for each of
 the per-job technical safety envelope and optional recurring Provider limits.
 During the internal beta, daily/monthly cost and daily request values are `0`
 (unlimited), and `POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED=false` prevents
-membership-style workspace balances from rejecting jobs. Provider quota and
-credit reservation, settlement, usage, and cost records remain active. Provider
-account balance, upstream rate limits, and billing remain external constraints.
+membership-style workspace balances from rejecting jobs. When Provider quota
+tracking is disabled, reservation and settlement gates are bypassed for this
+test account. Provider account balance, upstream rate limits, and billing remain
+external constraints.
 
 ## Non-negotiable boundaries
 
@@ -42,10 +42,9 @@ account balance, upstream rate limits, and billing remain external constraints.
 - Never use this development identity profile as a public site.
 - Do not enable transport-upgrade policy on this HTTP-only staging endpoint.
 - Do not enable the real Provider runner or any Provider feature switch without
-  `POLARIS_PROVIDER_QUOTA_ENABLED=true` and a replaced API-key placeholder.
-  Internal-beta recurring limits remain `0` (unlimited) and workspace credit
-  enforcement remains `false`; positive caps are only introduced with an
-  explicitly approved membership policy.
+  a replaced API-key placeholder and explicit approval. This private development
+  profile may disable Provider quota tracking for the unrestricted test account;
+  the same quota-free configuration is forbidden in production.
 
 The real environment file exists only as `/etc/polaris/polaris.env`, owned by
 `root:root` with mode `0600`. Create it in place on the server with `sudoedit`;
@@ -286,12 +285,12 @@ The following phase is documentation, not authorization:
 10. Through the SSH tunnel, run live/ready checks and complete both workflows in
     mock mode with all five Provider feature switches set to `false`. After
     real Provider path is explicitly approved, replace the Provider API-key
-    placeholder, keep the internal-beta daily/monthly/request limits at `0`, set
-    `POLARIS_PROVIDER_QUOTA_ENABLED=true`, switch the server-local runner to
-    `tengli`, enable only the approved feature switch(es), and restart API,
-    worker, and dispatcher. Confirm a single controlled
-    front-end job reserves quota once, successful pages are not re-billed,
-    downloads use the same-origin proxy, and local-edit reports zero changed
+    placeholder, keep the internal-beta daily/monthly/request limits at `0`,
+    leave `POLARIS_PROVIDER_QUOTA_ENABLED=false` for the unrestricted test
+    account, switch the server-local runner to `tengli`, enable only the approved
+    feature switch(es), and restart API, worker, and dispatcher. Confirm jobs
+    complete without quota reservation errors, downloads use the same-origin
+    proxy, and local-edit reports zero changed
     pixels outside
     the authority mask.
 11. Observe logs, restarts, queue depth, API errors, disk, inodes, memory, and

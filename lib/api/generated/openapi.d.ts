@@ -352,15 +352,39 @@ export interface components {
         };
         /** AmazonVisualSuiteConfiguration */
         AmazonVisualSuiteConfiguration: {
+            /**
+             * A Plus Copy
+             * @default
+             */
+            a_plus_copy: string;
             /** Brand Colors */
             brand_colors?: string[];
             /** Bullet Points */
             bullet_points?: string[];
             /**
+             * Category
+             * @default
+             */
+            category: string;
+            /** Certifications Or Evidence */
+            certifications_or_evidence?: string[];
+            /** Forbidden Claims */
+            forbidden_claims?: string[];
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
              * Language
              * @default en-US
              */
             language: string;
+            /**
+             * Listing Description
+             * @default
+             */
+            listing_description: string;
             /**
              * Listing Title
              * @default
@@ -372,20 +396,35 @@ export interface components {
              * @constant
              */
             marketplace: "amazon-us";
+            /** Parameters */
+            parameters?: string[];
+            /** Product Facts */
+            product_facts?: string[];
             /**
              * Product Name
              * @default
              */
             product_name: string;
+            /** Style Preferences */
+            style_preferences?: string[];
+            /**
+             * Target Buyer
+             * @default
+             */
+            target_buyer: string;
         };
         /** AmazonVisualSuiteInput */
         AmazonVisualSuiteInput: {
             /** Brand Asset Ids */
             brand_asset_ids?: string[];
+            /** Competitor Reference Asset Ids */
+            competitor_reference_asset_ids?: string[];
             /** Detail Asset Ids */
             detail_asset_ids?: string[];
             /** Package Asset Ids */
             package_asset_ids?: string[];
+            /** Reference Asset Ids */
+            reference_asset_ids?: string[];
             /** Scene Asset Ids */
             scene_asset_ids?: string[];
             /** White Background Product Asset Ids */

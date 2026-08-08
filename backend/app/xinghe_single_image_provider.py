@@ -47,6 +47,9 @@ from .skill_protocol import (
 )
 from .storage import ImageStorage
 from .xinghe_agent import (
+    AmazonVisualReviewCallResult,
+    AmazonVisualReviewImage,
+    AmazonVisualReviewRequest,
     ImageCallResult,
     ImageEditRequest,
     SourceImage,
@@ -78,6 +81,15 @@ DEFAULT_ALLOWED_PROMPT_FIELDS = frozenset(
         "product_category",
         "product_information",
         "product_name",
+        "target_buyer",
+        "listing_description",
+        "a_plus_copy",
+        "product_facts",
+        "parameters",
+        "certifications_or_evidence",
+        "forbidden_claims",
+        "style_preferences",
+        "user_instruction",
         "reference_guidance",
         "scene",
         "style",
@@ -189,6 +201,47 @@ class SingleImageEnvelope:
     prompt_input: dict[str, Any]
 
 
+def _source_inventory_is_authorized(
+    envelope: SingleImageEnvelope,
+    durable_inputs: Sequence[JobAssetRecord],
+) -> bool:
+    """Validate durable source authorization and MAIN product-truth roles."""
+
+    durable_inventory = sorted(
+        (binding.asset_id, binding.role, binding.ordinal) for binding in durable_inputs
+    )
+    durable_asset_roles = {
+        (binding.asset_id, binding.role) for binding in durable_inputs
+    }
+    envelope_inventory = sorted(
+        (spec.asset_id, spec.role, spec.ordinal) for spec in envelope.source_assets
+    )
+
+    if (
+        envelope.skill_id == "xinghe-amazon-visual-suite"
+        and envelope.item_key == "MAIN-01"
+    ):
+        allowed_main_roles = {
+            "white_background_product",
+            "product_detail",
+            "package_reference",
+            "brand_reference",
+        }
+        has_white_background_product = any(
+            spec.role == "white_background_product" for spec in envelope.source_assets
+        )
+        return (
+            has_white_background_product
+            and all(spec.role in allowed_main_roles for spec in envelope.source_assets)
+            and all(
+                (spec.asset_id, spec.role) in durable_asset_roles
+                for spec in envelope.source_assets
+            )
+        )
+
+    return envelope_inventory == durable_inventory
+
+
 class XingheSingleImageProvider:
     """Independent real-provider delegate for one single-image JobItem.
 
@@ -294,13 +347,13 @@ class XingheSingleImageProvider:
                     ),
                     estimated_cost_micros=None,
                     actual_cost_micros=None,
-                    retryable=False,
+                    retryable=envelope.skill_id == "xinghe-amazon-visual-suite",
                     provider_name=self.name,
                     model_name=self.model,
                     pricing_version=self.pricing_version,
                 )
         elapsed = asyncio.get_running_loop().time() - started_at
-        return self._finalize_result(
+        result = self._finalize_result(
             call_result,
             envelope=envelope,
             source_count=len(sources),
@@ -309,6 +362,107 @@ class XingheSingleImageProvider:
             protocol_sha256=protocol.sha256,
             protocol_length=protocol.byte_length,
             measured_latency=elapsed,
+        )
+        # The original Amazon Skill performs business/visual QA before delivery on
+        # the complete 21-image suite. Per-image technical output validation remains
+        # here; subjective review is deferred to the suite reviewer so one judgement
+        # cannot discard an otherwise valid generated asset.
+        return result
+
+    async def _review_amazon_candidate(
+        self,
+        *,
+        request: ProviderRequest,
+        envelope: SingleImageEnvelope,
+        sources: tuple[SourceImage, ...],
+        prompt: str,
+        protocol: SkillProtocol,
+        result: ProviderResult,
+    ) -> ProviderResult:
+        artifact = result.artifact
+        if artifact is None:
+            return result
+        review_method = getattr(self.gateway, "review_amazon", None)
+        if not callable(review_method):
+            return replace(
+                result,
+                outcome=ProviderOutcome.FAILED,
+                artifact=None,
+                error_code="AMAZON_VISUAL_REVIEW_UNAVAILABLE",
+                error_message="Amazon Skill QA is unavailable for this provider route.",
+                retryable=True,
+            )
+        review_request = AmazonVisualReviewRequest(
+            workspace_id=request.workspace_id,
+            job_id=request.job_id,
+            scope="item",
+            item_key=envelope.item_key,
+            references=sources,
+            candidates=(
+                AmazonVisualReviewImage(
+                    item_key=envelope.item_key,
+                    filename=artifact.filename,
+                    content_type=artifact.content_type,
+                    payload=artifact.payload,
+                ),
+            ),
+            generation_contract=prompt,
+            skill_protocol=protocol.prompt_payload(),
+            idempotency_key=f"{request.idempotency_key}:amazon-review",
+        )
+        try:
+            review = await review_method(review_request)
+        except Exception as exc:
+            return replace(
+                result,
+                outcome=ProviderOutcome.FAILED,
+                artifact=None,
+                error_code="AMAZON_VISUAL_REVIEW_REQUEST_FAILED",
+                error_message=(f"Amazon Skill QA failed ({type(exc).__name__})."),
+                retryable=True,
+            )
+        if not isinstance(review, AmazonVisualReviewCallResult):
+            return replace(
+                result,
+                outcome=ProviderOutcome.FAILED,
+                artifact=None,
+                error_code="AMAZON_VISUAL_REVIEW_INVALID",
+                error_message="Amazon Skill QA returned an invalid response.",
+                retryable=True,
+            )
+        raw_usage = _merge_amazon_review_usage(result.raw_usage, review)
+        actual_cost = _sum_known_costs(
+            result.actual_cost_micros, review.actual_cost_micros
+        )
+        estimated_cost = _sum_known_costs(
+            result.estimated_cost_micros, review.estimated_cost_micros
+        )
+        if review.visual_success is not True:
+            reason = (
+                review.error_message
+                or review.summary
+                or "Candidate did not pass Amazon Skill QA."
+            )
+            return replace(
+                result,
+                outcome=ProviderOutcome.FAILED,
+                artifact=None,
+                error_code=(
+                    review.error_code
+                    if review.visual_success is None and review.error_code
+                    else "AMAZON_VISUAL_QA_FAILED"
+                ),
+                error_message=reason,
+                retryable=True,
+                raw_usage=raw_usage,
+                actual_cost_micros=actual_cost,
+                estimated_cost_micros=estimated_cost,
+            )
+        return replace(
+            result,
+            raw_usage=raw_usage,
+            actual_cost_micros=actual_cost,
+            estimated_cost_micros=estimated_cost,
         )
 
     def _parse_envelope(self, request: ProviderRequest) -> SingleImageEnvelope:
@@ -395,9 +549,7 @@ class XingheSingleImageProvider:
             seen.add(asset_id)
             ordinal = role_ordinals.get(role, 0)
             role_ordinals[role] = ordinal + 1
-            specs.append(
-                SourceAssetSpec(asset_id=asset_id, role=role, ordinal=ordinal)
-            )
+            specs.append(SourceAssetSpec(asset_id=asset_id, role=role, ordinal=ordinal))
         return tuple(specs)
 
     def _parse_target(self, value: object) -> TargetSpec:
@@ -442,9 +594,7 @@ class XingheSingleImageProvider:
         return TargetSpec(
             width=width,
             height=height,
-            aspect_ratio=_require_aspect_ratio(
-                target["aspect_ratio"], width, height
-            ),
+            aspect_ratio=_require_aspect_ratio(target["aspect_ratio"], width, height),
             quality=quality,
             output_format=output_format,
             fit=fit,
@@ -502,7 +652,6 @@ class XingheSingleImageProvider:
             key: _normalize_prompt_value(prompt_input[key])
             for key in sorted(prompt_input)
         }
-
 
     def _verify_manifest(self, envelope: SingleImageEnvelope) -> str:
         try:
@@ -604,15 +753,7 @@ class XingheSingleImageProvider:
                     .order_by(JobAssetRecord.role, JobAssetRecord.ordinal)
                 )
             )
-            durable_inventory = sorted(
-                (binding.asset_id, binding.role, binding.ordinal)
-                for binding in durable_inputs
-            )
-            envelope_inventory = sorted(
-                (spec.asset_id, spec.role, spec.ordinal)
-                for spec in envelope.source_assets
-            )
-            if durable_inventory != envelope_inventory:
+            if not _source_inventory_is_authorized(envelope, durable_inputs):
                 raise SingleImageProviderError(
                     "INPUT_ASSET_AUTHORIZATION_MISMATCH",
                     "The adapter source inventory does not match durable Job inputs.",
@@ -693,6 +834,7 @@ class XingheSingleImageProvider:
                     content_type=asset.content_type,
                     sha256=asset.sha256,
                     payload=payload,
+                    source_role=spec.role,
                 )
             )
         return tuple(sources)
@@ -708,6 +850,14 @@ class XingheSingleImageProvider:
             "operation": envelope.operation,
             "item": {"key": envelope.item_key, "ordinal": envelope.item_ordinal},
             "source_roles": [spec.role for spec in envelope.source_assets],
+            "source_images": [
+                {
+                    "ordinal": ordinal,
+                    "asset_id": spec.asset_id,
+                    "role": spec.role,
+                }
+                for ordinal, spec in enumerate(envelope.source_assets, start=1)
+            ],
             "target": {
                 "aspect_ratio": envelope.target.aspect_ratio,
                 "fit": envelope.target.fit,
@@ -807,14 +957,33 @@ class XingheSingleImageProvider:
                 pricing_version=self.pricing_version,
             )
         try:
-            artifact = _target_artifact(call_result.artifact, envelope.target)
+            artifact = _target_artifact(
+                call_result.artifact,
+                envelope.target,
+                skill_id=envelope.skill_id,
+            )
+        except SingleImageProviderError as exc:
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                error_code=exc.code,
+                error_message=str(exc),
+                retryable=envelope.skill_id == "xinghe-amazon-visual-suite",
+                provider_request_id=provider_request_id,
+                usage_reported=usage_reported,
+                raw_usage=raw_usage,
+                estimated_cost_micros=estimated_cost_micros,
+                actual_cost_micros=actual_cost_micros,
+                http_status=http_status,
+                provider_name=self.name,
+                model_name=self.model,
+                pricing_version=self.pricing_version,
+            )
         except Exception as exc:
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 error_code="IMAGE_OUTPUT_INVALID",
                 error_message=(
-                    "The image output could not be validated "
-                    f"({type(exc).__name__})."
+                    f"The image output could not be validated ({type(exc).__name__})."
                 ),
                 retryable=False,
                 provider_request_id=provider_request_id,
@@ -847,6 +1016,7 @@ class XingheSingleImageProvider:
             model_name=self.model,
             pricing_version=self.pricing_version,
         )
+
     def _safe_usage(
         self,
         call_result: ImageCallResult | None,
@@ -885,7 +1055,7 @@ class XingheSingleImageProvider:
         provider_latency = (
             call_result.api_latency_seconds if call_result is not None else None
         )
-        return {
+        usage = {
             "provider_type": self.name,
             "reported": bool(normalized["reported"]),
             "input_tokens": _safe_usage_integer(normalized.get("input_tokens")),
@@ -904,6 +1074,11 @@ class XingheSingleImageProvider:
             "skill_protocol_sha256": protocol_sha256,
             "skill_protocol_length": protocol_length,
         }
+        if self.skill_id == "xinghe-amazon-visual-suite":
+            usage["metrics"] = {
+                "generation_route": _configured_xinghe_fixed_api_route()
+            }
+        return usage
 
     def _rejection(
         self,
@@ -935,9 +1110,7 @@ class XingheSingleImageProvider:
 
 
 def _require_mapping(value: object, code: str, message: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping) or any(
-        not isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
         raise SingleImageProviderError(code, message)
     return value
 
@@ -1133,7 +1306,10 @@ def _provider_generation_size(target: TargetSpec, *, skill_id: str = "") -> str:
 def _target_artifact(
     artifact: ProviderArtifact,
     target: TargetSpec,
+    *,
+    skill_id: str = "",
 ) -> ProviderArtifact:
+    del skill_id  # Retained for adapter-call compatibility.
     target_width, target_height = target.dimensions
     try:
         with Image.open(BytesIO(artifact.payload)) as opened:
@@ -1165,10 +1341,10 @@ def _target_artifact(
             "The provider artifact metadata does not match its payload.",
         )
     requested_format, content_type, suffix = _OUTPUT_FORMATS[target.output_format]
-    if (
-        (provider_width, provider_height) == (target_width, target_height)
-        and image_format == requested_format
-    ):
+    if (provider_width, provider_height) == (
+        target_width,
+        target_height,
+    ) and image_format == requested_format:
         return artifact
 
     if target.fit == "cover":
@@ -1192,9 +1368,7 @@ def _target_artifact(
             else:
                 rendered.paste(contained, offset)
         else:
-            rendered = Image.new(
-                "RGBA", (target_width, target_height), (0, 0, 0, 0)
-            )
+            rendered = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
             offset = _center_offset(rendered, contained)
             if "A" in contained.getbands():
                 rendered.paste(contained, offset, contained)
@@ -1251,9 +1425,7 @@ def _perceptual_dhash(payload: bytes) -> str:
             (9, 8),
             Image.Resampling.LANCZOS,
         )
-        pixels = list(
-            cast(Sequence[int], grayscale.get_flattened_data())
-        )
+        pixels = list(cast(Sequence[int], grayscale.get_flattened_data()))
     value = 0
     for row in range(8):
         offset = row * 9
@@ -1268,6 +1440,54 @@ def _safe_usage_integer(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
     return value
+
+
+def _sum_known_costs(left: int | None, right: int | None) -> int | None:
+    if left is None or right is None:
+        return None
+    return left + right
+
+
+def _configured_xinghe_fixed_api_route() -> dict[str, Any]:
+    """Report the generation method required by the Amazon Skill delivery contract."""
+
+    return {
+        "attempted_routes": ["configured_xinghe_fixed_api"],
+        "final_route": "configured_xinghe_fixed_api",
+        "fallback_available": False,
+    }
+
+
+def _merge_amazon_review_usage(
+    image_usage: Mapping[str, Any],
+    review: AmazonVisualReviewCallResult,
+) -> dict[str, Any]:
+    merged = dict(image_usage)
+    review_usage = normalize_usage(review.raw_usage)
+    for key in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        left = _safe_usage_integer(merged.get(key))
+        right = _safe_usage_integer(review_usage.get(key))
+        merged[key] = left + right if left is not None and right is not None else None
+    merged["reported"] = bool(merged.get("reported")) and bool(
+        review_usage.get("reported")
+    )
+    request_count = _safe_usage_integer(merged.get("request_count")) or 1
+    merged["request_count"] = request_count + 1
+    metrics_value = merged.get("metrics")
+    metrics = dict(metrics_value) if isinstance(metrics_value, Mapping) else {}
+    metrics["amazon_visual_review"] = {
+        "visual_success": review.visual_success,
+        "summary": review.summary,
+        "reason_codes": list(review.reason_codes),
+        "missing_evidence": list(review.missing_evidence),
+        "retry_guidance": review.retry_guidance,
+        "failed_item_keys": list(review.failed_item_keys),
+        "error_code": review.error_code,
+        "provider_request_id": review.provider_request_id,
+        "usage_reported": bool(review_usage.get("reported")),
+    }
+    metrics["generation_route"] = _configured_xinghe_fixed_api_route()
+    return merged
 
 
 def _safe_cost(value: object) -> int | None:
@@ -1286,11 +1506,7 @@ def _safe_latency(provider_value: object, measured_value: float) -> float:
 
 
 def _safe_http_status(value: object) -> int | None:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or not 100 <= value <= 599
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or not 100 <= value <= 599:
         return None
     return value
 

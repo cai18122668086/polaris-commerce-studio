@@ -433,6 +433,8 @@ export const FEATURE_REGISTRY = [
       "package_reference",
       "scene_reference",
       "brand_reference",
+      "style_reference",
+      "competitor_reference",
     ],
     resultTemplate: "grouped_grid",
     completionPolicy: "amazon_21_of_21",

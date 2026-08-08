@@ -127,13 +127,13 @@ class ImageValidator:
         except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
             raise UploadValidationError(
                 "INVALID_IMAGE",
-                "文件不是可识别的 PNG、JPEG 或 WebP 图片。",
+                "文件不是可识别的 JPG/JPEG、PNG 或 WebP 图片。",
             ) from exc
 
         if image_format not in ALLOWED_IMAGE_FORMATS:
             raise UploadValidationError(
                 "UNSUPPORTED_IMAGE_TYPE",
-                "仅支持 PNG、JPEG 和 WebP 图片。",
+                "仅支持 JPG/JPEG、PNG 和 WebP 图片。",
             )
         if width * height > self.max_image_pixels:
             raise UploadValidationError(

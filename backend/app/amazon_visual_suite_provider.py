@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from math import gcd
@@ -44,7 +43,13 @@ AMAZON_ADAPTER_CONTRACT_VERSION = SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION
 AMAZON_EXPECTED_ITEM_COUNT = 21
 AMAZON_AUDIT_CONFIGURATION_KEY = "amazon_visual_suite_audit"
 AMAZON_PLAN_CONFIGURATION_KEY = "amazon_visual_suite_plan"
-AMAZON_PLANNING_POLICY_VERSION = "amazon-visual-suite-planning-v2"
+AMAZON_PLANNING_POLICY_VERSION = "amazon-visual-suite-planning-v4"
+_AMAZON_PROMPT_GUIDANCE_MAX_LENGTH = 1_800
+_GLOBAL_RISK_GUARD = (
+    "Preserve product identity and physical logic. Do not invent parts, SKUs, "
+    "accessories, packaging facts, certifications, ratings, rankings, test "
+    "results, endorsements, or absolute performance claims."
+)
 
 
 @dataclass(frozen=True)
@@ -56,24 +61,7 @@ class AmazonItemSpec:
     height: int
     asset_type: str
     buyer_question: str
-    selling_point: str
     visual_proof: str
-    headline: str
-    subcopy: str
-    layout_direction: str
-    source_material: str
-    risk_note: str
-
-
-_CONFIDENCE_RULE = (
-    "Use confirmed facts first; soften reasonable inferences; omit every "
-    "needs-confirmation claim from the image."
-)
-_GLOBAL_RISK_GUARD = (
-    "Preserve product identity and physical logic. Do not invent parts, SKUs, "
-    "accessories, packaging facts, certifications, ratings, rankings, test "
-    "results, endorsements, or absolute performance claims."
-)
 
 
 def _item_spec(
@@ -85,13 +73,7 @@ def _item_spec(
     *,
     asset_type: str,
     buyer_question: str,
-    selling_point: str,
     visual_proof: str,
-    headline: str,
-    subcopy: str,
-    layout_direction: str,
-    source_material: str,
-    risk_note: str,
 ) -> AmazonItemSpec:
     return AmazonItemSpec(
         item_key=item_key,
@@ -101,17 +83,13 @@ def _item_spec(
         height=height,
         asset_type=asset_type,
         buyer_question=buyer_question,
-        selling_point=selling_point,
         visual_proof=visual_proof,
-        headline=headline,
-        subcopy=subcopy,
-        layout_direction=layout_direction,
-        source_material=source_material,
-        risk_note=risk_note,
     )
 
 
 def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
+    """Map only the stable fields explicitly defined by the original Skill."""
+
     return (
         _item_spec(
             "MAIN-01",
@@ -119,23 +97,11 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             1,
             2000,
             2000,
-            asset_type="Search/result main image",
-            buyer_question="Can I recognize the exact product quickly?",
-            selling_point="Show the exact provided product clearly and truthfully.",
+            asset_type="Main image",
+            buyer_question="Recognize the exact product quickly",
             visual_proof=(
-                "Real product on a pure white background with clear edges, "
-                "centered composition, and high subject occupancy."
-            ),
-            headline="No headline or other on-image copy.",
-            subcopy="No subcopy, labels, badges, or icons.",
-            layout_direction=(
-                "Square white canvas; center the complete product and keep all "
-                "product edges visible."
-            ),
-            source_material="Use the real white_background_product source image.",
-            risk_note=(
-                "No lifestyle scene, props, text, ratings, claims, fake packaging, "
-                "or accessories not present in the provided source."
+                "Real product on pure white background, clear edges, centered, "
+                "high subject occupancy"
             ),
         ),
         _item_spec(
@@ -144,18 +110,11 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             1,
             1200,
             1600,
-            asset_type="Core benefit secondary image",
+            asset_type="Secondary image",
             buyer_question="What is the main reason to buy?",
-            selling_point="Lead with the strongest confirmed product benefit.",
             visual_proof=(
-                "Show the benefit in one scene or a clean studio composition so "
-                "the proof is understood before the copy is read."
+                "Strongest product benefit in one scene or clean studio composition"
             ),
-            headline="One short shopper-facing core-benefit headline.",
-            subcopy="Optional short support copy using confirmed facts only.",
-            layout_direction="One dominant benefit, one focal product, uncluttered 3:4 layout.",
-            source_material="Use product and scene references that directly support the benefit.",
-            risk_note="Do not use an unsupported superlative or absolute performance claim.",
         ),
         _item_spec(
             "SECONDARY-02",
@@ -163,15 +122,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             2,
             1200,
             1600,
-            asset_type="Pain-point scene secondary image",
+            asset_type="Secondary image",
             buyer_question="What problem does it solve?",
-            selling_point="Connect one confirmed use case to one buyer pain point.",
-            visual_proof="Use a real context contrast, user frustration, or conservative before/after.",
-            headline="One short problem-to-result headline without guarantees.",
-            subcopy="Optional brief context; avoid unproven outcome language.",
-            layout_direction="Single scenario or simple two-state contrast; keep the product unmistakable.",
-            source_material="Use product and scene references; treat unseen outcomes as unknown.",
-            risk_note="Do not fabricate dramatic before/after results or user testimony.",
+            visual_proof="Before/after, user frustration, or real context contrast",
         ),
         _item_spec(
             "SECONDARY-03",
@@ -179,15 +132,11 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             3,
             1200,
             1600,
-            asset_type="Function/structure secondary image",
+            asset_type="Secondary image",
             buyer_question="How does it work?",
-            selling_point="Explain one confirmed mechanism, structure, material, or feature.",
-            visual_proof="Use structural callouts, a mechanism view, or a truthful feature close-up.",
-            headline="One short function or feature headline grounded in visible evidence.",
-            subcopy="Use only concise labels that remain readable at listing size.",
-            layout_direction="Macro or structure-led layout with a clear visual hierarchy.",
-            source_material="Prioritize product_detail and white_background_product references.",
-            risk_note="Do not invent internal construction, materials, technology, or test data.",
+            visual_proof=(
+                "Structural callouts, mechanism, material, or feature close-up"
+            ),
         ),
         _item_spec(
             "SECONDARY-04",
@@ -195,15 +144,11 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             4,
             1200,
             1600,
-            asset_type="Size/fit/compatibility secondary image",
+            asset_type="Secondary image",
             buyer_question="Will it fit my use case?",
-            selling_point="Clarify confirmed size, scale, version, or compatibility information.",
-            visual_proof="Use scale reference, dimensions, model choices, or an explicit caveat.",
-            headline="One short size, fit, or compatibility headline.",
-            subcopy="State measurements or compatibility only when supplied or visibly confirmed.",
-            layout_direction="Scale-led layout with sparse, legible measurements or choices.",
-            source_material="Use product, package, and supplied listing facts for exact specifications.",
-            risk_note="Never infer dimensions, capacity, model compatibility, or fit guarantees.",
+            visual_proof=(
+                "Scale reference, dimensions, model choices, or compatibility caveat"
+            ),
         ),
         _item_spec(
             "SECONDARY-05",
@@ -211,15 +156,12 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             5,
             1200,
             1600,
-            asset_type="Use-steps secondary image",
+            asset_type="Secondary image",
             buyer_question="Is it easy to use?",
-            selling_point="Show the confirmed operating, installation, opening, cleaning, or daily flow.",
-            visual_proof="Use a clear three-step action sequence or truthful hand interaction.",
-            headline="One short ease-of-use headline without an unsupported time claim.",
-            subcopy="Up to three short action labels in the correct order.",
-            layout_direction="Readable three-step flow with consistent product identity in every step.",
-            source_material="Use product and detail references; use scene references only when relevant.",
-            risk_note="Do not invent steps, hand grips, opening direction, or installation behavior.",
+            visual_proof=(
+                "3-step operation, hand interaction, installation, opening, "
+                "cleaning, or daily flow"
+            ),
         ),
         _item_spec(
             "SECONDARY-06",
@@ -227,15 +169,12 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             6,
             1200,
             1600,
-            asset_type="Trust/package recap secondary image",
-            buyer_question="What exactly do I get and why should I trust it?",
-            selling_point="Recap confirmed included items, packaging, care, or strongest truthful reasons.",
-            visual_proof="Show provided package contents or a conservative selling-point summary.",
-            headline="One short package or trust recap headline.",
-            subcopy="List only supplied or visibly present items and confirmed care facts.",
-            layout_direction="Package or recap layout with a complete, countable set of visible items.",
-            source_material="Prioritize package_reference, product_detail, and the supplied listing facts.",
-            risk_note="Do not add accessories, certifications, warranties, reviews, or package contents.",
+            asset_type="Secondary image",
+            buyer_question="What exactly do I get and why trust it?",
+            visual_proof=(
+                "Included items, packaging, care, conservative proof, or "
+                "selling-point summary"
+            ),
         ),
         _item_spec(
             "A-DESKTOP-01",
@@ -243,15 +182,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             1,
             1464,
             600,
-            asset_type="Desktop A+ brand/product opening",
+            asset_type="Desktop A+ module",
             buyer_question="What is this product's promise?",
-            selling_point="Open with the strongest confirmed product promise.",
-            visual_proof="Wide hero scene with the product and campaign headline.",
-            headline="One concise campaign headline derived from confirmed product facts.",
-            subcopy="One short supporting line at most.",
-            layout_direction="Wide hero; center-safe product and copy; clear opening focal point.",
-            source_material="Use product, scene, and brand references while preserving exact identity.",
-            risk_note="Do not turn a product promise into a guarantee or unsupported superlative.",
+            visual_proof="Wide hero scene with product and campaign headline",
         ),
         _item_spec(
             "A-DESKTOP-02",
@@ -259,15 +192,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             2,
             1464,
             600,
-            asset_type="Desktop A+ buyer-demand module",
+            asset_type="Desktop A+ module",
             buyer_question="Why do I need it?",
-            selling_point="Address the highest-priority confirmed pain point or desired result.",
-            visual_proof="Show one high-priority pain point or desired result in context.",
-            headline="One concise buyer-demand headline.",
-            subcopy="One conservative support line without promised outcomes.",
-            layout_direction="Wide single-scene story with obvious problem-to-product relationship.",
-            source_material="Use product and relevant scene references plus supplied buyer facts.",
-            risk_note="No fabricated frustration, testimonial, result, or before/after evidence.",
+            visual_proof="High-priority pain point or desired result",
         ),
         _item_spec(
             "A-DESKTOP-03",
@@ -275,15 +202,11 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             3,
             1464,
             600,
-            asset_type="Desktop A+ core-feature module",
+            asset_type="Desktop A+ module",
             buyer_question="What makes it different?",
-            selling_point="Explain one confirmed mechanism, structure, technology, craft, or detail.",
-            visual_proof="Use mechanism, structure, craft, or close-detail evidence.",
-            headline="One short differentiation headline grounded in confirmed evidence.",
-            subcopy="Use sparse feature labels only where legible.",
-            layout_direction="Wide structure or macro composition with evidence larger than text.",
-            source_material="Prioritize product_detail and white_background_product references.",
-            risk_note="Do not invent materials, construction, technology, patents, or lab evidence.",
+            visual_proof=(
+                "Mechanism, structure, technology, craft, or detail evidence"
+            ),
         ),
         _item_spec(
             "A-DESKTOP-04",
@@ -291,15 +214,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             4,
             1464,
             600,
-            asset_type="Desktop A+ scenario-proof module",
+            asset_type="Desktop A+ module",
             buyer_question="Where does it fit in real life?",
-            selling_point="Show a plausible confirmed use environment and product scale.",
-            visual_proof="Lifestyle or use environment with credible product scale and physics.",
-            headline="One short use-scenario headline.",
-            subcopy="Optional context line; do not imply universal suitability.",
-            layout_direction="Wide lifestyle scene with obvious product presence and credible scale.",
-            source_material="Use product and relevant scene references.",
-            risk_note="Do not distort scale, contact, shadow, perspective, hand grip, or wearing fit.",
+            visual_proof="Lifestyle/use environment with product scale",
         ),
         _item_spec(
             "A-DESKTOP-05",
@@ -307,15 +224,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             5,
             1464,
             600,
-            asset_type="Desktop A+ detail-trust module",
-            buyer_question="Can I trust the material and build?",
-            selling_point="Build trust with visible construction, finish, texture, parts, or detail.",
-            visual_proof="Use a macro, texture, parts, finish, or visible-construction view.",
-            headline="One short detail-trust headline using non-technical truthful language.",
-            subcopy="Name materials or finishes only when provided or visibly confirmed.",
-            layout_direction="Wide macro-led composition; keep detail evidence crisp and central.",
-            source_material="Prioritize product_detail and package_reference images.",
-            risk_note="Do not infer material grade, durability, certification, or performance tests.",
+            asset_type="Desktop A+ module",
+            buyer_question="Can I trust the material/build?",
+            visual_proof="Macro, texture, parts, finish, or visible construction",
         ),
         _item_spec(
             "A-DESKTOP-06",
@@ -323,15 +234,12 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             6,
             1464,
             600,
-            asset_type="Desktop A+ comparison/choice module",
+            asset_type="Desktop A+ module",
             buyer_question="Why choose this version?",
-            selling_point="Help the buyer choose using confirmed versions, sizes, or features.",
-            visual_proof="Use a conservative comparison, size/version guide, or feature matrix.",
-            headline="One short choice-guidance headline.",
-            subcopy="Use only the few confirmed distinctions needed for a decision.",
-            layout_direction="Wide, sparse comparison with readable columns and clear SKU identity.",
-            source_material="Use supplied listing, product, and package facts for every comparison point.",
-            risk_note="No fake competitor, superiority, compatibility, ranking, or unprovided SKU claim.",
+            visual_proof=(
+                "Conservative comparison, size/version guide, or feature matrix "
+                "without fake competitor claims"
+            ),
         ),
         _item_spec(
             "A-DESKTOP-07",
@@ -339,15 +247,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             7,
             1464,
             600,
-            asset_type="Desktop A+ closing-summary module",
+            asset_type="Desktop A+ module",
             buyer_question="What should I remember before purchase?",
-            selling_point="Close with the product and three or four strongest confirmed reasons.",
-            visual_proof="Cohesive product recap with distinct, truthful visual proof cues.",
-            headline="One short closing headline.",
-            subcopy="Three or four concise confirmed reasons at most.",
-            layout_direction="Wide closing hero or recap; cohesive, spacious, and purchase-oriented.",
-            source_material="Use the strongest product, detail, scene, package, and brand references.",
-            risk_note="Do not crowd the module or introduce any new unproven claim at closing.",
+            visual_proof=("Cohesive recap with product and 3-4 confirmed reasons"),
         ),
         _item_spec(
             "A-MOBILE-01",
@@ -355,15 +257,11 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             1,
             1600,
             1200,
-            asset_type="Mobile A+ product opening",
+            asset_type="Mobile A+ module",
             buyer_question="What is this product's promise?",
-            selling_point="Open with the same strongest confirmed promise as desktop A+.",
-            visual_proof="Large product, short headline, and one dominant focal point.",
-            headline="A shorter mobile version of the confirmed campaign headline.",
-            subcopy="One very short supporting line at most.",
-            layout_direction="Mobile-first 4:3; larger product, single focal point, phone-readable copy.",
-            source_material="Use product, scene, and brand references; compose independently for mobile.",
-            risk_note="Do not stretch or merely crop the desktop module; avoid edge-dependent content.",
+            visual_proof=(
+                "Larger product, shorter headline, single dominant focal point"
+            ),
         ),
         _item_spec(
             "A-MOBILE-02",
@@ -371,15 +269,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             2,
             1600,
             1200,
-            asset_type="Mobile A+ buyer-demand module",
+            asset_type="Mobile A+ module",
             buyer_question="Why do I need it?",
-            selling_point="Address the same highest-priority buyer demand as desktop A+.",
-            visual_proof="One scene or action with minimal labels.",
-            headline="One short phone-readable buyer-demand headline.",
-            subcopy="One minimal support line without promised outcomes.",
-            layout_direction="Mobile-first one-scene composition with immediate problem-to-product clarity.",
-            source_material="Use product and relevant scene references; compose independently for mobile.",
-            risk_note="No fabricated result or dense labels; do not reuse a stretched desktop layout.",
+            visual_proof="One scene/action, minimal labels",
         ),
         _item_spec(
             "A-MOBILE-03",
@@ -387,15 +279,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             3,
             1600,
             1200,
-            asset_type="Mobile A+ core-feature module",
+            asset_type="Mobile A+ module",
             buyer_question="What makes it different?",
-            selling_point="Explain the same confirmed core feature as desktop A+.",
-            visual_proof="A macro or structure detail that remains readable at phone width.",
-            headline="One short evidence-led feature headline.",
-            subcopy="Up to three short labels only if phone-readable.",
-            layout_direction="Mobile-first macro or structure view; evidence dominates copy.",
-            source_material="Prioritize product_detail and product references; compose independently.",
-            risk_note="Do not invent hidden construction or shrink desktop callouts into unreadable text.",
+            visual_proof="Macro or structure detail must remain readable",
         ),
         _item_spec(
             "A-MOBILE-04",
@@ -403,15 +289,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             4,
             1600,
             1200,
-            asset_type="Mobile A+ scenario-proof module",
+            asset_type="Mobile A+ module",
             buyer_question="Where does it fit in real life?",
-            selling_point="Show the same plausible use environment as desktop A+.",
-            visual_proof="Make product scale and context obvious within one second.",
-            headline="One short use-scenario headline.",
-            subcopy="Optional single context line.",
-            layout_direction="Mobile-first lifestyle scene with large product and unmistakable scale.",
-            source_material="Use product and scene references; compose independently for mobile.",
-            risk_note="Do not distort physical scale or hide the product in a busy mobile scene.",
+            visual_proof=("Product scale and context must be obvious in one second"),
         ),
         _item_spec(
             "A-MOBILE-05",
@@ -419,15 +299,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             5,
             1600,
             1200,
-            asset_type="Mobile A+ detail-trust module",
-            buyer_question="Can I trust the material and build?",
-            selling_point="Show the same confirmed detail-trust evidence as desktop A+.",
-            visual_proof="Prefer a detail crop or material proof over dense text.",
-            headline="One short detail-trust headline.",
-            subcopy="One short confirmed material or finish note at most.",
-            layout_direction="Mobile-first detail crop with crisp texture and minimal copy.",
-            source_material="Prioritize product_detail and package references; compose independently.",
-            risk_note="Do not infer material grade, durability, certification, or test results.",
+            asset_type="Mobile A+ module",
+            buyer_question="Can I trust the material/build?",
+            visual_proof="Detail crop or material proof over dense text",
         ),
         _item_spec(
             "A-MOBILE-06",
@@ -435,15 +309,9 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             6,
             1600,
             1200,
-            asset_type="Mobile A+ comparison/choice module",
+            asset_type="Mobile A+ module",
             buyer_question="Why choose this version?",
-            selling_point="Simplify the same confirmed choice guidance as desktop A+.",
-            visual_proof="Show only the fewest useful confirmed comparison points.",
-            headline="One short choice-guidance headline.",
-            subcopy="Use the minimum phone-readable confirmed distinctions.",
-            layout_direction="Mobile-first sparse comparison with large labels and clear SKU identity.",
-            source_material="Use supplied listing, product, and package facts; compose independently.",
-            risk_note="No competitor claims, tiny feature matrix, unprovided SKU, or compatibility claim.",
+            visual_proof="Simplify comparison to the fewest useful points",
         ),
         _item_spec(
             "A-MOBILE-07",
@@ -451,21 +319,51 @@ def _build_item_specs() -> tuple[AmazonItemSpec, ...]:
             7,
             1600,
             1200,
-            asset_type="Mobile A+ closing-summary module",
+            asset_type="Mobile A+ module",
             buyer_question="What should I remember before purchase?",
-            selling_point="Close with the product and strongest confirmed reasons from desktop A+.",
-            visual_proof="Clear product recap without a crowded checklist.",
-            headline="One short closing headline.",
-            subcopy="Up to three concise confirmed reasons.",
-            layout_direction="Mobile-first closing hero; clear hierarchy, large product, spacious recap.",
-            source_material="Use the strongest supplied references; compose independently for mobile.",
-            risk_note="Do not crowd the checklist, introduce a new claim, or stretch the desktop close.",
+            visual_proof="Clear product recap, no crowded checklist",
         ),
     )
 
 
 AMAZON_ITEM_SPECS = _build_item_specs()
 AMAZON_ITEM_KEYS = tuple(spec.item_key for spec in AMAZON_ITEM_SPECS)
+AMAZON_ITEM_ROLES = (
+    "search_main",
+    "core_benefit",
+    "pain_point_scene",
+    "function_structure",
+    "size_fit",
+    "use_steps",
+    "trust_recap",
+    "brand_opening",
+    "buyer_demand",
+    "core_feature",
+    "scenario_proof",
+    "detail_trust",
+    "comparison_choice",
+    "closing_summary",
+    "mobile_opening",
+    "mobile_buyer_demand",
+    "mobile_core_feature",
+    "mobile_scenario_proof",
+    "mobile_detail_trust",
+    "mobile_comparison_choice",
+    "closing_summary",
+)
+AMAZON_ROLE_BY_ITEM_KEY = dict(zip(AMAZON_ITEM_KEYS, AMAZON_ITEM_ROLES, strict=True))
+AMAZON_SKILL_ROW_IDS = (
+    "main-01",
+    *(f"secondary-{index:02d}" for index in range(1, 7)),
+    *(f"aplus-desktop-{index:02d}" for index in range(1, 8)),
+    *(f"aplus-mobile-{index:02d}" for index in range(1, 8)),
+)
+AMAZON_SKILL_ROW_ID_BY_ITEM_KEY = dict(
+    zip(AMAZON_ITEM_KEYS, AMAZON_SKILL_ROW_IDS, strict=True)
+)
+AMAZON_ITEM_KEY_BY_SKILL_ROW_ID = {
+    row_id: item_key for item_key, row_id in AMAZON_SKILL_ROW_ID_BY_ITEM_KEY.items()
+}
 _AMAZON_ITEM_SPEC_BY_KEY = {spec.item_key: spec for spec in AMAZON_ITEM_SPECS}
 
 
@@ -496,131 +394,192 @@ def validate_amazon_item_keys(item_keys: Sequence[str]) -> tuple[str, ...]:
     return normalized
 
 
-def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
-    """Validate one auditable Product Master and the canonical 21-row plan."""
+def validate_amazon_planner_payload(
+    payload: object,
+    *,
+    sources: Sequence[object] = (),
+) -> dict[str, Any]:
+    """Validate the original Amazon Skill contract and attach runtime item keys."""
 
-    from app.xinghe_agent import (
-        _AMAZON_SCREEN_BACKGROUND_SYSTEMS,
-        XingheAgentError,
-        validate_planner_payload,
-    )
+    from app.xinghe_agent import XingheAgentError
 
-    if isinstance(payload, Mapping):
-        raw_plan = payload.get("plan")
-        if isinstance(raw_plan, Mapping):
-            raw_diversity_lock = raw_plan.get("layout_diversity_lock")
-            if isinstance(raw_diversity_lock, Mapping):
-                raw_maximum = raw_diversity_lock.get("max_same_layout_family")
-                if (
-                    isinstance(raw_maximum, int)
-                    and not isinstance(raw_maximum, bool)
-                    and raw_maximum != 2
-                ):
-                    raise XingheAgentError(
-                        "AMAZON_LAYOUT_DIVERSITY_INVALID",
-                        (
-                            "Amazon planning requires "
-                            "max_same_layout_family to be exactly 2."
-                        ),
-                        json_pointer=(
-                            "/plan/layout_diversity_lock/"
-                            "max_same_layout_family"
-                        ),
-                    )
-
-    structured = validate_planner_payload(
-        payload,
-        AMAZON_EXPECTED_ITEM_COUNT,
-        preserve_protocol_fields=True,
-        require_cross_page_locks=True,
-        enforce_background_repeat_limit=False,
-    )
-    analysis = structured["analysis"]
-    plan = structured["plan"]
-    product_master = analysis.get("product_master_description")
-    if not isinstance(product_master, Mapping) or not product_master:
+    if not isinstance(payload, Mapping):
         raise XingheAgentError(
-            "AMAZON_PRODUCT_MASTER_INVALID",
-            "Amazon planning requires a non-empty Product Master Description.",
-            json_pointer="/analysis/product_master_description",
+            "PLANNER_SCHEMA_INVALID",
+            "Amazon planner payload must be an object.",
+            json_pointer="/",
         )
-    for key in (
-        "silhouette_and_proportions",
-        "color_and_material_appearance",
-        "logos_labels_and_patterns",
-        "structural_parts",
-        "scale_and_physics",
-        "unknowns",
-    ):
-        value = product_master.get(key)
-        valid = (
-            isinstance(value, list)
-            if key == "unknowns"
-            else isinstance(value, str) and bool(value.strip())
+    analysis = payload.get("analysis")
+    plan = payload.get("plan")
+    if not isinstance(analysis, Mapping):
+        raise XingheAgentError(
+            "PLANNER_SCHEMA_INVALID",
+            "Amazon plan requires one analysis object.",
+            json_pointer="/analysis",
         )
-        if not valid:
+    if not isinstance(plan, Mapping):
+        raise XingheAgentError(
+            "PLANNER_SCHEMA_INVALID",
+            "Amazon plan requires one plan object.",
+            json_pointer="/plan",
+        )
+
+    def require_mapping(
+        container: Mapping[str, Any], key: str, path: str
+    ) -> Mapping[str, Any]:
+        value = container.get(key)
+        if not isinstance(value, Mapping) or not value:
             raise XingheAgentError(
-                "AMAZON_PRODUCT_MASTER_INVALID",
-                f"Product Master Description has an invalid {key}.",
-                json_pointer=f"/analysis/product_master_description/{key}",
+                "PLANNER_SCHEMA_INVALID",
+                f"Amazon Skill plan requires {key}.",
+                json_pointer=path,
             )
-    consistency_lock = plan.get("product_consistency_lock")
-    if not isinstance(consistency_lock, Mapping) or not consistency_lock:
-        raise XingheAgentError(
-            "AMAZON_PRODUCT_CONSISTENCY_LOCK_INVALID",
-            "Amazon planning requires a Product Consistency Lock.",
-            json_pointer="/plan/product_consistency_lock",
-        )
-    suite_lock = plan.get("suite_cohesion_lock")
-    if not isinstance(suite_lock, Mapping) or not suite_lock:
-        raise XingheAgentError(
-            "AMAZON_SUITE_COHESION_LOCK_INVALID",
-            "Amazon planning requires a Suite Cohesion Lock.",
-            json_pointer="/plan/suite_cohesion_lock",
-        )
-    for key in (
-        "primary_palette",
-        "accent_palette",
-        "typography_mood",
-        "icon_stroke",
-        "corner_radius",
-        "shadow_system",
-        "lighting_system",
-        "brand_motif",
-        "responsive_pair_rule",
-    ):
-        value = suite_lock.get(key)
+        return value
+
+    def require_string(container: Mapping[str, Any], key: str, path: str) -> str:
+        value = container.get(key)
         if not isinstance(value, str) or not value.strip():
             raise XingheAgentError(
-                "AMAZON_SUITE_COHESION_LOCK_INVALID",
-                f"Suite Cohesion Lock has an invalid {key}.",
-                json_pointer=f"/plan/suite_cohesion_lock/{key}",
+                "PLANNER_SCHEMA_INVALID",
+                f"Amazon Skill plan requires a non-empty {key}.",
+                json_pointer=path,
             )
-    background_systems = suite_lock.get("background_systems")
+        return value.strip()
+
+    image_analysis = require_mapping(
+        analysis, "product_image_analysis", "/analysis/product_image_analysis"
+    )
+    visible_facts = image_analysis.get("visible_facts")
     if (
-        not isinstance(background_systems, list)
-        or not 2 <= len(background_systems) <= 4
-        or any(not isinstance(value, str) or not value.strip() for value in background_systems)
-        or len({value.strip().casefold() for value in background_systems})
-        != len(background_systems)
+        not isinstance(visible_facts, list)
+        or not visible_facts
+        or any(
+            not isinstance(value, str) or not value.strip() for value in visible_facts
+        )
     ):
         raise XingheAgentError(
-            "AMAZON_SUITE_COHESION_LOCK_INVALID",
-            "Suite Cohesion Lock requires two to four distinct background systems.",
-            json_pointer="/plan/suite_cohesion_lock/background_systems",
+            "PLANNER_SCHEMA_INVALID",
+            "Product Image Analysis requires visible facts from supplied images.",
+            json_pointer="/analysis/product_image_analysis/visible_facts",
         )
-    screens = plan["screens"]
-    expected = {spec.item_key: spec for spec in AMAZON_ITEM_SPECS}
-    actual_keys = [screen.get("item_key") for screen in screens]
-    if actual_keys != list(AMAZON_ITEM_KEYS):
+    confidence = require_mapping(
+        analysis, "information_confidence", "/analysis/information_confidence"
+    )
+    for key in ("confirmed", "reasonable_inference", "needs_confirmation"):
+        values = confidence.get(key)
+        if not isinstance(values, list) or any(
+            not isinstance(value, str) or not value.strip() for value in values
+        ):
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                f"Information Confidence requires an array for {key}.",
+                json_pointer=f"/analysis/information_confidence/{key}",
+            )
+    for key in ("buyer_demand_map", "demand_to_selling_point_match"):
+        values = analysis.get(key)
+        if (
+            not isinstance(values, list)
+            or not values
+            or any(not isinstance(value, str) or not value.strip() for value in values)
+        ):
+            raise XingheAgentError(
+                "PLANNER_SCHEMA_INVALID",
+                f"Amazon Skill plan requires {key}.",
+                json_pointer=f"/analysis/{key}",
+            )
+    product_master = require_mapping(
+        analysis,
+        "product_master_description",
+        "/analysis/product_master_description",
+    )
+    for key in (
+        "category_and_identity",
+        "silhouette_and_proportions",
+        "color_material_and_texture",
+        "structure_parts_and_accessories",
+        "logos_labels_patterns_and_packaging",
+        "scale_and_physics",
+    ):
+        require_string(
+            product_master, key, f"/analysis/product_master_description/{key}"
+        )
+    unknowns = product_master.get("unknowns")
+    if not isinstance(unknowns, list) or any(
+        not isinstance(value, str) or not value.strip() for value in unknowns
+    ):
+        raise XingheAgentError(
+            "AMAZON_PRODUCT_MASTER_INVALID",
+            "Product Master Description unknowns must be an array.",
+            json_pointer="/analysis/product_master_description/unknowns",
+        )
+
+    campaign_lock = require_mapping(
+        plan, "campaign_style_lock", "/plan/campaign_style_lock"
+    )
+    for key in (
+        "platform",
+        "marketplace_language",
+        "design_direction",
+        "palette",
+        "lighting",
+        "typography_mood",
+        "label_style",
+        "density",
+    ):
+        require_string(campaign_lock, key, f"/plan/campaign_style_lock/{key}")
+    consistency_lock = require_mapping(
+        plan, "product_consistency_lock", "/plan/product_consistency_lock"
+    )
+    for key in (
+        "product_identity",
+        "structure",
+        "color_area_ratio",
+        "material_look",
+        "logo_and_label_placement",
+        "physical_scale",
+    ):
+        require_string(consistency_lock, key, f"/plan/product_consistency_lock/{key}")
+    layout_lock = require_mapping(
+        plan, "layout_diversity_lock", "/plan/layout_diversity_lock"
+    )
+    require_string(
+        layout_lock,
+        "structure_strategy",
+        "/plan/layout_diversity_lock/structure_strategy",
+    )
+    formula_limit = layout_lock.get("large_product_top_title_limit")
+    if (
+        not isinstance(formula_limit, int)
+        or isinstance(formula_limit, bool)
+        or not 1 <= formula_limit <= 3
+    ):
+        raise XingheAgentError(
+            "AMAZON_LAYOUT_DIVERSITY_INVALID",
+            "The original Skill permits no more than three large-product-plus-top-title layouts.",
+            json_pointer="/plan/layout_diversity_lock/large_product_top_title_limit",
+        )
+
+    screens = plan.get("screens")
+    if not isinstance(screens, list) or len(screens) != AMAZON_EXPECTED_ITEM_COUNT:
         raise XingheAgentError(
             "AMAZON_ITEM_INVENTORY_INVALID",
-            "Amazon planner must return the canonical 21 item keys in order.",
+            "Amazon Skill planning requires exactly 21 image rows.",
+            json_pointer="/plan/screens",
+        )
+    expected_ids = list(AMAZON_SKILL_ROW_IDS)
+    actual_ids = [
+        screen.get("id") if isinstance(screen, Mapping) else None for screen in screens
+    ]
+    if actual_ids != expected_ids:
+        raise XingheAgentError(
+            "AMAZON_ITEM_INVENTORY_INVALID",
+            "Amazon planner must return the canonical 21 Skill ids in order.",
             json_pointer="/plan/screens",
         )
     required = (
         "asset_type",
         "final_size",
+        "buyer_question",
         "selling_point",
         "information_confidence",
         "visual_proof",
@@ -630,130 +589,77 @@ def validate_amazon_planner_payload(payload: object) -> dict[str, Any]:
         "source_material",
         "risk_note",
     )
-    for index, screen in enumerate(screens):
-        item_key = str(screen["item_key"])
-        spec = expected[item_key]
+    allowed_confidence = {
+        "confirmed",
+        "reasonable inference",
+        "needs confirmation",
+    }
+    normalized_screens: list[dict[str, Any]] = []
+    for index, (raw_screen, spec) in enumerate(
+        zip(screens, AMAZON_ITEM_SPECS, strict=True)
+    ):
+        if not isinstance(raw_screen, Mapping):
+            raise XingheAgentError(
+                "AMAZON_PLAN_SCREEN_INVALID",
+                "Amazon plan screen must be an object.",
+                json_pointer=f"/plan/screens/{index}",
+            )
+        screen = dict(raw_screen)
         for key in required:
             value = screen.get(key)
             if not isinstance(value, str) or (key != "subcopy" and not value.strip()):
                 raise XingheAgentError(
                     "AMAZON_PLAN_SCREEN_INVALID",
-                    f"Amazon plan screen requires {key}.",
+                    f"Amazon Skill row requires {key}.",
                     json_pointer=f"/plan/screens/{index}/{key}",
                 )
+        if screen["information_confidence"] not in allowed_confidence:
+            raise XingheAgentError(
+                "AMAZON_PLAN_SCREEN_INVALID",
+                "Information confidence must use the original Skill vocabulary.",
+                json_pointer=f"/plan/screens/{index}/information_confidence",
+            )
+        image_copy = f"{screen['headline']} {screen['subcopy']}".casefold()
+        unsupported_claims = [
+            str(claim).strip()
+            for claim in confidence["needs_confirmation"]
+            if str(claim).strip()
+        ]
+        if any(claim.casefold() in image_copy for claim in unsupported_claims):
+            raise XingheAgentError(
+                "AMAZON_UNSUPPORTED_CLAIM_INVALID",
+                "A needs-confirmation claim cannot appear in image copy.",
+                json_pointer=f"/plan/screens/{index}/headline",
+            )
         if screen["final_size"] != f"{spec.width}x{spec.height}":
             raise XingheAgentError(
                 "AMAZON_TARGET_SIZE_MISMATCH",
-                f"{item_key} has the wrong final_size.",
+                f"{screen['id']} has the wrong final_size.",
                 json_pointer=f"/plan/screens/{index}/final_size",
             )
-    maximum = int(plan["layout_diversity_lock"]["max_same_layout_family"])
-    if maximum != 2:
+        screen["item_key"] = spec.item_key
+        screen["role"] = AMAZON_ROLE_BY_ITEM_KEY[spec.item_key]
+        normalized_screens.append(screen)
+
+    if sources and not any(
+        str(getattr(source, "source_role", "")) == "white_background_product"
+        for source in sources
+    ):
         raise XingheAgentError(
-            "AMAZON_LAYOUT_DIVERSITY_INVALID",
-            "Amazon planning requires max_same_layout_family to be exactly 2.",
-            json_pointer="/plan/layout_diversity_lock/max_same_layout_family",
+            "AMAZON_WHITE_BACKGROUND_SOURCE_REQUIRED",
+            "Amazon MAIN-01 requires a real product source in the primary product role.",
+            json_pointer="/analysis/product_image_analysis",
         )
-    selling = [screen for screen in screens if screen["item_key"] != "MAIN-01"]
-    layout_counts = Counter(
-        str(screen["layout_family"]).strip().casefold() for screen in selling
-    )
-    if layout_counts and max(layout_counts.values()) > maximum:
-        raise XingheAgentError(
-            "AMAZON_LAYOUT_DIVERSITY_INVALID",
-            "Amazon selling images repeat layout_family too often.",
-            json_pointer="/plan/screens",
-        )
-    approved_backgrounds = {
-        value.strip().casefold() for value in background_systems
+
+    return {
+        "analysis": dict(analysis),
+        "plan": {
+            "campaign_style_lock": dict(campaign_lock),
+            "product_consistency_lock": dict(consistency_lock),
+            "layout_diversity_lock": dict(layout_lock),
+            "screens": normalized_screens,
+        },
     }
-    canonical_backgrounds = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
-    for index, screen in enumerate(screens):
-        item_key = str(screen["item_key"])
-        background_system = str(screen["background_system"]).strip().casefold()
-        if item_key == "MAIN-01":
-            if background_system != "pure-white-compliance":
-                raise XingheAgentError(
-                    "AMAZON_MAIN_IMAGE_INVALID",
-                    "MAIN-01 background_system must be pure-white-compliance.",
-                    json_pointer=f"/plan/screens/{index}/background_system",
-                )
-            continue
-        if background_system not in approved_backgrounds:
-            raise XingheAgentError(
-                "AMAZON_SUITE_COHESION_INVALID",
-                "Amazon selling-screen background_system is outside the Suite Cohesion Lock.",
-                json_pointer=f"/plan/screens/{index}/background_system",
-            )
-        expected_background = canonical_backgrounds[item_key]
-        if background_system != expected_background.casefold():
-            raise XingheAgentError(
-                "AMAZON_SUITE_BACKGROUND_ASSIGNMENT_INVALID",
-                (
-                    f"{item_key} background_system must be "
-                    f"{expected_background}."
-                ),
-                json_pointer=f"/plan/screens/{index}/background_system",
-            )
-    by_item_key = {str(screen["item_key"]): screen for screen in screens}
-    index_by_item_key = {
-        str(screen["item_key"]): index for index, screen in enumerate(screens)
-    }
-    for pair_index in range(1, 8):
-        desktop_key = f"A-DESKTOP-{pair_index:02d}"
-        mobile_key = f"A-MOBILE-{pair_index:02d}"
-        desktop = by_item_key[desktop_key]
-        mobile = by_item_key[mobile_key]
-        desktop_concept = desktop.get("responsive_concept")
-        mobile_concept = mobile.get("responsive_concept")
-        same_concept = (
-            isinstance(desktop_concept, str)
-            and bool(desktop_concept.strip())
-            and isinstance(mobile_concept, str)
-            and bool(mobile_concept.strip())
-            and desktop_concept.strip().casefold()
-            == mobile_concept.strip().casefold()
-        )
-        same_layout_family = (
-            str(desktop["layout_family"]).strip().casefold()
-            == str(mobile["layout_family"]).strip().casefold()
-        )
-        same_background_system = (
-            str(desktop["background_system"]).strip().casefold()
-            == str(mobile["background_system"]).strip().casefold()
-        )
-        different_subject_scale = (
-            str(desktop["subject_scale"]).strip().casefold()
-            != str(mobile["subject_scale"]).strip().casefold()
-        )
-        if not (
-            same_concept
-            and same_layout_family
-            and same_background_system
-            and different_subject_scale
-        ):
-            invalid_field = (
-                "responsive_concept"
-                if not same_concept
-                else "layout_family"
-                if not same_layout_family
-                else "background_system"
-                if not same_background_system
-                else "subject_scale"
-            )
-            raise XingheAgentError(
-                "AMAZON_RESPONSIVE_PAIR_INVALID",
-                (
-                    "Paired desktop and mobile A+ screens must share "
-                    "responsive_concept, layout_family, and background_system, "
-                    "and use different subject_scale values."
-                ),
-                json_pointer=(
-                    f"/plan/screens/{index_by_item_key[mobile_key]}/"
-                    f"{invalid_field}"
-                ),
-            )
-    return structured
 
 
 def editable_amazon_structured_plan(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -776,9 +682,7 @@ def editable_amazon_structured_plan(payload: Mapping[str, Any]) -> dict[str, Any
         "analysis": group.get("analysis"),
         "plan": {
             "campaign_style_lock": group.get("campaign_style_lock"),
-            "design_strength_lock": group.get("design_strength_lock"),
             "product_consistency_lock": group.get("product_consistency_lock"),
-            "suite_cohesion_lock": group.get("suite_cohesion_lock"),
             "layout_diversity_lock": group.get("layout_diversity_lock"),
             "screens": pages,
         },
@@ -845,9 +749,7 @@ def synchronize_confirmed_amazon_plan(
         "schema_version": AMAZON_PLANNING_POLICY_VERSION,
         "analysis": structured["analysis"],
         "campaign_style_lock": structured["plan"]["campaign_style_lock"],
-        "design_strength_lock": structured["plan"]["design_strength_lock"],
         "product_consistency_lock": structured["plan"]["product_consistency_lock"],
-        "suite_cohesion_lock": structured["plan"]["suite_cohesion_lock"],
         "layout_diversity_lock": structured["plan"]["layout_diversity_lock"],
         "input_signature": payload.get("input_signature"),
         "resume_signature": resume_signature,
@@ -951,9 +853,13 @@ class AmazonVisualSuiteProvider:
         _validate_group_semantics(item_configuration, spec)
 
         input_configuration = _job_input_configuration(request.configuration)
-        source_assets = _amazon_source_assets(input_configuration)
-        item_ordinal = AMAZON_ITEM_KEYS.index(spec.item_key)
         plan_context = _amazon_plan_context(item_configuration, spec)
+        source_assets = _amazon_source_assets(
+            input_configuration,
+            spec=spec,
+            plan_context=plan_context,
+        )
+        item_ordinal = AMAZON_ITEM_KEYS.index(spec.item_key)
         prompt_input = _amazon_prompt_input(job_configuration, spec, plan_context)
         aspect_ratio = _aspect_ratio(spec.width, spec.height)
         adapter_configuration = {
@@ -987,7 +893,7 @@ class AmazonVisualSuiteProvider:
                 "target_height": spec.height,
                 "deliverable_counted": True,
                 "contact_sheet": False,
-                "task": _amazon_task_contract(spec),
+                "task": _amazon_task_contract(spec, plan_context["screen"]),
                 "plan_resume_signature": plan_context["resume_signature"],
             },
         }
@@ -1081,6 +987,9 @@ def _job_input_configuration(configuration: Mapping[str, Any]) -> Mapping[str, A
 
 def _amazon_source_assets(
     input_configuration: Mapping[str, Any],
+    *,
+    spec: AmazonItemSpec,
+    plan_context: Mapping[str, Any],
 ) -> list[dict[str, str]]:
     white_background = require_asset_ids(
         input_configuration,
@@ -1090,13 +999,105 @@ def _amazon_source_assets(
     package = validate_optional_asset_ids(input_configuration, "package_asset_ids")
     scene = validate_optional_asset_ids(input_configuration, "scene_asset_ids")
     brand = validate_optional_asset_ids(input_configuration, "brand_asset_ids")
-    return role_labelled_assets(
-        ("white_background_product", white_background),
-        ("product_detail", detail),
+    reference = validate_optional_asset_ids(input_configuration, "reference_asset_ids")
+    competitor = validate_optional_asset_ids(
+        input_configuration,
+        "competitor_reference_asset_ids",
+    )
+    if spec.item_key == "MAIN-01":
+        return role_labelled_assets(
+            ("white_background_product", white_background),
+            ("product_detail", detail),
+        )
+
+    source_material = str(plan_context["screen"]["source_material"])
+    optional_sources = (
         ("package_reference", package),
         ("scene_reference", scene),
         ("brand_reference", brand),
+        ("style_reference", reference),
+        ("competitor_reference", competitor),
     )
+    selected_optional_sources = tuple(
+        (role, asset_ids)
+        for role, asset_ids in optional_sources
+        if asset_ids and _source_material_requests_role(source_material, role)
+    )
+    return role_labelled_assets(
+        ("white_background_product", white_background),
+        ("product_detail", detail),
+        *selected_optional_sources,
+    )
+
+
+_SOURCE_MATERIAL_ROLE_TERMS: dict[str, tuple[str, ...]] = {
+    "package_reference": (
+        "package_reference",
+        "package reference",
+        "packaging",
+        "package",
+        "included items",
+    ),
+    "scene_reference": (
+        "scene_reference",
+        "scene reference",
+        "lifestyle",
+        "use environment",
+        "real context",
+        "scene",
+    ),
+    "brand_reference": (
+        "brand_reference",
+        "brand reference",
+        "brand",
+    ),
+    "style_reference": (
+        "style_reference",
+        "style reference",
+        "visual style",
+    ),
+    "competitor_reference": (
+        "competitor_reference",
+        "competitor reference",
+        "competitor",
+        "category convention",
+    ),
+}
+
+
+def _source_material_requests_role(source_material: str, role: str) -> bool:
+    normalized = " ".join(source_material.casefold().replace("-", " ").split())
+    return any(
+        term.casefold().replace("-", " ") in normalized
+        for term in _SOURCE_MATERIAL_ROLE_TERMS[role]
+    )
+
+
+def _serialized_guidance(label: str, value: Any) -> list[str]:
+    """Serialize Planner guidance without exceeding delegate field limits."""
+
+    payload = _stable_json(value)
+    guidance = f"{label}: {payload}"
+    if len(guidance) <= _AMAZON_PROMPT_GUIDANCE_MAX_LENGTH:
+        return [guidance]
+
+    part_count = 1
+    while True:
+        prefix = f"{label} (part {part_count}/{part_count}): "
+        payload_size = _AMAZON_PROMPT_GUIDANCE_MAX_LENGTH - len(prefix)
+        if payload_size <= 0:
+            raise ValueError("Amazon guidance label is too long to chunk safely.")
+        resolved_count = (len(payload) + payload_size - 1) // payload_size
+        if resolved_count == part_count:
+            break
+        part_count = resolved_count
+
+    prefix = f"{label} (part {part_count}/{part_count}): "
+    payload_size = _AMAZON_PROMPT_GUIDANCE_MAX_LENGTH - len(prefix)
+    return [
+        f"{label} (part {ordinal}/{part_count}): {payload[start : start + payload_size]}"
+        for ordinal, start in enumerate(range(0, len(payload), payload_size), start=1)
+    ]
 
 
 def _amazon_prompt_input(
@@ -1104,12 +1105,64 @@ def _amazon_prompt_input(
     spec: AmazonItemSpec,
     plan_context: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Compile only the explicit Amazon prompt whitelist."""
+    """Compile one standalone prompt using only the original Skill contract."""
 
     listing_title = optional_string(job_configuration, "listing_title")
     bullet_points = optional_string_list(job_configuration, "bullet_points")
-    product_information = [value for value in (listing_title, *bullet_points) if value]
+    listing_description = optional_string(job_configuration, "listing_description")
+    a_plus_copy = optional_string(job_configuration, "a_plus_copy")
+    product_facts = optional_string_list(job_configuration, "product_facts")
+    parameters = optional_string_list(job_configuration, "parameters")
+    evidence = optional_string_list(
+        job_configuration,
+        "certifications_or_evidence",
+    )
+    forbidden_claims = optional_string_list(job_configuration, "forbidden_claims")
+    style_preferences = optional_string_list(job_configuration, "style_preferences")
+    instruction = optional_string(job_configuration, "instruction")
+    product_information = [
+        value
+        for value in (
+            listing_title,
+            *bullet_points,
+            listing_description,
+            a_plus_copy,
+            *product_facts,
+            *parameters,
+            *evidence,
+        )
+        if value
+    ]
     screen = plan_context["screen"]
+    analysis = plan_context["analysis"]
+    analysis_guidance = [
+        *_serialized_guidance(
+            "Product Master Description",
+            analysis["product_master_description"],
+        ),
+        *_serialized_guidance(
+            "Product Image Analysis",
+            analysis["product_image_analysis"],
+        ),
+        *_serialized_guidance(
+            "Information Confidence",
+            analysis["information_confidence"],
+        ),
+        *_serialized_guidance("Buyer Demand Map", analysis["buyer_demand_map"]),
+        *_serialized_guidance(
+            "Demand-to-Selling-Point Match",
+            analysis["demand_to_selling_point_match"],
+        ),
+    ]
+    main_constraints: list[str] = []
+    if spec.item_key == "MAIN-01":
+        main_constraints = [
+            "Use the real user-provided white_background_product source as product truth.",
+            "Preserve the exact SKU, silhouette, proportions, color, structure, authentic trademark, logo, label, pattern, and readable product text already present on the product.",
+            "Clean the surrounding background to pure white, center the product, preserve clear edges, and keep high subject occupancy.",
+            "Do not return an empty or pure-color canvas and do not remove the product.",
+            "Do not add lifestyle context, props, badges, ratings, claims, icons, new text, fake packaging, or accessories not shown or provided.",
+        ]
     return compact_prompt_input(
         {
             "marketplace": optional_string(
@@ -1118,69 +1171,54 @@ def _amazon_prompt_input(
                 default=AMAZON_DEFAULT_MARKETPLACE,
             ),
             "product_name": optional_string(job_configuration, "product_name"),
+            "product_category": optional_string(job_configuration, "category"),
+            "target_buyer": optional_string(job_configuration, "target_buyer"),
             "product_information": product_information,
+            "listing_description": listing_description,
+            "a_plus_copy": a_plus_copy,
+            "product_facts": product_facts,
+            "parameters": parameters,
+            "certifications_or_evidence": evidence,
+            "forbidden_claims": forbidden_claims,
             "color_palette": optional_string_list(job_configuration, "brand_colors"),
+            "style_preferences": style_preferences,
+            "user_instruction": instruction,
             "language": optional_string(job_configuration, "language", default="en-US"),
             "composition": spec.group,
             "creative_direction": [
-                f"Asset type: {spec.asset_type}",
+                f"Asset type and final role: {screen['asset_type']}",
+                f"Final size: {screen['final_size']}",
                 f"Layout direction: {screen['layout_direction']}",
-                f"Layout family: {screen['layout_family']}",
-                f"Camera angle: {screen['camera_angle']}",
-                f"Product position: {screen['product_position']}",
-                f"Background system: {screen['background_system']}",
-                f"Prop strategy: {screen['prop_strategy']}",
-                f"Copy density: {screen['copy_density']}",
-                *(
-                    [f"Responsive concept: {screen['responsive_concept']}"]
-                    if spec.group in {"a_desktop", "a_mobile"}
-                    and isinstance(screen.get("responsive_concept"), str)
-                    and screen["responsive_concept"].strip()
-                    else []
-                ),
+                f"Visual proof method: {screen['visual_proof']}",
             ],
             "copy_requirements": [
                 f"Headline: {screen['headline']}",
                 f"Subcopy: {screen['subcopy']}",
             ],
             "reference_guidance": [
-                "Product Master Description: " + _stable_json(
-                    plan_context["analysis"]["product_master_description"]
+                *analysis_guidance,
+                *_serialized_guidance(
+                    "Campaign Style Lock",
+                    plan_context["campaign_style_lock"],
                 ),
-                "Product Consistency Anchors: " + _stable_json(
-                    plan_context["analysis"]["product_consistency_anchors"]
+                *_serialized_guidance(
+                    "Product Consistency Lock",
+                    plan_context["product_consistency_lock"],
                 ),
-                "Product Consistency Lock: " + _stable_json(
-                    plan_context["product_consistency_lock"]
-                ),
-                "Campaign Style Lock: " + _stable_json(
-                    plan_context["campaign_style_lock"]
-                ),
-                "Design Strength Lock: " + _stable_json(
-                    plan_context["design_strength_lock"]
-                ),
-                *(
-                    [
-                        "Suite Cohesion Lock: "
-                        + _stable_json(plan_context["suite_cohesion_lock"])
-                    ]
-                    if isinstance(plan_context.get("suite_cohesion_lock"), Mapping)
-                    and plan_context["suite_cohesion_lock"]
-                    else []
-                ),
-                "Layout Diversity Lock: " + _stable_json(
-                    plan_context["layout_diversity_lock"]
+                *_serialized_guidance(
+                    "Layout Diversity Lock",
+                    plan_context["layout_diversity_lock"],
                 ),
                 f"Buyer question: {screen['buyer_question']}",
                 f"Selling point: {screen['selling_point']}",
                 f"Information confidence: {screen['information_confidence']}",
-                f"Visual proof: {screen['visual_proof']}",
-                f"Source material: {screen['source_material']}",
+                f"Required source material: {screen['source_material']}",
             ],
             "negative_constraints": [
                 _GLOBAL_RISK_GUARD,
-                spec.risk_note,
                 str(screen["risk_note"]),
+                *(f"Forbidden claim: {value}" for value in forbidden_claims),
+                *main_constraints,
             ],
             "image_count": 1,
         }
@@ -1206,17 +1244,13 @@ def _amazon_plan_context(
             "AMAZON_PLAN_CONTEXT_MISSING",
             "Amazon generation requires a confirmed persisted plan context.",
         )
-    required_mappings = [
+    for key in (
         "analysis",
         "campaign_style_lock",
-        "design_strength_lock",
         "product_consistency_lock",
         "layout_diversity_lock",
         "screen",
-    ]
-    if value.get("schema_version") == AMAZON_PLANNING_POLICY_VERSION:
-        required_mappings.append("suite_cohesion_lock")
-    for key in required_mappings:
+    ):
         if not isinstance(value.get(key), Mapping) or not value[key]:
             raise AdapterValidationError(
                 "AMAZON_PLAN_CONTEXT_MISSING",
@@ -1235,35 +1269,38 @@ def _amazon_plan_context(
             "Amazon confirmed plan screen does not match the durable item.",
         )
     analysis = value["analysis"]
-    if not isinstance(analysis.get("product_master_description"), Mapping):
-        raise AdapterValidationError(
-            "AMAZON_PLAN_CONTEXT_MISSING",
-            "Amazon confirmed plan has no Product Master Description.",
-        )
-    if not isinstance(analysis.get("product_consistency_anchors"), Mapping):
-        raise AdapterValidationError(
-            "AMAZON_PLAN_CONTEXT_MISSING",
-            "Amazon confirmed plan has no Product Consistency Anchors.",
-        )
+    for key in (
+        "product_image_analysis",
+        "information_confidence",
+        "product_master_description",
+    ):
+        if not isinstance(analysis.get(key), Mapping) or not analysis[key]:
+            raise AdapterValidationError(
+                "AMAZON_PLAN_CONTEXT_MISSING",
+                f"Amazon confirmed plan has no {key}.",
+            )
     return value
 
 
-def _amazon_task_contract(spec: AmazonItemSpec) -> dict[str, str]:
-    """Return the stable, authoritative task row for exactly one deliverable."""
+def _amazon_task_contract(
+    spec: AmazonItemSpec,
+    screen: Mapping[str, Any],
+) -> dict[str, str]:
+    """Return the confirmed Skill task row for exactly one deliverable."""
 
     return {
-        "id": spec.item_key,
-        "asset_type": spec.asset_type,
-        "final_size": f"{spec.width}x{spec.height}",
-        "buyer_question": spec.buyer_question,
-        "selling_point": spec.selling_point,
-        "information_confidence": _CONFIDENCE_RULE,
-        "visual_proof": spec.visual_proof,
-        "headline": spec.headline,
-        "subcopy": spec.subcopy,
-        "layout_direction": spec.layout_direction,
-        "source_material": spec.source_material,
-        "risk_note": spec.risk_note,
+        "id": AMAZON_SKILL_ROW_ID_BY_ITEM_KEY[spec.item_key],
+        "asset_type": str(screen["asset_type"]),
+        "final_size": str(screen["final_size"]),
+        "buyer_question": str(screen["buyer_question"]),
+        "selling_point": str(screen["selling_point"]),
+        "information_confidence": str(screen["information_confidence"]),
+        "visual_proof": str(screen["visual_proof"]),
+        "headline": str(screen["headline"]),
+        "subcopy": str(screen["subcopy"]),
+        "layout_direction": str(screen["layout_direction"]),
+        "source_material": str(screen["source_material"]),
+        "risk_note": str(screen["risk_note"]),
     }
 
 
@@ -1272,7 +1309,7 @@ def _safe_fit(spec: AmazonItemSpec) -> str:
 
     if spec.group == "main":
         return "pad"
-    return "contain"
+    return "cover"
 
 
 def _aspect_ratio(width: int, height: int) -> str:

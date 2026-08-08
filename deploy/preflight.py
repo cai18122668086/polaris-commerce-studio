@@ -52,6 +52,7 @@ PROVIDER_FLAG_KEYS = (
 PROVIDER_QUOTA_KEY = "POLARIS_PROVIDER_QUOTA_ENABLED"
 MOCK_SERVICES = {"migrate", "dispatcher"}
 ALLOWED_TASK_RUNNERS = {"mock", "tengli"}
+INTERNAL_DEPLOYMENT_ENVIRONMENT = "development"
 MAX_PROVIDER_ALLOWANCE = 20_000_000
 THIRD_PARTY_IMAGE_KEYS = {
     "POLARIS_PYTHON_BASE_IMAGE",
@@ -364,6 +365,13 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
             "service set must be exactly: " + ", ".join(sorted(EXPECTED_SERVICES))
         )
 
+    environment_expression = (
+        f"POLARIS_ENVIRONMENT: {INTERNAL_DEPLOYMENT_ENVIRONMENT}"
+    )
+    if compose.count(environment_expression) != 1:
+        errors.append(
+            "internal staging must remain pinned to the development environment"
+        )
     runner_expression = "POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}"
     if compose.count(runner_expression) != 1:
         errors.append("the Provider runner must be environment-selectable with mock default")
@@ -796,12 +804,11 @@ def validate_deployment(
     quota_raw = values.get(PROVIDER_QUOTA_KEY, "false")
     if quota_raw not in {"true", "false"}:
         errors.append(f"{PROVIDER_QUOTA_KEY} must be true or false")
-    quota_enabled = quota_raw == "true"
+    # This deployment profile is pinned to development and may intentionally
+    # disable the durable quota ledger for an unrestricted internal test account.
+    # The application startup gate still rejects quota-free real Provider
+    # execution whenever POLARIS_ENVIRONMENT=production.
     real_provider_requested = runner == "tengli" or any_provider_enabled
-    if real_provider_requested and not quota_enabled:
-        errors.append(
-            f"{PROVIDER_QUOTA_KEY} must be true for real Provider execution"
-        )
 
     if real_provider_requested:
         for key in PROVIDER_SENSITIVE_KEYS:

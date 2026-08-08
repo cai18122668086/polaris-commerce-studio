@@ -587,16 +587,11 @@ class SourcePreflightTests(unittest.TestCase):
                     any("require POLARIS_TASK_RUNNER=tengli" in item for item in errors)
                 )
 
-    def test_tengli_runner_requires_provider_quota(self) -> None:
+    def test_internal_tengli_runner_allows_quota_disabled(self) -> None:
         errors = self.validate_synthetic_deployment(
             POLARIS_PROVIDER_QUOTA_ENABLED="false",
         )
-        self.assertTrue(
-            any(
-                "POLARIS_PROVIDER_QUOTA_ENABLED must be true" in item
-                for item in errors
-            )
-        )
+        self.assertEqual(errors, [])
 
     def test_tengli_runner_with_provider_quota_passes(self) -> None:
         errors = self.validate_synthetic_deployment(
@@ -640,19 +635,14 @@ class SourcePreflightTests(unittest.TestCase):
                 errors = self.validate_synthetic_deployment(**overrides)
                 self.assertTrue(any(key in item for item in errors))
 
-    def test_provider_switches_require_provider_quota(self) -> None:
+    def test_internal_provider_switches_allow_quota_disabled(self) -> None:
         for key in PREFLIGHT.PROVIDER_FLAG_KEYS:
             with self.subTest(key=key):
                 errors = self.validate_synthetic_deployment(
                     POLARIS_PROVIDER_QUOTA_ENABLED="false",
                     **{key: "true"},
                 )
-                self.assertTrue(
-                    any(
-                        "POLARIS_PROVIDER_QUOTA_ENABLED must be true" in item
-                        for item in errors
-                    )
-                )
+                self.assertEqual(errors, [])
 
     def test_invalid_provider_quota_value_is_rejected(self) -> None:
         errors = self.validate_synthetic_deployment(

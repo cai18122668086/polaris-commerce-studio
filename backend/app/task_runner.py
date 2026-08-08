@@ -66,6 +66,12 @@ class MockTaskRunner:
         return self.coordinator.cancel(job_id)
 
 
+def _provider_quota_allows_real_provider_startup(settings: Settings) -> bool:
+    """Allow quota-free real-provider startup only outside production."""
+
+    return settings.provider_quota_enabled or settings.environment != "production"
+
+
 def validate_task_runner_settings(settings: Settings) -> None:
     """Reject unsafe real-provider configuration without exposing secret values."""
 
@@ -83,7 +89,7 @@ def validate_task_runner_settings(settings: Settings) -> None:
     )
     if not real_provider_requested:
         return
-    if not settings.provider_quota_enabled:
+    if not _provider_quota_allows_real_provider_startup(settings):
         raise RuntimeError(
             "real Provider execution requires provider quota to be enabled"
         )

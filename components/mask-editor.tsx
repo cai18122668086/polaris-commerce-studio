@@ -16,6 +16,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import {
   assertEditableMask,
   createBinaryMask,
@@ -160,7 +161,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
         baseContext.drawImage(image, 0, 0, base.width, base.height);
         maskContext.clearRect(0, 0, mask.width, mask.height);
         setReady(true);
-      }).catch(() => onError?.("无法解码这张图片，请改用 JPG、PNG 或 WEBP。"));
+      }).catch(() => onError?.(`无法解码这张图片。${IMAGE_UPLOAD_FORMAT_HINT}。`));
       return () => {
         cancelled = true;
       };

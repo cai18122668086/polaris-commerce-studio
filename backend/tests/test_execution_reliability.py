@@ -12,12 +12,18 @@ from app.domain import (
     AttemptStatus,
     JobItemStatus,
     JobStatus,
+    JobType,
     OutboxStatus,
+    PlanValidationStatus,
+    UsageCompleteness,
 )
 from app.execution import ExecutionCoordinator
 from app.models import (
+    AmazonSuiteReviewAttemptRecord,
+    AuditEventRecord,
     JobAttemptRecord,
     JobItemRecord,
+    JobPlanRecord,
     JobRecord,
     OutboxEventRecord,
     UsageEventRecord,
@@ -25,6 +31,7 @@ from app.models import (
 )
 from app.outbox import publish_pending_events
 from app.provider import FakeProvider, ProviderOutcome, ProviderResult
+from app.provider_quota_ledger import ProviderQuotaLedgerError
 
 WORKSPACE_ID = "ws_test"
 
@@ -122,6 +129,127 @@ def _counts(client: TestClient, job_id: str) -> tuple[int, int]:
     return int(attempts or 0), int(usage or 0)
 
 
+def _prepare_amazon_accounting_job(
+    client: TestClient,
+    *,
+    suffix: str,
+    payload_review_usage: list[dict[str, object]],
+) -> tuple[str, ExecutionCoordinator]:
+    job_id = _create_job(client)
+    coordinator = _coordinator(client, FakeProvider(), f"accounting-{suffix}")
+    assert coordinator.prepare(job_id) == JobStatus.PROCESSING
+    payload = {
+        "business_quality": {"status": "passed"},
+        "planner_request_count": 0,
+        "usage": {
+            "planner": [],
+            "amazon_suite_review": payload_review_usage,
+        },
+    }
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        item = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert job is not None and item is not None
+        job.type = JobType.AMAZON_VISUAL_SUITE.value
+        item.status = JobItemStatus.SUCCEEDED.value
+        item.stage = "completed"
+        item.finished_at = utc_now()
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{suffix}_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                payload=payload,
+                payload_hash="a" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+            )
+        )
+        session.commit()
+    return job_id, coordinator
+
+
+def _add_amazon_review_attempt(
+    client: TestClient,
+    job_id: str,
+    *,
+    review_round: int,
+    status: str,
+    reported: bool,
+    actual_cost_micros: int | None,
+    estimated_cost_micros: int | None,
+    provider: str = "xinghe",
+    provider_call_started: bool = True,
+    error_code: str | None = None,
+) -> None:
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            AmazonSuiteReviewAttemptRecord(
+                id=f"asr_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                review_round=review_round,
+                output_asset_set_hash=f"{review_round:064x}",
+                provider=provider,
+                provider_idempotency_key=(
+                    f"{job_id}:suite-review:{review_round}:{uuid4().hex}"
+                ),
+                status=status,
+                lease_token=uuid4().hex,
+                leased_by="accounting-test",
+                lease_expires_at=now + timedelta(minutes=15),
+                provider_request_id=(
+                    f"review-request-{review_round}" if provider != "mock" else None
+                ),
+                raw_usage={"input_tokens": 10} if reported else {},
+                normalized_usage={"reported": reported},
+                actual_cost_micros=actual_cost_micros,
+                estimated_cost_micros=estimated_cost_micros,
+                error_code=error_code,
+                started_at=now,
+                provider_call_started_at=now if provider_call_started else None,
+                finished_at=now if status != AttemptStatus.RUNNING.value else None,
+            )
+        )
+        session.commit()
+
+
+def _add_provider_reservation(
+    client: TestClient,
+    job_id: str,
+    *,
+    reserved_cost_micros: int = 4_530_000,
+    reserved_request_count: int = 45,
+) -> None:
+    with client.app.state.session_factory() as session:
+        session.add(
+            AuditEventRecord(
+                workspace_id=WORKSPACE_ID,
+                action="provider.beta_job_reserved",
+                resource_type="job",
+                resource_id=job_id,
+                request_id=job_id,
+                details={
+                    "ledger_version": 2,
+                    "job_type": JobType.AMAZON_VISUAL_SUITE.value,
+                    "planner_reserve_micros": 250_000,
+                    "image_budget_micros": 1_890_000,
+                    "group_count": 0,
+                    "estimated_cost_micros": reserved_cost_micros,
+                    "provider_request_count": reserved_request_count,
+                    "daily_limit_micros": 10_000_000,
+                    "monthly_limit_micros": 20_000_000,
+                    "daily_request_limit": 100,
+                },
+            )
+        )
+        session.commit()
+
+
 def test_ten_concurrent_deliveries_execute_provider_once(
     client: TestClient,
 ) -> None:
@@ -157,9 +285,7 @@ def test_running_job_aggregates_follow_terminal_item_statuses(
     first = coordinator.claim_next_item(job_id)
     assert first is not None
     assert asyncio.run(coordinator.execute_lease(first))
-    after_first = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
-    ).json()
+    after_first = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
     assert after_first["status"] == JobStatus.PROCESSING.value
     assert after_first["succeeded_item_count"] == 1
     assert after_first["failed_item_count"] == 0
@@ -177,9 +303,7 @@ def test_running_job_aggregates_follow_terminal_item_statuses(
             retryable=False,
         ),
     )
-    after_second = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
-    ).json()
+    after_second = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
     assert after_second["succeeded_item_count"] == 1
     assert after_second["failed_item_count"] == 1
     assert after_second["progress"] == 73
@@ -196,9 +320,7 @@ def test_running_job_aggregates_follow_terminal_item_statuses(
     assert before_finalize["progress"] == 99
 
     assert coordinator.finalize_job(job_id) == JobStatus.PARTIAL
-    finalized = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
-    ).json()
+    finalized = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
     assert finalized["progress"] == 100
 
 
@@ -329,9 +451,7 @@ def test_published_outbox_delivery_is_recovered_from_postgres(
     job_id = _create_job(client)
     with client.app.state.session_factory() as session:
         event = session.scalar(
-            select(OutboxEventRecord).where(
-                OutboxEventRecord.aggregate_id == job_id
-            )
+            select(OutboxEventRecord).where(OutboxEventRecord.aggregate_id == job_id)
         )
         assert event is not None
         event.status = OutboxStatus.PUBLISHED.value
@@ -347,11 +467,305 @@ def test_published_outbox_delivery_is_recovered_from_postgres(
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)
         event = session.scalar(
-            select(OutboxEventRecord).where(
-                OutboxEventRecord.aggregate_id == job_id
-            )
+            select(OutboxEventRecord).where(OutboxEventRecord.aggregate_id == job_id)
         )
         assert job is not None and event is not None
         assert job.status == JobStatus.COMPLETED.value
         assert event.status == OutboxStatus.PUBLISHED.value
     assert _counts(client, job_id) == (1, 1)
+
+
+def test_finalize_amazon_review_uses_terminal_attempts_without_payload_double_count(
+    client: TestClient,
+) -> None:
+    job_id, coordinator = _prepare_amazon_accounting_job(
+        client,
+        suffix="durable",
+        payload_review_usage=[
+            {
+                "reported": True,
+                "provider_request_id": "duplicated-plan-review",
+                "actual_cost_micros": 9_999,
+                "estimated_cost_micros": 9_999,
+            }
+        ],
+    )
+    for review_round, status, reported, actual, estimated in (
+        (1, AttemptStatus.SUCCEEDED.value, True, 11, 101),
+        (2, AttemptStatus.FAILED.value, True, 13, 103),
+        (3, AttemptStatus.OUTCOME_UNKNOWN.value, False, 17, 107),
+        (4, AttemptStatus.RUNNING.value, True, 1_000, 1_000),
+    ):
+        _add_amazon_review_attempt(
+            client,
+            job_id,
+            review_round=review_round,
+            status=status,
+            reported=reported,
+            actual_cost_micros=actual,
+            estimated_cost_micros=estimated,
+        )
+
+    assert coordinator.finalize_job(job_id) == JobStatus.COMPLETED
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        assert job.actual_cost_micros == 41
+        assert job.api_request_count == 3
+        assert job.usage_completeness == UsageCompleteness.PARTIAL.value
+
+
+def test_finalize_amazon_review_excludes_preparation_failure_from_request_accounting(
+    client: TestClient,
+) -> None:
+    job_id, coordinator = _prepare_amazon_accounting_job(
+        client,
+        suffix="preparation-failed",
+        payload_review_usage=[
+            {
+                "reported": True,
+                "provider_request_id": "must-not-fall-back",
+                "actual_cost_micros": 9_999,
+            }
+        ],
+    )
+    _add_amazon_review_attempt(
+        client,
+        job_id,
+        review_round=1,
+        status=AttemptStatus.FAILED.value,
+        reported=False,
+        actual_cost_micros=None,
+        estimated_cost_micros=None,
+        provider_call_started=False,
+        error_code="AMAZON_SUITE_REVIEW_PREPARATION_FAILED",
+    )
+
+    assert coordinator.finalize_job(job_id) == JobStatus.COMPLETED
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        assert job.actual_cost_micros is None
+        assert job.api_request_count == 0
+        assert job.usage_completeness == UsageCompleteness.NONE.value
+
+
+def test_finalize_amazon_review_keeps_estimated_only_unknown_cost_incomplete(
+    client: TestClient,
+) -> None:
+    job_id, coordinator = _prepare_amazon_accounting_job(
+        client,
+        suffix="estimated-only",
+        payload_review_usage=[],
+    )
+    _add_amazon_review_attempt(
+        client,
+        job_id,
+        review_round=1,
+        status=AttemptStatus.OUTCOME_UNKNOWN.value,
+        reported=False,
+        actual_cost_micros=None,
+        estimated_cost_micros=29,
+    )
+
+    assert coordinator.finalize_job(job_id) == JobStatus.COMPLETED
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        assert job.actual_cost_micros is None
+        assert job.api_request_count == 1
+        assert job.usage_completeness == UsageCompleteness.NONE.value
+
+
+def test_finalize_amazon_review_falls_back_to_legacy_plan_usage(
+    client: TestClient,
+) -> None:
+    job_id, coordinator = _prepare_amazon_accounting_job(
+        client,
+        suffix="legacy",
+        payload_review_usage=[
+            {
+                "reported": True,
+                "provider_request_id": "legacy-review-request",
+                "actual_cost_micros": 7,
+                "estimated_cost_micros": 9,
+            }
+        ],
+    )
+
+    assert coordinator.finalize_job(job_id) == JobStatus.COMPLETED
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        assert job.actual_cost_micros == 7
+        assert job.api_request_count == 1
+        assert job.usage_completeness == UsageCompleteness.COMPLETE.value
+
+def test_finalize_amazon_review_merges_mixed_evidence_into_quota_settlement(
+    client: TestClient,
+) -> None:
+    job_id, coordinator = _prepare_amazon_accounting_job(
+        client,
+        suffix="mixed-settlement",
+        payload_review_usage=[
+            {
+                "review_round": 1,
+                "reported": True,
+                "provider_request_id": "legacy-review-1",
+                "actual_cost_micros": 7,
+                "estimated_cost_micros": 70,
+            },
+            {
+                "review_round": 2,
+                "reported": True,
+                "provider_request_id": "review-request-2",
+                "actual_cost_micros": 9_999,
+                "estimated_cost_micros": 9_999,
+            },
+            {
+                "review_round": 3,
+                "reported": True,
+                "provider_request_id": "legacy-review-3",
+                "actual_cost_micros": 13,
+                "estimated_cost_micros": 130,
+            },
+            {
+                "review_round": 5,
+                "reported": True,
+                "provider_request_id": "must-not-fall-back",
+                "actual_cost_micros": 9_999,
+                "estimated_cost_micros": 9_999,
+            },
+        ],
+    )
+    _add_amazon_review_attempt(
+        client,
+        job_id,
+        review_round=2,
+        status=AttemptStatus.SUCCEEDED.value,
+        reported=True,
+        actual_cost_micros=11,
+        estimated_cost_micros=110,
+    )
+    _add_amazon_review_attempt(
+        client,
+        job_id,
+        review_round=4,
+        status=AttemptStatus.SUCCEEDED.value,
+        reported=True,
+        actual_cost_micros=17,
+        estimated_cost_micros=170,
+        provider="mock",
+    )
+    _add_amazon_review_attempt(
+        client,
+        job_id,
+        review_round=5,
+        status=AttemptStatus.FAILED.value,
+        reported=False,
+        actual_cost_micros=None,
+        estimated_cost_micros=None,
+        provider_call_started=False,
+        error_code="AMAZON_SUITE_REVIEW_PREPARATION_FAILED",
+    )
+    _add_provider_reservation(client, job_id)
+
+    assert coordinator.finalize_job(job_id) == JobStatus.COMPLETED
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        settlement = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job_id,
+                AuditEventRecord.action == "provider.beta_job_settled",
+            )
+        )
+        attempts_event = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job_id,
+                AuditEventRecord.action == "provider.beta_job_attempts_recorded",
+            )
+        )
+        release = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job_id,
+                AuditEventRecord.action == "provider.beta_job_released",
+            )
+        )
+        assert job is not None
+        assert settlement is not None
+        assert attempts_event is not None
+        assert release is not None
+        assert job.actual_cost_micros == 48
+        assert job.api_request_count == 3
+        assert job.usage_completeness == UsageCompleteness.COMPLETE.value
+        assert settlement.details["actual_provider_request_count"] == 3
+        assert settlement.details["charged_cost_micros"] == 31
+        assert settlement.details["actual_cost_reported_count"] == 3
+        assert settlement.details["estimated_fallback_count"] == 0
+        assert settlement.details["conservative_unknown_count"] == 0
+        review_sources = [
+            source
+            for source in attempts_event.details["attempts"]
+            if source["source"].startswith("amazon_suite_review_")
+        ]
+        assert [source["review_round"] for source in review_sources] == [1, 2, 3]
+        assert [source["source"] for source in review_sources] == [
+            "amazon_suite_review_legacy",
+            "amazon_suite_review_durable",
+            "amazon_suite_review_legacy",
+        ]
+        assert release.details["released_request_count"] == 42
+        assert release.details["released_cost_micros"] == 4_529_969
+
+
+@pytest.mark.parametrize(
+    ("reserved_cost_micros", "reserved_request_count"),
+    [(4_530_000, 1), (1, 45)],
+)
+def test_finalize_amazon_review_true_quota_overflow_fails_closed(
+    client: TestClient,
+    reserved_cost_micros: int,
+    reserved_request_count: int,
+) -> None:
+    job_id, coordinator = _prepare_amazon_accounting_job(
+        client,
+        suffix=f"overflow-{reserved_cost_micros}-{reserved_request_count}",
+        payload_review_usage=[
+            {
+                "review_round": 1,
+                "reported": True,
+                "provider_request_id": "legacy-overflow-1",
+                "actual_cost_micros": 2,
+            },
+            {
+                "review_round": 2,
+                "reported": True,
+                "provider_request_id": "legacy-overflow-2",
+                "actual_cost_micros": 3,
+            },
+        ],
+    )
+    _add_provider_reservation(
+        client,
+        job_id,
+        reserved_cost_micros=reserved_cost_micros,
+        reserved_request_count=reserved_request_count,
+    )
+
+    with pytest.raises(
+        ProviderQuotaLedgerError,
+        match="Observed provider attempts exceed the durable job reservation",
+    ):
+        coordinator.finalize_job(job_id)
+
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        settlement = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job_id,
+                AuditEventRecord.action == "provider.beta_job_settled",
+            )
+        )
+        assert job is not None
+        assert job.status == JobStatus.PROCESSING.value
+        assert settlement is None

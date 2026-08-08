@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -83,13 +83,46 @@ test("Amazon fixed pack delegates all 21 JobItems to the backend", async () => {
     workspace.indexOf('type: "amazon_visual_suite"'),
     workspace.indexOf("const submit = async"),
   );
-  assert.match(workspace, /isAmazon \? 21 : imageCount/);
+  assert.match(workspace, /const expectedCount = isAmazon[\s\S]*\? 21/);
   assert.match(workspace, /预计生成 21 张套图/);
   assert.match(amazonPlatforms, /value: "amazon-us"/);
   assert.doesNotMatch(amazonPlatforms, /tmall|jd|douyin|xiaohongshu|generic/);
   assert.match(workspace, /isAmazon \? amazonPlatforms : platforms/);
   assert.doesNotMatch(amazonBody, /image_count/);
   assert.doesNotMatch(amazonBody, /item_key|MAIN-01|SECONDARY-01|A-DESKTOP-01/);
+});
+
+test("Amazon source roles share the backend eight-image limit", async () => {
+  const workspace = await utf8("components/commerce-skill-workspace.tsx");
+
+  assert.match(workspace, /const AMAZON_SOURCE_ASSET_LIMIT = 8/);
+  assert.match(workspace, /七类源图合计最多 \$\{AMAZON_SOURCE_ASSET_LIMIT\} 张/);
+  assert.match(
+    workspace,
+    /已选 \$\{selectedIds\.length\} \/ \$\{AMAZON_SOURCE_ASSET_LIMIT\} 张，剩余 \$\{amazonRemainingSourceSlots\} 张/,
+  );
+  assert.match(
+    workspace,
+    /const amazonRemainingSourceSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length/,
+  );
+  assert.match(
+    workspace,
+    /const availableSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selections\[role\]\.length/,
+  );
+  assert.match(workspace, /const filesToUpload = files\.slice\(0, availableSlots\)/);
+  assert.match(
+    workspace,
+    /addDisabled=\{isAmazon && amazonRemainingSourceSlots === 0\}/,
+  );
+  assert.match(
+    workspace,
+    /maxItems=\{[\s\S]*isAmazon[\s\S]*selections\[activeLibraryRole\.key\]\.length \+ \(amazonRemainingSourceSlots \?\? 0\)[\s\S]*: AMAZON_SOURCE_ASSET_LIMIT/,
+  );
+  assert.match(
+    workspace,
+    /const roleLimit = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount[\s\S]*: AMAZON_SOURCE_ASSET_LIMIT/,
+  );
+  assert.match(workspace, /同一素材不能跨角色重复选择，每个角色最多 \$\{AMAZON_SOURCE_ASSET_LIMIT\} 张/);
 });
 
 test("Amazon workflow reviews and confirms the backend 21-page plan", async () => {
@@ -112,8 +145,68 @@ test("Amazon distinguishes technical completion from business quality review", a
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
   assert.match(workspace, /readAmazonBusinessQuality/);
   assert.match(workspace, /技术交付完成，业务质量等待人工审核/);
-  assert.match(workspace, /技术交付完成，业务质量检查未通过/);
-  assert.match(workspace, /不会自动重做/);
+  assert.match(workspace, /title: "业务质量检查未通过"/);
+  assert.match(workspace, /仅状态为已完成且可交付的图片可下载，请查看失败项并按需重试/);
+  assert.doesNotMatch(workspace, /文件仍可下载核对，但不会自动重做/);
+  assert.match(workspace, /review_infrastructure_failed/);
+  assert.match(
+    workspace,
+    /Object\.prototype\.hasOwnProperty\.call\(AMAZON_BUSINESS_QUALITY_COPY, status\)/,
+  );
+  assert.match(workspace, /jobStatus === "completed"/);
+  assert.match(
+    workspace,
+    /jobStatus === "partial" &&[\s\S]*qualityStatus === "failed" \|\| qualityStatus === "review_infrastructure_failed"/,
+  );
+  assert.match(workspace, /图片已生成，但自动视觉审核基础设施失败/);
+  assert.match(workspace, /本次自动审核不可用，不代表图片质量未通过/);
+});
+
+test("Amazon review infrastructure failure preserves generated-image semantics", async () => {
+  const workspace = await utf8("components/commerce-skill-workspace.tsx");
+
+  assert.match(
+    workspace,
+    /isAmazon &&[\s\S]*job\.data\?\.status === "partial" &&[\s\S]*amazonBusinessQuality\?\.status === "review_infrastructure_failed" &&[\s\S]*job\.data\.items\.some/,
+  );
+  assert.match(
+    workspace,
+    /const expectedCount = isAmazon[\s\S]*\? 21[\s\S]*job\.data\?\.expected_item_count \?\? imageCount/,
+  );
+  assert.match(workspace, /const generatedCount = resultAssets\.length/);
+  assert.match(
+    workspace,
+    /generatedCount === expectedCount[\s\S]*\$\{generatedCount\} 张图片已生成，自动视觉审核未完成[\s\S]*\$\{generatedCount\} \/ \$\{expectedCount\} 张图片已生成，自动视觉审核未完成/,
+  );
+  assert.match(
+    workspace,
+    /itemStatus === "failed"[\s\S]*errorDetails\?\.failure_kind === "review_infrastructure_failure"[\s\S]*errorDetails\.image_quality_failed === false[\s\S]*errorDetails\.generated_asset_preserved === true/,
+  );
+  assert.match(
+    workspace,
+    /isAmazonReviewInfrastructureFailure &&[\s\S]*isPreservedAmazonReviewInfrastructureBlocker\([\s\S]*item\.status,[\s\S]*item\.error_details,[\s\S]*\)/,
+  );
+  assert.match(
+    workspace,
+    /data-status=\{isPreservedReviewBlocker \? "succeeded" : item\.status\}/,
+  );
+  assert.match(workspace, /图片已生成，自动视觉审核未完成/);
+  assert.match(
+    workspace,
+    /const canDownloadAmazonArchive = Boolean\([\s\S]*resultAssets\.length === expectedCount[\s\S]*job\.data\?\.status === "completed" \|\| isAmazonReviewInfrastructureFailure/,
+  );
+  assert.match(
+    workspace,
+    /archiveJobId=\{canDownloadAmazonArchive \? job\.data\?\.id : undefined\}/,
+  );
+  assert.match(
+    workspace,
+    /job\.data\.error_message && !isAmazonReviewInfrastructureFailure/,
+  );
+  assert.match(
+    workspace,
+    /return `\$\{job\.data\.succeeded_item_count\} \/ \$\{job\.data\.expected_item_count\}/,
+  );
 });
 
 test("new workspaces are runtime gated and never fabricate output", async () => {

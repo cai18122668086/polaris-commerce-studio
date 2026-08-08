@@ -145,8 +145,15 @@ test("upload inputs match the backend image contract and recover from file-level
   const commerce = await utf8("components/commerce-skill-workspace.tsx");
   const product = await utf8("components/product-image-workspace.tsx");
 
-  assert.match(detail, /accept="image\/jpeg,image\/png,image\/webp"/);
-  assert.doesNotMatch(detail, /accept="image\/\*"/);
+  const localEdit = await utf8("app/workspace/local-edit/page.tsx");
+  const uploadContract = await utf8("lib/image-upload.ts");
+
+  assert.match(uploadContract, /IMAGE_UPLOAD_EXTENSIONS = \["\.jpg", "\.jpeg", "\.png", "\.webp"\]/);
+  assert.match(uploadContract, /"image\/jpeg",\s*"image\/png",\s*"image\/webp"/);
+  for (const source of [assets, detail, localEdit, commerce, product]) {
+    assert.match(source, /accept=\{IMAGE_UPLOAD_ACCEPT\}/);
+    assert.doesNotMatch(source, /accept="image\/\*"/);
+  }
   assert.match(assets, /fileInput\.current\.value = "";\s*upload\.mutate\(\{ file \}\)/);
   assert.match(detail, /const failures: string\[\] = \[\]/);
   assert.match(detail, /event\.currentTarget\.value = ""/);

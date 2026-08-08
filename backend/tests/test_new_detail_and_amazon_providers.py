@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import math
 import re
 from dataclasses import dataclass, field
@@ -13,6 +14,8 @@ from app.amazon_visual_suite_provider import (
     AMAZON_ITEM_KEYS,
     AMAZON_ITEM_SPECS,
     AMAZON_PLAN_CONFIGURATION_KEY,
+    AMAZON_PLANNING_POLICY_VERSION,
+    AMAZON_SKILL_ROW_ID_BY_ITEM_KEY,
     AmazonVisualSuiteProvider,
     amazon_item_spec,
     validate_amazon_item_keys,
@@ -141,61 +144,76 @@ def _amazon_request(
         spec = None
     if spec is not None:
         item[AMAZON_PLAN_CONFIGURATION_KEY] = {
+            "schema_version": AMAZON_PLANNING_POLICY_VERSION,
             "analysis": {
-                "product_master_description": {
-                    "silhouette_and_proportions": "Preserve the supplied shape.",
-                    "color_and_material_appearance": "Preserve visible appearance.",
-                    "logos_labels_and_patterns": "Preserve visible markings.",
-                    "structural_parts": "Do not add or remove parts.",
-                    "scale_and_physics": "Keep scale and physical logic credible.",
+                "product_image_analysis": {
+                    "visible_facts": ["One supplied test SKU."],
+                    "possible_use_contexts": ["category-appropriate use"],
                     "unknowns": [],
                 },
-                "product_consistency_anchors": {
-                    "overall_silhouette": "One exact SKU.",
+                "information_confidence": {
+                    "confirmed": ["Visible supplied SKU."],
+                    "reasonable_inference": [],
+                    "needs_confirmation": [],
+                },
+                "buyer_demand_map": ["recognition", "trust", "purchase"],
+                "demand_to_selling_point_match": [
+                    "recognition -> Show the exact supplied SKU."
+                ],
+                "product_master_description": {
+                    "category_and_identity": "One exact supplied test SKU.",
+                    "silhouette_and_proportions": "Preserve the supplied shape.",
+                    "color_material_and_texture": "Preserve visible appearance.",
+                    "structure_parts_and_accessories": (
+                        "Do not add or remove visible parts."
+                    ),
+                    "logos_labels_patterns_and_packaging": (
+                        "Preserve visible identity markings."
+                    ),
+                    "scale_and_physics": ("Keep scale and physical logic credible."),
+                    "unknowns": [],
                 },
             },
-            "campaign_style_lock": {"style": "consistent campaign"},
-            "design_strength_lock": {"strength": "product-led evidence"},
-            "product_consistency_lock": {"sku_identity": "one exact SKU"},
-            "suite_cohesion_lock": {
-                "primary_palette": "warm white and charcoal",
-                "accent_palette": "restrained product-led navy",
-                "typography_mood": "confident editorial sans-serif",
-                "icon_stroke": "minimal monoline",
-                "corner_radius": "consistent medium radius",
-                "shadow_system": "soft short shadow",
-                "lighting_system": "soft upper-left studio light",
-                "brand_motif": "geometric crop and evidence ribbon",
-                "background_systems": [
-                    "pure-white-compliance",
-                    "warm-clean-field",
-                    "soft-context-field",
-                ],
-                "responsive_pair_rule": "same concept, responsive composition",
+            "campaign_style_lock": {
+                "platform": "Amazon US",
+                "marketplace_language": "en-US",
+                "design_direction": "Product-led evidence",
+                "palette": "Product-led restrained palette",
+                "lighting": "Consistent commercial lighting",
+                "typography_mood": "Clear shopper-facing hierarchy",
+                "label_style": "Sparse evidence labels",
+                "density": "Readable at listing and phone size",
             },
-            "layout_diversity_lock": {"max_same_layout_family": 2},
-            "screen": {
-                "item_key": spec.item_key,
-                "buyer_question": spec.buyer_question,
-                "selling_point": spec.selling_point,
-                "information_confidence": "confirmed visible facts only",
-                "visual_proof": spec.visual_proof,
-                "headline": spec.headline,
-                "subcopy": spec.subcopy,
-                "layout_direction": spec.layout_direction,
-                "layout_family": f"planned-{spec.group}",
-                "camera_angle": "planned camera angle",
-                "product_position": "planned product position",
-                "background_system": "warm-clean-field",
-                "prop_strategy": "planned prop strategy",
-                "copy_density": "sparse",
-                "source_material": spec.source_material,
-                "risk_note": spec.risk_note,
-                **(
-                    {"responsive_concept": f"responsive-{spec.group_ordinal:02d}"}
-                    if spec.group in {"a_desktop", "a_mobile"}
-                    else {}
+            "product_consistency_lock": {
+                "product_identity": "Preserve one exact SKU",
+                "structure": "Preserve all visible structural parts",
+                "color_area_ratio": "Preserve visible color-area ratio",
+                "material_look": "Preserve visible material appearance",
+                "logo_and_label_placement": (
+                    "Preserve authentic logo and label placement"
                 ),
+                "physical_scale": "Keep physical scale credible",
+            },
+            "layout_diversity_lock": {
+                "structure_strategy": (
+                    "Use at least five distinct structures across selling images"
+                ),
+                "large_product_top_title_limit": 3,
+            },
+            "screen": {
+                "id": AMAZON_SKILL_ROW_ID_BY_ITEM_KEY[spec.item_key],
+                "item_key": spec.item_key,
+                "asset_type": spec.asset_type,
+                "final_size": f"{spec.width}x{spec.height}",
+                "buyer_question": spec.buyer_question,
+                "selling_point": "Planner-selected selling point.",
+                "information_confidence": "confirmed",
+                "visual_proof": spec.visual_proof,
+                "headline": "Planner-selected headline.",
+                "subcopy": "Planner-selected support copy.",
+                "layout_direction": "Planner-selected layout direction.",
+                "source_material": ("white_background_product and product_detail"),
+                "risk_note": "Use only confirmed source facts.",
             },
             "resume_signature": "b" * 64,
         }
@@ -209,6 +227,8 @@ def _amazon_request(
                     "package_asset_ids": ["asset-package"],
                     "scene_asset_ids": ["asset-scene"],
                     "brand_asset_ids": ["asset-brand"],
+                    "reference_asset_ids": ["asset-style"],
+                    "competitor_reference_asset_ids": ["asset-competitor"],
                 },
                 "settings": {
                     "marketplace": marketplace,
@@ -573,6 +593,9 @@ def test_amazon_inventory_and_dimension_mapping_are_canonical() -> None:
     assert (desktop.width, desktop.height) == (1464, 600)
     assert (mobile.width, mobile.height) == (1600, 1200)
     assert len(AMAZON_ITEM_SPECS) == AMAZON_EXPECTED_ITEM_COUNT
+    assert not hasattr(amazon_item_spec("SECONDARY-01"), "selling_point")
+    assert not hasattr(amazon_item_spec("SECONDARY-01"), "layout_direction")
+    assert not hasattr(amazon_item_spec("SECONDARY-01"), "source_material")
 
 
 def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
@@ -598,9 +621,6 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
     assert adapter["source_assets"] == [
         {"asset_id": "asset-white", "role": "white_background_product"},
         {"asset_id": "asset-detail", "role": "product_detail"},
-        {"asset_id": "asset-package", "role": "package_reference"},
-        {"asset_id": "asset-scene", "role": "scene_reference"},
-        {"asset_id": "asset-brand", "role": "brand_reference"},
     ]
     assert adapter["target"] == {
         "aspect_ratio": "61:25",
@@ -608,7 +628,7 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
         "height": 600,
         "quality": "high",
         "output_format": "jpeg",
-        "fit": "contain",
+        "fit": "cover",
     }
     prompt = adapter["prompt_input"]
     assert prompt["marketplace"] == "amazon-us"
@@ -619,96 +639,192 @@ def test_amazon_adapter_attaches_item_contract_and_preserves_result() -> None:
     assert prompt["composition"] == "a_desktop"
     assert prompt["image_count"] == 1
     assert prompt["creative_direction"] == [
-        "Asset type: Desktop A+ core-feature module",
+        "Asset type and final role: Desktop A+ module",
+        "Final size: 1464x600",
+        "Layout direction: Planner-selected layout direction.",
         (
-            "Layout direction: Wide structure or macro composition with "
-            "evidence larger than text."
+            "Visual proof method: Mechanism, structure, technology, craft, "
+            "or detail evidence"
         ),
-        "Layout family: planned-a_desktop",
-        "Camera angle: planned camera angle",
-        "Product position: planned product position",
-        "Background system: warm-clean-field",
-        "Prop strategy: planned prop strategy",
-        "Copy density: sparse",
-        "Responsive concept: responsive-03",
     ]
     assert prompt["copy_requirements"] == [
-        (
-            "Headline: One short differentiation headline grounded in "
-            "confirmed evidence."
-        ),
-        "Subcopy: Use sparse feature labels only where legible.",
+        "Headline: Planner-selected headline.",
+        "Subcopy: Planner-selected support copy.",
     ]
-    assert (
-        "Buyer question: What makes it different?"
-        in prompt["reference_guidance"]
-    )
-    assert (
-        "Visual proof: Use mechanism, structure, craft, or close-detail evidence."
-        in prompt["reference_guidance"]
-    )
-    assert prompt["reference_guidance"][0].startswith(
-        "Product Master Description: "
-    )
-    assert any(
-        value.startswith("Suite Cohesion Lock: ")
-        for value in prompt["reference_guidance"]
-    )
-    assert any(
-        value == 'Layout Diversity Lock: {"max_same_layout_family":2}'
-        for value in prompt["reference_guidance"]
-    )
-    assert len(prompt["negative_constraints"]) == 3
+    guidance = prompt["reference_guidance"]
+    for prefix in (
+        "Product Master Description: ",
+        "Product Image Analysis: ",
+        "Information Confidence: ",
+        "Buyer Demand Map: ",
+        "Demand-to-Selling-Point Match: ",
+        "Campaign Style Lock: ",
+        "Product Consistency Lock: ",
+        "Layout Diversity Lock: ",
+    ):
+        assert any(value.startswith(prefix) for value in guidance)
+    assert "Buyer question: What makes it different?" in guidance
+    assert len(prompt["negative_constraints"]) == 2
     assert "private_note" not in prompt
     audit = delegate.requests[0].configuration[AMAZON_AUDIT_CONFIGURATION_KEY]
     assert audit["expected_item_count"] == 21
     assert tuple(audit["canonical_item_keys"]) == AMAZON_ITEM_KEYS
-    assert audit["contact_sheet"] is False
-    assert audit["item"] == {
-        "item_key": "A-DESKTOP-03",
-        "delegate_item_key": "A-DESKTOP-03",
-        "group": "a_desktop",
-        "group_ordinal": 3,
-        "target_width": 1464,
-        "target_height": 600,
-        "deliverable_counted": True,
-        "contact_sheet": False,
-        "plan_resume_signature": "b" * 64,
-        "task": {
-            "id": "A-DESKTOP-03",
-            "asset_type": "Desktop A+ core-feature module",
-            "final_size": "1464x600",
-            "buyer_question": "What makes it different?",
-            "selling_point": (
-                "Explain one confirmed mechanism, structure, technology, craft, "
-                "or detail."
-            ),
-            "information_confidence": (
-                "Use confirmed facts first; soften reasonable inferences; omit "
-                "every needs-confirmation claim from the image."
-            ),
-            "visual_proof": (
-                "Use mechanism, structure, craft, or close-detail evidence."
-            ),
-            "headline": (
-                "One short differentiation headline grounded in confirmed evidence."
-            ),
-            "subcopy": "Use sparse feature labels only where legible.",
-            "layout_direction": (
-                "Wide structure or macro composition with evidence larger than text."
-            ),
-            "source_material": (
-                "Prioritize product_detail and white_background_product references."
-            ),
-            "risk_note": (
-                "Do not invent materials, construction, technology, patents, or "
-                "lab evidence."
-            ),
-        },
-    }
+    assert audit["item"]["task"]["id"] == "aplus-desktop-03"
+    assert audit["item"]["plan_resume_signature"] == "b" * 64
 
 
-def test_amazon_provider_keeps_v1_confirmed_plan_retry_compatible() -> None:
+def test_amazon_main_uses_all_product_truth_sources_without_optional_references() -> (
+    None
+):
+    delegate = StrictRecordingDelegate(
+        ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
+    )
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+
+    request = _amazon_request("MAIN-01", 2000, 2000)
+    request.configuration["job"]["input"]["white_background_product_asset_ids"] = [
+        "asset-white",
+        "asset-white-side",
+    ]
+    request.configuration["job"]["input"]["detail_asset_ids"] = [
+        "asset-detail",
+        "asset-detail-close",
+    ]
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+    envelope = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY]
+    assert envelope["source_assets"] == [
+        {"asset_id": "asset-white", "role": "white_background_product"},
+        {"asset_id": "asset-white-side", "role": "white_background_product"},
+        {"asset_id": "asset-detail", "role": "product_detail"},
+        {"asset_id": "asset-detail-close", "role": "product_detail"},
+    ]
+    constraints = envelope["prompt_input"]["negative_constraints"]
+    assert any("authentic trademark, logo, label" in value for value in constraints)
+    assert any("surrounding background to pure white" in value for value in constraints)
+    assert any("empty or pure-color canvas" in value for value in constraints)
+    assert any("Do not add lifestyle context" in value for value in constraints)
+
+
+def test_amazon_non_main_uses_only_planner_requested_optional_source_roles() -> None:
+    delegate = StrictRecordingDelegate(
+        ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
+    )
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+    request = _amazon_request("A-DESKTOP-06", 1464, 600)
+    screen = request.configuration["item"][AMAZON_PLAN_CONFIGURATION_KEY]["screen"]
+    screen["source_material"] = (
+        "white_background_product, product_detail, package_reference, "
+        "style_reference, and competitor_reference"
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+    envelope = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY]
+    assert envelope["source_assets"] == [
+        {"asset_id": "asset-white", "role": "white_background_product"},
+        {"asset_id": "asset-detail", "role": "product_detail"},
+        {"asset_id": "asset-package", "role": "package_reference"},
+        {"asset_id": "asset-style", "role": "style_reference"},
+        {"asset_id": "asset-competitor", "role": "competitor_reference"},
+    ]
+
+
+def test_amazon_page_prompt_receives_complete_commercial_input() -> None:
+    delegate = StrictRecordingDelegate(
+        ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
+    )
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+    request = _amazon_request("SECONDARY-01", 1200, 1600)
+    settings = request.configuration["job"]["settings"]
+    settings.update(
+        {
+            "category": "commuter backpack",
+            "target_buyer": "urban commuters",
+            "listing_description": "Confirmed listing description.",
+            "a_plus_copy": "Existing A+ copy.",
+            "product_facts": ["Visible dual zipper"],
+            "parameters": ["42 x 28 x 18 cm"],
+            "certifications_or_evidence": ["Provided test report"],
+            "forbidden_claims": ["waterproof rating"],
+            "style_preferences": ["editorial", "technical"],
+            "instruction": "Prioritize commute organization.",
+        }
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+    prompt = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY][
+        "prompt_input"
+    ]
+    assert prompt["product_category"] == "commuter backpack"
+    assert prompt["target_buyer"] == "urban commuters"
+    assert prompt["listing_description"] == "Confirmed listing description."
+    assert prompt["a_plus_copy"] == "Existing A+ copy."
+    assert prompt["product_facts"] == ["Visible dual zipper"]
+    assert prompt["parameters"] == ["42 x 28 x 18 cm"]
+    assert prompt["certifications_or_evidence"] == ["Provided test report"]
+    assert prompt["forbidden_claims"] == ["waterproof rating"]
+    assert prompt["style_preferences"] == ["editorial", "technical"]
+    assert prompt["user_instruction"] == "Prioritize commute organization."
+    assert "Forbidden claim: waterproof rating" in prompt["negative_constraints"]
+
+
+def test_amazon_long_skill_guidance_is_chunked_without_content_loss() -> None:
+    delegate = StrictRecordingDelegate(
+        ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
+    )
+    provider = AmazonVisualSuiteProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+    request = _amazon_request("SECONDARY-01", 1200, 1600)
+    plan_context = request.configuration["item"][AMAZON_PLAN_CONFIGURATION_KEY]
+    product_master = plan_context["analysis"]["product_master_description"]
+    product_master["category_and_identity"] = "one-sku-" + ("x" * 2_100)
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+    prompt = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY][
+        "prompt_input"
+    ]
+    guidance = prompt["reference_guidance"]
+    assert all(len(value) <= 2_000 for value in guidance)
+    parts = [
+        value
+        for value in guidance
+        if value.startswith("Product Master Description (part ")
+    ]
+    assert len(parts) == 2
+    payload_parts: list[str] = []
+    for ordinal, value in enumerate(parts, start=1):
+        prefix = f"Product Master Description (part {ordinal}/{len(parts)}): "
+        assert value.startswith(prefix)
+        payload_parts.append(value[len(prefix) :])
+    assert "".join(payload_parts) == json.dumps(
+        product_master,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert any(value.startswith("Campaign Style Lock: ") for value in guidance)
+
+
+def test_amazon_provider_does_not_require_removed_legacy_plan_fields() -> None:
     delegate = StrictRecordingDelegate(
         ProviderResult(outcome=ProviderOutcome.OUTCOME_UNKNOWN)
     )
@@ -718,10 +834,6 @@ def test_amazon_provider_keeps_v1_confirmed_plan_retry_compatible() -> None:
     )
     spec = amazon_item_spec("A-DESKTOP-03")
     request = _amazon_request(spec.item_key, spec.width, spec.height)
-    context = request.configuration["item"][AMAZON_PLAN_CONFIGURATION_KEY]
-    context["schema_version"] = "amazon-visual-suite-planning-v1"
-    context.pop("suite_cohesion_lock")
-    context["screen"].pop("responsive_concept")
 
     result = asyncio.run(provider.execute(request))
 
@@ -734,8 +846,7 @@ def test_amazon_provider_keeps_v1_confirmed_plan_retry_compatible() -> None:
         for value in prompt["reference_guidance"]
     )
     assert not any(
-        value.startswith("Responsive concept: ")
-        for value in prompt["creative_direction"]
+        "Responsive concept" in value for value in prompt["creative_direction"]
     )
 
 
@@ -767,8 +878,29 @@ def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> 
         "source_material",
         "risk_note",
     }
+    required_guidance_prefixes = (
+        "Product Master Description",
+        "Product Image Analysis",
+        "Information Confidence",
+        "Buyer Demand Map",
+        "Demand-to-Selling-Point Match",
+        "Campaign Style Lock",
+        "Product Consistency Lock",
+        "Layout Diversity Lock",
+    )
+    removed_legacy_terms = (
+        "Design Strength Lock",
+        "Suite Cohesion Lock",
+        "Responsive concept",
+        "layout_family",
+        "camera_angle",
+        "product_position",
+        "background_system",
+        "prop_strategy",
+        "copy_density",
+    )
     task_rows: list[tuple[tuple[str, str], ...]] = []
-    suite_locks: set[str] = set()
+    skill_row_ids: set[str] = set()
     for ordinal, (spec, request) in enumerate(
         zip(AMAZON_ITEM_SPECS, delegate.requests, strict=True)
     ):
@@ -782,51 +914,48 @@ def test_amazon_all_21_items_have_independent_authoritative_task_contracts() -> 
         assert adapter["target"]["width"] == spec.width
         assert adapter["target"]["height"] == spec.height
         assert adapter["target"]["output_format"] == "jpeg"
-        assert adapter["target"]["fit"] == (
-            "pad" if spec.group == "main" else "contain"
-        )
+        assert adapter["target"]["fit"] == ("pad" if spec.group == "main" else "cover")
         assert set(task) == required_task_fields
-        assert task["id"] == spec.item_key
+        assert task["id"] == AMAZON_SKILL_ROW_ID_BY_ITEM_KEY[spec.item_key]
         assert task["final_size"] == f"{spec.width}x{spec.height}"
         assert all(isinstance(value, str) and value for value in task.values())
         assert prompt["product_information"] == ["Test listing", "Point one"]
-        assert (
-            f"Buyer question: {task['buyer_question']}"
-            in prompt["reference_guidance"]
-        )
-        assert (
-            f"Selling point: {task['selling_point']}"
-            in prompt["reference_guidance"]
-        )
-        assert (
-            f"Visual proof: {task['visual_proof']}"
-            in prompt["reference_guidance"]
-        )
-        assert prompt["creative_direction"][1] == (
-            f"Layout direction: {task['layout_direction']}"
-        )
+        assert prompt["creative_direction"] == [
+            f"Asset type and final role: {task['asset_type']}",
+            f"Final size: {task['final_size']}",
+            f"Layout direction: {task['layout_direction']}",
+            f"Visual proof method: {task['visual_proof']}",
+        ]
         assert prompt["copy_requirements"] == [
             f"Headline: {task['headline']}",
             f"Subcopy: {task['subcopy']}",
         ]
         assert prompt["negative_constraints"][1] == task["risk_note"]
-        suite_locks.add(
-            next(
-                value
+        for prefix in required_guidance_prefixes:
+            assert any(
+                value.startswith(f"{prefix}: ") or value.startswith(f"{prefix} (part ")
                 for value in prompt["reference_guidance"]
-                if value.startswith("Suite Cohesion Lock: ")
             )
+        assert (
+            f"Buyer question: {task['buyer_question']}" in prompt["reference_guidance"]
         )
-        if spec.group in {"a_desktop", "a_mobile"}:
-            assert (
-                f"Responsive concept: responsive-{spec.group_ordinal:02d}"
-                in prompt["creative_direction"]
-            )
+        assert f"Selling point: {task['selling_point']}" in prompt["reference_guidance"]
+        assert (
+            f"Information confidence: {task['information_confidence']}"
+            in prompt["reference_guidance"]
+        )
+        assert (
+            f"Required source material: {task['source_material']}"
+            in prompt["reference_guidance"]
+        )
+        serialized_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
+        assert not any(term in serialized_prompt for term in removed_legacy_terms)
         task_rows.append(tuple(sorted(task.items())))
+        skill_row_ids.add(task["id"])
 
     assert len(delegate.requests) == AMAZON_EXPECTED_ITEM_COUNT
     assert len(set(task_rows)) == AMAZON_EXPECTED_ITEM_COUNT
-    assert len(suite_locks) == 1
+    assert skill_row_ids == set(AMAZON_SKILL_ROW_ID_BY_ITEM_KEY.values())
 
 
 @pytest.mark.parametrize(

@@ -513,11 +513,12 @@ def test_partial_retry_reserves_only_runnable_provider_requests(
     assert response.status_code == 201, response.text
     assert len(quota_calls) == 1
     reservation = quota_calls[0]
-    # A retry without a copied valid+confirmed Amazon plan must reserve one
-    # fresh planner request before its selected image requests.
-    assert reservation["provider_request_count"] == selected_count + int(
-        job_type == JobType.AMAZON_VISUAL_SUITE
+    # Amazon retries reserve the complete automation envelope even when only a
+    # subset of image items is runnable; settlement releases unused allowance.
+    expected_requests = (
+        45 if job_type == JobType.AMAZON_VISUAL_SUITE else selected_count
     )
+    assert reservation["provider_request_count"] == expected_requests
     assert reservation["job"].expected_item_count == total_items
 
     retried_job_id = response.json()["id"]

@@ -39,9 +39,6 @@ from app.provider import ProviderRequest
 from app.provider_quota import PROVIDER_JOB_QUOTA_ACTION
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
-    _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES,
-    _AMAZON_SCREEN_BACKGROUND_SYSTEMS,
-    _AMAZON_SUITE_BACKGROUND_SYSTEMS,
     IMAGE_FORMAT,
     IMAGE_SIZE,
     JPEG_QUALITY,
@@ -49,6 +46,8 @@ from app.xinghe_agent import (
     PLANNING_POLICY_VERSION,
     QUALITY_POLICY_VERSION,
     WORKFLOW_VERSION,
+    AmazonVisualReviewImage,
+    AmazonVisualReviewRequest,
     FakeXingheGateway,
     ImageEditRequest,
     OperationRoutingProvider,
@@ -57,9 +56,9 @@ from app.xinghe_agent import (
     TengliOpenAICompatibleGateway,
     XingheAgentError,
     XingheImageProvider,
+    _amazon_planner_json_schema,
     _amazon_planner_prompt,
     _artifact_from_bytes,
-    _cross_page_lock_prompt_contract,
     _fake_amazon_plan,
     _json_pointer,
     _planner_content_payload_with_trace,
@@ -88,9 +87,7 @@ def _create_detail_job(
             "intent": intent,
             "display_name": "Bounded Agent gate",
             "input": {
-                "product_groups": [
-                    {"group_key": "shoe", "asset_ids": asset_ids}
-                ]
+                "product_groups": [{"group_key": "shoe", "asset_ids": asset_ids}]
             },
             "configuration": {
                 "product_name": "Visible shoe",
@@ -151,9 +148,7 @@ class _OfflineNonMockGateway(FakeXingheGateway):
 def postgres_xinghe_client(tmp_path: Path) -> Iterator[TestClient]:
     database_url = os.environ.get("POLARIS_TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip(
-            "set POLARIS_TEST_DATABASE_URL to run PostgreSQL Agent tests"
-        )
+        pytest.skip("set POLARIS_TEST_DATABASE_URL to run PostgreSQL Agent tests")
     base_url = make_url(database_url)
     if base_url.get_backend_name() != "postgresql":
         raise pytest.UsageError("POLARIS_TEST_DATABASE_URL must use PostgreSQL")
@@ -202,9 +197,7 @@ def test_exact_page_count_uses_one_planner_call(
     job = _create_detail_job(client, [source["id"]], page_count=page_count)
 
     assert dispatch_pending(client) == 1
-    planned = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     gateway = _gateway(client)
 
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
@@ -228,9 +221,7 @@ def test_new_detail_job_pins_v2_all_high_evidence(
     job = _create_detail_job(client, [source["id"]], page_count=4)
 
     assert dispatch_pending(client) == 1
-    planned = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     payload = planned["plan"]["payload"]
 
     assert planned["release_version"] == WORKFLOW_VERSION
@@ -256,10 +247,8 @@ def test_new_detail_job_pins_v2_all_high_evidence(
     assert plan.validator_version == PLANNING_POLICY_VERSION
     assert all(
         item.configuration["workflow_version"] == WORKFLOW_VERSION
-        and item.configuration["planning_policy_version"]
-        == PLANNING_POLICY_VERSION
-        and item.configuration["quality_policy_version"]
-        == QUALITY_POLICY_VERSION
+        and item.configuration["planning_policy_version"] == PLANNING_POLICY_VERSION
+        and item.configuration["quality_policy_version"] == QUALITY_POLICY_VERSION
         for item in items
     )
 
@@ -284,9 +273,7 @@ def test_invalid_planner_fails_group_with_zero_image_calls(
     job = _create_detail_job(client, [source["id"]], page_count=3)
 
     assert dispatch_pending(client) == 1
-    failed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    failed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert failed["status"] == JobStatus.FAILED.value
     assert failed["error_code"] == expected_code
@@ -306,9 +293,7 @@ def test_missing_planner_fails_closed_without_static_fallback(
     client.app.state.task_runner.coordinator.detail_planner = None
 
     assert dispatch_pending(client) == 1
-    failed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    failed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert failed["status"] == JobStatus.FAILED.value
     assert failed["error_code"] == "DETAIL_PLANNER_UNAVAILABLE"
@@ -333,9 +318,7 @@ def test_all_ordered_angles_reach_planner_and_every_page(
 
     assert dispatch_pending(client) == 1
     assert len(gateway.planner_calls) == 1
-    planner_names = [
-        source.filename for source in gateway.planner_calls[0].sources
-    ]
+    planner_names = [source.filename for source in gateway.planner_calls[0].sources]
     assert planner_names == [f"shoe-angle-{index}.jpg" for index in range(1, 4)]
     assert all(source.payload for source in gateway.planner_calls[0].sources)
     assert gateway.image_calls == []
@@ -417,9 +400,7 @@ def test_postgres_agent_concurrency_retry_and_usage_are_durable(
         == 202
     )
     assert dispatch_pending(client) == 1
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     with client.app.state.session_factory() as session:
         attempts = session.scalar(
             select(func.count())
@@ -459,9 +440,7 @@ def test_failed_pages_wait_for_explicit_retry_and_successes_are_reused(
         == 202
     )
     assert dispatch_pending(client) == 1
-    partial = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    partial = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     page_calls = {
         page: sum(call.page_number == page for call in gateway.image_calls)
         for page in (1, 2, 3)
@@ -479,10 +458,7 @@ def test_failed_pages_wait_for_explicit_retry_and_successes_are_reused(
     )
     assert retried.status_code == 201
     retry_cost = retried.json()["plan"]["payload"]["cost"]
-    assert (
-        retry_cost["pending_medium_count"] + retry_cost["pending_high_count"]
-        == 2
-    )
+    assert retry_cost["pending_medium_count"] + retry_cost["pending_high_count"] == 2
     assert retried.json()["plan"]["payload"]["usage"]["planner"] == []
     gateway.image_failures = {}
     assert dispatch_pending(client) == 1
@@ -514,9 +490,7 @@ def test_plan_edit_changes_quality_and_resume_signature_before_dispatch(
         original_signature = items[2].configuration["resume_signature"]
         assert items[2].quality == "high"
 
-    current = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     payload = deepcopy(current["plan"]["payload"])
     payload["pages"][2]["role"] = "Macro texture close-up"
     payload["pages"][2]["title"] = "Visible texture"
@@ -565,9 +539,7 @@ def test_unreported_usage_is_explicit_and_metrics_are_distinct(
         == 202
     )
     assert dispatch_pending(client) == 1
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     metrics = completed["plan"]["payload"]["metrics"]
     with client.app.state.session_factory() as session:
         events = session.scalars(
@@ -594,13 +566,8 @@ def test_throughput_metric_has_stable_zero_and_completed_semantics(
     job = _create_detail_job(client, [source["id"]], page_count=2)
 
     assert dispatch_pending(client) == 1
-    planned = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
-    assert (
-        planned["plan"]["payload"]["metrics"]["throughput_pages_per_second"]
-        == 0.0
-    )
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["plan"]["payload"]["metrics"]["throughput_pages_per_second"] == 0.0
 
     confirmed = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
@@ -609,16 +576,12 @@ def test_throughput_metric_has_stable_zero_and_completed_semantics(
     )
     assert confirmed.status_code == 202
     assert (
-        confirmed.json()["plan"]["payload"]["metrics"][
-            "throughput_pages_per_second"
-        ]
+        confirmed.json()["plan"]["payload"]["metrics"]["throughput_pages_per_second"]
         == 0.0
     )
 
     assert dispatch_pending(client) == 1
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     metrics = completed["plan"]["payload"]["metrics"]
     assert completed["status"] == JobStatus.COMPLETED.value
     assert metrics["success_count"] == 2
@@ -765,400 +728,148 @@ def _valid_planner_content(page_count: int) -> dict[str, Any]:
     }
 
 
-def test_fake_amazon_plan_uses_production_background_contract() -> None:
-    payload = _fake_amazon_plan(
-        PlannerRequest(
-            workspace_id="ws-fake-amazon-backgrounds",
-            job_id="job-fake-amazon-backgrounds",
-            group_key="amazon-product",
-            sources=(),
-            page_count=21,
-            language="en-US",
-            product_name="Visible product",
-            product_information=("Visible facts only",),
-            platform_code="amazon-us",
-            size="amazon-canonical-multi-size-v1",
-            idempotency_key="job-fake-amazon-backgrounds:planner",
-            planning_profile="amazon_visual_suite",
-        )
+def _amazon_planner_contract_request() -> PlannerRequest:
+    return PlannerRequest(
+        workspace_id="ws-amazon-contract",
+        job_id="job-amazon-contract",
+        group_key="amazon-product",
+        sources=(),
+        page_count=21,
+        language="en-US",
+        product_name="Visible product",
+        product_information=("Visible facts only",),
+        platform_code="amazon-us",
+        size="amazon-canonical-multi-size-v1",
+        idempotency_key="job-amazon-contract:planner",
+        planning_profile="amazon_visual_suite",
     )
 
-    suite_backgrounds = payload["plan"]["suite_cohesion_lock"][
-        "background_systems"
+
+def _canonical_amazon_skill_ids() -> list[str]:
+    return [
+        "main-01",
+        *(f"secondary-{index:02d}" for index in range(1, 7)),
+        *(f"aplus-desktop-{index:02d}" for index in range(1, 8)),
+        *(f"aplus-mobile-{index:02d}" for index in range(1, 8)),
     ]
-    screens = payload["plan"]["screens"]
-    backgrounds_by_item_key = {
-        screen["item_key"]: screen["background_system"] for screen in screens
-    }
-    expected_backgrounds = dict(_AMAZON_SCREEN_BACKGROUND_SYSTEMS)
-
-    assert suite_backgrounds == list(_AMAZON_SUITE_BACKGROUND_SYSTEMS)
-    assert len(screens) == len(expected_backgrounds) == 21
-    assert len(backgrounds_by_item_key) == 21
-    assert backgrounds_by_item_key == expected_backgrounds
-    for pair_index in range(1, 8):
-        assert (
-            backgrounds_by_item_key[f"A-DESKTOP-{pair_index:02d}"]
-            == backgrounds_by_item_key[f"A-MOBILE-{pair_index:02d}"]
-        )
 
 
-def test_amazon_planner_prompt_requires_exact_object_envelope() -> None:
-    prompt = _amazon_planner_prompt(
-        PlannerRequest(
-            workspace_id="ws-contract",
-            job_id="job-contract",
-            group_key="amazon-product",
-            sources=(),
-            page_count=21,
-            language="en-US",
-            product_name="Visible product",
-            product_information=("Visible facts only",),
-            platform_code="amazon-us",
-            size="amazon-canonical-multi-size-v1",
-            idempotency_key="job-contract:planner",
-            planning_profile="amazon_visual_suite",
-        )
-    )
+def _amazon_planner_contract_prompt() -> str:
+    return _amazon_planner_prompt(_amazon_planner_contract_request())
 
-    assert (
-        "The response object MUST contain exactly two top-level members named "
-        "analysis and plan."
-    ) in prompt
-    assert (
-        "The value of analysis MUST be a JSON object, never a JSON-encoded "
-        "string, array, null, or prose."
-    ) in prompt
-    assert (
-        "The value of plan MUST also be a JSON object, never a JSON-encoded "
-        "string, array, null, or prose."
-    ) in prompt
-    assert (
-        "Put every required analysis field inside the top-level analysis object "
-        "and every required plan field inside the top-level plan object."
-    ) in prompt
 
-    analysis_contract, plan_contract = prompt.split("Required analysis: ", 1)[
-        1
-    ].split("Required plan: ", 1)
-    for field in (
-        "category_key",
-        "category_reason",
+def test_fake_amazon_plan_matches_original_skill_contract() -> None:
+    payload = _fake_amazon_plan(_amazon_planner_contract_request())
+
+    assert set(payload) == {"analysis", "plan"}
+    assert set(payload["analysis"]) == {
         "product_image_analysis",
-        "product_consistency_anchors",
-        "buyer_objections",
         "information_confidence",
         "buyer_demand_map",
         "demand_to_selling_point_match",
         "product_master_description",
-    ):
-        assert field in analysis_contract
-    for field in (
+    }
+    assert set(payload["plan"]) == {
         "campaign_style_lock",
-        "design_strength_lock",
         "product_consistency_lock",
-        "suite_cohesion_lock",
         "layout_diversity_lock",
         "screens",
-    ):
-        assert field in plan_contract
-
-def test_amazon_planner_prompt_lists_each_required_style_lock_field() -> None:
-    prompt = _amazon_planner_prompt(
-        PlannerRequest(
-            workspace_id="ws-lock-contract",
-            job_id="job-lock-contract",
-            group_key="amazon-product",
-            sources=(),
-            page_count=21,
-            language="en-US",
-            product_name="Visible product",
-            product_information=("Visible facts only",),
-            platform_code="amazon-us",
-            size="amazon-canonical-multi-size-v1",
-            idempotency_key="job-lock-contract:planner",
-            planning_profile="amazon_visual_suite",
-        )
-    )
-
-    required_plan_contract = prompt.split("Required plan: ", 1)[1].split(
-        "Every screen requires", 1
-    )[0]
-    assert "same fields as the detail planner" not in required_plan_contract
-
-    campaign_contract = required_plan_contract.split(
-        "campaign_style_lock MUST", 1
-    )[1].split("design_strength_lock", 1)[0]
-    for field in (
-        "palette",
-        "typography",
-        "background",
-        "lighting",
-        "icon_style",
-        "whitespace",
-        "product_scale",
-    ):
-        assert field in campaign_contract
-
-    design_contract = required_plan_contract.split(
-        "design_strength_lock MUST", 1
-    )[1].split("suite_cohesion_lock MUST", 1)[0]
-    for field in (
-        "category_visual_motif",
-        "composition_contrast",
-        "signature_devices",
-        "color_contrast",
-        "template_ban",
-        "rhythm_map",
-    ):
-        assert field in design_contract
-
-    suite_contract = required_plan_contract.split(
-        "suite_cohesion_lock MUST", 1
-    )[1]
-    for field in (
-        "primary_palette",
-        "accent_palette",
-        "typography_mood",
-        "icon_stroke",
-        "corner_radius",
-        "shadow_system",
-        "lighting_system",
-        "brand_motif",
-        "background_systems",
-        "responsive_pair_rule",
-    ):
-        assert field in suite_contract
-    assert "max_same_layout_family MUST be exactly 2" in suite_contract
-
-
-def _amazon_planner_contract_prompt() -> str:
-    return _amazon_planner_prompt(
-        PlannerRequest(
-            workspace_id="ws-explicit-contract",
-            job_id="job-explicit-contract",
-            group_key="amazon-product",
-            sources=(),
-            page_count=21,
-            language="en-US",
-            product_name="Visible product",
-            product_information=("Visible facts only",),
-            platform_code="amazon-us",
-            size="amazon-canonical-multi-size-v1",
-            idempotency_key="job-explicit-contract:planner",
-            planning_profile="amazon_visual_suite",
-        )
-    )
-
-
-def test_amazon_planner_prompt_spells_out_analysis_value_contracts() -> None:
-    prompt = _amazon_planner_contract_prompt()
-    analysis_contract = prompt.split("Required analysis: ", 1)[1].split(
-        "Required plan: ", 1
-    )[0]
-
-    assert (
-        "product_master_description MUST be a non-empty JSON object"
-        in analysis_contract
-    )
-    product_master_contract = analysis_contract.split(
-        "product_master_description MUST", 1
-    )[1].split("unknowns MUST", 1)[0]
-    assert "non-empty string members" in product_master_contract
-    for field in (
-        "silhouette_and_proportions",
-        "color_and_material_appearance",
-        "logos_labels_and_patterns",
-        "structural_parts",
-        "scale_and_physics",
-    ):
-        assert field in product_master_contract
-    assert "unknowns MUST be a JSON array" in analysis_contract
-
-    assert "category_key and category_reason MUST be non-empty strings" in prompt
-    assert (
-        "product_image_analysis and product_consistency_anchors MUST be JSON objects"
-        in prompt
-    )
-    assert "buyer_objections MUST be a non-empty JSON array" in prompt
-
-
-def test_amazon_planner_prompt_spells_out_screen_set_contracts() -> None:
-    prompt = _amazon_planner_contract_prompt()
-
-    assert (
-        "screens MUST be a JSON array containing exactly 21 complete objects in "
-        "canonical task-table order."
-    ) in prompt
-    assert (
-        "Never return an empty screens array, a placeholder, a screen blueprint, "
-        "a count-only summary, or a promise to provide screens later."
-    ) in prompt
-    assert "never omit a screen or required field" in prompt
-    assert (
-        "subject_scale MUST be exactly one of hero, medium, macro, scene, "
-        "information, cutaway, or overhead."
-    ) in prompt
-    assert "The final screen role MUST be exactly closing_summary" in prompt
-    diversity_contract = prompt.split("Across all 21 screens", 1)[1].split(";", 1)[0]
-    assert "at least" in diversity_contract
-    diversity_contracts = (
-        ("5 distinct roles", "five distinct role values"),
-        ("4 distinct structures", "four distinct structure values"),
-        ("3 distinct subject_scale values", "three distinct subject_scale values"),
-        ("2 distinct screen device values", "two distinct device values"),
-    )
-    for equivalent_phrasings in diversity_contracts:
-        assert any(phrase in diversity_contract for phrase in equivalent_phrasings)
-    assert any(
-        phrase in prompt
-        for phrase in (
-            "No more than 11 screens may use hero",
-            "no more than 11 screens may use subject_scale hero",
-        )
-    )
-
-
-def test_amazon_planner_prompt_spells_out_global_and_canonical_contracts() -> None:
-    prompt = _amazon_planner_contract_prompt()
-
-    assert (
-        "Every buyer_question MUST be globally unique across all 21 screens"
-        in prompt
-    )
-    assert "including paired desktop and mobile A+ screens" in prompt
-    assert "A-DESKTOP-0N and A-MOBILE-0N pair" in prompt
-    assert "same non-empty responsive_concept" in prompt
-    assert "share the same layout_family and background_system" in prompt
-    assert "composition signature remain distinct" in prompt
-    assert (
-        "responsive-pair subject_scale assignments are exact requirements, "
-        "not suggestions"
-    ) in prompt
-    assert _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES == (
-        (1, "hero", "medium"),
-        (2, "scene", "macro"),
-        (3, "macro", "information"),
-        (4, "scene", "overhead"),
-        (5, "macro", "cutaway"),
-        (6, "information", "medium"),
-        (7, "hero", "medium"),
-    )
-    for pair_index, desktop_scale, mobile_scale in (
-        _AMAZON_RESPONSIVE_PAIR_SUBJECT_SCALES
-    ):
-        assert desktop_scale != mobile_scale
-        assert (
-            f"A-DESKTOP-{pair_index:02d} subject_scale={desktop_scale}, "
-            f"A-MOBILE-{pair_index:02d} subject_scale={mobile_scale}"
-        ) in prompt
-    assert "Do not swap, repeat within a pair, or replace" in prompt
-    assert "MAIN-01 is the exception" in prompt
-    assert "background_system MUST be exactly pure-white-compliance" in prompt
-
-    assert (
-        "For every canonical row, copy item_key and final_size verbatim without "
-        "translation, normalization, alternate separators, or reformatting."
-    ) in prompt
-
-
-def test_amazon_planner_prompt_limits_layout_reuse_but_exempts_backgrounds() -> None:
-    prompt = _amazon_planner_contract_prompt()
-    combined_repeat_limit = (
-        "No layout_family or background_system may occur more often than "
-        "max_same_layout_family"
-    )
-
-    assert combined_repeat_limit not in prompt
-    assert (
-        "Approved Suite Cohesion background systems are intentionally reused "
-        "across selling screens and are exempt from max_same_layout_family"
-    ) in prompt
-    assert "that limit applies only to layout_family" in prompt
-    assert "No layout family may repeat more than twice" in prompt
-
-
-def test_cross_page_lock_prompt_contract_supports_layout_only_limit() -> None:
-    combined_repeat_limit = (
-        "No layout_family or background_system may occur more often than "
-        "max_same_layout_family"
-    )
-    layout_only_repeat_limit = (
-        "No layout_family may occur more often than max_same_layout_family"
-    )
-
-    default_contract = _cross_page_lock_prompt_contract()
-    amazon_contract = _cross_page_lock_prompt_contract(
-        enforce_background_repeat_limit=False
-    )
-
-    assert combined_repeat_limit in default_contract
-    assert layout_only_repeat_limit not in default_contract
-    assert combined_repeat_limit not in amazon_contract
-    assert layout_only_repeat_limit in amazon_contract
-    assert "combined composition signature must be unique" in default_contract
-    assert "combined composition signature must be unique" in amazon_contract
-
-
-def test_amazon_planner_prompt_assigns_selling_backgrounds_canonically() -> None:
-    prompt = _amazon_planner_contract_prompt()
-    task_table_json = prompt.split("canonical task table=", 1)[1].split(
-        ". analysis.product_master_description", 1
-    )[0]
-    task_table = json.loads(task_table_json)
-    rows_by_key = {row["item_key"]: row for row in task_table}
-    selling_rows = [row for row in task_table if row["item_key"] != "MAIN-01"]
-    approved_backgrounds = {
-        "suite-brand-stage",
-        "suite-soft-context",
-        "suite-technical-proof",
-        "suite-lifestyle-context",
     }
-
-    assert len(selling_rows) == 20
-    assert rows_by_key["MAIN-01"]["background_system"] == "pure-white-compliance"
-    assert {
-        row["background_system"] for row in selling_rows
-    } == approved_backgrounds
-    for pair_index in range(1, 8):
-        assert (
-            rows_by_key[f"A-DESKTOP-{pair_index:02d}"]["background_system"]
-            == rows_by_key[f"A-MOBILE-{pair_index:02d}"]["background_system"]
-        )
-    missing_assignments = [
-        row["item_key"]
-        for row in selling_rows
-        if not isinstance(row.get("background_system"), str)
-        or not row["background_system"].strip()
-    ]
-    exact_copy_contract = (
-        "Every selling-screen background_system MUST copy the background_system "
-        "from its canonical task-table row exactly, and that assigned value MUST "
-        "appear in suite_cohesion_lock.background_systems."
-    ) in prompt
-
-    assert not missing_assignments and exact_copy_contract, (
-        f"missing canonical background_system assignments={missing_assignments}; "
-        f"exact-copy Suite Cohesion Lock contract present={exact_copy_contract}"
-    )
+    screens = payload["plan"]["screens"]
+    assert [screen["id"] for screen in screens] == _canonical_amazon_skill_ids()
+    expected_screen_fields = {
+        "id",
+        "asset_type",
+        "final_size",
+        "buyer_question",
+        "selling_point",
+        "information_confidence",
+        "visual_proof",
+        "headline",
+        "subcopy",
+        "layout_direction",
+        "source_material",
+        "risk_note",
+    }
+    assert all(set(screen) == expected_screen_fields for screen in screens)
 
 
-def test_amazon_planner_prompt_makes_headline_contract_unambiguous() -> None:
+def test_amazon_planner_prompt_uses_skill_as_sole_authority() -> None:
     prompt = _amazon_planner_contract_prompt()
 
-    assert "exact path /plan/screens/<index>/headline" in prompt
-    assert "headline MUST be a non-empty JSON string" in prompt
-    assert "never omit, rename, move, set to null, or leave it blank" in prompt
-    assert "actual shopper-facing on-image headline" in prompt
+    assert "sole authoritative creative and quality specification" in prompt
+    assert "Do not add extra locks" in prompt
+    assert "Product Image Analysis" in prompt
+    assert "Information Confidence" in prompt
+    assert "Buyer Demand Map" in prompt
+    assert "Demand-to-Selling-Point Match" in prompt
+    assert "Product Master Description" in prompt
+    assert "Campaign Style Lock" in prompt
+    assert "Product Consistency Lock" in prompt
+    assert "Layout Diversity Lock" in prompt
+    assert "Design Strength Lock" not in prompt
+    assert "Suite Cohesion Lock" not in prompt
+    assert "responsive_concept" not in prompt
+    assert "non-consultative closing summary" not in prompt
+
+
+def test_amazon_planner_prompt_preserves_skill_main_and_mobile_rules() -> None:
+    prompt = _amazon_planner_contract_prompt()
+
+    assert "complete 21-row task table" in prompt
+    assert "exact canonical id order" in prompt
+    assert "real uploaded white_background_product source" in prompt
     assert (
-        "MAIN-01 MUST still include the exact non-empty headline string "
-        "'No headline or other on-image copy.'"
-    ) in prompt
-    assert prompt.count('"headline_requirement":') == 21
-    assert (
-        '"headline_requirement":"No headline or other on-image copy."'
-        in prompt
+        "preserve authentic product logos, labels, and readable product text" in prompt
     )
+    assert "Do not reject a usable real-product source" in prompt
+    assert "independent compositions for their own final aspect ratios" in prompt
+    assert prompt.count('"buyer_question":') == 21
+    assert prompt.count('"visual_proof":') == 21
+    assert '"default_selling_point":' not in prompt
+    assert '"headline_requirement":' not in prompt
+    assert '"source_material":' not in prompt
+    assert '"risk_note":' not in prompt
+    assert "name the exact role labels from the supplied source inventory" in prompt
+    assert '"id":"main-01"' in prompt
+    assert '"id":"aplus-mobile-07"' in prompt
+
+
+def test_amazon_planner_schema_contains_only_original_skill_fields() -> None:
+    schema = _amazon_planner_json_schema()
+
+    assert schema["additionalProperties"] is False
+    analysis_schema = schema["properties"]["analysis"]
+    assert set(analysis_schema["required"]) == {
+        "product_image_analysis",
+        "information_confidence",
+        "buyer_demand_map",
+        "demand_to_selling_point_match",
+        "product_master_description",
+    }
+    plan_schema = schema["properties"]["plan"]
+    assert set(plan_schema["required"]) == {
+        "campaign_style_lock",
+        "product_consistency_lock",
+        "layout_diversity_lock",
+        "screens",
+    }
+    screens = plan_schema["properties"]["screens"]
+    assert screens["minItems"] == screens["maxItems"] == 21
+    assert set(screens["items"]["required"]) == {
+        "id",
+        "asset_type",
+        "final_size",
+        "buyer_question",
+        "selling_point",
+        "information_confidence",
+        "visual_proof",
+        "headline",
+        "subcopy",
+        "layout_direction",
+        "source_material",
+        "risk_note",
+    }
 
 
 def _planner_validation_path_cases() -> list[Any]:
@@ -1233,9 +944,7 @@ def _planner_validation_path_cases() -> list[Any]:
         for token in path[:-1]:
             target = target[token]
         target[path[-1]] = replacement
-        cases.append(
-            pytest.param(payload, 1, expected_path, id=case_id)
-        )
+        cases.append(pytest.param(payload, 1, expected_path, id=case_id))
     cases.append(
         pytest.param(
             _valid_planner_content(1),
@@ -1271,9 +980,7 @@ def test_complete_planner_mapping_missing_consistency_anchors_fails_closed() -> 
         validate_planner_payload(payload, 1)
 
     assert exc_info.value.code == "PLANNER_SCHEMA_INVALID"
-    assert exc_info.value.json_pointer == (
-        "/analysis/product_consistency_anchors"
-    )
+    assert exc_info.value.json_pointer == ("/analysis/product_consistency_anchors")
     assert "product_consistency_anchors" not in payload["analysis"]
 
 
@@ -1419,9 +1126,7 @@ def test_planner_structure_fingerprint_uses_shape_not_values() -> None:
             {
                 "category_key": "SENSITIVE-CATEGORY-MARKER",
                 "category_reason": "SENSITIVE-RAW-TEXT-MARKER",
-                "SENSITIVE-UNKNOWN-FIELD-MARKER": (
-                    "SENSITIVE-RAW-TEXT-MARKER"
-                ),
+                "SENSITIVE-UNKNOWN-FIELD-MARKER": ("SENSITIVE-RAW-TEXT-MARKER"),
             },
             "object",
             {"field_count": 3, "unknown_field_count": 1},
@@ -1473,12 +1178,8 @@ def test_planner_structure_profile_records_analysis_shape_without_values(
             "unknown_field_count",
             "fields",
         }
-        assert analysis_profile["fields"]["category_key"] == {
-            "type": "string"
-        }
-        assert analysis_profile["fields"]["category_reason"] == {
-            "type": "string"
-        }
+        assert analysis_profile["fields"]["category_key"] == {"type": "string"}
+        assert analysis_profile["fields"]["category_reason"] == {"type": "string"}
         assert analysis_profile["fields"]["product_image_analysis"] == {
             "type": "missing"
         }
@@ -1586,9 +1287,7 @@ def test_tengli_planner_fails_closed_without_durable_provider_quota(
         session.commit()
 
     assert dispatch_pending(client) == 1
-    failed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    failed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert failed["status"] == JobStatus.FAILED.value
     assert failed["error_code"] == "PROVIDER_QUOTA_RESERVATION_MISSING"
@@ -1714,7 +1413,7 @@ def test_tengli_planner_fails_closed_without_durable_provider_quota(
             ("absent", "absent"),
         ),
         (
-            {"choices": [{"message": {"content": "机密正文"}}]},
+            {"choices": [{"message": {"content": "鏈哄瘑姝ｆ枃"}}]},
             {
                 "envelope_kind": "mapping",
                 "choices_kind": "list",
@@ -1723,8 +1422,8 @@ def test_tengli_planner_fails_closed_without_durable_provider_quota(
                 "message_kind": "mapping",
                 "content_kind": "string",
             },
-            len(bytes("机密正文", "utf-8")),
-            hashlib.sha256(bytes("机密正文", "utf-8")).hexdigest(),
+            len(bytes("鏈哄瘑姝ｆ枃", "utf-8")),
+            hashlib.sha256(bytes("鏈哄瘑姝ｆ枃", "utf-8")).hexdigest(),
             "absent",
             ("absent", "absent"),
         ),
@@ -1778,9 +1477,7 @@ def test_raw_planner_envelope_diagnostics_are_safe_and_durable(
             else ["provider_payload:rejected_before_json_parse"]
         )
         expected_structure_profile = (
-            {"root": {"type": "string"}}
-            if expected_bytes not in (None, 0)
-            else None
+            {"root": {"type": "string"}} if expected_bytes not in (None, 0) else None
         )
         assert diagnostics == {
             "schema": "xinghe-planner-diagnostics",
@@ -1798,7 +1495,7 @@ def test_raw_planner_envelope_diagnostics_are_safe_and_durable(
         assert len(diagnostics["structure_fingerprint"]) == 64
         persisted = json.dumps(failed, ensure_ascii=False, sort_keys=True)
         assert "secret-request-id" not in persisted
-        assert "机密正文" not in persisted
+        assert "鏈哄瘑姝ｆ枃" not in persisted
         assert '"unsafe": "value"' not in persisted
 
 
@@ -1841,9 +1538,7 @@ def test_strict_planner_content_reaches_confirmation_gate(
         assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
         plan_payload = planned["plan"]["payload"]
         assert len(plan_payload["pages"]) == page_count
-        assert (
-            plan_payload.get("planner_request_count", transport.planner_calls) == 1
-        )
+        assert plan_payload.get("planner_request_count", transport.planner_calls) == 1
         assert plan_payload.get("image_request_count", transport.image_calls) == 0
         assert len(plan_payload["usage"]["planner"]) == 1
         assert plan_payload["usage"]["image"]["reported_requests"] == 0
@@ -1862,14 +1557,12 @@ def test_strict_planner_content_reaches_confirmation_gate(
             _planner_structure_profile(_valid_planner_content(page_count))
         )
         assert diagnostics[0]["parse_trace"][-2].endswith(":decoded")
-        assert diagnostics[0]["parse_trace"][-1].endswith(
-            ":decoded_kind:mapping"
-        )
+        assert diagnostics[0]["parse_trace"][-1].endswith(":decoded_kind:mapping")
         raw_content = content.encode("utf-8")
         assert diagnostics[0]["content_utf8_bytes"] == len(raw_content)
-        assert diagnostics[0]["content_sha256"] == hashlib.sha256(
-            raw_content
-        ).hexdigest()
+        assert (
+            diagnostics[0]["content_sha256"] == hashlib.sha256(raw_content).hexdigest()
+        )
         assert diagnostics[0]["provider_envelope"] == {
             "envelope_kind": "mapping",
             "choices_kind": "list",
@@ -1882,9 +1575,7 @@ def test_strict_planner_content_reaches_confirmation_gate(
         assert diagnostics[0]["usage_presence"] == "present"
         assert diagnostics[0]["usage_completeness"] == "complete"
         assert len(diagnostics[0]["structure_fingerprint"]) == 64
-        assert set(diagnostics[0]["structure_fingerprint"]) <= set(
-            "0123456789abcdef"
-        )
+        assert set(diagnostics[0]["structure_fingerprint"]) <= set("0123456789abcdef")
         assert transport.planner_calls == 1
         assert transport.image_calls == 0
 
@@ -1902,14 +1593,12 @@ def test_strict_planner_content_reaches_confirmation_gate(
             "/",
         ),
         (
-            f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n"
-            "```\n7\n```",
+            f"```json\n{json.dumps(_valid_planner_content(6))}\n```\n```\n7\n```",
             "PLANNER_SCHEMA_INVALID",
             "/",
         ),
         (
-            f"Planner result:\n```json\n"
-            f"{json.dumps(_valid_planner_content(6))}\n```",
+            f"Planner result:\n```json\n{json.dumps(_valid_planner_content(6))}\n```",
             "PLANNER_SCHEMA_INVALID",
             "/",
         ),
@@ -2106,9 +1795,7 @@ def test_failed_call_does_not_auto_retry_or_reserve_another_call(
                 .order_by(AuditEventRecord.id)
             ).all()
             usages = session.scalars(
-                select(UsageEventRecord).where(
-                    UsageEventRecord.job_id == job["id"]
-                )
+                select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
             ).all()
             credit_reservation = session.scalar(
                 select(CreditReservationRecord).where(
@@ -2119,20 +1806,17 @@ def test_failed_call_does_not_auto_retry_or_reserve_another_call(
             event for event in audits if event.action == "xinghe.image_reserved"
         ]
         rejected = [
-            event
-            for event in audits
-            if event.action == "xinghe.image_budget_rejected"
+            event for event in audits if event.action == "xinghe.image_budget_rejected"
         ]
         assert len(reserved) == 1
         assert rejected == []
-        assert sum(
-            int(event.details["estimated_cost_micros"])
-            for event in reserved
-        ) == 90_000
+        assert (
+            sum(int(event.details["estimated_cost_micros"]) for event in reserved)
+            == 90_000
+        )
         assert sum(event.estimated_cost_micros or 0 for event in usages) == 90_000
         assert sorted(
-            bool(event.raw_usage["metrics"]["provider_called"])
-            for event in usages
+            bool(event.raw_usage["metrics"]["provider_called"]) for event in usages
         ) == [True]
         assert credit_reservation is not None
         assert credit_reservation.status == "settled"
@@ -2172,10 +1856,10 @@ def test_concurrent_and_duplicate_delivery_cannot_oversubscribe_budget(
             )
             .order_by(AuditEventRecord.id)
         ).all()
-    assert sum(
-        int(event.details["estimated_cost_micros"])
-        for event in reservations
-    ) == 180_000
+    assert (
+        sum(int(event.details["estimated_cost_micros"]) for event in reservations)
+        == 180_000
+    )
 
 
 def test_budget_reservation_survives_duplicate_attempt_and_worker_recovery(
@@ -2270,9 +1954,7 @@ def test_mock_detail_pack_discards_artifacts_before_storage(
             session.scalar(select(func.count()).select_from(AssetRecord)) or 0
         )
         before_asset_bytes = int(
-            session.scalar(
-                select(func.coalesce(func.sum(AssetRecord.byte_size), 0))
-            )
+            session.scalar(select(func.coalesce(func.sum(AssetRecord.byte_size), 0)))
             or 0
         )
         limits = session.get(WorkspaceLimitRecord, WORKSPACE_ID)
@@ -2290,9 +1972,7 @@ def test_mock_detail_pack_discards_artifacts_before_storage(
         == 202
     )
     assert dispatch_pending(client) == 1
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert completed["status"] == JobStatus.COMPLETED.value
     assert all(item["result_source"] == "mock" for item in completed["items"])
@@ -2347,8 +2027,7 @@ def test_mock_detail_pack_discards_artifacts_before_storage(
     assert all(event.raw_usage["raw"]["output_images"] == 0 for event in usage)
     assert all(event.raw_usage["raw"]["network_requests"] == 0 for event in usage)
     assert all(
-        event.raw_usage["metrics"]["mock_artifact_discarded"] is True
-        for event in usage
+        event.raw_usage["metrics"]["mock_artifact_discarded"] is True for event in usage
     )
     after_files = sorted(
         path.relative_to(storage_root)
@@ -2381,9 +2060,7 @@ def test_non_mock_artifacts_remain_deliverable_without_resampling(
         == 202
     )
     assert dispatch_pending(client) == 1
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     output = next(asset for asset in completed["assets"] if asset["is_deliverable"])
     with client.app.state.session_factory() as session:
         asset = session.get(AssetRecord, output["asset_id"])
@@ -2410,13 +2087,11 @@ def test_duplicate_delivery_is_idempotent_across_plan_and_generation(
     gateway = _gateway(client)
 
     assert dispatch_pending(client) == 1
+    assert client.app.state.task_runner.coordinator.run is not None
     assert (
-        client.app.state.task_runner.coordinator.run
-        is not None
+        asyncio.run(client.app.state.task_runner.run(job["id"]))
+        == JobStatus.AWAITING_CONFIRMATION
     )
-    assert asyncio.run(
-        client.app.state.task_runner.run(job["id"])
-    ) == JobStatus.AWAITING_CONFIRMATION
     assert len(gateway.planner_calls) == 1
     assert gateway.image_calls == []
 
@@ -2429,9 +2104,9 @@ def test_duplicate_delivery_is_idempotent_across_plan_and_generation(
         == 202
     )
     assert dispatch_pending(client) == 1
-    assert asyncio.run(
-        client.app.state.task_runner.run(job["id"])
-    ) == JobStatus.COMPLETED
+    assert (
+        asyncio.run(client.app.state.task_runner.run(job["id"])) == JobStatus.COMPLETED
+    )
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == 2
     with client.app.state.session_factory() as session:
@@ -2470,9 +2145,7 @@ def test_concurrent_planning_delivery_uses_one_reserved_call(
         )
 
     results = asyncio.run(deliver_twice())
-    current = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert JobStatus.AWAITING_CONFIRMATION in results
     assert len(gateway.planner_calls) == 1
@@ -2529,9 +2202,7 @@ def test_durable_plan_survives_runner_recreation(
         == 202
     )
     assert dispatch_pending(client) == 1
-    completed = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
     assert completed["status"] == JobStatus.COMPLETED.value
     assert replacement_gateway.planner_calls == []
@@ -2575,8 +2246,8 @@ def test_resume_signature_invalidates_every_output_affecting_change() -> None:
 
 def test_semantic_quality_routing_is_version_stable() -> None:
     high_roles = [
-        "封面叙事",
-        "材质纹理微距",
+        "灏侀潰鍙欎簨",
+        "鏉愯川绾圭悊寰窛",
         "Structural close-up",
         "Surface craft detail",
     ]
@@ -2633,11 +2304,7 @@ class _RecordingTransport:
             {
                 "id": "planner_request",
                 "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(_valid_planner_content(2))
-                        }
-                    }
+                    {"message": {"content": json.dumps(_valid_planner_content(2))}}
                 ],
             },
         )
@@ -2646,8 +2313,7 @@ class _RecordingTransport:
         self.multipart_calls.append(kwargs)
         buffer = BytesIO()
         width, height = (
-            int(value)
-            for value in dict(kwargs["fields"])["size"].split("x")
+            int(value) for value in dict(kwargs["fields"])["size"].split("x")
         )
         Image.new("RGB", (width, height), color=(1, 2, 3)).save(
             buffer,
@@ -2658,14 +2324,154 @@ class _RecordingTransport:
             200,
             {
                 "id": "image_request",
-                "data": [
-                    {"b64_json": base64.b64encode(buffer.getvalue()).decode()}
-                ],
+                "data": [{"b64_json": base64.b64encode(buffer.getvalue()).decode()}],
             },
         )
 
 
-def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None:
+_AMAZON_REVIEW_ITEM_KEYS = (
+    "MAIN-01",
+    "SECONDARY-01",
+    "SECONDARY-02",
+    "SECONDARY-03",
+    "SECONDARY-04",
+    "SECONDARY-05",
+    "SECONDARY-06",
+    "A-DESKTOP-01",
+    "A-DESKTOP-02",
+    "A-DESKTOP-03",
+    "A-DESKTOP-04",
+    "A-DESKTOP-05",
+    "A-DESKTOP-06",
+    "A-DESKTOP-07",
+    "A-MOBILE-01",
+    "A-MOBILE-02",
+    "A-MOBILE-03",
+    "A-MOBILE-04",
+    "A-MOBILE-05",
+    "A-MOBILE-06",
+    "A-MOBILE-07",
+)
+
+
+class _AmazonReviewRecordingTransport:
+    def __init__(self, review_payload: dict[str, Any]) -> None:
+        self.review_payload = review_payload
+        self.json_calls: list[dict[str, Any]] = []
+
+    async def post_json(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        self.json_calls.append(kwargs)
+        return (
+            200,
+            {
+                "id": "amazon_review_request",
+                "choices": [{"message": {"content": json.dumps(self.review_payload)}}],
+            },
+        )
+
+
+def _amazon_suite_review_request() -> AmazonVisualReviewRequest:
+    return AmazonVisualReviewRequest(
+        workspace_id="ws_amazon_review",
+        job_id="job_amazon_review",
+        scope="suite",
+        item_key=None,
+        references=(),
+        candidates=(
+            AmazonVisualReviewImage(
+                item_key="amazon-contact-sheet",
+                filename="amazon-suite-contact-sheet.jpg",
+                content_type="image/jpeg",
+                payload=b"display-only-contact-sheet",
+            ),
+        ),
+        generation_contract="pinned amazon generation contract",
+        skill_protocol={"contract": "pinned amazon skill protocol"},
+        idempotency_key="amazon-review-idem",
+        review_item_keys=_AMAZON_REVIEW_ITEM_KEYS,
+    )
+
+
+def _amazon_review_adapter(
+    transport: _AmazonReviewRecordingTransport,
+) -> TengliOpenAICompatibleGateway:
+    return TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://api.example.test",
+        planner_model="gpt-5.6-terra",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+
+
+def test_amazon_suite_review_accepts_only_canonical_review_item_key() -> None:
+    transport = _AmazonReviewRecordingTransport(
+        {
+            "visual_success": False,
+            "summary": "One canonical suite item needs correction.",
+            "reason_codes": ["COPY_READABILITY"],
+            "missing_evidence": [],
+            "retry_guidance": "Correct the identified formal item.",
+            "failed_item_keys": ["MAIN-01"],
+        }
+    )
+
+    result = asyncio.run(
+        _amazon_review_adapter(transport).review_amazon(_amazon_suite_review_request())
+    )
+
+    assert result.visual_success is False
+    assert result.error_code is None
+    assert result.failed_item_keys == ("MAIN-01",)
+    assert len(transport.json_calls) == 1
+    payload = transport.json_calls[0]["payload"]
+    response_format = payload["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["strict"] is True
+    schema = response_format["json_schema"]["schema"]
+    assert schema["additionalProperties"] is False
+    failed_item_schema = schema["properties"]["failed_item_keys"]
+    assert failed_item_schema["items"] == {
+        "type": "string",
+        "enum": list(_AMAZON_REVIEW_ITEM_KEYS),
+    }
+    assert "amazon-contact-sheet" not in failed_item_schema["items"]["enum"]
+    prompt = payload["messages"][1]["content"][0]["text"]
+    assert "contact sheet is only a display carrier" in prompt
+    assert "exact, case-sensitive values from review_item_keys" in prompt
+    assert "display_artifact_keys=['amazon-contact-sheet']" in prompt
+
+
+@pytest.mark.parametrize("invalid_key", ["amazon-contact-sheet", "main-01"])
+def test_amazon_suite_review_rejects_display_key_and_alias_as_protocol_error(
+    invalid_key: str,
+) -> None:
+    transport = _AmazonReviewRecordingTransport(
+        {
+            "visual_success": False,
+            "summary": "The model returned an invalid failure identifier.",
+            "reason_codes": ["COPY_READABILITY"],
+            "missing_evidence": [],
+            "retry_guidance": "Retry with a formal item key.",
+            "failed_item_keys": [invalid_key],
+        }
+    )
+
+    result = asyncio.run(
+        _amazon_review_adapter(transport).review_amazon(_amazon_suite_review_request())
+    )
+
+    assert result.visual_success is None
+    assert result.error_code == "AMAZON_VISUAL_REVIEW_INVALID"
+    assert result.error_message == (
+        "Amazon visual review named a key outside review_item_keys."
+    )
+    assert result.failed_item_keys == ()
+    assert result.retryable is False
+    assert len(transport.json_calls) == 1
+
+
+def test_amazon_planner_uses_strict_dynamic_schema_and_role_labels() -> None:
     transport = _RecordingTransport()
     adapter = TengliOpenAICompatibleGateway(
         api_key="test-placeholder-key",
@@ -2674,6 +2480,26 @@ def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None
         image_model="gpt-image-2",
         transport=transport,
     )
+    sources = (
+        SourceImage(
+            asset_id="asset-white",
+            group_key="amazon-product",
+            filename="white.jpg",
+            content_type="image/jpeg",
+            sha256="a" * 64,
+            payload=b"white-source",
+            source_role="white_background_product",
+        ),
+        SourceImage(
+            asset_id="asset-style",
+            group_key="amazon-product",
+            filename="style.jpg",
+            content_type="image/jpeg",
+            sha256="b" * 64,
+            payload=b"style-source",
+            source_role="style_reference",
+        ),
+    )
 
     asyncio.run(
         adapter.plan(
@@ -2681,7 +2507,7 @@ def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None
                 workspace_id="ws_amazon_contract",
                 job_id="job_amazon_contract",
                 group_key="amazon-product",
-                sources=(),
+                sources=sources,
                 page_count=21,
                 language="en-US",
                 product_name="Visible product",
@@ -2698,7 +2524,20 @@ def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None
     assert len(transport.json_calls) == 1
     payload = transport.json_calls[0]["payload"]
     assert payload["max_completion_tokens"] == 12_000
-    assert payload["temperature"] == 0
+    assert "temperature" not in payload
+
+    content = payload["messages"][1]["content"]
+    assert [part["type"] for part in content] == [
+        "text",
+        "text",
+        "image_url",
+        "text",
+        "image_url",
+    ]
+    assert "asset_id: asset-white" in content[1]["text"]
+    assert "role: white_background_product" in content[1]["text"]
+    assert "asset_id: asset-style" in content[3]["text"]
+    assert "role: style_reference" in content[3]["text"]
 
     response_format = payload["response_format"]
     assert response_format["type"] == "json_schema"
@@ -2708,36 +2547,29 @@ def test_amazon_planner_uses_strict_json_schema_and_bounded_generation() -> None
 
     schema = json_schema["schema"]
     assert schema["additionalProperties"] is False
+    analysis_schema = schema["properties"]["analysis"]
+    assert "source_assessment" not in analysis_schema["properties"]
+    assert set(analysis_schema["required"]) == {
+        "product_image_analysis",
+        "information_confidence",
+        "buyer_demand_map",
+        "demand_to_selling_point_match",
+        "product_master_description",
+    }
+
     plan_schema = schema["properties"]["plan"]
-    assert plan_schema["additionalProperties"] is False
+    assert "design_strength_lock" not in plan_schema["properties"]
+    assert "suite_cohesion_lock" not in plan_schema["properties"]
     screens_schema = plan_schema["properties"]["screens"]
-    assert screens_schema["type"] == "array"
-    assert screens_schema["minItems"] == 21
-    assert screens_schema["maxItems"] == 21
-
-    expected_suite_backgrounds = [
-        "suite-brand-stage",
-        "suite-soft-context",
-        "suite-technical-proof",
-        "suite-lifestyle-context",
-    ]
-    suite_backgrounds_schema = plan_schema["properties"]["suite_cohesion_lock"][
-        "properties"
-    ]["background_systems"]
-    assert suite_backgrounds_schema["minItems"] == 4
-    assert suite_backgrounds_schema["maxItems"] == 4
-    assert suite_backgrounds_schema["items"] == {
-        "type": "string",
-        "enum": expected_suite_backgrounds,
-    }
-
-    screen_background_schema = screens_schema["items"]["properties"][
-        "background_system"
-    ]
-    assert screen_background_schema == {
-        "type": "string",
-        "enum": ["pure-white-compliance", *expected_suite_backgrounds],
-    }
+    assert screens_schema["minItems"] == screens_schema["maxItems"] == 21
+    screen_properties = screens_schema["items"]["properties"]
+    assert "layout_family" not in screen_properties
+    assert "background_system" not in screen_properties
+    assert "responsive_concept" not in screen_properties
+    planner_text = content[0]["text"]
+    assert "sole authoritative creative and quality specification" in planner_text
+    assert '"id":"main-01"' in planner_text
+    assert '"id":"aplus-mobile-07"' in planner_text
 
 
 def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
@@ -2822,14 +2654,10 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
         "content": "pinned same-source protocol",
     }
     planner_text = messages[1]["content"][0]["text"]
-    assert (
-        "/analysis/product_consistency_anchors is REQUIRED" in planner_text
-    )
+    assert "/analysis/product_consistency_anchors is REQUIRED" in planner_text
     assert "inside the top-level analysis object" in planner_text
     assert "always emit it as a JSON object; never omit it" in planner_text
-    assert (
-        "Every screen requires role, title, label, composition" in planner_text
-    )
+    assert "Every screen requires role, title, label, composition" in planner_text
     assert "four distinct structures" in planner_text
     assert "three subject scales" in planner_text
     assert "two substantively different devices" in planner_text
@@ -2856,10 +2684,7 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert fields["output_format"] == IMAGE_FORMAT
     assert fields["output_compression"] == str(JPEG_QUALITY)
     assert len(transport.multipart_calls[0]["files"]) == 3
-    assert all(
-        record[0] == "image"
-        for record in transport.multipart_calls[0]["files"]
-    )
+    assert all(record[0] == "image" for record in transport.multipart_calls[0]["files"])
     assert "test-placeholder-key" not in repr(adapter)
 
 
@@ -2882,9 +2707,7 @@ def test_sensitive_agent_audits_store_no_prompt_source_or_key(
         audits = session.scalars(
             select(AuditEventRecord).where(
                 AuditEventRecord.resource_id.in_(
-                    select(JobItemRecord.id).where(
-                        JobItemRecord.job_id == job["id"]
-                    )
+                    select(JobItemRecord.id).where(JobItemRecord.job_id == job["id"])
                 )
                 | (AuditEventRecord.resource_id == job["id"])
             )

@@ -16,6 +16,7 @@ import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
+import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
@@ -143,7 +144,7 @@ export default function LocalEditPage() {
 
             <aside className="edit-controls">
               <section className="control-card control-card--source">
-                <div className="control-card__heading"><span>1</span><div><strong>原始图片</strong><p>{sourceAsset ? `${sourceAsset.width} × ${sourceAsset.height} 标准化画布` : "选择 JPG / PNG / WEBP"}</p></div></div>
+                <div className="control-card__heading"><span>1</span><div><strong>原始图片</strong><p>{sourceAsset ? `${sourceAsset.width} × ${sourceAsset.height} 标准化画布` : IMAGE_UPLOAD_FORMAT_HINT}</p></div></div>
                 <div className={`${workspaceStyles.uploadActions} local-edit-upload-actions`} data-has-library>
                   <button type="button" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>
                     {upload.isPending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
@@ -154,7 +155,7 @@ export default function LocalEditPage() {
                     从素材库选择
                   </button>
                 </div>
-                <input ref={fileInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void onSourceFile(event.target.files?.[0])} />
+                <input ref={fileInput} className="visually-hidden" type="file" accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => void onSourceFile(event.target.files?.[0])} />
               </section>
               <section className="control-card">
                 <div className="control-card__heading"><span>2</span><div><strong>修改要求</strong><p>蒙版外像素会由服务端锁定</p></div></div>

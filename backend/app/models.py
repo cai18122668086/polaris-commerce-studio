@@ -553,6 +553,91 @@ class JobAttemptRecord(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AmazonSuiteReviewAttemptRecord(TimestampMixin, Base):
+    __tablename__ = "amazon_suite_review_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "review_round > 0",
+            name="ck_amazon_suite_review_round_positive",
+        ),
+        CheckConstraint(
+            "actual_cost_micros IS NULL OR actual_cost_micros >= 0",
+            name="ck_amazon_suite_review_actual_cost_nonnegative",
+        ),
+        CheckConstraint(
+            "estimated_cost_micros IS NULL OR estimated_cost_micros >= 0",
+            name="ck_amazon_suite_review_estimated_cost_nonnegative",
+        ),
+        UniqueConstraint(
+            "job_id",
+            "review_round",
+            "output_asset_set_hash",
+            name="uq_amazon_suite_review_job_round_output",
+        ),
+        UniqueConstraint(
+            "provider",
+            "provider_idempotency_key",
+            name="uq_amazon_suite_review_provider_idem",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "job_id"],
+            ["jobs.workspace_id", "jobs.id"],
+            name="fk_amazon_suite_review_workspace_job",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_amazon_suite_review_job_status_lease",
+            "workspace_id",
+            "job_id",
+            "status",
+            "lease_expires_at",
+        ),
+        Index(
+            "ix_amazon_suite_review_provider_request",
+            "provider",
+            "provider_request_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    job_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    review_round: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_asset_set_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), default="claimed", server_default=text("'claimed'"), nullable=False
+    )
+    lease_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    leased_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    lease_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    provider_request_id: Mapped[str | None] = mapped_column(String(255))
+    raw_usage: Mapped[dict[str, Any]] = mapped_column(
+        MutableDict.as_mutable(json_type()),
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
+    )
+    normalized_usage: Mapped[dict[str, Any]] = mapped_column(
+        MutableDict.as_mutable(json_type()),
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
+    )
+    actual_cost_micros: Mapped[int | None] = mapped_column(BigInteger)
+    estimated_cost_micros: Mapped[int | None] = mapped_column(BigInteger)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_call_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class UsageEventRecord(Base):
     __tablename__ = "usage_events"
     __table_args__ = (
@@ -666,12 +751,8 @@ class OutboxEventRecord(Base):
             "ix_outbox_events_reclaim",
             "locked_at",
             "created_at",
-            postgresql_where=text(
-                "status = 'publishing' AND locked_at IS NOT NULL"
-            ),
-            sqlite_where=text(
-                "status = 'publishing' AND locked_at IS NOT NULL"
-            ),
+            postgresql_where=text("status = 'publishing' AND locked_at IS NOT NULL"),
+            sqlite_where=text("status = 'publishing' AND locked_at IS NOT NULL"),
         ),
     )
 
@@ -773,9 +854,7 @@ class CreditLedgerEntryRecord(Base):
             postgresql_where=text(
                 "entry_type = 'settle' AND reservation_id IS NOT NULL"
             ),
-            sqlite_where=text(
-                "entry_type = 'settle' AND reservation_id IS NOT NULL"
-            ),
+            sqlite_where=text("entry_type = 'settle' AND reservation_id IS NOT NULL"),
         ),
     )
 

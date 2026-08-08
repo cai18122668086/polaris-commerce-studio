@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from typing import Annotated, Any, Literal, cast
@@ -24,6 +25,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .auth import (
     Principal,
     WorkspaceDependency,
@@ -900,6 +902,53 @@ def get_job(
     )
 
 
+def _is_preserved_amazon_review_infrastructure_failure(
+    item: JobItemRecord,
+) -> bool:
+    details = item.error_details
+    return (
+        item.status == JobItemStatus.FAILED.value
+        and isinstance(details, dict)
+        and details.get("failure_kind") == "review_infrastructure_failure"
+        and details.get("image_quality_failed") is False
+        and details.get("generated_asset_preserved") is True
+    )
+
+
+def _allows_preserved_amazon_partial_archive(
+    job: JobRecord,
+    items: Sequence[JobItemRecord],
+) -> bool:
+    if (
+        job.type != JobType.AMAZON_VISUAL_SUITE.value
+        or JobStatus(job.status) != JobStatus.PARTIAL
+        or job.expected_item_count != AMAZON_EXPECTED_ITEM_COUNT
+        or len(items) != job.expected_item_count
+        or job.succeeded_item_count + job.failed_item_count
+        != job.expected_item_count
+    ):
+        return False
+
+    preserved_failures = [
+        item
+        for item in items
+        if _is_preserved_amazon_review_infrastructure_failure(item)
+    ]
+    return (
+        bool(preserved_failures)
+        and len(preserved_failures) == job.failed_item_count
+        and all(
+            item.status
+            in {
+                JobItemStatus.SUCCEEDED.value,
+                JobItemStatus.REUSED.value,
+            }
+            or _is_preserved_amazon_review_infrastructure_failure(item)
+            for item in items
+        )
+    )
+
+
 @router.get(
     "/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip",
     response_class=Response,
@@ -931,7 +980,26 @@ async def download_job_deliverables(
             "DELIVERABLE_ARCHIVE_UNSUPPORTED",
             "该任务类型暂不支持整套下载。",
         )
-    if JobStatus(job.status) != JobStatus.COMPLETED:
+    partial_items: Sequence[JobItemRecord] = ()
+    if (
+        job.type == JobType.AMAZON_VISUAL_SUITE.value
+        and JobStatus(job.status) == JobStatus.PARTIAL
+    ):
+        partial_items = session.scalars(
+            select(JobItemRecord)
+            .where(
+                JobItemRecord.workspace_id == workspace.workspace_id,
+                JobItemRecord.job_id == job.id,
+            )
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+    preserved_partial_archive = _allows_preserved_amazon_partial_archive(
+        job, partial_items
+    )
+    if (
+        JobStatus(job.status) != JobStatus.COMPLETED
+        and not preserved_partial_archive
+    ):
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "DELIVERABLE_ARCHIVE_NOT_READY",
@@ -960,6 +1028,18 @@ async def download_job_deliverables(
                 "deliverable_count": len(deliverables),
             },
         )
+    if preserved_partial_archive and {
+        item.id for _, item, _ in deliverables
+    } != {item.id for item in partial_items}:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DELIVERABLE_ARCHIVE_INCOMPLETE",
+            "套图文件与 Amazon 21 张正式交付集不一致，暂不能打包下载。",
+            {
+                "expected_item_count": job.expected_item_count,
+                "deliverable_count": len(deliverables),
+            },
+        )
 
     archive = BytesIO()
     member_names: set[str] = set()
@@ -975,11 +1055,17 @@ async def download_job_deliverables(
                 extension is None
                 or member_name in member_names
                 or asset.lifecycle_status != AssetLifecycleStatus.READY.value
-                or item.status
-                not in {
-                    JobItemStatus.SUCCEEDED.value,
-                    JobItemStatus.REUSED.value,
-                }
+                or (
+                    item.status
+                    not in {
+                        JobItemStatus.SUCCEEDED.value,
+                        JobItemStatus.REUSED.value,
+                    }
+                    and not (
+                        preserved_partial_archive
+                        and _is_preserved_amazon_review_infrastructure_failure(item)
+                    )
+                )
             ):
                 raise ApiError(
                     status.HTTP_409_CONFLICT,
@@ -1591,6 +1677,11 @@ def _new_job_from_payload(
             ("package_reference", payload.input.package_asset_ids),
             ("scene_reference", payload.input.scene_asset_ids),
             ("brand_reference", payload.input.brand_asset_ids),
+            ("style_reference", payload.input.reference_asset_ids),
+            (
+                "competitor_reference",
+                payload.input.competitor_reference_asset_ids,
+            ),
         ):
             asset_roles.extend(
                 (asset_id, role, ordinal) for ordinal, asset_id in enumerate(asset_ids)
@@ -1631,6 +1722,18 @@ _REAL_PROVIDER_ENABLE_FLAGS = {
     JobType.CREATIVE_IMAGE.value: "creative_image_provider_enabled",
     JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual_suite_provider_enabled",
 }
+
+
+_AMAZON_INITIAL_IMAGE_REQUESTS = AMAZON_EXPECTED_ITEM_COUNT
+_AMAZON_MAX_REDRAW_REQUESTS = AMAZON_EXPECTED_ITEM_COUNT
+_AMAZON_PLANNER_REQUESTS = 1
+_AMAZON_MAX_SUITE_REVIEW_REQUESTS = 2
+_AMAZON_PROVIDER_REQUEST_ENVELOPE = (
+    _AMAZON_INITIAL_IMAGE_REQUESTS
+    + _AMAZON_MAX_REDRAW_REQUESTS
+    + _AMAZON_PLANNER_REQUESTS
+    + _AMAZON_MAX_SUITE_REVIEW_REQUESTS
+)
 
 
 def _reserve_real_provider_job_if_enabled(
@@ -1677,14 +1780,16 @@ def _reserve_real_provider_job_if_enabled(
             else None
         )
         planner_required = reusable_plan is None
-        estimated_cost = image_cost + (
-            settings.tengli_planner_reserve_micros if planner_required else 0
+        # Reserve the complete fail-closed Amazon automation envelope: 21 initial
+        # images, up to 21 automatic redraws, one planner call, and up to two
+        # whole-suite reviews. Reused plans release the unused planner allowance
+        # during settlement rather than weakening the production reservation.
+        estimated_cost = (
+            image_cost * 2
+            + settings.tengli_planner_reserve_micros
+            * (_AMAZON_PLANNER_REQUESTS + _AMAZON_MAX_SUITE_REVIEW_REQUESTS)
         )
-        provider_requests = (
-            runnable_item_count
-            if runnable_item_count is not None
-            else job.expected_item_count
-        ) + int(planner_required)
+        provider_requests = _AMAZON_PROVIDER_REQUEST_ENVELOPE
         group_count = int(planner_required)
     elif enable_flag is not None:
         estimated_cost = image_cost

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import hashlib
@@ -41,6 +41,8 @@ from app.models import (
 from app.provider import ProviderArtifact, ProviderOutcome, ProviderRequest
 from app.skill_protocol import SkillProtocolError
 from app.xinghe_agent import (
+    AmazonVisualReviewCallResult,
+    AmazonVisualReviewRequest,
     ImageCallResult,
     ImageEditRequest,
     _artifact_from_bytes,
@@ -49,7 +51,12 @@ from app.xinghe_agent import (
 from app.xinghe_single_image_provider import (
     SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY,
     SINGLE_IMAGE_ADAPTER_SCHEMA_VERSION,
+    SingleImageEnvelope,
+    SourceAssetSpec,
+    TargetSpec,
     XingheSingleImageProvider,
+    _source_inventory_is_authorized,
+    _target_artifact,
 )
 
 CONTENT_HASH = "a" * 64
@@ -98,12 +105,16 @@ def _success_result(
     artifact: ProviderArtifact | None = None,
     raw_usage: dict[str, Any] | None = None,
 ) -> ImageCallResult:
-    usage = raw_usage if raw_usage is not None else {
-        "input_tokens": 11,
-        "output_tokens": 7,
-        "total_tokens": 18,
-        "sensitive_provider_payload": SECRET,
-    }
+    usage = (
+        raw_usage
+        if raw_usage is not None
+        else {
+            "input_tokens": 11,
+            "output_tokens": 7,
+            "total_tokens": 18,
+            "sensitive_provider_payload": SECRET,
+        }
+    )
     return ImageCallResult(
         outcome=ProviderOutcome.SUCCEEDED,
         provider_request_id="req_real_123",
@@ -160,6 +171,7 @@ class RecordingGateway:
     def __init__(self, result: ImageCallResult | None = None) -> None:
         self.result = result or _success_result()
         self.requests: list[ImageEditRequest] = []
+        self.amazon_reviews: list[AmazonVisualReviewRequest] = []
         self.plan_calls = 0
         self.error: Exception | None = None
 
@@ -173,6 +185,21 @@ class RecordingGateway:
         if self.error is not None:
             raise self.error
         return self.result
+
+    async def review_amazon(
+        self, request: AmazonVisualReviewRequest
+    ) -> AmazonVisualReviewCallResult:
+        self.amazon_reviews.append(request)
+        return AmazonVisualReviewCallResult(
+            visual_success=True,
+            provider_request_id="review_test",
+            raw_usage={"input_tokens": 1, "output_tokens": 1},
+            normalized_usage=normalize_usage({"input_tokens": 1, "output_tokens": 1}),
+            actual_cost_micros=0,
+            estimated_cost_micros=0,
+            summary="Accepted against the Amazon Skill.",
+            http_status=200,
+        )
 
 
 @dataclass
@@ -465,6 +492,7 @@ def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -
     assert result.raw_usage["skill_protocol_length"] > 0
     assert "documents" not in result.raw_usage
     assert "skill_protocol" not in result.raw_usage
+    assert "metrics" not in result.raw_usage
     assert SECRET not in json.dumps(result.raw_usage)
     assert result.artifact is harness.gateway.result.artifact
     assert len(harness.gateway.requests) == 1
@@ -706,9 +734,7 @@ def test_cross_workspace_job_is_rejected_before_gateway(harness: Harness) -> Non
         )
         session.commit()
 
-    result = asyncio.run(
-        harness.provider().execute(_request(workspace_id="ws_other"))
-    )
+    result = asyncio.run(harness.provider().execute(_request(workspace_id="ws_other")))
 
     assert result.error_code == "WORKSPACE_SCOPE_MISMATCH"
     assert harness.gateway.requests == []
@@ -807,6 +833,183 @@ def test_extra_durable_input_is_rejected(harness: Harness) -> None:
     harness.storage.objects["ws_test/extra.png"] = extra_payload
 
     result = asyncio.run(harness.provider().execute(_request()))
+
+    assert result.error_code == "INPUT_ASSET_AUTHORIZATION_MISMATCH"
+    assert harness.storage.reads == []
+    assert harness.gateway.requests == []
+
+
+def test_amazon_main_can_use_multiple_durable_product_truth_sources(
+    harness: Harness,
+) -> None:
+    operation = "amazon_visual_suite"
+    skill_id = "xinghe-amazon-visual-suite"
+    selected_payload = _image_bytes(color=(10, 80, 160, 255))
+    detail_payload = _image_bytes(color=(40, 120, 180, 255))
+    with harness.session_factory() as session:
+        job = session.get(JobRecord, "job_test")
+        item = session.get(JobItemRecord, "item_test")
+        attempt = session.get(JobAttemptRecord, "attempt_test")
+        original_binding = session.query(JobAssetRecord).one()
+        assert job is not None and item is not None and attempt is not None
+        job.type = operation
+        job.expected_item_count = 21
+        item.item_key = "MAIN-01"
+        item.ordinal = 0
+        attempt.operation = operation
+        original_binding.role = "white_background_product"
+        session.add(
+            _asset_record(
+                asset_id="asset_selected",
+                workspace_id="ws_test",
+                object_key="ws_test/selected.png",
+                payload=selected_payload,
+            )
+        )
+        session.add(
+            JobAssetRecord(
+                workspace_id="ws_test",
+                job_id="job_test",
+                asset_id="asset_selected",
+                direction=JobAssetDirection.INPUT.value,
+                role="white_background_product",
+                ordinal=1,
+                is_deliverable=False,
+                validation={},
+            )
+        )
+        session.add(
+            _asset_record(
+                asset_id="asset_detail",
+                workspace_id="ws_test",
+                object_key="ws_test/detail.png",
+                payload=detail_payload,
+            )
+        )
+        session.add(
+            JobAssetRecord(
+                workspace_id="ws_test",
+                job_id="job_test",
+                asset_id="asset_detail",
+                direction=JobAssetDirection.INPUT.value,
+                role="product_detail",
+                ordinal=2,
+                is_deliverable=False,
+                validation={},
+            )
+        )
+        session.commit()
+    harness.storage.objects["ws_test/selected.png"] = selected_payload
+    harness.storage.objects["ws_test/detail.png"] = detail_payload
+    envelope = _envelope(
+        asset_ids=[
+            ("asset_product", "white_background_product"),
+            ("asset_selected", "white_background_product"),
+            ("asset_detail", "product_detail"),
+        ],
+        width=2000,
+        height=2000,
+        output_format="jpeg",
+        fit="pad",
+        item_key="MAIN-01",
+        item_ordinal=0,
+    )
+    envelope.update({"skill_id": skill_id, "operation": operation})
+
+    result = asyncio.run(
+        harness.provider(operation=operation, skill_id=skill_id).execute(
+            _request(envelope, operation=operation)
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.storage.reads == [
+        "ws_test/product.png",
+        "ws_test/selected.png",
+        "ws_test/detail.png",
+    ]
+    assert len(harness.gateway.requests) == 1
+    assert [source.payload for source in harness.gateway.requests[0].sources] == [
+        harness.source_payload,
+        selected_payload,
+        detail_payload,
+    ]
+
+
+@pytest.mark.parametrize("forbidden_role", ["style_reference", "competitor_reference"])
+def test_amazon_main_rejects_style_or_competitor_sources(
+    forbidden_role: str,
+) -> None:
+    durable_inputs = (
+        JobAssetRecord(
+            asset_id="asset_white",
+            role="white_background_product",
+            ordinal=0,
+        ),
+        JobAssetRecord(
+            asset_id="asset_forbidden",
+            role=forbidden_role,
+            ordinal=1,
+        ),
+    )
+    envelope = SingleImageEnvelope(
+        skill_id="xinghe-amazon-visual-suite",
+        skill_content_hash=CONTENT_HASH,
+        operation="amazon_visual_suite",
+        item_key="MAIN-01",
+        item_ordinal=0,
+        source_assets=(
+            SourceAssetSpec("asset_white", "white_background_product", 0),
+            SourceAssetSpec("asset_forbidden", forbidden_role, 1),
+        ),
+        target=TargetSpec(
+            width=2000,
+            height=2000,
+            aspect_ratio="1:1",
+            quality="high",
+            output_format="jpeg",
+            fit="pad",
+        ),
+        prompt_input={},
+    )
+
+    assert not _source_inventory_is_authorized(envelope, durable_inputs)
+
+
+def test_amazon_main_rejects_non_durable_selected_white_source(
+    harness: Harness,
+) -> None:
+    operation = "amazon_visual_suite"
+    skill_id = "xinghe-amazon-visual-suite"
+    with harness.session_factory() as session:
+        job = session.get(JobRecord, "job_test")
+        item = session.get(JobItemRecord, "item_test")
+        attempt = session.get(JobAttemptRecord, "attempt_test")
+        binding = session.query(JobAssetRecord).one()
+        assert job is not None and item is not None and attempt is not None
+        job.type = operation
+        job.expected_item_count = 21
+        item.item_key = "MAIN-01"
+        item.ordinal = 0
+        attempt.operation = operation
+        binding.role = "white_background_product"
+        session.commit()
+    envelope = _envelope(
+        asset_ids=[("asset_rogue", "white_background_product")],
+        width=2000,
+        height=2000,
+        output_format="jpeg",
+        fit="pad",
+        item_key="MAIN-01",
+        item_ordinal=0,
+    )
+    envelope.update({"skill_id": skill_id, "operation": operation})
+
+    result = asyncio.run(
+        harness.provider(operation=operation, skill_id=skill_id).execute(
+            _request(envelope, operation=operation)
+        )
+    )
 
     assert result.error_code == "INPUT_ASSET_AUTHORIZATION_MISMATCH"
     assert harness.storage.reads == []
@@ -961,9 +1164,7 @@ def test_prompt_is_deterministic_and_uses_only_whitelisted_envelope(
     second_request = _request(_envelope(prompt_input=second_prompt))
 
     protocol = provider._load_protocol(CONTENT_HASH)
-    first = provider._compile_prompt(
-        provider._parse_envelope(first_request), protocol
-    )
+    first = provider._compile_prompt(provider._parse_envelope(first_request), protocol)
     second = provider._compile_prompt(
         provider._parse_envelope(second_request), protocol
     )
@@ -977,10 +1178,15 @@ def test_prompt_is_deterministic_and_uses_only_whitelisted_envelope(
         "operation",
         "item",
         "source_roles",
+        "source_images",
         "target",
         "instructions",
         "skill_protocol",
     }
+    assert decoded["source_roles"] == ["product"]
+    assert decoded["source_images"] == [
+        {"ordinal": 1, "asset_id": "asset_product", "role": "product"}
+    ]
     assert decoded["skill_protocol"]["skill_id"] == SKILL_ID
     assert decoded["skill_protocol"]["source_content_hash"] == CONTENT_HASH
     assert decoded["skill_protocol"]["documents"][0]["path"] == "SKILL.md"
@@ -1023,9 +1229,7 @@ def test_unknown_or_sensitive_prompt_fields_fail_closed(harness: Harness) -> Non
         {"creative_direction": SECRET},
     ):
         result = asyncio.run(
-            harness.provider().execute(
-                _request(_envelope(prompt_input=prompt_input))
-            )
+            harness.provider().execute(_request(_envelope(prompt_input=prompt_input)))
         )
         assert result.error_code in {
             "PROMPT_INPUT_FIELD_NOT_ALLOWED",
@@ -1148,6 +1352,135 @@ def test_amazon_contain_and_pad_are_exact_with_white_jpeg_canvas(
         assert all(channel >= 245 for channel in corner)
 
 
+def test_amazon_white_output_is_accepted_when_technical_metadata_is_valid() -> None:
+    payload = _image_bytes(
+        (2000, 2000),
+        image_format="JPEG",
+        color=(255, 255, 255),
+    )
+    artifact = ProviderArtifact(
+        payload=payload,
+        filename="white-product.jpg",
+        content_type="image/jpeg",
+        width=2000,
+        height=2000,
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    target = TargetSpec(
+        width=2000,
+        height=2000,
+        aspect_ratio="1:1",
+        quality="high",
+        output_format="jpeg",
+        fit="cover",
+    )
+
+    rendered = _target_artifact(
+        artifact,
+        target,
+        skill_id="xinghe-amazon-visual-suite",
+    )
+
+    assert rendered is artifact
+
+
+def test_domestic_detail_does_not_apply_amazon_blank_canvas_gate() -> None:
+    payload = _image_bytes(
+        (1200, 1600),
+        image_format="JPEG",
+        color=(255, 255, 255),
+    )
+    artifact = ProviderArtifact(
+        payload=payload,
+        filename="blank.jpg",
+        content_type="image/jpeg",
+        width=1200,
+        height=1600,
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    target = TargetSpec(
+        width=1200,
+        height=1600,
+        aspect_ratio="3:4",
+        quality="high",
+        output_format="jpeg",
+        fit="cover",
+    )
+
+    rendered = _target_artifact(
+        artifact,
+        target,
+        skill_id="xinghe-ecommerce-detail-domestic-3",
+    )
+
+    assert rendered is artifact
+
+
+def test_amazon_wrong_orientation_is_normalized_with_skill_cover_fit() -> None:
+    artifact = _artifact((900, 1200), image_format="JPEG")
+    target = TargetSpec(
+        width=1464,
+        height=600,
+        aspect_ratio="61:25",
+        quality="high",
+        output_format="jpeg",
+        fit="cover",
+    )
+
+    rendered = _target_artifact(
+        artifact,
+        target,
+        skill_id="xinghe-amazon-visual-suite",
+    )
+
+    assert (rendered.width, rendered.height) == (1464, 600)
+    assert rendered.content_type == "image/jpeg"
+    assert rendered.locally_resampled is True
+    assert (rendered.provider_width, rendered.provider_height) == (900, 1200)
+
+
+def test_amazon_contain_uses_skill_defined_deterministic_padding() -> None:
+    artifact = _artifact((1200, 900), image_format="JPEG")
+    target = TargetSpec(
+        width=1464,
+        height=600,
+        aspect_ratio="61:25",
+        quality="high",
+        output_format="jpeg",
+        fit="contain",
+    )
+
+    rendered = _target_artifact(
+        artifact,
+        target,
+        skill_id="xinghe-amazon-visual-suite",
+    )
+
+    assert (rendered.width, rendered.height) == (1464, 600)
+    assert rendered.locally_resampled is True
+
+
+def test_domestic_detail_keeps_existing_resampling_behavior() -> None:
+    artifact = _artifact((1200, 900), image_format="JPEG")
+    target = TargetSpec(
+        width=1200,
+        height=1600,
+        aspect_ratio="3:4",
+        quality="high",
+        output_format="jpeg",
+        fit="contain",
+    )
+
+    rendered = _target_artifact(
+        artifact,
+        target,
+        skill_id="xinghe-ecommerce-detail-domestic-3",
+    )
+
+    assert (rendered.width, rendered.height) == (1200, 1600)
+    assert rendered.locally_resampled is True
+
+
 def test_exact_amazon_size_and_format_are_not_reencoded(harness: Harness) -> None:
     exact = _artifact((1600, 1200), image_format="PNG")
     harness.gateway.result = _success_result(artifact=exact)
@@ -1257,30 +1590,72 @@ def test_amazon_adapter_to_delegate_preserves_durable_key_and_calls_gateway_once
     spec = amazon_item_spec("A-DESKTOP-01")
     plan_context = {
         "analysis": {
-            "product_master_description": {"identity": "one exact SKU"},
-            "product_consistency_anchors": {"silhouette": "preserve shape"},
+            "product_image_analysis": {
+                "visible_facts": ["One supplied test SKU."],
+                "possible_use_contexts": ["category-appropriate use"],
+                "unknowns": [],
+            },
+            "information_confidence": {
+                "confirmed": ["Visible supplied SKU."],
+                "reasonable_inference": [],
+                "needs_confirmation": [],
+            },
+            "buyer_demand_map": ["recognition", "trust", "purchase"],
+            "demand_to_selling_point_match": [
+                "recognition -> Show the exact supplied SKU."
+            ],
+            "product_master_description": {
+                "category_and_identity": "One exact supplied test SKU.",
+                "silhouette_and_proportions": "Preserve the supplied shape.",
+                "color_material_and_texture": "Preserve visible appearance.",
+                "structure_parts_and_accessories": (
+                    "Do not add or remove visible parts."
+                ),
+                "logos_labels_patterns_and_packaging": (
+                    "Preserve visible identity markings."
+                ),
+                "scale_and_physics": "Keep scale and physical logic credible.",
+                "unknowns": [],
+            },
         },
-        "campaign_style_lock": {"style": "consistent"},
-        "design_strength_lock": {"strength": "evidence-led"},
-        "product_consistency_lock": {"sku": "one exact SKU"},
-        "layout_diversity_lock": {"maximum": 3},
+        "campaign_style_lock": {
+            "platform": "Amazon US",
+            "marketplace_language": "en-US",
+            "design_direction": "Product-led evidence",
+            "palette": "Product-led restrained palette",
+            "lighting": "Consistent commercial lighting",
+            "typography_mood": "Clear shopper-facing hierarchy",
+            "label_style": "Sparse evidence labels",
+            "density": "Readable at listing and phone size",
+        },
+        "product_consistency_lock": {
+            "product_identity": "Preserve one exact SKU",
+            "structure": "Preserve all visible structural parts",
+            "color_area_ratio": "Preserve visible color-area ratio",
+            "material_look": "Preserve visible material appearance",
+            "logo_and_label_placement": ("Preserve authentic logo and label placement"),
+            "physical_scale": "Keep physical scale credible",
+        },
+        "layout_diversity_lock": {
+            "structure_strategy": (
+                "Use at least five distinct structures across selling images"
+            ),
+            "large_product_top_title_limit": 3,
+        },
         "screen": {
+            "id": "aplus-desktop-01",
             "item_key": spec.item_key,
-            "layout_direction": spec.layout_direction,
-            "layout_family": "wide-evidence",
-            "camera_angle": "three-quarter",
-            "product_position": "left-third",
-            "background_system": "clean-field",
-            "prop_strategy": "no props",
-            "copy_density": "sparse",
-            "headline": spec.headline,
-            "subcopy": spec.subcopy,
+            "asset_type": spec.asset_type,
+            "final_size": f"{spec.width}x{spec.height}",
             "buyer_question": spec.buyer_question,
-            "selling_point": spec.selling_point,
-            "information_confidence": "confirmed visible facts only",
+            "selling_point": "Show the confirmed product promise.",
+            "information_confidence": "confirmed",
             "visual_proof": spec.visual_proof,
-            "source_material": spec.source_material,
-            "risk_note": spec.risk_note,
+            "headline": "Confirmed product promise",
+            "subcopy": "Grounded in the supplied product evidence.",
+            "layout_direction": "Planner-selected layout",
+            "source_material": ["white_background_product"],
+            "risk_note": "Do not invent unsupported claims.",
         },
         "resume_signature": "b" * 64,
     }
@@ -1331,3 +1706,8 @@ def test_amazon_adapter_to_delegate_preserves_durable_key_and_calls_gateway_once
     assert gateway_request.size == "1536x640"
     assert gateway_request.output_format == "jpeg"
     assert gateway_request.preserve_provider_artifact is True
+    assert result.raw_usage["metrics"]["generation_route"] == {
+        "attempted_routes": ["configured_xinghe_fixed_api"],
+        "final_route": "configured_xinghe_fixed_api",
+        "fallback_available": False,
+    }

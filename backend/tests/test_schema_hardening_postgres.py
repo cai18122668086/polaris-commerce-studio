@@ -22,6 +22,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.models import (
+    AmazonSuiteReviewAttemptRecord,
     CreditReservationRecord,
     JobAttemptRecord,
     JobItemRecord,
@@ -55,9 +56,9 @@ def _postgres_url() -> URL:
 def _scoped_url(base_url: URL, schema_name: str) -> str:
     existing_options = str(base_url.query.get("options", "")).strip()
     options = f"{existing_options} -csearch_path={schema_name}".strip()
-    return base_url.update_query_dict(
-        {"options": options}
-    ).render_as_string(hide_password=False)
+    return base_url.update_query_dict({"options": options}).render_as_string(
+        hide_password=False
+    )
 
 
 @contextmanager
@@ -308,9 +309,7 @@ def test_same_workspace_job_lineage_allowed_and_cross_workspace_rejected(
     _seed_workspace_graph(db)
     with db.begin() as connection:
         connection.execute(
-            text(
-                f"UPDATE jobs SET {column_name} = 'job_a' WHERE id = 'job_a'"
-            )
+            text(f"UPDATE jobs SET {column_name} = 'job_a' WHERE id = 'job_a'")
         )
     constraint = _assert_constraint_rejects(
         db,
@@ -503,6 +502,184 @@ def test_nonpositive_attempt_number_rejected(
     assert constraint == "ck_job_attempts_attempt_no_positive"
 
 
+def test_amazon_suite_review_attempt_constraints_are_enforced(db: Engine) -> None:
+    _seed_workspace_graph(db)
+    with db.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO amazon_suite_review_attempts (
+                    id, workspace_id, job_id, review_round,
+                    output_asset_set_hash, provider,
+                    provider_idempotency_key, lease_token, leased_by,
+                    lease_expires_at
+                ) VALUES (
+                    'review_valid', 'workspace_a', 'job_a', 1,
+                    'output-hash-valid', 'openai',
+                    'review-idem-valid', 'review-lease-valid', 'schema-test',
+                    CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+                )
+                """
+            )
+        )
+
+    cross_tenant_constraint = _assert_constraint_rejects(
+        db,
+        """
+        INSERT INTO amazon_suite_review_attempts (
+            id, workspace_id, job_id, review_round,
+            output_asset_set_hash, provider,
+            provider_idempotency_key, lease_token, leased_by,
+            lease_expires_at
+        ) VALUES (
+            'review_cross_tenant', 'workspace_b', 'job_a', 2,
+            'output-hash-cross-tenant', 'openai',
+            'review-idem-cross-tenant', 'review-lease-cross', 'schema-test',
+            CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+        )
+        """,
+    )
+    assert cross_tenant_constraint == "fk_amazon_suite_review_workspace_job"
+
+    round_constraint = _assert_constraint_rejects(
+        db,
+        """
+        INSERT INTO amazon_suite_review_attempts (
+            id, workspace_id, job_id, review_round,
+            output_asset_set_hash, provider,
+            provider_idempotency_key, lease_token, leased_by,
+            lease_expires_at
+        ) VALUES (
+            'review_invalid_round', 'workspace_a', 'job_a', 0,
+            'output-hash-invalid-round', 'openai',
+            'review-idem-invalid-round', 'review-lease-round', 'schema-test',
+            CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+        )
+        """,
+    )
+    assert round_constraint == "ck_amazon_suite_review_round_positive"
+
+    for column_name, constraint_name in [
+        ("actual_cost_micros", "ck_amazon_suite_review_actual_cost_nonnegative"),
+        (
+            "estimated_cost_micros",
+            "ck_amazon_suite_review_estimated_cost_nonnegative",
+        ),
+    ]:
+        cost_constraint = _assert_constraint_rejects(
+            db,
+            f"""
+            INSERT INTO amazon_suite_review_attempts (
+                id, workspace_id, job_id, review_round,
+                output_asset_set_hash, provider,
+                provider_idempotency_key, lease_token, leased_by,
+                lease_expires_at, {column_name}
+            ) VALUES (
+                'review_negative_{column_name}', 'workspace_a', 'job_a', 2,
+                'output-hash-negative-{column_name}', 'openai',
+                'review-idem-negative-{column_name}',
+                'review-lease-negative-{column_name}', 'schema-test',
+                CURRENT_TIMESTAMP + INTERVAL '5 minutes', -1
+            )
+            """,
+        )
+        assert cost_constraint == constraint_name
+
+
+def test_amazon_suite_review_round_has_one_concurrent_winner(db: Engine) -> None:
+    _seed_workspace_graph(db)
+    barrier = threading.Barrier(2)
+    insert_statement = text(
+        """
+        INSERT INTO amazon_suite_review_attempts (
+            id, workspace_id, job_id, review_round,
+            output_asset_set_hash, provider,
+            provider_idempotency_key, lease_token, leased_by,
+            lease_expires_at
+        ) VALUES (
+            :id, 'workspace_a', 'job_a', 1,
+            'shared-output-hash', 'openai', :provider_idempotency_key,
+            :lease_token, 'schema-test',
+            CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+        )
+        """
+    )
+
+    def insert_once(index: int) -> str:
+        try:
+            with db.begin() as connection:
+                barrier.wait(timeout=5)
+                connection.execute(
+                    insert_statement,
+                    {
+                        "id": f"review_concurrent_{index}",
+                        "provider_idempotency_key": f"review-idem-concurrent-{index}",
+                        "lease_token": f"review-lease-concurrent-{index}",
+                    },
+                )
+            return "committed"
+        except IntegrityError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(insert_once, range(2)))
+
+    assert sorted(results) == ["committed", "rejected"]
+    with db.connect() as connection:
+        count = connection.scalar(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM amazon_suite_review_attempts
+                WHERE job_id = 'job_a'
+                  AND review_round = 1
+                  AND output_asset_set_hash = 'shared-output-hash'
+                """
+            )
+        )
+    assert count == 1
+
+
+def test_amazon_suite_review_provider_idempotency_is_unique(db: Engine) -> None:
+    _seed_workspace_graph(db)
+    with db.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO amazon_suite_review_attempts (
+                    id, workspace_id, job_id, review_round,
+                    output_asset_set_hash, provider,
+                    provider_idempotency_key, lease_token, leased_by,
+                    lease_expires_at
+                ) VALUES (
+                    'review_idem_a', 'workspace_a', 'job_a', 1,
+                    'output-hash-idem-a', 'openai', 'shared-review-idem',
+                    'review-lease-idem-a', 'schema-test',
+                    CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+                )
+                """
+            )
+        )
+
+    constraint = _assert_constraint_rejects(
+        db,
+        """
+        INSERT INTO amazon_suite_review_attempts (
+            id, workspace_id, job_id, review_round,
+            output_asset_set_hash, provider,
+            provider_idempotency_key, lease_token, leased_by,
+            lease_expires_at
+        ) VALUES (
+            'review_idem_b', 'workspace_b', 'job_b', 1,
+            'output-hash-idem-b', 'openai', 'shared-review-idem',
+            'review-lease-idem-b', 'schema-test',
+            CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+        )
+        """,
+    )
+    assert constraint == "uq_amazon_suite_review_provider_idem"
+
+
 def test_negative_api_request_count_rejected(db: Engine) -> None:
     _seed_workspace_graph(db)
     constraint = _assert_constraint_rejects(
@@ -575,7 +752,34 @@ def test_empty_database_upgrade_downgrade_and_reupgrade() -> None:
             revision = connection.scalar(
                 text("SELECT version_num FROM alembic_version")
             )
-        assert revision == "20260727_0005"
+        assert revision == "20260808_0006"
+
+
+def test_0006_upgrade_downgrade_and_reupgrade() -> None:
+    with _new_schema(_postgres_url(), "migration_0006") as schema:
+        _migrate(schema.url, "20260727_0005")
+        assert (
+            "amazon_suite_review_attempts"
+            not in inspect(schema.engine).get_table_names()
+        )
+
+        _migrate(schema.url, "head")
+        assert (
+            "amazon_suite_review_attempts" in inspect(schema.engine).get_table_names()
+        )
+
+        _downgrade(schema.url, "20260727_0005")
+        assert (
+            "amazon_suite_review_attempts"
+            not in inspect(schema.engine).get_table_names()
+        )
+
+        _migrate(schema.url, "head")
+        with schema.engine.connect() as connection:
+            revision = connection.scalar(
+                text("SELECT version_num FROM alembic_version")
+            )
+        assert revision == "20260808_0006"
 
 
 def test_populated_0004_database_upgrades_and_round_trips() -> None:
@@ -591,7 +795,7 @@ def test_populated_0004_database_upgrades_and_round_trips() -> None:
             )
             job_count = connection.scalar(text("SELECT COUNT(*) FROM jobs"))
             attempt_count = connection.scalar(text("SELECT COUNT(*) FROM job_attempts"))
-        assert revision == "20260727_0005"
+        assert revision == "20260808_0006"
         assert job_count == 2
         assert attempt_count == 2
 
@@ -648,6 +852,9 @@ def _metadata_differences(connection: Connection) -> list[object]:
 def test_alembic_and_metadata_created_schemas_match_current_orm(
     hardened_schema: PostgresSchema,
 ) -> None:
+    assert AmazonSuiteReviewAttemptRecord.__table__.name == (
+        "amazon_suite_review_attempts"
+    )
     with hardened_schema.engine.connect() as connection:
         migrated_differences = _metadata_differences(connection)
     assert migrated_differences == []
@@ -668,6 +875,7 @@ def test_required_tenant_constraints_and_indexes_exist(
         for table_name in [
             "jobs",
             "job_attempts",
+            "amazon_suite_review_attempts",
             "usage_events",
             "credit_reservations",
             "credit_ledger_entries",
@@ -676,6 +884,7 @@ def test_required_tenant_constraints_and_indexes_exist(
     }
     assert {
         "fk_job_attempts_workspace_job_item",
+        "fk_amazon_suite_review_workspace_job",
         "fk_usage_events_workspace_job_item_attempt",
         "fk_jobs_workspace_root_job",
         "fk_jobs_workspace_retry_of_job",
@@ -683,13 +892,29 @@ def test_required_tenant_constraints_and_indexes_exist(
         "fk_credit_ledger_workspace_reservation",
         "fk_credit_ledger_workspace_job",
     } <= foreign_keys
-    outbox_indexes = {
-        index["name"] for index in inspector.get_indexes("outbox_events")
-    }
+    outbox_indexes = {index["name"] for index in inspector.get_indexes("outbox_events")}
     assert {
         "ix_outbox_events_claim",
         "ix_outbox_events_reclaim",
     } <= outbox_indexes
+
+    review_indexes = {
+        index["name"] for index in inspector.get_indexes("amazon_suite_review_attempts")
+    }
+    assert {
+        "ix_amazon_suite_review_job_status_lease",
+        "ix_amazon_suite_review_provider_request",
+    } <= review_indexes
+    review_unique_constraints = {
+        constraint["name"]
+        for constraint in inspector.get_unique_constraints(
+            "amazon_suite_review_attempts"
+        )
+    }
+    assert {
+        "uq_amazon_suite_review_job_round_output",
+        "uq_amazon_suite_review_provider_idem",
+    } <= review_unique_constraints
 
 
 def _seed_outbox_for_plan(engine: Engine) -> None:

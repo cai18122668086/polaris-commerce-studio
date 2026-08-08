@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import re
 import socket
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,6 +17,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import provider_quota_ledger as quota_ledger
 from .config import (
     default_masked_skill_root,
     default_skill_root,
@@ -35,6 +37,7 @@ from .domain import (
     UsageCompleteness,
 )
 from .models import (
+    AmazonSuiteReviewAttemptRecord,
     AssetRecord,
     AuditEventRecord,
     JobAssetRecord,
@@ -53,14 +56,18 @@ from .provider import (
     ProviderRequest,
     ProviderResult,
 )
-from .provider_quota_ledger import usage_request_count
-from .services import canonical_hash, new_id, settle_credits, transition_job
+from .provider_quota_ledger import ProviderQuotaLedgerError, usage_request_count
+from .services import new_id, settle_credits, transition_job
 from .skill_runtime import build_fake_skill_runtime_provider
 from .storage import ImageStorage, ValidatedImage
 
 
 class DetailPlanner(Protocol):
     async def plan(self, job_id: str) -> JobStatus | None: ...
+
+
+class AmazonSuiteReviewer(Protocol):
+    async def review(self, job_id: str) -> Any: ...
 
 
 ACTIVE_ATTEMPT_STATUSES = {
@@ -78,6 +85,374 @@ SUCCESS_ITEM_STATUSES = {
     JobItemStatus.SUCCEEDED.value,
     JobItemStatus.REUSED.value,
 }
+AMAZON_REVIEW_ACCOUNTING_STATUSES = {
+    AttemptStatus.SUCCEEDED.value,
+    AttemptStatus.FAILED.value,
+    AttemptStatus.OUTCOME_UNKNOWN.value,
+}
+
+
+@dataclass(frozen=True)
+class _AmazonReviewCall:
+    review_round: int
+    attempt_identity: str
+    provider: str
+    provider_request_id: str | None
+    status: str
+    reported: bool
+    actual_cost_micros: int | None
+    estimated_cost_micros: int | None
+    provider_call_started: bool
+    source: str
+    durable_attempt_id: str | None = None
+
+
+@dataclass(frozen=True)
+class _AmazonReviewAccounting:
+    request_count: int = 0
+    reported_count: int = 0
+    known_actual_cost_count: int = 0
+    actual_cost_micros: int = 0
+    real_request_count: int = 0
+
+
+def _valid_nonnegative_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _positive_int(value: object) -> int | None:
+    normalized = _valid_nonnegative_int(value)
+    return normalized if normalized is not None and normalized > 0 else None
+
+
+def _nonempty_string(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _legacy_review_round(record: Mapping[str, Any], ordinal: int) -> int:
+    return _positive_int(record.get("review_round")) or ordinal
+
+
+def _legacy_review_identities(record: Mapping[str, Any]) -> set[str]:
+    identities: set[str] = set()
+    for key in ("attempt_id", "provider_idempotency_key", "provider_request_id"):
+        value = _nonempty_string(record.get(key))
+        if value is not None:
+            identities.add(value)
+    return identities
+
+
+def _sorted_amazon_review_calls(
+    calls: list[_AmazonReviewCall],
+) -> tuple[_AmazonReviewCall, ...]:
+    return tuple(
+        sorted(
+            calls,
+            key=lambda call: (
+                call.review_round,
+                0 if call.source == "durable" else 1,
+                call.attempt_identity,
+            ),
+        )
+    )
+
+
+def _amazon_review_calls(
+    session: Session,
+    job: JobRecord,
+    plan_payload: Mapping[str, Any] | None,
+) -> tuple[_AmazonReviewCall, ...]:
+    """Merge durable and legacy suite-review evidence without double counting."""
+
+    if job.type != JobType.AMAZON_VISUAL_SUITE.value:
+        return ()
+
+    attempts = session.scalars(
+        select(AmazonSuiteReviewAttemptRecord)
+        .where(AmazonSuiteReviewAttemptRecord.job_id == job.id)
+        .order_by(
+            AmazonSuiteReviewAttemptRecord.review_round,
+            AmazonSuiteReviewAttemptRecord.id,
+        )
+    ).all()
+    durable_rounds = {attempt.review_round for attempt in attempts}
+    durable_identities: set[str] = set()
+    calls: list[_AmazonReviewCall] = []
+    for attempt in attempts:
+        identities = {attempt.id, attempt.provider_idempotency_key}
+        request_id = _nonempty_string(attempt.provider_request_id)
+        if request_id is not None:
+            identities.add(request_id)
+        durable_identities.update(identities)
+        if attempt.status not in AMAZON_REVIEW_ACCOUNTING_STATUSES:
+            continue
+        normalized = (
+            attempt.normalized_usage
+            if isinstance(attempt.normalized_usage, Mapping)
+            else {}
+        )
+        calls.append(
+            _AmazonReviewCall(
+                review_round=attempt.review_round,
+                attempt_identity=attempt.provider_idempotency_key,
+                provider=attempt.provider,
+                provider_request_id=request_id,
+                status=attempt.status,
+                reported=normalized.get("reported") is True,
+                actual_cost_micros=_valid_nonnegative_int(attempt.actual_cost_micros),
+                estimated_cost_micros=_valid_nonnegative_int(
+                    attempt.estimated_cost_micros
+                ),
+                provider_call_started=attempt.provider_call_started_at is not None,
+                source="durable",
+                durable_attempt_id=attempt.id,
+            )
+        )
+
+    # Pre-migration jobs stored review usage only in the plan payload. Durable
+    # evidence wins by review round or provider-attempt identity, while legacy
+    # rounds with no durable counterpart remain billable and observable.
+    usage = plan_payload.get("usage") if isinstance(plan_payload, Mapping) else None
+    records = usage.get("amazon_suite_review") if isinstance(usage, Mapping) else None
+    if not isinstance(records, list):
+        return _sorted_amazon_review_calls(calls)
+    for ordinal, record in enumerate(records, start=1):
+        if not isinstance(record, Mapping):
+            continue
+        review_round = _legacy_review_round(record, ordinal)
+        identities = _legacy_review_identities(record)
+        if review_round in durable_rounds or identities & durable_identities:
+            continue
+        provider_request_id = _nonempty_string(record.get("provider_request_id"))
+        provider = _nonempty_string(record.get("provider")) or (
+            "legacy" if provider_request_id is not None else "mock"
+        )
+        explicitly_started = record.get("provider_call_started") is True or (
+            record.get("provider_call_started_at") is not None
+        )
+        provider_call_started = explicitly_started or provider_request_id is not None
+        identity = next(iter(sorted(identities)), f"legacy-round-{review_round}")
+        calls.append(
+            _AmazonReviewCall(
+                review_round=review_round,
+                attempt_identity=identity,
+                provider=provider,
+                provider_request_id=provider_request_id,
+                status=str(record.get("status") or AttemptStatus.SUCCEEDED.value),
+                reported=record.get("reported") is True,
+                actual_cost_micros=_valid_nonnegative_int(
+                    record.get("actual_cost_micros")
+                ),
+                estimated_cost_micros=_valid_nonnegative_int(
+                    record.get("estimated_cost_micros")
+                ),
+                provider_call_started=provider_call_started,
+                source="legacy",
+            )
+        )
+    return _sorted_amazon_review_calls(calls)
+
+
+def _amazon_review_accounting(
+    calls: tuple[_AmazonReviewCall, ...],
+) -> _AmazonReviewAccounting:
+    called = [call for call in calls if call.provider_call_started]
+    reported_count = sum(call.reported for call in called)
+    known_costs = [
+        call.actual_cost_micros
+        for call in called
+        if call.actual_cost_micros is not None
+    ]
+    return _AmazonReviewAccounting(
+        request_count=len(called),
+        reported_count=reported_count,
+        known_actual_cost_count=len(known_costs),
+        actual_cost_micros=sum(known_costs),
+        real_request_count=sum(call.provider != "mock" for call in called),
+    )
+
+
+def _review_charge(
+    call: _AmazonReviewCall,
+    fallback_reserve_micros: int,
+) -> tuple[int, str]:
+    actual_cost = call.actual_cost_micros
+    if actual_cost is not None:
+        return actual_cost, "actual"
+    estimated_cost = call.estimated_cost_micros
+    if estimated_cost is not None:
+        basis = (
+            "conservative_unknown"
+            if call.status == AttemptStatus.OUTCOME_UNKNOWN.value
+            else "estimated_fallback"
+        )
+        return estimated_cost, basis
+    return fallback_reserve_micros, "conservative_unknown"
+
+
+def _settle_amazon_provider_quota(
+    session: Session,
+    job: JobRecord,
+    review_calls: tuple[_AmazonReviewCall, ...],
+) -> None:
+    """Settle Amazon reservations with durable/legacy suite-review attempts."""
+
+    if job.type != JobType.AMAZON_VISUAL_SUITE.value:
+        return
+    reservations = session.scalars(
+        select(AuditEventRecord)
+        .where(
+            AuditEventRecord.workspace_id == job.workspace_id,
+            AuditEventRecord.action == quota_ledger.RESERVATION_ACTION,
+            AuditEventRecord.resource_id == job.id,
+            AuditEventRecord.request_id == job.id,
+        )
+        .order_by(AuditEventRecord.id)
+        .with_for_update()
+    ).all()
+    if not reservations:
+        return
+    if len(reservations) != 1:
+        raise ProviderQuotaLedgerError("A job has duplicate quota reservations.")
+    reservation = reservations[0]
+    if quota_ledger._settlement_for_reservation(session, reservation) is not None:
+        return
+
+    reserved_cost, reserved_requests = quota_ledger._reservation_values(reservation)
+    usage_events = session.scalars(
+        select(UsageEventRecord)
+        .where(
+            UsageEventRecord.workspace_id == job.workspace_id,
+            UsageEventRecord.job_id == job.id,
+            UsageEventRecord.provider != "mock",
+        )
+        .order_by(UsageEventRecord.id)
+    ).all()
+    requests = 0
+    charge = 0
+    actual_cost_count = 0
+    fallback_count = 0
+    sources: list[dict[str, Any]] = []
+    for usage_event in usage_events:
+        event_requests = usage_request_count(usage_event)
+        event_charge, basis = quota_ledger._usage_charge(
+            job,
+            usage_event,
+            event_requests,
+        )
+        requests += event_requests
+        charge += event_charge
+        actual_cost_count += int(basis == "actual")
+        fallback_count += int(basis != "actual")
+        sources.append(
+            {
+                "source": "usage_event",
+                "usage_event_id": usage_event.id,
+                "attempt_id": usage_event.attempt_id,
+                "provider_request_count": event_requests,
+                "charged_cost_micros": event_charge,
+                "cost_basis": basis,
+                "actual_cost_reported": usage_event.actual_cost_micros is not None,
+            }
+        )
+
+    planner_sources, planner_requests, planner_charge, planner_actual = (
+        quota_ledger._planner_charges(
+            session,
+            job,
+            reservation,
+            reserved_cost,
+            reserved_requests,
+            requests,
+            usage_events,
+        )
+    )
+    sources.extend(planner_sources)
+    requests += planner_requests
+    charge += planner_charge
+    actual_cost_count += planner_actual
+    fallback_count += planner_requests - planner_actual
+
+    reservation_details = (
+        reservation.details if isinstance(reservation.details, Mapping) else {}
+    )
+    review_reserve = _positive_int(reservation_details.get("planner_reserve_micros"))
+    if review_reserve is None:
+        raise ProviderQuotaLedgerError(
+            "Amazon suite review reserve cannot be derived safely."
+        )
+    for call in review_calls:
+        if not call.provider_call_started or call.provider == "mock":
+            continue
+        review_charge, basis = _review_charge(call, review_reserve)
+        requests += 1
+        charge += review_charge
+        actual_cost_count += int(basis == "actual")
+        fallback_count += int(basis != "actual")
+        sources.append(
+            {
+                "source": f"amazon_suite_review_{call.source}",
+                "review_round": call.review_round,
+                "attempt_identity": call.attempt_identity,
+                "durable_attempt_id": call.durable_attempt_id,
+                "provider_request_id": call.provider_request_id,
+                "provider_request_count": 1,
+                "charged_cost_micros": review_charge,
+                "cost_basis": basis,
+                "actual_cost_reported": basis == "actual",
+            }
+        )
+
+    if requests > reserved_requests or charge > reserved_cost:
+        raise ProviderQuotaLedgerError(
+            "Observed provider attempts exceed the durable job reservation."
+        )
+    conservative_unknown_count = sum(
+        source["cost_basis"] == "conservative_unknown" for source in sources
+    )
+    basis = (
+        "mixed_conservative_unknown"
+        if conservative_unknown_count and actual_cost_count
+        else "conservative_unknown"
+        if conservative_unknown_count
+        else "actual"
+        if requests and fallback_count == 0
+        else "mixed"
+        if actual_cost_count
+        else "estimated_fallback"
+    )
+    common = {
+        "ledger_version": quota_ledger.LEDGER_VERSION,
+        "reservation_event_id": reservation.id,
+        "reserved_cost_micros": reserved_cost,
+        "reserved_request_count": reserved_requests,
+        "charged_cost_micros": charge,
+        "actual_provider_request_count": requests,
+        "cost_basis": basis,
+        "actual_cost_reported_count": actual_cost_count,
+        "estimated_fallback_count": fallback_count,
+        "conservative_unknown_count": conservative_unknown_count,
+    }
+    quota_ledger._add_event(
+        session,
+        job,
+        quota_ledger.ATTEMPTS_ACTION,
+        {**common, "attempts": sources},
+    )
+    quota_ledger._add_event(session, job, quota_ledger.SETTLEMENT_ACTION, common)
+    quota_ledger._add_event(
+        session,
+        job,
+        quota_ledger.RELEASE_ACTION,
+        {
+            **common,
+            "released_cost_micros": reserved_cost - charge,
+            "released_request_count": reserved_requests - requests,
+            "release_reason": f"terminal_{job.status}",
+        },
+    )
 
 
 def _synchronize_job_item_aggregates(
@@ -150,7 +525,9 @@ class ExecutionCoordinator:
         detail_planner: DetailPlanner | None = None,
         max_concurrency: int = 1,
         max_detail_retries: int = 0,
+        max_amazon_retries: int = 0,
         artifact_storage: ImageStorage | None = None,
+        amazon_suite_reviewer: AmazonSuiteReviewer | None = None,
     ) -> None:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -160,6 +537,8 @@ class ExecutionCoordinator:
             raise ValueError("max_concurrency must be from 1 through 6")
         if max_detail_retries < 0 or max_detail_retries > 2:
             raise ValueError("max_detail_retries must be from 0 through 2")
+        if max_amazon_retries < 0 or max_amazon_retries > 2:
+            raise ValueError("max_amazon_retries must be from 0 through 2")
         self.session_factory = session_factory
         self.provider = provider
         self.worker_id = worker_id or f"worker-{socket.gethostname()}-{uuid4().hex}"
@@ -169,7 +548,9 @@ class ExecutionCoordinator:
         self.detail_planner = detail_planner
         self.max_concurrency = max_concurrency
         self.max_detail_retries = max_detail_retries
+        self.max_amazon_retries = max_amazon_retries
         self.artifact_storage = artifact_storage
+        self.amazon_suite_reviewer = amazon_suite_reviewer
 
     async def run(self, job_id: str) -> JobStatus | None:
         current = self.prepare(job_id)
@@ -198,11 +579,20 @@ class ExecutionCoordinator:
                 leases.append(lease)
             if not leases:
                 break
-            await asyncio.gather(
-                *(self.execute_lease(lease) for lease in leases)
-            )
+            await asyncio.gather(*(self.execute_lease(lease) for lease in leases))
 
+        # The bundled Amazon Skill owns creative QA. Do not add a second Provider
+        # review call to the default execution path: even a read-only review would
+        # add latency and alter the original one-pass delivery protocol. The durable
+        # review service remains available for an explicitly requested diagnostic run.
         return self.finalize_job(job_id)
+
+    def _is_amazon_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job_type = session.scalar(
+                select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
+            )
+            return job_type == JobType.AMAZON_VISUAL_SUITE.value
 
     def prepare(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
@@ -388,15 +778,34 @@ class ExecutionCoordinator:
             if int(active or 0) >= self.max_concurrency:
                 return None
 
-            item = session.scalar(
-                select(JobItemRecord)
-                .where(
-                    JobItemRecord.job_id == job.id,
-                    JobItemRecord.status.in_(
-                        [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
-                    ),
+            item_query = select(JobItemRecord).where(
+                JobItemRecord.job_id == job.id,
+                JobItemRecord.status.in_(
+                    [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
+                ),
+            )
+            if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+                active_ordinal = session.scalar(
+                    select(func.min(JobItemRecord.ordinal)).where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status.in_(
+                            [
+                                JobItemStatus.PENDING.value,
+                                JobItemStatus.QUEUED.value,
+                                JobItemStatus.RUNNING.value,
+                            ]
+                        ),
+                    )
                 )
-                .order_by(JobItemRecord.ordinal)
+                if active_ordinal is None:
+                    return None
+                lower, upper = _amazon_group_ordinal_bounds(int(active_ordinal))
+                item_query = item_query.where(
+                    JobItemRecord.ordinal >= lower,
+                    JobItemRecord.ordinal <= upper,
+                )
+            item = session.scalar(
+                item_query.order_by(JobItemRecord.ordinal)
                 .limit(1)
                 .with_for_update(skip_locked=True)
             )
@@ -480,9 +889,7 @@ class ExecutionCoordinator:
         item.state_version += 1
         return None, True
 
-    def _new_attempt(
-        self, job: JobRecord, item: JobItemRecord
-    ) -> JobAttemptRecord:
+    def _new_attempt(self, job: JobRecord, item: JobItemRecord) -> JobAttemptRecord:
         attempt_no = item.attempt_count
         return JobAttemptRecord(
             id=new_id("attempt"),
@@ -575,10 +982,7 @@ class ExecutionCoordinator:
         metrics = dict(metrics_value) if isinstance(metrics_value, dict) else {}
         metrics["mock_artifact_discarded"] = bool(
             metrics.get("mock_artifact_discarded")
-        ) or (
-            result.artifact is not None
-            or result.persisted_artifact is not None
-        )
+        ) or (result.artifact is not None or result.persisted_artifact is not None)
         raw_usage["metrics"] = metrics
         return replace(
             result,
@@ -632,8 +1036,7 @@ class ExecutionCoordinator:
                 outcome=ProviderOutcome.FAILED,
                 error_code="OUTPUT_STORAGE_FAILED",
                 error_message=(
-                    "Generated output could not be stored "
-                    f"({type(exc).__name__})."
+                    f"Generated output could not be stored ({type(exc).__name__})."
                 ),
                 retryable=False,
                 artifact=None,
@@ -732,9 +1135,7 @@ class ExecutionCoordinator:
                     JobAttemptRecord.status.in_(ACTIVE_ATTEMPT_STATUSES),
                     JobAttemptRecord.lease_expires_at > now,
                 )
-                .values(
-                    lease_expires_at=now + timedelta(seconds=self.lease_seconds)
-                )
+                .values(lease_expires_at=now + timedelta(seconds=self.lease_seconds))
                 .returning(JobAttemptRecord.id)
             )
             session.commit()
@@ -757,9 +1158,10 @@ class ExecutionCoordinator:
             )
             if job is None or item is None or attempt is None:
                 return False
-            if JobStatus(job.status) in TERMINAL_JOB_STATUSES or JobStatus(
-                job.status
-            ) == JobStatus.CANCELLING:
+            if (
+                JobStatus(job.status) in TERMINAL_JOB_STATUSES
+                or JobStatus(job.status) == JobStatus.CANCELLING
+            ):
                 return False
             if (
                 attempt.lease_token != lease.lease_token
@@ -808,8 +1210,7 @@ class ExecutionCoordinator:
                 )
                 if (
                     limits is None
-                    or int(used_bytes or 0)
-                    + result.persisted_artifact.byte_size
+                    or int(used_bytes or 0) + result.persisted_artifact.byte_size
                     > limits.storage_quota_bytes
                 ):
                     result = replace(
@@ -839,10 +1240,15 @@ class ExecutionCoordinator:
                 item.error_details = None
             elif result.outcome == ProviderOutcome.FAILED:
                 attempt.status = AttemptStatus.FAILED.value
-                should_retry = (
-                    job.type == JobType.DETAIL_PACK.value
-                    and result.retryable
-                    and attempt.attempt_no <= self.max_detail_retries
+                should_retry = bool(result.retryable) and (
+                    (
+                        job.type == JobType.DETAIL_PACK.value
+                        and attempt.attempt_no <= self.max_detail_retries
+                    )
+                    or (
+                        job.type == JobType.AMAZON_VISUAL_SUITE.value
+                        and attempt.attempt_no <= self.max_amazon_retries
+                    )
                 )
                 item.status = (
                     JobItemStatus.PENDING.value
@@ -859,23 +1265,17 @@ class ExecutionCoordinator:
                 item.error_message = result.error_message
                 metrics_value = result.raw_usage.get("metrics")
                 failure_metrics = (
-                    dict(metrics_value)
-                    if isinstance(metrics_value, dict)
-                    else {}
+                    dict(metrics_value) if isinstance(metrics_value, dict) else {}
                 )
                 delivery_status = failure_metrics.get("delivery_status")
                 item.error_details = {
                     "retryable": bool(result.retryable),
-                    "needs_reselection": bool(
-                        failure_metrics.get("needs_reselection")
-                    )
+                    "needs_reselection": bool(failure_metrics.get("needs_reselection"))
                     or delivery_status == "needs_reselection_for_strict_lock",
                     "provider_outcome": result.outcome.value,
                 }
             item.finished_at = (
-                None
-                if item.status == JobItemStatus.PENDING.value
-                else now
+                None if item.status == JobItemStatus.PENDING.value else now
             )
             item.state_version += 1
 
@@ -887,9 +1287,7 @@ class ExecutionCoordinator:
                 asset_id = new_id("asset")
                 metrics_value = result.raw_usage.get("metrics")
                 result_metrics = (
-                    dict(metrics_value)
-                    if isinstance(metrics_value, dict)
-                    else {}
+                    dict(metrics_value) if isinstance(metrics_value, dict) else {}
                 )
                 canonical_dimensions = _expected_delivery_dimensions(item, result)
                 session.add(
@@ -968,9 +1366,7 @@ class ExecutionCoordinator:
                             "visual_review_version": result_metrics.get(
                                 "visual_review_version"
                             ),
-                            "delivery_status": result_metrics.get(
-                                "delivery_status"
-                            ),
+                            "delivery_status": result_metrics.get("delivery_status"),
                             "perceptual_dhash": result.raw_usage.get(
                                 "perceptual_dhash"
                             ),
@@ -1101,10 +1497,10 @@ class ExecutionCoordinator:
                 return current
 
             count_rows = session.execute(
-                    select(JobItemRecord.status, func.count())
-                    .where(JobItemRecord.job_id == job.id)
-                    .group_by(JobItemRecord.status)
-                ).all()
+                select(JobItemRecord.status, func.count())
+                .where(JobItemRecord.job_id == job.id)
+                .group_by(JobItemRecord.status)
+            ).all()
             counts: dict[str, int] = {
                 item_status: int(count) for item_status, count in count_rows
             }
@@ -1148,6 +1544,7 @@ class ExecutionCoordinator:
             planner_known_cost = 0
             planner_cost = 0
             planner_real_calls = 0
+            latest_plan: JobPlanRecord | None = None
             if job.type in {
                 JobType.DETAIL_PACK.value,
                 JobType.AMAZON_VISUAL_SUITE.value,
@@ -1168,12 +1565,28 @@ class ExecutionCoordinator:
                         planner_cost,
                         planner_real_calls,
                     ) = planner_accounting(latest_plan.payload)
-            total_usage_count = usage_count + planner_count
-            total_known_cost = known_cost_count + planner_known_cost
+            review_calls = _amazon_review_calls(
+                session,
+                job,
+                latest_plan.payload if latest_plan is not None else None,
+            )
+            review_accounting = _amazon_review_accounting(review_calls)
+            total_usage_count = (
+                usage_count + planner_count + review_accounting.request_count
+            )
+            total_reported_count = (
+                int(reported_count)
+                + planner_reported
+                + review_accounting.reported_count
+            )
+            total_known_cost = (
+                known_cost_count
+                + planner_known_cost
+                + review_accounting.known_actual_cost_count
+            )
             job.actual_cost_micros = (
-                usage_cost + planner_cost
-                if total_usage_count
-                and total_known_cost == total_usage_count
+                usage_cost + planner_cost + review_accounting.actual_cost_micros
+                if total_usage_count and total_known_cost == total_usage_count
                 else None
             )
             job.actual_credits = 0 if usage_count else None
@@ -1186,14 +1599,14 @@ class ExecutionCoordinator:
             job.api_request_count = (
                 sum(usage_request_count(event) for event in real_usage_events)
                 + planner_real_calls
+                + review_accounting.real_request_count
             )
             job.usage_completeness = (
                 UsageCompleteness.COMPLETE.value
-                if total_usage_count
-                and reported_count + planner_reported == total_usage_count
+                if total_usage_count and total_reported_count == total_usage_count
                 else (
                     UsageCompleteness.PARTIAL.value
-                    if reported_count + planner_reported
+                    if total_reported_count
                     else UsageCompleteness.NONE.value
                 )
             )
@@ -1209,16 +1622,6 @@ class ExecutionCoordinator:
             else:
                 target = JobStatus.FAILED
             terminal_stage = target.value
-            if (
-                job.type == JobType.AMAZON_VISUAL_SUITE.value
-                and target == JobStatus.COMPLETED
-            ):
-                business_quality = _update_amazon_business_quality(session, job)
-                terminal_stage = (
-                    "completed_quality_failed"
-                    if business_quality == "failed"
-                    else "completed_needs_review"
-                )
             transition_job(job, target, stage=terminal_stage, progress=100)
             if job.type in {
                 JobType.DETAIL_PACK.value,
@@ -1227,6 +1630,7 @@ class ExecutionCoordinator:
                 from .xinghe_agent import update_job_metrics
 
                 update_job_metrics(session, job)
+            _settle_amazon_provider_quota(session, job, review_calls)
             settle_credits(session, job, job.actual_credits or 0)
             session.commit()
             return target
@@ -1281,8 +1685,6 @@ class ExecutionCoordinator:
         return self.finalize_job(job_id)
 
 
-
-
 def _output_asset_role(job_type: str) -> str:
     return {
         JobType.LOCAL_EDIT.value: "local_edit_result",
@@ -1294,138 +1696,13 @@ def _output_asset_role(job_type: str) -> str:
     }.get(job_type, "generated_image")
 
 
-def _update_amazon_business_quality(
-    session: Session,
-    job: JobRecord,
-) -> str:
-    """Persist technical-vs-business delivery state without hiding artifacts."""
-
-    from .amazon_visual_suite_provider import AMAZON_PLANNING_POLICY_VERSION
-
-    plan = session.scalar(
-        select(JobPlanRecord)
-        .where(JobPlanRecord.job_id == job.id)
-        .order_by(JobPlanRecord.revision.desc())
-        .limit(1)
-        .with_for_update()
-    )
-    if plan is None:
-        return "failed"
-    output_rows = session.execute(
-        select(
-            JobItemRecord.item_key,
-            AssetRecord.sha256,
-            JobAssetRecord.validation,
-        )
-        .join(JobAssetRecord, JobAssetRecord.job_item_id == JobItemRecord.id)
-        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
-        .where(
-            JobAssetRecord.job_id == job.id,
-            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
-            JobAssetRecord.is_deliverable.is_(True),
-        )
-        .order_by(JobItemRecord.ordinal)
-    ).all()
-    input_rows = session.execute(
-        select(JobAssetRecord.role, JobAssetRecord.ordinal, AssetRecord.sha256)
-        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
-        .where(
-            JobAssetRecord.job_id == job.id,
-            JobAssetRecord.direction == JobAssetDirection.INPUT.value,
-        )
-        .order_by(JobAssetRecord.role, JobAssetRecord.ordinal)
-    ).all()
-    hashes = [sha256 for _, sha256, _ in output_rows]
-    duplicate_hashes = sorted(
-        {sha256 for sha256 in hashes if hashes.count(sha256) > 1}
-    )
-    findings: list[dict[str, Any]] = []
-    if duplicate_hashes:
-        findings.append(
-            {
-                "code": "AMAZON_EXACT_DUPLICATE_OUTPUT",
-                "severity": "failed",
-                "count": len(duplicate_hashes),
-            }
-        )
-    perceptual_rows = [
-        (item_key, sha256, validation.get("perceptual_dhash"))
-        for item_key, sha256, validation in output_rows
-        if isinstance(validation, dict)
-        and isinstance(validation.get("perceptual_dhash"), str)
-        and len(validation["perceptual_dhash"]) == 16
-    ]
-    near_duplicate_pairs: list[list[str]] = []
-    for index, (left_key, left_sha, left_hash) in enumerate(perceptual_rows):
-        for right_key, right_sha, right_hash in perceptual_rows[index + 1 :]:
-            if left_sha == right_sha:
-                continue
-            try:
-                distance = (
-                    int(cast(str, left_hash), 16)
-                    ^ int(cast(str, right_hash), 16)
-                ).bit_count()
-            except ValueError:
-                continue
-            if distance <= 4:
-                near_duplicate_pairs.append([left_key, right_key])
-    if near_duplicate_pairs:
-        findings.append(
-            {
-                "code": "AMAZON_PERCEPTUAL_NEAR_DUPLICATE_OUTPUT",
-                "severity": "needs_review",
-                "pairs": near_duplicate_pairs[:20],
-                "threshold": 4,
-            }
-        )
-    findings.append(
-        {
-            "code": "AMAZON_PRODUCT_IDENTITY_MANUAL_REVIEW_REQUIRED",
-            "severity": "needs_review",
-            "message": (
-                "Product identity is locked in planning and prompts but cannot be "
-                "proven by deterministic file checks alone."
-            ),
-        }
-    )
-    quality_status = "failed" if duplicate_hashes else "needs_review"
-    payload = dict(plan.payload)
-    payload["business_quality"] = {
-        "status": quality_status,
-        "policy_version": AMAZON_PLANNING_POLICY_VERSION,
-        "technical_delivery_status": "completed",
-        "manual_review_required": True,
-        "automatic_redraw_enabled": False,
-        "input_asset_set_hash": canonical_hash(
-            [
-                {"role": role, "ordinal": ordinal, "sha256": sha256}
-                for role, ordinal, sha256 in input_rows
-            ]
-        ),
-        "output_asset_set_hash": canonical_hash(
-            [
-                {"item_key": item_key, "sha256": sha256}
-                for item_key, sha256, _ in output_rows
-            ]
-        ),
-        "deterministic_findings": findings,
-        "reviewed_at": None,
-        "reviewed_by": None,
-    }
-    plan.payload = payload
-    plan.payload_hash = canonical_hash(payload)
-    return quality_status
-
-
 def _expected_delivery_dimensions(
     item: JobItemRecord,
     result: ProviderResult,
 ) -> tuple[int, int] | None:
     """Resolve the immutable per-item output contract at the final DB boundary."""
 
-    configuration = (
-        item.configuration if isinstance(item.configuration, dict) else {}
-    )
+    configuration = item.configuration if isinstance(item.configuration, dict) else {}
     size = configuration.get("size")
     if isinstance(size, str) and re.fullmatch(r"[1-9]\d*x[1-9]\d*", size):
         width_text, height_text = size.split("x", maxsplit=1)
@@ -1617,6 +1894,7 @@ def build_fake_coordinator(
             ),
         }
     else:
+
         def single_image_delegate(
             enabled: bool,
             operation: str,
@@ -1683,16 +1961,40 @@ def build_fake_coordinator(
         new_routes,
         domestic_detail_provider=domestic_detail_provider,
     )
+    amazon_suite_reviewer = None
+    if storage is not None:
+        from .amazon_visual_quality import AmazonSuiteQualityService
+
+        amazon_suite_reviewer = AmazonSuiteQualityService(
+            session_factory,
+            gateway,
+            storage,
+            skill_root=amazon_skill_root,
+            manifest_validator=manifest_validator.validate,
+            max_review_rounds=1,
+        )
     return ExecutionCoordinator(
         session_factory,
         provider,
         detail_planner=routed_planner,
         max_concurrency=xinghe_concurrency,
-        # Product-wide consistency failures require explicit user-approved retry;
-        # never redraw a page automatically after the Provider boundary.
+        # Detail-pack behavior remains unchanged. Amazon follows its own Skill
+        # incomplete-execution and regenerate-on-invalid-output contract.
         max_detail_retries=0,
+        max_amazon_retries=2,
         artifact_storage=storage,
+        amazon_suite_reviewer=amazon_suite_reviewer,
     )
+
+
+def _amazon_group_ordinal_bounds(ordinal: int) -> tuple[int, int]:
+    if ordinal <= 0:
+        return 0, 0
+    if ordinal <= 6:
+        return 1, 6
+    if ordinal <= 13:
+        return 7, 13
+    return 14, 20
 
 
 def _lease_expired(expires_at: datetime, now: datetime) -> bool:

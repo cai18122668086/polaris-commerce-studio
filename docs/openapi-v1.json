@@ -52,6 +52,12 @@
       },
       "AmazonVisualSuiteConfiguration": {
         "properties": {
+          "a_plus_copy": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "A Plus Copy",
+            "type": "string"
+          },
           "brand_colors": {
             "items": {
               "type": "string"
@@ -68,11 +74,45 @@
             "title": "Bullet Points",
             "type": "array"
           },
+          "category": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Category",
+            "type": "string"
+          },
+          "certifications_or_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Certifications Or Evidence",
+            "type": "array"
+          },
+          "forbidden_claims": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Forbidden Claims",
+            "type": "array"
+          },
+          "instruction": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
           "language": {
             "default": "en-US",
             "maxLength": 16,
             "minLength": 2,
             "title": "Language",
+            "type": "string"
+          },
+          "listing_description": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Listing Description",
             "type": "string"
           },
           "listing_title": {
@@ -87,10 +127,40 @@
             "title": "Marketplace",
             "type": "string"
           },
+          "parameters": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Parameters",
+            "type": "array"
+          },
+          "product_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Product Facts",
+            "type": "array"
+          },
           "product_name": {
             "default": "",
             "maxLength": 160,
             "title": "Product Name",
+            "type": "string"
+          },
+          "style_preferences": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Style Preferences",
+            "type": "array"
+          },
+          "target_buyer": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Target Buyer",
             "type": "string"
           }
         },
@@ -107,6 +177,14 @@
             "title": "Brand Asset Ids",
             "type": "array"
           },
+          "competitor_reference_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Competitor Reference Asset Ids",
+            "type": "array"
+          },
           "detail_asset_ids": {
             "items": {
               "type": "string"
@@ -121,6 +199,14 @@
             },
             "maxItems": 8,
             "title": "Package Asset Ids",
+            "type": "array"
+          },
+          "reference_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Reference Asset Ids",
             "type": "array"
           },
           "scene_asset_ids": {

@@ -26,6 +26,7 @@ import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import type { Asset } from "@/lib/api/types";
 import { formatDate } from "@/lib/jobs/presentation";
+import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 
 function AssetCard({
   asset,
@@ -116,7 +117,7 @@ export default function AssetsPage() {
             ref={fileInput}
             className="visually-hidden"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={IMAGE_UPLOAD_ACCEPT}
             onChange={(event) => onFile(event.target.files?.[0])}
           />
         </div>
@@ -174,7 +175,7 @@ export default function AssetsPage() {
           <div className="asset-grid">
             <button className="upload-asset-card" onClick={chooseFile} disabled={!workspace || upload.isPending}>
               <span><Upload size={24} /></span><strong>上传新素材</strong>
-              <p>点击选择图片文件</p><small>JPG / PNG / WEBP · 服务端校验大小</small>
+              <p>点击选择图片文件</p><small>{IMAGE_UPLOAD_FORMAT_HINT}</small>
             </button>
             {assets.map((asset) => (
               <AssetCard key={asset.id} asset={asset} workspaceId={workspace!.id} selected={selected.includes(asset.id)} onToggle={() => toggleSelected(asset.id)} />

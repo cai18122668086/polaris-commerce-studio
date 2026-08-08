@@ -25,6 +25,7 @@ import { useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
+import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import type { ProductImageJobCreate } from "@/lib/api/types";
 import {
   PRODUCT_IMAGE_FEATURES,
@@ -88,7 +89,7 @@ function UploadPanel({
           {required ? <span>必填</span> : <span data-optional>可选</span>}
         </div>
         <p>{description}</p>
-        <small>{count ? `已选择 ${count} 张素材` : "支持 JPG、PNG、WebP"}</small>
+        <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
       </div>
       <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
         <button
@@ -116,7 +117,7 @@ function UploadPanel({
         ref={inputRef}
         className={styles.hiddenInput}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={IMAGE_UPLOAD_ACCEPT}
         multiple
         onChange={(event) => {
           const files = Array.from(event.currentTarget.files ?? []);

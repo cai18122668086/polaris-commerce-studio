@@ -349,13 +349,14 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
         errors.append(f"missing deployment files: {', '.join(missing)}")
         return errors, (0, 0.0)
 
+    approved_compose = {"compose.internal.yml", "compose.production.yml"}
     forbidden_compose = sorted(
         path.name
         for path in deploy.glob("compose*.yml")
-        if path.name != "compose.internal.yml"
+        if path.name not in approved_compose
     )
     if forbidden_compose:
-        errors.append("real-provider or alternate compose files are not allowed")
+        errors.append("unapproved real-provider or alternate compose files are not allowed")
 
 
     compose = read_text(deploy / "compose.internal.yml")

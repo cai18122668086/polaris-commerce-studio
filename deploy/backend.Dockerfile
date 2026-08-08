@@ -16,6 +16,7 @@ COPY backend/alembic.ini ./
 COPY backend/app ./app
 COPY backend/skill_sources ./skill_sources
 COPY backend/migrations ./migrations
+COPY backend/scripts/assign_workspace_owner.py ./scripts/assign_workspace_owner.py
 
 RUN groupadd --system --gid 10001 polaris \
     && useradd --system --uid 10001 --gid polaris --home-dir /app polaris \

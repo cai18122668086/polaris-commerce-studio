@@ -22,18 +22,28 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the finished product shell", async () => {
+test("server-renders the authentication gate for protected routes", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>首页｜极光商绘<\/title>/i);
-  assert.match(html, /一键直达任务/);
-  assert.match(html, /全品类/);
-  assert.match(html, /一句话改图/);
-  assert.match(html, /商品详情图/);
+  assert.match(html, /正在确认登录状态/);
+  assert.match(html, /安全地恢复你的会话/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/i);
+});
+
+test("server-renders the public login route", async () => {
+  const response = await render("/auth/login?returnTo=%2Fassets");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+
+  const html = await response.text();
+  assert.match(html, /欢迎回来/);
+  assert.match(html, /登录后继续使用你的电商图片工作台/);
+  assert.match(html, /忘记密码/);
+  assert.match(html, /免费注册/);
 });
 
 test("core product routes render", async () => {

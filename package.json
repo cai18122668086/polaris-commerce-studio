@@ -13,7 +13,7 @@
     "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
-    "api:export": "uv run --project backend python backend/scripts/export_openapi.py docs/openapi-v1.json",
+    "api:export": "python backend/scripts/export_openapi.py docs/openapi-v1.json",
     "api:generate": "openapi-typescript docs/openapi-v1.json -o lib/api/generated/openapi.d.ts",
     "api:check": "npm run api:export && npm run api:generate && git diff --exit-code -- docs/openapi-v1.json lib/api/generated/openapi.d.ts",
     "db:generate": "drizzle-kit generate"

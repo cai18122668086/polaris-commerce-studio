@@ -610,8 +610,15 @@ export interface components {
         };
         /** CurrentUserResponse */
         CurrentUserResponse: {
+            /** Display Name */
+            display_name: string | null;
+            /** Email */
+            email: string | null;
+            /** Email Verified */
+            email_verified: boolean;
             /** Id */
             id: string;
+            status: components["schemas"]["UserStatus"];
         };
         /** DetailPackConfiguration */
         DetailPackConfiguration: {
@@ -1164,6 +1171,11 @@ export interface components {
          * @enum {string}
          */
         UsageCompleteness: "none" | "partial" | "complete";
+        /**
+         * UserStatus
+         * @enum {string}
+         */
+        UserStatus: "active" | "suspended" | "deleted";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1197,9 +1209,7 @@ export interface operations {
     current_user_api_v1_me_get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1214,23 +1224,12 @@ export interface operations {
                     "application/json": components["schemas"]["CurrentUserResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_runtime_status_api_v1_runtime_get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1254,23 +1253,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_workspaces_api_v1_workspaces_get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1285,23 +1273,12 @@ export interface operations {
                     "application/json": components["schemas"]["WorkspaceResponse"][];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_workspace_api_v1_workspaces__workspace_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 workspace_id: string;
             };
@@ -1338,9 +1315,7 @@ export interface operations {
                 cursor?: string | null;
                 include_total?: boolean;
             };
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 workspace_id: string;
             };
@@ -1373,7 +1348,6 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
-                "X-User-Id"?: string | null;
             };
             path: {
                 workspace_id: string;
@@ -1409,9 +1383,7 @@ export interface operations {
     get_asset_api_v1_workspaces__workspace_id__assets__asset_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 asset_id: string;
                 workspace_id: string;
@@ -1443,9 +1415,7 @@ export interface operations {
     create_asset_access_url_api_v1_workspaces__workspace_id__assets__asset_id__access_url_post: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 asset_id: string;
                 workspace_id: string;
@@ -1487,9 +1457,7 @@ export interface operations {
                 cursor?: string | null;
                 include_total?: boolean;
             };
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 workspace_id: string;
             };
@@ -1522,7 +1490,6 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
-                "X-User-Id"?: string | null;
             };
             path: {
                 workspace_id: string;
@@ -1558,9 +1525,7 @@ export interface operations {
     get_job_api_v1_workspaces__workspace_id__jobs__job_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 job_id: string;
                 workspace_id: string;
@@ -1592,9 +1557,7 @@ export interface operations {
     update_draft_job_api_v1_workspaces__workspace_id__jobs__job_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 job_id: string;
                 workspace_id: string;
@@ -1632,7 +1595,6 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
-                "X-User-Id"?: string | null;
             };
             path: {
                 job_id: string;
@@ -1671,7 +1633,6 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
-                "X-User-Id"?: string | null;
             };
             path: {
                 job_id: string;
@@ -1704,9 +1665,7 @@ export interface operations {
     download_job_deliverables_api_v1_workspaces__workspace_id__jobs__job_id__deliverables_zip_get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 job_id: string;
                 workspace_id: string;
@@ -1738,9 +1697,7 @@ export interface operations {
     update_plan_api_v1_workspaces__workspace_id__jobs__job_id__plan_put: {
         parameters: {
             query?: never;
-            header?: {
-                "X-User-Id"?: string | null;
-            };
+            header?: never;
             path: {
                 job_id: string;
                 workspace_id: string;
@@ -1778,7 +1735,6 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
-                "X-User-Id"?: string | null;
             };
             path: {
                 job_id: string;
@@ -1817,7 +1773,6 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
-                "X-User-Id"?: string | null;
             };
             path: {
                 job_id: string;
@@ -1856,7 +1811,6 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
-                "X-User-Id"?: string | null;
             };
             path: {
                 job_id: string;

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useQuery } from "@tanstack/react-query";
 
@@ -19,8 +19,18 @@ export function useWorkspace() {
     staleTime: 5 * 60_000,
   });
 
+  const workspace = query.isSuccess ? query.data[0] ?? null : undefined;
+
   return {
     ...query,
-    workspace: query.data?.[0] ?? null,
+    workspace,
+    isEmpty: query.isSuccess && query.data.length === 0,
+    workspaceState: query.isPending
+      ? ("loading" as const)
+      : query.isError
+        ? ("error" as const)
+        : query.data.length === 0
+          ? ("empty" as const)
+          : ("ready" as const),
   };
 }

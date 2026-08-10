@@ -48,9 +48,24 @@ class Settings(BaseSettings):
     app_version: str = "1.1.0"
     environment: Literal["development", "test", "production"] = "development"
     auth_mode: Literal["development", "external"] = "development"
+    supertokens_connection_uri: str = "http://localhost:3567"
+    supertokens_api_key: SecretStr = SecretStr("")
+    supertokens_api_domain: str = "https://www.tengliapi.xyz"
+    supertokens_website_domain: str = "https://www.tengliapi.xyz"
+    supertokens_api_base_path: str = "/api/auth"
+    supertokens_website_base_path: str = "/auth"
+    supertokens_cookie_secure: bool = True
+    supertokens_cookie_same_site: Literal["lax", "none", "strict"] = "lax"
+    auth_smtp_host: str = ""
+    auth_smtp_port: int = Field(default=587, ge=1, le=65535)
+    auth_smtp_username: str = ""
+    auth_smtp_password: SecretStr = SecretStr("")
+    auth_smtp_secure: bool = False
+    auth_email_from_name: str = "Polaris Commerce Studio"
+    auth_email_from_address: str = ""
     development_user_id: str = "usr_development"
     development_workspace_id: str = "ws_development"
-    development_workspace_name: str = "?????"
+    development_workspace_name: str = "开发工作区"
     access_url_secret: str = "development-access-url-secret-change-me"
     database_url: str = (
         "postgresql+psycopg://polaris:polaris_dev_only@localhost:5432/polaris"
@@ -133,15 +148,44 @@ class Settings(BaseSettings):
         return value
 
     def validate_runtime_safety(self) -> None:
+        required_smtp = {
+            "POLARIS_AUTH_SMTP_HOST": self.auth_smtp_host,
+            "POLARIS_AUTH_SMTP_USERNAME": self.auth_smtp_username,
+            "POLARIS_AUTH_SMTP_PASSWORD": self.auth_smtp_password.get_secret_value(),
+            "POLARIS_AUTH_EMAIL_FROM_ADDRESS": self.auth_email_from_address,
+        }
+        smtp_configured = any(required_smtp.values())
+        missing_smtp = [name for name, value in required_smtp.items() if not value]
+        if smtp_configured and missing_smtp:
+            raise RuntimeError(
+                "transaction email configuration is incomplete: "
+                + ", ".join(missing_smtp)
+            )
         if self.environment != "production":
             return
         if self.auth_mode == "development":
-            raise RuntimeError("???????? development ?????")
+            raise RuntimeError(
+                "production must not use development authentication mode"
+            )
+        if not self.supertokens_cookie_secure:
+            raise RuntimeError("production SuperTokens cookies must use Secure")
+        if not self.supertokens_api_domain.startswith("https://"):
+            raise RuntimeError("production SuperTokens API domain must use HTTPS")
+        if not self.supertokens_website_domain.startswith("https://"):
+            raise RuntimeError("production SuperTokens website domain must use HTTPS")
+        if not self.supertokens_api_key.get_secret_value():
+            raise RuntimeError("production SuperTokens Core API key is required")
+        if not smtp_configured:
+            raise RuntimeError("production transaction email SMTP is required")
         forbidden_secrets = {
             "polaris_minio_dev_only",
             "development-access-url-secret-change-me",
         }
         if self.s3_secret_key in forbidden_secrets:
-            raise RuntimeError("?????????????????")
+            raise RuntimeError(
+                "production S3 secret key must not use a development placeholder"
+            )
         if self.access_url_secret in forbidden_secrets:
-            raise RuntimeError("????????????? URL ?????")
+            raise RuntimeError(
+                "production access URL secret must not use a development placeholder"
+            )

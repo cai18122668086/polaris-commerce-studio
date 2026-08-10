@@ -1,8 +1,12 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Annotated, Any
 
-from fastapi import Depends, Header, Request, status
+from fastapi import Depends, Request, Security, status
+from fastapi.security import APIKeyCookie
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .database import get_session
@@ -20,11 +24,33 @@ from .models import (
     WorkspaceMemberRecord,
     WorkspaceRecord,
 )
+from .onboarding import ensure_personal_workspace
+from .supertokens_auth import (
+    ExternalAuthenticationError,
+    ExternalAuthenticationUnavailable,
+    ExternalEmailNotVerifiedError,
+    ExternalIdentity,
+)
+
+_EXTERNAL_AUTH_PROVIDER = "supertokens"
+_MAX_JIT_ATTEMPTS = 3
+_SESSION_COOKIE = APIKeyCookie(
+    name="sAccessToken",
+    scheme_name="SuperTokensSession",
+    description=(
+        "SuperTokens HttpOnly session cookie managed by the authentication SDK."
+    ),
+    auto_error=False,
+)
 
 
 @dataclass(frozen=True)
 class Principal:
     user_id: str
+    email: str | None = None
+    display_name: str | None = None
+    status: UserStatus = UserStatus.ACTIVE
+    email_verified: bool = True
 
 
 @dataclass(frozen=True)
@@ -95,18 +121,132 @@ def ensure_development_identity(request: Any) -> None:
         session.commit()
 
 
-def get_principal(
+def _normalize_email(email: str) -> str:
+    return email.strip().casefold()
+
+
+def _local_user_id(primary_user_id: str) -> str:
+    digest = sha256(primary_user_id.encode("utf-8")).hexdigest()[:32]
+    return f"usr_st_{digest}"
+
+
+def _load_external_user(session: Session, primary_user_id: str) -> UserRecord | None:
+    return session.scalar(
+        select(UserRecord).where(
+            UserRecord.auth_provider == _EXTERNAL_AUTH_PROVIDER,
+            UserRecord.auth_subject == primary_user_id,
+        )
+    )
+
+
+def _ensure_external_user(
+    session: Session,
+    identity: ExternalIdentity,
+) -> UserRecord:
+    normalized_email = _normalize_email(identity.email)
+    for attempt in range(_MAX_JIT_ATTEMPTS):
+        user = _load_external_user(session, identity.primary_user_id)
+        if user is not None:
+            if user.email_normalized != normalized_email:
+                user.email_normalized = normalized_email
+            return user
+        try:
+            with session.begin_nested():
+                user = UserRecord(
+                    id=_local_user_id(identity.primary_user_id),
+                    auth_provider=_EXTERNAL_AUTH_PROVIDER,
+                    auth_subject=identity.primary_user_id,
+                    email_normalized=normalized_email,
+                    status=UserStatus.ACTIVE.value,
+                    last_login_at=datetime.now(UTC),
+                )
+                session.add(user)
+                session.flush()
+                return user
+        except IntegrityError:
+            session.expire_all()
+            if attempt + 1 == _MAX_JIT_ATTEMPTS:
+                raise
+
+    raise RuntimeError("external user provisioning attempts exhausted")
+
+
+def _principal_from_user(user: UserRecord, *, email_verified: bool) -> Principal:
+    return Principal(
+        user_id=user.id,
+        email=user.email_normalized,
+        display_name=user.display_name,
+        status=UserStatus(user.status),
+        email_verified=email_verified,
+    )
+
+
+async def get_principal(
     request: Request,
-    x_user_id: Annotated[str | None, Header(alias="X-User-Id")] = None,
+    session: SessionDependency,
+    _session_cookie: Annotated[
+        str | None, Security(_SESSION_COOKIE)
+    ] = None,
 ) -> Principal:
     settings = request.app.state.settings
     if settings.auth_mode == "development":
-        return Principal(user_id=x_user_id or settings.development_user_id)
-    raise ApiError(
-        status.HTTP_401_UNAUTHORIZED,
-        "UNAUTHENTICATED",
-        "请求未通过身份认证。",
-    )
+        user_id = request.headers.get("X-User-Id") or settings.development_user_id
+        user = session.get(UserRecord, user_id)
+        if user is None:
+            return Principal(user_id=user_id)
+        return _principal_from_user(user, email_verified=True)
+
+    auth_backend = request.app.state.external_auth_backend
+    try:
+        identity = await auth_backend.authenticate(request)
+    except ExternalEmailNotVerifiedError as exc:
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "EMAIL_NOT_VERIFIED",
+            "请先完成邮箱验证。",
+        ) from exc
+    except ExternalAuthenticationError as exc:
+        raise ApiError(
+            status.HTTP_401_UNAUTHORIZED,
+            "UNAUTHENTICATED",
+            "请求未通过身份认证。",
+        ) from exc
+    except ExternalAuthenticationUnavailable as exc:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "AUTHENTICATION_UNAVAILABLE",
+            "身份认证服务暂时不可用。",
+        ) from exc
+
+    if not identity.email_verified:
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "EMAIL_NOT_VERIFIED",
+            "请先完成邮箱验证。",
+        )
+
+    try:
+        user = _ensure_external_user(session, identity)
+        if user.status != UserStatus.ACTIVE.value:
+            session.rollback()
+            raise ApiError(
+                status.HTTP_403_FORBIDDEN,
+                "ACCOUNT_DISABLED",
+                "当前账户已被停用。",
+            )
+        ensure_personal_workspace(session, user)
+        session.commit()
+    except ApiError:
+        raise
+    except SQLAlchemyError as exc:
+        session.rollback()
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "IDENTITY_PROVISIONING_FAILED",
+            "用户初始化暂时失败，请稍后重试。",
+        ) from exc
+
+    return _principal_from_user(user, email_verified=True)
 
 
 def require_workspace(

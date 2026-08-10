@@ -18,6 +18,7 @@ const routes = [
   "/dashboard",
   "/workspace/local-edit",
   "/workspace/detail-pack",
+  "/auth/login",
 ];
 
 test("production server serves every compiled module and stylesheet", async () => {
@@ -70,7 +71,7 @@ test("production server serves every compiled module and stylesheet", async () =
     assert.equal(businessRoute.status, 200);
     assert.match(businessRoute.headers.get("content-type") ?? "", /^text\/html\b/i);
 
-    await assertBrowserFocusContract(`http://${host}:${port}`);
+    await assertBrowserAuthContract(`http://${host}:${port}`);
   } finally {
     await stopProcessTree(child);
   }
@@ -149,11 +150,11 @@ function assertNamedInteractiveControls(html, route) {
   }
 }
 
-async function assertBrowserFocusContract(origin) {
+async function assertBrowserAuthContract(origin) {
   const executable = findBrowserExecutable();
   assert.ok(
     executable,
-    "A Chromium browser is required for the production focus regression",
+    "A Chromium browser is required for the production authentication regression",
   );
   const debugPort = await reservePort();
   const profile = await mkdtemp(path.join(os.tmpdir(), "polaris-browser-"));
@@ -192,60 +193,23 @@ async function assertBrowserFocusContract(origin) {
     });
 
     await navigate(cdp, `${origin}/assets`);
-    await waitForValue(
-      cdp,
-      `document.querySelector(".task-trigger")?.getAttribute("aria-label")?.includes("任务中心")`,
-    );
-    const triggerName = await accessibleName(cdp, "button", "任务中心");
-    assert.match(triggerName, /任务中心/);
-    assert.match(triggerName, /\d+/);
-    assert.doesNotMatch(triggerName.trim(), /^\d+$/);
-    assert.equal(await inputLabel(cdp, "#asset-search"), "搜索素材");
-
-    await evaluate(
-      cdp,
-      `(() => {
-        const trigger = document.querySelector(".task-trigger");
-        trigger.focus();
-        trigger.click();
-        return true;
-      })()`,
+    await waitForValue(cdp, `location.pathname === "/auth/login"`);
+    assert.equal(
+      await evaluate(
+        cdp,
+        `new URL(location.href).searchParams.get("returnTo")`,
+      ),
+      "/assets",
     );
     await waitForValue(
       cdp,
-      `document.activeElement?.getAttribute("aria-label") === "关闭任务抽屉" && document.querySelector("#task-drawer")?.classList.contains("open")`,
+      `document.querySelector("#auth-title")?.textContent === "欢迎回来"`,
     );
-    assert.equal(await accessibleName(cdp, "dialog", "创作进度"), "创作进度");
-    await evaluate(
-      cdp,
-      `document.querySelector("#task-drawer .drawer-head button")?.click()`,
-    );
-    await waitForTriggerFocus(cdp);
-
-    await openTaskDrawer(cdp);
-    await cdp.send("Input.dispatchKeyEvent", {
-      type: "keyDown",
-      key: "Escape",
-      code: "Escape",
-    });
-    await cdp.send("Input.dispatchKeyEvent", {
-      type: "keyUp",
-      key: "Escape",
-      code: "Escape",
-    });
-    await waitForTriggerFocus(cdp);
-
-    await openTaskDrawer(cdp);
-    await evaluate(cdp, `document.querySelector(".drawer-overlay")?.click()`);
-    await waitForTriggerFocus(cdp);
-
-    await navigate(cdp, `${origin}/jobs`);
-    assert.equal(await inputLabel(cdp, "#job-search"), "搜索任务");
-
-    for (const route of routes) {
-      await navigate(cdp, `${origin}${route}`);
-      await assertAccessibleInteractiveNames(cdp, route);
-    }
+    assert.equal(await accessibleName(cdp, "textbox", "邮箱"), "邮箱");
+    assert.equal(await accessibleName(cdp, "textbox", "密码"), "密码");
+    assert.equal(await accessibleName(cdp, "button", "登录"), "登录");
+    assert.match(await accessibleName(cdp, "link", "免费注册"), /免费注册/);
+    await assertAccessibleInteractiveNames(cdp, "/auth/login");
   } finally {
     cdp?.close();
     await stopProcessTree(browserProcess);
@@ -308,36 +272,6 @@ async function navigate(cdp, url) {
   const loaded = cdp.waitFor("Page.loadEventFired");
   await cdp.send("Page.navigate", { url });
   await loaded;
-}
-
-async function openTaskDrawer(cdp) {
-  await evaluate(
-    cdp,
-    `(() => {
-      const trigger = document.querySelector(".task-trigger");
-      trigger.focus();
-      trigger.click();
-      return true;
-    })()`,
-  );
-  await waitForValue(
-    cdp,
-    `document.activeElement?.getAttribute("aria-label") === "关闭任务抽屉"`,
-  );
-}
-
-async function waitForTriggerFocus(cdp) {
-  await waitForValue(
-    cdp,
-    `document.activeElement?.classList.contains("task-trigger") && document.querySelector(".task-trigger")?.getAttribute("aria-expanded") === "false"`,
-  );
-}
-
-async function inputLabel(cdp, selector) {
-  return evaluate(
-    cdp,
-    `document.querySelector(${JSON.stringify(selector)})?.labels?.[0]?.textContent?.trim()`,
-  );
 }
 
 async function accessibleName(cdp, role, includes) {

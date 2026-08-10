@@ -121,7 +121,13 @@ def test_health_identity_and_empty_collections(client: TestClient) -> None:
 
     assert live.status_code == 200
     assert ready.json()["checks"]["database"] == "ok"
-    assert me.json() == {"id": "usr_test"}
+    assert me.json() == {
+        "id": "usr_test",
+        "email": None,
+        "display_name": "Development User",
+        "status": "active",
+        "email_verified": True,
+    }
     assert workspaces.json()[0]["id"] == WORKSPACE_ID
     assert assets.json()["items"] == []
     assert jobs.json()["items"] == []

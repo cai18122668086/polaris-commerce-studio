@@ -21,6 +21,7 @@ from .storage import (
     LocalImageStorage,
     build_image_storage,
 )
+from .supertokens_auth import ExternalAuthBackend, SuperTokensAuthAdapter
 from .task_runner import build_task_runner, validate_task_runner_settings
 
 
@@ -37,7 +38,10 @@ def _serializable_validation_errors(
     return errors
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    external_auth_backend: ExternalAuthBackend | None = None,
+) -> FastAPI:
     app_settings = settings or Settings()
     app_settings.validate_runtime_safety()
     validate_task_runner_settings(app_settings)
@@ -45,6 +49,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     set_credit_enforcement_enabled(
         app_settings.workspace_credit_enforcement_enabled
     )
+    auth_backend = external_auth_backend
+    if app_settings.auth_mode == "external":
+        auth_backend = auth_backend or SuperTokensAuthAdapter(app_settings)
+        auth_backend.initialize()
     engine, session_factory = build_database(app_settings.database_url)
     storage: ImageStorage = build_image_storage(app_settings)
     validator = storage.validator
@@ -72,21 +80,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.storage = storage
     application.state.image_validator = validator
     application.state.task_runner = task_runner
+    application.state.external_auth_backend = auth_backend
     application.state.workspace_limits = lambda session, workspace_id: session.get(
         WorkspaceLimitRecord, workspace_id
     )
 
+    auth_cors_headers: list[str] = []
+    if auth_backend is not None:
+        auth_backend.install_middleware(application)
+        auth_cors_headers = auth_backend.cors_headers()
+    allowed_headers = [
+        "Content-Type",
+        "Idempotency-Key",
+        "X-Request-Id",
+    ]
+    if app_settings.auth_mode == "development":
+        allowed_headers.append("X-User-Id")
+    for header in auth_cors_headers:
+        if header not in allowed_headers:
+            allowed_headers.append(header)
+
     application.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.cors_origins,
-        allow_credentials=False,
+        allow_credentials=app_settings.auth_mode == "external",
         allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
-        allow_headers=[
-            "Content-Type",
-            "Idempotency-Key",
-            "X-User-Id",
-            "X-Request-Id",
-        ],
+        allow_headers=allowed_headers,
+        expose_headers=auth_cors_headers,
     )
 
     @application.middleware("http")
@@ -158,8 +178,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             checks["database"] = "failed"
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         if app_settings.auth_mode == "external":
-            checks["authentication"] = "not_configured"
-            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            authentication_ready = bool(auth_backend and auth_backend.is_ready())
+            checks["authentication"] = "ok" if authentication_ready else "failed"
+            if not authentication_ready:
+                response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return HealthResponse(
             status=(
                 "ok" if all(value == "ok" for value in checks.values()) else "degraded"

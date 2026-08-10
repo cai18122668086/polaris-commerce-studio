@@ -330,3 +330,73 @@ authorization.
 
 Record the rollback trigger, timestamps, image IDs, schema decision, restored
 manifest, verification results, and final listener/health state.
+
+## Public production authentication profile
+
+The public authentication profile is intentionally separate from the internal
+SSH-tunnel profile. Its authoritative runbook is
+`docs/production-auth-deployment-2026-08-08.md`.
+
+It provides:
+
+- SuperTokens Core `v12.0.10`, private on the backend network;
+- standard SMTP transaction email from
+  `Polaris Commerce Studio <no-reply@mail.tengliapi.xyz>`;
+- automatic HTTPS and same-origin routing for only
+  `https://www.tengliapi.xyz`;
+- public Caddy ports 80/443, with no other published service ports;
+- a server-local production env generator and fail-closed production preflight;
+- an explicitly packaged, single-workspace Owner assignment operator script.
+
+Production files:
+
+```text
+deploy/compose.production.yml
+deploy/Caddyfile.production
+deploy/.env.production.example
+deploy/generate_production_env.py
+deploy/production_preflight.py
+docs/production-auth-deployment-2026-08-08.md
+```
+
+Generate the protected env on the server, never on a workstation or in Git:
+
+```text
+sudo python3 deploy/generate_production_env.py \
+  --base-env /etc/polaris/polaris.env \
+  --output /etc/polaris/polaris.production.env \
+  --release-sha <REVIEWED_40_CHARACTER_SHA>
+```
+
+Run both safe preflight commands before any cutover:
+
+```text
+sudo python3 deploy/production_preflight.py \
+  --env-file /etc/polaris/polaris.production.env \
+  --base-env /etc/polaris/polaris.env
+
+sudo docker compose \
+  --env-file /etc/polaris/polaris.production.env \
+  -f deploy/compose.production.yml \
+  config --quiet
+```
+
+The production project explicitly reuses these existing data volumes:
+
+```text
+polaris-internal-staging_postgres_data
+polaris-internal-staging_redis_data
+polaris-internal-staging_minio_data
+```
+
+Therefore internal and production must never run concurrently. Perform a paired
+PostgreSQL + MinIO backup and restore drill, stop the internal project, confirm
+no container is using any shared volume, and only then start production with
+`--no-build --pull never`. Never use `down -v`, `docker volume prune`, or
+`docker system prune --volumes`.
+
+The production preflight preserves Provider semantics by comparing the generated
+env with `/etc/polaris/polaris.env`; it reports only names of changed Provider
+variables. This authentication profile does not authorize payment integration,
+changes to `backend/skill_sources/**`, Provider behavior, image-generation
+behavior, or Amazon protocol behavior.

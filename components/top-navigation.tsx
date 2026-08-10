@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useJobs } from "@/features/jobs/api/jobs";
+import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { getFeatureByRoute } from "@/lib/feature-registry";
 import {
@@ -52,6 +53,8 @@ export function TopNavigation({
   const pathname = usePathname();
   const currentFeature = getFeatureByRoute(pathname);
   const { workspace } = useWorkspace();
+  const currentUser = useCurrentAuthUser();
+  const accountLabel = authUserLabel(currentUser.data);
   const jobs = useJobs(workspace?.id, { limit: 20 });
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const desktopNavigationRef = useRef<HTMLElement>(null);
@@ -188,11 +191,16 @@ export function TopNavigation({
             <span>任务</span>
             <i>{activeCount}</i>
           </button>
-          <Link href="/dashboard" className="user-menu" aria-label="个人中心">
+          <Link
+            href="/account"
+            className="user-menu"
+            aria-label={`个人中心：${accountLabel}`}
+            title={accountLabel}
+          >
             <span className="avatar" aria-hidden="true">
               <UserRound size={17} />
             </span>
-            <span className="desktop-only">个人中心</span>
+            <span className="desktop-only">{accountLabel}</span>
           </Link>
         </div>
       </div>

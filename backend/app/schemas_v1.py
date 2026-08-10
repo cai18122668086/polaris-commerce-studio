@@ -17,6 +17,7 @@ from .domain import (
     MembershipRole,
     RetryScope,
     UsageCompleteness,
+    UserStatus,
 )
 
 
@@ -36,6 +37,10 @@ class CostSummary(BaseModel):
 
 class CurrentUserResponse(BaseModel):
     id: str
+    email: str | None
+    display_name: str | None
+    status: UserStatus
+    email_verified: bool
 
 
 class WorkspaceResponse(BaseModel):

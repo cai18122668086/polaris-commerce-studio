@@ -5,6 +5,12 @@ import Session from "supertokens-web-js/recipe/session";
 import { initializeAuthClient } from "@/lib/auth/client";
 
 export type AuthFieldError = { id: string; error: string };
+const PASSWORD_ERROR_MESSAGES: Record<string, string> = {
+  "Password must contain at least 8 characters, including a number": "密码至少需要 8 位，并包含至少一个数字。",
+  "Password's length must be lesser than 100 characters": "密码不能超过 99 位。",
+  "Password must contain at least one alphabet": "密码至少需要包含一个英文字母。",
+  "Password must contain at least one number": "密码至少需要包含一个数字。",
+};
 const initialise = () => initializeAuthClient();
 
 export async function sessionExists() { initialise(); return Session.doesSessionExist(); }
@@ -33,5 +39,5 @@ export function authErrorMessage(error: unknown, fallback = "请求未能完成�
   return error instanceof Error && error.message ? error.message : fallback;
 }
 export function fieldErrorsToMap(errors: AuthFieldError[]): Record<string, string> {
-  return Object.fromEntries(errors.map((field) => [field.id, field.error]));
+  return Object.fromEntries(errors.map((field) => [field.id, PASSWORD_ERROR_MESSAGES[field.error] ?? field.error]));
 }

@@ -23,6 +23,11 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
   const [consentError, setConsentError] = useState<string>();
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const showPasswordRequirements = password.length > 0;
+  const hasValidPasswordLength = password.length >= 8 && password.length < 100;
+  const hasPasswordAlphabet = /[A-Za-z]/.test(password);
+  const hasPasswordNumber = /[0-9]/.test(password);
+  const hasValidPassword = hasValidPasswordLength && hasPasswordAlphabet && hasPasswordNumber;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,6 +36,10 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
     setConsentError(undefined);
     if (!acceptedAgreements) {
       setConsentError("请先阅读并同意《用户协议》和《隐私政策》。");
+      return;
+    }
+    if (!hasValidPassword) {
+      setFieldErrors({ password: "密码不符合上述要求。" });
       return;
     }
     if (password !== confirmation) {
@@ -84,21 +93,45 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
         <span>密码</span>
         <input
           autoComplete="new-password"
-          minLength={8}
+          aria-describedby={showPasswordRequirements ? "registration-password-requirements" : undefined}
+          aria-invalid={showPasswordRequirements && !hasValidPassword}
+          maxLength={99}
           name="password"
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            if (fieldErrors.password) {
+              setFieldErrors((current) => ({ ...current, password: "" }));
+            }
+          }}
           required
           type="password"
           value={password}
         />
-        <small className="auth-field__hint">至少 8 位，建议使用未在其他网站使用过的密码。</small>
+        {showPasswordRequirements ? (
+          <ul
+            aria-label="密码要求"
+            aria-live="polite"
+            className="auth-password-rules"
+            id="registration-password-requirements"
+          >
+            <li className={hasValidPasswordLength ? "auth-password-rule--valid" : "auth-password-rule--invalid"}>
+              <span aria-hidden="true">{hasValidPasswordLength ? "✓" : "×"}</span>8 至 99 位
+            </li>
+            <li className={hasPasswordAlphabet ? "auth-password-rule--valid" : "auth-password-rule--invalid"}>
+              <span aria-hidden="true">{hasPasswordAlphabet ? "✓" : "×"}</span>至少包含一个英文字母
+            </li>
+            <li className={hasPasswordNumber ? "auth-password-rule--valid" : "auth-password-rule--invalid"}>
+              <span aria-hidden="true">{hasPasswordNumber ? "✓" : "×"}</span>至少包含一个数字
+            </li>
+          </ul>
+        ) : null}
         {fieldErrors.password ? <small className="auth-field__error">{fieldErrors.password}</small> : null}
       </label>
       <label className="auth-field">
         <span>确认密码</span>
         <input
           autoComplete="new-password"
-          minLength={8}
+          maxLength={99}
           name="confirmation"
           onChange={(event) => setConfirmation(event.target.value)}
           required

@@ -40,9 +40,11 @@ test("auth and legal routes are public and account does not require a workspace"
 });
 
 test("registration requires explicit agreement and opens legal documents without leaving the form", async () => {
-  const [registerForm, registerPage] = await Promise.all([
+  const [registerForm, registerPage, authApi, globalStyles] = await Promise.all([
     utf8("features/auth/components/register-form.tsx"),
     utf8("app/auth/register/page.tsx"),
+    utf8("features/auth/api/auth.ts"),
+    utf8("app/globals.css"),
   ]);
   assert.match(registerForm, /if \(!acceptedAgreements\)/);
   assert.doesNotMatch(registerForm, /acceptedCrossBorder/);
@@ -51,6 +53,16 @@ test("registration requires explicit agreement and opens legal documents without
   assert.ok(registerForm.indexOf("if (!acceptedAgreements)") < registerForm.indexOf("signUpWithEmailPassword(email, password)"));
   assert.match(registerForm, /target="_blank"/);
   assert.match(registerForm, /rel="noreferrer"/);
+  assert.match(registerForm, /password\.length > 0/);
+  assert.match(registerForm, /password\.length >= 8 && password\.length < 100/);
+  assert.match(registerForm, /\/\[A-Za-z\]\//);
+  assert.match(registerForm, /\/\[0-9\]\//);
+  assert.match(registerForm, /密码要求/);
+  assert.match(registerForm, /至少包含一个英文字母/);
+  assert.doesNotMatch(registerForm, /建议使用未在其他网站使用过的密码/);
+  assert.match(authApi, /"Password must contain at least one alphabet": "密码至少需要包含一个英文字母。"/);
+  assert.match(authApi, /"Password must contain at least one number": "密码至少需要包含一个数字。"/);
+  assert.match(globalStyles, /\.auth-password-rule--invalid/);
 });
 
 test("legal documents use confirmed operator details and actual data flows", async () => {

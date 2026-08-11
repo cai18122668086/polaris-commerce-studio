@@ -408,6 +408,8 @@ def test_real_local_edit_locks_every_outside_pixel_and_records_raw(
     assert len(gateway.masked_calls) == 1
     masked_request = gateway.masked_calls[0]
     assert masked_request.idempotency_key
+    assert "除非用户明确要求修改" in masked_request.prompt
+    assert "Logo、标签、文字、图案和其他标记" in masked_request.prompt
     with Image.open(BytesIO(masked_request.source_png)) as provider_source_image:
         provider_source = provider_source_image.convert("RGBA")
     with Image.open(BytesIO(masked_request.api_mask_png)) as api_mask_image:

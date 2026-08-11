@@ -1751,7 +1751,7 @@ class TengliOpenAICompatibleGateway:
         self,
         request: MaskedEditGatewayRequest,
     ) -> MaskedEditCallResult:
-        """Send Tengli a single source whose editable authority is transparent."""
+        """Send an editable canvas plus an unchanged identity reference."""
 
         estimated_cost = (
             self.high_price_micros
@@ -1759,7 +1759,7 @@ class TengliOpenAICompatibleGateway:
             else self.medium_price_micros
         )
         try:
-            source_with_hole = _tengli_transparent_hole_png(
+            editable_source = _provider_transparent_hole_png(
                 request.source_png,
                 request.api_mask_png,
             )
@@ -1773,7 +1773,13 @@ class TengliOpenAICompatibleGateway:
                 ("response_format", "b64_json"),
             ]
             files = [
-                ("image", "source.png", "image/png", source_with_hole),
+                ("image", "editable.png", "image/png", editable_source),
+                (
+                    "image",
+                    "source_reference.png",
+                    "image/png",
+                    request.source_png,
+                ),
             ]
             self.external_network_request_count += 1
             status, response = await self.transport.post_multipart(
@@ -5277,9 +5283,7 @@ def _replace_image_suffix(filename: str, suffix: str) -> str:
     return f"{stem}{suffix}"
 
 
-def _tengli_transparent_hole_png(source_png: bytes, api_mask_png: bytes) -> bytes:
-    """Apply the API mask alpha to source alpha for Tengli's edit relay."""
-
+def _provider_transparent_hole_png(source_png: bytes, api_mask_png: bytes) -> bytes:
     try:
         with Image.open(BytesIO(source_png)) as source_image:
             source_image.load()
@@ -5306,10 +5310,12 @@ def _tengli_transparent_hole_png(source_png: bytes, api_mask_png: bytes) -> byte
 
 def _tengli_masked_prompt(prompt: str) -> str:
     return (
-        "Tengli compatibility instruction: the transparent hole in the input image "
-        "is the only target area. Fill only that transparent target at its current "
-        "location. Do not render the hole as black or as a solid-color patch. Do not "
-        "change matching or similar text outside the transparent target.\n\n"
+        "Image-edit instruction: the first image is the editable canvas, "
+        "and its transparent target is the only area to change. The second image is "
+        "the unchanged source reference. Preserve its product identity, logos, labels, "
+        "text, geometry, and placement inside the target unless the request explicitly "
+        "changes them. Fill only the transparent target at its current location. "
+        "Do not render the target as black or as a solid-color patch.\n\n"
         f"{prompt}"
     )
 
@@ -5588,8 +5594,11 @@ def _masked_visual_review_prompt(instruction: str) -> str:
         "mask where white pixels are editable and black pixels are locked, "
         "(3) raw provider candidate. The server will later restore every "
         "locked pixel exactly, so judge the requested change inside the white "
-        "selection, product identity within that selection, edge/lighting/"
-        "texture continuity at the selection boundary, and visible artifacts. "
+        "selection. Treat changes to product identity, logos, labels, text, "
+        "patterns, or markings as failures only when the user did not explicitly "
+        "request those exact changes; require all other identity evidence inside "
+        "the selection to remain preserved. Also judge edge, lighting, and "
+        "texture continuity at the selection boundary and visible artifacts. "
         f"User instruction: {instruction!r}. Return exactly one JSON object "
         "with boolean fields visual_success, instruction_satisfied, "
         "identity_inside_selection_preserved, boundary_continuity, and "

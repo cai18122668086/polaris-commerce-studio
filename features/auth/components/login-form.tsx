@@ -43,7 +43,6 @@ export function LoginForm({ returnTo = "/" }: { returnTo?: string }) {
       }
 
       router.replace((await isEmailVerified()) ? returnTo : verifyEmailHref(returnTo));
-      router.refresh();
     } catch (caught) {
       setError(authErrorMessage(caught, "登录失败，请稍后重试。"));
     } finally {

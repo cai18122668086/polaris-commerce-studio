@@ -11,7 +11,7 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
   const returnTo = sanitizeReturnTo(Array.isArray(value) ? value[0] : value);
 
   return (
-    <AuthShell title="创建账号" description="公开注册已开放，完成邮箱验证后即可进入工作台。">
+    <AuthShell title="创建账号">
       <RegisterForm returnTo={returnTo} />
     </AuthShell>
   );

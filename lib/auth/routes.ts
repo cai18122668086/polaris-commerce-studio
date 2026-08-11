@@ -9,8 +9,16 @@ export const AUTH_ROUTES = {
   account: "/account",
 } as const;
 
+export const LEGAL_ROUTES = {
+  terms: "/legal/terms",
+  privacy: "/legal/privacy",
+} as const;
+
 export function isPublicRoute(pathname: string): boolean {
-  return pathname === AUTH_WEBSITE_BASE_PATH || pathname.startsWith(`${AUTH_WEBSITE_BASE_PATH}/`);
+  return pathname === AUTH_WEBSITE_BASE_PATH ||
+    pathname.startsWith(`${AUTH_WEBSITE_BASE_PATH}/`) ||
+    pathname === "/legal" ||
+    pathname.startsWith("/legal/");
 }
 
 export function routeRequiresWorkspace(pathname: string): boolean {

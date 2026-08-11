@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import escape
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from threading import Lock
@@ -48,6 +49,162 @@ class ExternalAuthBackend(Protocol):
 
 _INITIALIZATION_LOCK = Lock()
 _INITIALIZATION_FINGERPRINT: tuple[object, ...] | None = None
+
+
+def _transactional_email_html(
+    *,
+    title_zh: str,
+    title_en: str,
+    message_zh: str,
+    message_en: str,
+    action_zh: str,
+    action_en: str,
+    action_url: str,
+    recipient: str,
+) -> str:
+    safe_url = escape(action_url, quote=True)
+    safe_recipient = escape(recipient)
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(title_zh)} | {escape(title_en)}</title>
+</head>
+<body style="margin:0;background:#f3f5f9;color:#172033;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+         style="background:#f3f5f9;padding:36px 16px;
+                font-family:Arial,'Microsoft YaHei',sans-serif;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+             style="max-width:600px;background:#fff;border:1px solid #e5e7eb;
+                    border-radius:16px;overflow:hidden;">
+        <tr>
+          <td style="padding:22px 32px;border-bottom:1px solid #eef0f4;
+                     font-size:18px;line-height:26px;font-weight:700;
+                     color:#111827;">
+            Polaris Commerce Studio
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <h1 style="margin:0 0 8px;font-size:24px;line-height:34px;
+                       color:#111827;">
+              {escape(title_zh)}
+            </h1>
+            <p style="margin:0 0 26px;font-size:15px;line-height:24px;
+                      color:#667085;">
+              {escape(title_en)}
+            </p>
+            <p style="margin:0 0 6px;font-size:15px;line-height:24px;
+                      color:#344054;">
+              {escape(message_zh)}
+            </p>
+            <p style="margin:0 0 26px;font-size:15px;line-height:24px;
+                      color:#667085;">
+              {escape(message_en)}
+            </p>
+            <table role="presentation" cellspacing="0" cellpadding="0"
+                   style="margin:0 0 28px;">
+              <tr>
+                <td bgcolor="#2563eb" style="border-radius:8px;">
+                  <a href="{safe_url}"
+                     style="display:inline-block;padding:12px 22px;
+                            font-size:15px;line-height:24px;font-weight:700;
+                            color:#fff;text-decoration:none;">
+                    {escape(action_zh)} / {escape(action_en)}
+                  </a>
+                </td>
+              </tr>
+            </table>
+            <table role="presentation" width="100%" cellspacing="0"
+                   cellpadding="0" style="background:#f8fafc;
+                   border-radius:10px;margin:0 0 26px;">
+              <tr>
+                <td style="padding:18px;font-size:15px;line-height:24px;
+                           color:#475467;">
+                  如果按钮无法打开，请复制以下链接到浏览器：<br>
+                  If the button does not work, copy this link into your browser:
+                  <div style="margin-top:8px;word-break:break-all;">
+                    <a href="{safe_url}" style="font-size:15px;line-height:24px;
+                       color:#2563eb;text-decoration:none;">{safe_url}</a>
+                  </div>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:0;font-size:15px;line-height:24px;color:#667085;">
+              如果这不是您的操作，请忽略此邮件。<br>
+              If you did not request this, you can safely ignore this email.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 32px;background:#fafbfc;
+                     border-top:1px solid #eef0f4;font-size:15px;
+                     line-height:24px;color:#98a2b3;">
+            此邮件发送至 {safe_recipient}<br>
+            This email was sent to {safe_recipient}
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
+def _override_password_email_service(service: Any, app_name: str) -> Any:
+    async def get_content(template_vars: Any, _user_context: dict[str, Any]) -> Any:
+        from supertokens_python.ingredients.emaildelivery.types import EmailContent
+
+        return EmailContent(
+            body=_transactional_email_html(
+                title_zh="重置您的密码",
+                title_en="Reset your password",
+                message_zh=f"我们收到了重置您 {app_name} 账户密码的请求。",
+                message_en=(
+                    f"We received a request to reset the password for your "
+                    f"{app_name} account."
+                ),
+                action_zh="重置密码",
+                action_en="Reset password",
+                action_url=template_vars.password_reset_link,
+                recipient=template_vars.user.email,
+            ),
+            subject=f"重置 {app_name} 密码 | Password reset",
+            to_email=template_vars.user.email,
+            is_html=True,
+        )
+
+    service.get_content = get_content
+    return service
+
+
+def _override_verification_email_service(service: Any, app_name: str) -> Any:
+    async def get_content(template_vars: Any, _user_context: dict[str, Any]) -> Any:
+        from supertokens_python.ingredients.emaildelivery.types import EmailContent
+
+        return EmailContent(
+            body=_transactional_email_html(
+                title_zh="验证您的邮箱",
+                title_en="Verify your email address",
+                message_zh=f"请验证此邮箱地址，以完成 {app_name} 账户设置。",
+                message_en=(
+                    f"Please verify this email address to finish setting up your "
+                    f"{app_name} account."
+                ),
+                action_zh="验证邮箱",
+                action_en="Verify email",
+                action_url=template_vars.email_verify_link,
+                recipient=template_vars.user.email,
+            ),
+            subject=f"验证 {app_name} 邮箱 | Email verification",
+            to_email=template_vars.user.email,
+            is_html=True,
+        )
+
+    service.get_content = get_content
+    return service
 
 
 class SuperTokensAuthAdapter:
@@ -118,6 +275,7 @@ class SuperTokensAuthAdapter:
                 SMTPSettings,
                 SMTPSettingsFrom,
             )
+
             emailpassword_smtp = import_module(
                 "supertokens_python.recipe.emailpassword.emaildelivery.services.smtp"
             )
@@ -137,10 +295,20 @@ class SuperTokensAuthAdapter:
                 ),
             )
             password_email_delivery = emailpassword.EmailDeliveryConfig(
-                service=emailpassword_smtp.SMTPService(smtp_settings)
+                service=emailpassword_smtp.SMTPService(
+                    smtp_settings,
+                    override=lambda service: _override_password_email_service(
+                        service, self.settings.app_name
+                    ),
+                )
             )
             verification_email_delivery = emailverification.EmailDeliveryConfig(
-                service=emailverification_smtp.SMTPService(smtp_settings)
+                service=emailverification_smtp.SMTPService(
+                    smtp_settings,
+                    override=lambda service: _override_verification_email_service(
+                        service, self.settings.app_name
+                    ),
+                )
             )
 
         fingerprint = self._fingerprint()

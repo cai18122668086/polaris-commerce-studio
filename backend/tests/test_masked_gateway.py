@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from collections.abc import Mapping, Sequence
 from io import BytesIO
 from typing import Any
@@ -47,14 +48,45 @@ class CapturingTransport:
         return 400, {"id": "request_bad_mask", "error": {"code": "invalid_mask"}}
 
 
+class ProviderCompatibilityTransport(CapturingTransport):
+    def __init__(self, result_png: bytes) -> None:
+        super().__init__()
+        self.result_png = result_png
+
+    async def post_multipart(
+        self,
+        *,
+        url: str,
+        headers: Mapping[str, str],
+        fields: Sequence[tuple[str, str]],
+        files: Sequence[tuple[str, str, str, bytes]],
+        timeout_seconds: float,
+    ) -> tuple[int, dict[str, Any]]:
+        assert url.endswith("/v1/images/edits")
+        assert timeout_seconds > 0
+        self.headers = headers
+        self.fields = fields
+        self.files = files
+        if [file[0] for file in files] != ["image", "image"]:
+            return 400, {"error": {"code": "invalid_mask"}}
+        return 200, {
+            "id": "request_dual_image",
+            "data": [
+                {"b64_json": base64.b64encode(self.result_png).decode("ascii")}
+            ],
+        }
+
+
 def _png(image: Image.Image) -> bytes:
     output = BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
 
 
-def test_tengli_masked_edit_uses_single_transparent_hole_source() -> None:
-    transport = CapturingTransport()
+def test_masked_edit_uses_provider_compatible_identity_reference() -> None:
+    transport = ProviderCompatibilityTransport(
+        _png(Image.new("RGBA", (4, 4), (12, 34, 56, 255)))
+    )
     gateway = TengliOpenAICompatibleGateway(
         api_key="test-placeholder-key",
         base_url="https://provider.invalid",
@@ -62,8 +94,9 @@ def test_tengli_masked_edit_uses_single_transparent_hole_source() -> None:
         image_model="configured-but-not-used-for-local-edit",
         transport=transport,
     )
+    identity_pixel = (220, 15, 80, 255)
     source = Image.new("RGBA", (4, 4), (12, 34, 56, 255))
-    source.putpixel((0, 0), (1, 2, 3, 0))
+    source.putpixel((1, 1), identity_pixel)
     api_mask = Image.new("RGBA", source.size, (255, 255, 255, 255))
     for y in range(1, 3):
         for x in range(1, 3):
@@ -86,24 +119,25 @@ def test_tengli_masked_edit_uses_single_transparent_hole_source() -> None:
     assert fields["output_format"] == "png"
     assert fields["response_format"] == "b64_json"
     assert "input_fidelity" not in fields
-    assert "transparent hole" in fields["prompt"]
-    assert "Do not render the hole as black" in fields["prompt"]
+    assert [file[0] for file in transport.files] == ["image", "image"]
+    assert "transparent target" in fields["prompt"]
     assert fields["prompt"].endswith(request.prompt)
-    assert [file[0] for file in transport.files] == ["image"]
-    assert transport.files[0][1:3] == ("source.png", "image/png")
-    with Image.open(BytesIO(transport.files[0][3])) as uploaded_image:
-        uploaded = uploaded_image.convert("RGBA")
-    assert uploaded.size == source.size
-    for y in range(4):
-        for x in range(4):
-            if 1 <= x < 3 and 1 <= y < 3:
-                assert uploaded.getpixel((x, y)) == (12, 34, 56, 0)
-            else:
-                assert uploaded.getpixel((x, y)) == source.getpixel((x, y))
+    assert [file[1] for file in transport.files] == [
+        "editable.png",
+        "source_reference.png",
+    ]
+    with Image.open(BytesIO(transport.files[0][3])) as editable_image:
+        editable = editable_image.convert("RGBA")
+    with Image.open(BytesIO(transport.files[1][3])) as reference_image:
+        reference = reference_image.convert("RGBA")
+    assert editable.getpixel((1, 1)) == (220, 15, 80, 0)
+    assert reference.getpixel((1, 1)) == identity_pixel
     assert transport.headers["Idempotency-Key"] == "durable-attempt-key"
-    assert result.http_status == 400
+    assert result.http_status == 200
     assert result.retryable is False
-    assert result.error_code == "LOCAL_EDIT_REQUEST_FAILED"
+    assert result.error_code is None
+    assert result.artifact is not None
+
 
 
 class VisualReviewTransport:
@@ -167,6 +201,9 @@ def test_tengli_visual_review_sends_three_ordered_images_once() -> None:
     assert payload["response_format"] == {"type": "json_object"}
     assert transport.call["headers"]["Idempotency-Key"] == "visual-review-idem"
     content = payload["messages"][1]["content"]
+    prompt = next(item["text"] for item in content if item["type"] == "text")
+    assert "only when the user did not explicitly request those exact changes" in prompt
+    assert "require all other identity evidence" in prompt
     images = [item for item in content if item["type"] == "image_url"]
     assert len(images) == 3
     assert images[0]["image_url"]["url"].endswith("c291cmNl")

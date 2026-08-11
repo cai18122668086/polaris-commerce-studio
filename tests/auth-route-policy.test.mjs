@@ -26,14 +26,61 @@ async function importBundled(entry) {
   return importedModule;
 }
 
-test("only /auth routes are public and account does not require a workspace", async () => {
+test("auth and legal routes are public and account does not require a workspace", async () => {
   const routes = await importBundled("lib/auth/routes.ts");
   assert.equal(routes.isPublicRoute("/auth/login"), true);
   assert.equal(routes.isPublicRoute("/auth/register"), true);
+  assert.equal(routes.isPublicRoute("/legal/terms"), true);
+  assert.equal(routes.isPublicRoute("/legal/privacy"), true);
   assert.equal(routes.isPublicRoute("/"), false);
   assert.equal(routes.isPublicRoute("/assets"), false);
   assert.equal(routes.routeRequiresWorkspace("/account"), false);
+  assert.equal(routes.routeRequiresWorkspace("/legal/privacy"), false);
   assert.equal(routes.routeRequiresWorkspace("/assets"), true);
+});
+
+test("registration requires explicit agreement and opens legal documents without leaving the form", async () => {
+  const [registerForm, registerPage, authApi, globalStyles] = await Promise.all([
+    utf8("features/auth/components/register-form.tsx"),
+    utf8("app/auth/register/page.tsx"),
+    utf8("features/auth/api/auth.ts"),
+    utf8("app/globals.css"),
+  ]);
+  assert.match(registerForm, /if \(!acceptedAgreements\)/);
+  assert.doesNotMatch(registerForm, /acceptedCrossBorder/);
+  assert.doesNotMatch(registerPage, /description=/);
+  assert.match(registerForm, /signUpWithEmailPassword\(email, password\)/);
+  assert.ok(registerForm.indexOf("if (!acceptedAgreements)") < registerForm.indexOf("signUpWithEmailPassword(email, password)"));
+  assert.match(registerForm, /target="_blank"/);
+  assert.match(registerForm, /rel="noreferrer"/);
+  assert.match(registerForm, /password\.length > 0/);
+  assert.match(registerForm, /password\.length >= 8 && password\.length < 100/);
+  assert.match(registerForm, /\/\[A-Za-z\]\//);
+  assert.match(registerForm, /\/\[0-9\]\//);
+  assert.match(registerForm, /密码要求/);
+  assert.match(registerForm, /至少包含一个英文字母/);
+  assert.doesNotMatch(registerForm, /建议使用未在其他网站使用过的密码/);
+  assert.match(authApi, /"Password must contain at least one alphabet": "密码至少需要包含一个英文字母。"/);
+  assert.match(authApi, /"Password must contain at least one number": "密码至少需要包含一个数字。"/);
+  assert.match(globalStyles, /\.auth-password-rule--invalid/);
+});
+
+test("legal documents use confirmed operator details and actual data flows", async () => {
+  const terms = await utf8("app/legal/terms/page.tsx");
+  const privacy = await utf8("app/legal/privacy/page.tsx");
+
+  for (const document of [terms, privacy]) {
+    assert.match(document, /揭阳市腾利科技服务有限公司/);
+    assert.match(document, /人工智能处理环境/);
+    assert.match(document, /一个月/);
+    assert.doesNotMatch(document, /蕉点AI|武汉光瞳科技有限公司/);
+  }
+
+  assert.match(terms, /用于模型训练/);
+  assert.match(privacy, /1474953130@qq\.com/);
+  assert.match(privacy, /广东省揭阳市揭东区新亨商务中心1407/);
+  assert.match(privacy, /中国香港/);
+  assert.match(privacy, /用于模型训练/);
 });
 
 test("returnTo accepts internal business routes and rejects open redirects or auth loops", async () => {
@@ -66,6 +113,7 @@ test("final API 401 is centralised without browser token storage", async () => {
   assert.match(client, /fetch: runtimeFetch/);
   assert.match(boundary, /queryClient\.clear\(\)/);
   assert.match(boundary, /onAuthUnauthorised\(redirectToLogin\)/);
+  assert.match(boundary, /if \(publicRoute\) return;\s*return onAuthUnauthorised/);
   assert.match(sessionEvents, /polaris:auth:unauthorised/);
   assert.match(providers, /<AuthBoundary>\{children\}<\/AuthBoundary>/);
 

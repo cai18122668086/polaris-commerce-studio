@@ -20,7 +20,6 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
   const [confirmation, setConfirmation] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [acceptedAgreements, setAcceptedAgreements] = useState(false);
-  const [acceptedCrossBorder, setAcceptedCrossBorder] = useState(false);
   const [consentError, setConsentError] = useState<string>();
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
@@ -32,10 +31,6 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
     setConsentError(undefined);
     if (!acceptedAgreements) {
       setConsentError("请先阅读并同意《用户协议》和《隐私政策》。");
-      return;
-    }
-    if (!acceptedCrossBorder) {
-      setConsentError("请确认并单独同意中国香港处理、保存期限和模型训练事项。");
       return;
     }
     if (password !== confirmation) {
@@ -129,21 +124,6 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
             <Link href={LEGAL_ROUTES.privacy} target="_blank" rel="noreferrer">《隐私政策》</Link>
           </span>
         </label>
-        <label className="auth-consent__item">
-          <input
-            checked={acceptedCrossBorder}
-            onChange={(event) => {
-              setAcceptedCrossBorder(event.target.checked);
-              setConsentError(undefined);
-            }}
-            type="checkbox"
-          />
-          <span>
-            我单独同意为提供账户和图片生成服务，将相关账户信息、操作记录、上传素材、生成指令和结果传输至中国香港处理；其中人工智能任务输入输出最长保存一个月，并用于模型训练。
-            <Link href={`${LEGAL_ROUTES.privacy}#cross-border`} target="_blank" rel="noreferrer">了解详情</Link>
-          </span>
-        </label>
-        <p className="auth-consent__minor">本服务暂不向不满十四周岁用户开放注册；未满十八周岁请在监护人指导下使用。</p>
         {consentError ? <p className="auth-consent__error" id="registration-consent-error" role="alert">{consentError}</p> : null}
       </div>
       {error ? <p className="auth-form__error" role="alert">{error}</p> : null}

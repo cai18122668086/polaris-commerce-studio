@@ -29,7 +29,10 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   }, [queryClient, router]);
 
   useEffect(() => { initializeAuthClient(); }, []);
-  useEffect(() => onAuthUnauthorised(redirectToLogin), [redirectToLogin]);
+  useEffect(() => {
+    if (publicRoute) return;
+    return onAuthUnauthorised(redirectToLogin);
+  }, [publicRoute, redirectToLogin]);
   useEffect(() => {
     if (publicRoute) return;
     let cancelled = false;
@@ -50,7 +53,7 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   }, [pathname, publicRoute, queryClient, redirectToLogin, retryKey, router]);
 
   if (publicRoute) return <>{children}</>;
-  if (!result || result.pathname !== pathname) return <AuthStatus busy title="正在确认登录状态" description="请稍候，我们正在安全地恢复你的会话。" />;
+  if (!result) return <AuthStatus busy title="正在确认登录状态" description="请稍候，我们正在安全地恢复你的会话。" />;
   if (result.state === "error") return <AuthStatus title="暂时无法确认登录状态" description="认证服务暂时不可用，请检查网络后重试。">
     <button className="auth-button auth-button--primary" onClick={() => setRetryKey((key) => key + 1)}>重新检查</button>
     <Link className="auth-button auth-button--secondary" href={AUTH_ROUTES.login}>返回登录</Link>

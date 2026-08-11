@@ -51,6 +51,12 @@ from .masked_repair import (
     MaskedRepairError,
     validate_local_edit_asset_records,
 )
+from .model_pose_catalog import (
+    MODEL_POSE_CATALOG_ID,
+    ModelPoseCatalogError,
+    ModelPoseCatalogItem,
+    resolve_model_pose_catalog_item,
+)
 from .models import (
     AssetRecord,
     JobAssetRecord,
@@ -79,6 +85,8 @@ from .schemas_v1 import (
     JobDetailResponse,
     JobListResponse,
     LocalEditJobCreate,
+    ModelPoseAssetRequest,
+    ModelPoseTransferJobCreate,
     PlanConfirmRequest,
     PlanResponse,
     PlanUpdateRequest,
@@ -113,7 +121,12 @@ from .services import (
     settle_credits,
     transition_job,
 )
-from .storage import ImageStorage, StoredImage, build_content_disposition
+from .storage import (
+    ImageStorage,
+    StoredImage,
+    ValidatedImage,
+    build_content_disposition,
+)
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
@@ -284,6 +297,132 @@ def _commit_staged_asset(
         return response, True
 
 
+def _commit_catalog_pose_asset(
+    session_factory: sessionmaker[Session],
+    *,
+    workspace_id: str,
+    actor_user_id: str,
+    idempotency_key: str,
+    request_hash: str,
+    pose: ModelPoseCatalogItem,
+    stored: StoredImage,
+) -> tuple[AssetResponse, bool]:
+    """Commit or reuse a private catalog original inside one workspace."""
+
+    with session_factory() as session:
+        idem, replay = claim_idempotency(
+            session,
+            workspace_id=workspace_id,
+            actor_user_id=actor_user_id,
+            method="POST",
+            route_template=(
+                "/api/v1/workspaces/{workspace_id}/"
+                "model-pose-transfer/pose-assets"
+            ),
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+        )
+        if replay:
+            return (
+                asset_response(
+                    get_workspace_asset(
+                        session, workspace_id, cast(str, idem.resource_id)
+                    )
+                ),
+                False,
+            )
+
+        existing = session.scalar(
+            select(AssetRecord)
+            .where(
+                AssetRecord.workspace_id == workspace_id,
+                AssetRecord.media_kind == AssetMediaKind.IMAGE.value,
+                AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+                AssetRecord.sha256 == pose.reference_sha256,
+                AssetRecord.deleted_at.is_(None),
+            )
+            .order_by(AssetRecord.created_at)
+            .limit(1)
+        )
+        if existing is not None:
+            complete_idempotency(
+                idem,
+                resource_type="asset",
+                resource_id=existing.id,
+                response_status=status.HTTP_201_CREATED,
+            )
+            session.commit()
+            return asset_response(existing), False
+
+        limits = lock_workspace_limits(session, workspace_id)
+        used_bytes = session.scalar(
+            select(func.coalesce(func.sum(AssetRecord.byte_size), 0)).where(
+                AssetRecord.workspace_id == workspace_id,
+                AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+                AssetRecord.deleted_at.is_(None),
+            )
+        )
+        if int(used_bytes or 0) + stored.byte_size > limits.storage_quota_bytes:
+            raise ApiError(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "STORAGE_QUOTA_EXCEEDED",
+                "The workspace does not have enough storage for this pose asset.",
+            )
+
+        asset_id = new_id("asset")
+        asset = AssetRecord(
+            id=asset_id,
+            workspace_id=workspace_id,
+            media_kind=AssetMediaKind.IMAGE.value,
+            origin_kind=AssetOriginKind.IMPORTED.value,
+            lifecycle_status=AssetLifecycleStatus.READY.value,
+            original_filename=stored.filename,
+            content_type=stored.content_type,
+            byte_size=stored.byte_size,
+            width=stored.width,
+            height=stored.height,
+            sha256=stored.sha256,
+            storage_provider=stored.storage_provider,
+            storage_bucket=stored.storage_bucket,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            etag=stored.etag,
+            asset_metadata={
+                "catalog_id": MODEL_POSE_CATALOG_ID,
+                "pose_slug": pose.slug,
+                "reference_sha256": pose.reference_sha256,
+            },
+        )
+        session.add(asset)
+        complete_idempotency(
+            idem,
+            resource_type="asset",
+            resource_id=asset.id,
+            response_status=status.HTTP_201_CREATED,
+        )
+        session.flush()
+        response = asset_response(asset)
+        try:
+            session.commit()
+        except Exception as commit_error:
+            session.rollback()
+            try:
+                with session_factory() as verification_session:
+                    committed = verification_session.get(AssetRecord, asset_id)
+                    if (
+                        committed is not None
+                        and committed.object_key == stored.object_key
+                    ):
+                        return asset_response(committed), True
+            except Exception:
+                raise _UploadCommitOutcomeUnknown(
+                    asset_id,
+                    stored.object_key,
+                ) from commit_error
+            raise
+        return response, True
+
+
 @router.get("/me", response_model=CurrentUserResponse, tags=["identity"])
 def current_user(principal: PrincipalDependency) -> CurrentUserResponse:
     return CurrentUserResponse(
@@ -302,6 +441,7 @@ def runtime_status_response(
     task_runner: Literal["mock", "tengli"],
     product_image_provider_enabled: bool = False,
     reference_remix_provider_enabled: bool = False,
+    model_pose_transfer_provider_enabled: bool = False,
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
@@ -357,6 +497,9 @@ def runtime_status_response(
         "local_edit": local_edit,
         "product_image": feature_status(product_image_provider_enabled),
         "reference_remix": feature_status(reference_remix_provider_enabled),
+        "model_pose_transfer": feature_status(
+            model_pose_transfer_provider_enabled
+        ),
         "creative_image": feature_status(creative_image_provider_enabled),
         "detail_pack": detail_pack,
         "amazon_visual_suite": feature_status(
@@ -412,6 +555,9 @@ def get_runtime_status(
         task_runner=settings.task_runner,
         product_image_provider_enabled=settings.product_image_provider_enabled,
         reference_remix_provider_enabled=settings.reference_remix_provider_enabled,
+        model_pose_transfer_provider_enabled=(
+            settings.model_pose_transfer_provider_enabled
+        ),
         creative_image_provider_enabled=settings.creative_image_provider_enabled,
         amazon_visual_suite_provider_enabled=(
             settings.amazon_visual_suite_provider_enabled
@@ -554,6 +700,102 @@ async def upload_asset(
             object_key=stored.object_key,
             object_version=stored.object_version,
             reason="idempotency_replay",
+        )
+    return response
+
+
+@router.post(
+    "/workspaces/{workspace_id}/model-pose-transfer/pose-assets",
+    response_model=AssetResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["assets"],
+)
+async def materialize_model_pose_asset(
+    payload: ModelPoseAssetRequest,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    idempotency_header: Annotated[
+        str | None, Header(alias="Idempotency-Key")
+    ] = None,
+) -> AssetResponse:
+    """Materialize only a private catalog original resolved by slug and hash."""
+
+    key = require_idempotency_key(idempotency_header)
+    try:
+        pose = await asyncio.to_thread(
+            resolve_model_pose_catalog_item,
+            payload.pose_slug,
+            payload.reference_sha256,
+        )
+        original = await asyncio.to_thread(pose.read_original)
+    except ModelPoseCatalogError as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, exc.code, str(exc)
+        ) from exc
+
+    validated = ValidatedImage(
+        payload=original,
+        filename=pose.filename,
+        content_type=pose.mime_type,
+        width=pose.width,
+        height=pose.height,
+        object_key=f"{workspace.workspace_id}/{new_id('pose')}.png",
+        sha256=pose.reference_sha256,
+    )
+    storage: ImageStorage = request.app.state.storage
+    try:
+        stored = await storage.save_validated(validated)
+    except asyncio.CancelledError:
+        await _finish_cleanup_before_cancellation(
+            storage,
+            object_key=validated.object_key,
+            reason="catalog_pose_save_cancelled",
+        )
+        raise
+    except Exception:
+        await _cleanup_upload_object(
+            storage,
+            object_key=validated.object_key,
+            reason="catalog_pose_save_failed",
+        )
+        raise
+
+    try:
+        response, retained = await asyncio.to_thread(
+            _commit_catalog_pose_asset,
+            request.app.state.session_factory,
+            workspace_id=workspace.workspace_id,
+            actor_user_id=workspace.principal.user_id,
+            idempotency_key=key,
+            request_hash=canonical_hash(payload.model_dump(mode="json")),
+            pose=pose,
+            stored=stored,
+        )
+    except _UploadCommitOutcomeUnknown as exc:
+        logger.critical(
+            "catalog_pose_commit_outcome_unknown",
+            extra={
+                "asset_id": exc.asset_id,
+                "object_key": exc.object_key,
+                "workspace_id": workspace.workspace_id,
+            },
+            exc_info=True,
+        )
+        raise
+    except Exception:
+        await _cleanup_upload_object(
+            storage,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            reason="catalog_pose_database_write_failed",
+        )
+        raise
+    if not retained:
+        await _cleanup_upload_object(
+            storage,
+            object_key=stored.object_key,
+            object_version=stored.object_version,
+            reason="catalog_pose_reused",
         )
     return response
 
@@ -800,6 +1042,8 @@ def create_job(
                 str(exc),
                 {"needs_reselection": exc.needs_reselection},
             ) from exc
+    elif isinstance(payload, ModelPoseTransferJobCreate):
+        _validate_model_pose_transfer_assets(payload, assets)
     session.add(job)
     session.flush()
     _add_items_and_inputs(session, job, asset_roles)
@@ -1612,12 +1856,56 @@ def confirm_plan(
     return job_detail_response(session, job)
 
 
+def _validate_model_pose_transfer_assets(
+    payload: ModelPoseTransferJobCreate,
+    assets: dict[str, AssetRecord],
+) -> None:
+    model_source = assets[payload.input.model_source_asset_id]
+    pose_reference = assets[payload.input.pose_reference_asset_id]
+    for asset in (model_source, pose_reference):
+        if (
+            asset.media_kind != AssetMediaKind.IMAGE.value
+            or not asset.content_type.lower().startswith("image/")
+        ):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "MODEL_POSE_IMAGE_REQUIRED",
+                "Model pose transfer requires two READY image assets.",
+            )
+
+    if payload.input.pose_slug is None:
+        return
+    try:
+        catalog_pose = resolve_model_pose_catalog_item(
+            payload.input.pose_slug,
+            cast(str, payload.input.pose_reference_sha256),
+        )
+        catalog_pose.read_original()
+    except ModelPoseCatalogError as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, exc.code, str(exc)
+        ) from exc
+    if (
+        pose_reference.sha256 != catalog_pose.reference_sha256
+        or pose_reference.content_type != catalog_pose.mime_type
+        or pose_reference.width != catalog_pose.width
+        or pose_reference.height != catalog_pose.height
+        or pose_reference.byte_size != catalog_pose.byte_size
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "MODEL_POSE_REFERENCE_ASSET_MISMATCH",
+            "The pose reference asset is not the selected catalog original.",
+        )
+
+
 def _new_job_from_payload(
     workspace_id: str,
     payload: (
         LocalEditJobCreate
         | ProductImageJobCreate
         | ReferenceRemixJobCreate
+        | ModelPoseTransferJobCreate
         | CreativeImageJobCreate
         | DetailPackJobCreate
         | AmazonVisualSuiteJobCreate
@@ -1631,6 +1919,12 @@ def _new_job_from_payload(
         asset_roles = [
             (payload.input.source_asset_id, "source", 0),
             (payload.input.selection_mask_asset_id, "selection_mask", 0),
+        ]
+    elif isinstance(payload, ModelPoseTransferJobCreate):
+        item_count = 1
+        asset_roles = [
+            (payload.input.model_source_asset_id, "model_source", 0),
+            (payload.input.pose_reference_asset_id, "pose_reference", 0),
         ]
     elif isinstance(payload, (ProductImageJobCreate, ReferenceRemixJobCreate)):
         item_count = payload.configuration.image_count
@@ -1725,6 +2019,7 @@ def _new_job_from_payload(
 _REAL_PROVIDER_ENABLE_FLAGS = {
     JobType.PRODUCT_IMAGE.value: "product_image_provider_enabled",
     JobType.REFERENCE_REMIX.value: "reference_remix_provider_enabled",
+    JobType.MODEL_POSE_TRANSFER.value: "model_pose_transfer_provider_enabled",
     JobType.CREATIVE_IMAGE.value: "creative_image_provider_enabled",
     JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual_suite_provider_enabled",
 }
@@ -1846,6 +2141,7 @@ def _job_item_key(job_type: str, ordinal: int) -> str:
     if job_type in {
         JobType.PRODUCT_IMAGE.value,
         JobType.REFERENCE_REMIX.value,
+        JobType.MODEL_POSE_TRANSFER.value,
         JobType.CREATIVE_IMAGE.value,
     }:
         return f"image-{ordinal + 1:03d}"

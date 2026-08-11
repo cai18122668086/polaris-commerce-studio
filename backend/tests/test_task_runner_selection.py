@@ -197,6 +197,7 @@ def test_tengli_quota_policy_allows_provider_construction(
     [
         "product_image_provider_enabled",
         "reference_remix_provider_enabled",
+        "model_pose_transfer_provider_enabled",
         "creative_image_provider_enabled",
         "amazon_visual_suite_provider_enabled",
         "crossborder_detail_provider_enabled",

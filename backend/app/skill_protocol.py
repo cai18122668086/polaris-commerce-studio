@@ -18,6 +18,7 @@ SUPPORTED_SINGLE_IMAGE_SKILLS = frozenset(
         "xinghe-amazon-visual-suite",
         "xinghe-ecommerce-creative-image",
         "xinghe-reference-image-remix-3",
+        "ecommerce-model-pose-transfer",
         "xinghe-wanneng-shengtu-3-0",
     }
 )

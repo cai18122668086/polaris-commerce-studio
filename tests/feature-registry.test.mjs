@@ -11,12 +11,12 @@ import {
 } from "../lib/feature-registry.ts";
 
 test("feature registry exposes the complete first-phase tool catalog", () => {
-  assert.equal(FEATURE_REGISTRY.length, 13);
+  assert.equal(FEATURE_REGISTRY.length, 14);
   assert.deepEqual(
     FEATURE_GROUPS.map((group) => [group.category, group.features.length]),
     [
       ["quick_edit", 5],
-      ["product_image", 6],
+      ["product_image", 7],
       ["commerce_pack", 2],
     ],
   );
@@ -24,6 +24,8 @@ test("feature registry exposes the complete first-phase tool catalog", () => {
   assert.equal(getFeatureById("detail-pack")?.route, "/workspace/detail-pack");
   assert.equal(getFeatureByRoute("/tools"), undefined);
   assert.equal(getFeatureByRoute("/workspace/reference-remix")?.jobType, "reference_remix");
+  assert.equal(getFeatureByRoute("/workspace/model-pose-transfer")?.jobType, "model_pose_transfer");
+  assert.equal(getFeatureById("model-pose-transfer")?.skillId, "ecommerce-model-pose-transfer");
   assert.equal(getFeatureByRoute("/workspace/product-image/change-color/")?.jobType, "product_image");
   assert.equal(getFeatureById("amazon-visual-suite")?.completionPolicy, "amazon_21_of_21");
 });

@@ -320,6 +320,7 @@ def _create_local_edit_job(client: TestClient) -> str:
 def test_bundled_manifests_load_with_frozen_policies() -> None:
     registry = SkillManifestRegistry.bundled()
     assert registry.skill_ids == (
+        "ecommerce-model-pose-transfer",
         "masked-image-repair",
         "xinghe-amazon-visual-suite",
         "xinghe-crossborder-detail-3",

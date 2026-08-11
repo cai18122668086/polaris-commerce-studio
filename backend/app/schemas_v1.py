@@ -238,6 +238,44 @@ class ReferenceRemixConfiguration(BaseModel):
     instruction: str = Field(default="", max_length=4000)
 
 
+class ModelPoseAssetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pose_slug: str = Field(pattern=r"^(?:male|female)-[0-9]{3}$")
+    reference_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ModelPoseTransferInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model_source_asset_id: str
+    pose_reference_asset_id: str
+    pose_slug: str | None = Field(
+        default=None, pattern=r"^(?:male|female)-[0-9]{3}$"
+    )
+    pose_reference_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+
+    @model_validator(mode="after")
+    def validate_pose_inputs(self) -> "ModelPoseTransferInput":
+        if self.model_source_asset_id == self.pose_reference_asset_id:
+            raise ValueError("model source and pose reference must be different assets")
+        if (self.pose_slug is None) != (self.pose_reference_sha256 is None):
+            raise ValueError(
+                "pose_slug and pose_reference_sha256 must be provided together"
+            )
+        return self
+
+
+class ModelPoseTransferConfiguration(BaseModel):
+    aspect_ratio: Literal["follow-source"] = "follow-source"
+    image_count: Literal[1] = 1
+    quality: Literal["low", "medium", "high"] = "high"
+    output_format: Literal["png"] = "png"
+    instruction: str = Field(default="", max_length=4000)
+
+
 class CreativeImageInput(BaseModel):
     product_asset_ids: list[str] = Field(min_length=1, max_length=8)
     competitor_asset_ids: list[str] = Field(default_factory=list, max_length=8)
@@ -375,6 +413,12 @@ class ReferenceRemixJobCreate(JobCreateBase):
     configuration: ReferenceRemixConfiguration
 
 
+class ModelPoseTransferJobCreate(JobCreateBase):
+    type: Literal[JobType.MODEL_POSE_TRANSFER]
+    input: ModelPoseTransferInput
+    configuration: ModelPoseTransferConfiguration
+
+
 class CreativeImageJobCreate(JobCreateBase):
     type: Literal[JobType.CREATIVE_IMAGE]
     input: CreativeImageInput
@@ -397,6 +441,7 @@ JobCreate = Annotated[
     LocalEditJobCreate
     | ProductImageJobCreate
     | ReferenceRemixJobCreate
+    | ModelPoseTransferJobCreate
     | CreativeImageJobCreate
     | DetailPackJobCreate
     | AmazonVisualSuiteJobCreate,

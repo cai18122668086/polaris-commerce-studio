@@ -30,6 +30,7 @@ class MockTaskRunner:
         xinghe_skill_root: Path | None = None,
         product_image_provider_enabled: bool = False,
         reference_remix_provider_enabled: bool = False,
+        model_pose_transfer_provider_enabled: bool = False,
         creative_image_provider_enabled: bool = False,
         amazon_visual_suite_provider_enabled: bool = False,
         crossborder_detail_provider_enabled: bool = False,
@@ -46,6 +47,9 @@ class MockTaskRunner:
             xinghe_skill_root=xinghe_skill_root,
             product_image_provider_enabled=product_image_provider_enabled,
             reference_remix_provider_enabled=reference_remix_provider_enabled,
+            model_pose_transfer_provider_enabled=(
+                model_pose_transfer_provider_enabled
+            ),
             creative_image_provider_enabled=creative_image_provider_enabled,
             amazon_visual_suite_provider_enabled=(
                 amazon_visual_suite_provider_enabled
@@ -79,6 +83,7 @@ def validate_task_runner_settings(settings: Settings) -> None:
         (
             settings.product_image_provider_enabled,
             settings.reference_remix_provider_enabled,
+            settings.model_pose_transfer_provider_enabled,
             settings.creative_image_provider_enabled,
             settings.amazon_visual_suite_provider_enabled,
             settings.crossborder_detail_provider_enabled,
@@ -187,6 +192,9 @@ def build_tengli_task_runner(
         xinghe_skill_root=settings.xinghe_skill_root,
         product_image_provider_enabled=settings.product_image_provider_enabled,
         reference_remix_provider_enabled=settings.reference_remix_provider_enabled,
+        model_pose_transfer_provider_enabled=(
+            settings.model_pose_transfer_provider_enabled
+        ),
         creative_image_provider_enabled=settings.creative_image_provider_enabled,
         amazon_visual_suite_provider_enabled=(
             settings.amazon_visual_suite_provider_enabled

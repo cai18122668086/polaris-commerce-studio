@@ -112,6 +112,9 @@ export const AI_TOOLBOX_MENU = {
         navigationFeature("try-on", {
           description: "让服饰商品自然适配模特",
         }),
+        navigationFeature("model-pose-transfer", {
+          description: "保留模特服装，快速更换人物姿势",
+        }),
         navigationFeature("creative-image", {
           description: "生成卖点、活动与营销创意素材",
         }),

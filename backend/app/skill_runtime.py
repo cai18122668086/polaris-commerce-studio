@@ -35,6 +35,7 @@ KNOWN_SKILLS = {
     "xinghe-ecommerce-detail",
     "xinghe-wanneng-shengtu-3-0",
     "xinghe-reference-image-remix-3",
+    "ecommerce-model-pose-transfer",
     "xinghe-ecommerce-creative-image",
     "xinghe-ecommerce-detail-domestic-3",
     "xinghe-crossborder-detail-3",
@@ -44,6 +45,7 @@ OPERATION_SKILLS = {
     JobType.LOCAL_EDIT.value: "masked-image-repair",
     JobType.PRODUCT_IMAGE.value: "xinghe-wanneng-shengtu-3-0",
     JobType.REFERENCE_REMIX.value: "xinghe-reference-image-remix-3",
+    JobType.MODEL_POSE_TRANSFER.value: "ecommerce-model-pose-transfer",
     JobType.CREATIVE_IMAGE.value: "xinghe-ecommerce-creative-image",
     JobType.DETAIL_PACK.value: "xinghe-ecommerce-detail",
     JobType.AMAZON_VISUAL_SUITE.value: "xinghe-amazon-visual-suite",
@@ -73,6 +75,7 @@ class SkillCapability(StrEnum):
     MASKED_IMAGE_REPAIR = "masked_image_repair"
     PRODUCT_IMAGE = "product_image"
     REFERENCE_REMIX = "reference_remix"
+    MODEL_POSE_TRANSFER = "model_pose_transfer"
     CREATIVE_IMAGE = "creative_image"
     ECOMMERCE_DETAIL_PACK = "ecommerce_detail_pack"
     AMAZON_VISUAL_SUITE = "amazon_visual_suite"

@@ -14,6 +14,7 @@ test("OpenAPI exposes every frontend integration operation", async () => {
     "/api/v1/workspaces": ["get"],
     "/api/v1/workspaces/{workspace_id}/assets": ["get", "post"],
     "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/access-url": ["post"],
+    "/api/v1/workspaces/{workspace_id}/model-pose-transfer/pose-assets": ["post"],
     "/api/v1/workspaces/{workspace_id}/jobs": ["get", "post"],
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}": ["get"],
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip": ["get"],
@@ -27,6 +28,18 @@ test("OpenAPI exposes every frontend integration operation", async () => {
       assert.ok(document.paths[path][method], `${method.toUpperCase()} ${path} should exist`);
     }
   }
+
+  assert.ok(document.components.schemas.JobType.enum.includes("model_pose_transfer"));
+  assert.ok(document.components.schemas.ModelPoseTransferJobCreate);
+  const jobsSchema = document.paths["/api/v1/workspaces/{workspace_id}/jobs"]
+    .post.requestBody.content["application/json"].schema;
+  assert.ok(jobsSchema.oneOf.some(
+    (entry) => entry.$ref === "#/components/schemas/ModelPoseTransferJobCreate",
+  ));
+  const materializeResponse = document.paths[
+    "/api/v1/workspaces/{workspace_id}/model-pose-transfer/pose-assets"
+  ].post.responses["201"].content["application/json"].schema;
+  assert.equal(materializeResponse.$ref, "#/components/schemas/AssetResponse");
 });
 
 test("business UI is API-backed and runtime capability is fail-closed", async () => {

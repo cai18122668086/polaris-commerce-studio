@@ -1,7 +1,9 @@
 import asyncio
 import hashlib
+import json
 from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import uuid4
 from zipfile import ZipFile
@@ -10,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain import (
     JobItemStatus,
@@ -19,7 +22,9 @@ from app.domain import (
     PlanValidationStatus,
 )
 from app.main import create_app
+from app.model_pose_catalog import resolve_model_pose_catalog_item
 from app.models import (
+    AssetRecord,
     AuditEventRecord,
     CreditReservationRecord,
     JobAssetRecord,
@@ -133,9 +138,73 @@ def test_health_identity_and_empty_collections(client: TestClient) -> None:
     assert jobs.json()["items"] == []
 
 
+def test_catalog_pose_keeps_object_when_commit_succeeds_but_reports_failure(
+    client: TestClient,
+) -> None:
+    pose = resolve_model_pose_catalog_item(
+        "female-001",
+        next(
+            item["referenceSha256"]
+            for item in json.loads(
+                (
+                    Path(__file__).resolve().parents[1]
+                    / "catalog_assets"
+                    / "model-pose-transfer"
+                    / "catalog.json"
+                ).read_text(encoding="utf-8")
+            )["items"]
+            if item["slug"] == "female-001"
+        ),
+    )
+    original_factory = client.app.state.session_factory
+    failure_raised = False
+
+    class CommitSucceededButRaisedSession(Session):
+        def commit(self) -> None:
+            nonlocal failure_raised
+            should_raise = not failure_raised and any(
+                isinstance(record, AssetRecord)
+                and record.asset_metadata.get("catalog_id")
+                == "ecommerce-model-pose-transfer"
+                for record in self.identity_map.values()
+            )
+            super().commit()
+            if should_raise:
+                failure_raised = True
+                raise RuntimeError("simulated lost commit acknowledgement")
+
+    client.app.state.session_factory = sessionmaker(
+        bind=client.app.state.engine,
+        class_=CommitSucceededButRaisedSession,
+        expire_on_commit=False,
+    )
+    try:
+        response = client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/model-pose-transfer/pose-assets",
+            headers=idem(),
+            json={
+                "pose_slug": pose.slug,
+                "reference_sha256": pose.reference_sha256,
+            },
+        )
+    finally:
+        client.app.state.session_factory = original_factory
+
+    assert response.status_code == 201, response.text
+    assert failure_raised is True
+    asset = response.json()
+    with original_factory() as verification_session:
+        committed = verification_session.get(AssetRecord, asset["id"])
+        assert committed is not None
+        stored_path = client.app.state.storage.root / committed.object_key
+    assert stored_path.exists()
+    assert stored_path.read_bytes() == pose.read_original()
+
+
 def test_real_provider_switches_default_to_fail_closed(settings) -> None:
     assert settings.product_image_provider_enabled is False
     assert settings.reference_remix_provider_enabled is False
+    assert settings.model_pose_transfer_provider_enabled is False
     assert settings.creative_image_provider_enabled is False
     assert settings.amazon_visual_suite_provider_enabled is False
     assert settings.crossborder_detail_provider_enabled is False
@@ -162,6 +231,7 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
                     "local_edit",
                     "product_image",
                     "reference_remix",
+                    "model_pose_transfer",
                     "creative_image",
                     "detail_pack",
                     "amazon_visual_suite",
@@ -202,6 +272,7 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
     for feature in (
         "product_image",
         "reference_remix",
+        "model_pose_transfer",
         "creative_image",
         "amazon_visual_suite",
         "crossborder_detail",
@@ -218,6 +289,7 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
     [
         ("product_image_provider_enabled", "product_image"),
         ("reference_remix_provider_enabled", "reference_remix"),
+        ("model_pose_transfer_provider_enabled", "model_pose_transfer"),
         ("creative_image_provider_enabled", "creative_image"),
         ("amazon_visual_suite_provider_enabled", "amazon_visual_suite"),
         ("crossborder_detail_provider_enabled", "crossborder_detail"),

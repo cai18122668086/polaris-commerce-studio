@@ -1,0 +1,54 @@
+{
+  "schema_version": "skill-runtime-manifest-v1",
+  "content_hash_algorithm": "sha256-ordered-path-nul-file-sha256-lf-v1",
+  "ignored_runtime_artifacts": [
+    "**/__pycache__/**",
+    "**/*.pyc"
+  ],
+  "skill_id": "ecommerce-model-pose-transfer",
+  "content_hash": "5cc26dca867b0ab6348f779a1633633ce35b26bf941c368f81164d848e9088c0",
+  "capability": "model_pose_transfer",
+  "input_contract": {
+    "schema_id": "polaris.skill.ecommerce-model-pose-transfer.input.v1",
+    "required_fields": [
+      "model_source_asset_ref",
+      "pose_reference_asset_ref",
+      "instruction"
+    ]
+  },
+  "output_contract": {
+    "schema_id": "polaris.skill.ecommerce-model-pose-transfer.output.v1",
+    "required_fields": [
+      "result_asset_ref",
+      "usage"
+    ]
+  },
+  "policy": {
+    "schema_version": "skill-runtime-policy-v1",
+    "auto_review_regeneration_allowed": false,
+    "successful_page_auto_redraw_allowed": false,
+    "safe_expansion_mode": "disabled",
+    "policy_version": "ecommerce-model-pose-transfer-source-v1",
+    "active_profile_id": null,
+    "profiles": [],
+    "iteration": null,
+    "safe_expansion": null
+  },
+  "provider_type": "mock",
+  "cost_limit_micros": 0,
+  "real_provider_request_limit": 0,
+  "files": [
+    {
+      "path": "agents/openai.yaml",
+      "sha256": "4cee9db5f39616b78f17c8dc43553658b9e8fa9c290d20b437080b12c81c4dd6"
+    },
+    {
+      "path": "references/pose-transfer-contract.md",
+      "sha256": "3a6ef956e7a2e1ccaef4bbbb0b8e044a2df277912ba473ed26c9fa3985032576"
+    },
+    {
+      "path": "SKILL.md",
+      "sha256": "d3b520e07a776bbf8af918403ad32e4a50c9a6589d38117eb6345c9870ff3cd5"
+    }
+  ]
+}

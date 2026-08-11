@@ -14,6 +14,7 @@ RUN python -m pip install --require-hashes --only-binary=:all: -r requirements.l
 
 COPY backend/alembic.ini ./
 COPY backend/app ./app
+COPY backend/catalog_assets ./catalog_assets
 COPY backend/skill_sources ./skill_sources
 COPY backend/migrations ./migrations
 COPY backend/scripts/assign_workspace_owner.py ./scripts/assign_workspace_owner.py

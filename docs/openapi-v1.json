@@ -1683,6 +1683,7 @@
           "local_edit",
           "product_image",
           "reference_remix",
+          "model_pose_transfer",
           "creative_image",
           "detail_pack",
           "amazon_visual_suite"
@@ -1791,6 +1792,153 @@
         ],
         "title": "MembershipRole",
         "type": "string"
+      },
+      "ModelPoseAssetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pose_slug": {
+            "pattern": "^(?:male|female)-[0-9]{3}$",
+            "title": "Pose Slug",
+            "type": "string"
+          },
+          "reference_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Reference Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pose_slug",
+          "reference_sha256"
+        ],
+        "title": "ModelPoseAssetRequest",
+        "type": "object"
+      },
+      "ModelPoseTransferConfiguration": {
+        "properties": {
+          "aspect_ratio": {
+            "const": "follow-source",
+            "default": "follow-source",
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "image_count": {
+            "const": 1,
+            "default": 1,
+            "title": "Image Count",
+            "type": "integer"
+          },
+          "instruction": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "output_format": {
+            "const": "png",
+            "default": "png",
+            "title": "Output Format",
+            "type": "string"
+          },
+          "quality": {
+            "default": "high",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Quality",
+            "type": "string"
+          }
+        },
+        "title": "ModelPoseTransferConfiguration",
+        "type": "object"
+      },
+      "ModelPoseTransferInput": {
+        "additionalProperties": false,
+        "properties": {
+          "model_source_asset_id": {
+            "title": "Model Source Asset Id",
+            "type": "string"
+          },
+          "pose_reference_asset_id": {
+            "title": "Pose Reference Asset Id",
+            "type": "string"
+          },
+          "pose_reference_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pose Reference Sha256"
+          },
+          "pose_slug": {
+            "anyOf": [
+              {
+                "pattern": "^(?:male|female)-[0-9]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pose Slug"
+          }
+        },
+        "required": [
+          "model_source_asset_id",
+          "pose_reference_asset_id"
+        ],
+        "title": "ModelPoseTransferInput",
+        "type": "object"
+      },
+      "ModelPoseTransferJobCreate": {
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/ModelPoseTransferConfiguration"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ModelPoseTransferInput"
+          },
+          "intent": {
+            "default": "submit",
+            "enum": [
+              "draft",
+              "submit"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "type": {
+            "const": "model_pose_transfer",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "input",
+          "configuration"
+        ],
+        "title": "ModelPoseTransferJobCreate",
+        "type": "object"
       },
       "MoneyAmount": {
         "properties": {
@@ -2997,6 +3145,7 @@
                     "creative_image": "#/components/schemas/CreativeImageJobCreate",
                     "detail_pack": "#/components/schemas/DetailPackJobCreate",
                     "local_edit": "#/components/schemas/LocalEditJobCreate",
+                    "model_pose_transfer": "#/components/schemas/ModelPoseTransferJobCreate",
                     "product_image": "#/components/schemas/ProductImageJobCreate",
                     "reference_remix": "#/components/schemas/ReferenceRemixJobCreate"
                   },
@@ -3011,6 +3160,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ReferenceRemixJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelPoseTransferJobCreate"
                   },
                   {
                     "$ref": "#/components/schemas/CreativeImageJobCreate"
@@ -3691,6 +3843,80 @@
         "summary": "Submit Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/model-pose-transfer/pose-assets": {
+      "post": {
+        "description": "Materialize only a private catalog original resolved by slug and hash.",
+        "operationId": "materialize_model_pose_asset_api_v1_workspaces__workspace_id__model_pose_transfer_pose_assets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelPoseAssetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Materialize Model Pose Asset",
+        "tags": [
+          "assets"
         ]
       }
     },

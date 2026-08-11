@@ -78,6 +78,8 @@ DEFAULT_ALLOWED_PROMPT_FIELDS = frozenset(
         "material",
         "negative_constraints",
         "platform_code",
+        "pose_reference_sha256",
+        "pose_slug",
         "product_category",
         "product_information",
         "product_name",
@@ -295,7 +297,7 @@ class XingheSingleImageProvider:
             protocol = self._load_protocol(source_content_hash)
             source_records = self._authorize_durable_records(request, envelope)
             sources = await self._load_sources(source_records)
-            envelope = self._resolve_follow_reference_target(envelope, sources)
+            envelope = self._resolve_dynamic_target(envelope, sources)
             prompt = self._compile_prompt(envelope, protocol)
         except SingleImageProviderError as exc:
             return self._rejection(exc.code, str(exc))
@@ -569,21 +571,22 @@ class XingheSingleImageProvider:
             target["output_format"], _ALLOWED_OUTPUT_FORMATS, "output_format"
         )
         fit = _require_choice(target["fit"], _ALLOWED_FITS, "fit")
-        if target["aspect_ratio"] == "follow-reference":
+        if target["aspect_ratio"] in {"follow-reference", "follow-source"}:
+            dynamic_aspect_ratio = str(target["aspect_ratio"])
             if target["width"] is not None or target["height"] is not None:
                 raise SingleImageProviderError(
                     "TARGET_CONFIGURATION_INVALID",
-                    "A follow-reference target cannot declare fixed dimensions.",
+                    f"A {dynamic_aspect_ratio} target cannot declare fixed dimensions.",
                 )
             if fit != "contain":
                 raise SingleImageProviderError(
                     "TARGET_CONFIGURATION_INVALID",
-                    "A follow-reference target must preserve composition.",
+                    f"A {dynamic_aspect_ratio} target must preserve composition.",
                 )
             return TargetSpec(
                 width=None,
                 height=None,
-                aspect_ratio="follow-reference",
+                aspect_ratio=dynamic_aspect_ratio,
                 quality=quality,
                 output_format=output_format,
                 fit=fit,
@@ -600,15 +603,19 @@ class XingheSingleImageProvider:
             fit=fit,
         )
 
-    def _resolve_follow_reference_target(
+    def _resolve_dynamic_target(
         self,
         envelope: SingleImageEnvelope,
         sources: tuple[SourceImage, ...],
     ) -> SingleImageEnvelope:
-        if envelope.target.aspect_ratio != "follow-reference":
+        dynamic_role = {
+            "follow-reference": "style_reference",
+            "follow-source": "model_source",
+        }.get(envelope.target.aspect_ratio)
+        if dynamic_role is None:
             return envelope
         for spec, source in zip(envelope.source_assets, sources, strict=True):
-            if spec.role != "style_reference":
+            if spec.role != dynamic_role:
                 continue
             width, height, _ = _inspect_image(source.payload)
             _validate_target_dimensions(width, height)
@@ -624,9 +631,14 @@ class XingheSingleImageProvider:
                     fit="contain",
                 ),
             )
+        if envelope.target.aspect_ratio == "follow-reference":
+            raise SingleImageProviderError(
+                "FOLLOW_REFERENCE_SOURCE_REQUIRED",
+                "A follow-reference target requires a readable style reference.",
+            )
         raise SingleImageProviderError(
-            "FOLLOW_REFERENCE_SOURCE_REQUIRED",
-            "A follow-reference target requires a readable style reference.",
+            "FOLLOW_SOURCE_REQUIRED",
+            "A follow-source target requires a readable model source.",
         )
 
     def _parse_prompt_input(self, value: object) -> dict[str, Any]:

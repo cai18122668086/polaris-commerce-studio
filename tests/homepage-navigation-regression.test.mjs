@@ -21,6 +21,7 @@ const EXPECTED_FEATURE_CONTRACT = [
   ["model-image", "/workspace/product-image/model-image", "product_image", "product_image.model_image"],
   ["try-on", "/workspace/product-image/try-on", "product_image", "product_image.try_on"],
   ["reference-remix", "/workspace/reference-remix", "reference_remix", "reference_remix"],
+  ["model-pose-transfer", "/workspace/model-pose-transfer", "model_pose_transfer", "model_pose_transfer"],
   ["creative-image", "/workspace/creative-image", "creative_image", "creative_image"],
   ["detail-pack", "/workspace/detail-pack", "detail_pack", "detail_pack"],
   ["amazon-visual-suite", "/workspace/amazon-visual-suite", "amazon_visual_suite", "amazon_visual_suite"],
@@ -42,6 +43,7 @@ const AI_TOOLBOX_MENU_IDS = [
   "white-background",
   "model-image",
   "try-on",
+  "model-pose-transfer",
   "creative-image",
 ];
 

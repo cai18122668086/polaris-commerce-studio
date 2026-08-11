@@ -26,14 +26,46 @@ async function importBundled(entry) {
   return importedModule;
 }
 
-test("only /auth routes are public and account does not require a workspace", async () => {
+test("auth and legal routes are public and account does not require a workspace", async () => {
   const routes = await importBundled("lib/auth/routes.ts");
   assert.equal(routes.isPublicRoute("/auth/login"), true);
   assert.equal(routes.isPublicRoute("/auth/register"), true);
+  assert.equal(routes.isPublicRoute("/legal/terms"), true);
+  assert.equal(routes.isPublicRoute("/legal/privacy"), true);
   assert.equal(routes.isPublicRoute("/"), false);
   assert.equal(routes.isPublicRoute("/assets"), false);
   assert.equal(routes.routeRequiresWorkspace("/account"), false);
+  assert.equal(routes.routeRequiresWorkspace("/legal/privacy"), false);
   assert.equal(routes.routeRequiresWorkspace("/assets"), true);
+});
+
+test("registration requires explicit agreement and opens legal documents without leaving the form", async () => {
+  const registerForm = await utf8("features/auth/components/register-form.tsx");
+  assert.match(registerForm, /if \(!acceptedAgreements\)/);
+  assert.match(registerForm, /if \(!acceptedCrossBorder\)/);
+  assert.match(registerForm, /signUpWithEmailPassword\(email, password\)/);
+  assert.ok(registerForm.indexOf("if (!acceptedAgreements)") < registerForm.indexOf("signUpWithEmailPassword(email, password)"));
+  assert.ok(registerForm.indexOf("if (!acceptedCrossBorder)") < registerForm.indexOf("signUpWithEmailPassword(email, password)"));
+  assert.match(registerForm, /target="_blank"/);
+  assert.match(registerForm, /rel="noreferrer"/);
+});
+
+test("legal documents use confirmed operator details and actual data flows", async () => {
+  const terms = await utf8("app/legal/terms/page.tsx");
+  const privacy = await utf8("app/legal/privacy/page.tsx");
+
+  for (const document of [terms, privacy]) {
+    assert.match(document, /揭阳市腾利科技服务有限公司/);
+    assert.match(document, /人工智能处理环境/);
+    assert.match(document, /一个月/);
+    assert.doesNotMatch(document, /蕉点AI|武汉光瞳科技有限公司/);
+  }
+
+  assert.match(terms, /用于模型训练/);
+  assert.match(privacy, /1474953130@qq\.com/);
+  assert.match(privacy, /广东省揭阳市揭东区新亨商务中心1407/);
+  assert.match(privacy, /中国香港/);
+  assert.match(privacy, /用于模型训练/);
 });
 
 test("returnTo accepts internal business routes and rejects open redirects or auth loops", async () => {
@@ -66,6 +98,7 @@ test("final API 401 is centralised without browser token storage", async () => {
   assert.match(client, /fetch: runtimeFetch/);
   assert.match(boundary, /queryClient\.clear\(\)/);
   assert.match(boundary, /onAuthUnauthorised\(redirectToLogin\)/);
+  assert.match(boundary, /if \(publicRoute\) return;\s*return onAuthUnauthorised/);
   assert.match(sessionEvents, /polaris:auth:unauthorised/);
   assert.match(providers, /<AuthBoundary>\{children\}<\/AuthBoundary>/);
 

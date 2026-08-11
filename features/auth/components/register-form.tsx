@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,7 +11,7 @@ import {
   signUpWithEmailPassword,
 } from "@/features/auth/api/auth";
 import { verifyEmailHref, withReturnTo } from "@/lib/auth/return-to";
-import { AUTH_ROUTES } from "@/lib/auth/routes";
+import { AUTH_ROUTES, LEGAL_ROUTES } from "@/lib/auth/routes";
 
 export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
   const router = useRouter();
@@ -19,6 +19,9 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [acceptedAgreements, setAcceptedAgreements] = useState(false);
+  const [acceptedCrossBorder, setAcceptedCrossBorder] = useState(false);
+  const [consentError, setConsentError] = useState<string>();
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
 
@@ -26,6 +29,15 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
     event.preventDefault();
     setError(undefined);
     setFieldErrors({});
+    setConsentError(undefined);
+    if (!acceptedAgreements) {
+      setConsentError("请先阅读并同意《用户协议》和《隐私政策》。");
+      return;
+    }
+    if (!acceptedCrossBorder) {
+      setConsentError("请确认并单独同意数据存储与跨境处理事项。");
+      return;
+    }
     if (password !== confirmation) {
       setFieldErrors({ confirmation: "两次输入的密码不一致。" });
       return;
@@ -100,6 +112,40 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
         />
         {fieldErrors.confirmation ? <small className="auth-field__error">{fieldErrors.confirmation}</small> : null}
       </label>
+      <div className="auth-consent" aria-describedby={consentError ? "registration-consent-error" : undefined}>
+        <label className="auth-consent__item">
+          <input
+            checked={acceptedAgreements}
+            onChange={(event) => {
+              setAcceptedAgreements(event.target.checked);
+              setConsentError(undefined);
+            }}
+            type="checkbox"
+          />
+          <span>
+            我已阅读并同意
+            <Link href={LEGAL_ROUTES.terms} target="_blank" rel="noreferrer">《用户协议》</Link>
+            和
+            <Link href={LEGAL_ROUTES.privacy} target="_blank" rel="noreferrer">《隐私政策》</Link>
+          </span>
+        </label>
+        <label className="auth-consent__item">
+          <input
+            checked={acceptedCrossBorder}
+            onChange={(event) => {
+              setAcceptedCrossBorder(event.target.checked);
+              setConsentError(undefined);
+            }}
+            type="checkbox"
+          />
+          <span>
+            我单独同意为提供账户和图片生成服务，将相关账户信息、操作记录、上传素材、生成指令和结果传输至位于中国香港的生产环境处理。
+            <Link href={`${LEGAL_ROUTES.privacy}#cross-border`} target="_blank" rel="noreferrer">了解详情</Link>
+          </span>
+        </label>
+        <p className="auth-consent__minor">未满十八周岁请在监护人指导下使用；不满十四周岁请先取得监护人同意。</p>
+        {consentError ? <p className="auth-consent__error" id="registration-consent-error" role="alert">{consentError}</p> : null}
+      </div>
       {error ? <p className="auth-form__error" role="alert">{error}</p> : null}
       <button className="auth-button auth-button--primary auth-button--full" disabled={submitting} type="submit">
         {submitting ? "正在注册…" : "创建账号"}
@@ -107,7 +153,6 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
       <p className="auth-form__switch">
         已有账号？<Link href={withReturnTo(AUTH_ROUTES.login, returnTo)}>直接登录</Link>
       </p>
-      <p className="auth-form__legal">注册即表示你同意遵守平台服务约定与隐私规则。</p>
     </form>
   );
 }

@@ -31,13 +31,24 @@ test("standalone workspaces submit the exact backend job families", async () => 
   assert.match(workspace, /product_asset_ids: selections\.product/);
   assert.match(workspace, /reference_asset_ids: selections\.reference/);
   assert.match(workspace, /competitor_asset_ids: selections\.competitor/);
-  assert.match(workspace, /white_background_product_asset_ids: selections\.whiteBackground/);
-  assert.match(workspace, /detail_asset_ids: selections\.detail/);
-  assert.match(workspace, /package_asset_ids: selections\.package/);
-  assert.match(workspace, /scene_asset_ids: selections\.scene/);
-  assert.match(workspace, /brand_asset_ids: selections\.brand/);
-});
 
+  const amazonBody = workspace.slice(
+    workspace.indexOf('type: "amazon_visual_suite"'),
+    workspace.indexOf("const submit = async"),
+  );
+  const amazonSourcePayload = {
+    white_background_product_asset_ids: "whiteBackground",
+    detail_asset_ids: "detail",
+    package_asset_ids: "package",
+    scene_asset_ids: "scene",
+    brand_asset_ids: "brand",
+    reference_asset_ids: "reference",
+    competitor_reference_asset_ids: "competitor",
+  };
+  for (const [field, role] of Object.entries(amazonSourcePayload)) {
+    assert.match(amazonBody, new RegExp(`${field}: selections\\.${role}`));
+  }
+});
 test("creative and reference workspaces preserve the full count and aspect-ratio controls", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
   assert.match(workspace, /const \[imageCount, setImageCount\] = useState\(1\)/);
@@ -92,18 +103,43 @@ test("Amazon fixed pack delegates all 21 JobItems to the backend", async () => {
   assert.doesNotMatch(amazonBody, /item_key|MAIN-01|SECONDARY-01|A-DESKTOP-01/);
 });
 
-test("Amazon source roles share the backend eight-image limit", async () => {
+test("Amazon keeps one primary source role, one general reference role, and five classified roles", async () => {
+  const workspace = await utf8("components/commerce-skill-workspace.tsx");
+
+  const readRoleKeys = (constantName) => {
+    const declaration = workspace.match(
+      new RegExp(
+        "const " + constantName + "[^=]*=\\s*\\[([\\s\\S]*?)\\]",
+      ),
+    );
+    assert.ok(declaration, constantName + " must declare the Amazon role-key list");
+    return [...declaration[1].matchAll(/"([A-Za-z]+)"/g)].map((match) => match[1]);
+  };
+
+  assert.deepEqual(readRoleKeys("AMAZON_PRIMARY_ROLE_KEYS"), ["whiteBackground"]);
+  assert.deepEqual(readRoleKeys("AMAZON_REFERENCE_ROLE_KEYS"), ["reference"]);
+  assert.deepEqual(readRoleKeys("AMAZON_ADVANCED_ROLE_KEYS"), [
+    "detail",
+    "package",
+    "scene",
+    "brand",
+    "competitor",
+  ]);
+});
+
+test("Amazon simplified source roles share the backend eight-image limit", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
 
   assert.match(workspace, /const AMAZON_SOURCE_ASSET_LIMIT = 8/);
-  assert.match(workspace, /七类源图合计最多 \$\{AMAZON_SOURCE_ASSET_LIMIT\} 张/);
+  assert.match(workspace, /素材合计最多 \$\{AMAZON_SOURCE_ASSET_LIMIT\} 张/);
+  assert.doesNotMatch(workspace, /七类源图/);
   assert.match(
     workspace,
-    /已选 \$\{selectedIds\.length\} \/ \$\{AMAZON_SOURCE_ASSET_LIMIT\} 张，剩余 \$\{amazonRemainingSourceSlots\} 张/,
+    /selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT/,
   );
   assert.match(
     workspace,
-    /const amazonRemainingSourceSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length/,
+    /selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT/,
   );
   assert.match(
     workspace,
@@ -122,7 +158,79 @@ test("Amazon source roles share the backend eight-image limit", async () => {
     workspace,
     /const roleLimit = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount[\s\S]*: AMAZON_SOURCE_ASSET_LIMIT/,
   );
-  assert.match(workspace, /同一素材不能跨角色重复选择，每个角色最多 \$\{AMAZON_SOURCE_ASSET_LIMIT\} 张/);
+});
+
+test("Amazon form exposes only three concise Chinese content fields", async () => {
+  const workspace = await utf8("components/commerce-skill-workspace.tsx");
+  const amazonForm = workspace.slice(
+    workspace.indexOf('<div className={amazonStyles.amazonForm}>'),
+    workspace.indexOf("              ) : (", workspace.indexOf('<div className={amazonStyles.amazonForm}>')),
+  );
+
+  for (const copy of [
+    "上传商品素材",
+    "添加参考图片",
+    "按用途分类素材",
+    "告诉我们这个商品",
+    "商品名称",
+    "商品卖点与参数",
+    "品牌与生成要求",
+  ]) {
+    assert.match(workspace, new RegExp(copy));
+  }
+
+  assert.match(amazonForm, /value=\{productName\}/);
+  assert.match(amazonForm, /value=\{productFacts\}/);
+  assert.match(amazonForm, /value=\{instruction\}/);
+  assert.equal((amazonForm.match(/<label className=\{amazonStyles\.simpleField\}>/g) ?? []).length, 3);
+
+  for (const hiddenField of [
+    "targetBuyer",
+    "listingDescription",
+    "listingTitle",
+    "aPlusCopy",
+    "parameters",
+    "certificationsOrEvidence",
+    "forbiddenClaims",
+    "brandColors",
+    "stylePreferences",
+    "sellingPoints",
+    "category",
+    "language",
+  ]) {
+    assert.doesNotMatch(amazonForm, new RegExp(`value=\\{${hiddenField}\\}`));
+  }
+  assert.doesNotMatch(workspace, />更多信息</);
+  assert.doesNotMatch(
+    amazonForm,
+    /Listing|Bullet Points|Buyer Demand Map|Campaign Style Lock|Contact Sheet/,
+  );
+
+  // The UI is simplified without changing the backend contract or Skill capability.
+  const amazonBody = workspace.slice(
+    workspace.indexOf('type: "amazon_visual_suite"'),
+    workspace.indexOf("const submit = async"),
+  );
+  for (const field of [
+    "marketplace",
+    "product_name",
+    "category",
+    "target_buyer",
+    "listing_title",
+    "bullet_points",
+    "listing_description",
+    "a_plus_copy",
+    "product_facts",
+    "parameters",
+    "certifications_or_evidence",
+    "forbidden_claims",
+    "brand_colors",
+    "style_preferences",
+    "instruction",
+    "language",
+  ]) {
+    assert.match(amazonBody, field === "language" ? /language,/ : new RegExp(`${field}:`));
+  }
 });
 
 test("Amazon workflow reviews and confirms the backend 21-page plan", async () => {

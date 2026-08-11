@@ -38,6 +38,7 @@ import { getFeatureById } from "@/lib/feature-registry";
 import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
+import amazonStyles from "./amazon-visual-suite-form.module.css";
 import styles from "./product-image-workspace.module.css";
 
 type WorkspaceFeatureId =
@@ -98,18 +99,34 @@ const referenceAspectRatios: { value: AspectRatio; label: string; note: string }
 
 const imageCountOptions = Array.from({ length: 12 }, (_, index) => index + 1);
 const AMAZON_SOURCE_ASSET_LIMIT = 8;
+const AMAZON_PRIMARY_ROLE_KEYS: readonly RoleKey[] = ["whiteBackground"];
+const AMAZON_REFERENCE_ROLE_KEYS: readonly RoleKey[] = ["reference"];
+const AMAZON_ADVANCED_ROLE_KEYS: readonly RoleKey[] = [
+  "detail",
+  "package",
+  "scene",
+  "brand",
+  "competitor",
+];
 
 const platforms = [
   { value: "tmall", label: "天猫 / 淘宝" },
   { value: "jd", label: "京东" },
   { value: "douyin", label: "抖音电商" },
   { value: "xiaohongshu", label: "小红书" },
-  { value: "amazon-us", label: "Amazon US" },
+  { value: "amazon-us", label: "亚马逊美国站" },
   { value: "generic", label: "通用渠道" },
 ];
 
 const amazonPlatforms = [
-  { value: "amazon-us", label: "Amazon US" },
+  { value: "amazon-us", label: "亚马逊美国站" },
+] as const;
+
+const languageOptions = [
+  { value: "zh-CN", label: "简体中文" },
+  { value: "en-US", label: "英语（美国）" },
+  { value: "ja-JP", label: "日语" },
+  { value: "de-DE", label: "德语" },
 ] as const;
 
 const creativeDirections: { value: CreativeDirection; label: string }[] = [
@@ -171,7 +188,7 @@ const AMAZON_BUSINESS_QUALITY_COPY: Record<
 > = {
   passed: {
     title: "技术交付与业务审核均已通过",
-    description: "已确认 Product Master、SKU 一致性和跨页质量。",
+    description: "已确认商品主档、商品编码一致性和跨页质量。",
   },
   failed: {
     title: "业务质量检查未通过",
@@ -179,7 +196,7 @@ const AMAZON_BUSINESS_QUALITY_COPY: Record<
   },
   needs_review: {
     title: "技术交付完成，业务质量等待人工审核",
-    description: "SKU 身份与跨页视觉一致性需要人工确认；文件可下载，重做必须由你明确发起。",
+    description: "商品编码身份与跨页视觉一致性需要人工确认；文件可下载，重做必须由你明确发起。",
   },
   review_infrastructure_failed: {
     title: "图片已生成，但自动视觉审核基础设施失败",
@@ -261,8 +278,8 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
   return [
     {
       key: "whiteBackground",
-      title: "白底商品图",
-      description: "必填，至少 1 张真实清晰的商品图；白底优先，轻微背景瑕疵、真实商标、Logo 或产品标签不会阻止生成。",
+      title: "商品素材",
+      description: "至少上传 1 张清晰商品图，白底图优先。",
       required: true,
     },
     {
@@ -286,13 +303,13 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
     {
       key: "brand",
       title: "品牌参考",
-      description: "可选，用于 Logo、品牌色和视觉规范。",
+      description: "可选，用于品牌标志、品牌色和视觉规范。",
       required: false,
     },
     {
       key: "reference",
-      title: "视觉风格参考",
-      description: "可选，用于理解期望的构图、光影、信息层级与视觉节奏。",
+      title: "参考素材",
+      description: "有场景、风格或品牌参考时再上传。",
       required: false,
     },
     {
@@ -412,17 +429,18 @@ export function CommerceSkillWorkspace({
   const [instruction, setInstruction] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
   const [productName, setProductName] = useState("");
-  const [category, setCategory] = useState("");
-  const [targetBuyer, setTargetBuyer] = useState("");
-  const [listingTitle, setListingTitle] = useState("");
-  const [listingDescription, setListingDescription] = useState("");
-  const [aPlusCopy, setAPlusCopy] = useState("");
+  // Keep the full backend contract while the simplified Amazon form leaves legacy optional fields blank.
+  const category = "";
+  const targetBuyer = "";
+  const listingTitle = "";
+  const listingDescription = "";
+  const aPlusCopy = "";
   const [productFacts, setProductFacts] = useState("");
-  const [parameters, setParameters] = useState("");
-  const [certificationsOrEvidence, setCertificationsOrEvidence] = useState("");
-  const [forbiddenClaims, setForbiddenClaims] = useState("");
-  const [brandColors, setBrandColors] = useState("");
-  const [stylePreferences, setStylePreferences] = useState("");
+  const parameters = "";
+  const certificationsOrEvidence = "";
+  const forbiddenClaims = "";
+  const brandColors = "";
+  const stylePreferences = "";
   const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
   const [libraryRole, setLibraryRole] = useState<RoleKey>();
@@ -432,7 +450,21 @@ export function CommerceSkillWorkspace({
   const requestError = workspaceError ?? upload.error ?? confirmPlan.error ?? job.error;
   const isAmazon = featureId === "amazon-visual-suite";
   const isCreative = featureId === "creative-image";
+  const primaryRoleDefinitions = isAmazon
+    ? roleDefinitions.filter((role) => AMAZON_PRIMARY_ROLE_KEYS.includes(role.key))
+    : roleDefinitions;
+  const referenceRoleDefinitions = isAmazon
+    ? roleDefinitions.filter((role) => AMAZON_REFERENCE_ROLE_KEYS.includes(role.key))
+    : [];
+  const advancedRoleDefinitions = isAmazon
+    ? roleDefinitions.filter((role) => AMAZON_ADVANCED_ROLE_KEYS.includes(role.key))
+    : [];
   const activeLibraryRole = roleDefinitions.find((role) => role.key === libraryRole);
+  const selectedPlatformLabel = (isAmazon ? amazonPlatforms : platforms).find(
+    (platform) => platform.value === platformCode,
+  )?.label ?? "未选择站点";
+  const selectedLanguageLabel = languageOptions.find((option) => option.value === language)?.label
+    ?? "未选择语言";
   const selectedSizeLabel = isAmazon
     ? "主图 2000 × 2000；副图 1200 × 1600；桌面 A+ 1464 × 600；移动 A+ 1600 × 1200"
     : aspectRatio === "follow-reference"
@@ -541,7 +573,7 @@ export function CommerceSkillWorkspace({
     if (availableSlots === 0) {
       setUiError(
         isAmazon
-          ? `Amazon 七类源图合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张；请先取消已选素材。`
+          ? `亚马逊套图素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张；请先取消已选素材。`
           : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张素材；请先取消已选素材。`,
       );
       return;
@@ -567,7 +599,7 @@ export function CommerceSkillWorkspace({
     } else if (files.length > filesToUpload.length) {
       setUiError(
         isAmazon
-          ? `Amazon 七类源图合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`
+          ? `亚马逊套图素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`
           : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`,
       );
     }
@@ -669,7 +701,7 @@ export function CommerceSkillWorkspace({
 
   return (
     <AppShell flush sidebar={false}>
-      <div className={styles.workspacePage}>
+      <div className={`${styles.workspacePage} ${isAmazon ? amazonStyles.amazonWorkspace : ""}`}>
         <WorkspaceHeader
           eyebrow={`${feature.shortTitle} · 独立工作台`}
           title={feature.title}
@@ -681,9 +713,9 @@ export function CommerceSkillWorkspace({
           }
         />
 
-        <div className={styles.stepBar} aria-label="创作步骤">
-          <span data-active={!jobId || undefined}><i>1</i>选择素材</span>
-          <span data-active={!jobId || undefined}><i>2</i>配置参数</span>
+        <div className={`${styles.stepBar} ${isAmazon ? amazonStyles.amazonStepBar : ""}`} aria-label="创作步骤">
+          <span data-active={(isAmazon ? !jobId && selections.whiteBackground.length === 0 : !jobId) || undefined}><i>1</i>{isAmazon ? "上传图片" : "选择素材"}</span>
+          <span data-active={(isAmazon ? !jobId && selections.whiteBackground.length > 0 : !jobId) || undefined}><i>2</i>{isAmazon ? "填写卖点" : "配置参数"}</span>
           <span data-active={Boolean(jobId) || undefined}><i>3</i>生成进度</span>
           <span data-active={resultAssets.length > 0 || undefined}><i>4</i>结果交付</span>
         </div>
@@ -695,23 +727,23 @@ export function CommerceSkillWorkspace({
                 <div>
                   <span>01</span>
                   <div>
-                    <h2>选择角色素材</h2>
+                    <h2>{isAmazon ? "上传商品素材" : "选择角色素材"}</h2>
                     <p>
                       {isAmazon
-                        ? `同一素材不能跨角色重复选择，七类源图合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
+                        ? `至少上传 1 张清晰商品图，全部素材最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
                         : `同一素材不能跨角色重复选择，每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`}
                     </p>
                   </div>
                 </div>
                 <strong>
                   {isAmazon
-                    ? `已选 ${selectedIds.length} / ${AMAZON_SOURCE_ASSET_LIMIT} 张，剩余 ${amazonRemainingSourceSlots} 张`
+                    ? `已选 ${selectedIds.length} / ${AMAZON_SOURCE_ASSET_LIMIT} 张`
                     : `${selectedIds.length} 张`}
                 </strong>
               </div>
 
-              <div className={styles.uploadGrid}>
-                {roleDefinitions.map((role) => (
+              <div className={`${styles.uploadGrid} ${isAmazon ? amazonStyles.primaryUploadGrid : ""}`}>
+                {primaryRoleDefinitions.map((role) => (
                   <UploadPanel
                     key={role.key}
                     title={role.title}
@@ -727,212 +759,165 @@ export function CommerceSkillWorkspace({
                   />
                 ))}
               </div>
-            </section>
 
+              {isAmazon ? (
+                <div className={amazonStyles.optionalSections}>
+                  <details className={amazonStyles.advancedSection}>
+                    <summary>
+                      <span>添加参考图片</span>
+                      <small>有场景、风格或品牌参考时再添加</small>
+                    </summary>
+                    <div className={amazonStyles.advancedSectionBody}>
+                      <div className={amazonStyles.primaryUploadGrid}>
+                        {referenceRoleDefinitions.map((role) => (
+                          <UploadPanel
+                            key={role.key}
+                            title={role.title}
+                            description={role.description}
+                            count={selections[role.key].length}
+                            required={role.required}
+                            uploading={upload.isPending}
+                            disabled={Boolean(jobId)}
+                            addDisabled={amazonRemainingSourceSlots === 0}
+                            uploadLabel="上传图片"
+                            onFiles={(files) => void addUploadedAssets(files, role.key)}
+                            onOpenLibrary={() => setLibraryRole(role.key)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+
+                  <details className={amazonStyles.advancedSection}>
+                    <summary>
+                      <span>按用途分类素材</span>
+                      <small>细节、包装、场景、品牌或竞品</small>
+                    </summary>
+                    <div className={amazonStyles.advancedSectionBody}>
+                      <div className={styles.uploadGrid}>
+                        {advancedRoleDefinitions.map((role) => (
+                          <UploadPanel
+                            key={role.key}
+                            title={role.title}
+                            description={role.description}
+                            count={selections[role.key].length}
+                            required={role.required}
+                            uploading={upload.isPending}
+                            disabled={Boolean(jobId)}
+                            addDisabled={amazonRemainingSourceSlots === 0}
+                            uploadLabel="上传图片"
+                            onFiles={(files) => void addUploadedAssets(files, role.key)}
+                            onOpenLibrary={() => setLibraryRole(role.key)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              ) : null}
+            </section>
             <section className={styles.card}>
               <div className={styles.sectionHeading}>
                 <div>
                   <span>02</span>
                   <div>
-                    <h2>配置生成任务</h2>
+                    <h2>{isAmazon ? "告诉我们这个商品" : "配置生成任务"}</h2>
                     <p>
                       {isAmazon
-                        ? "填写商品与品牌信息，生成完整的 21 张亚马逊套图。"
+                        ? "除商品图片外，其余信息都可以跳过。"
                         : "设置平台、比例和生成数量，每张结果均为独立图片。"}
                     </p>
                   </div>
                 </div>
-                <strong>{isAmazon ? "固定 21 项" : `${imageCount} 项`}</strong>
-              </div>
-
-              <div className={styles.formGrid}>
-                <label>
-                  <span>{isAmazon ? "Amazon 站点" : "目标平台"}</span>
-                  <select
-                    value={platformCode}
-                    onChange={(event) => setPlatformCode(event.target.value)}
-                    disabled={Boolean(jobId)}
-                  >
-                    {(isAmazon ? amazonPlatforms : platforms).map((platform) => (
-                      <option key={platform.value} value={platform.value}>{platform.label}</option>
-                    ))}
-                  </select>
-                  <small>{isAmazon ? "用于匹配 Amazon US 的画面与文案规范。" : "用于匹配不同渠道的构图与视觉规范。"} 图片尺寸：{selectedSizeLabel}</small>
-                </label>
-                <label>
-                  <span>语言</span>
-                  <select
-                    value={language}
-                    onChange={(event) => setLanguage(event.target.value)}
-                    disabled={Boolean(jobId)}
-                  >
-                    <option value="zh-CN">简体中文</option>
-                    <option value="en-US">English (US)</option>
-                    <option value="ja-JP">日本語</option>
-                    <option value="de-DE">Deutsch</option>
-                  </select>
-                  <small>用于生成图片中的文案语言。</small>
-                </label>
-                {isCreative ? (
-                  <label>
-                    <span>创意方向</span>
-                    <select
-                      value={creativeDirection}
-                      onChange={(event) =>
-                        setCreativeDirection(event.target.value as CreativeDirection)
-                      }
-                      disabled={Boolean(jobId)}
-                    >
-                      {creativeDirections.map((direction) => (
-                        <option key={direction.value} value={direction.value}>
-                          {direction.label}
-                        </option>
-                      ))}
-                    </select>
-                    <small>用于确定画面的主要表达方向。</small>
-                  </label>
-                ) : null}
+                <strong>{isAmazon ? `${selectedPlatformLabel} · ${selectedLanguageLabel}` : `${imageCount} 项`}</strong>
               </div>
 
               {isAmazon ? (
-                <>
-                  <label className={styles.colorField}>
-                    <span>商品名称 <i>可选</i></span>
+                <div className={amazonStyles.amazonForm}>
+                  <label className={amazonStyles.simpleField}>
+                    <span>商品名称</span>
                     <input
                       value={productName}
                       onChange={(event) => setProductName(event.target.value)}
                       maxLength={160}
-                      placeholder="可留空，系统将仅依据上传素材分析"
+                      placeholder="例如：旅行背包"
                       disabled={Boolean(jobId)}
                     />
-                    <small>留空不会阻塞提交，也不会虚构商品名称或属性。</small>
                   </label>
-                  <label className={styles.colorField}>
-                    <span>商品类目</span>
-                    <input
-                      value={category}
-                      onChange={(event) => setCategory(event.target.value)}
-                      maxLength={120}
-                      placeholder="可选，例如 Travel Backpack"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>用于类目路由、买家问题和视觉证明方式选择。</small>
-                  </label>
-                  <label className={styles.colorField}>
-                    <span>目标买家</span>
-                    <input
-                      value={targetBuyer}
-                      onChange={(event) => setTargetBuyer(event.target.value)}
-                      maxLength={500}
-                      placeholder="可选，描述典型人群、场景和购买顾虑"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>用于构建 Buyer Demand Map，而不是固定套模板。</small>
-                  </label>
-                  <label className={styles.colorField}>
-                    <span>Listing 标题</span>
-                    <input
-                      value={listingTitle}
-                      onChange={(event) => setListingTitle(event.target.value)}
-                      maxLength={240}
-                      placeholder="可选，最多 240 字符"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>用于辅助 21 项套图的信息层级规划。</small>
-                  </label>
-                  <label className={styles.instructionField}>
-                    <span>Listing 描述</span>
-                    <textarea
-                      value={listingDescription}
-                      onChange={(event) => setListingDescription(event.target.value)}
-                      rows={4}
-                      maxLength={4000}
-                      placeholder="可选，粘贴商品描述"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>{listingDescription.length} / 4000</small>
-                  </label>
-                  <label className={styles.instructionField}>
-                    <span>A+ 文案</span>
-                    <textarea
-                      value={aPlusCopy}
-                      onChange={(event) => setAPlusCopy(event.target.value)}
-                      rows={4}
-                      maxLength={4000}
-                      placeholder="可选，粘贴已有 A+ 文案或模块要点"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>{aPlusCopy.length} / 4000</small>
-                  </label>
-                  <label className={styles.instructionField}>
-                    <span>商品事实与参数</span>
+
+                  <label className={amazonStyles.simpleField}>
+                    <span>商品卖点与参数</span>
                     <textarea
                       value={productFacts}
                       onChange={(event) => setProductFacts(event.target.value)}
                       rows={4}
-                      placeholder="每行一项已确认事实，最多 24 项"
+                      placeholder={"每行写一项，也可以直接粘贴已有商品文案，例如：\n轻便耐磨\n可放 15.6 英寸电脑\n尺寸 42 × 28 × 18 厘米"}
                       disabled={Boolean(jobId)}
                     />
-                    <small>仅填写已确认信息；尺寸、容量等参数可在下一栏单独列出。</small>
                   </label>
-                  <label className={styles.instructionField}>
-                    <span>参数与规格</span>
+
+                  <label className={amazonStyles.simpleField}>
+                    <span>品牌与生成要求</span>
                     <textarea
-                      value={parameters}
-                      onChange={(event) => setParameters(event.target.value)}
+                      value={instruction}
+                      onChange={(event) => setInstruction(event.target.value)}
                       rows={4}
-                      placeholder="每行一项，例如 42 × 28 × 18 cm"
+                      maxLength={4000}
+                      placeholder="例如：品牌色为深蓝；面向通勤人群；优先突出收纳；不要出现具体防水等级"
                       disabled={Boolean(jobId)}
                     />
-                    <small>参数会作为可核验事实进入规划和逐页提示词。</small>
                   </label>
-                  <label className={styles.instructionField}>
-                    <span>证书与证据</span>
-                    <textarea
-                      value={certificationsOrEvidence}
-                      onChange={(event) => setCertificationsOrEvidence(event.target.value)}
-                      rows={4}
-                      placeholder="每行一项；没有证据时请留空"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>只有明确提供的证据才能支持认证、测试和性能类表达。</small>
-                  </label>
-                  <label className={styles.instructionField}>
-                    <span>禁用宣称</span>
-                    <textarea
-                      value={forbiddenClaims}
-                      onChange={(event) => setForbiddenClaims(event.target.value)}
-                      rows={4}
-                      placeholder="每行一项，明确禁止出现的功效、认证或绝对化表述"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>作为整套 21 张图的不可协商负面约束。</small>
-                  </label>
-                  <label className={styles.instructionField}>
-                    <span>品牌色</span>
-                    <textarea
-                      value={brandColors}
-                      onChange={(event) => setBrandColors(event.target.value)}
-                      rows={3}
-                      placeholder="每行一个色名或色号，最多 8 项"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>每行填写一种品牌色。</small>
-                  </label>
-                  <label className={styles.instructionField}>
-                    <span>风格偏好</span>
-                    <textarea
-                      value={stylePreferences}
-                      onChange={(event) => setStylePreferences(event.target.value)}
-                      rows={4}
-                      placeholder="每行一项，例如 editorial、technical、warm lifestyle"
-                      disabled={Boolean(jobId)}
-                    />
-                    <small>用于动态建立 Campaign Style Lock，不会映射到固定背景模板。</small>
-                  </label>
-                </>
+                </div>
               ) : (
                 <>
+                  <div className={styles.formGrid}>
+                    <label>
+                      <span>目标平台</span>
+                      <select
+                        value={platformCode}
+                        onChange={(event) => setPlatformCode(event.target.value)}
+                        disabled={Boolean(jobId)}
+                      >
+                        {platforms.map((platform) => (
+                          <option key={platform.value} value={platform.value}>{platform.label}</option>
+                        ))}
+                      </select>
+                      <small>用于匹配不同渠道的构图与视觉规范。图片尺寸：{selectedSizeLabel}</small>
+                    </label>
+                    <label>
+                      <span>图片文案语言</span>
+                      <select
+                        value={language}
+                        onChange={(event) => setLanguage(event.target.value)}
+                        disabled={Boolean(jobId)}
+                      >
+                        {languageOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <small>用于生成图片中的文字内容。</small>
+                    </label>
+                    {isCreative ? (
+                      <label>
+                        <span>创意方向</span>
+                        <select
+                          value={creativeDirection}
+                          onChange={(event) =>
+                            setCreativeDirection(event.target.value as CreativeDirection)
+                          }
+                          disabled={Boolean(jobId)}
+                        >
+                          {creativeDirections.map((direction) => (
+                            <option key={direction.value} value={direction.value}>
+                              {direction.label}
+                            </option>
+                          ))}
+                        </select>
+                        <small>用于确定画面的主要表达方向。</small>
+                      </label>
+                    ) : null}
+                  </div>
+
                   <fieldset className={styles.optionGroup} disabled={Boolean(jobId)}>
                     <legend>画面比例</legend>
                     <div className={styles.ratioGrid}>
@@ -968,33 +953,33 @@ export function CommerceSkillWorkspace({
                       ))}
                     </div>
                   </fieldset>
+
+                  <label className={styles.instructionField}>
+                    <span>商品卖点</span>
+                    <textarea
+                      value={sellingPoints}
+                      onChange={(event) => setSellingPoints(event.target.value)}
+                      rows={4}
+                      placeholder="每行一项，最多 12 项"
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>按换行或逗号拆分，最多提交 12 项。</small>
+                  </label>
+
+                  <label className={styles.instructionField}>
+                    <span>补充要求</span>
+                    <textarea
+                      value={instruction}
+                      onChange={(event) => setInstruction(event.target.value)}
+                      placeholder={feature.guidance}
+                      rows={5}
+                      maxLength={4000}
+                      disabled={Boolean(jobId)}
+                    />
+                    <small>{instruction.length} / 4000 · {feature.guidance}</small>
+                  </label>
                 </>
               )}
-
-              <label className={styles.instructionField}>
-                <span>{isAmazon ? "Bullet Points" : "商品卖点"}</span>
-                <textarea
-                  value={sellingPoints}
-                  onChange={(event) => setSellingPoints(event.target.value)}
-                  rows={4}
-                  placeholder="每行一项，最多 12 项"
-                  disabled={Boolean(jobId)}
-                />
-                <small>按换行或逗号拆分，最多提交 12 项。</small>
-              </label>
-
-              <label className={styles.instructionField}>
-                <span>补充要求</span>
-                <textarea
-                  value={instruction}
-                  onChange={(event) => setInstruction(event.target.value)}
-                  placeholder={isAmazon ? "例如：优先突出通勤收纳；避免使用具体防水等级；移动端文字更精简" : feature.guidance}
-                  rows={5}
-                  maxLength={4000}
-                  disabled={Boolean(jobId)}
-                />
-                <small>{instruction.length} / 4000 · {feature.guidance}</small>
-              </label>
             </section>
 
             {jobId ? (

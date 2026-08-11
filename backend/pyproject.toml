@@ -32,6 +32,7 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+norecursedirs = ["skill_sources"]
 
 [tool.ruff]
 target-version = "py313"
@@ -56,4 +57,4 @@ where = ["."]
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["skill_manifests/*.json"]
+app = ["skill_manifests/*.json", "skill_manifests/*/*.json"]

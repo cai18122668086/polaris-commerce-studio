@@ -236,6 +236,13 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
                     "detail_pack",
                     "amazon_visual_suite",
                 )
+            }
+            | {
+                "domestic_main_image": {
+                    "availability": "available",
+                    "execution": "local",
+                    "reason_code": "DOMESTIC_MAIN_IMAGE_PROVIDER_DISABLED",
+                }
             },
             "asset_management": {
                 "availability": "available",
@@ -281,6 +288,10 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
         assert status.availability == "unavailable"
         assert status.execution == "none"
         assert status.reason_code == "REAL_PROVIDER_NOT_REGISTERED"
+    domestic = tengli.capabilities.features["domestic_main_image"]
+    assert domestic.availability == "available"
+    assert domestic.execution == "local"
+    assert domestic.reason_code == "DOMESTIC_MAIN_IMAGE_PROVIDER_DISABLED"
     assert tengli.capabilities.external_authentication.availability == "unavailable"
 
 
@@ -311,7 +322,7 @@ def test_runtime_capabilities_enable_only_the_selected_real_provider(
     assert selected.execution == "provider"
     assert selected.reason_code is None
     for name, capability in runtime.capabilities.features.items():
-        if name in {"local_edit", "detail_pack", feature_name}:
+        if name in {"local_edit", "detail_pack", "domestic_main_image", feature_name}:
             continue
         assert capability.availability == "unavailable"
         assert capability.execution == "none"
@@ -363,6 +374,7 @@ def test_runtime_openapi_contract_is_explicit_and_stable(client: TestClient) -> 
         "TASK_RUNNER_MOCK",
         "REAL_PROVIDER_NOT_REGISTERED",
         "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+        "DOMESTIC_MAIN_IMAGE_PROVIDER_DISABLED",
     ]
     assert "internal testing" in availability["description"]
     assert "clients must read execution" in operation["description"]
@@ -657,6 +669,7 @@ def test_real_provider_zero_recurring_limits_keep_usage_ledger_unbounded(
     finally:
         settings.workspace_credit_enforcement_enabled = True
         set_credit_enforcement_enabled(True)
+
 
 def test_amazon_real_provider_reserves_complete_automation_envelope(
     client: TestClient,
@@ -1798,8 +1811,7 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
     )
     assert unavailable_archive.status_code == 409
     assert (
-        unavailable_archive.json()["error"]["code"]
-        == "DELIVERABLE_ARCHIVE_NOT_READY"
+        unavailable_archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
     )
 
     confirmed = client.post(
@@ -1856,8 +1868,9 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
             if asset["direction"] == "output" and asset["is_deliverable"]
         }
         for ordinal, name in enumerate(bundle.namelist()):
-            assert hashlib.sha256(bundle.read(name)).hexdigest() == (
-                deliverables[ordinal]["validation"]["sha256"]
+            assert (
+                hashlib.sha256(bundle.read(name)).hexdigest()
+                == (deliverables[ordinal]["validation"]["sha256"])
             )
 
     repeated = client.get(

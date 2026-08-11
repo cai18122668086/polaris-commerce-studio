@@ -445,6 +445,7 @@ def runtime_status_response(
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
+    domestic_main_image_runtime_ready: bool = True,
 ) -> RuntimeStatusResponse:
     local_edit = (
         CapabilityStatus(
@@ -505,6 +506,17 @@ def runtime_status_response(
         "amazon_visual_suite": feature_status(
             amazon_visual_suite_provider_enabled
         ),
+        "domestic_main_image": CapabilityStatus(
+            availability=(
+                "available" if domestic_main_image_runtime_ready else "unavailable"
+            ),
+            execution=("local" if domestic_main_image_runtime_ready else "none"),
+            reason_code=(
+                "DOMESTIC_MAIN_IMAGE_PROVIDER_DISABLED"
+                if domestic_main_image_runtime_ready
+                else "REAL_PROVIDER_NOT_REGISTERED"
+            ),
+        ),
     }
     if task_runner == "tengli":
         features["crossborder_detail"] = feature_status(
@@ -564,6 +576,9 @@ def get_runtime_status(
         ),
         crossborder_detail_provider_enabled=(
             settings.crossborder_detail_provider_enabled
+        ),
+        domestic_main_image_runtime_ready=bool(
+            request.app.state.domestic_main_image_harness_ready
         ),
     )
 
@@ -627,7 +642,9 @@ async def upload_asset(
     file: Annotated[UploadFile, File()],
     origin_kind: Annotated[AssetOriginKind, Form()] = AssetOriginKind.UPLOAD,
     media_kind: Annotated[AssetMediaKind, Form()] = AssetMediaKind.IMAGE,
-    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_header: Annotated[
+        str | None, Header(alias="Idempotency-Key")
+    ] = None,
 ) -> AssetResponse:
     idempotency_key = require_idempotency_key(idempotency_header)
     try:
@@ -714,9 +731,7 @@ async def materialize_model_pose_asset(
     payload: ModelPoseAssetRequest,
     request: Request,
     workspace: WorkspaceWriteDependency,
-    idempotency_header: Annotated[
-        str | None, Header(alias="Idempotency-Key")
-    ] = None,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> AssetResponse:
     """Materialize only a private catalog original resolved by slug and hash."""
 
@@ -2122,8 +2137,6 @@ def _reserve_real_provider_job_if_enabled(
         image_budget_micros=image_cost,
         group_count=group_count,
     )
-
-
 
 _AMAZON_ITEM_KEYS = (
     "MAIN-01",

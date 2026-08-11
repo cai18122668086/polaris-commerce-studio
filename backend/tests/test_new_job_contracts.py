@@ -147,9 +147,7 @@ def test_detail_market_region_is_stored_without_changing_job_type() -> None:
     payload = DetailPackJobCreate(
         type="detail_pack",
         input={
-            "product_groups": [
-                {"group_key": "primary", "asset_ids": ["product"]}
-            ],
+            "product_groups": [{"group_key": "primary", "asset_ids": ["product"]}],
             "reference_asset_ids": ["style"],
         },
         configuration={
@@ -251,10 +249,13 @@ def test_runtime_features_expose_all_job_families() -> None:
         "creative_image",
         "detail_pack",
         "amazon_visual_suite",
+        "domestic_main_image",
     }
+    assert runtime.capabilities.features["domestic_main_image"].execution == "local"
     assert all(
         capability.execution == "mock"
-        for capability in runtime.capabilities.features.values()
+        for name, capability in runtime.capabilities.features.items()
+        if name != "domestic_main_image"
     )
 
 

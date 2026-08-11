@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
@@ -11,6 +12,16 @@ from sqlalchemy import text
 from .auth import ensure_development_identity
 from .config import Settings
 from .database import Base, build_database
+from .domestic_main_image_routes import router as domestic_main_image_router
+from .domestic_main_image_runtime import (
+    DomesticMainImageRuntimeError,
+    HarnessAdapter,
+    default_frozen_package,
+)
+from .domestic_main_image_service import (
+    DomesticMainImageOrchestrator,
+    resolve_startup_commit,
+)
 from .errors import ApiError
 from .models import WorkspaceLimitRecord
 from .routes_v1 import router as v1_router
@@ -57,6 +68,28 @@ def create_app(
     storage: ImageStorage = build_image_storage(app_settings)
     validator = storage.validator
     task_runner = build_task_runner(session_factory, app_settings, storage)
+    domestic_package = default_frozen_package()
+    domestic_harness = HarnessAdapter(
+        domestic_package,
+        python_executable=app_settings.domestic_main_image_python_executable,
+    )
+    domestic_harness_ready, domestic_harness_error = domestic_harness.probe()
+    try:
+        startup_git_commit = resolve_startup_commit(
+            app_settings.release_sha,
+            Path(__file__).resolve().parents[2],
+        )
+    except DomesticMainImageRuntimeError as exc:
+        startup_git_commit = "0" * 40
+        domestic_harness_ready = False
+        domestic_harness_error = exc.code
+    domestic_main_image_orchestrator = DomesticMainImageOrchestrator(
+        domestic_package,
+        domestic_harness,
+        startup_git_commit=startup_git_commit,
+        image_model=app_settings.domestic_main_image_model,
+        image_model_version=app_settings.domestic_main_image_model_version,
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -81,6 +114,11 @@ def create_app(
     application.state.image_validator = validator
     application.state.task_runner = task_runner
     application.state.external_auth_backend = auth_backend
+    application.state.domestic_main_image_orchestrator = (
+        domestic_main_image_orchestrator
+    )
+    application.state.domestic_main_image_harness_ready = domestic_harness_ready
+    application.state.domestic_main_image_harness_error = domestic_harness_error
     application.state.workspace_limits = lambda session, workspace_id: session.get(
         WorkspaceLimitRecord, workspace_id
     )
@@ -192,6 +230,7 @@ def create_app(
         )
 
     application.include_router(v1_router)
+    application.include_router(domestic_main_image_router)
     return application
 
 

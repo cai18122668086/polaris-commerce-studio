@@ -68,6 +68,9 @@ export const AI_FEATURES_MENU = {
     {
       label: "电商套图",
       items: [
+        navigationFeature("domestic-main-image", {
+          description: "生成搜索获客主图与五张差异化轮播图",
+        }),
         navigationFeature("detail-pack", {
           description: "生成国内、国际全平台详情图",
         }),

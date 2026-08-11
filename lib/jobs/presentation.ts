@@ -7,6 +7,7 @@ const JOB_TYPE_LABELS: Record<JobType, string> = {
   model_pose_transfer: "模特换姿势",
   creative_image: "电商创意图",
   detail_pack: "商品详情图",
+  domestic_main_image: "国内电商主图",
   amazon_visual_suite: "亚马逊套图",
 };
 

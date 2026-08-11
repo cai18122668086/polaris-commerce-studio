@@ -2,6 +2,7 @@ name: polaris-production
 
 x-backend-common-environment: &backend-common-environment
   POLARIS_ENVIRONMENT: production
+  POLARIS_RELEASE_SHA: ${POLARIS_RELEASE_SHA:?set approved 40-hex release commit}
   POLARIS_AUTH_MODE: external
   POLARIS_ACCESS_URL_SECRET: ${POLARIS_ACCESS_URL_SECRET:?set the existing server-local signing secret}
   POLARIS_DATABASE_URL: postgresql+psycopg://polaris:${POLARIS_POSTGRES_PASSWORD:?set PostgreSQL password}@postgres:5432/polaris
@@ -35,6 +36,8 @@ x-backend-common-environment: &backend-common-environment
   POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED: ${POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED:-false}
   POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED: ${POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED:-false}
   POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED: ${POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED:-false}
+  POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED: ${POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED:-false}
+  POLARIS_DOMESTIC_MAIN_IMAGE_ASSET_CACHE_DIR: /var/lib/polaris/domestic-main-image-assets/sha256
   POLARIS_AUTO_PROCESS_JOBS: "true"
   POLARIS_TASK_DISPATCHER: celery
   POLARIS_CELERY_BROKER_URL: redis://:${POLARIS_REDIS_PASSWORD:?set Redis password}@redis:6379/0
@@ -226,6 +229,8 @@ services:
     user: "10001:10001"
     read_only: true
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
+    volumes:
+      - domestic_main_image_assets:/var/lib/polaris/domestic-main-image-assets
     cap_drop: [ALL]
     init: true
     mem_limit: 384m
@@ -397,5 +402,6 @@ volumes:
   minio_data:
     name: polaris-internal-staging_minio_data
     external: true
+  domestic_main_image_assets:
   caddy_data:
   caddy_config:

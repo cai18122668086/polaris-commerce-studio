@@ -311,13 +311,18 @@ class DetailPackInput(BaseModel):
 
 
 class DetailPackConfiguration(BaseModel):
+    workflow_version: Literal["legacy", "aurora_v0.7.0"] = "legacy"
     product_name: str = Field(min_length=1, max_length=160)
+    target_buyer: str = Field(default="", max_length=500)
+    primary_scenario: str = Field(default="", max_length=500)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
+    product_facts: list[str] = Field(default_factory=list, max_length=24)
+    output_preferences: str = Field(default="", max_length=2000)
     platform_code: str = Field(min_length=1, max_length=32)
     market_region: Literal["domestic", "international"] = "international"
     category: str | None = Field(default=None, max_length=80)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
-    page_count: int = Field(ge=1, le=12)
+    page_count: int | None = Field(default=None, ge=1, le=30)
     auto_start_after_plan: bool = True
     size: Literal[
         "1024x1536",
@@ -336,6 +341,22 @@ class DetailPackConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def default_domestic_delivery_size(self) -> "DetailPackConfiguration":
+        if self.market_region == "international" and self.page_count is None:
+            raise ValueError("international detail workflow requires page_count")
+        if (
+            self.market_region == "domestic"
+            and self.workflow_version == "aurora_v0.7.0"
+            and self.page_count is not None
+        ):
+            raise ValueError("Aurora v0.7.0 determines module count dynamically")
+        if self.workflow_version == "aurora_v0.7.0" and self.auto_start_after_plan:
+            raise ValueError("Aurora v0.7.0 requires explicit plan authorization")
+        if (
+            self.market_region == "domestic"
+            and self.workflow_version == "legacy"
+            and self.page_count is None
+        ):
+            raise ValueError("legacy domestic detail workflow requires page_count")
         if self.market_region == "domestic" and "size" not in self.model_fields_set:
             self.size = "1200x1600"
         return self
@@ -560,6 +581,53 @@ class PlanUpdateRequest(BaseModel):
 
 class PlanConfirmRequest(BaseModel):
     expected_revision: int = Field(ge=1)
+
+
+class AuroraConflictResolutionRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    confirmation_text: str = Field(min_length=1, max_length=4000)
+    resolutions: list[dict[str, Any]] = Field(min_length=1, max_length=24)
+
+
+class AuroraPlanAuthorizationRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    approval_text: str = Field(min_length=1, max_length=4000)
+    approved_module_count: int = Field(ge=1, le=30)
+    approved_aspect_ratio: str = Field(pattern=r"^[0-9]+:[0-9]+$")
+
+
+class AuroraUserAdjustmentRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    module_id: str = Field(pattern=r"^M[0-9]{2,}$")
+    instruction: str = Field(min_length=1, max_length=4000)
+    change_kind: Literal[
+        "TYPOGRAPHY_LAYOUT", "COPY_CONTENT", "VISUAL_DETAIL", "OTHER_LOCAL"
+    ]
+    change_only: list[str] = Field(min_length=1, max_length=20)
+    preserve: list[str] = Field(min_length=1, max_length=20)
+    must_not_regress: list[str] = Field(min_length=1, max_length=20)
+
+
+class AuroraFinalApprovalRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    approval_text: str = Field(min_length=1, max_length=4000)
+
+
+class AuroraDetailSessionResponse(BaseModel):
+    job_id: str
+    revision: int
+    state: str
+    allowed_actions: list[str]
+    conflict_checkpoint: dict[str, Any] | None = None
+    output_decision: dict[str, Any] | None = None
+    campaign_visual_dna: str | None = None
+    storyboard: list[dict[str, Any]] = Field(default_factory=list)
+    merge_summary: list[str] = Field(default_factory=list)
+    deferred_summary: list[dict[str, Any]] = Field(default_factory=list)
+    modules: list[dict[str, Any]] = Field(default_factory=list)
+    long_page: dict[str, Any] | None = None
+    long_page_audit: dict[str, Any] | None = None
+    manifest: dict[str, Any] | None = None
 
 
 class HealthResponse(BaseModel):

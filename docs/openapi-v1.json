@@ -431,6 +431,294 @@
         "title": "AssetResponse",
         "type": "object"
       },
+      "AuroraConflictResolutionRequest": {
+        "properties": {
+          "confirmation_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Confirmation Text",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "resolutions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 24,
+            "minItems": 1,
+            "title": "Resolutions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "confirmation_text",
+          "resolutions"
+        ],
+        "title": "AuroraConflictResolutionRequest",
+        "type": "object"
+      },
+      "AuroraDetailSessionResponse": {
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "campaign_visual_dna": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Visual Dna"
+          },
+          "conflict_checkpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Checkpoint"
+          },
+          "deferred_summary": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Deferred Summary",
+            "type": "array"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "long_page": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Page"
+          },
+          "long_page_audit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Page Audit"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest"
+          },
+          "merge_summary": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Merge Summary",
+            "type": "array"
+          },
+          "modules": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Modules",
+            "type": "array"
+          },
+          "output_decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Decision"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "storyboard": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Storyboard",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "revision",
+          "state",
+          "allowed_actions"
+        ],
+        "title": "AuroraDetailSessionResponse",
+        "type": "object"
+      },
+      "AuroraFinalApprovalRequest": {
+        "properties": {
+          "approval_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Approval Text",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "approval_text"
+        ],
+        "title": "AuroraFinalApprovalRequest",
+        "type": "object"
+      },
+      "AuroraPlanAuthorizationRequest": {
+        "properties": {
+          "approval_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Approval Text",
+            "type": "string"
+          },
+          "approved_aspect_ratio": {
+            "pattern": "^[0-9]+:[0-9]+$",
+            "title": "Approved Aspect Ratio",
+            "type": "string"
+          },
+          "approved_module_count": {
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Approved Module Count",
+            "type": "integer"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "approval_text",
+          "approved_module_count",
+          "approved_aspect_ratio"
+        ],
+        "title": "AuroraPlanAuthorizationRequest",
+        "type": "object"
+      },
+      "AuroraUserAdjustmentRequest": {
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "TYPOGRAPHY_LAYOUT",
+              "COPY_CONTENT",
+              "VISUAL_DETAIL",
+              "OTHER_LOCAL"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "change_only": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Change Only",
+            "type": "array"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "instruction": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "module_id": {
+            "pattern": "^M[0-9]{2,}$",
+            "title": "Module Id",
+            "type": "string"
+          },
+          "must_not_regress": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Must Not Regress",
+            "type": "array"
+          },
+          "preserve": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Preserve",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "module_id",
+          "instruction",
+          "change_kind",
+          "change_only",
+          "preserve",
+          "must_not_regress"
+        ],
+        "title": "AuroraUserAdjustmentRequest",
+        "type": "object"
+      },
       "Body_upload_asset_api_v1_workspaces__workspace_id__assets_post": {
         "properties": {
           "file": {
@@ -806,17 +1094,44 @@
             "title": "Market Region",
             "type": "string"
           },
+          "output_preferences": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Output Preferences",
+            "type": "string"
+          },
           "page_count": {
-            "maximum": 12.0,
-            "minimum": 1.0,
-            "title": "Page Count",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 30.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
           },
           "platform_code": {
             "maxLength": 32,
             "minLength": 1,
             "title": "Platform Code",
             "type": "string"
+          },
+          "primary_scenario": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Primary Scenario",
+            "type": "string"
+          },
+          "product_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Product Facts",
+            "type": "array"
           },
           "product_name": {
             "maxLength": 160,
@@ -850,12 +1165,26 @@
             ],
             "title": "Size",
             "type": "string"
+          },
+          "target_buyer": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Target Buyer",
+            "type": "string"
+          },
+          "workflow_version": {
+            "default": "legacy",
+            "enum": [
+              "legacy",
+              "aurora_v0.7.0"
+            ],
+            "title": "Workflow Version",
+            "type": "string"
           }
         },
         "required": [
           "product_name",
-          "platform_code",
-          "page_count"
+          "platform_code"
         ],
         "title": "DetailPackConfiguration",
         "type": "object"
@@ -3328,6 +3657,390 @@
           }
         ],
         "summary": "Update Draft Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail": {
+      "get": {
+        "operationId": "get_aurora_detail_session_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuroraDetailSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Aurora Detail Session",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/adjust": {
+      "post": {
+        "operationId": "adjust_aurora_detail_module_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_adjust_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuroraUserAdjustmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuroraDetailSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Adjust Aurora Detail Module",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/authorize": {
+      "post": {
+        "operationId": "authorize_aurora_detail_plan_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_authorize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuroraPlanAuthorizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuroraDetailSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Authorize Aurora Detail Plan",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/conflicts/resolve": {
+      "post": {
+        "operationId": "resolve_aurora_detail_conflicts_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_conflicts_resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuroraConflictResolutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuroraDetailSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Resolve Aurora Detail Conflicts",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/finalize": {
+      "post": {
+        "operationId": "finalize_aurora_detail_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_finalize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuroraFinalApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuroraDetailSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Finalize Aurora Detail",
         "tags": [
           "jobs"
         ]

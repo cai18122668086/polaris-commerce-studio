@@ -490,6 +490,44 @@ class JobPlanRecord(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AuroraDetailSessionRecord(TimestampMixin, Base):
+    """Durable mirror of one immutable v0.7.0 harness session."""
+
+    __tablename__ = "aurora_detail_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "revision > 0", name="ck_aurora_detail_sessions_revision_positive"
+        ),
+        UniqueConstraint("job_id", name="uq_aurora_detail_sessions_job"),
+        ForeignKeyConstraint(
+            ["workspace_id", "job_id"],
+            ["jobs.workspace_id", "jobs.id"],
+            name="fk_aurora_detail_sessions_workspace_job",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_aurora_detail_sessions_workspace_state",
+            "workspace_id",
+            "state",
+            "updated_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    job_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    state: Mapped[str] = mapped_column(String(48), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    skill_content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    session_payload: Mapped[dict[str, Any]] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=False
+    )
+    active_request_payload: Mapped[dict[str, Any] | None] = mapped_column(
+        json_type()
+    )
+
+
 class JobAttemptRecord(Base):
     __tablename__ = "job_attempts"
     __table_args__ = (

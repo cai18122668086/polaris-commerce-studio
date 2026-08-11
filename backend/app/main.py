@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 
+from .aurora_detail_runtime import AuroraDetailHarnessAdapter
+from .aurora_detail_service import AuroraDetailSessionService
 from .auth import ensure_development_identity
 from .config import Settings
 from .database import Base, build_database
@@ -80,6 +82,9 @@ def create_app(
     application.state.storage = storage
     application.state.image_validator = validator
     application.state.task_runner = task_runner
+    application.state.aurora_detail_service = AuroraDetailSessionService(
+        AuroraDetailHarnessAdapter(app_settings.aurora_detail_runtime_dir)
+    )
     application.state.external_auth_backend = auth_backend
     application.state.workspace_limits = lambda session, workspace_id: session.get(
         WorkspaceLimitRecord, workspace_id

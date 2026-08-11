@@ -3,7 +3,11 @@ export type IdempotentOperation =
   | "create-job"
   | "cancel-job"
   | "retry-job"
-  | "confirm-plan";
+  | "confirm-plan"
+  | "aurora-resolve-conflicts"
+  | "aurora-authorize"
+  | "aurora-adjust"
+  | "aurora-finalize";
 
 export class IdempotencyIntentRegistry {
   private readonly keys = new Map<string, string>();

@@ -26,6 +26,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
+from .aurora_detail_runtime import AuroraDetailRuntimeError
+from .aurora_detail_service import (
+    AuroraDetailServiceError,
+    AuroraDetailSessionService,
+    aurora_detail_public_payload,
+)
 from .auth import (
     Principal,
     WorkspaceDependency,
@@ -74,6 +80,11 @@ from .schemas_v1 import (
     AmazonVisualSuiteJobCreate,
     AssetListResponse,
     AssetResponse,
+    AuroraConflictResolutionRequest,
+    AuroraDetailSessionResponse,
+    AuroraFinalApprovalRequest,
+    AuroraPlanAuthorizationRequest,
+    AuroraUserAdjustmentRequest,
     CancelRequest,
     CapabilityStatus,
     CreativeImageJobCreate,
@@ -1856,6 +1867,307 @@ def confirm_plan(
     return job_detail_response(session, job)
 
 
+def _aurora_service(request: Request) -> AuroraDetailSessionService:
+    return cast(AuroraDetailSessionService, request.app.state.aurora_detail_service)
+
+
+def _aurora_api_error(
+    exc: AuroraDetailServiceError | AuroraDetailRuntimeError,
+) -> ApiError:
+    status_code = (
+        status.HTTP_409_CONFLICT
+        if exc.code
+        in {
+            "AURORA_SESSION_REVISION_CONFLICT",
+            "AURORA_STATE_INVALID",
+            "AURORA_PLAN_ALREADY_EXISTS",
+        }
+        else status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
+    return ApiError(status_code, exc.code, str(exc))
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail",
+    response_model=AuroraDetailSessionResponse,
+    tags=["jobs"],
+)
+def get_aurora_detail_session(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> AuroraDetailSessionResponse:
+    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    try:
+        record = _aurora_service(request).get(session, job)
+    except (AuroraDetailServiceError, AuroraDetailRuntimeError) as exc:
+        raise _aurora_api_error(exc) from exc
+    assert record is not None
+    return AuroraDetailSessionResponse(**aurora_detail_public_payload(job, record))
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/conflicts/resolve",
+    response_model=AuroraDetailSessionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def resolve_aurora_detail_conflicts(
+    job_id: str,
+    payload: AuroraConflictResolutionRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> AuroraDetailSessionResponse:
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    request_payload = payload.model_dump(mode="json")
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template=(
+            "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/"
+            "aurora-detail/conflicts/resolve"
+        ),
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **request_payload}),
+    )
+    service = _aurora_service(request)
+    if replay:
+        record = service.get(session, job)
+        assert record is not None
+        return AuroraDetailSessionResponse(
+            **aurora_detail_public_payload(job, record)
+        )
+    try:
+        record = service.resolve_conflicts(
+            session,
+            job,
+            expected_revision=payload.expected_revision,
+            resolution={
+                "confirmation_text": payload.confirmation_text,
+                "resolutions": payload.resolutions,
+            },
+        )
+        transition_job(
+            job,
+            JobStatus.PLANNING,
+            stage="planning_after_conflict_resolution",
+            progress=13,
+        )
+    except (AuroraDetailServiceError, AuroraDetailRuntimeError) as exc:
+        raise _aurora_api_error(exc) from exc
+    add_outbox_event(
+        session,
+        workspace_id=workspace.workspace_id,
+        job_id=job.id,
+        event_type="job.dispatch_requested",
+        suffix=f"aurora-conflicts-{record.revision}",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return AuroraDetailSessionResponse(**aurora_detail_public_payload(job, record))
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/authorize",
+    response_model=AuroraDetailSessionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def authorize_aurora_detail_plan(
+    job_id: str,
+    payload: AuroraPlanAuthorizationRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> AuroraDetailSessionResponse:
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    request_payload = payload.model_dump(mode="json")
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template=(
+            "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/authorize"
+        ),
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **request_payload}),
+    )
+    service = _aurora_service(request)
+    if replay:
+        record = service.get(session, job)
+        assert record is not None
+        return AuroraDetailSessionResponse(
+            **aurora_detail_public_payload(job, record)
+        )
+    try:
+        record = service.authorize(
+            session,
+            job,
+            expected_revision=payload.expected_revision,
+            approval_text=payload.approval_text,
+            approved_module_count=payload.approved_module_count,
+            approved_aspect_ratio=payload.approved_aspect_ratio,
+        )
+    except (AuroraDetailServiceError, AuroraDetailRuntimeError) as exc:
+        raise _aurora_api_error(exc) from exc
+    add_outbox_event(
+        session,
+        workspace_id=workspace.workspace_id,
+        job_id=job.id,
+        event_type="job.dispatch_requested",
+        suffix=f"aurora-authorize-{record.revision}",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return AuroraDetailSessionResponse(**aurora_detail_public_payload(job, record))
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/adjust",
+    response_model=AuroraDetailSessionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def adjust_aurora_detail_module(
+    job_id: str,
+    payload: AuroraUserAdjustmentRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> AuroraDetailSessionResponse:
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    request_payload = payload.model_dump(mode="json")
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template=(
+            "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/adjust"
+        ),
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **request_payload}),
+    )
+    service = _aurora_service(request)
+    if replay:
+        record = service.get(session, job)
+        assert record is not None
+        return AuroraDetailSessionResponse(
+            **aurora_detail_public_payload(job, record)
+        )
+    try:
+        record = service.apply_user_adjustment(
+            session,
+            job,
+            expected_revision=payload.expected_revision,
+            adjustment={
+                "module_id": payload.module_id,
+                "verbatim_instruction": payload.instruction,
+                "change_scope": "local",
+                "change_kind": payload.change_kind,
+                "change_only": payload.change_only,
+                "preserve": payload.preserve,
+                "must_not_regress": payload.must_not_regress,
+                "changes_identity": False,
+                "changes_facts": False,
+                "changes_target_buyer": False,
+                "changes_campaign_style": False,
+                "changes_module_sequence": False,
+            },
+        )
+    except (AuroraDetailServiceError, AuroraDetailRuntimeError) as exc:
+        raise _aurora_api_error(exc) from exc
+    add_outbox_event(
+        session,
+        workspace_id=workspace.workspace_id,
+        job_id=job.id,
+        event_type="job.dispatch_requested",
+        suffix=f"aurora-adjust-{record.revision}",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return AuroraDetailSessionResponse(**aurora_detail_public_payload(job, record))
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/finalize",
+    response_model=AuroraDetailSessionResponse,
+    tags=["jobs"],
+)
+def finalize_aurora_detail(
+    job_id: str,
+    payload: AuroraFinalApprovalRequest,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> AuroraDetailSessionResponse:
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    request_payload = payload.model_dump(mode="json")
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template=(
+            "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/finalize"
+        ),
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **request_payload}),
+    )
+    service = _aurora_service(request)
+    if replay:
+        record = service.get(session, job)
+        assert record is not None
+        return AuroraDetailSessionResponse(
+            **aurora_detail_public_payload(job, record)
+        )
+    output_path = (
+        request.app.state.settings.aurora_detail_runtime_dir
+        / job.id
+        / "manifest.json"
+    )
+    try:
+        record = service.finalize(
+            session,
+            job,
+            expected_revision=payload.expected_revision,
+            output_path=output_path,
+            approval_text=payload.approval_text,
+        )
+    except (AuroraDetailServiceError, AuroraDetailRuntimeError) as exc:
+        raise _aurora_api_error(exc) from exc
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=200
+    )
+    session.commit()
+    return AuroraDetailSessionResponse(**aurora_detail_public_payload(job, record))
+
+
 def _validate_model_pose_transfer_assets(
     payload: ModelPoseTransferJobCreate,
     assets: dict[str, AssetRecord],
@@ -1951,8 +2263,15 @@ def _new_job_from_payload(
             ],
         ]
     elif isinstance(payload, DetailPackJobCreate):
-        item_count = payload.configuration.page_count * len(
-            payload.input.product_groups
+        is_aurora_detail = (
+            payload.configuration.market_region == "domestic"
+            and payload.configuration.workflow_version == "aurora_v0.7.0"
+        )
+        item_count = (
+            0
+            if is_aurora_detail
+            else cast(int, payload.configuration.page_count)
+            * len(payload.input.product_groups)
         )
         asset_roles = [
             *[
@@ -1986,9 +2305,12 @@ def _new_job_from_payload(
             asset_roles.extend(
                 (asset_id, role, ordinal) for ordinal, asset_id in enumerate(asset_ids)
             )
-    if isinstance(payload, DetailPackJobCreate):
+    if isinstance(payload, DetailPackJobCreate) and item_count > 0:
         minimum = item_count * detail_high_price_micros
         maximum = item_count * detail_high_price_micros
+    elif isinstance(payload, DetailPackJobCreate):
+        minimum = 0
+        maximum = 0
     else:
         minimum = item_count * min(detail_medium_price_micros, detail_high_price_micros)
         maximum = item_count * max(detail_medium_price_micros, detail_high_price_micros)

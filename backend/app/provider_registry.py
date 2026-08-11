@@ -108,11 +108,13 @@ class DetailMarketRoutingPlanner:
         international: DetailPlanner,
         domestic: DetailPlanner,
         amazon: DetailPlanner | None = None,
+        aurora: DetailPlanner | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.international = international
         self.domestic = domestic
         self.amazon = amazon
+        self.aurora = aurora
 
     def __getattr__(self, name: str) -> object:
         return getattr(self.international, name)
@@ -129,10 +131,19 @@ class DetailMarketRoutingPlanner:
                 if isinstance(settings, Mapping)
                 else "international"
             )
+            workflow_version = (
+                str(settings.get("workflow_version", "legacy"))
+                if isinstance(settings, Mapping)
+                else "legacy"
+            )
         if is_amazon:
             if self.amazon is None:
                 return JobStatus.FAILED
             return await self.amazon.plan(job_id)
+        if market_region == "domestic" and workflow_version == "aurora_v0.7.0":
+            if self.aurora is None:
+                return JobStatus.FAILED
+            return await self.aurora.plan(job_id)
         planner = self.domestic if market_region == "domestic" else self.international
         return await planner.plan(job_id)
 

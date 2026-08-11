@@ -34,6 +34,8 @@ class MockTaskRunner:
         creative_image_provider_enabled: bool = False,
         amazon_visual_suite_provider_enabled: bool = False,
         crossborder_detail_provider_enabled: bool = False,
+        aurora_detail_provider_enabled: bool = False,
+        aurora_detail_runtime_dir: Path = Path("backend/.data/aurora-detail-runtime"),
     ) -> None:
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
@@ -57,6 +59,8 @@ class MockTaskRunner:
             crossborder_detail_provider_enabled=(
                 crossborder_detail_provider_enabled
             ),
+            aurora_detail_provider_enabled=aurora_detail_provider_enabled,
+            aurora_detail_runtime_dir=aurora_detail_runtime_dir,
         )
 
     @property
@@ -87,6 +91,7 @@ def validate_task_runner_settings(settings: Settings) -> None:
             settings.creative_image_provider_enabled,
             settings.amazon_visual_suite_provider_enabled,
             settings.crossborder_detail_provider_enabled,
+            settings.aurora_detail_provider_enabled,
         )
     )
     real_provider_requested = (
@@ -137,6 +142,13 @@ def validate_task_runner_settings(settings: Settings) -> None:
         raise RuntimeError("tengli task runner requires an image model")
     if not settings.tengli_vision_model.strip():
         raise RuntimeError("tengli task runner requires a vision model")
+    if (
+        settings.aurora_detail_provider_enabled
+        and not settings.aurora_detail_image_model_version.strip()
+    ):
+        raise RuntimeError(
+            "Aurora detail provider requires a pinned image model version"
+        )
 
 
 def build_task_runner(
@@ -159,6 +171,7 @@ def build_task_runner(
             medium_price_micros=settings.xinghe_medium_price_micros,
             high_price_micros=settings.xinghe_high_price_micros,
             xinghe_skill_root=settings.xinghe_skill_root,
+            aurora_detail_runtime_dir=settings.aurora_detail_runtime_dir,
         )
 
     return build_tengli_task_runner(
@@ -202,4 +215,6 @@ def build_tengli_task_runner(
         crossborder_detail_provider_enabled=(
             settings.crossborder_detail_provider_enabled
         ),
+        aurora_detail_provider_enabled=settings.aurora_detail_provider_enabled,
+        aurora_detail_runtime_dir=settings.aurora_detail_runtime_dir,
     )

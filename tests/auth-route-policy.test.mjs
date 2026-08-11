@@ -40,9 +40,13 @@ test("auth and legal routes are public and account does not require a workspace"
 });
 
 test("registration requires explicit agreement and opens legal documents without leaving the form", async () => {
-  const registerForm = await utf8("features/auth/components/register-form.tsx");
+  const [registerForm, registerPage] = await Promise.all([
+    utf8("features/auth/components/register-form.tsx"),
+    utf8("app/auth/register/page.tsx"),
+  ]);
   assert.match(registerForm, /if \(!acceptedAgreements\)/);
   assert.doesNotMatch(registerForm, /acceptedCrossBorder/);
+  assert.doesNotMatch(registerPage, /description=/);
   assert.match(registerForm, /signUpWithEmailPassword\(email, password\)/);
   assert.ok(registerForm.indexOf("if (!acceptedAgreements)") < registerForm.indexOf("signUpWithEmailPassword(email, password)"));
   assert.match(registerForm, /target="_blank"/);

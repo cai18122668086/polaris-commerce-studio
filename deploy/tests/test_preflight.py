@@ -345,6 +345,16 @@ class SourcePreflightTests(unittest.TestCase):
         )
         self.assertTrue(any("skill_sources" in item for item in errors))
 
+    def test_backend_catalog_assets_copy_is_required(self) -> None:
+        errors = self.validate_mutation(
+            "backend.Dockerfile",
+            lambda text: text.replace(
+                "COPY backend/catalog_assets ./catalog_assets",
+                "# catalog assets omitted",
+            ),
+        )
+        self.assertTrue(any("catalog_assets" in item for item in errors))
+
     def test_disabled_pip_hash_mode_is_rejected(self) -> None:
         errors = self.validate_mutation(
             "backend.Dockerfile",

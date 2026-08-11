@@ -405,17 +405,21 @@ def controlled_target(
     *,
     default_aspect_ratio: str = "1:1",
     allow_follow_reference: bool = False,
+    allow_follow_source: bool = False,
 ) -> dict[str, Any]:
     aspect_ratio = settings.get("aspect_ratio", default_aspect_ratio)
-    if aspect_ratio == "follow-reference":
-        if not allow_follow_reference:
+    if aspect_ratio in {"follow-reference", "follow-source"}:
+        allowed = (
+            aspect_ratio == "follow-reference" and allow_follow_reference
+        ) or (aspect_ratio == "follow-source" and allow_follow_source)
+        if not allowed:
             raise NewImageSkillContractError(
                 "ASPECT_RATIO_NOT_SUPPORTED",
                 "The requested aspect_ratio is not supported.",
             )
         quality, output_format = _controlled_image_encoding(settings)
         return {
-            "aspect_ratio": "follow-reference",
+            "aspect_ratio": aspect_ratio,
             "width": None,
             "height": None,
             "quality": quality,

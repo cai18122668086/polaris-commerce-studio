@@ -282,6 +282,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/model-pose-transfer/pose-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Materialize Model Pose Asset
+         * @description Materialize only a private catalog original resolved by slug and hash.
+         */
+        post: operations["materialize_model_pose_asset_api_v1_workspaces__workspace_id__model_pose_transfer_pose_assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -908,7 +928,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "local_edit" | "product_image" | "reference_remix" | "creative_image" | "detail_pack" | "amazon_visual_suite";
+        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /** Instruction */
@@ -956,6 +976,74 @@ export interface components {
          * @enum {string}
          */
         MembershipRole: "owner" | "admin" | "member" | "viewer";
+        /** ModelPoseAssetRequest */
+        ModelPoseAssetRequest: {
+            /** Pose Slug */
+            pose_slug: string;
+            /** Reference Sha256 */
+            reference_sha256: string;
+        };
+        /** ModelPoseTransferConfiguration */
+        ModelPoseTransferConfiguration: {
+            /**
+             * Aspect Ratio
+             * @default follow-source
+             * @constant
+             */
+            aspect_ratio: "follow-source";
+            /**
+             * Image Count
+             * @default 1
+             * @constant
+             */
+            image_count: 1;
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Output Format
+             * @default png
+             * @constant
+             */
+            output_format: "png";
+            /**
+             * Quality
+             * @default high
+             * @enum {string}
+             */
+            quality: "low" | "medium" | "high";
+        };
+        /** ModelPoseTransferInput */
+        ModelPoseTransferInput: {
+            /** Model Source Asset Id */
+            model_source_asset_id: string;
+            /** Pose Reference Asset Id */
+            pose_reference_asset_id: string;
+            /** Pose Reference Sha256 */
+            pose_reference_sha256?: string | null;
+            /** Pose Slug */
+            pose_slug?: string | null;
+        };
+        /** ModelPoseTransferJobCreate */
+        ModelPoseTransferJobCreate: {
+            configuration: components["schemas"]["ModelPoseTransferConfiguration"];
+            /** Display Name */
+            display_name?: string | null;
+            input: components["schemas"]["ModelPoseTransferInput"];
+            /**
+             * Intent
+             * @default submit
+             * @enum {string}
+             */
+            intent: "draft" | "submit";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "model_pose_transfer";
+        };
         /** MoneyAmount */
         MoneyAmount: {
             /** Currency */
@@ -1498,7 +1586,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"];
+                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["ModelPoseTransferJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"];
             };
         };
         responses: {
@@ -1827,6 +1915,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materialize_model_pose_asset_api_v1_workspaces__workspace_id__model_pose_transfer_pose_assets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelPoseAssetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
                 };
             };
             /** @description Validation Error */

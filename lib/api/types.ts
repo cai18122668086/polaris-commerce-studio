@@ -13,6 +13,8 @@ export type RetryScope = components["schemas"]["RetryScope"];
 export type LocalEditJobCreate = components["schemas"]["LocalEditJobCreate"];
 export type ProductImageJobCreate = components["schemas"]["ProductImageJobCreate"];
 export type ReferenceRemixJobCreate = components["schemas"]["ReferenceRemixJobCreate"];
+export type ModelPoseTransferJobCreate =
+  components["schemas"]["ModelPoseTransferJobCreate"];
 export type CreativeImageJobCreate = components["schemas"]["CreativeImageJobCreate"];
 export type DetailPackJobCreate = components["schemas"]["DetailPackJobCreate"];
 export type AmazonVisualSuiteJobCreate =
@@ -21,6 +23,7 @@ export type JobCreate =
   | LocalEditJobCreate
   | ProductImageJobCreate
   | ReferenceRemixJobCreate
+  | ModelPoseTransferJobCreate
   | CreativeImageJobCreate
   | DetailPackJobCreate
   | AmazonVisualSuiteJobCreate;

@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     task_runner: Literal["mock", "tengli"] = "mock"
     product_image_provider_enabled: bool = Field(default=False)
     reference_remix_provider_enabled: bool = Field(default=False)
+    model_pose_transfer_provider_enabled: bool = Field(default=False)
     creative_image_provider_enabled: bool = Field(default=False)
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
     crossborder_detail_provider_enabled: bool = Field(default=False)

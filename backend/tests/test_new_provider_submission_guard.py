@@ -13,6 +13,7 @@ from app.routes_v1 import _reserve_real_provider_job_if_enabled
 NEW_PROVIDER_FLAGS = {
     JobType.PRODUCT_IMAGE.value: "product_image_provider_enabled",
     JobType.REFERENCE_REMIX.value: "reference_remix_provider_enabled",
+    JobType.MODEL_POSE_TRANSFER.value: "model_pose_transfer_provider_enabled",
     JobType.CREATIVE_IMAGE.value: "creative_image_provider_enabled",
     JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual_suite_provider_enabled",
 }

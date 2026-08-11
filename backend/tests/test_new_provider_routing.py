@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
@@ -24,6 +24,7 @@ from app.domestic_detail_provider import (
     DomesticDetailProvider,
 )
 from app.execution import build_fake_coordinator
+from app.model_pose_transfer_provider import ModelPoseTransferProvider
 from app.product_image_provider import ProductImageProvider
 from app.provider import (
     FakeProvider,
@@ -144,6 +145,7 @@ def test_mock_new_image_routes_keep_the_structural_fake_provider(
     for operation in (
         JobType.PRODUCT_IMAGE.value,
         JobType.REFERENCE_REMIX.value,
+        JobType.MODEL_POSE_TRANSFER.value,
         JobType.CREATIVE_IMAGE.value,
     ):
         assert router.routes[operation] is default
@@ -181,6 +183,25 @@ def test_mock_new_image_routes_keep_the_structural_fake_provider(
             },
         ),
         (
+            JobType.MODEL_POSE_TRANSFER.value,
+            ModelPoseTransferProvider,
+            {
+                "job": {
+                    "input": {
+                        "model_source_asset_id": "asset-model",
+                        "pose_reference_asset_id": "asset-pose",
+                        "pose_slug": None,
+                        "pose_reference_sha256": None,
+                    },
+                    "settings": {
+                        "aspect_ratio": "follow-source",
+                        "image_count": 1,
+                    },
+                },
+                "item": {"item_key": "image-001"},
+            },
+        ),
+        (
             JobType.CREATIVE_IMAGE.value,
             CreativeImageProvider,
             {
@@ -196,7 +217,10 @@ def test_mock_new_image_routes_keep_the_structural_fake_provider(
 def test_real_unregistered_new_image_routes_fail_closed_without_fake_fallback(
     operation: str,
     adapter_type: type[
-        ProductImageProvider | ReferenceRemixProvider | CreativeImageProvider
+        ProductImageProvider
+        | ReferenceRemixProvider
+        | ModelPoseTransferProvider
+        | CreativeImageProvider
     ],
     configuration: dict[str, Any],
 ) -> None:
@@ -230,8 +254,9 @@ def test_real_unregistered_new_image_routes_fail_closed_without_fake_fallback(
     assert domestic.requests == []
 
 
-def test_detail_provider_routes_domestic_only_and_preserves_international_chain(
-) -> None:
+def test_detail_provider_routes_domestic_only_and_preserves_international_chain() -> (
+    None
+):
     fallback = RecordingProvider("default")
     international = RecordingProvider("stable-international")
     local = RecordingProvider("stable-local")
@@ -354,6 +379,12 @@ def _build_real_coordinator(
             ReferenceRemixProvider.skill_id,
         ),
         (
+            JobType.MODEL_POSE_TRANSFER.value,
+            "model_pose_transfer_provider_enabled",
+            ModelPoseTransferProvider,
+            ModelPoseTransferProvider.skill_id,
+        ),
+        (
             JobType.CREATIVE_IMAGE.value,
             "creative_image_provider_enabled",
             CreativeImageProvider,
@@ -403,6 +434,7 @@ def test_real_single_image_routes_receive_independent_delegates(
         client,
         product_image_provider_enabled=True,
         reference_remix_provider_enabled=True,
+        model_pose_transfer_provider_enabled=True,
         creative_image_provider_enabled=True,
         amazon_visual_suite_provider_enabled=True,
     )
@@ -410,13 +442,13 @@ def test_real_single_image_routes_receive_independent_delegates(
     delegates = [adapter.delegate for adapter in router.routes.values()]
 
     assert all(
-        isinstance(delegate, XingheSingleImageProvider)
-        for delegate in delegates
+        isinstance(delegate, XingheSingleImageProvider) for delegate in delegates
     )
-    assert len({id(delegate) for delegate in delegates}) == 4
+    assert len({id(delegate) for delegate in delegates}) == 5
     assert {delegate.skill_id for delegate in delegates} == {
         ProductImageProvider.skill_id,
         ReferenceRemixProvider.skill_id,
+        ModelPoseTransferProvider.skill_id,
         CreativeImageProvider.skill_id,
         AMAZON_VISUAL_SUITE_SKILL_ID,
     }
@@ -524,9 +556,7 @@ def test_crossborder_unsupported_platform_fails_before_provider_calls(
     )
 
     status = asyncio.run(coordinator.run(job_id))
-    current = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
-    ).json()
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
 
     assert status == JobStatus.FAILED
     assert current["status"] == JobStatus.FAILED.value
@@ -545,6 +575,7 @@ def test_mock_coordinator_ignores_real_provider_flags(
         storage=client.app.state.storage,
         product_image_provider_enabled=True,
         reference_remix_provider_enabled=True,
+        model_pose_transfer_provider_enabled=True,
         creative_image_provider_enabled=True,
         amazon_visual_suite_provider_enabled=True,
         crossborder_detail_provider_enabled=True,
@@ -555,6 +586,7 @@ def test_mock_coordinator_ignores_real_provider_flags(
     for operation in (
         JobType.PRODUCT_IMAGE.value,
         JobType.REFERENCE_REMIX.value,
+        JobType.MODEL_POSE_TRANSFER.value,
         JobType.CREATIVE_IMAGE.value,
     ):
         assert router.routes[operation] is router.default_provider
@@ -580,6 +612,7 @@ def test_tengli_task_runner_propagates_all_provider_switches(
         update={
             "product_image_provider_enabled": True,
             "reference_remix_provider_enabled": True,
+            "model_pose_transfer_provider_enabled": True,
             "creative_image_provider_enabled": True,
             "amazon_visual_suite_provider_enabled": True,
             "crossborder_detail_provider_enabled": True,

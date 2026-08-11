@@ -575,6 +575,7 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
     for required_copy in (
         "COPY backend/alembic.ini ./",
         "COPY backend/app ./app",
+        "COPY backend/catalog_assets ./catalog_assets",
         "COPY backend/skill_sources ./skill_sources",
         "COPY backend/migrations ./migrations",
     ):

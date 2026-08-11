@@ -4,6 +4,7 @@ const JOB_TYPE_LABELS: Record<JobType, string> = {
   local_edit: "一句话改图",
   product_image: "万能生图",
   reference_remix: "一键模仿",
+  model_pose_transfer: "模特换姿势",
   creative_image: "电商创意图",
   detail_pack: "商品详情图",
   amazon_visual_suite: "亚马逊套图",

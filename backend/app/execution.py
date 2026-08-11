@@ -1690,6 +1690,7 @@ def _output_asset_role(job_type: str) -> str:
         JobType.LOCAL_EDIT.value: "local_edit_result",
         JobType.PRODUCT_IMAGE.value: "product_image_result",
         JobType.REFERENCE_REMIX.value: "reference_remix_result",
+        JobType.MODEL_POSE_TRANSFER.value: "model_pose_transfer_result",
         JobType.CREATIVE_IMAGE.value: "creative_image_result",
         JobType.DETAIL_PACK.value: "detail_page",
         JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual",
@@ -1745,6 +1746,7 @@ def build_fake_coordinator(
     xinghe_skill_root: Path | None = None,
     product_image_provider_enabled: bool = False,
     reference_remix_provider_enabled: bool = False,
+    model_pose_transfer_provider_enabled: bool = False,
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
@@ -1755,6 +1757,7 @@ def build_fake_coordinator(
     )
     from .creative_image_provider import CreativeImageProvider
     from .domestic_detail_provider import DomesticDetailProvider
+    from .model_pose_transfer_provider import ModelPoseTransferProvider
     from .new_detail_skill_provider import BundledSkillManifestValidator
     from .product_image_provider import ProductImageProvider
     from .provider_registry import (
@@ -1887,6 +1890,7 @@ def build_fake_coordinator(
         new_routes: dict[str, Provider] = {
             JobType.PRODUCT_IMAGE.value: default_provider,
             JobType.REFERENCE_REMIX.value: default_provider,
+            JobType.MODEL_POSE_TRANSFER.value: default_provider,
             JobType.CREATIVE_IMAGE.value: default_provider,
             JobType.AMAZON_VISUAL_SUITE.value: AmazonVisualSuiteProvider(
                 default_provider,
@@ -1934,6 +1938,14 @@ def build_fake_coordinator(
                     reference_remix_provider_enabled,
                     JobType.REFERENCE_REMIX.value,
                     ReferenceRemixProvider.skill_id,
+                ),
+                manifest_validator=manifest_validator.validate,
+            ),
+            JobType.MODEL_POSE_TRANSFER.value: ModelPoseTransferProvider(
+                single_image_delegate(
+                    model_pose_transfer_provider_enabled,
+                    JobType.MODEL_POSE_TRANSFER.value,
+                    ModelPoseTransferProvider.skill_id,
                 ),
                 manifest_validator=manifest_validator.validate,
             ),

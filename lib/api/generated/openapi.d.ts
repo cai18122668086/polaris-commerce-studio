@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/v1/domestic-main-image/capability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Domestic Main Image Capability */
+        get: operations["domestic_main_image_capability_api_v1_domestic_main_image_capability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -121,6 +138,74 @@ export interface paths {
         put?: never;
         /** Create Asset Access Url */
         post: operations["create_asset_access_url_api_v1_workspaces__workspace_id__assets__asset_id__access_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Domestic Main Image Task */
+        post: operations["create_domestic_main_image_task_api_v1_workspaces__workspace_id__domestic_main_image_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domestic Main Image Task */
+        get: operations["get_domestic_main_image_task_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks/{task_id}/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Authorize Domestic Main Image Plan */
+        post: operations["authorize_domestic_main_image_plan_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks/{task_id}/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lock Domestic Main Image Identity */
+        post: operations["lock_domestic_main_image_identity_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__identity_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -553,7 +638,7 @@ export interface components {
              * Reason Code
              * @description Stable machine-readable explanation when execution is mocked or the capability is unavailable.
              */
-            reason_code: ("LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED" | "TASK_RUNNER_MOCK" | "REAL_PROVIDER_NOT_REGISTERED" | "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED") | null;
+            reason_code: ("LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED" | "TASK_RUNNER_MOCK" | "REAL_PROVIDER_NOT_REGISTERED" | "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED" | "DOMESTIC_MAIN_IMAGE_PROVIDER_DISABLED") | null;
         };
         /** CostSummary */
         CostSummary: {
@@ -699,6 +784,171 @@ export interface components {
              * @enum {string}
              */
             type: "detail_pack";
+        };
+        /** DomesticMainImageAuthorizeRequest */
+        DomesticMainImageAuthorizeRequest: {
+            /** Approval Text */
+            approval_text: string;
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** DomesticMainImageCapabilityResponse */
+        DomesticMainImageCapabilityResponse: {
+            /**
+             * Image Provider
+             * @enum {string}
+             */
+            image_provider: "disabled" | "unverified" | "available";
+            /** Paid Generation Allowed */
+            paid_generation_allowed: boolean;
+            /**
+             * Planning
+             * @enum {string}
+             */
+            planning: "available" | "unavailable";
+            /** Reason Code */
+            reason_code: string | null;
+            /**
+             * Skill Runtime
+             * @enum {string}
+             */
+            skill_runtime: "available" | "unavailable";
+        };
+        /** DomesticMainImageIdentityRequest */
+        DomesticMainImageIdentityRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Identity Contract */
+            identity_contract: {
+                [key: string]: unknown;
+            };
+        };
+        /** DomesticMainImagePlanRow */
+        DomesticMainImagePlanRow: {
+            /** Commercial Closure */
+            commercial_closure: string;
+            /** Composition And Subject */
+            composition_and_subject: string;
+            /** Main Selling Point */
+            main_selling_point: string;
+            /** Non Repetition Reason */
+            non_repetition_reason: string;
+            /** Page Index */
+            page_index: number;
+            /** Page Role */
+            page_role: string;
+            /** Reading Path And Type Hierarchy */
+            reading_path_and_type_hierarchy: string;
+            /** Supporting Selling Points */
+            supporting_selling_points: string[];
+            /** Visual Proof */
+            visual_proof: string;
+        };
+        /** DomesticMainImageSourceInput */
+        DomesticMainImageSourceInput: {
+            /** Asset Id */
+            asset_id: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "primary" | "detail" | "back" | "package" | "structure";
+        };
+        /** DomesticMainImageSourceResponse */
+        DomesticMainImageSourceResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "primary" | "detail" | "back" | "package" | "structure";
+            /** Sha256 */
+            sha256: string;
+        };
+        /** DomesticMainImageTaskCreate */
+        DomesticMainImageTaskCreate: {
+            /** Category */
+            category: string;
+            /** Product Information */
+            product_information: string;
+            /** Product Name */
+            product_name: string;
+            /** Sources */
+            sources: components["schemas"]["DomesticMainImageSourceInput"][];
+            /** Verified Attributes */
+            verified_attributes?: {
+                [key: string]: unknown;
+            };
+            /** Verified Offers */
+            verified_offers?: string[];
+            /** Verified Scenes */
+            verified_scenes?: string[];
+            /** Verified Selling Points */
+            verified_selling_points?: string[];
+            /** Verified Service Or Trust Facts */
+            verified_service_or_trust_facts?: string[];
+        };
+        /** DomesticMainImageTaskResponse */
+        DomesticMainImageTaskResponse: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Campaign Style Summary */
+            campaign_style_summary: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edit Target Role */
+            edit_target_role: string | null;
+            /** Generation Prompt Sha256 */
+            generation_prompt_sha256: string | null;
+            /** Generation Request Ready */
+            generation_request_ready: boolean;
+            /** Id */
+            id: string;
+            /** Image Model */
+            image_model: string | null;
+            /** Image Model Version */
+            image_model_version: string | null;
+            /** Last Error Code */
+            last_error_code: string | null;
+            /** Last Error Message */
+            last_error_message: string | null;
+            /** Plan */
+            plan: components["schemas"]["DomesticMainImagePlanRow"][];
+            /** Provider Capability Status */
+            provider_capability_status: string;
+            /** Reference Roles */
+            reference_roles: string[];
+            /** Revision */
+            revision: number;
+            /** Skill Digest */
+            skill_digest: string;
+            /** Skill Name */
+            skill_name: string;
+            /** Skill State */
+            skill_state: string;
+            /** Skill Version */
+            skill_version: string;
+            /** Sources */
+            sources: components["schemas"]["DomesticMainImageSourceResponse"][];
+            /** Startup Git Commit */
+            startup_git_commit: string;
+            /** Technical Status */
+            technical_status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Workspace Id */
+            workspace_id: string;
         };
         /** DraftJobUpdate */
         DraftJobUpdate: {
@@ -928,7 +1178,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite";
+        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "domestic_main_image" | "amazon_visual_suite";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /** Instruction */
@@ -1294,6 +1544,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    domestic_main_image_capability_api_v1_domestic_main_image_capability_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticMainImageCapabilityResponse"];
+                };
+            };
+        };
+    };
     current_user_api_v1_me_get: {
         parameters: {
             query?: never;
@@ -1523,6 +1793,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccessUrlResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_domestic_main_image_task_api_v1_workspaces__workspace_id__domestic_main_image_tasks_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticMainImageTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticMainImageTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domestic_main_image_task_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticMainImageTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_domestic_main_image_plan_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticMainImageAuthorizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticMainImageTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lock_domestic_main_image_identity_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__identity_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticMainImageIdentityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticMainImageTaskResponse"];
                 };
             };
             /** @description Validation Error */

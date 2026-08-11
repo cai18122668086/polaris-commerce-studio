@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -46,6 +47,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Polaris Commerce Studio API"
     app_version: str = "1.1.0"
+    release_sha: str = ""
     environment: Literal["development", "test", "production"] = "development"
     auth_mode: Literal["development", "external"] = "development"
     supertokens_connection_uri: str = "http://localhost:3567"
@@ -89,6 +91,13 @@ class Settings(BaseSettings):
     creative_image_provider_enabled: bool = Field(default=False)
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
     crossborder_detail_provider_enabled: bool = Field(default=False)
+    domestic_main_image_provider_enabled: bool = Field(default=False)
+    domestic_main_image_python_executable: Path = Path(sys.executable)
+    domestic_main_image_asset_cache_dir: Path = Path(
+        "backend/.data/domestic-main-image-assets/sha256"
+    )
+    domestic_main_image_model: str = ""
+    domestic_main_image_model_version: str = ""
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
     tengli_api_key: SecretStr = SecretStr("")
     tengli_base_url: str = "https://api.tengliapi.xyz:8443"

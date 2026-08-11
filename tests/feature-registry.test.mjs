@@ -11,13 +11,13 @@ import {
 } from "../lib/feature-registry.ts";
 
 test("feature registry exposes the complete first-phase tool catalog", () => {
-  assert.equal(FEATURE_REGISTRY.length, 14);
+  assert.equal(FEATURE_REGISTRY.length, 15);
   assert.deepEqual(
     FEATURE_GROUPS.map((group) => [group.category, group.features.length]),
     [
       ["quick_edit", 5],
       ["product_image", 7],
-      ["commerce_pack", 2],
+      ["commerce_pack", 3],
     ],
   );
   assert.equal(getFeatureById("local-edit")?.jobType, "local_edit");
@@ -28,6 +28,10 @@ test("feature registry exposes the complete first-phase tool catalog", () => {
   assert.equal(getFeatureById("model-pose-transfer")?.skillId, "ecommerce-model-pose-transfer");
   assert.equal(getFeatureByRoute("/workspace/product-image/change-color/")?.jobType, "product_image");
   assert.equal(getFeatureById("amazon-visual-suite")?.completionPolicy, "amazon_21_of_21");
+  assert.equal(
+    getFeatureById("domestic-main-image")?.completionPolicy,
+    "skill_session_two_checkpoint_six_page_set",
+  );
 });
 
 test("eight product-image routes share one job type, skill, and workspace template", () => {

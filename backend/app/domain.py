@@ -55,6 +55,7 @@ class JobType(StrEnum):
     MODEL_POSE_TRANSFER = "model_pose_transfer"
     CREATIVE_IMAGE = "creative_image"
     DETAIL_PACK = "detail_pack"
+    DOMESTIC_MAIN_IMAGE = "domestic_main_image"
     AMAZON_VISUAL_SUITE = "amazon_visual_suite"
 
 

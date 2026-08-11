@@ -500,7 +500,8 @@
                   "LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED",
                   "TASK_RUNNER_MOCK",
                   "REAL_PROVIDER_NOT_REGISTERED",
-                  "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED"
+                  "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+                  "DOMESTIC_MAIN_IMAGE_PROVIDER_DISABLED"
                 ],
                 "type": "string"
               },
@@ -927,6 +928,489 @@
           "configuration"
         ],
         "title": "DetailPackJobCreate",
+        "type": "object"
+      },
+      "DomesticMainImageAuthorizeRequest": {
+        "properties": {
+          "approval_text": {
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Approval Text",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "approval_text"
+        ],
+        "title": "DomesticMainImageAuthorizeRequest",
+        "type": "object"
+      },
+      "DomesticMainImageCapabilityResponse": {
+        "properties": {
+          "image_provider": {
+            "enum": [
+              "disabled",
+              "unverified",
+              "available"
+            ],
+            "title": "Image Provider",
+            "type": "string"
+          },
+          "paid_generation_allowed": {
+            "title": "Paid Generation Allowed",
+            "type": "boolean"
+          },
+          "planning": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Planning",
+            "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "skill_runtime": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Skill Runtime",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_runtime",
+          "planning",
+          "image_provider",
+          "paid_generation_allowed",
+          "reason_code"
+        ],
+        "title": "DomesticMainImageCapabilityResponse",
+        "type": "object"
+      },
+      "DomesticMainImageIdentityRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "identity_contract": {
+            "additionalProperties": true,
+            "title": "Identity Contract",
+            "type": "object"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "identity_contract"
+        ],
+        "title": "DomesticMainImageIdentityRequest",
+        "type": "object"
+      },
+      "DomesticMainImagePlanRow": {
+        "properties": {
+          "commercial_closure": {
+            "title": "Commercial Closure",
+            "type": "string"
+          },
+          "composition_and_subject": {
+            "title": "Composition And Subject",
+            "type": "string"
+          },
+          "main_selling_point": {
+            "title": "Main Selling Point",
+            "type": "string"
+          },
+          "non_repetition_reason": {
+            "title": "Non Repetition Reason",
+            "type": "string"
+          },
+          "page_index": {
+            "title": "Page Index",
+            "type": "integer"
+          },
+          "page_role": {
+            "title": "Page Role",
+            "type": "string"
+          },
+          "reading_path_and_type_hierarchy": {
+            "title": "Reading Path And Type Hierarchy",
+            "type": "string"
+          },
+          "supporting_selling_points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supporting Selling Points",
+            "type": "array"
+          },
+          "visual_proof": {
+            "title": "Visual Proof",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_index",
+          "page_role",
+          "main_selling_point",
+          "supporting_selling_points",
+          "visual_proof",
+          "composition_and_subject",
+          "reading_path_and_type_hierarchy",
+          "non_repetition_reason",
+          "commercial_closure"
+        ],
+        "title": "DomesticMainImagePlanRow",
+        "type": "object"
+      },
+      "DomesticMainImageSourceInput": {
+        "properties": {
+          "asset_id": {
+            "minLength": 1,
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "primary",
+              "detail",
+              "back",
+              "package",
+              "structure"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "role"
+        ],
+        "title": "DomesticMainImageSourceInput",
+        "type": "object"
+      },
+      "DomesticMainImageSourceResponse": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "primary",
+              "detail",
+              "back",
+              "package",
+              "structure"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "evidence_id",
+          "ordinal",
+          "role",
+          "sha256"
+        ],
+        "title": "DomesticMainImageSourceResponse",
+        "type": "object"
+      },
+      "DomesticMainImageTaskCreate": {
+        "properties": {
+          "category": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "product_information": {
+            "maxLength": 12000,
+            "minLength": 1,
+            "title": "Product Information",
+            "type": "string"
+          },
+          "product_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Product Name",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/DomesticMainImageSourceInput"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "verified_attributes": {
+            "additionalProperties": true,
+            "title": "Verified Attributes",
+            "type": "object"
+          },
+          "verified_offers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Verified Offers",
+            "type": "array"
+          },
+          "verified_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Verified Scenes",
+            "type": "array"
+          },
+          "verified_selling_points": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Verified Selling Points",
+            "type": "array"
+          },
+          "verified_service_or_trust_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Verified Service Or Trust Facts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_name",
+          "category",
+          "product_information",
+          "sources"
+        ],
+        "title": "DomesticMainImageTaskCreate",
+        "type": "object"
+      },
+      "DomesticMainImageTaskResponse": {
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "campaign_style_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Style Summary"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "edit_target_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edit Target Role"
+          },
+          "generation_prompt_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Prompt Sha256"
+          },
+          "generation_request_ready": {
+            "title": "Generation Request Ready",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Model"
+          },
+          "image_model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Model Version"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "last_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Message"
+          },
+          "plan": {
+            "items": {
+              "$ref": "#/components/schemas/DomesticMainImagePlanRow"
+            },
+            "title": "Plan",
+            "type": "array"
+          },
+          "provider_capability_status": {
+            "title": "Provider Capability Status",
+            "type": "string"
+          },
+          "reference_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Roles",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "skill_digest": {
+            "title": "Skill Digest",
+            "type": "string"
+          },
+          "skill_name": {
+            "title": "Skill Name",
+            "type": "string"
+          },
+          "skill_state": {
+            "title": "Skill State",
+            "type": "string"
+          },
+          "skill_version": {
+            "title": "Skill Version",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/DomesticMainImageSourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "startup_git_commit": {
+            "title": "Startup Git Commit",
+            "type": "string"
+          },
+          "technical_status": {
+            "title": "Technical Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "technical_status",
+          "skill_state",
+          "revision",
+          "allowed_actions",
+          "skill_name",
+          "skill_version",
+          "skill_digest",
+          "startup_git_commit",
+          "provider_capability_status",
+          "image_model",
+          "image_model_version",
+          "campaign_style_summary",
+          "plan",
+          "generation_request_ready",
+          "generation_prompt_sha256",
+          "reference_roles",
+          "edit_target_role",
+          "last_error_code",
+          "last_error_message",
+          "sources",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DomesticMainImageTaskResponse",
         "type": "object"
       },
       "DraftJobUpdate": {
@@ -1686,6 +2170,7 @@
           "model_pose_transfer",
           "creative_image",
           "detail_pack",
+          "domestic_main_image",
           "amazon_visual_suite"
         ],
         "title": "JobType",
@@ -2537,6 +3022,32 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/domestic-main-image/capability": {
+      "get": {
+        "operationId": "domestic_main_image_capability_api_v1_domestic_main_image_capability_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticMainImageCapabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Domestic Main Image Capability",
+        "tags": [
+          "domestic-main-image"
+        ]
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "current_user_api_v1_me_get",
@@ -2984,6 +3495,262 @@
         "summary": "Create Asset Access Url",
         "tags": [
           "assets"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks": {
+      "post": {
+        "operationId": "create_domestic_main_image_task_api_v1_workspaces__workspace_id__domestic_main_image_tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticMainImageTaskCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticMainImageTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Domestic Main Image Task",
+        "tags": [
+          "domestic-main-image"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks/{task_id}": {
+      "get": {
+        "operationId": "get_domestic_main_image_task_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticMainImageTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Domestic Main Image Task",
+        "tags": [
+          "domestic-main-image"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks/{task_id}/authorize": {
+      "post": {
+        "operationId": "authorize_domestic_main_image_plan_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__authorize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticMainImageAuthorizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticMainImageTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Authorize Domestic Main Image Plan",
+        "tags": [
+          "domestic-main-image"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/domestic-main-image/tasks/{task_id}/identity": {
+      "post": {
+        "operationId": "lock_domestic_main_image_identity_api_v1_workspaces__workspace_id__domestic_main_image_tasks__task_id__identity_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticMainImageIdentityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticMainImageTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Lock Domestic Main Image Identity",
+        "tags": [
+          "domestic-main-image"
         ]
       }
     },

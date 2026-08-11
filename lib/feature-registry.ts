@@ -22,6 +22,7 @@ export type FeatureJobType =
   | "reference_remix"
   | "creative_image"
   | "detail_pack"
+  | "domestic_main_image"
   | "amazon_visual_suite";
 export type ProductImagePreset =
   | "scene_main"
@@ -57,7 +58,7 @@ export type FeatureDefinition = {
   taskPreset?: ProductImagePreset;
   presetSlug?: ProductImagePresetSlug;
   runtimeCapability: string;
-  workspaceTemplate: "masked_edit" | "product_image" | "detail_pack" | "fixed_pack";
+  workspaceTemplate: "masked_edit" | "product_image" | "detail_pack" | "fixed_pack" | "domestic_main_image";
   inputRoles: string[];
   resultTemplate: "before_after" | "result_grid" | "page_grid" | "grouped_grid";
   completionPolicy: string;
@@ -413,6 +414,33 @@ export const FEATURE_REGISTRY = [
     inputHint: "商品图；竞品图可选",
     outputHint: "默认 1 张，最多 12 张",
     guidance: "每张结果是独立可交付图片，不以拼图或提示词占位。",
+  },
+  {
+    id: "domestic-main-image",
+    title: "国内电商主图",
+    shortTitle: "国内主图",
+    description: "锁定同一商品身份，规划并顺序制作 1 张搜索主图与 5 张轮播图。",
+    category: "commerce_pack",
+    route: "/workspace/domestic-main-image",
+    icon: Images,
+    tone: "coral",
+    badge: "六图闭环",
+    skillId: "aurora-domestic-ecommerce-main-image",
+    jobType: "domestic_main_image",
+    runtimeCapability: "domestic_main_image",
+    workspaceTemplate: "domestic_main_image",
+    inputRoles: ["product_identity_authority"],
+    resultTemplate: "page_grid",
+    completionPolicy: "skill_session_two_checkpoint_six_page_set",
+    supportsAssetPicker: true,
+    supportsMultiSelect: true,
+    supportsZipDownload: true,
+    supportsContinueEditing: true,
+    searchKeywords: ["淘宝主图", "国内电商主图", "搜索主图", "轮播图", "六图"],
+    featured: false,
+    inputHint: "同一商品多角度原图 + 商品事实",
+    outputHint: "1 张搜索主图 + 5 张轮播图",
+    guidance: "先一次确认六图规划，再由 Skill 顺序生成、像素审核并完成最多一次返修。",
   },
   {
     id: "detail-pack",

@@ -17,6 +17,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 RUN groupadd --system --gid 10001 polaris \
     && useradd --system --uid 10001 --gid polaris --home-dir /app polaris \
+    && mkdir -p /var/lib/polaris/domestic-main-image-assets \
+    && chown -R polaris:polaris /var/lib/polaris \
     && chown -R polaris:polaris /app
 
 USER polaris

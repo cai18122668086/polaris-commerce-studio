@@ -82,6 +82,8 @@ services:
       POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED: ${POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED:-false}
       POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED: ${POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED:-false}
       POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED: ${POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED:-false}
+      POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED: ${POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED:-false}
+      POLARIS_DOMESTIC_MAIN_IMAGE_ASSET_CACHE_DIR: /var/lib/polaris/domestic-main-image-assets/sha256
       POLARIS_TENGLI_API_KEY: ${POLARIS_TENGLI_API_KEY:-}
       POLARIS_TENGLI_BASE_URL: ${POLARIS_TENGLI_BASE_URL:-https://api.tengliapi.xyz:8443}
       POLARIS_TENGLI_IMAGE_MODEL: ${POLARIS_TENGLI_IMAGE_MODEL:-gpt-image-2}
@@ -113,6 +115,8 @@ services:
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - polaris_domestic_main_image_assets:/var/lib/polaris/domestic-main-image-assets
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -167,3 +171,4 @@ volumes:
   polaris_postgres_data:
   polaris_redis_data:
   polaris_minio_data:
+  polaris_domestic_main_image_assets:

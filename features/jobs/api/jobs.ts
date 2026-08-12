@@ -19,6 +19,11 @@ import {
   type JobStatus,
   type JobType,
   type RetryScope,
+  type AuroraDetailSession,
+  type AuroraConflictResolution,
+  type AuroraPlanAuthorization,
+  type AuroraUserAdjustment,
+  type AuroraFinalApproval,
 } from "@/lib/api/types";
 import { jobKeys } from "./jobs-keys";
 import { assertJobAction } from "@/lib/jobs/actions";
@@ -85,6 +90,35 @@ export function useJob(
     refetchInterval(current) {
       const status = current.state.data?.status;
       return status && isActiveJob(status) ? 1_500 : false;
+    },
+  });
+}
+
+export function useAuroraDetailSession(
+  workspaceId: string | undefined,
+  jobId: string | undefined,
+) {
+  return useQuery({
+    queryKey: jobKeys.auroraDetail(
+      workspaceId ?? "pending",
+      jobId ?? "pending",
+    ),
+    enabled: Boolean(workspaceId && jobId),
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.GET(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail",
+        {
+          params: { path: { workspace_id: workspaceId!, job_id: jobId! } },
+          signal,
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+    refetchInterval(current) {
+      const state = current.state.data?.state;
+      return state && !["COMPLETED", "REPAIR_EXHAUSTED"].includes(state)
+        ? 1_500
+        : false;
     },
   });
 }
@@ -256,6 +290,104 @@ export function useConfirmPlan(workspaceId: string | undefined) {
             header: { "Idempotency-Key": key },
           },
           body: { expected_revision: input.revision },
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
+type AuroraMutation<TBody> = TBody & { jobId: string };
+
+export function useResolveAuroraConflicts(workspaceId: string | undefined) {
+  return useJobMutation<
+    AuroraDetailSession,
+    AuroraMutation<AuroraConflictResolution>
+  >(
+    workspaceId,
+    "aurora-resolve-conflicts",
+    (input) => input,
+    async (id, { jobId, ...body }, key) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/conflicts/resolve",
+        {
+          params: {
+            path: { workspace_id: id, job_id: jobId },
+            header: { "Idempotency-Key": key },
+          },
+          body,
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
+export function useAuthorizeAuroraPlan(workspaceId: string | undefined) {
+  return useJobMutation<
+    AuroraDetailSession,
+    AuroraMutation<AuroraPlanAuthorization>
+  >(
+    workspaceId,
+    "aurora-authorize",
+    (input) => input,
+    async (id, { jobId, ...body }, key) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/authorize",
+        {
+          params: {
+            path: { workspace_id: id, job_id: jobId },
+            header: { "Idempotency-Key": key },
+          },
+          body,
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
+export function useAdjustAuroraModule(workspaceId: string | undefined) {
+  return useJobMutation<
+    AuroraDetailSession,
+    AuroraMutation<AuroraUserAdjustment>
+  >(
+    workspaceId,
+    "aurora-adjust",
+    (input) => input,
+    async (id, { jobId, ...body }, key) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/adjust",
+        {
+          params: {
+            path: { workspace_id: id, job_id: jobId },
+            header: { "Idempotency-Key": key },
+          },
+          body,
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
+export function useFinalizeAuroraDetail(workspaceId: string | undefined) {
+  return useJobMutation<
+    AuroraDetailSession,
+    AuroraMutation<AuroraFinalApproval>
+  >(
+    workspaceId,
+    "aurora-finalize",
+    (input) => input,
+    async (id, { jobId, ...body }, key) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/finalize",
+        {
+          params: {
+            path: { workspace_id: id, job_id: jobId },
+            header: { "Idempotency-Key": key },
+          },
+          body,
         },
       );
       return unwrapApiResponse(result);

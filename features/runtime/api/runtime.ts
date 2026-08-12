@@ -10,9 +10,10 @@ export const runtimeKeys = {
   status: ["runtime-status"] as const,
 };
 
-export function useRuntimeStatus() {
+export function useRuntimeStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: runtimeKeys.status,
+    enabled: options?.enabled,
     queryFn: async ({ signal }) => {
       const result = await apiClient.GET("/api/v1/runtime", { signal });
       return unwrapApiResponse(result);

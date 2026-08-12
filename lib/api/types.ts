@@ -29,6 +29,16 @@ export type JobCreate =
   | AmazonVisualSuiteJobCreate;
 export type RuntimeStatus = components["schemas"]["RuntimeStatusResponse"];
 export type CapabilityStatus = components["schemas"]["CapabilityStatus"];
+export type AuroraDetailSession =
+  components["schemas"]["AuroraDetailSessionResponse"];
+export type AuroraConflictResolution =
+  components["schemas"]["AuroraConflictResolutionRequest"];
+export type AuroraPlanAuthorization =
+  components["schemas"]["AuroraPlanAuthorizationRequest"];
+export type AuroraUserAdjustment =
+  components["schemas"]["AuroraUserAdjustmentRequest"];
+export type AuroraFinalApproval =
+  components["schemas"]["AuroraFinalApprovalRequest"];
 
 export const activeJobStatuses: JobStatus[] = [
   "queued",

@@ -1,0 +1,4 @@
+interface:
+  display_name: "极光国内电商详情图"
+  short_description: "自动规划屏数比例，以画面证明卖点，并执行像素级非回归审计的国内电商详情页系统"
+  default_prompt: "Use $aurora-domestic-ecommerce-detail-page to plan and execute a fact-grounded domestic e-commerce detail page."

@@ -163,6 +163,91 @@ export interface paths {
         patch: operations["update_draft_job_api_v1_workspaces__workspace_id__jobs__job_id__patch"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Aurora Detail Session */
+        get: operations["get_aurora_detail_session_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/adjust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adjust Aurora Detail Module */
+        post: operations["adjust_aurora_detail_module_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_adjust_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Authorize Aurora Detail Plan */
+        post: operations["authorize_aurora_detail_plan_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/conflicts/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Aurora Detail Conflicts */
+        post: operations["resolve_aurora_detail_conflicts_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_conflicts_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/aurora-detail/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize Aurora Detail */
+        post: operations["finalize_aurora_detail_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -521,6 +606,102 @@ export interface components {
             /** Workspace Id */
             workspace_id: string;
         };
+        /** AuroraConflictResolutionRequest */
+        AuroraConflictResolutionRequest: {
+            /** Confirmation Text */
+            confirmation_text: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Resolutions */
+            resolutions: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AuroraDetailSessionResponse */
+        AuroraDetailSessionResponse: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Campaign Visual Dna */
+            campaign_visual_dna?: string | null;
+            /** Conflict Checkpoint */
+            conflict_checkpoint?: {
+                [key: string]: unknown;
+            } | null;
+            /** Deferred Summary */
+            deferred_summary?: {
+                [key: string]: unknown;
+            }[];
+            /** Job Id */
+            job_id: string;
+            /** Long Page */
+            long_page?: {
+                [key: string]: unknown;
+            } | null;
+            /** Long Page Audit */
+            long_page_audit?: {
+                [key: string]: unknown;
+            } | null;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            } | null;
+            /** Merge Summary */
+            merge_summary?: string[];
+            /** Modules */
+            modules?: {
+                [key: string]: unknown;
+            }[];
+            /** Output Decision */
+            output_decision?: {
+                [key: string]: unknown;
+            } | null;
+            /** Revision */
+            revision: number;
+            /** State */
+            state: string;
+            /** Storyboard */
+            storyboard?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AuroraFinalApprovalRequest */
+        AuroraFinalApprovalRequest: {
+            /** Approval Text */
+            approval_text: string;
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** AuroraPlanAuthorizationRequest */
+        AuroraPlanAuthorizationRequest: {
+            /** Approval Text */
+            approval_text: string;
+            /** Approved Aspect Ratio */
+            approved_aspect_ratio: string;
+            /** Approved Module Count */
+            approved_module_count: number;
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** AuroraUserAdjustmentRequest */
+        AuroraUserAdjustmentRequest: {
+            /**
+             * Change Kind
+             * @enum {string}
+             */
+            change_kind: "TYPOGRAPHY_LAYOUT" | "COPY_CONTENT" | "VISUAL_DETAIL" | "OTHER_LOCAL";
+            /** Change Only */
+            change_only: string[];
+            /** Expected Revision */
+            expected_revision: number;
+            /** Instruction */
+            instruction: string;
+            /** Module Id */
+            module_id: string;
+            /** Must Not Regress */
+            must_not_regress: string[];
+            /** Preserve */
+            preserve: string[];
+        };
         /** Body_upload_asset_api_v1_workspaces__workspace_id__assets_post */
         Body_upload_asset_api_v1_workspaces__workspace_id__assets_post: {
             /** File */
@@ -660,10 +841,22 @@ export interface components {
              * @enum {string}
              */
             market_region: "domestic" | "international";
+            /**
+             * Output Preferences
+             * @default
+             */
+            output_preferences: string;
             /** Page Count */
-            page_count: number;
+            page_count?: number | null;
             /** Platform Code */
             platform_code: string;
+            /**
+             * Primary Scenario
+             * @default
+             */
+            primary_scenario: string;
+            /** Product Facts */
+            product_facts?: string[];
             /** Product Name */
             product_name: string;
             /** Selling Points */
@@ -674,6 +867,17 @@ export interface components {
              * @enum {string}
              */
             size: "1024x1536" | "1600x1600" | "2200x2200" | "2000x2000" | "1000x1000" | "1024x1024" | "2048x2048" | "1200x1200" | "750x1000" | "1200x1600" | "1464x600" | "1600x1200";
+            /**
+             * Target Buyer
+             * @default
+             */
+            target_buyer: string;
+            /**
+             * Workflow Version
+             * @default legacy
+             * @enum {string}
+             */
+            workflow_version: "legacy" | "aurora_v0.7.0";
         };
         /** DetailPackInput */
         DetailPackInput: {
@@ -1665,6 +1869,190 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_aurora_detail_session_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuroraDetailSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjust_aurora_detail_module_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_adjust_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuroraUserAdjustmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuroraDetailSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_aurora_detail_plan_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuroraPlanAuthorizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuroraDetailSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_aurora_detail_conflicts_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_conflicts_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuroraConflictResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuroraDetailSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_aurora_detail_api_v1_workspaces__workspace_id__jobs__job_id__aurora_detail_finalize_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuroraFinalApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuroraDetailSessionResponse"];
                 };
             };
             /** @description Validation Error */

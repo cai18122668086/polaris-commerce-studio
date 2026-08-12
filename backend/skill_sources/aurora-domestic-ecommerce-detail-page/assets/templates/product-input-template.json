@@ -1,0 +1,76 @@
+{
+  "coverage_directive": "MAXIMIZE_USER_SUPPLIED_RELEVANT_FACTS",
+  "question_budget": 0,
+  "conflict_policy": "BLOCK_PLAN_AND_BATCH_ASK",
+  "product_name": "请填写准确商品名称",
+  "category": "请填写类目",
+  "target_buyer": "请填写主要购买者及购买动机",
+  "primary_scenario": "请填写主要使用场景",
+  "product_images": [
+    {"id": "IMG01", "path": "D:/absolute/path/product-front.png", "role": "front_identity"}
+  ],
+  "verified_facts": [
+    {
+      "id": "F01",
+      "text": "只写可核验事实",
+      "source_class": "USER_FACT",
+      "evidence_ref": "用户资料或产品包装",
+      "conditions": "如有适用条件写在这里",
+      "display_intent": "MUST_SHOW"
+    }
+  ],
+  "conflict_scan": {
+    "status": "CLEAR",
+    "scanned_topics": ["identity", "specification", "formula", "performance", "audience", "compliance"],
+    "conflict_ids": []
+  },
+  "source_conflicts": [],
+  "reference_materials": [
+    {
+      "id": "REF01",
+      "path": "D:/absolute/path/analyzed-reference.jpg",
+      "category": "参考图类目",
+      "analysis_status": "ANALYZED",
+      "observed_expression_methods": [
+        "主体占画面六成，原料以环绕关系辅助，不用参数卡堆叠",
+        "标题沿主体轮廓偏置，短标签贴近对应物件"
+      ],
+      "analyzed_units": [
+        {
+          "id": "REF01-U01",
+          "source_region": "拼接图左侧第一屏",
+          "page_duty": "首屏价值建立",
+          "visual_carrier": "大比例产品主体与环绕原料",
+          "composition_logic": "主体约占六成，原料沿产品轮廓形成环绕关系",
+          "typography_logic": "短标题偏置于留白区，标签靠近对应原料",
+          "observed_expression_method": "主体占画面六成，原料以环绕关系辅助，不用参数卡堆叠"
+        },
+        {
+          "id": "REF01-U02",
+          "source_region": "拼接图左侧第二屏",
+          "page_duty": "原料卖点解释",
+          "visual_carrier": "可辨识原料与产品局部",
+          "composition_logic": "物件关系构成阅读路径，而非等分卡片",
+          "typography_logic": "标题沿主体轮廓偏置，短标签贴近对应物件",
+          "observed_expression_method": "标题沿主体轮廓偏置，短标签贴近对应物件"
+        }
+      ]
+    }
+  ],
+  "visual_preferences": {"keywords": [], "avoid": []},
+  "platform_profile": {
+    "target_platform": "REPLACE_WITH_TARGET_PLATFORM",
+    "profile_name": "REPLACE_AFTER_OUTPUT_STRATEGY_PREFLIGHT",
+    "selection_mode": "ADAPTIVE_PLANNED",
+    "selection_rationale": "REPLACE_WITH_PRODUCT_SPECIFIC_MOBILE_READING_COMPOSITION_AND_DELIVERY_REASONING",
+    "source": "REPLACE_WITH_USER_REQUIREMENT_LIVE_BACKEND_OR_DATED_RULE_SOURCE",
+    "aspect_ratio": {"width_units": 0, "height_units": 0, "label": "REPLACE"},
+    "canvas_width_px": 0,
+    "module_height_px": 0,
+    "safe_margin_px": 0,
+    "slice_height_px": 0,
+    "format": "PNG",
+    "max_file_bytes": null,
+    "verification_status": "BACKEND_CONFIRMATION_REQUIRED"
+  }
+}

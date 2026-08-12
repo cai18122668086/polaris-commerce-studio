@@ -89,6 +89,8 @@ class Settings(BaseSettings):
     creative_image_provider_enabled: bool = Field(default=False)
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
     crossborder_detail_provider_enabled: bool = Field(default=False)
+    aurora_detail_provider_enabled: bool = Field(default=False)
+    aurora_detail_image_model_version: str = ""
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
     tengli_api_key: SecretStr = SecretStr("")
     tengli_base_url: str = "https://api.tengliapi.xyz:8443"
@@ -125,6 +127,7 @@ class Settings(BaseSettings):
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)
     xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)
+    aurora_detail_runtime_dir: Path = Path("backend/.data/aurora-detail-runtime")
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)

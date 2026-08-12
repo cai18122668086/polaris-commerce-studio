@@ -22,6 +22,8 @@ export const jobKeys = {
     [...jobKeys.lists(workspaceId), normalize(filters)] as const,
   detail: (workspaceId: string, jobId: string) =>
     [...jobKeys.all(workspaceId), "detail", jobId] as const,
+  auroraDetail: (workspaceId: string, jobId: string) =>
+    [...jobKeys.all(workspaceId), "aurora-detail", jobId] as const,
   activeSummary: (workspaceId: string) =>
     [...jobKeys.all(workspaceId), "active-summary"] as const,
   summary: (workspaceId: string, range: string) =>

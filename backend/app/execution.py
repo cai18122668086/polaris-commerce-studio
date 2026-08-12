@@ -570,6 +570,12 @@ class ExecutionCoordinator:
             if current != JobStatus.PROCESSING:
                 return current
 
+        # Aurora v0.7.0 generation is driven only by its harness request and
+        # dedicated provider adapter. Never let it fall through to the legacy
+        # fixed-screen detail provider.
+        if current == JobStatus.PROCESSING and self._is_aurora_job(job_id):
+            return current
+
         while True:
             leases: list[AttemptLease] = []
             for _ in range(self.max_concurrency):
@@ -593,6 +599,22 @@ class ExecutionCoordinator:
                 select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
             )
             return job_type == JobType.AMAZON_VISUAL_SUITE.value
+
+    def _is_aurora_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            configuration = session.scalar(
+                select(JobRecord.configuration)
+                .where(JobRecord.id == job_id)
+                .limit(1)
+            )
+        if not isinstance(configuration, Mapping):
+            return False
+        settings = configuration.get("settings")
+        return (
+            isinstance(settings, Mapping)
+            and settings.get("market_region") == "domestic"
+            and settings.get("workflow_version") == "aurora_v0.7.0"
+        )
 
     def prepare(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
@@ -657,6 +679,7 @@ class ExecutionCoordinator:
             if (
                 job.type != JobType.DETAIL_PACK.value
                 or settings.get("market_region") != "domestic"
+                or settings.get("workflow_version") == "aurora_v0.7.0"
                 or settings.get("auto_start_after_plan") is not True
                 or JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION
             ):
@@ -1750,6 +1773,8 @@ def build_fake_coordinator(
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
+    aurora_detail_provider_enabled: bool = False,
+    aurora_detail_runtime_dir: Path = Path("backend/.data/aurora-detail-runtime"),
 ) -> ExecutionCoordinator:
     from .amazon_visual_suite_provider import (
         AMAZON_VISUAL_SUITE_SKILL_ID,
@@ -1850,6 +1875,35 @@ def build_fake_coordinator(
         skill_id=domestic_skill_id,
     )
     domestic_detail_provider = DomesticDetailProvider(domestic_detail_delegate)
+    from .aurora_detail_planner import (
+        AuroraDetailPlanningCoordinator,
+        GatewayAuroraPlanningBundleProvider,
+        MockAuroraPlanningBundleProvider,
+    )
+    from .aurora_detail_runtime import AuroraDetailHarnessAdapter
+    from .aurora_detail_service import AuroraDetailSessionService
+
+    aurora_skill_root = default_skill_root(
+        "aurora-domestic-ecommerce-detail-page"
+    )
+    aurora_planner = None
+    if storage is not None and (
+        xinghe_gateway is None or aurora_detail_provider_enabled
+    ):
+        aurora_adapter = AuroraDetailHarnessAdapter(aurora_detail_runtime_dir)
+        aurora_service = AuroraDetailSessionService(aurora_adapter)
+        aurora_bundle_provider = (
+            MockAuroraPlanningBundleProvider()
+            if xinghe_gateway is None
+            else GatewayAuroraPlanningBundleProvider(gateway, aurora_skill_root)
+        )
+        aurora_planner = AuroraDetailPlanningCoordinator(
+            session_factory,
+            storage,
+            aurora_service,
+            aurora_bundle_provider,
+            aurora_detail_runtime_dir,
+        )
     amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)
     amazon_planner = XinghePlanningCoordinator(
         session_factory,
@@ -1867,6 +1921,7 @@ def build_fake_coordinator(
         international_planner,
         domestic_planner,
         amazon_planner,
+        aurora_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
         session_factory,

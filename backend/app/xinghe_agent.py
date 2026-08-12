@@ -186,7 +186,12 @@ _AMAZON_PLANNER_PROTOCOL_FILES = (
     "references/quality-rules.md",
     "references/generation-backend.md",
 )
-_COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset({"xinghe-ecommerce-detail-domestic-3"})
+_COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset(
+    {
+        "xinghe-ecommerce-detail-domestic-3",
+        "aurora-domestic-ecommerce-detail-page",
+    }
+)
 _PLANNER_PROTOCOL_FILES_BY_SKILL = {
     "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
     "xinghe-amazon-visual-suite": _AMAZON_PLANNER_PROTOCOL_FILES,
@@ -5809,6 +5814,8 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "aurora_detail_v070":
+        return _aurora_detail_planner_prompt(request)
     if request.planning_profile == "amazon_visual_suite":
         return _amazon_planner_prompt(request)
     if request.planning_profile == "crossborder_detail":
@@ -5859,6 +5866,42 @@ def _planner_prompt(request: PlannerRequest) -> str:
         "needs_confirmation. Required object:",
         protocol_contract,
         1,
+    )
+
+
+def _aurora_detail_planner_prompt(request: PlannerRequest) -> str:
+    """Request a harness-owned bundle without introducing a website template."""
+
+    inventory = [
+        {
+            "asset_id": source.asset_id,
+            "role": source.source_role,
+            "filename": source.filename,
+            "sha256": source.sha256,
+        }
+        for source in request.sources
+    ]
+    return (
+        "Perform the Aurora domestic e-commerce detail-page v0.7.0 intake, "
+        "reference intelligence, identity analysis, and output-strategy "
+        "preflight described by the system protocol. Return one JSON object "
+        "with raw_input and, only when conflict_scan.status is CLEAR, identity "
+        "and plan. If material SKU facts conflict, include every conflict in "
+        "raw_input.source_conflicts, set CONFLICTS_FOUND, omit identity and plan, "
+        "and stop before storyboard planning. A conflict-free plan must cluster "
+        "selling points by buyer question, label every cluster MERGEABLE or "
+        "MUST_SEPARATE, compare at least two distinct module_count_candidates, "
+        "select module_count dynamically, compare aspect-ratio and dimension "
+        "options, and make module_count exactly equal len(plan.modules). Never "
+        "inherit a fixed page count or ratio. Analyze every style reference with "
+        "explicit ADOPT/REJECT coverage and never use it as product evidence. "
+        "Use only the supplied asset_id values in raw_input; the application will "
+        "replace them with stable paths before invoking the harness. Do not emit "
+        "prompts or generation requests.\n"
+        f"Product: {request.product_name}\n"
+        f"Platform: {request.platform_code}\n"
+        f"User information: {list(request.product_information)}\n"
+        f"Asset inventory: {json.dumps(inventory, ensure_ascii=False)}"
     )
 
 

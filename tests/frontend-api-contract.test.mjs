@@ -61,12 +61,12 @@ test("business UI is API-backed and runtime capability is fail-closed", async ()
   assert.match(runtime, /当前生成服务暂不可用/);
 });
 
-test("browser API client defaults to the same-origin edge proxy", async () => {
+test("browser API client keeps production same-origin and resolves the local API port", async () => {
   const client = await utf8("lib/api/client.ts");
-  assert.ok(client.includes(
-    'process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ""',
-  ));
-  assert.equal(client.includes("localhost:8000"), false);
+  assert.match(client, /process\.env\.NEXT_PUBLIC_API_BASE_URL\?\.trim\(\)/);
+  assert.match(client, /["localhost", "127\.0\.0\.1"]/);
+  assert.match(client, /localApiUrl\.port = "8000"/);
+  assert.match(client, /typeof window === "undefined"/);
 });
 
 test("runtime sources contain no non-loopback remote URLs", async () => {

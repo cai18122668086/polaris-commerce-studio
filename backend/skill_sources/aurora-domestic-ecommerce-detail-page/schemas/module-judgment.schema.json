@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Module Pixel Judgment v0.7",
+  "type": "object",
+  "required": ["module_id", "status", "audit_complete", "checks", "observations", "material_failures", "passed_layers"],
+  "properties": {
+    "module_id": {"type": "string"},
+    "status": {"enum": ["PASS", "MATERIAL_FAIL"]},
+    "audit_complete": {"const": true},
+    "checks": {
+      "type": "object",
+      "required": ["identity", "facts", "role", "proof", "proof_integrity", "legibility", "text_integration", "series_continuity", "page_distinctness", "integrity", "ocr_whitelist_match", "internal_metadata_absent", "hidden_copy_comprehension", "visual_payload_sufficiency", "product_specificity", "proof_relation_visible", "commercial_expression", "feedback_non_regression", "approved_plan_fidelity", "reference_grammar_application", "auxiliary_copy_binding", "typography_contract_match", "typography_neighbor_difference"],
+      "additionalProperties": {
+        "type": "object",
+        "required": ["pass", "visible_evidence"],
+        "properties": {"pass": {"type": "boolean"}, "visible_evidence": {"type": "string"}}
+      }
+    },
+    "observations": {
+      "type": "object",
+      "required": ["ocr_text", "unauthorized_ocr_text", "forbidden_text_hits", "effective_visual_payloads", "visible_proof_relations", "hidden_copy_observation", "product_specificity_observation", "planned_elements_visible", "planned_elements_missing", "reference_pattern_observation", "copy_binding_observation", "typography_primary_mode_observed", "typography_anchor_zone_observed", "typography_anchor_target_observation", "typography_hierarchy_observation", "typography_neighbor_difference_observation"],
+      "properties": {
+        "ocr_text": {"type": "array", "items": {"type": "string"}},
+        "unauthorized_ocr_text": {"type": "array", "items": {"type": "string"}},
+        "forbidden_text_hits": {"type": "array", "items": {"type": "string"}},
+        "effective_visual_payloads": {"type": "array", "items": {"type": "string"}},
+        "visible_proof_relations": {"type": "array", "items": {"type": "string"}},
+        "hidden_copy_observation": {"type": "string"},
+        "product_specificity_observation": {"type": "string"},
+        "planned_elements_visible": {"type": "array", "items": {"type": "string"}},
+        "planned_elements_missing": {"type": "array", "items": {"type": "string"}},
+        "reference_pattern_observation": {"type": "string"},
+        "copy_binding_observation": {"type": "string"},
+        "typography_primary_mode_observed": {"type": "string"},
+        "typography_anchor_zone_observed": {"type": "string"},
+        "typography_anchor_target_observation": {"type": "string"},
+        "typography_hierarchy_observation": {"type": "string"},
+        "typography_neighbor_difference_observation": {"type": "string"}
+      }
+    },
+    "material_failures": {"type": "array", "items": {"type": "object", "required": ["check", "visible_evidence", "root_cause", "required_change"], "properties": {"check": {"type": "string"}, "visible_evidence": {"type": "string"}, "root_cause": {"type": "string"}, "required_change": {"type": "string"}}}},
+    "passed_layers": {"type": "array", "items": {"type": "string"}},
+    "residual_issues": {"type": "array", "items": {"type": "string"}}
+  }
+}

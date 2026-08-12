@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -36,6 +37,7 @@ import {
   jobTypeLabel,
 } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
+import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 
 const tabFilters: Record<string, JobStatus[] | undefined> = {
   all: undefined,
@@ -75,6 +77,7 @@ function JobDetailPanel({
             </dl>
             <p>{jobNote(detail.data)}</p>
             {detail.data.error_message && <div className="api-inline-error">{detail.data.error_message}</div>}
+            <Link className="secondary-button" href={jobWorkspaceHref(detail.data)}>打开对应工作台</Link>
             <small>任务详情与处理状态会持续同步更新。</small>
           </div>
         )}
@@ -168,17 +171,18 @@ export default function JobsPage() {
             <div className={view === "grid" ? "records-grid" : "records-list"}>
               {jobs.map((job) => (
                 <article key={job.id} className="record-row">
-                  <div className="record-cover api-job-cover"><Sparkles size={24} /><span>{jobTypeLabel(job.type)}</span></div>
+                  <Link href={jobWorkspaceHref(job)} className="record-cover api-job-cover" aria-label={`打开对应工作台 ${jobTitle(job)}`}><Sparkles size={24} /><span>{jobTypeLabel(job.type)}</span></Link>
                   <div className="record-main">
                     <div><StatusBadge status={job.status} /><small>{job.id}</small></div>
-                    <h3>{jobTitle(job)}</h3><p>{jobNote(job)}</p>
+                    <h3><Link href={jobWorkspaceHref(job)}>{jobTitle(job)}</Link></h3><p>{jobNote(job)}</p>
                     {["queued", "planning", "processing", "cancelling"].includes(job.status) && <div className="record-progress"><i style={{ width: `${job.progress}%` }} /><span>{job.progress}%</span></div>}
                   </div>
                   <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>状态自动同步</small></div>
                   <div className="record-actions">
                     {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={() => runRetry(job)} disabled={retry.isPending}><RotateCcw size={16} /></button>}
                     {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} title="取消任务" onClick={() => runCancel(job)} disabled={cancel.isPending}><Ban size={16} /></button>}
-                    <button aria-label={`查看任务详情 ${jobTitle(job)}`} title="查看详情" className="row-open" onClick={() => setSelectedJobId(job.id)}><ArrowUpRight size={16} /></button>
+                    <button aria-label={`查看任务详情 ${jobTitle(job)}`} title="查看详情" onClick={() => setSelectedJobId(job.id)}><ArrowUpRight size={16} /></button>
+                    <Link aria-label={`打开对应工作台 ${jobTitle(job)}`} title="打开对应工作台" className="row-open" href={jobWorkspaceHref(job)}><ArrowUpRight size={16} /></Link>
                   </div>
                 </article>
               ))}

@@ -2,13 +2,14 @@
 
 import { ArrowRight, Check, ImagePlus, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
-import { useUploadAsset } from "@/features/assets/api/assets";
+import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useConfirmPlan, useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -49,7 +50,15 @@ function readPlan(payload?: Record<string, unknown>): PlanPage[] {
   return payload.pages.filter((page): page is PlanPage => Boolean(page && typeof page === "object"));
 }
 
+function RestoredSource({ workspaceId, assetId, index }: { workspaceId?: string; assetId: string; index: number }) {
+  const access = useAssetAccessUrl(workspaceId, assetId);
+  return <figure>{access.data?.url ? <img src={access.data.url} alt={`商品素材 ${index + 1}`} /> : <LoaderCircle className="spin" size={20} />}<figcaption>证据 {String(index + 1).padStart(2, "0")}</figcaption></figure>;
+}
+
 export function DomesticMainImageWorkspace() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedJobId = searchParams.get("jobId")?.trim() || undefined;
   const fileInput = useRef<HTMLInputElement>(null);
   const { workspace } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
@@ -67,14 +76,19 @@ export function DomesticMainImageWorkspace() {
   const [trustFacts, setTrustFacts] = useState("");
   const [style, setStyle] = useState("");
   const [instruction, setInstruction] = useState("");
-  const [jobId, setJobId] = useState<string>();
+  const [createdJobId, setCreatedJobId] = useState<string>();
+  const jobId = requestedJobId ?? createdJobId;
   const [localError, setLocalError] = useState<string>();
   const job = useJob(workspace?.id, jobId);
   const plan = readPlan(job.data?.plan?.payload);
+  const restoredAssetIds = job.data?.assets.filter((asset) => asset.direction === "input" && asset.role === "product_identity_authority").sort((left, right) => left.ordinal - right.ordinal).map((asset) => asset.asset_id) ?? [];
+  const restoredSettings = job.data?.configuration.settings && typeof job.data.configuration.settings === "object" ? job.data.configuration.settings as Record<string, unknown> : undefined;
+  const restoredString = (key: string) => typeof restoredSettings?.[key] === "string" ? restoredSettings[key] as string : "";
+  const restoredLines = (key: string) => Array.isArray(restoredSettings?.[key]) ? (restoredSettings[key] as unknown[]).map(String).join("\n") : "";
   const results = selectJobResultAssets(job.data);
   const busy = upload.isPending || createJob.isPending || confirmPlan.isPending;
   const canCreate = Boolean(
-    workspace && sources.length && productName.trim() && category.trim() && lines(sellingPoints, 24).length && workflow.canSubmit,
+    !jobId && workspace && sources.length && productName.trim() && category.trim() && lines(sellingPoints, 24).length && workflow.canSubmit,
   );
 
   async function addFiles(files: File[]) {
@@ -121,7 +135,8 @@ export function DomesticMainImageWorkspace() {
     };
     try {
       const created = await createJob.mutateAsync(body);
-      setJobId(created.id);
+      setCreatedJobId(created.id);
+      router.replace(`/workspace/domestic-main-image?jobId=${encodeURIComponent(created.id)}`);
     } catch (error) {
       setLocalError(errorMessage(error));
     }
@@ -150,8 +165,8 @@ export function DomesticMainImageWorkspace() {
             <section className={styles.card}>
               <div className={styles.heading}><span>01</span><div><h2>商品身份权威素材</h2><p>上传真实商品多角度图。生成图不会被反过来当作身份依据。</p></div></div>
               <div className={styles.uploads}>
-                {sources.map((source, index) => <figure key={source.asset.id}><img src={source.previewUrl} alt={`商品素材 ${index + 1}`} /><figcaption>证据 {String(index + 1).padStart(2, "0")}</figcaption><button onClick={() => removeSource(source.asset.id)} aria-label="移除素材"><X size={14} /></button></figure>)}
-                {sources.length < 8 && <button className={styles.add} onClick={() => fileInput.current?.click()} disabled={busy}><ImagePlus size={25} /><strong>添加真实商品图</strong><small>最多 8 张</small></button>}
+                {jobId ? restoredAssetIds.map((assetId, index) => <RestoredSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <figure key={source.asset.id}><img src={source.previewUrl} alt={`商品素材 ${index + 1}`} /><figcaption>证据 {String(index + 1).padStart(2, "0")}</figcaption><button onClick={() => removeSource(source.asset.id)} aria-label="移除素材"><X size={14} /></button></figure>)}
+                {!jobId && sources.length < 8 && <button className={styles.add} onClick={() => fileInput.current?.click()} disabled={busy}><ImagePlus size={25} /><strong>添加真实商品图</strong><small>最多 8 张</small></button>}
                 <input ref={fileInput} hidden type="file" multiple accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
               </div>
             </section>
@@ -159,13 +174,13 @@ export function DomesticMainImageWorkspace() {
             <section className={styles.card}>
               <div className={styles.heading}><span>02</span><div><h2>已核实的商品事实</h2><p>这里只写能够从素材或业务资料确认的内容，避免不实参数与承诺。</p></div></div>
               <div className={styles.form}>
-                <label><span>商品名称 *</span><input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：轻量保温随行杯" /></label>
-                <label><span>商品类目 *</span><input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：杯壶 / 保温杯" /></label>
-                <label className={styles.full}><span>核心卖点 * <small>换行分隔</small></span><textarea value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder={'轻量便携\n杯盖防误开\n食品接触级内胆'} /></label>
-                <label><span>真实使用场景</span><textarea value={scenes} onChange={(event) => setScenes(event.target.value)} placeholder="通勤、办公室、短途出行" /></label>
-                <label><span>服务或信任事实</span><textarea value={trustFacts} onChange={(event) => setTrustFacts(event.target.value)} placeholder="仅填写能够证实的检测、质保或服务" /></label>
-                <label><span>视觉偏好</span><textarea value={style} onChange={(event) => setStyle(event.target.value)} placeholder="克制、高级、暖灰背景、清晰商品轮廓" /></label>
-                <label><span>补充要求</span><textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="不能改变的结构、Logo、颜色或包装信息" /></label>
+                <label><span>商品名称 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("product_name") : productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：轻量保温随行杯" /></label>
+                <label><span>商品类目 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("category") : category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：杯壶 / 保温杯" /></label>
+                <label className={styles.full}><span>核心卖点 * <small>换行分隔</small></span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("selling_points") : sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder={'轻量便携\n杯盖防误开\n食品接触级内胆'} /></label>
+                <label><span>真实使用场景</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("scenes") : scenes} onChange={(event) => setScenes(event.target.value)} placeholder="通勤、办公室、短途出行" /></label>
+                <label><span>服务或信任事实</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("service_or_trust_facts") : trustFacts} onChange={(event) => setTrustFacts(event.target.value)} placeholder="仅填写能够证实的检测、质保或服务" /></label>
+                <label><span>视觉偏好</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("style_preferences") : style} onChange={(event) => setStyle(event.target.value)} placeholder="克制、高级、暖灰背景、清晰商品轮廓" /></label>
+                <label><span>补充要求</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredString("instruction") : instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="不能改变的结构、Logo、颜色或包装信息" /></label>
               </div>
             </section>
 

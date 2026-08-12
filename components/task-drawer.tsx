@@ -8,6 +8,7 @@ import { useCancelJob, useJobs, useRetryJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
+import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 import { StatusBadge } from "./status-badge";
 
 const stageLabels: Record<string, string> = {
@@ -148,7 +149,7 @@ export function TaskDrawer({
             <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">
                 <div className="drawer-job__top"><StatusBadge status={job.status} /><small>{formatDate(job.created_at)}</small></div>
-                <strong>{jobTitle(job)}</strong><p>{jobNote(job)}</p>
+                <Link href={jobWorkspaceHref(job)} onClick={onClose} className="drawer-job__link"><strong>{jobTitle(job)}</strong><p>{jobNote(job)}</p></Link>
                 {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">
                   <span>{jobCount(job)}</span><span>{presentJobStage(job.stage, job.status)}</span>

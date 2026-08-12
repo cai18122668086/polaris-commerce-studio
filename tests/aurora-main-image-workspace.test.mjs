@@ -5,11 +5,15 @@ import test from "node:test";
 const read = (file) => readFile(file, "utf8");
 
 test("Aurora domestic main image keeps the six-page Harness workflow visible", async () => {
-  const [page, workspace, registry, navigation] = await Promise.all([
+  const [page, workspace, registry, navigation, jobs, sidebar, drawer, workspaceLink] = await Promise.all([
     read("app/workspace/domestic-main-image/page.tsx"),
     read("components/domestic-main-image-workspace.tsx"),
     read("lib/feature-registry.ts"),
     read("lib/navigation-registry.ts"),
+    read("app/jobs/page.tsx"),
+    read("components/tool-sidebar.tsx"),
+    read("components/task-drawer.tsx"),
+    read("lib/jobs/workspace-link.ts"),
   ]);
 
   assert.match(page, /DomesticMainImageWorkspace/);
@@ -21,4 +25,11 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
   assert.match(registry, /aurora-domestic-ecommerce-main-image/);
   assert.match(registry, /aurora_six_page_reviewed_set/);
   assert.match(navigation, /navigationFeature\("domestic-main-image"/);
+  assert.match(workspace, /searchParams\.get\("jobId"\)/);
+  assert.match(workspace, /router\.replace\(`\/workspace\/domestic-main-image\?jobId=/);
+  assert.match(workspace, /restoredAssetIds/);
+  assert.match(jobs, /jobWorkspaceHref\(job\)/);
+  assert.match(sidebar, /jobWorkspaceHref\(job\)/);
+  assert.match(drawer, /jobWorkspaceHref\(job\)/);
+  assert.match(workspaceLink, /feature\.route}\?jobId=/);
 });

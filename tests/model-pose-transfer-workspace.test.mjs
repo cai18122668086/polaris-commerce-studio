@@ -99,6 +99,39 @@ test("built-in poses materialize through the fixed endpoint before the unified j
   }
 });
 
+test("completed or failed tasks can replace the source image without refreshing the page", async () => {
+  const source = await utf8(componentFile);
+  const restartStart = source.indexOf("const canRestartTask = Boolean(");
+  const restartEnd = source.indexOf("const selectedPoseReady", restartStart);
+  const restartLogic = source.slice(restartStart, restartEnd);
+  const sourceTitle = source.indexOf('title="模特服装原图"');
+  const sourceControlStart = source.lastIndexOf("<UploadControl", sourceTitle);
+  const sourceControlEnd = source.indexOf("/>", sourceTitle);
+  const sourceControl = source.slice(sourceControlStart, sourceControlEnd);
+  const resetStart = source.indexOf("const resetTask = () => {");
+  const resetEnd = source.indexOf("const progressText", resetStart);
+  const resetLogic = source.slice(resetStart, resetEnd);
+
+  for (const status of ["partial", "completed", "failed", "cancelled"]) {
+    assert.equal(restartLogic.includes(`"${status}"`), true);
+  }
+  assert.equal(restartLogic.includes("sourceSelectionLocked"), true);
+  assert.equal(sourceControl.includes("disabled={sourceSelectionLocked}"), true);
+  assert.equal(sourceControl.includes('uploadLabel={canRestartTask ? "重新上传并新建任务" : undefined}'), true);
+  assert.equal(sourceControl.includes("if (canRestartTask) resetTask();"), true);
+  assert.equal(source.includes("selectedIds={canRestartTask ? [] : modelSource ? [modelSource.id] : []}"), true);
+  assert.equal(source.includes("const nextSource = assets.find((asset) => asset.id === assetIds[0]);"), true);
+  assert.equal(source.includes("if (!nextSource) {"), true);
+  assert.equal(source.includes("setModelSource(nextSource);"), true);
+  assert.equal(source.includes('event.currentTarget.value = "";'), true);
+  assert.equal(resetLogic.includes("setJobId(undefined);"), true);
+  assert.equal(resetLogic.includes("setModelSource(undefined);"), true);
+  assert.equal(resetLogic.includes("setSelectedPoseSlug(undefined);"), true);
+  assert.equal(resetLogic.includes("setCustomPose(undefined);"), true);
+  assert.equal(resetLogic.includes("sourceUpload.reset();"), true);
+  assert.equal(resetLogic.includes("customPoseUpload.reset();"), true);
+});
+
 test("custom pose upload is exclusive with catalog selection and submission is fail closed", async () => {
   const source = await utf8(componentFile);
 

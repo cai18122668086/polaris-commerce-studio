@@ -353,6 +353,8 @@ class XingheGateway(Protocol):
     planner_model: str
     image_model: str
     pricing_version: str
+    medium_price_micros: int
+    high_price_micros: int
     external_network_request_count: int
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult: ...
@@ -1227,6 +1229,8 @@ class FakeXingheGateway:
     planner_model = "gpt-5.6-terra-fake"
     image_model = "gpt-image-2-fake"
     pricing_version = "xinghe-fake-zero-v1"
+    medium_price_micros = 0
+    high_price_micros = 0
 
     def __init__(
         self,

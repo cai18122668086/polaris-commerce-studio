@@ -16,6 +16,7 @@ const TOOLBOX_DEFINITIONS = [
   { id: "white-background", description: "生成符合平台规范的白底图" },
   { id: "model-image", description: "一键生成模特展示商品图" },
   { id: "try-on", description: "服饰商品自然适配模特" },
+  { id: "model-pose-transfer", description: "保留模特服装，快速更换人物姿势" },
   { id: "creative-image", description: "批量生成卖点与活动素材" },
 ] as const;
 

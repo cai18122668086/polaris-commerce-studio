@@ -35,7 +35,7 @@ from app.models import (
     WorkspaceLimitRecord,
     utc_now,
 )
-from app.provider import ProviderRequest
+from app.provider import ProviderOutcome, ProviderRequest
 from app.provider_quota import PROVIDER_JOB_QUOTA_ACTION
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import (
@@ -2689,6 +2689,64 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert len(transport.multipart_calls[0]["files"]) == 3
     assert all(record[0] == "image" for record in transport.multipart_calls[0]["files"])
     assert "test-placeholder-key" not in repr(adapter)
+
+
+def test_image_edit_multipart_preserves_two_image_pose_role_order() -> None:
+    transport = _RecordingTransport()
+    adapter = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://api.example.test",
+        planner_model="gpt-5.6-terra",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+    model_source = SourceImage(
+        asset_id="asset-model",
+        group_key="model_source",
+        filename="model-source.png",
+        content_type="image/png",
+        sha256="a" * 64,
+        payload=b"model-source-pixels",
+        source_role="model_source",
+    )
+    pose_reference = SourceImage(
+        asset_id="asset-pose",
+        group_key="pose_reference",
+        filename="pose-reference.png",
+        content_type="image/png",
+        sha256="b" * 64,
+        payload=b"pose-reference-pixels",
+        source_role="pose_reference",
+    )
+
+    result = asyncio.run(
+        adapter.edit(
+            ImageEditRequest(
+                workspace_id="ws_pose",
+                job_id="job_pose",
+                job_item_id="item_pose",
+                attempt_id="attempt_pose",
+                page_number=1,
+                group_key="pose",
+                sources=(model_source, pose_reference),
+                prompt="Image 1 is the editable base; Image 2 is pose only.",
+                quality="high",
+                idempotency_key="pose-image-idem",
+                size="1024x1024",
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert len(transport.multipart_calls) == 1
+    files = transport.multipart_calls[0]["files"]
+    assert files == [
+        ("image", "model-source.png", "image/png", b"model-source-pixels"),
+        ("image", "pose-reference.png", "image/png", b"pose-reference-pixels"),
+    ]
+    assert dict(transport.multipart_calls[0]["fields"])["prompt"] == (
+        "Image 1 is the editable base; Image 2 is pose only."
+    )
 
 
 def test_sensitive_agent_audits_store_no_prompt_source_or_key(

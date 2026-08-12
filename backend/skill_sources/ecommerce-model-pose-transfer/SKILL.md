@@ -1,53 +1,48 @@
 ---
 name: ecommerce-model-pose-transfer
-description: Pose-only transfer for ecommerce fashion-model images. Use when a user wants to change, imitate, or match a model pose from a second image, whether the input roles are already clear or need clarification. Execution requires exactly one single-person model_source and one unambiguous pose_reference; a catalog pose is supported only after the caller resolves it to a pose_reference image. Preserve source identity, body proportions, apparel, accessories, scene, lighting, and canvas. Do not use for model replacement, virtual try-on, garment replacement, identity transfer, background replacement, or style remixing.
+description: Pose-only transfer for ecommerce fashion-model images. Use when a user wants the person in one model image to imitate the complete pose from a second image while preserving the first image's person, body proportions, apparel, accessories, scene, lighting, and canvas. Requires exactly one model_source and one pose_reference. Do not use for identity transfer, model replacement, virtual try-on, garment replacement, background replacement, or style remixing.
 ---
 
 # Ecommerce Model Pose Transfer
 
-Transfer only pose geometry from `pose_reference` to `model_source`. Do not transfer the reference person's identity, apparel, or scene. Before editing, read and obey [the pose-transfer contract](references/pose-transfer-contract.md). Stop if the contract is unavailable.
+Edit `model_source`; use `pose_reference` only to show the target pose. The output must remain the person, outfit, and scene from `model_source`. Before editing, read and obey [the pose-transfer contract](references/pose-transfer-contract.md).
 
-## Preconditions
+## Inputs
 
-- Bind exactly one image as `model_source` and exactly one different image as `pose_reference`.
-- `model_source` must contain one clear target person. If it contains multiple people, request an isolated crop or a new source image.
-- `pose_reference` may contain other people only when one intended pose subject is unambiguous; otherwise ask the user to identify or crop it.
-- If roles are unlabelled and the user's instruction does not resolve them, ask. Never infer roles from gender, clothing, filename, or image order alone.
-- Stop when the source person, apparel, or reference pose is not usable.
+- Require exactly one clear single-person `model_source` and one unambiguous `pose_reference`.
+- Bind roles explicitly. Never infer them from gender, clothing, filename, or image order.
+- Resolve a catalog pose to its original-quality asset before generation; never send a thumbnail.
+- If either role is ambiguous or unusable, stop and ask for a clearer image or crop.
 
-## Select an editing path
+## Execution
 
-1. Load and follow the installed `imagegen` skill when working in Codex.
-2. Prefer an image-editing backend that accepts both inputs in one request. Submit `model_source` as the editable base image and `pose_reference` as the secondary pose-only reference. Label both roles explicitly in the request.
-3. If the available editor accepts only one image, first inspect `pose_reference` and compile a geometry-only pose description. Edit `model_source` with that description and disclose that pose fidelity may be lower. Never use the reference person's pixels as reconstruction content.
-4. Do not concatenate the two people into an unlabelled contact sheet, and never use the reference person as a base for face replacement or garment replacement.
-5. If no image editor is available, do not claim that an image was generated. Return an execution-ready edit instruction plus the capability limitation, then stop.
-6. Do not silently switch to a paid CLI/API fallback. Follow the active image tool's approval, credential, cost, and downgrade rules.
+1. Use one multi-image edit request whenever the editor supports it.
+2. Send `model_source` first as Image 1 and the only editable base.
+3. Send `pose_reference` second as Image 2 and pose guidance only.
+4. Use a short role-locked instruction:
+   - Image 1 supplies the output identity, face, hair, natural body proportions, apparel, footwear, accessories, background, lighting, camera, canvas, crop, and overall appearance.
+   - Image 2 supplies only body-relative pose geometry: torso lean, shoulder and pelvis lines, joint angles, limb overlap, feet relative to the pelvis and each other, stride relative to body height, toe directions, and weight-bearing foot.
+   - Map that geometry onto Image 1's natural proportions and existing on-canvas person scale. Do not copy Image 2's body proportions or leg length.
+   - Keep Image 2's viewer-left/viewer-right arrangement; never mirror, swap roles, or reconstruct Image 2's person, clothing, body traits, or scene.
+   - Discard Image 1's old pose, support/contact relationships, and pose-conditioned garment geometry; rebuild them for the new pose.
+5. Do not replace the visual pose reference with a long text or JSON description when the final editor can see both images. A geometry-only description is only a lower-fidelity fallback for a genuinely single-image editor.
+6. Generate once. Do not run OpenPose, post-generation pose scoring, automatic acceptance, automatic correction, or automatic retry.
 
-The website caller must resolve a catalog selection's stable slug/hash to the original-quality `pose_reference` before execution. Catalog thumbnails are UI-only and MUST NOT be sent to the image editor. This skill does not select catalog entries or resolve website asset IDs.
+## Pose priorities
 
-## Workflow
-
-1. **Inspect separately.** Record source identity, proportions, apparel, accessories, logos/text, background, lighting, camera, source aspect ratio, framing, and crop. Separately abstract the reference skeleton, joint angles, orientation, balance, limb placement, and occlusion order. For dynamic poses, prioritize the main line of action, torso lean, arm-swing phase, center of gravity, and leg/gait phase.
-2. **Compile the request.** State that the base image is the only appearance authority. List protected source facts, authorized pose geometry, prohibited reference facts, and regions that require pose-dependent reconstruction.
-3. **Make the minimum edit.** Rebuild only the body articulation, garment drape, occlusions, contact shadows, and nearby source-consistent background forced by the pose. Preserve the source aspect ratio and framing semantics. Provider-normalized output resolution is acceptable when the editor cannot emit the exact source pixels; any subject repositioning or modest rescaling must remain inside the equivalent source-shaped canvas. Never expand or redesign the canvas to chase the reference pose.
-4. **Inspect the render.** Apply the contract checklist for identity leakage, apparel drift, reference-person leakage, extra people, anatomy, hands/feet, protected graphics, background, canvas, localized blue-gray/cyan bands, color blocks, and edge smearing.
-5. **Apply at most one focused correction when supported.** If critical identity/apparel leakage, an extra person, invalid source-inconsistent anatomy, or wrong aspect ratio remains, do not deliver it as compliant. Otherwise return the best valid result and disclose unresolved noncritical deviations.
+- Copy Image 2 as a connected, body-relative geometry, not as absolute canvas coordinates and not merely as an action category.
+- Preserve torso lean, shoulder and hip lines, joint angles, asymmetry, limb crossing/overlap order, and viewer-left/viewer-right placement.
+- For the lower body, preserve each foot relative to the pelvis and other foot, stride relative to body height, support/free-leg roles, knee bends, heel contact, and toe direction.
+- Map the pose onto Image 1's natural limb lengths and current person scale. Never stretch limbs to reach Image 2's pixel locations or copy its proportions.
+- Remove incompatible parts of Image 1's old pose, including seated/leaning support, furniture or prop contact, hand support, leg crossing, foot placement, and pose-dependent folds.
 
 ## Conflict priority
 
 1. Valid inputs, safety, and anatomical validity.
-2. Source identity and body proportions.
-3. Source apparel, accessories, protected graphics, scene, and lighting.
-4. Reference pose geometry.
-5. Source framing inside the unchanged canvas.
-6. Beautification or style preference.
-
-Approximate the pose whenever exact matching would violate a higher-priority fact.
-
+2. Image 1 identity, natural body proportions, apparel identity, accessories, and scene identity.
+3. Image 2 body-relative pose geometry.
+4. Pose-driven garment drape, occlusion, contact shadows, and minimal source-consistent background reconstruction.
+5. Beautification or style preference.
 ## Output
 
-- Return the actual image artifact and a concise limitation note when generation succeeds.
-- If no image was generated, return only an execution-ready instruction and state that no artifact was produced.
-- Generative editing cannot guarantee pixel-exact identity, logos, or text. Treat them as top-priority preservation and acceptance targets. Disclose the limitation before execution when the user requires an absolute guarantee the editor cannot provide.
-- Report roles, completion status, known approximation, and items requiring human review. Do not expose hidden reasoning.
+Return the one generated image for human review and disclose visible limitations. Do not claim pixel-exact identity, logo, text, or pose fidelity.

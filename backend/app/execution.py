@@ -523,6 +523,7 @@ class ExecutionCoordinator:
         heartbeat_seconds: float = 10,
         usage_writer: UsageEventWriter | None = None,
         detail_planner: DetailPlanner | None = None,
+        campaign_planner: DetailPlanner | None = None,
         max_concurrency: int = 1,
         max_detail_retries: int = 0,
         max_amazon_retries: int = 0,
@@ -546,6 +547,7 @@ class ExecutionCoordinator:
         self.heartbeat_seconds = heartbeat_seconds
         self.usage_writer = usage_writer or DatabaseUsageEventWriter()
         self.detail_planner = detail_planner
+        self.campaign_planner = campaign_planner
         self.max_concurrency = max_concurrency
         self.max_detail_retries = max_detail_retries
         self.max_amazon_retries = max_amazon_retries
@@ -559,9 +561,14 @@ class ExecutionCoordinator:
         if current == JobStatus.CANCELLING:
             return self.cancel(job_id)
         if current == JobStatus.PLANNING:
-            if self.detail_planner is None:
+            planner = (
+                self.campaign_planner
+                if self._is_domestic_main_image_job(job_id)
+                else self.detail_planner
+            )
+            if planner is None:
                 return self.fail_missing_detail_planner(job_id)
-            planned = await self.detail_planner.plan(job_id)
+            planned = await planner.plan(job_id)
             current = self.auto_confirm_detail_plan(job_id, planned)
             if current != JobStatus.PROCESSING:
                 return current
@@ -594,6 +601,13 @@ class ExecutionCoordinator:
             )
             return job_type == JobType.AMAZON_VISUAL_SUITE.value
 
+    def _is_domestic_main_image_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job_type = session.scalar(
+                select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
+            )
+            return job_type == JobType.DOMESTIC_MAIN_IMAGE.value
+
     def prepare(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
@@ -608,6 +622,7 @@ class ExecutionCoordinator:
             if current == JobStatus.QUEUED and job.type in {
                 JobType.DETAIL_PACK.value,
                 JobType.AMAZON_VISUAL_SUITE.value,
+                JobType.DOMESTIC_MAIN_IMAGE.value,
             }:
                 confirmed_plan = session.scalar(
                     select(JobPlanRecord.id)
@@ -1694,6 +1709,7 @@ def _output_asset_role(job_type: str) -> str:
         JobType.CREATIVE_IMAGE.value: "creative_image_result",
         JobType.DETAIL_PACK.value: "detail_page",
         JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual",
+        JobType.DOMESTIC_MAIN_IMAGE.value: "domestic_main_image",
     }.get(job_type, "generated_image")
 
 
@@ -1750,11 +1766,13 @@ def build_fake_coordinator(
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
+    domestic_main_image_provider_enabled: bool = False,
 ) -> ExecutionCoordinator:
     from .amazon_visual_suite_provider import (
         AMAZON_VISUAL_SUITE_SKILL_ID,
         AmazonVisualSuiteProvider,
     )
+    from .aurora_main_image_planner import AuroraMainImagePlanner
     from .creative_image_provider import CreativeImageProvider
     from .domestic_detail_provider import DomesticDetailProvider
     from .model_pose_transfer_provider import ModelPoseTransferProvider
@@ -1896,6 +1914,7 @@ def build_fake_coordinator(
                 default_provider,
                 manifest_validator=manifest_validator,
             ),
+            JobType.DOMESTIC_MAIN_IMAGE.value: default_provider,
         }
     else:
 
@@ -1965,6 +1984,7 @@ def build_fake_coordinator(
                 ),
                 manifest_validator=manifest_validator,
             ),
+            JobType.DOMESTIC_MAIN_IMAGE.value: UnavailableProvider(),
         }
     provider = RegisteredOperationRoutingProvider(
         default_provider,
@@ -1989,6 +2009,7 @@ def build_fake_coordinator(
         session_factory,
         provider,
         detail_planner=routed_planner,
+        campaign_planner=AuroraMainImagePlanner(session_factory),
         max_concurrency=xinghe_concurrency,
         # Detail-pack behavior remains unchanged. Amazon follows its own Skill
         # incomplete-execution and regenerate-on-invalid-output contract.

@@ -19,6 +19,8 @@ export type CreativeImageJobCreate = components["schemas"]["CreativeImageJobCrea
 export type DetailPackJobCreate = components["schemas"]["DetailPackJobCreate"];
 export type AmazonVisualSuiteJobCreate =
   components["schemas"]["AmazonVisualSuiteJobCreate"];
+export type DomesticMainImageJobCreate =
+  components["schemas"]["DomesticMainImageJobCreate"];
 export type JobCreate =
   | LocalEditJobCreate
   | ProductImageJobCreate
@@ -26,7 +28,8 @@ export type JobCreate =
   | ModelPoseTransferJobCreate
   | CreativeImageJobCreate
   | DetailPackJobCreate
-  | AmazonVisualSuiteJobCreate;
+  | AmazonVisualSuiteJobCreate
+  | DomesticMainImageJobCreate;
 export type RuntimeStatus = components["schemas"]["RuntimeStatusResponse"];
 export type CapabilityStatus = components["schemas"]["CapabilityStatus"];
 

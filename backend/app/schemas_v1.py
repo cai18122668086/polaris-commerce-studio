@@ -390,6 +390,29 @@ class AmazonVisualSuiteConfiguration(BaseModel):
     language: str = Field(default="en-US", min_length=2, max_length=16)
 
 
+class DomesticMainImageInput(BaseModel):
+    product_asset_ids: list[str] = Field(min_length=1, max_length=8)
+
+    @model_validator(mode="after")
+    def unique_assets(self) -> "DomesticMainImageInput":
+        if len(self.product_asset_ids) != len(set(self.product_asset_ids)):
+            raise ValueError("product assets must not contain duplicates")
+        return self
+
+
+class DomesticMainImageConfiguration(BaseModel):
+    product_name: str = Field(min_length=1, max_length=160)
+    category: str = Field(min_length=1, max_length=120)
+    selling_points: list[str] = Field(min_length=1, max_length=24)
+    product_attributes: list[str] = Field(default_factory=list, max_length=24)
+    scenes: list[str] = Field(default_factory=list, max_length=12)
+    offers: list[str] = Field(default_factory=list, max_length=12)
+    service_or_trust_facts: list[str] = Field(default_factory=list, max_length=12)
+    style_preferences: list[str] = Field(default_factory=list, max_length=12)
+    instruction: str = Field(default="", max_length=4000)
+    language: Literal["zh-CN"] = "zh-CN"
+
+
 class JobCreateBase(BaseModel):
     intent: Literal["draft", "submit"] = "submit"
     display_name: str | None = Field(default=None, max_length=160)
@@ -437,6 +460,12 @@ class AmazonVisualSuiteJobCreate(JobCreateBase):
     configuration: AmazonVisualSuiteConfiguration
 
 
+class DomesticMainImageJobCreate(JobCreateBase):
+    type: Literal[JobType.DOMESTIC_MAIN_IMAGE]
+    input: DomesticMainImageInput
+    configuration: DomesticMainImageConfiguration
+
+
 JobCreate = Annotated[
     LocalEditJobCreate
     | ProductImageJobCreate
@@ -444,7 +473,8 @@ JobCreate = Annotated[
     | ModelPoseTransferJobCreate
     | CreativeImageJobCreate
     | DetailPackJobCreate
-    | AmazonVisualSuiteJobCreate,
+    | AmazonVisualSuiteJobCreate
+    | DomesticMainImageJobCreate,
     Field(discriminator="type"),
 ]
 

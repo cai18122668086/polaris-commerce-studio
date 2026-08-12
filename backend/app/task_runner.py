@@ -34,6 +34,7 @@ class MockTaskRunner:
         creative_image_provider_enabled: bool = False,
         amazon_visual_suite_provider_enabled: bool = False,
         crossborder_detail_provider_enabled: bool = False,
+        domestic_main_image_provider_enabled: bool = False,
     ) -> None:
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
@@ -56,6 +57,9 @@ class MockTaskRunner:
             ),
             crossborder_detail_provider_enabled=(
                 crossborder_detail_provider_enabled
+            ),
+            domestic_main_image_provider_enabled=(
+                domestic_main_image_provider_enabled
             ),
         )
 
@@ -87,6 +91,7 @@ def validate_task_runner_settings(settings: Settings) -> None:
             settings.creative_image_provider_enabled,
             settings.amazon_visual_suite_provider_enabled,
             settings.crossborder_detail_provider_enabled,
+            settings.domestic_main_image_provider_enabled,
         )
     )
     real_provider_requested = (
@@ -201,5 +206,8 @@ def build_tengli_task_runner(
         ),
         crossborder_detail_provider_enabled=(
             settings.crossborder_detail_provider_enabled
+        ),
+        domestic_main_image_provider_enabled=(
+            settings.domestic_main_image_provider_enabled
         ),
     )

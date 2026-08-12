@@ -1,0 +1,24 @@
+.page { --ink:#1d2420; --coral:#e76242; --cream:#f5f0e6; min-height:100vh; padding:28px 34px 60px; color:var(--ink); background:radial-gradient(circle at 82% 4%,#f1cbbd55,transparent 28%),linear-gradient(180deg,#faf8f2,#f3eee4); }
+.secure { display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #d9cfc0;border-radius:999px;background:#fff9;font-size:12px;font-weight:700; }
+.rail { display:grid;grid-template-columns:repeat(4,1fr);max-width:820px;margin:24px 0 30px;border-top:1px solid #cfc7ba; }
+.rail span { display:flex;align-items:center;gap:9px;padding-top:11px;color:#79756d;font-size:12px;font-weight:700; }
+.rail i { display:grid;place-items:center;width:24px;height:24px;border:1px solid #b8afa1;border-radius:50%;font-style:normal; }
+.rail span[data-active] { color:var(--coral);border-top:2px solid var(--coral);margin-top:-1px; }
+.rail span[data-active] i { color:white;background:var(--coral);border-color:var(--coral); }
+.grid { display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start; }
+.grid main { display:grid;gap:18px; }
+.card,.side>div { border:1px solid #ddd4c7;background:#fffdfa;border-radius:18px;box-shadow:0 10px 35px #57472e0a; }
+.card { padding:24px; }
+.heading { display:flex;align-items:flex-start;gap:13px;margin-bottom:20px; }
+.heading>span { color:var(--coral);font:700 12px/1.8 ui-monospace,monospace;letter-spacing:.08em; }
+.heading>div { flex:1; }.heading h2 { margin:0 0 4px;font:650 20px/1.2 Georgia,"Noto Serif SC",serif; }.heading p { margin:0;color:#777066;font-size:13px; }
+.uploads { display:flex;gap:10px;flex-wrap:wrap; }.uploads figure,.add { position:relative;width:132px;height:146px;margin:0;border-radius:13px;overflow:hidden;border:1px solid #ddd4c7;background:#f7f2e9; }
+.uploads img { width:100%;height:112px;object-fit:cover; }.uploads figcaption { padding:7px 9px;font-size:11px;font-weight:800;letter-spacing:.08em; }.uploads figure button { position:absolute;right:7px;top:7px;display:grid;place-items:center;width:25px;height:25px;border:0;border-radius:50%;color:white;background:#1d2420cc; }
+.add { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#756c61;border-style:dashed;cursor:pointer; }.add strong{font-size:12px}.add small{font-size:10px;color:#999084}
+.form { display:grid;grid-template-columns:1fr 1fr;gap:15px; }.form label{display:grid;gap:7px}.form label>span{font-size:12px;font-weight:800}.form label small{color:#9b9185;font-weight:500}.full{grid-column:1/-1}.form input,.form textarea{width:100%;box-sizing:border-box;border:1px solid #d9d0c4;border-radius:11px;background:#fbf9f5;padding:11px 12px;color:var(--ink);font:inherit}.form textarea{min-height:84px;resize:vertical}.form input:focus,.form textarea:focus{outline:2px solid #e7624233;border-color:var(--coral)}
+.empty { padding:35px;border:1px dashed #d8cfc1;border-radius:13px;text-align:center;color:#8b8378;font-size:13px;background:#faf6ef; }
+.plan { display:grid;gap:8px; }.plan article { display:grid;grid-template-columns:42px 1fr auto;gap:12px;align-items:center;padding:13px 14px;border:1px solid #e2dacf;border-radius:12px;background:#fcfaf6; }.plan article>i{font:700 12px ui-monospace;color:var(--coral)}.plan article span{display:block;color:#8a8073;font-size:10px;font-weight:800;letter-spacing:.08em}.plan article strong{display:block;margin:3px 0;font-size:14px}.plan article p{margin:0;color:#746d64;font-size:12px}.plan article em{padding:5px 8px;border-radius:999px;background:#efe8dd;color:#766b5e;font-size:10px;font-style:normal;font-weight:800}
+.side { position:sticky;top:24px;display:grid;gap:12px; }.side>div{padding:22px;background:var(--ink);color:#f7f1e7}.side>div>span{color:#e99b85;font:700 11px ui-monospace;letter-spacing:.14em}.side h3{margin:10px 0 18px;font:600 20px Georgia,"Noto Serif SC",serif}.side ul{display:grid;gap:12px;margin:0;padding:0;list-style:none}.side li{display:flex;align-items:center;gap:9px;color:#ddd6ca;font-size:12px}.side li svg{color:#f08b6f}
+.primary { display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:12px;padding:13px 15px;color:white;background:var(--coral);font-weight:800;cursor:pointer;box-shadow:0 8px 20px #e7624230}.primary:disabled{cursor:not-allowed;opacity:.48}.note{display:block;padding:0 4px;color:#81796e;line-height:1.55}.error{margin:0;padding:10px 12px;border:1px solid #e8b7aa;border-radius:10px;color:#a33b24;background:#fff0ec;font-size:12px}.results{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:980px){.grid{grid-template-columns:1fr}.side{position:static}.rail{max-width:none}.results{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.page{padding:20px 16px 45px}.rail{grid-template-columns:repeat(2,1fr);gap:12px}.form{grid-template-columns:1fr}.full{grid-column:auto}.card{padding:18px}.results{grid-template-columns:1fr}}

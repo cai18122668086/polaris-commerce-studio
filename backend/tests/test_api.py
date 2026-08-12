@@ -235,6 +235,7 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
                     "creative_image",
                     "detail_pack",
                     "amazon_visual_suite",
+                    "domestic_main_image",
                 )
             },
             "asset_management": {

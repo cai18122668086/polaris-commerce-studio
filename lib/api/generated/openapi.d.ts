@@ -700,6 +700,59 @@ export interface components {
              */
             type: "detail_pack";
         };
+        /** DomesticMainImageConfiguration */
+        DomesticMainImageConfiguration: {
+            /** Category */
+            category: string;
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Language
+             * @default zh-CN
+             * @constant
+             */
+            language: "zh-CN";
+            /** Offers */
+            offers?: string[];
+            /** Product Attributes */
+            product_attributes?: string[];
+            /** Product Name */
+            product_name: string;
+            /** Scenes */
+            scenes?: string[];
+            /** Selling Points */
+            selling_points: string[];
+            /** Service Or Trust Facts */
+            service_or_trust_facts?: string[];
+            /** Style Preferences */
+            style_preferences?: string[];
+        };
+        /** DomesticMainImageInput */
+        DomesticMainImageInput: {
+            /** Product Asset Ids */
+            product_asset_ids: string[];
+        };
+        /** DomesticMainImageJobCreate */
+        DomesticMainImageJobCreate: {
+            configuration: components["schemas"]["DomesticMainImageConfiguration"];
+            /** Display Name */
+            display_name?: string | null;
+            input: components["schemas"]["DomesticMainImageInput"];
+            /**
+             * Intent
+             * @default submit
+             * @enum {string}
+             */
+            intent: "draft" | "submit";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "domestic_main_image";
+        };
         /** DraftJobUpdate */
         DraftJobUpdate: {
             /** Configuration */
@@ -928,7 +981,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite";
+        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite" | "domestic_main_image";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /** Instruction */
@@ -1586,7 +1639,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["ModelPoseTransferJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"];
+                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["ModelPoseTransferJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"] | components["schemas"]["DomesticMainImageJobCreate"];
             };
         };
         responses: {

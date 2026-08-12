@@ -24,6 +24,7 @@ const EXPECTED_FEATURE_CONTRACT = [
   ["model-pose-transfer", "/workspace/model-pose-transfer", "model_pose_transfer", "model_pose_transfer"],
   ["creative-image", "/workspace/creative-image", "creative_image", "creative_image"],
   ["detail-pack", "/workspace/detail-pack", "detail_pack", "detail_pack"],
+  ["domestic-main-image", "/workspace/domestic-main-image", "domestic_main_image", "domestic_main_image"],
   ["amazon-visual-suite", "/workspace/amazon-visual-suite", "amazon_visual_suite", "amazon_visual_suite"],
 ];
 
@@ -31,6 +32,7 @@ const AI_FEATURE_MENU_IDS = [
   "local-edit",
   "change-background",
   "reference-remix",
+  "domestic-main-image",
   "detail-pack",
   "amazon-visual-suite",
 ];

@@ -929,6 +929,151 @@
         "title": "DetailPackJobCreate",
         "type": "object"
       },
+      "DomesticMainImageConfiguration": {
+        "properties": {
+          "category": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "instruction": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "language": {
+            "const": "zh-CN",
+            "default": "zh-CN",
+            "title": "Language",
+            "type": "string"
+          },
+          "offers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Offers",
+            "type": "array"
+          },
+          "product_attributes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Product Attributes",
+            "type": "array"
+          },
+          "product_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Product Name",
+            "type": "string"
+          },
+          "scenes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Scenes",
+            "type": "array"
+          },
+          "selling_points": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "minItems": 1,
+            "title": "Selling Points",
+            "type": "array"
+          },
+          "service_or_trust_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Service Or Trust Facts",
+            "type": "array"
+          },
+          "style_preferences": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Style Preferences",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_name",
+          "category",
+          "selling_points"
+        ],
+        "title": "DomesticMainImageConfiguration",
+        "type": "object"
+      },
+      "DomesticMainImageInput": {
+        "properties": {
+          "product_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Product Asset Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_asset_ids"
+        ],
+        "title": "DomesticMainImageInput",
+        "type": "object"
+      },
+      "DomesticMainImageJobCreate": {
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/DomesticMainImageConfiguration"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "input": {
+            "$ref": "#/components/schemas/DomesticMainImageInput"
+          },
+          "intent": {
+            "default": "submit",
+            "enum": [
+              "draft",
+              "submit"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "type": {
+            "const": "domestic_main_image",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "input",
+          "configuration"
+        ],
+        "title": "DomesticMainImageJobCreate",
+        "type": "object"
+      },
       "DraftJobUpdate": {
         "properties": {
           "configuration": {
@@ -1686,7 +1831,8 @@
           "model_pose_transfer",
           "creative_image",
           "detail_pack",
-          "amazon_visual_suite"
+          "amazon_visual_suite",
+          "domestic_main_image"
         ],
         "title": "JobType",
         "type": "string"
@@ -3144,6 +3290,7 @@
                     "amazon_visual_suite": "#/components/schemas/AmazonVisualSuiteJobCreate",
                     "creative_image": "#/components/schemas/CreativeImageJobCreate",
                     "detail_pack": "#/components/schemas/DetailPackJobCreate",
+                    "domestic_main_image": "#/components/schemas/DomesticMainImageJobCreate",
                     "local_edit": "#/components/schemas/LocalEditJobCreate",
                     "model_pose_transfer": "#/components/schemas/ModelPoseTransferJobCreate",
                     "product_image": "#/components/schemas/ProductImageJobCreate",
@@ -3172,6 +3319,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/AmazonVisualSuiteJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DomesticMainImageJobCreate"
                   }
                 ],
                 "title": "Payload"

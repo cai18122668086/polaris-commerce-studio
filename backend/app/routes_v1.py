@@ -79,6 +79,7 @@ from .schemas_v1 import (
     CreativeImageJobCreate,
     CurrentUserResponse,
     DetailPackJobCreate,
+    DomesticMainImageJobCreate,
     DraftJobUpdate,
     ErrorResponse,
     JobCreate,
@@ -445,6 +446,7 @@ def runtime_status_response(
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
+    domestic_main_image_provider_enabled: bool = False,
 ) -> RuntimeStatusResponse:
     local_edit = (
         CapabilityStatus(
@@ -505,6 +507,13 @@ def runtime_status_response(
         "amazon_visual_suite": feature_status(
             amazon_visual_suite_provider_enabled
         ),
+        # The real Aurora generator stays fail-closed until its provider adapter
+        # completes the full Harness generate/record/audit protocol.
+        "domestic_main_image": (
+            mock_feature_status
+            if task_runner == "mock"
+            else unregistered_provider_status
+        ),
     }
     if task_runner == "tengli":
         features["crossborder_detail"] = feature_status(
@@ -564,6 +573,9 @@ def get_runtime_status(
         ),
         crossborder_detail_provider_enabled=(
             settings.crossborder_detail_provider_enabled
+        ),
+        domestic_main_image_provider_enabled=(
+            settings.domestic_main_image_provider_enabled
         ),
     )
 
@@ -1909,6 +1921,7 @@ def _new_job_from_payload(
         | CreativeImageJobCreate
         | DetailPackJobCreate
         | AmazonVisualSuiteJobCreate
+        | DomesticMainImageJobCreate
     ),
     *,
     detail_medium_price_micros: int = 45_000,
@@ -1964,6 +1977,12 @@ def _new_job_from_payload(
                 (asset_id, "style_reference", ordinal)
                 for ordinal, asset_id in enumerate(payload.input.reference_asset_ids)
             ],
+        ]
+    elif isinstance(payload, DomesticMainImageJobCreate):
+        item_count = 6
+        asset_roles = [
+            (asset_id, "product_identity_authority", ordinal)
+            for ordinal, asset_id in enumerate(payload.input.product_asset_ids)
         ]
     else:
         item_count = 21
@@ -2022,6 +2041,7 @@ _REAL_PROVIDER_ENABLE_FLAGS = {
     JobType.MODEL_POSE_TRANSFER.value: "model_pose_transfer_provider_enabled",
     JobType.CREATIVE_IMAGE.value: "creative_image_provider_enabled",
     JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual_suite_provider_enabled",
+    JobType.DOMESTIC_MAIN_IMAGE.value: "domestic_main_image_provider_enabled",
 }
 
 

@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     model_pose_transfer_provider_enabled: bool = Field(default=False)
     creative_image_provider_enabled: bool = Field(default=False)
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
+    domestic_main_image_provider_enabled: bool = Field(default=False)
     crossborder_detail_provider_enabled: bool = Field(default=False)
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
     tengli_api_key: SecretStr = SecretStr("")

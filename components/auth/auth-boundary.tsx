@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { isEmailVerified, sessionExists, signOut } from "@/features/auth/api/auth";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { initializeAuthClient } from "@/lib/auth/client";
+import { getAuthMode } from "@/lib/auth/config";
 import { currentReturnTo, loginHref, verifyEmailHref } from "@/lib/auth/return-to";
 import { AUTH_ROUTES, isPublicRoute, routeRequiresWorkspace } from "@/lib/auth/routes";
 import { onAuthUnauthorised } from "@/lib/auth/session-events";
@@ -21,6 +22,7 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const [result, setResult] = useState<BoundaryResult>();
   const [retryKey, setRetryKey] = useState(0);
   const publicRoute = isPublicRoute(pathname);
+  const developmentAuth = getAuthMode() === "development";
 
   const redirectToLogin = useCallback(() => {
     queryClient.clear();
@@ -28,13 +30,15 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
     router.replace(loginHref(currentReturnTo()));
   }, [queryClient, router]);
 
-  useEffect(() => { initializeAuthClient(); }, []);
   useEffect(() => {
-    if (publicRoute) return;
+    if (!developmentAuth) initializeAuthClient();
+  }, [developmentAuth]);
+  useEffect(() => {
+    if (publicRoute || developmentAuth) return;
     return onAuthUnauthorised(redirectToLogin);
-  }, [publicRoute, redirectToLogin]);
+  }, [developmentAuth, publicRoute, redirectToLogin]);
   useEffect(() => {
-    if (publicRoute) return;
+    if (publicRoute || developmentAuth) return;
     let cancelled = false;
     async function checkAuthentication() {
       try {
@@ -50,9 +54,10 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
     }
     void checkAuthentication();
     return () => { cancelled = true; };
-  }, [pathname, publicRoute, queryClient, redirectToLogin, retryKey, router]);
+  }, [developmentAuth, pathname, publicRoute, queryClient, redirectToLogin, retryKey, router]);
 
   if (publicRoute) return <>{children}</>;
+  if (developmentAuth) return routeRequiresWorkspace(pathname) ? <WorkspaceGate>{children}</WorkspaceGate> : <>{children}</>;
   if (!result) return <AuthStatus busy title="正在确认登录状态" description="请稍候，我们正在安全地恢复你的会话。" />;
   if (result.state === "error") return <AuthStatus title="暂时无法确认登录状态" description="认证服务暂时不可用，请检查网络后重试。">
     <button className="auth-button auth-button--primary" onClick={() => setRetryKey((key) => key + 1)}>重新检查</button>

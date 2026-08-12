@@ -20,7 +20,16 @@ import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./domestic-main-image-workspace.module.css";
 
 type Source = { asset: Asset; previewUrl: string };
-type PlanPage = { page_index: number; page_role: string; headline: string; visual_duty: string };
+type PlanPage = {
+  page_index: number;
+  page_role: string;
+  headline: string;
+  visual_duty: string;
+  objective?: string;
+  composition?: string;
+  copy_direction?: string;
+  evidence?: string[];
+};
 
 const roleNames: Record<string, string> = {
   SEARCH_MAIN_IMAGE_LISTING_COVER: "搜索主图",
@@ -162,7 +171,7 @@ export function DomesticMainImageWorkspace() {
 
             <section className={styles.card}>
               <div className={styles.heading}><span>03</span><div><h2>六图方案确认</h2><p>确认后锁定商品身份、事实边界和整套视觉世界。</p></div>{job.data && <StatusBadge status={job.data.status} />}</div>
-              {!plan.length ? <div className={styles.empty}>创建任务后，这里会出现 1 张搜索主图与 5 张轮播图方案。</div> : <div className={styles.plan}>{plan.map((page) => <article key={page.page_index}><i>{String(page.page_index + 1).padStart(2, "0")}</i><div><span>{roleNames[page.page_role] ?? page.page_role}</span><strong>{page.headline}</strong><p>{page.visual_duty}</p></div>{page.page_index === 0 ? <em>搜索入口</em> : <em>轮播</em>}</article>)}</div>}
+              {!plan.length ? <div className={styles.empty}>创建任务后，这里会出现 1 张搜索主图与 5 张轮播图方案。</div> : <div className={styles.plan}>{plan.map((page) => <article key={page.page_index}><i>{String(page.page_index + 1).padStart(2, "0")}</i><div><span>{roleNames[page.page_role] ?? page.page_role}</span><strong>{page.headline}</strong><p>{page.objective ?? page.visual_duty}</p>{page.composition && <dl><div><dt>画面</dt><dd>{page.composition}</dd></div>{page.copy_direction && <div><dt>文案</dt><dd>{page.copy_direction}</dd></div>}{page.evidence?.length ? <div><dt>依据</dt><dd>{page.evidence.join(" · ")}</dd></div> : null}</dl>}</div>{page.page_index === 0 ? <em>搜索入口</em> : <em>轮播</em>}</article>)}</div>}
             </section>
 
             {results.length > 0 && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>六图交付</h2><p>单张可查看与下载，全部完成后可下载整套文件。</p></div></div><div className={styles.results}>{results.map((asset, index) => <JobResultImage key={asset.asset_id} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`国内电商主图 ${index + 1}`} label={roleNames[plan[index]?.page_role] ?? `图 ${index + 1}`} />)}</div>{job.data?.status === "completed" && results.length === 6 && <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} />}</section>}

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.aurora_main_image_planner import _build_pages
 from app.aurora_main_image_runtime import AuroraHarnessError, AuroraHarnessRunner
 from app.routes_v1 import _new_job_from_payload, runtime_status_response
 from app.schemas_v1 import DomesticMainImageJobCreate
@@ -31,6 +32,79 @@ def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
         ("asset_one", "product_identity_authority", 0),
         ("asset_two", "product_identity_authority", 1),
     ]
+
+
+def test_mock_planner_turns_facts_into_distinct_visual_decisions() -> None:
+    settings: dict[str, object] = {
+        "product_name": "蓝色赛车训练鞋",
+        "category": "男士运动鞋",
+        "selling_points": ["复古赛车外观", "鞋底抓地纹路"],
+        "scenes": ["城市通勤"],
+        "service_or_trust_facts": ["48 小时内发货"],
+        "style_preferences": ["冷灰背景"],
+    }
+
+    pages = _build_pages(settings, ["asset_one"])
+
+    assert len(pages) == 6
+    assert [page["page_role"] for page in pages] == list(
+        (
+            "SEARCH_MAIN_IMAGE_LISTING_COVER",
+            "CAROUSEL_IDENTITY_HERO",
+            "CAROUSEL_CORE_FEATURE_PROOF",
+            "CAROUSEL_SCENE_OR_OPERATION",
+            "CAROUSEL_DETAIL_OR_TRUST",
+            "CAROUSEL_OFFER_OR_SPEC_CLOSURE",
+        )
+    )
+    assert len({str(page["headline"]) for page in pages}) == 6
+    assert not any(page["headline"] in settings["selling_points"] for page in pages)
+    assert all(page["composition"] for page in pages)
+    assert all(page["copy_direction"] for page in pages)
+    assert pages[3]["evidence"] == ["城市通勤"]
+    assert pages[5]["evidence"] == ["48 小时内发货"]
+
+
+def test_mock_planner_does_not_invent_missing_scene_or_offer() -> None:
+    pages = _build_pages(
+        {
+            "product_name": "便携水杯",
+            "category": "杯壶",
+            "selling_points": ["杯盖防误开"],
+        },
+        ["asset_one"],
+    )
+
+    assert "未提供已核实场景" in str(pages[3]["objective"])
+    assert "不制造促销角标" in str(pages[5]["composition"])
+
+
+def test_mock_planner_classifies_a_pasted_product_brief() -> None:
+    pages = _build_pages(
+        {
+            "product_name": "蓝色赛车德训鞋",
+            "category": "鞋子",
+            "selling_points": [
+                "蓝色赛车德训鞋完整产品信息",
+                "一、基础商品信息",
+                "1. 商品全称：蓝色德训鞋男女款",
+                "2. 品牌：示例品牌",
+                "5. 发货与物流：免运费；平均16小时发货",
+                "主打透气清爽",
+                "日常休闲、通勤、出游、慢跑均可",
+                "天蓝色+米白撞色",
+            ],
+        },
+        ["asset_one"],
+    )
+
+    assert pages[0]["evidence"][-1] == "主打透气清爽"
+    assert pages[3]["evidence"] == ["日常休闲、通勤、出游、慢跑均可"]
+    assert pages[4]["evidence"] == ["天蓝色+米白撞色"]
+    assert pages[5]["evidence"] == ["发货与物流：免运费；平均16小时发货"]
+    serialized = json.dumps(pages, ensure_ascii=False)
+    assert "一、基础商品信息" not in serialized
+    assert "商品全称" not in serialized
 
 
 def test_harness_runner_rejects_unknown_commands(tmp_path: Path) -> None:

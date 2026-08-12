@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { isEmailVerified, sessionExists, signOut } from "@/features/auth/api/auth";
+import { useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { initializeAuthClient } from "@/lib/auth/client";
 import { currentReturnTo, loginHref, verifyEmailHref } from "@/lib/auth/return-to";
@@ -21,6 +22,8 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const [result, setResult] = useState<BoundaryResult>();
   const [retryKey, setRetryKey] = useState(0);
   const publicRoute = isPublicRoute(pathname);
+  const runtimeQuery = useRuntimeStatus({ enabled: !publicRoute });
+  const authenticationMode = runtimeQuery.data?.authentication_mode;
 
   const redirectToLogin = useCallback(() => {
     queryClient.clear();
@@ -28,7 +31,9 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
     router.replace(loginHref(currentReturnTo()));
   }, [queryClient, router]);
 
-  useEffect(() => { initializeAuthClient(); }, []);
+  useEffect(() => {
+    if (authenticationMode === "external") initializeAuthClient();
+  }, [authenticationMode]);
   useEffect(() => {
     if (publicRoute) return;
     return onAuthUnauthorised(redirectToLogin);
@@ -37,6 +42,15 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
     if (publicRoute) return;
     let cancelled = false;
     async function checkAuthentication() {
+      if (runtimeQuery.isPending) return;
+      if (runtimeQuery.isError || !authenticationMode) {
+        if (!cancelled) setResult({ pathname, state: "error" });
+        return;
+      }
+      if (authenticationMode === "development") {
+        if (!cancelled) setResult({ pathname, state: "authenticated" });
+        return;
+      }
       try {
         if (!(await sessionExists())) { if (!cancelled) redirectToLogin(); return; }
         if (!(await isEmailVerified())) {
@@ -50,7 +64,17 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
     }
     void checkAuthentication();
     return () => { cancelled = true; };
-  }, [pathname, publicRoute, queryClient, redirectToLogin, retryKey, router]);
+  }, [
+    authenticationMode,
+    pathname,
+    publicRoute,
+    queryClient,
+    redirectToLogin,
+    retryKey,
+    router,
+    runtimeQuery.isError,
+    runtimeQuery.isPending,
+  ]);
 
   if (publicRoute) return <>{children}</>;
   if (!result) return <AuthStatus busy title="正在确认登录状态" description="请稍候，我们正在安全地恢复你的会话。" />;

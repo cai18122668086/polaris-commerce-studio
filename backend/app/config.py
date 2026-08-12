@@ -10,11 +10,7 @@ MAX_PROVIDER_ALLOWANCE = 20_000_000
 def default_masked_skill_root() -> Path:
     """Return the project-owned, distributable masked repair runtime source."""
 
-    return (
-        Path(__file__).resolve().parents[1]
-        / "skill_sources"
-        / "masked-image-repair"
-    )
+    return Path(__file__).resolve().parents[1] / "skill_sources" / "masked-image-repair"
 
 
 def default_xinghe_skill_root() -> Path:
@@ -35,6 +31,12 @@ def default_skill_root(skill_id: str) -> Path:
     if skill_id == "xinghe-ecommerce-detail":
         return default_xinghe_skill_root()
     return Path(__file__).resolve().parents[1] / "skill_sources" / skill_id
+
+
+def default_aurora_work_root() -> Path:
+    """Durable per-job workspaces for the Aurora Harness state machine."""
+
+    return Path(__file__).resolve().parents[1] / ".data" / "aurora-main-image"
 
 
 class Settings(BaseSettings):
@@ -89,6 +91,7 @@ class Settings(BaseSettings):
     creative_image_provider_enabled: bool = Field(default=False)
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
     domestic_main_image_provider_enabled: bool = Field(default=False)
+    aurora_work_root: Path = Field(default_factory=default_aurora_work_root)
     crossborder_detail_provider_enabled: bool = Field(default=False)
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
     tengli_api_key: SecretStr = SecretStr("")

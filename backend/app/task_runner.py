@@ -35,6 +35,7 @@ class MockTaskRunner:
         amazon_visual_suite_provider_enabled: bool = False,
         crossborder_detail_provider_enabled: bool = False,
         domestic_main_image_provider_enabled: bool = False,
+        aurora_work_root: Path | None = None,
     ) -> None:
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
@@ -48,19 +49,12 @@ class MockTaskRunner:
             xinghe_skill_root=xinghe_skill_root,
             product_image_provider_enabled=product_image_provider_enabled,
             reference_remix_provider_enabled=reference_remix_provider_enabled,
-            model_pose_transfer_provider_enabled=(
-                model_pose_transfer_provider_enabled
-            ),
+            model_pose_transfer_provider_enabled=(model_pose_transfer_provider_enabled),
             creative_image_provider_enabled=creative_image_provider_enabled,
-            amazon_visual_suite_provider_enabled=(
-                amazon_visual_suite_provider_enabled
-            ),
-            crossborder_detail_provider_enabled=(
-                crossborder_detail_provider_enabled
-            ),
-            domestic_main_image_provider_enabled=(
-                domestic_main_image_provider_enabled
-            ),
+            amazon_visual_suite_provider_enabled=(amazon_visual_suite_provider_enabled),
+            crossborder_detail_provider_enabled=(crossborder_detail_provider_enabled),
+            domestic_main_image_provider_enabled=(domestic_main_image_provider_enabled),
+            aurora_work_root=aurora_work_root,
         )
 
     @property
@@ -108,11 +102,7 @@ def validate_task_runner_settings(settings: Settings) -> None:
     if not settings.tengli_api_key.get_secret_value().strip():
         raise RuntimeError("tengli task runner requires a non-empty API key")
     budget = settings.tengli_smoke_budget_usd
-    if (
-        not math.isfinite(budget)
-        or budget <= 0
-        or budget > MAX_PROVIDER_ALLOWANCE
-    ):
+    if not math.isfinite(budget) or budget <= 0 or budget > MAX_PROVIDER_ALLOWANCE:
         raise RuntimeError(
             "tengli task runner budget must be greater than 0 and at most "
             f"USD {MAX_PROVIDER_ALLOWANCE}"
@@ -164,6 +154,7 @@ def build_task_runner(
             medium_price_micros=settings.xinghe_medium_price_micros,
             high_price_micros=settings.xinghe_high_price_micros,
             xinghe_skill_root=settings.xinghe_skill_root,
+            aurora_work_root=settings.aurora_work_root,
         )
 
     return build_tengli_task_runner(
@@ -210,4 +201,5 @@ def build_tengli_task_runner(
         domestic_main_image_provider_enabled=(
             settings.domestic_main_image_provider_enabled
         ),
+        aurora_work_root=settings.aurora_work_root,
     )

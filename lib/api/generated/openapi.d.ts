@@ -1106,6 +1106,8 @@ export interface components {
         };
         /** PlanConfirmRequest */
         PlanConfirmRequest: {
+            /** Approval Text */
+            approval_text?: string | null;
             /** Expected Revision */
             expected_revision: number;
         };

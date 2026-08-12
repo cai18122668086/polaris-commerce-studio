@@ -1,10 +1,13 @@
-"""Durable first approval checkpoint for the Aurora six-image workflow."""
+"""Aurora v0.1.17 identity lock and six-page compilation workflow."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-from tempfile import TemporaryDirectory
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,9 +17,12 @@ from .aurora_main_image_runtime import (
     AuroraHarnessRunner,
     write_contract,
 )
+from .config import default_aurora_work_root
 from .domain import JobStatus, PlanValidationStatus
-from .models import AuditEventRecord, JobPlanRecord, JobRecord, utc_now
+from .models import AssetRecord, AuditEventRecord, JobPlanRecord, JobRecord, utc_now
 from .services import canonical_hash, new_id, transition_job
+from .storage import ImageStorage
+from .xinghe_agent import PlannerRequest, SourceImage, XingheGateway
 
 PAGE_ROLES = (
     "SEARCH_MAIN_IMAGE_LISTING_COVER",
@@ -27,15 +33,42 @@ PAGE_ROLES = (
     "CAROUSEL_OFFER_OR_SPEC_CLOSURE",
 )
 
+_IDENTITY_SYSTEM_PROMPT = """
+You are the product-identity inspection stage of the bundled Aurora domestic
+e-commerce main-image Skill. Inspect every attached original image as
+complementary evidence of one exact product. Return only the requested JSON.
+Describe only visible identity facts. Never infer performance, material,
+certification, offer, sales, or service claims from pixels. Source backgrounds,
+desks, walls, props, lighting and capture clutter are not product identity.
+Preserve silhouette, proportions, color blocks, component count, connections,
+opening structure, packaging layout and visible label placement. Do not use a
+generated image as evidence. Keep profile01_semantics_read false.
+""".strip()
+
+
+class AuroraPlanningError(RuntimeError):
+    pass
+
+
+class _PlannerGateway(Protocol):
+    async def plan(self, request: PlannerRequest) -> Any: ...
+
 
 class AuroraMainImagePlanner:
     def __init__(
         self,
         session_factory: sessionmaker[Session],
         harness: AuroraHarnessRunner | None = None,
+        *,
+        storage: ImageStorage | None = None,
+        gateway: XingheGateway | _PlannerGateway | None = None,
+        work_root: Path | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.harness = harness or AuroraHarnessRunner()
+        self.storage = storage
+        self.gateway = gateway
+        self.work_root = (work_root or default_aurora_work_root()).resolve()
 
     async def plan(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
@@ -52,62 +85,84 @@ class AuroraMainImagePlanner:
             )
             input_value = configuration.get("input", {})
             settings = configuration.get("settings", {})
-            asset_ids = list(input_value.get("product_asset_ids", []))
-            facts = list(settings.get("selling_points", []))
-            raw = {
-                "request_id": job.id,
-                "profile01_semantics_read": False,
-                "product": {
-                    "name": settings.get("product_name", ""),
-                    "category": settings.get("category", ""),
-                    "original_references": asset_ids,
-                    "verified_selling_points": facts,
-                    "verified_attributes": settings.get("product_attributes", []),
-                    "verified_scenes": settings.get("scenes", []),
-                    "verified_offers": settings.get("offers", []),
-                    "verified_service_or_trust_facts": settings.get(
-                        "service_or_trust_facts", []
-                    ),
-                },
-            }
-            with TemporaryDirectory(prefix="polaris-aurora-plan-") as temporary:
-                from pathlib import Path
-
-                workspace = Path(temporary)
-                input_path = workspace / "input.json"
-                session_path = workspace / "session.json"
-                write_contract(input_path, raw)
-                self.harness.run(
-                    "start",
-                    workspace,
-                    {"input": input_path, "session": session_path},
+            if not isinstance(input_value, Mapping) or not isinstance(
+                settings, Mapping
+            ):
+                raise AuroraPlanningError("Aurora job configuration is malformed")
+            asset_ids = [
+                str(value) for value in input_value.get("product_asset_ids", [])
+            ]
+            assets = session.scalars(
+                select(AssetRecord).where(
+                    AssetRecord.workspace_id == job.workspace_id,
+                    AssetRecord.id.in_(asset_ids),
+                    AssetRecord.deleted_at.is_(None),
                 )
-                harness_session = json.loads(session_path.read_text(encoding="utf-8"))
+            ).all()
+            asset_by_id = {asset.id: asset for asset in assets}
+            if set(asset_ids) != set(asset_by_id):
+                raise AuroraPlanningError(
+                    "One or more product identity assets are missing"
+                )
+            workspace_id = job.workspace_id
 
-            pages = _build_pages(settings, asset_ids)
-            payload = {
-                "schema_version": "aurora-main-image-plan-v1",
-                "skill_id": "aurora-domestic-ecommerce-main-image",
-                "skill_version": AURORA_MAIN_IMAGE_VERSION,
-                "approval_checkpoint": "six_page_plan",
-                "product": {
-                    "name": settings.get("product_name"),
-                    "category": settings.get("category"),
-                },
-                "pages": pages,
-                "harness_session": harness_session,
-                "execution_policy": {
-                    "sequence": "strictly_sequential",
-                    "max_automatic_repairs_per_page": 1,
-                    "final_set_approval_required": True,
-                },
-            }
+        sources, evidence_paths = await self._materialize_sources(
+            workspace_id, job_id, asset_ids, asset_by_id
+        )
+        raw = _build_raw(job_id, settings, evidence_paths)
+        identity = await self._inspect_identity(job_id, workspace_id, settings, sources)
+        identity = _bind_identity_evidence(identity, sources, evidence_paths)
+        workspace = self.job_workspace(job_id)
+        input_path = workspace / "input.json"
+        identity_path = workspace / "identity.json"
+        session_path = workspace / "session.json"
+        compiled_path = workspace / "compiled-v013.json"
+        write_contract(input_path, raw)
+        write_contract(identity_path, identity)
+
+        harness_session = _load_json(session_path) if session_path.exists() else None
+        if harness_session is None:
+            self.harness.run(
+                "start", workspace, {"input": input_path, "session": session_path}
+            )
+            harness_session = _load_json(session_path)
+        _require_session(job_id, harness_session)
+        if harness_session.get("state") == "AWAITING_IDENTITY":
+            self.harness.run(
+                "lock-identity",
+                workspace,
+                {"session": session_path, "identity": identity_path},
+            )
+            harness_session = _load_json(session_path)
+        if harness_session.get("state") == "IDENTITY_LOCKED":
+            self.harness.run(
+                "compile-v013",
+                workspace,
+                {"session": session_path, "output": compiled_path},
+            )
+            harness_session = _load_json(session_path)
+        if harness_session.get("state") != "AWAITING_AUTHORIZATION":
+            raise AuroraPlanningError(
+                f"Aurora compilation ended in {harness_session.get('state')}"
+            )
+
+        payload = _public_plan_payload(settings, identity, harness_session)
+        payload["_harness_session"] = harness_session
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            existing = session.scalar(
+                select(JobPlanRecord.id).where(JobPlanRecord.job_id == job.id).limit(1)
+            )
+            if existing is not None:
+                return JobStatus(job.status)
             plan = JobPlanRecord(
                 id=new_id("plan"),
                 workspace_id=job.workspace_id,
                 job_id=job.id,
                 revision=1,
-                schema_version="aurora-main-image-plan-v1",
+                schema_version="aurora-main-image-plan-v2",
                 payload=payload,
                 payload_hash=canonical_hash(payload),
                 validation_status=PlanValidationStatus.VALID.value,
@@ -119,13 +174,15 @@ class AuroraMainImagePlanner:
             session.add(
                 AuditEventRecord(
                     workspace_id=job.workspace_id,
-                    action="aurora.plan_created",
+                    action="aurora.plan_compiled_v013",
                     resource_type="job",
                     resource_id=job.id,
                     request_id=plan.id,
                     details={
                         "page_count": 6,
                         "harness_state": harness_session["state"],
+                        "compiled_hash": harness_session.get("compiled_hash"),
+                        "campaign_style_id": harness_session.get("campaign_style_id"),
                     },
                 )
             )
@@ -138,137 +195,348 @@ class AuroraMainImagePlanner:
             session.commit()
             return JobStatus.AWAITING_CONFIRMATION
 
+    def job_workspace(self, job_id: str) -> Path:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", job_id):
+            raise AuroraPlanningError("Invalid Aurora job identifier")
+        workspace = (self.work_root / job_id).resolve()
+        if self.work_root != workspace and self.work_root not in workspace.parents:
+            raise AuroraPlanningError("Aurora workspace escaped its configured root")
+        workspace.mkdir(parents=True, exist_ok=True)
+        return workspace
 
-def _build_pages(
-    settings: dict[str, object], asset_ids: list[str]
-) -> list[dict[str, object]]:
-    """Turn verified facts into six distinct visual decisions, not six copies."""
+    async def _materialize_sources(
+        self,
+        workspace_id: str,
+        job_id: str,
+        asset_ids: Sequence[str],
+        assets: Mapping[str, AssetRecord],
+    ) -> tuple[tuple[SourceImage, ...], list[str]]:
+        if self.storage is None:
+            raise AuroraPlanningError(
+                "Aurora identity inspection requires image storage"
+            )
+        evidence_root = self.job_workspace(job_id) / "evidence"
+        evidence_root.mkdir(parents=True, exist_ok=True)
+        sources: list[SourceImage] = []
+        paths: list[str] = []
+        for ordinal, asset_id in enumerate(asset_ids):
+            asset = assets[asset_id]
+            payload = await self.storage.read_bytes(asset.object_key)
+            if hashlib.sha256(payload).hexdigest() != asset.sha256:
+                raise AuroraPlanningError(
+                    "Product identity asset integrity check failed"
+                )
+            suffix = Path(asset.filename).suffix.lower() or _suffix_for_type(
+                asset.content_type
+            )
+            path = (evidence_root / f"source-{ordinal + 1:02d}{suffix}").resolve()
+            if evidence_root.resolve() not in path.parents:
+                raise AuroraPlanningError("Invalid evidence path")
+            path.write_bytes(payload)
+            sources.append(
+                SourceImage(
+                    asset_id=asset.id,
+                    group_key=job_id,
+                    filename=asset.filename,
+                    content_type=asset.content_type,
+                    sha256=asset.sha256,
+                    payload=payload,
+                    source_role="product_reference",
+                )
+            )
+            paths.append(str(path))
+        return tuple(sources), paths
 
-    name = _text(settings.get("product_name"), "该商品")
-    category = _text(settings.get("category"), "商品")
-    raw_selling_points = _text_list(settings.get("selling_points"))
-    inferred = _classify_pasted_facts(raw_selling_points)
-    selling_points = inferred["selling_points"]
-    attributes = _unique(
-        [*_text_list(settings.get("product_attributes")), *inferred["attributes"]]
+    async def _inspect_identity(
+        self,
+        job_id: str,
+        workspace_id: str,
+        settings: Mapping[str, Any],
+        sources: tuple[SourceImage, ...],
+    ) -> dict[str, Any]:
+        if self.gateway is None:
+            raise AuroraPlanningError(
+                "Aurora identity inspection gateway is unavailable"
+            )
+        facts = _all_facts(settings)
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=workspace_id,
+                job_id=job_id,
+                group_key=job_id,
+                sources=sources,
+                page_count=6,
+                language="zh-CN",
+                product_name=_text(settings.get("product_name"), "当前商品"),
+                product_information=tuple(facts),
+                platform_code="TAOBAO_DOMESTIC_MAIN_IMAGE",
+                size="1024x1024",
+                idempotency_key=f"{job_id}:aurora-identity:v1",
+                system_prompt=_IDENTITY_SYSTEM_PROMPT,
+                planning_profile="aurora_identity",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora product identity inspection failed"
+            )
+        return dict(result.payload)
+
+
+def authorize_aurora_plan(
+    plan: JobPlanRecord,
+    job: JobRecord,
+    approval_text: str,
+    *,
+    harness: AuroraHarnessRunner | None = None,
+    work_root: Path | None = None,
+) -> None:
+    """Record the first and only pre-generation user authorization in Harness."""
+
+    if plan.schema_version != "aurora-main-image-plan-v2":
+        raise AuroraPlanningError("This task uses the retired local-rule plan")
+    workspace = _job_workspace(job.id, work_root)
+    session_path = workspace / "session.json"
+    stored = plan.payload.get("_harness_session")
+    if not isinstance(stored, Mapping):
+        raise AuroraPlanningError("Aurora Harness session is missing")
+    write_contract(session_path, dict(stored))
+    runner = harness or AuroraHarnessRunner()
+    runner.run(
+        "authorize",
+        workspace,
+        {"session": session_path, "approval-text": approval_text},
     )
-    scenes = _unique([*_text_list(settings.get("scenes")), *inferred["scenes"]])
-    offers = _unique([*_text_list(settings.get("offers")), *inferred["offers"]])
-    trust_facts = _unique(
-        [
-            *_text_list(settings.get("service_or_trust_facts")),
-            *inferred["trust_facts"],
+    harness_session = _load_json(session_path)
+    payload = dict(plan.payload)
+    payload["_harness_session"] = harness_session
+    payload["harness_state"] = harness_session["state"]
+    plan.payload = payload
+    plan.payload_hash = canonical_hash(payload)
+
+
+def public_aurora_plan_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep internal execution contracts durable without returning them to browsers."""
+
+    return {key: value for key, value in payload.items() if not key.startswith("_")}
+
+
+def _build_raw(
+    job_id: str,
+    settings: Mapping[str, Any],
+    evidence_paths: Sequence[str],
+) -> dict[str, Any]:
+    return {
+        "request_id": job_id,
+        "profile01_semantics_read": False,
+        "style_preferences": _text_list(settings.get("style_preferences")),
+        "instruction": _text(settings.get("instruction"), ""),
+        "product": {
+            "name": _text(settings.get("product_name"), "当前商品"),
+            "category": _text(settings.get("category"), "商品"),
+            "original_references": list(evidence_paths),
+            "verified_selling_points": _text_list(settings.get("selling_points")),
+            "verified_attributes": _text_list(settings.get("product_attributes")),
+            "verified_scenes": _text_list(settings.get("scenes")),
+            "verified_offers": _text_list(settings.get("offers")),
+            "verified_service_or_trust_facts": _text_list(
+                settings.get("service_or_trust_facts")
+            ),
+        },
+    }
+
+
+def _public_plan_payload(
+    settings: Mapping[str, Any],
+    identity: Mapping[str, Any],
+    harness_session: Mapping[str, Any],
+) -> dict[str, Any]:
+    plan = _mapping(harness_session.get("plan"))
+    orchestration = _mapping(plan.get("commercial_orchestration"))
+    campaign_style = _mapping(plan.get("campaign_style"))
+    constitution = _mapping(harness_session.get("campaign_constitution"))
+    matches = {
+        int(row.get("page_index", -1)): row
+        for row in _mapping_list(orchestration.get("demand_to_selling_point_match"))
+    }
+    rhythms = {
+        int(row.get("page_index", -1)): row
+        for row in _mapping_list(orchestration.get("visual_rhythm_plan"))
+    }
+    tasks = {
+        int(row.get("page_index", -1)): row
+        for row in _mapping_list(orchestration.get("page_task_table"))
+    }
+    compiled_pages = {
+        int(row.get("index", -1)): row for row in _mapping_list(plan.get("pages"))
+    }
+    pages: list[dict[str, Any]] = []
+    previous_claim = ""
+    for index, role in enumerate(PAGE_ROLES):
+        match = _mapping(matches.get(index))
+        task = _mapping(tasks.get(index))
+        rhythm = _mapping(rhythms.get(index))
+        compiled_page = _mapping(compiled_pages.get(index))
+        execution = _mapping(compiled_page.get("approved_page_execution_contract"))
+        proof = _mapping(execution.get("selling_point_visual_proof_contract"))
+        lead = _text(match.get("matched_selling_point"), "商品身份与核心购买理由")
+        bundle = [
+            value
+            for value in _text_list(proof.get("bundle_source_texts"))
+            if value != lead
         ]
-    )
-    style_preferences = _text_list(settings.get("style_preferences"))
+        difference = (
+            f"与上一页“{previous_claim}”采用不同证明对象与页面职责"
+            if previous_claim
+            else "唯一承担搜索点击入口，不与轮播身份页共用版式骨架"
+        )
+        pages.append(
+            {
+                "page_index": index,
+                "page_role": role,
+                "main_selling_point": lead,
+                "supporting_selling_points": bundle,
+                "visual_proof": _text(
+                    match.get("visual_proof_method")
+                    or proof.get("pixel_evidence_method"),
+                    "以当前商品的真实结构、部件、材质、动作或场景证明",
+                ),
+                "composition_and_subject": _text(
+                    execution.get("composition_blueprint")
+                    or rhythm.get("layout_structure"),
+                    "围绕当前页面职责建立独立构图",
+                ),
+                "reading_path_and_type_hierarchy": " → ".join(
+                    _text_list(execution.get("reading_path"))
+                )
+                or _text(task.get("copy_direction"), "主结论 → 真实证据 → 短闭合"),
+                "non_repetition_reason": difference,
+                "commercial_closure": _text(
+                    task.get("buyer_demand"),
+                    _text(match.get("buyer_demand"), "完成当前购买问题的确认"),
+                ),
+                "buyer_question": _text(task.get("buyer_question"), ""),
+                "visual_rhythm": {
+                    "subject_scale": _text(rhythm.get("subject_scale"), ""),
+                    "layout_structure": _text(rhythm.get("layout_structure"), ""),
+                },
+                "status": "awaiting_plan_approval",
+            }
+        )
+        previous_claim = lead
+    background = _mapping(constitution.get("background_style_lock"))
+    return {
+        "schema_version": "aurora-main-image-plan-v2",
+        "skill_id": "aurora-domestic-ecommerce-main-image",
+        "skill_version": AURORA_MAIN_IMAGE_VERSION,
+        "compiler_lineage": harness_session.get("compiler_lineage"),
+        "compiled_hash": harness_session.get("compiled_hash"),
+        "harness_state": harness_session.get("state"),
+        "approval_checkpoint": "six_page_plan",
+        "product": {
+            "name": settings.get("product_name"),
+            "category": settings.get("category"),
+        },
+        "product_identity_lock": {
+            "product_form": identity.get("product_form"),
+            "identity_summary": identity.get("identity_summary"),
+            "must_preserve": identity.get("must_preserve", []),
+            "must_not_change": identity.get("must_not_change", []),
+        },
+        "campaign_style": campaign_style,
+        "background_style_lock": background,
+        "visual_rhythm_plan": list(rhythms.values()),
+        "pages": pages,
+        "execution_policy": {
+            "sequence": "strictly_sequential",
+            "max_automatic_repairs_per_page": 1,
+            "plan_authorization_required": True,
+            "final_set_approval_required": True,
+        },
+    }
 
-    ranked_points = sorted(selling_points, key=_selling_point_score, reverse=True)
-    ranked_attributes = sorted(attributes, key=_attribute_score, reverse=True)
-    primary = ranked_points[0] if ranked_points else "核心购买理由"
-    proof_point = (
-        ranked_points[1]
-        if len(ranked_points) > 1 and _selling_point_score(ranked_points[1]) > 0
-        else (ranked_attributes[0] if ranked_attributes else primary)
-    )
-    scene = scenes[0] if scenes else "中性操作演示"
-    detail_fact = next(
-        (fact for fact in ranked_attributes if fact != proof_point),
-        (ranked_attributes or trust_facts or selling_points or [primary])[0],
-    )
-    close_facts = offers or trust_facts or attributes or selling_points
-    close_fact = close_facts[0]
-    style = "、".join(style_preferences[:2]) or "克制、清晰的商业摄影"
 
-    strategies = (
+def _bind_identity_evidence(
+    payload: Mapping[str, Any],
+    sources: Sequence[SourceImage],
+    paths: Sequence[str],
+) -> dict[str, Any]:
+    by_id = {
+        str(row.get("evidence_id")): _text_list(row.get("view_tags"))
+        for row in _mapping_list(payload.get("evidence"))
+    }
+    evidence = [
         {
-            "headline": "大主体建立搜索识别，首屏只打一个核心钩子",
-            "objective": f"让用户先认出{name}，再快速理解首要购买理由。",
-            "composition": (
-                "主商品占画面约 60%–70%，使用最容易辨认商品结构的角度；"
-                "减少装饰元素，保证缩略图下商品轮廓与信息层级仍然清楚。"
-            ),
-            "copy_direction": f"围绕「{primary}」提炼一条短主张，不并列堆放其他卖点。",
-            "evidence": [name, category, primary],
-        },
-        {
-            "headline": "用英雄构图确立商品身份与整套视觉基调",
-            "objective": f"把{name}作为唯一主角，建立后续五图共同遵循的视觉世界。",
-            "composition": (
-                f"采用三分之四或正侧英雄角度，完整展示商品；以{style}为基调，"
-                "背景、光线和留白服务于商品身份，不做功能证明。"
-            ),
-            "copy_direction": (
-                f"只说明商品名称与「{category}」身份，"
-                "避免重复搜索主图的销售钩子。"
-            ),
-            "evidence": [name, category, *style_preferences[:2]],
-        },
-        {
-            "headline": "把核心卖点转成一眼可懂的可视证据",
-            "objective": f"围绕「{proof_point}」回答用户为什么应该相信。",
-            "composition": (
-                "使用局部特写、结构拆解或前后状态中的一种证据方式；"
-                "只有素材能够证明时才使用对比，不虚构实验数据或性能结果。"
-            ),
-            "copy_direction": (
-                f"标题表达「{proof_point}」带来的明确价值，"
-                "辅助标注只引用已核实事实。"
-            ),
-            "evidence": _unique([proof_point, *ranked_attributes[:2]]),
-        },
-        {
-            "headline": "用真实动作说明商品如何进入使用情境",
-            "objective": (
-                f"在「{scene}」中展示商品与人的动作关系。"
-                if scenes
-                else "未提供已核实场景，使用中性操作演示说明商品如何被使用。"
-            ),
-            "composition": (
-                "以商品和关键动作作为双焦点，环境只保留解释使用方式所需的元素；"
-                "不添加未经提供的人群、地点或使用结果。"
-            ),
-            "copy_direction": "用动作结果组织短句，不新增未经核实的场景承诺。",
-            "evidence": scenes[:2] or ["商品素材中的可见结构与操作方式"],
-        },
-        {
-            "headline": "用细节特写补足质感与信任理由",
-            "objective": f"围绕「{detail_fact}」放大用户在前四页尚未看清的可信细节。",
-            "composition": (
-                "选择一个可由原始素材验证的结构、做工或标识做近景特写，"
-                "辅以克制标注；不替商品推断材质、认证或耐久结论。"
-            ),
-            "copy_direction": (
-                "标题回答“细节为什么值得信任”，事实不足时只描述可见内容。"
-            ),
-            "evidence": _unique(
-                [detail_fact, *(ranked_attributes or trust_facts or selling_points)[:2]]
-            )[:3],
-        },
-        {
-            "headline": "汇总已核实决策信息，完成购买收口",
-            "objective": f"以「{close_fact}」为主锚点，收束前五页信息并降低决策成本。",
-            "composition": (
-                "商品保持清晰完整，使用简洁信息区汇总不超过三项已核实要点；"
-                "若没有价格或优惠事实，不制造促销角标和倒计时。"
-            ),
-            "copy_direction": (
-                "按权益、服务、规格、卖点的可用顺序收口，只展示已有事实。"
-            ),
-            "evidence": close_facts[:3],
-        },
-    )
-
-    return [
-        {
-            "page_index": ordinal,
-            "page_role": role,
-            **strategies[ordinal],
-            "visual_duty": strategies[ordinal]["objective"],
-            "source_asset_ids": asset_ids,
-            "status": "awaiting_plan_approval",
+            "evidence_id": source.asset_id,
+            "path": paths[index],
+            "view_tags": by_id.get(source.asset_id) or [f"原始商品视图 {index + 1}"],
         }
-        for ordinal, role in enumerate(PAGE_ROLES)
+        for index, source in enumerate(sources)
     ]
+    identity = {
+        "request_id": str(payload.get("request_id") or sources[0].group_key),
+        "product_form": _text(payload.get("product_form"), "当前商品的可见完整形态"),
+        "identity_summary": _text(
+            payload.get("identity_summary"),
+            "以全部原始商品素材共同锁定同一商品身份。",
+        ),
+        "evidence": evidence,
+        "must_preserve": _text_list(payload.get("must_preserve"))
+        or ["素材中可见的完整轮廓、比例、颜色分区、部件数量与相对位置"],
+        "must_not_change": _text_list(payload.get("must_not_change"))
+        or ["不得增加、删除或重设计素材中可见的商品结构"],
+        "previous_generated_images_used": False,
+        "profile01_semantics_read": False,
+    }
+    if not identity["request_id"]:
+        raise AuroraPlanningError("Identity inspection omitted request_id")
+    return identity
+
+
+def _all_facts(settings: Mapping[str, Any]) -> list[str]:
+    values = [
+        f"商品类目：{_text(settings.get('category'), '商品')}",
+        *_text_list(settings.get("selling_points")),
+        *_text_list(settings.get("product_attributes")),
+        *_text_list(settings.get("scenes")),
+        *_text_list(settings.get("offers")),
+        *_text_list(settings.get("service_or_trust_facts")),
+        *_text_list(settings.get("style_preferences")),
+    ]
+    return list(dict.fromkeys(value for value in values if value))
+
+
+def _job_workspace(job_id: str, work_root: Path | None = None) -> Path:
+    root = (work_root or default_aurora_work_root()).resolve()
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", job_id):
+        raise AuroraPlanningError("Invalid Aurora job identifier")
+    workspace = (root / job_id).resolve()
+    if root != workspace and root not in workspace.parents:
+        raise AuroraPlanningError("Aurora workspace escaped its configured root")
+    workspace.mkdir(parents=True, exist_ok=True)
+    return workspace
+
+
+def _require_session(job_id: str, session: Mapping[str, Any]) -> None:
+    if session.get("request_id") != job_id:
+        raise AuroraPlanningError("Aurora Harness session belongs to another task")
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise AuroraPlanningError(f"Expected a JSON object at {path.name}")
+    return value
+
+
+def _mapping(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _mapping_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, Mapping)]
 
 
 def _text(value: object, fallback: str) -> str:
@@ -282,108 +550,9 @@ def _text_list(value: object) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
-def _classify_pasted_facts(facts: list[str]) -> dict[str, list[str]]:
-    """Recover useful groups when a whole product brief is pasted as selling points."""
-
-    groups: dict[str, list[str]] = {
-        "selling_points": [],
-        "attributes": [],
-        "scenes": [],
-        "offers": [],
-        "trust_facts": [],
-    }
-    for original in facts:
-        fact = re.sub(r"^[•·*\-]\s*", "", original).strip()
-        fact = re.sub(r"^\d+[.、]\s*", "", fact).strip()
-        if not fact or re.match(r"^[一二三四五六七八九十]+[、.]", fact):
-            continue
-        if "完整产品信息" in fact or "基础商品信息" in fact:
-            continue
-        if fact.startswith(("商品全称", "品牌：", "品牌:")):
-            continue
-
-        if _contains_any(
-            fact,
-            ("发货", "物流", "客服", "售后", "退货", "包退", "好评率", "评分"),
-        ):
-            groups["trust_facts"].append(fact)
-        if _contains_any(fact, ("免运费", "优惠", "到手价", "满减", "赠品", "领券")):
-            groups["offers"].append(fact)
-        if _contains_any(
-            fact,
-            ("通勤", "出游", "慢跑", "办公室", "居家", "旅行", "日常休闲"),
-        ):
-            groups["scenes"].append(fact)
-        if _contains_any(
-            fact,
-            (
-                "配色",
-                "撞色",
-                "版型",
-                "材质",
-                "翻毛皮",
-                "鞋底",
-                "剪裁",
-                "纹路",
-                "结构",
-                "尺寸",
-                "容量",
-            ),
-        ):
-            groups["attributes"].append(fact)
-
-        if not any(
-            fact in groups[key]
-            for key in ("trust_facts", "offers", "scenes", "attributes")
-        ):
-            groups["selling_points"].append(fact)
-
-    if not groups["selling_points"]:
-        groups["selling_points"] = [
-            fact
-            for fact in facts
-            if "完整产品信息" not in fact and "基础商品信息" not in fact
-        ][:3]
-    return {key: _unique(value) for key, value in groups.items()}
-
-
-def _selling_point_score(fact: str) -> int:
-    high_intent = (
-        "主打",
-        "透气",
-        "轻量",
-        "舒适",
-        "防",
-        "抓地",
-        "便携",
-        "耐磨",
-        "显高",
-        "增高",
-    )
-    low_intent = ("别名", "季节", "男女均可", "可作", "品类")
-    return sum(keyword in fact for keyword in high_intent) * 10 - sum(
-        keyword in fact for keyword in low_intent
-    )
-
-
-def _attribute_score(fact: str) -> int:
-    visible_proof = (
-        "材质",
-        "翻毛皮",
-        "鞋底",
-        "纹路",
-        "剪裁",
-        "结构",
-        "网孔",
-        "拼接",
-        "做工",
-    )
-    return sum(keyword in fact for keyword in visible_proof) * 10
-
-
-def _contains_any(value: str, keywords: tuple[str, ...]) -> bool:
-    return any(keyword in value for keyword in keywords)
-
-
-def _unique(values: list[str]) -> list[str]:
-    return list(dict.fromkeys(value for value in values if value))
+def _suffix_for_type(content_type: str) -> str:
+    return {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }.get(content_type.lower(), ".img")

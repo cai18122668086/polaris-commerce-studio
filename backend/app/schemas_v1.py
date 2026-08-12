@@ -250,12 +250,8 @@ class ModelPoseTransferInput(BaseModel):
 
     model_source_asset_id: str
     pose_reference_asset_id: str
-    pose_slug: str | None = Field(
-        default=None, pattern=r"^(?:male|female)-[0-9]{3}$"
-    )
-    pose_reference_sha256: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
+    pose_slug: str | None = Field(default=None, pattern=r"^(?:male|female)-[0-9]{3}$")
+    pose_reference_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_pose_inputs(self) -> "ModelPoseTransferInput":
@@ -590,6 +586,7 @@ class PlanUpdateRequest(BaseModel):
 
 class PlanConfirmRequest(BaseModel):
     expected_revision: int = Field(ge=1)
+    approval_text: str | None = Field(default=None, min_length=2, max_length=240)
 
 
 class HealthResponse(BaseModel):

@@ -276,6 +276,7 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
         "model_pose_transfer",
         "creative_image",
         "amazon_visual_suite",
+        "domestic_main_image",
         "crossborder_detail",
     ):
         status = tengli.capabilities.features[feature]
@@ -293,6 +294,7 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
         ("model_pose_transfer_provider_enabled", "model_pose_transfer"),
         ("creative_image_provider_enabled", "creative_image"),
         ("amazon_visual_suite_provider_enabled", "amazon_visual_suite"),
+        ("domestic_main_image_provider_enabled", "domestic_main_image"),
         ("crossborder_detail_provider_enabled", "crossborder_detail"),
     ],
 )

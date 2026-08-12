@@ -317,8 +317,7 @@ def _commit_catalog_pose_asset(
             actor_user_id=actor_user_id,
             method="POST",
             route_template=(
-                "/api/v1/workspaces/{workspace_id}/"
-                "model-pose-transfer/pose-assets"
+                "/api/v1/workspaces/{workspace_id}/model-pose-transfer/pose-assets"
             ),
             idempotency_key=idempotency_key,
             request_hash=request_hash,
@@ -499,21 +498,11 @@ def runtime_status_response(
         "local_edit": local_edit,
         "product_image": feature_status(product_image_provider_enabled),
         "reference_remix": feature_status(reference_remix_provider_enabled),
-        "model_pose_transfer": feature_status(
-            model_pose_transfer_provider_enabled
-        ),
+        "model_pose_transfer": feature_status(model_pose_transfer_provider_enabled),
         "creative_image": feature_status(creative_image_provider_enabled),
         "detail_pack": detail_pack,
-        "amazon_visual_suite": feature_status(
-            amazon_visual_suite_provider_enabled
-        ),
-        # The real Aurora generator stays fail-closed until its provider adapter
-        # completes the full Harness generate/record/audit protocol.
-        "domestic_main_image": (
-            mock_feature_status
-            if task_runner == "mock"
-            else unregistered_provider_status
-        ),
+        "amazon_visual_suite": feature_status(amazon_visual_suite_provider_enabled),
+        "domestic_main_image": feature_status(domestic_main_image_provider_enabled),
     }
     if task_runner == "tengli":
         features["crossborder_detail"] = feature_status(
@@ -726,9 +715,7 @@ async def materialize_model_pose_asset(
     payload: ModelPoseAssetRequest,
     request: Request,
     workspace: WorkspaceWriteDependency,
-    idempotency_header: Annotated[
-        str | None, Header(alias="Idempotency-Key")
-    ] = None,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> AssetResponse:
     """Materialize only a private catalog original resolved by slug and hash."""
 
@@ -1186,8 +1173,7 @@ def _allows_preserved_amazon_partial_archive(
         or JobStatus(job.status) != JobStatus.PARTIAL
         or job.expected_item_count != AMAZON_EXPECTED_ITEM_COUNT
         or len(items) != job.expected_item_count
-        or job.succeeded_item_count + job.failed_item_count
-        != job.expected_item_count
+        or job.succeeded_item_count + job.failed_item_count != job.expected_item_count
     ):
         return False
 
@@ -1217,9 +1203,7 @@ def _allows_preserved_amazon_partial_archive(
     responses={
         status.HTTP_200_OK: {
             "content": {
-                "application/zip": {
-                    "schema": {"type": "string", "format": "binary"}
-                }
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
             },
             "description": "Complete canonical deliverables archive.",
         }
@@ -1236,6 +1220,7 @@ async def download_job_deliverables(
     if job.type not in {
         JobType.DETAIL_PACK.value,
         JobType.AMAZON_VISUAL_SUITE.value,
+        JobType.DOMESTIC_MAIN_IMAGE.value,
     }:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -1258,10 +1243,7 @@ async def download_job_deliverables(
     preserved_partial_archive = _allows_preserved_amazon_partial_archive(
         job, partial_items
     )
-    if (
-        JobStatus(job.status) != JobStatus.COMPLETED
-        and not preserved_partial_archive
-    ):
+    if JobStatus(job.status) != JobStatus.COMPLETED and not preserved_partial_archive:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "DELIVERABLE_ARCHIVE_NOT_READY",
@@ -1290,9 +1272,9 @@ async def download_job_deliverables(
                 "deliverable_count": len(deliverables),
             },
         )
-    if preserved_partial_archive and {
-        item.id for _, item, _ in deliverables
-    } != {item.id for item in partial_items}:
+    if preserved_partial_archive and {item.id for _, item, _ in deliverables} != {
+        item.id for item in partial_items
+    }:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "DELIVERABLE_ARCHIVE_INCOMPLETE",
@@ -1352,9 +1334,7 @@ async def download_job_deliverables(
         archive.getvalue(),
         media_type="application/zip",
         headers={
-            "Content-Disposition": build_content_disposition(
-                "attachment", archive_name
-            )
+            "Content-Disposition": build_content_disposition("attachment", archive_name)
         },
     )
 
@@ -1796,10 +1776,7 @@ def confirm_plan(
             "计划未通过校验，不能开始生成。",
         )
     current_status = JobStatus(job.status)
-    if (
-        current_status == JobStatus.PROCESSING
-        and plan.confirmed_at is not None
-    ):
+    if current_status == JobStatus.PROCESSING and plan.confirmed_at is not None:
         return job_detail_response(session, job)
     if current_status != JobStatus.AWAITING_CONFIRMATION:
         raise ApiError(
@@ -1815,7 +1792,11 @@ def confirm_plan(
         route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/confirm",
         idempotency_key=key,
         request_hash=canonical_hash(
-            {"job_id": job.id, "expected_revision": payload.expected_revision}
+            {
+                "job_id": job.id,
+                "expected_revision": payload.expected_revision,
+                "approval_text": payload.approval_text,
+            }
         ),
     )
     if replay:
@@ -1850,6 +1831,26 @@ def confirm_plan(
                 "PLAN_INVALID",
                 "The Amazon plan is invalid and cannot be confirmed.",
                 {"reason": exc.code},
+            ) from exc
+    elif job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+        from .aurora_main_image_planner import (
+            AuroraPlanningError,
+            authorize_aurora_plan,
+        )
+        from .aurora_main_image_runtime import AuroraHarnessError
+
+        try:
+            authorize_aurora_plan(
+                plan,
+                job,
+                payload.approval_text or "用户确认六图规划并授权逐张生成",
+            )
+        except (AuroraPlanningError, AuroraHarnessError) as exc:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "AURORA_AUTHORIZATION_FAILED",
+                "六图规划未能通过 Aurora Harness 授权，不能开始生成。",
+                {"reason": getattr(exc, "code", type(exc).__name__)},
             ) from exc
     plan.confirmed_at = utc_now()
     transition_job(job, JobStatus.PROCESSING, stage="generating", progress=20)
@@ -2055,6 +2056,21 @@ _AMAZON_PROVIDER_REQUEST_ENVELOPE = (
     + _AMAZON_PLANNER_REQUESTS
     + _AMAZON_MAX_SUITE_REVIEW_REQUESTS
 )
+_AURORA_INITIAL_IMAGE_REQUESTS = 6
+_AURORA_MAX_REPAIR_IMAGE_REQUESTS = 6
+_AURORA_IDENTITY_PLANNER_REQUESTS = 1
+_AURORA_MAX_PAGE_AUDIT_REQUESTS = 12
+_AURORA_STYLE_AND_SET_AUDIT_REQUESTS = 2
+_AURORA_PLANNER_REQUEST_ENVELOPE = (
+    _AURORA_IDENTITY_PLANNER_REQUESTS
+    + _AURORA_MAX_PAGE_AUDIT_REQUESTS
+    + _AURORA_STYLE_AND_SET_AUDIT_REQUESTS
+)
+_AURORA_PROVIDER_REQUEST_ENVELOPE = (
+    _AURORA_INITIAL_IMAGE_REQUESTS
+    + _AURORA_MAX_REPAIR_IMAGE_REQUESTS
+    + _AURORA_PLANNER_REQUEST_ENVELOPE
+)
 
 
 def _reserve_real_provider_job_if_enabled(
@@ -2091,8 +2107,7 @@ def _reserve_real_provider_job_if_enabled(
                 select(JobPlanRecord.id)
                 .where(
                     JobPlanRecord.job_id == job_id,
-                    JobPlanRecord.validation_status
-                    == PlanValidationStatus.VALID.value,
+                    JobPlanRecord.validation_status == PlanValidationStatus.VALID.value,
                     JobPlanRecord.confirmed_at.is_not(None),
                 )
                 .limit(1)
@@ -2105,13 +2120,21 @@ def _reserve_real_provider_job_if_enabled(
         # images, up to 21 automatic redraws, one planner call, and up to two
         # whole-suite reviews. Reused plans release the unused planner allowance
         # during settlement rather than weakening the production reservation.
-        estimated_cost = (
-            image_cost * 2
-            + settings.tengli_planner_reserve_micros
-            * (_AMAZON_PLANNER_REQUESTS + _AMAZON_MAX_SUITE_REVIEW_REQUESTS)
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * (
+            _AMAZON_PLANNER_REQUESTS + _AMAZON_MAX_SUITE_REVIEW_REQUESTS
         )
         provider_requests = _AMAZON_PROVIDER_REQUEST_ENVELOPE
         group_count = int(planner_required)
+    elif job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+        # Reserve the complete Skill envelope before the identity-planner call:
+        # six initial generations, one repair per page, identity inspection,
+        # one audit per attempt, first-pair style calibration and final set audit.
+        estimated_cost = (
+            image_cost * 2
+            + settings.tengli_planner_reserve_micros * _AURORA_PLANNER_REQUEST_ENVELOPE
+        )
+        provider_requests = _AURORA_PROVIDER_REQUEST_ENVELOPE
+        group_count = _AURORA_PLANNER_REQUEST_ENVELOPE
     elif enable_flag is not None:
         estimated_cost = image_cost
         provider_requests = (
@@ -2144,7 +2167,6 @@ def _reserve_real_provider_job_if_enabled(
     )
 
 
-
 _AMAZON_ITEM_KEYS = (
     "MAIN-01",
     *(f"SECONDARY-{index:02d}" for index in range(1, 7)),
@@ -2166,6 +2188,7 @@ def _job_item_key(job_type: str, ordinal: int) -> str:
     }:
         return f"image-{ordinal + 1:03d}"
     return f"page-{ordinal + 1:03d}"
+
 
 def _job_item_configuration(job_type: str, ordinal: int) -> dict[str, object]:
     if job_type != JobType.AMAZON_VISUAL_SUITE.value:

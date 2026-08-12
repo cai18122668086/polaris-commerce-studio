@@ -374,6 +374,11 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         .order_by(JobPlanRecord.revision.desc())
         .limit(1)
     )
+    plan_payload = plan.payload if plan is not None else None
+    if plan is not None and plan.schema_version == "aurora-main-image-plan-v2":
+        from .aurora_main_image_planner import public_aurora_plan_payload
+
+        plan_payload = public_aurora_plan_payload(plan.payload)
     return JobDetailResponse(
         **base,
         configuration=job.configuration,
@@ -427,7 +432,7 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
                 id=plan.id,
                 revision=plan.revision,
                 schema_version=plan.schema_version,
-                payload=plan.payload,
+                payload=plan_payload or {},
                 validation_status=plan.validation_status,
                 validation_errors=plan.validation_errors,
                 confirmed_at=plan.confirmed_at,
@@ -490,9 +495,9 @@ def get_workspace_job(
     for_update: bool = False,
 ) -> JobRecord:
     statement = select(JobRecord).where(
-            JobRecord.workspace_id == workspace_id,
-            JobRecord.id == job_id,
-        )
+        JobRecord.workspace_id == workspace_id,
+        JobRecord.id == job_id,
+    )
     if for_update:
         statement = statement.with_for_update()
     job = session.scalar(statement)
@@ -534,9 +539,7 @@ def fence_amazon_suite_review_attempts(
     now = utc_now()
     for attempt in attempts:
         attempt.status = (
-            AttemptStatus.CANCELLED.value
-            if cancelled
-            else AttemptStatus.FAILED.value
+            AttemptStatus.CANCELLED.value if cancelled else AttemptStatus.FAILED.value
         )
         # Rotate the token as well as closing the row so a response already in
         # flight cannot retain ownership through a stale in-memory lease.
@@ -660,9 +663,7 @@ def reserve_credits(
         return None
 
     existing = session.scalar(
-        select(CreditReservationRecord).where(
-            CreditReservationRecord.job_id == job.id
-        )
+        select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)
     )
     if existing is not None:
         if existing.status == CreditReservationStatus.ACTIVE.value:
@@ -749,9 +750,7 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
             job_id=job.id,
             entry_type="settle",
             delta_balance_credits=-charged if enforced else 0,
-            delta_reserved_credits=(
-                -reservation.reserved_credits if enforced else 0
-            ),
+            delta_reserved_credits=(-reservation.reserved_credits if enforced else 0),
             balance_after_credits=account.balance_credits,
             reserved_after_credits=account.reserved_credits,
         )
@@ -765,9 +764,7 @@ def release_credits(session: Session, job: JobRecord) -> None:
         return
 
     reservation = session.scalar(
-        select(CreditReservationRecord).where(
-            CreditReservationRecord.job_id == job.id
-        )
+        select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)
     )
     if (
         reservation is None

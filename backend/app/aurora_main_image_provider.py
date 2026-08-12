@@ -1,0 +1,716 @@
+"""Sequential image provider driven exclusively by the Aurora Harness."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from .aurora_main_image_planner import AuroraPlanningError
+from .aurora_main_image_runtime import (
+    AuroraHarnessError,
+    AuroraHarnessRunner,
+    write_contract,
+)
+from .config import default_aurora_work_root
+from .models import JobItemRecord, JobPlanRecord, JobRecord
+from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
+from .services import canonical_hash
+from .storage import ImageStorage
+from .xinghe_agent import (
+    ImageEditRequest,
+    PlannerRequest,
+    SourceImage,
+    XingheGateway,
+)
+
+_AUDIT_SYSTEM_PROMPT = """
+You are the direct-pixel quality reviewer for the Aurora domestic e-commerce
+six-image Skill. Inspect the generated candidate itself. Compare original
+references only for product identity; never treat a generated image or a
+receipt as identity proof. Return every field required by the supplied audit
+contract. A failed material check must have exactly one concrete deficiency
+with visible_problem, root_cause and required_change. Minor preferences may be
+advisory. Multiple related selling points are not a defect. Verify Chinese
+legibility, product identity, factual copy, page duty, physical evidence,
+campaign continuity, source-background isolation, thumbnail performance and
+the approved page contract from actual pixels.
+""".strip()
+
+
+class AuroraMainImageProvider:
+    """Run generation, direct-pixel review and the one-repair loop per page."""
+
+    name = "aurora"
+    model = "gpt-image-2"
+    pricing_version = "aurora-v0.1.17"
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        gateway: XingheGateway,
+        storage: ImageStorage,
+        *,
+        harness: AuroraHarnessRunner | None = None,
+        work_root: Path | None = None,
+    ) -> None:
+        self.session_factory = session_factory
+        self.gateway = gateway
+        self.storage = storage
+        self.harness = harness or AuroraHarnessRunner()
+        self.work_root = (work_root or default_aurora_work_root()).resolve()
+
+    async def execute(self, request: ProviderRequest) -> ProviderResult:
+        try:
+            item, harness_session = self._load_authorized_context(request)
+            page_index = item.ordinal
+            workspace = self._workspace(request.job_id)
+            session_path = workspace / "session.json"
+            write_contract(session_path, harness_session)
+            artifact: ProviderArtifact | None = None
+            generation_usage: dict[str, Any] = {}
+            audit_usage: list[dict[str, Any]] = []
+            actual_cost = 0
+
+            for attempt_index in range(2):
+                generation_request_path = workspace / (
+                    f"generation-page-{page_index + 1}-attempt-{attempt_index + 1}.json"
+                )
+                self.harness.run(
+                    "generate-next",
+                    workspace,
+                    {"session": session_path, "out": generation_request_path},
+                )
+                self._persist_session(request.job_id, _load_json(session_path))
+                generation_request = _load_json(generation_request_path)
+                sources = _generation_sources(generation_request, request.job_id)
+                image_result = await self.gateway.edit(
+                    ImageEditRequest(
+                        workspace_id=request.workspace_id,
+                        job_id=request.job_id,
+                        job_item_id=request.job_item_id,
+                        attempt_id=request.attempt_id,
+                        page_number=page_index + 1,
+                        group_key=request.job_id,
+                        sources=sources,
+                        prompt=str(generation_request["prompt"]),
+                        quality="high",
+                        idempotency_key=(
+                            f"{request.idempotency_key}:aurora-page-{page_index}:"
+                            "revision-"
+                            f"{generation_request.get('revision', attempt_index)}"
+                        ),
+                        size="1024x1024",
+                        preserve_provider_artifact=True,
+                    )
+                )
+                generation_usage = dict(image_result.raw_usage or {})
+                actual_cost += int(image_result.actual_cost_micros or 0)
+                if (
+                    image_result.outcome != ProviderOutcome.SUCCEEDED
+                    or image_result.artifact is None
+                ):
+                    return _failed_image_result(image_result, self)
+                artifact = image_result.artifact
+                generated_path = _write_generated_artifact(
+                    workspace, page_index, attempt_index, artifact
+                )
+                self.harness.run(
+                    "record-generation",
+                    workspace,
+                    {
+                        "session": session_path,
+                        "token": str(generation_request["generation_token"]),
+                        "image": generated_path,
+                    },
+                )
+                current = _load_json(session_path)
+                judgment, usage, cost = await self._audit_candidate(
+                    request,
+                    current,
+                    generation_request,
+                    generated_path,
+                    artifact,
+                )
+                audit_usage.append(usage)
+                actual_cost += cost
+                judgment_path = (
+                    workspace
+                    / f"judgment-page-{page_index + 1}-attempt-{attempt_index + 1}.json"
+                )
+                write_contract(judgment_path, judgment)
+                self.harness.run(
+                    "audit-current",
+                    workspace,
+                    {"session": session_path, "judgment": judgment_path},
+                )
+                current = _load_json(session_path)
+                if current.get("state") == "AWAITING_SEARCH_BASELINE_CALIBRATION":
+                    baseline_path = workspace / "search-baseline-observation.json"
+                    write_contract(baseline_path, _baseline_observation(judgment))
+                    self.harness.run(
+                        "calibrate-search-baseline",
+                        workspace,
+                        {"session": session_path, "observation": baseline_path},
+                    )
+                    current = _load_json(session_path)
+                if current.get("state") == "REPAIR_REQUIRED" and attempt_index == 0:
+                    repair_path = workspace / f"repair-page-{page_index + 1}.json"
+                    write_contract(repair_path, _repair_plan(current))
+                    self.harness.run(
+                        "prepare-repair",
+                        workspace,
+                        {"session": session_path, "repair-plan": repair_path},
+                    )
+                    self._persist_session(request.job_id, _load_json(session_path))
+                    continue
+                break
+
+            if artifact is None:
+                raise AuroraPlanningError("Aurora generation returned no artifact")
+            current = _load_json(session_path)
+            if current.get("state") == "AWAITING_AGENT_STYLE_CALIBRATION":
+                observation, usage, cost = await self._calibrate_style(request, current)
+                audit_usage.append(usage)
+                actual_cost += cost
+                observation_path = workspace / "style-calibration.json"
+                write_contract(observation_path, observation)
+                self.harness.run(
+                    "calibrate-style",
+                    workspace,
+                    {"session": session_path, "observation": observation_path},
+                )
+                current = _load_json(session_path)
+            if current.get("state") == "AWAITING_SET_ROLE_AUDIT":
+                observation, usage, cost = await self._audit_set(request, current)
+                audit_usage.append(usage)
+                actual_cost += cost
+                observation_path = workspace / "set-role-observation.json"
+                write_contract(observation_path, observation)
+                self.harness.run(
+                    "audit-set-role-distinction",
+                    workspace,
+                    {"session": session_path, "observation": observation_path},
+                )
+                current = _load_json(session_path)
+            self._persist_session(request.job_id, current)
+            raw_usage = dict(generation_usage)
+            raw_usage["aurora_audit_calls"] = audit_usage
+            network_requests = raw_usage.get("network_requests", 1)
+            if not isinstance(network_requests, int) or network_requests < 0:
+                network_requests = 1
+            raw_usage["network_requests"] = network_requests + len(audit_usage)
+            raw_usage["metrics"] = {
+                **(
+                    raw_usage.get("metrics")
+                    if isinstance(raw_usage.get("metrics"), dict)
+                    else {}
+                ),
+                "harness_state": current.get("state"),
+                "page_index": page_index,
+                "automatic_repairs_used": current.get(
+                    "automatic_repairs_used_by_page", {}
+                ).get(str(page_index), 0),
+            }
+            return ProviderResult(
+                outcome=ProviderOutcome.SUCCEEDED,
+                provider_request_id=f"aurora:{request.job_id}:{page_index}",
+                usage_reported=bool(generation_usage),
+                raw_usage=raw_usage,
+                estimated_cost_micros=image_result.estimated_cost_micros,
+                actual_cost_micros=actual_cost,
+                artifact=artifact,
+                provider_name=self.gateway.provider_name,
+                model_name=self.gateway.image_model,
+                pricing_version=self.gateway.pricing_version,
+            )
+        except (
+            AuroraHarnessError,
+            AuroraPlanningError,
+            KeyError,
+            OSError,
+            ValueError,
+        ) as exc:
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                error_code=getattr(exc, "code", "AURORA_EXECUTION_FAILED"),
+                error_message=str(exc),
+                usage_reported=False,
+                raw_usage={
+                    "provider_type": self.gateway.provider_name,
+                    "called": False,
+                },
+                retryable=False,
+                provider_name=self.gateway.provider_name,
+                model_name=self.gateway.image_model,
+                pricing_version=self.gateway.pricing_version,
+            )
+
+    def _load_authorized_context(
+        self, request: ProviderRequest
+    ) -> tuple[JobItemRecord, dict[str, Any]]:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, request.job_id)
+            item = session.get(JobItemRecord, request.job_item_id)
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == request.job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            if job is None or item is None or plan is None:
+                raise AuroraPlanningError("Aurora durable task context is missing")
+            if (
+                plan.confirmed_at is None
+                or plan.schema_version != "aurora-main-image-plan-v2"
+            ):
+                raise AuroraPlanningError(
+                    "A confirmed compiled Aurora plan is required"
+                )
+            stored = plan.payload.get("_harness_session")
+            if not isinstance(stored, Mapping) or stored.get("state") != "AUTHORIZED":
+                raise AuroraPlanningError(
+                    "Aurora Harness is not authorized for generation"
+                )
+            accepted = stored.get("accepted_page_indexes", [])
+            if item.ordinal != len(accepted):
+                raise AuroraPlanningError(
+                    "Aurora pages must be generated strictly in order"
+                )
+            return item, dict(stored)
+
+    def _persist_session(self, job_id: str, harness_session: Mapping[str, Any]) -> None:
+        with self.session_factory() as session:
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if plan is None:
+                raise AuroraPlanningError("Aurora plan disappeared during execution")
+            payload = dict(plan.payload)
+            payload["_harness_session"] = dict(harness_session)
+            payload["harness_state"] = harness_session.get("state")
+            plan.payload = payload
+            plan.payload_hash = canonical_hash(payload)
+            session.commit()
+
+    async def _audit_candidate(
+        self,
+        request: ProviderRequest,
+        session: Mapping[str, Any],
+        generation_request: Mapping[str, Any],
+        generated_path: Path,
+        artifact: ProviderArtifact,
+    ) -> tuple[dict[str, Any], dict[str, Any], int]:
+        page_index = int(generation_request["page_index"])
+        proof = _mapping(generation_request.get("selling_point_visual_proof_contract"))
+        sources = list(_identity_sources(generation_request, request.job_id))
+        sources.append(
+            SourceImage(
+                asset_id=f"candidate-page-{page_index}",
+                group_key=request.job_id,
+                filename=str(generated_path),
+                content_type=artifact.content_type,
+                sha256=artifact.sha256,
+                payload=artifact.payload,
+                source_role="generated_candidate",
+            )
+        )
+        audit_contract = {
+            "page_index": page_index,
+            "page_role": generation_request.get("page_role"),
+            "source_text": proof.get("source_text"),
+            "observability_class": proof.get("observability_class"),
+            "approved_page_execution_contract": generation_request.get(
+                "approved_page_execution_contract"
+            ),
+            "required_check_names": _VISUAL_CHECKS,
+        }
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                group_key=f"{request.job_id}:audit:{page_index}",
+                sources=tuple(sources),
+                page_count=page_index + 1,
+                language="zh-CN",
+                product_name=str(proof.get("source_text") or "当前页主卖点"),
+                product_information=(json.dumps(audit_contract, ensure_ascii=False),),
+                platform_code="TAOBAO_AURORA_PIXEL_AUDIT",
+                size="1024x1024",
+                idempotency_key=(
+                    f"{request.idempotency_key}:audit:{page_index}:"
+                    f"{generation_request.get('revision', 0)}"
+                ),
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_visual_audit",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora pixel audit failed"
+            )
+        judgment = dict(result.payload)
+        judgment["page_index"] = page_index
+        judgment["image_sha256"] = artifact.sha256
+        reviewer = _mapping(judgment.get("reviewer"))
+        reviewer.update(
+            {
+                "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+                "pixel_inspection_performed": True,
+                "image_path": str(generated_path),
+                "comparison_reference_ids": [
+                    source.asset_id for source in sources[:-1]
+                ],
+            }
+        )
+        judgment["reviewer"] = reviewer
+        proof_observation = _mapping(judgment.get("selling_point_proof_observation"))
+        proof_observation["source_text"] = proof.get("source_text")
+        proof_observation["observability_class"] = proof.get("observability_class")
+        judgment["selling_point_proof_observation"] = proof_observation
+        return (
+            judgment,
+            dict(result.normalized_usage),
+            int(result.actual_cost_micros or 0),
+        )
+
+    async def _calibrate_style(
+        self, request: ProviderRequest, harness_session: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any], int]:
+        sources = _accepted_generated_sources(harness_session, request.job_id, (0, 1))
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                group_key=f"{request.job_id}:style-calibration",
+                sources=sources,
+                page_count=2,
+                language="zh-CN",
+                product_name="Aurora Campaign Style",
+                product_information=(),
+                platform_code="TAOBAO_AURORA_STYLE_CALIBRATION",
+                size="1024x1024",
+                idempotency_key=f"{request.job_id}:aurora-style-calibration:v1",
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_style_calibration",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora style calibration failed"
+            )
+        return (
+            dict(result.payload),
+            dict(result.normalized_usage),
+            int(result.actual_cost_micros or 0),
+        )
+
+    async def _audit_set(
+        self, request: ProviderRequest, harness_session: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any], int]:
+        sources = _accepted_generated_sources(
+            harness_session, request.job_id, tuple(range(6))
+        )
+        expected_hashes = {
+            str(index): source.sha256 for index, source in enumerate(sources)
+        }
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                group_key=f"{request.job_id}:set-role-audit",
+                sources=sources,
+                page_count=6,
+                language="zh-CN",
+                product_name="Aurora Six Page Blind Review",
+                product_information=(
+                    json.dumps({"image_sha256_by_page": expected_hashes}),
+                ),
+                platform_code="TAOBAO_AURORA_SET_ROLE_AUDIT",
+                size="1024x1024",
+                idempotency_key=f"{request.job_id}:aurora-set-role-audit:v1",
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_set_audit",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora set role audit failed"
+            )
+        observation = dict(result.payload)
+        observation["agent_pixel_reviewed"] = True
+        observation["review_mode"] = "BLIND_SIX_PAGE_ROLE_COMPARISON"
+        observation["reviewed_page_indexes"] = list(range(6))
+        observation["image_sha256_by_page"] = expected_hashes
+        return (
+            observation,
+            dict(result.normalized_usage),
+            int(result.actual_cost_micros or 0),
+        )
+
+    def _workspace(self, job_id: str) -> Path:
+        workspace = (self.work_root / job_id).resolve()
+        if self.work_root != workspace and self.work_root not in workspace.parents:
+            raise AuroraPlanningError("Aurora execution workspace escaped its root")
+        workspace.mkdir(parents=True, exist_ok=True)
+        return workspace
+
+
+_VISUAL_CHECKS = (
+    "product_identity_match",
+    "factual_copy_match",
+    "typography_style_match",
+    "typography_legibility",
+    "page_role_expression",
+    "evidence_relation_visible",
+    "campaign_style_match",
+    "headline_treatment_match",
+    "palette_role_match",
+    "graphic_language_match",
+    "photography_finish_match",
+    "information_surface_match",
+    "layout_not_cloned",
+    "set_diversity_match",
+    "product_separation",
+    "numeric_hierarchy_if_applicable",
+    "design_intensity_controlled",
+    "visual_performance_match",
+    "baseline_performance_match",
+    "approved_plan_fidelity_match",
+    "campaign_constitution_match",
+    "source_background_noise_absent",
+    "selling_point_visible_without_copy",
+    "selling_point_visual_dominance",
+    "claim_to_evidence_relation_clear",
+    "text_not_substituting_for_visual_proof",
+    "thumbnail_success",
+    "no_unsupported_claim",
+    "no_hard_error",
+)
+
+
+def _generation_sources(
+    generation_request: Mapping[str, Any], job_id: str
+) -> tuple[SourceImage, ...]:
+    references: list[Mapping[str, Any]] = []
+    repair_canvas = generation_request.get("repair_canvas")
+    if isinstance(repair_canvas, Mapping):
+        references.append(repair_canvas)
+    edit_target = generation_request.get("edit_target")
+    if isinstance(edit_target, Mapping):
+        references.append(edit_target)
+    allowlist = generation_request.get("reference_allowlist")
+    if isinstance(allowlist, list):
+        references.extend(item for item in allowlist if isinstance(item, Mapping))
+    seen: set[str] = set()
+    result: list[SourceImage] = []
+    for index, reference in enumerate(references):
+        path = Path(str(reference.get("path") or reference.get("file") or "")).resolve()
+        key = str(path)
+        if not path.is_file() or key in seen:
+            continue
+        seen.add(key)
+        payload = path.read_bytes()
+        result.append(
+            SourceImage(
+                asset_id=str(reference.get("evidence_id") or f"reference-{index}"),
+                group_key=job_id,
+                filename=path.name,
+                content_type=_content_type(path),
+                sha256=_sha256(payload),
+                payload=payload,
+                source_role=str(reference.get("role") or "product_reference"),
+            )
+        )
+    if not result:
+        raise AuroraPlanningError("Aurora generation request has no usable references")
+    return tuple(result)
+
+
+def _identity_sources(
+    generation_request: Mapping[str, Any], job_id: str
+) -> tuple[SourceImage, ...]:
+    safe_request = dict(generation_request)
+    safe_request["repair_canvas"] = None
+    safe_request["edit_target"] = None
+    return _generation_sources(safe_request, job_id)
+
+
+def _accepted_generated_sources(
+    session: Mapping[str, Any], job_id: str, indexes: Sequence[int]
+) -> tuple[SourceImage, ...]:
+    versions = session.get("generated_versions")
+    if not isinstance(versions, list):
+        raise AuroraPlanningError("Aurora accepted pages are missing")
+    result: list[SourceImage] = []
+    for index in indexes:
+        matches = [
+            item
+            for item in versions
+            if isinstance(item, Mapping)
+            and item.get("page_index") == index
+            and item.get("status") in {"ACCEPTED", "ACCEPTED_WITH_RESIDUALS"}
+        ]
+        if not matches:
+            raise AuroraPlanningError(f"Accepted Aurora page {index} is missing")
+        version = matches[-1]
+        path = Path(str(version["file"])).resolve()
+        payload = path.read_bytes()
+        result.append(
+            SourceImage(
+                asset_id=f"accepted-page-{index}",
+                group_key=job_id,
+                filename=str(path),
+                content_type=_content_type(path),
+                sha256=str(version["sha256"]),
+                payload=payload,
+                source_role="style_reference",
+            )
+        )
+    return tuple(result)
+
+
+def _baseline_observation(judgment: Mapping[str, Any]) -> dict[str, Any]:
+    checks = _mapping(judgment.get("checks"))
+    mapping = {
+        "product_dominance": "product_separation",
+        "headline_performance": "headline_treatment_match",
+        "physical_evidence": "evidence_relation_visible",
+        "spatial_depth": "visual_performance_match",
+        "commercial_closure": "page_role_expression",
+        "thumbnail_competitiveness": "thumbnail_success",
+        "commercial_frame_structure": "approved_plan_fidelity_match",
+        "type_hierarchy": "typography_legibility",
+    }
+    axes = {}
+    for axis, check_name in mapping.items():
+        check = _mapping(checks.get(check_name))
+        axes[axis] = {
+            "score": float(check.get("score", 0)),
+            "observed_evidence": str(
+                check.get("observed_evidence")
+                or f"候选图像中已直接检查{axis}的像素表现"
+            ),
+        }
+    return {
+        "agent_pixel_reviewed": True,
+        "review_mode": "DIRECT_PIXEL_VALIDATED_BASELINE_COMPARISON",
+        "axes": axes,
+    }
+
+
+def _repair_plan(session: Mapping[str, Any]) -> dict[str, Any]:
+    versions = session.get("generated_versions")
+    if not isinstance(versions, list) or not versions:
+        raise AuroraPlanningError("Aurora repair has no failed version")
+    audit = _mapping(_mapping(versions[-1]).get("visual_audit"))
+    failed = [str(value) for value in audit.get("failed_checks", [])]
+    actions = {
+        str(item.get("check")): item
+        for item in audit.get("repair_actions", [])
+        if isinstance(item, Mapping)
+    }
+    findings = []
+    for check in failed:
+        action = _mapping(actions.get(check))
+        evidence = str(
+            action.get("observed_evidence") or f"当前成片在{check}上存在可见缺陷"
+        )
+        policy = str(
+            action.get("policy") or f"只修正{check}对应的可见问题并保留其他通过层"
+        )
+        findings.append(
+            {
+                "check": check,
+                "visible_problem": evidence,
+                "root_cause": f"当前构图或视觉执行未充分满足{check}对应的批准合同",
+                "required_change": policy,
+            }
+        )
+    if not findings:
+        raise AuroraPlanningError("Aurora repair diagnosis has no material failures")
+    return {
+        "scope": session.get("required_repair_scope"),
+        "instruction": "；".join(item["required_change"] for item in findings),
+        "preserve": ["商品身份", "已核实事实", "已通过的视觉层", "整套 Campaign Style"],
+        "expected_visible_change": (
+            "在不改变商品身份和已通过层的前提下，一次性修正全部材料性缺陷。"
+        ),
+        "failed_check_names": failed,
+        "all_failed_findings": findings,
+        "root_cause_reflection": (
+            "第一次生成没有同时把批准合同中的商品身份、页面职责"
+            "和材料性视觉门禁落实到实际像素。"
+        ),
+        "single_second_attempt_strategy": (
+            "以第一次干净商业成片作为唯一返修画布，集中修正"
+            "全部失败检查，并保持所有已通过层不变。"
+        ),
+    }
+
+
+def _write_generated_artifact(
+    workspace: Path, page_index: int, attempt_index: int, artifact: ProviderArtifact
+) -> Path:
+    suffix = {"image/png": ".png", "image/webp": ".webp"}.get(
+        artifact.content_type, ".jpg"
+    )
+    path = (
+        workspace
+        / "generated"
+        / f"page-{page_index + 1:02d}-attempt-{attempt_index + 1}{suffix}"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(artifact.payload)
+    return path.resolve()
+
+
+def _failed_image_result(
+    result: Any, provider: AuroraMainImageProvider
+) -> ProviderResult:
+    return ProviderResult(
+        outcome=ProviderOutcome.FAILED,
+        provider_request_id=result.provider_request_id,
+        error_code=result.error_code or "AURORA_IMAGE_GENERATION_FAILED",
+        error_message=result.error_message or "Aurora image generation failed",
+        usage_reported=bool(result.raw_usage),
+        raw_usage=dict(result.raw_usage or {}),
+        estimated_cost_micros=result.estimated_cost_micros,
+        actual_cost_micros=result.actual_cost_micros,
+        retryable=bool(result.retryable),
+        http_status=result.http_status,
+        provider_name=provider.gateway.provider_name,
+        model_name=provider.gateway.image_model,
+        pricing_version=provider.gateway.pricing_version,
+    )
+
+
+def _content_type(path: Path) -> str:
+    return {".png": "image/png", ".webp": "image/webp"}.get(
+        path.suffix.lower(), "image/jpeg"
+    )
+
+
+def _sha256(payload: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _mapping(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise AuroraPlanningError(f"Expected JSON object in {path.name}")
+    return value

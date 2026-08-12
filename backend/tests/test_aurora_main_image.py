@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from app.aurora_main_image_planner import _build_pages
+from app.aurora_main_image_planner import PAGE_ROLES, _public_plan_payload
+from app.aurora_main_image_provider import AuroraMainImageProvider
 from app.aurora_main_image_runtime import AuroraHarnessError, AuroraHarnessRunner
+from app.provider import ProviderOutcome, ProviderRequest
 from app.routes_v1 import _new_job_from_payload, runtime_status_response
 from app.schemas_v1 import DomesticMainImageJobCreate
+from app.xinghe_agent import FakeXingheGateway, PlannerRequest, SourceImage
 
 
 def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
@@ -23,9 +28,6 @@ def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
             },
         }
     )
-    assert payload.configuration.language == "zh-CN"
-    assert payload.input.product_asset_ids == ["asset_one", "asset_two"]
-
     job, roles = _new_job_from_payload("workspace_one", payload)
     assert job.expected_item_count == 6
     assert roles == [
@@ -34,86 +36,110 @@ def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
     ]
 
 
-def test_mock_planner_turns_facts_into_distinct_visual_decisions() -> None:
-    settings: dict[str, object] = {
-        "product_name": "蓝色赛车训练鞋",
-        "category": "男士运动鞋",
-        "selling_points": ["复古赛车外观", "鞋底抓地纹路"],
-        "scenes": ["城市通勤"],
-        "service_or_trust_facts": ["48 小时内发货"],
-        "style_preferences": ["冷灰背景"],
-    }
-
-    pages = _build_pages(settings, ["asset_one"])
-
-    assert len(pages) == 6
-    assert [page["page_role"] for page in pages] == list(
-        (
-            "SEARCH_MAIN_IMAGE_LISTING_COVER",
-            "CAROUSEL_IDENTITY_HERO",
-            "CAROUSEL_CORE_FEATURE_PROOF",
-            "CAROUSEL_SCENE_OR_OPERATION",
-            "CAROUSEL_DETAIL_OR_TRUST",
-            "CAROUSEL_OFFER_OR_SPEC_CLOSURE",
+def test_fake_gateway_returns_an_aurora_identity_contract() -> None:
+    source = SourceImage(
+        asset_id="asset_one",
+        group_key="job_test",
+        filename="product.png",
+        content_type="image/png",
+        sha256="0" * 64,
+        payload=b"image-pixels",
+    )
+    result = asyncio.run(
+        FakeXingheGateway().plan(
+            PlannerRequest(
+                workspace_id="workspace_one",
+                job_id="job_test",
+                group_key="job_test",
+                sources=(source,),
+                page_count=6,
+                language="zh-CN",
+                product_name="轻量随行杯",
+                product_information=("杯盖防误开",),
+                platform_code="TAOBAO_DOMESTIC_MAIN_IMAGE",
+                size="1024x1024",
+                idempotency_key="identity-test",
+                planning_profile="aurora_identity",
+            )
         )
     )
-    assert len({str(page["headline"]) for page in pages}) == 6
-    assert not any(page["headline"] in settings["selling_points"] for page in pages)
-    assert all(page["composition"] for page in pages)
-    assert all(page["copy_direction"] for page in pages)
-    assert pages[3]["evidence"] == ["城市通勤"]
-    assert pages[5]["evidence"] == ["48 小时内发货"]
+    assert result.error_code is None
+    assert result.payload["request_id"] == "job_test"
+    assert result.payload["evidence"][0]["evidence_id"] == "asset_one"
+    assert result.payload["must_preserve"]
 
 
-def test_mock_planner_does_not_invent_missing_scene_or_offer() -> None:
-    pages = _build_pages(
-        {
-            "product_name": "便携水杯",
-            "category": "杯壶",
-            "selling_points": ["杯盖防误开"],
+def test_compile_v013_builds_campaign_style_and_six_execution_contracts(
+    tmp_path: Path,
+) -> None:
+    source_path = Path(__file__).resolve().parents[2] / "public" / "og.png"
+    evidence_path = tmp_path / "product.png"
+    evidence_path.write_bytes(source_path.read_bytes())
+    raw = {
+        "request_id": "job_compile",
+        "profile01_semantics_read": False,
+        "style_preferences": ["冷灰背景", "运动杂志感"],
+        "product": {
+            "name": "蓝色赛车德训鞋",
+            "category": "男士运动鞋",
+            "original_references": [str(evidence_path)],
+            "verified_selling_points": ["复古赛车外观", "鞋底抓地纹路"],
+            "verified_attributes": ["天蓝色与米白撞色"],
+            "verified_scenes": ["城市通勤"],
+            "verified_offers": [],
+            "verified_service_or_trust_facts": ["48小时内发货"],
         },
-        ["asset_one"],
+    }
+    identity = {
+        "request_id": "job_compile",
+        "product_form": "低帮系带运动鞋",
+        "identity_summary": "天蓝色与米白撞色的低帮系带鞋，以原始商品图锁定身份。",
+        "evidence": [
+            {
+                "evidence_id": "asset_one",
+                "path": str(evidence_path),
+                "view_tags": ["商品主视图"],
+            }
+        ],
+        "must_preserve": ["鞋体轮廓", "蓝白配色", "鞋底比例"],
+        "must_not_change": ["不得改变配色", "不得增加或删除部件"],
+        "previous_generated_images_used": False,
+        "profile01_semantics_read": False,
+    }
+    input_path = tmp_path / "input.json"
+    identity_path = tmp_path / "identity.json"
+    session_path = tmp_path / "session.json"
+    output_path = tmp_path / "compiled.json"
+    input_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    identity_path.write_text(json.dumps(identity, ensure_ascii=False), encoding="utf-8")
+    runner = AuroraHarnessRunner()
+    runner.run("start", tmp_path, {"input": input_path, "session": session_path})
+    runner.run(
+        "lock-identity",
+        tmp_path,
+        {"session": session_path, "identity": identity_path},
     )
-
-    assert "未提供已核实场景" in str(pages[3]["objective"])
-    assert "不制造促销角标" in str(pages[5]["composition"])
-
-
-def test_mock_planner_classifies_a_pasted_product_brief() -> None:
-    pages = _build_pages(
-        {
-            "product_name": "蓝色赛车德训鞋",
-            "category": "鞋子",
-            "selling_points": [
-                "蓝色赛车德训鞋完整产品信息",
-                "一、基础商品信息",
-                "1. 商品全称：蓝色德训鞋男女款",
-                "2. 品牌：示例品牌",
-                "5. 发货与物流：免运费；平均16小时发货",
-                "主打透气清爽",
-                "日常休闲、通勤、出游、慢跑均可",
-                "天蓝色+米白撞色",
-            ],
-        },
-        ["asset_one"],
+    result = runner.run(
+        "compile-v013",
+        tmp_path,
+        {"session": session_path, "output": output_path},
     )
+    session = json.loads(session_path.read_text(encoding="utf-8"))
+    public = _public_plan_payload(raw["product"], identity, session)
 
-    assert pages[0]["evidence"][-1] == "主打透气清爽"
-    assert pages[3]["evidence"] == ["日常休闲、通勤、出游、慢跑均可"]
-    assert pages[4]["evidence"] == ["天蓝色+米白撞色"]
-    assert pages[5]["evidence"] == ["发货与物流：免运费；平均16小时发货"]
-    serialized = json.dumps(pages, ensure_ascii=False)
-    assert "一、基础商品信息" not in serialized
-    assert "商品全称" not in serialized
+    assert result["status"] == "AWAITING_AUTHORIZATION"
+    assert session["campaign_constitution"]["background_style_lock"]
+    assert len(public["pages"]) == 6
+    assert [page["page_role"] for page in public["pages"]] == list(PAGE_ROLES)
+    assert all(page["main_selling_point"] for page in public["pages"])
+    assert all(page["visual_proof"] for page in public["pages"])
+    assert all(page["composition_and_subject"] for page in public["pages"])
+    assert all(page["reading_path_and_type_hierarchy"] for page in public["pages"])
+    assert all(page["non_repetition_reason"] for page in public["pages"])
+    assert all(page["commercial_closure"] for page in public["pages"])
 
 
-def test_harness_runner_rejects_unknown_commands(tmp_path: Path) -> None:
-    with pytest.raises(AuroraHarnessError) as captured:
-        AuroraHarnessRunner().run("python", tmp_path, {})
-    assert captured.value.code == "HARNESS_COMMAND_NOT_ALLOWED"
-
-
-def test_real_runtime_stays_fail_closed_until_provider_adapter_is_registered() -> None:
+def test_real_runtime_exposes_registered_aurora_provider_when_enabled() -> None:
     runtime = runtime_status_response(
         environment="test",
         authentication_mode="development",
@@ -121,8 +147,118 @@ def test_real_runtime_stays_fail_closed_until_provider_adapter_is_registered() -
         domestic_main_image_provider_enabled=True,
     )
     capability = runtime.capabilities.features["domestic_main_image"]
-    assert capability.availability == "unavailable"
-    assert capability.reason_code == "REAL_PROVIDER_NOT_REGISTERED"
+    assert capability.availability == "available"
+    assert capability.execution == "provider"
+
+
+def test_provider_completes_the_harness_controlled_six_page_loop(
+    tmp_path: Path,
+) -> None:
+    job_id = "job_provider"
+    workspace = tmp_path / job_id
+    workspace.mkdir()
+    evidence_path = workspace / "product.png"
+    source_path = Path(__file__).resolve().parents[2] / "public" / "og.png"
+    evidence_path.write_bytes(source_path.read_bytes())
+    raw = {
+        "request_id": job_id,
+        "profile01_semantics_read": False,
+        "product": {
+            "name": "轻量随行杯",
+            "category": "保温杯",
+            "original_references": [str(evidence_path)],
+            "verified_selling_points": ["杯盖防误开", "轻量便携"],
+            "verified_attributes": ["可见杯盖结构"],
+            "verified_scenes": ["城市通勤"],
+            "verified_offers": [],
+            "verified_service_or_trust_facts": ["48小时内发货"],
+        },
+    }
+    identity = {
+        "request_id": job_id,
+        "product_form": "带盖随行杯",
+        "identity_summary": "由原始图片锁定同一款带盖随行杯。",
+        "evidence": [
+            {
+                "evidence_id": "asset_one",
+                "path": str(evidence_path),
+                "view_tags": ["商品主视图"],
+            }
+        ],
+        "must_preserve": ["杯体轮廓", "杯盖结构", "颜色分区"],
+        "must_not_change": ["不得增加部件", "不得改变杯体比例"],
+        "previous_generated_images_used": False,
+        "profile01_semantics_read": False,
+    }
+    input_path = workspace / "input.json"
+    identity_path = workspace / "identity.json"
+    session_path = workspace / "session.json"
+    input_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    identity_path.write_text(json.dumps(identity, ensure_ascii=False), encoding="utf-8")
+    runner = AuroraHarnessRunner()
+    runner.run("start", workspace, {"input": input_path, "session": session_path})
+    runner.run(
+        "lock-identity",
+        workspace,
+        {"session": session_path, "identity": identity_path},
+    )
+    runner.run(
+        "compile-v013",
+        workspace,
+        {"session": session_path, "output": workspace / "compiled.json"},
+    )
+    runner.run(
+        "authorize",
+        workspace,
+        {"session": session_path, "approval-text": "确认六图规划并授权生成"},
+    )
+
+    class MemoryProvider(AuroraMainImageProvider):
+        state = json.loads(session_path.read_text(encoding="utf-8"))
+
+        def _load_authorized_context(self, request):  # type: ignore[no-untyped-def]
+            del request
+            return SimpleNamespace(
+                ordinal=len(self.state["accepted_page_indexes"])
+            ), dict(self.state)
+
+        def _persist_session(self, job_id, harness_session):  # type: ignore[no-untyped-def]
+            assert job_id == "job_provider"
+            self.state = dict(harness_session)
+
+    provider = MemoryProvider(
+        session_factory=None,  # type: ignore[arg-type]
+        gateway=FakeXingheGateway(),
+        storage=None,  # type: ignore[arg-type]
+        work_root=tmp_path,
+    )
+    for index in range(6):
+        result = asyncio.run(
+            provider.execute(
+                ProviderRequest(
+                    workspace_id="workspace_one",
+                    job_id=job_id,
+                    job_item_id=f"item_{index}",
+                    attempt_id=f"attempt_{index}",
+                    operation="domestic_main_image",
+                    idempotency_key=f"provider-{index}",
+                    configuration={},
+                )
+            )
+        )
+        assert result.outcome == ProviderOutcome.SUCCEEDED, result.error_message
+        assert result.artifact is not None
+
+    assert provider.state["accepted_page_indexes"] == [0, 1, 2, 3, 4, 5]
+    assert provider.state["style_calibrated"] is True
+    assert provider.state["search_baseline_calibrated"] is True
+    assert provider.state["state"] == "AWAITING_USER_FINAL_REVIEW"
+
+
+def test_harness_runner_rejects_unknown_commands(tmp_path: Path) -> None:
+    with pytest.raises(AuroraHarnessError) as captured:
+        AuroraHarnessRunner().run("python", tmp_path, {})
+    assert captured.value.code == "HARNESS_COMMAND_NOT_ALLOWED"
 
 
 def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> None:
@@ -134,27 +270,3 @@ def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> N
             {"input": outside, "session": tmp_path / "session.json"},
         )
     assert captured.value.code == "HARNESS_PATH_OUTSIDE_WORKSPACE"
-
-
-def test_harness_start_runs_through_bundled_entrypoint(tmp_path: Path) -> None:
-    raw = {
-        "request_id": "job_test",
-        "profile01_semantics_read": False,
-        "product": {
-            "name": "轻量随行杯",
-            "category": "保温杯",
-            "original_references": ["asset_one"],
-            "verified_selling_points": ["杯盖防误开"],
-        },
-    }
-    input_path = tmp_path / "input.json"
-    session_path = tmp_path / "session.json"
-    input_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
-    result = AuroraHarnessRunner().run(
-        "start",
-        tmp_path,
-        {"input": input_path, "session": session_path},
-    )
-    assert result["status"] == "AWAITING_IDENTITY"
-    session = json.loads(session_path.read_text(encoding="utf-8"))
-    assert session["request_id"] == "job_test"

@@ -577,9 +577,12 @@ class ExecutionCoordinator:
             if current != JobStatus.PROCESSING:
                 return current
 
+        claim_width = (
+            1 if self._is_domestic_main_image_job(job_id) else self.max_concurrency
+        )
         while True:
             leases: list[AttemptLease] = []
-            for _ in range(self.max_concurrency):
+            for _ in range(claim_width):
                 lease = self.claim_next_item(job_id)
                 if lease is None:
                     break
@@ -1767,12 +1770,14 @@ def build_fake_coordinator(
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
     domestic_main_image_provider_enabled: bool = False,
+    aurora_work_root: Path | None = None,
 ) -> ExecutionCoordinator:
     from .amazon_visual_suite_provider import (
         AMAZON_VISUAL_SUITE_SKILL_ID,
         AmazonVisualSuiteProvider,
     )
     from .aurora_main_image_planner import AuroraMainImagePlanner
+    from .aurora_main_image_provider import AuroraMainImageProvider
     from .creative_image_provider import CreativeImageProvider
     from .domestic_detail_provider import DomesticDetailProvider
     from .model_pose_transfer_provider import ModelPoseTransferProvider
@@ -1904,6 +1909,14 @@ def build_fake_coordinator(
             skill_root=default_masked_skill_root(),
         )
     manifest_validator = BundledSkillManifestValidator()
+    if storage is None:
+        raise ValueError("Aurora main-image workflow requires image storage.")
+    aurora_provider: Provider = AuroraMainImageProvider(
+        session_factory,
+        gateway,
+        storage,
+        work_root=aurora_work_root,
+    )
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
             JobType.PRODUCT_IMAGE.value: default_provider,
@@ -1914,7 +1927,7 @@ def build_fake_coordinator(
                 default_provider,
                 manifest_validator=manifest_validator,
             ),
-            JobType.DOMESTIC_MAIN_IMAGE.value: default_provider,
+            JobType.DOMESTIC_MAIN_IMAGE.value: aurora_provider,
         }
     else:
 
@@ -1984,7 +1997,11 @@ def build_fake_coordinator(
                 ),
                 manifest_validator=manifest_validator,
             ),
-            JobType.DOMESTIC_MAIN_IMAGE.value: UnavailableProvider(),
+            JobType.DOMESTIC_MAIN_IMAGE.value: (
+                aurora_provider
+                if domestic_main_image_provider_enabled
+                else UnavailableProvider()
+            ),
         }
     provider = RegisteredOperationRoutingProvider(
         default_provider,
@@ -2009,7 +2026,12 @@ def build_fake_coordinator(
         session_factory,
         provider,
         detail_planner=routed_planner,
-        campaign_planner=AuroraMainImagePlanner(session_factory),
+        campaign_planner=AuroraMainImagePlanner(
+            session_factory,
+            storage=storage,
+            gateway=gateway,
+            work_root=aurora_work_root,
+        ),
         max_concurrency=xinghe_concurrency,
         # Detail-pack behavior remains unchanged. Amazon follows its own Skill
         # incomplete-execution and regenerate-on-invalid-output contract.

@@ -241,7 +241,7 @@ export function useRetryJob(workspaceId: string | undefined) {
 export function useConfirmPlan(workspaceId: string | undefined) {
   return useJobMutation<
     JobDetail,
-    AuthorizedJobAction & { revision: number }
+    AuthorizedJobAction & { revision: number; approvalText?: string }
   >(
     workspaceId,
     "confirm-plan",
@@ -255,7 +255,10 @@ export function useConfirmPlan(workspaceId: string | undefined) {
             path: { workspace_id: id, job_id: input.jobId },
             header: { "Idempotency-Key": key },
           },
-          body: { expected_revision: input.revision },
+          body: {
+            expected_revision: input.revision,
+            approval_text: input.approvalText,
+          },
         },
       );
       return unwrapApiResponse(result);

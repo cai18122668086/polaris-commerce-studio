@@ -15,7 +15,8 @@ COPY migrations ./migrations
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install .
 
-RUN groupadd --system --gid 10001 polaris \
+RUN mkdir -p /app/.data/aurora-main-image \
+    && groupadd --system --gid 10001 polaris \
     && useradd --system --uid 10001 --gid polaris --home-dir /app polaris \
     && chown -R polaris:polaris /app
 

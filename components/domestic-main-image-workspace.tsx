@@ -24,12 +24,32 @@ type Source = { asset: Asset; previewUrl: string };
 type PlanPage = {
   page_index: number;
   page_role: string;
-  headline: string;
-  visual_duty: string;
-  objective?: string;
-  composition?: string;
-  copy_direction?: string;
-  evidence?: string[];
+  main_selling_point: string;
+  supporting_selling_points: string[];
+  visual_proof: string;
+  composition_and_subject: string;
+  reading_path_and_type_hierarchy: string;
+  non_repetition_reason: string;
+  commercial_closure: string;
+  buyer_question?: string;
+};
+
+type CampaignStyle = {
+  palette_roles?: Record<string, string>;
+  typography?: Record<string, string>;
+  graphic_language?: string;
+  information_surface_geometry?: string;
+  photography_finish?: string;
+  light_direction?: string;
+  color_temperature?: string;
+  density_band?: string;
+};
+
+type IdentityLock = {
+  product_form?: string;
+  identity_summary?: string;
+  must_preserve?: string[];
+  must_not_change?: string[];
 };
 
 const roleNames: Record<string, string> = {
@@ -48,6 +68,15 @@ function lines(value: string, limit: number) {
 function readPlan(payload?: Record<string, unknown>): PlanPage[] {
   if (!payload || !Array.isArray(payload.pages)) return [];
   return payload.pages.filter((page): page is PlanPage => Boolean(page && typeof page === "object"));
+}
+
+function recordValue<T>(payload: Record<string, unknown> | undefined, key: string): T | undefined {
+  const value = payload?.[key];
+  return value && typeof value === "object" && !Array.isArray(value) ? value as T : undefined;
+}
+
+function styleSummary(value?: Record<string, string>) {
+  return value ? Object.values(value).filter(Boolean).join("；") : "由当前商品身份颜色与用户偏好共同推导";
 }
 
 function RestoredSource({ workspaceId, assetId, index }: { workspaceId?: string; assetId: string; index: number }) {
@@ -80,7 +109,10 @@ export function DomesticMainImageWorkspace() {
   const jobId = requestedJobId ?? createdJobId;
   const [localError, setLocalError] = useState<string>();
   const job = useJob(workspace?.id, jobId);
-  const plan = readPlan(job.data?.plan?.payload);
+  const planPayload = job.data?.plan?.payload;
+  const plan = readPlan(planPayload);
+  const campaignStyle = recordValue<CampaignStyle>(planPayload, "campaign_style");
+  const identityLock = recordValue<IdentityLock>(planPayload, "product_identity_lock");
   const restoredAssetIds = job.data?.assets.filter((asset) => asset.direction === "input" && asset.role === "product_identity_authority").sort((left, right) => left.ordinal - right.ordinal).map((asset) => asset.asset_id) ?? [];
   const restoredSettings = job.data?.configuration.settings && typeof job.data.configuration.settings === "object" ? job.data.configuration.settings as Record<string, unknown> : undefined;
   const restoredString = (key: string) => typeof restoredSettings?.[key] === "string" ? restoredSettings[key] as string : "";
@@ -186,7 +218,40 @@ export function DomesticMainImageWorkspace() {
 
             <section className={styles.card}>
               <div className={styles.heading}><span>03</span><div><h2>六图方案确认</h2><p>确认后锁定商品身份、事实边界和整套视觉世界。</p></div>{job.data && <StatusBadge status={job.data.status} />}</div>
-              {!plan.length ? <div className={styles.empty}>创建任务后，这里会出现 1 张搜索主图与 5 张轮播图方案。</div> : <div className={styles.plan}>{plan.map((page) => <article key={page.page_index}><i>{String(page.page_index + 1).padStart(2, "0")}</i><div><span>{roleNames[page.page_role] ?? page.page_role}</span><strong>{page.headline}</strong><p>{page.objective ?? page.visual_duty}</p>{page.composition && <dl><div><dt>画面</dt><dd>{page.composition}</dd></div>{page.copy_direction && <div><dt>文案</dt><dd>{page.copy_direction}</dd></div>}{page.evidence?.length ? <div><dt>依据</dt><dd>{page.evidence.join(" · ")}</dd></div> : null}</dl>}</div>{page.page_index === 0 ? <em>搜索入口</em> : <em>轮播</em>}</article>)}</div>}
+              {!plan.length ? <div className={styles.empty}>创建任务后，Aurora 会先分析商品并锁定身份，再编译 1 张搜索主图与 5 张轮播图的完整方案。</div> : <>
+                <div className={styles.identityLock}>
+                  <span>PRODUCT IDENTITY LOCK</span>
+                  <h3>{identityLock?.product_form ?? "当前商品身份已锁定"}</h3>
+                  <p>{identityLock?.identity_summary}</p>
+                  <div><strong>必须保持</strong><p>{identityLock?.must_preserve?.join("；")}</p></div>
+                  <div><strong>禁止改变</strong><p>{identityLock?.must_not_change?.join("；")}</p></div>
+                </div>
+
+                <div className={styles.campaignWorld}>
+                  <div className={styles.worldTitle}><span>整组视觉世界</span><strong>六张图共享一套美术方向，版式与镜头按页面职责变化</strong></div>
+                  <dl>
+                    <div><dt>色彩角色</dt><dd>{styleSummary(campaignStyle?.palette_roles)}</dd></div>
+                    <div><dt>字体气质</dt><dd>{styleSummary(campaignStyle?.typography)}</dd></div>
+                    <div><dt>图形 / 信息面</dt><dd>{campaignStyle?.graphic_language}；{campaignStyle?.information_surface_geometry}</dd></div>
+                    <div><dt>摄影完成度</dt><dd>{campaignStyle?.photography_finish}</dd></div>
+                    <div><dt>光线与色温</dt><dd>{campaignStyle?.light_direction}；{campaignStyle?.color_temperature}</dd></div>
+                    <div><dt>整组密度节奏</dt><dd>{campaignStyle?.density_band}</dd></div>
+                  </dl>
+                </div>
+
+                <div className={styles.contractLegend} aria-label="六页执行契约字段">
+                  <span>主卖点</span><span>辅助卖点</span><span>画面证明</span><span>构图与主体</span><span>阅读路径</span><span>不重复理由</span><span>商业闭合</span>
+                </div>
+                <div className={styles.plan}>{plan.map((page) => <article key={page.page_index}><i>{String(page.page_index + 1).padStart(2, "0")}</i><div><span>{roleNames[page.page_role] ?? page.page_role}</span><strong>{page.main_selling_point}</strong>{page.buyer_question && <p>{page.buyer_question}</p>}<dl>
+                  <div><dt>主卖点</dt><dd>{page.main_selling_point}</dd></div>
+                  <div><dt>辅助卖点</dt><dd>{page.supporting_selling_points?.length ? page.supporting_selling_points.join(" · ") : "无强制辅助卖点，按画面需要取舍"}</dd></div>
+                  <div><dt>画面证明</dt><dd>{page.visual_proof}</dd></div>
+                  <div><dt>构图主体</dt><dd>{page.composition_and_subject}</dd></div>
+                  <div><dt>阅读路径</dt><dd>{page.reading_path_and_type_hierarchy}</dd></div>
+                  <div><dt>不重复</dt><dd>{page.non_repetition_reason}</dd></div>
+                  <div><dt>商业闭合</dt><dd>{page.commercial_closure}</dd></div>
+                </dl></div>{page.page_index === 0 ? <em>搜索入口</em> : <em>轮播</em>}</article>)}</div>
+              </>}
             </section>
 
             {results.length > 0 && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>六图交付</h2><p>单张可查看与下载，全部完成后可下载整套文件。</p></div></div><div className={styles.results}>{results.map((asset, index) => <JobResultImage key={asset.asset_id} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`国内电商主图 ${index + 1}`} label={roleNames[plan[index]?.page_role] ?? `图 ${index + 1}`} />)}</div>{job.data?.status === "completed" && results.length === 6 && <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} />}</section>}
@@ -195,7 +260,7 @@ export function DomesticMainImageWorkspace() {
           <aside className={styles.side}>
             <div><span>AURORA / 06</span><h3>连续创作约束</h3><ul><li><Check size={15} />固定六张，不增不减</li><li><Check size={15} />严格按页顺序生成</li><li><Check size={15} />每页最多自动修复一次</li><li><Check size={15} />最终整组等待人工确认</li></ul></div>
             {localError || createJob.error || confirmPlan.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error)}</p> : null}
-            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data?.status === "completed" ? "等待整组确认" : "任务处理中"}</button>}
+            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data?.status === "completed" ? "等待整组确认" : "任务处理中"}</button>}
             <small className={styles.note}>{workflow.mode === "provider" ? "在线生成已启用" : "当前为安全 Mock：可验证完整规划与状态流程，不会产生图片费用"}</small>
           </aside>
         </div>

@@ -457,7 +457,7 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 result.error_message or "Aurora set role audit failed"
             )
-        observation = dict(result.payload)
+        observation = _normalize_set_role_audit_payload(dict(result.payload))
         observation["agent_pixel_reviewed"] = True
         observation["review_mode"] = "BLIND_SIX_PAGE_ROLE_COMPARISON"
         observation["reviewed_page_indexes"] = list(range(6))
@@ -1111,3 +1111,50 @@ def _flatten_style_evidence(value: object) -> list[str]:
             statements.extend(_flatten_style_evidence(nested))
         return statements
     return []
+
+
+def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Adapt an equivalent blind six-page review to the Harness contract."""
+
+    pages = payload.get("pages")
+    if not isinstance(payload.get("carousel_distinctions"), list) and isinstance(
+        pages, list
+    ):
+        distinctions: list[dict[str, Any]] = []
+        for page in pages:
+            if not isinstance(page, Mapping) or page.get("page_index") not in range(
+                1, 6
+            ):
+                continue
+            evidence = _flatten_style_evidence(
+                page.get("concrete_pixel_evidence_not_search_cover")
+                or page.get("pixel_evidence")
+            )
+            distinctions.append(
+                {
+                    "page_index": page["page_index"],
+                    "why_not_search_cover": " ".join(evidence),
+                }
+            )
+        payload["carousel_distinctions"] = distinctions
+
+    assessment = _mapping(payload.get("search_listing_cover_assessment"))
+    if not isinstance(payload.get("search_identification_evidence"), str):
+        payload["search_identification_evidence"] = " ".join(
+            _flatten_style_evidence(assessment.get("pixel_evidence"))
+        )
+    payload.setdefault(
+        "identified_search_page_index",
+        assessment.get("search_listing_cover_page_index"),
+    )
+    other_cover_indexes = assessment.get("other_search_listing_cover_page_indices")
+    if "search_role_is_unique" not in payload:
+        payload["search_role_is_unique"] = (
+            assessment.get("page_0_alone_is_visibly_search_listing_cover") is True
+            and other_cover_indexes == []
+        )
+    payload.setdefault(
+        "confusable_page_indexes",
+        other_cover_indexes if isinstance(other_cover_indexes, list) else [],
+    )
+    return payload

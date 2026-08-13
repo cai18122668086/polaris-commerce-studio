@@ -15,6 +15,7 @@ from app.aurora_main_image_planner import (
 )
 from app.aurora_main_image_provider import (
     AuroraMainImageProvider,
+    _normalize_set_role_audit_payload,
     _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
     _visual_judgment_schema,
@@ -249,6 +250,37 @@ def test_style_calibration_flattens_spaced_nested_evidence_field() -> None:
     assert "retro-sport typography" in observation["observed_evidence"]
     assert "concrete observed_evidence" not in observation
     assert "palette_usage_ratio" not in observation["style_tokens"]
+
+
+def test_set_role_audit_adapts_page_evidence_to_harness_distinctions() -> None:
+    observation = _normalize_set_role_audit_payload(
+        {
+            "pages": [
+                {
+                    "page_index": index,
+                    "concrete_pixel_evidence_not_search_cover": [
+                        f"Page {index} visibly performs a unique carousel duty."
+                    ],
+                }
+                for index in range(1, 6)
+            ],
+            "search_listing_cover_assessment": {
+                "search_listing_cover_page_index": 0,
+                "page_0_alone_is_visibly_search_listing_cover": True,
+                "other_search_listing_cover_page_indices": [],
+                "pixel_evidence": [
+                    "Page zero alone uses the search-cover hero hierarchy."
+                ],
+            },
+        }
+    )
+
+    assert [
+        item["page_index"] for item in observation["carousel_distinctions"]
+    ] == list(range(1, 6))
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is True
+    assert observation["confusable_page_indexes"] == []
 
 
 def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:

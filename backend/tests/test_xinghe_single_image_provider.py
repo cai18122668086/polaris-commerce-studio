@@ -166,6 +166,8 @@ class RecordingGateway:
     planner_model = "unused-planner"
     image_model = "recording-image-model"
     pricing_version = "test-pricing-v1"
+    medium_price_micros = 45_000
+    high_price_micros = 90_000
     external_network_request_count = 0
 
     def __init__(self, result: ImageCallResult | None = None) -> None:
@@ -474,6 +476,70 @@ def _reference_follow_request(
     return provider, _request(envelope, operation=operation)
 
 
+def _model_pose_request(
+    harness: Harness,
+    *,
+    pose_payload: bytes | None = None,
+) -> tuple[XingheSingleImageProvider, ProviderRequest]:
+    operation = "model_pose_transfer"
+    skill_id = "ecommerce-model-pose-transfer"
+    reference_payload = pose_payload or _image_bytes(color=(40, 80, 220, 255))
+    with harness.session_factory() as session:
+        job = session.get(JobRecord, "job_test")
+        attempt = session.get(JobAttemptRecord, "attempt_test")
+        source_binding = session.query(JobAssetRecord).one()
+        assert job is not None and attempt is not None
+        job.type = operation
+        attempt.operation = operation
+        source_binding.role = "model_source"
+        session.add(
+            _asset_record(
+                asset_id="asset_pose",
+                workspace_id="ws_test",
+                object_key="ws_test/pose-reference",
+                payload=reference_payload,
+            )
+        )
+        session.add(
+            JobAssetRecord(
+                workspace_id="ws_test",
+                job_id="job_test",
+                asset_id="asset_pose",
+                direction=JobAssetDirection.INPUT.value,
+                role="pose_reference",
+                ordinal=0,
+                is_deliverable=False,
+                validation={},
+            )
+        )
+        session.commit()
+    harness.storage.objects["ws_test/pose-reference"] = reference_payload
+    envelope = _envelope(
+        asset_ids=[
+            ("asset_product", "model_source"),
+            ("asset_pose", "pose_reference"),
+        ],
+        fit="contain",
+        prompt_input={
+            "user_instruction": "Match the target pose only.",
+            "pose_slug": "female-001",
+            "pose_reference_sha256": hashlib.sha256(reference_payload).hexdigest(),
+        },
+    )
+    envelope.update({"skill_id": skill_id, "operation": operation})
+    envelope["target"] = {
+        "width": None,
+        "height": None,
+        "aspect_ratio": "follow-source",
+        "quality": "high",
+        "output_format": "png",
+        "fit": "contain",
+    }
+    harness.gateway.allow_plan = True
+    provider = harness.provider(operation=operation, skill_id=skill_id)
+    return provider, _request(envelope, operation=operation)
+
+
 def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -> None:
     provider = harness.provider()
 
@@ -507,6 +573,113 @@ def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -
     assert SECRET not in image_request.prompt
     assert "must never be used" not in image_request.prompt
     assert harness.manifest.calls == [SKILL_ID]
+
+
+def test_model_pose_transfer_sends_both_images_once_in_fixed_role_order(
+    harness: Harness,
+) -> None:
+    pose_payload = _image_bytes(color=(40, 80, 220, 255))
+    provider, request = _model_pose_request(harness, pose_payload=pose_payload)
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.gateway.plan_calls == 0
+    assert len(harness.gateway.requests) == 1
+    image_request = harness.gateway.requests[0]
+    assert [source.source_role for source in image_request.sources] == [
+        "model_source",
+        "pose_reference",
+    ]
+    assert [source.payload for source in image_request.sources] == [
+        harness.source_payload,
+        pose_payload,
+    ]
+    assert image_request.prompt.startswith("Edit Image 1 only.")
+    assert "Preserve Image 1's person" in image_request.prompt
+    assert "body-relative pose geometry" in image_request.prompt
+    assert "not as absolute canvas coordinates" in image_request.prompt
+    assert (
+        "each foot's position relative to the pelvis and other foot"
+        in image_request.prompt
+    )
+    assert "stride as a proportion of body height" in image_request.prompt
+    assert (
+        "do not copy Image 2's body proportions or leg length"
+        in image_request.prompt
+    )
+    assert "limb crossing and overlap order" in image_request.prompt
+    assert "same viewer-left or viewer-right side" in image_request.prompt
+    assert (
+        "Do not mirror, reinterpret, or substitute a similar pose"
+        in image_request.prompt
+    )
+    assert "Discard Image 1's old pose" in image_request.prompt
+    assert "Image 2 supplies pose only" in image_request.prompt
+    assert "2D pose stencil in unchanged screen coordinates" not in image_request.prompt
+    assert "must redraw and reconstruct" not in image_request.prompt
+    assert "pose accuracy wins" not in image_request.prompt
+    assert "leg chains" not in image_request.prompt
+    assert "forefoot" not in image_request.prompt
+    assert "Match the target pose only." in image_request.prompt
+    assert "skill_protocol" not in image_request.prompt
+    assert len(image_request.prompt) < 1_250
+    assert result.estimated_cost_micros == 300_000
+    assert result.actual_cost_micros == 321_000
+    assert result.raw_usage["request_count"] == 1
+    assert result.raw_usage["network_requests"] == 1
+    assert result.raw_usage["input_images"] == 2
+    assert result.raw_usage["metrics"] == {
+        "pose_transfer_mode": "direct_two_image",
+        "source_order": ["model_source", "pose_reference"],
+        "reference_pixels_available": True,
+        "appearance_authority": "model_source_only",
+    }
+
+
+def test_model_pose_transfer_reorders_envelope_sources_before_edit(
+    harness: Harness,
+) -> None:
+    provider, request = _model_pose_request(harness)
+    envelope = dict(
+        request.configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY]
+    )
+    envelope["source_assets"] = list(reversed(envelope["source_assets"]))
+    configuration = dict(request.configuration)
+    configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY] = envelope
+    reordered_request = replace(request, configuration=configuration)
+
+    result = asyncio.run(provider.execute(reordered_request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.gateway.plan_calls == 0
+    assert [source.source_role for source in harness.gateway.requests[0].sources] == [
+        "model_source",
+        "pose_reference",
+    ]
+
+
+def test_model_pose_transfer_image_exception_counts_one_two_image_request(
+    harness: Harness,
+) -> None:
+    provider, request = _model_pose_request(harness)
+    harness.gateway.error = TimeoutError("image transport failed")
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == "IMAGE_PROVIDER_FAILED"
+    assert result.retryable is False
+    assert result.estimated_cost_micros == harness.gateway.high_price_micros
+    assert result.actual_cost_micros is None
+    assert result.raw_usage["request_count"] == 1
+    assert result.raw_usage["network_requests"] == 1
+    assert result.raw_usage["input_images"] == 2
+    assert result.raw_usage["metrics"]["pose_transfer_mode"] == (
+        "direct_two_image"
+    )
+    assert harness.gateway.plan_calls == 0
+    assert len(harness.gateway.requests) == 1
 
 
 @pytest.mark.parametrize(

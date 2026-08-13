@@ -55,6 +55,7 @@ const HOME_TOOLBOX_IDS = [
   "white-background",
   "model-image",
   "try-on",
+  "model-pose-transfer",
   "creative-image",
 ];
 
@@ -227,6 +228,7 @@ test("the homepage AI toolbox excludes all one-click featured tasks", async () =
     "homepage toolbox must not duplicate any 一键直达任务 item",
   );
   assert.equal(toolboxIds.includes("change-background"), false);
+  assert.equal(toolboxIds.includes("model-pose-transfer"), true);
 
   assert.match(source, /getFeatureById\(item\.id\)/);
   assert.match(source, /href=\{feature\.route\}/);

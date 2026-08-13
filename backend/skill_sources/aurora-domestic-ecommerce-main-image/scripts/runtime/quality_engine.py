@@ -212,7 +212,9 @@ def rank_search_hooks(raw: dict[str, Any]) -> list[dict[str, Any]]:
     visible = ("片", "屏", "按键", "滚轮", "面料", "颗粒", "膏体", "接口", "线", "结构", "玻璃")
     generic = ("新款", "神器", "高端", "升级", "强劲", "便携", "好用")
     ranked = []
-    for order, claim in enumerate(_verified_claims(raw)):
+    service_or_trust = _service_or_trust_claims(raw)
+    eligible = [claim for claim in _verified_claims(raw) if claim not in service_or_trust]
+    for order, claim in enumerate(eligible):
         score = 50 - min(order, 20)
         reasons = []
         if any(word in claim for word in differentiators):
@@ -237,7 +239,14 @@ def _pick_claim(claims: list[str], terms: tuple[str, ...], used: set[str]) -> st
 
 
 def assign_page_claims(raw: dict[str, Any], ranking: list[dict[str, Any]]) -> list[str]:
-    claims = list(dict.fromkeys(item["source_text"] for item in ranking))
+    service_or_trust = _service_or_trust_claims(raw)
+    claims = list(
+        dict.fromkeys(
+            item["source_text"]
+            for item in ranking
+            if item["source_text"] not in service_or_trust
+        )
+    )
     if not claims:
         return [raw["product"]["name"]] * 6
     used: set[str] = set()
@@ -259,6 +268,17 @@ def assign_page_claims(raw: dict[str, Any], ranking: list[dict[str, Any]]) -> li
         assigned.append(claim)
         used.add(claim)
     return assigned
+
+
+def _service_or_trust_claims(raw: dict[str, Any]) -> set[str]:
+    """Keep service facts available for closure, never as a page's lead claim."""
+
+    value = raw.get("product", {}).get("verified_service_or_trust_facts", [])
+    if isinstance(value, dict):
+        return {str(item).strip() for item in value.values() if str(item).strip()}
+    if isinstance(value, list):
+        return {str(item).strip() for item in value if str(item).strip()}
+    return {str(value).strip()} if str(value).strip() else set()
 
 
 def proof_method_for_claim(claim: str) -> str:

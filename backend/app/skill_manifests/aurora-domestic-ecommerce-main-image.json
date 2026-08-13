@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-main-image",
-  "content_hash": "0adc63df3cae9c06ad49c00f65be0ebc7489a7916a5d5f10b8f452d804f53333",
+  "content_hash": "f2f028dd455393676bc428943360c7e9f4ee143cc1d9e716eb63b98e7ea35181",
   "capability": "domestic_main_image",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-main-image.input.v1",
@@ -394,7 +394,7 @@
     },
     {
       "path": "scripts/runtime/quality_engine.py",
-      "sha256": "1c0af6a8ba94f5f8b38ea58ca28df97abe3b14ff36413ea625f08260ef7ba678"
+      "sha256": "bfe7b52cdf27e4aa4bc08cd10f924409e451bceb5b45014c77d6526b667ee8c1"
     },
     {
       "path": "scripts/runtime/v013_bridge.py",

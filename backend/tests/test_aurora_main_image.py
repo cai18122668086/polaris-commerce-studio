@@ -7,7 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.aurora_main_image_planner import PAGE_ROLES, _public_plan_payload
+from app.aurora_main_image_planner import (
+    PAGE_ROLES,
+    _build_raw,
+    _public_plan_payload,
+)
 from app.aurora_main_image_provider import AuroraMainImageProvider
 from app.aurora_main_image_runtime import AuroraHarnessError, AuroraHarnessRunner
 from app.provider import ProviderOutcome, ProviderRequest
@@ -33,6 +37,46 @@ def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
     assert roles == [
         ("asset_one", "product_identity_authority", 0),
         ("asset_two", "product_identity_authority", 1),
+    ]
+
+
+def test_pasted_product_dossier_routes_service_away_from_product_page_leads() -> None:
+    raw = _build_raw(
+        "job_fact_routing",
+        {
+            "product_name": "蓝色赛车德训鞋",
+            "category": "鞋子",
+            "selling_points": [
+                "一、基础商品信息",
+                "商品全称：蓝色赛车德训鞋",
+                "品牌：森果果",
+                "发货与物流：免运费；平均16小时发货",
+                "客服响应快（平均27秒回复）",
+                "售后保障：7天无理由退货",
+                "主打透气清爽",
+                "主推配色：天蓝色+米白撞色",
+                "翻毛皮浅蓝主体搭配米白流线型装饰",
+                "日常休闲、通勤、出游、慢跑均可",
+                "适配人群：学生党、小个子、宽胖脚/高脚背人群",
+                "男女同款情侣板鞋",
+            ],
+        },
+        ["product.jpg"],
+    )
+    product = raw["product"]
+    assert product["verified_selling_points"][:6] == [
+        "主打透气清爽",
+        "适配人群：学生党、小个子、宽胖脚/高脚背人群",
+        "主推配色：天蓝色+米白撞色",
+        "翻毛皮浅蓝主体搭配米白流线型装饰",
+        "日常休闲、通勤、出游、慢跑均可",
+        "男女同款情侣板鞋",
+    ]
+    assert "一、基础商品信息" not in product["verified_selling_points"]
+    assert product["verified_service_or_trust_facts"] == [
+        "发货与物流：免运费；平均16小时发货",
+        "客服响应快（平均27秒回复）",
+        "售后保障：7天无理由退货",
     ]
 
 
@@ -137,6 +181,7 @@ def test_compile_v013_builds_campaign_style_and_six_execution_contracts(
     assert all(page["reading_path_and_type_hierarchy"] for page in public["pages"])
     assert all(page["non_repetition_reason"] for page in public["pages"])
     assert all(page["commercial_closure"] for page in public["pages"])
+    assert all("发货" not in page["main_selling_point"] for page in public["pages"])
 
 
 def test_real_runtime_exposes_registered_aurora_provider_when_enabled() -> None:

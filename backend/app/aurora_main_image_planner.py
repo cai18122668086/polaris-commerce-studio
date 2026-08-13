@@ -326,6 +326,7 @@ def _build_raw(
     settings: Mapping[str, Any],
     evidence_paths: Sequence[str],
 ) -> dict[str, Any]:
+    fact_pool = _normalize_commercial_fact_pool(settings)
     return {
         "request_id": job_id,
         "profile01_semantics_read": False,
@@ -335,15 +336,199 @@ def _build_raw(
             "name": _text(settings.get("product_name"), "当前商品"),
             "category": _text(settings.get("category"), "商品"),
             "original_references": list(evidence_paths),
-            "verified_selling_points": _text_list(settings.get("selling_points")),
-            "verified_attributes": _text_list(settings.get("product_attributes")),
-            "verified_scenes": _text_list(settings.get("scenes")),
-            "verified_offers": _text_list(settings.get("offers")),
-            "verified_service_or_trust_facts": _text_list(
-                settings.get("service_or_trust_facts")
-            ),
+            "verified_selling_points": fact_pool["selling_points"],
+            "verified_attributes": fact_pool["attributes"],
+            "verified_scenes": fact_pool["scenes"],
+            "verified_offers": fact_pool["offers"],
+            "verified_service_or_trust_facts": fact_pool["service_or_trust"],
         },
     }
+
+
+_SECTION_HEADING_TERMS = (
+    "完整产品信息",
+    "基础商品信息",
+    "款式定位与适配人群",
+    "外观配色与版型",
+    "商品信息",
+)
+_SERVICE_TERMS = (
+    "发货",
+    "物流",
+    "免运费",
+    "客服",
+    "售后",
+    "退货",
+    "包退",
+    "店铺评分",
+    "好评率",
+    "响应",
+)
+_OFFER_TERMS = ("到手价", "优惠券", "满减", "赠品", "折扣", "活动价")
+_SCENE_TERMS = (
+    "日常",
+    "通勤",
+    "出游",
+    "慢跑",
+    "居家",
+    "办公",
+    "户外",
+    "旅行",
+    "使用场景",
+)
+_FIT_TERMS = (
+    "适配人群",
+    "学生党",
+    "小个子",
+    "宽胖脚",
+    "高脚背",
+    "男女均可",
+    "情侣",
+    "适用人群",
+)
+_BENEFIT_TERMS = (
+    "透气",
+    "清爽",
+    "舒适",
+    "轻量",
+    "防滑",
+    "抓地",
+    "缓震",
+    "耐磨",
+    "柔软",
+    "保暖",
+    "防水",
+    "便携",
+)
+_MATERIAL_OR_STRUCTURE_TERMS = (
+    "材质",
+    "面料",
+    "翻毛皮",
+    "皮革",
+    "纹理",
+    "结构",
+    "剪裁",
+    "流线",
+    "鞋底",
+    "鞋面",
+    "做工",
+)
+_APPEARANCE_TERMS = (
+    "配色",
+    "撞色",
+    "颜色",
+    "复古",
+    "风格",
+    "设计",
+    "版型",
+    "品类",
+    "款式",
+)
+_CHOICE_OR_SPEC_TERMS = (
+    "男女同款",
+    "情侣",
+    "可选",
+    "多色",
+    "尺码",
+    "规格",
+    "季节",
+    "夏季",
+    "冬季",
+)
+_IDENTITY_ONLY_TERMS = ("商品全称", "品牌：", "品牌:", "别名")
+
+
+def _normalize_commercial_fact_pool(
+    settings: Mapping[str, Any],
+) -> dict[str, list[str]]:
+    """Route pasted product dossiers into the Skill's factual authority buckets.
+
+    Users often paste a complete product dossier into the selling-point field.
+    Headings are not facts, and service/trust lines must never compete with
+    product benefits for the first five page duties. Exact source lines remain
+    intact inside their routed bucket.
+    """
+
+    pasted = _text_list(settings.get("selling_points"))
+    explicit_attributes = _text_list(settings.get("product_attributes"))
+    explicit_scenes = _text_list(settings.get("scenes"))
+    explicit_offers = _text_list(settings.get("offers"))
+    explicit_service = _text_list(settings.get("service_or_trust_facts"))
+    product_claims: list[str] = []
+    attributes: list[str] = list(explicit_attributes)
+    scenes: list[str] = list(explicit_scenes)
+    offers: list[str] = list(explicit_offers)
+    service: list[str] = list(explicit_service)
+
+    for fact in pasted:
+        if _is_section_heading(fact):
+            continue
+        if _contains_any(fact, _SERVICE_TERMS):
+            service.append(fact)
+            continue
+        if _contains_any(fact, _OFFER_TERMS):
+            offers.append(fact)
+            continue
+        if _contains_any(fact, _SCENE_TERMS):
+            scenes.append(fact)
+        if _contains_any(fact, _IDENTITY_ONLY_TERMS):
+            attributes.append(fact)
+            continue
+        product_claims.append(fact)
+
+    # The compiler consumes one ranked truth pool. Re-introduce scenes and
+    # attributes as eligible claims, but arrange the first six candidates by
+    # commercial page duty so service facts cannot displace product evidence.
+    eligible = list(dict.fromkeys([*product_claims, *scenes, *attributes]))
+    selling_points = _prioritize_for_six_page_duties(eligible)
+    return {
+        "selling_points": selling_points,
+        "attributes": list(dict.fromkeys(attributes)),
+        "scenes": list(dict.fromkeys(scenes)),
+        "offers": list(dict.fromkeys(offers)),
+        "service_or_trust": list(dict.fromkeys(service)),
+    }
+
+
+def _prioritize_for_six_page_duties(claims: Sequence[str]) -> list[str]:
+    selectors = (
+        _BENEFIT_TERMS,
+        _FIT_TERMS,
+        _APPEARANCE_TERMS,
+        _MATERIAL_OR_STRUCTURE_TERMS,
+        _SCENE_TERMS,
+        _CHOICE_OR_SPEC_TERMS,
+    )
+    selected: list[str] = []
+    for terms in selectors:
+        candidates = [
+            claim
+            for claim in claims
+            if claim not in selected and _contains_any(claim, terms)
+        ]
+        if candidates:
+            selected.append(
+                max(candidates, key=lambda claim: _claim_specificity(claim, terms))
+            )
+    selected.extend(claim for claim in claims if claim not in selected)
+    return selected
+
+
+def _claim_specificity(claim: str, terms: Sequence[str]) -> tuple[int, int, int]:
+    matches = sum(term in claim for term in terms)
+    physical = sum(term in claim for term in _MATERIAL_OR_STRUCTURE_TERMS)
+    return matches, physical, min(len(claim), 80)
+
+
+def _is_section_heading(value: str) -> bool:
+    compact = re.sub(r"^[一二三四五六七八九十0-9]+[、.．]\s*", "", value).strip()
+    return len(compact) <= 24 and any(
+        term == compact or compact.endswith(term) for term in _SECTION_HEADING_TERMS
+    )
+
+
+def _contains_any(value: str, terms: Sequence[str]) -> bool:
+    return any(term in value for term in terms)
 
 
 def _public_plan_payload(

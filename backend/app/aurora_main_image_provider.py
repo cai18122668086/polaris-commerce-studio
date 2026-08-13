@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -120,7 +122,16 @@ class AuroraMainImageProvider:
                     or image_result.artifact is None
                 ):
                     return _failed_image_result(image_result, self)
-                artifact = image_result.artifact
+                artifact = _normalize_aurora_square_artifact(image_result.artifact)
+                generation_usage.update(
+                    {
+                        "provider_width": artifact.provider_width,
+                        "provider_height": artifact.provider_height,
+                        "locally_resampled": artifact.locally_resampled,
+                        "delivered_width": artifact.width,
+                        "delivered_height": artifact.height,
+                    }
+                )
                 generated_path = _write_generated_artifact(
                     workspace, page_index, attempt_index, artifact
                 )
@@ -705,6 +716,52 @@ def _write_generated_artifact(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(artifact.payload)
     return path.resolve()
+
+
+def _normalize_aurora_square_artifact(
+    artifact: ProviderArtifact, *, size: int = 1024
+) -> ProviderArtifact:
+    """Preserve the full provider image on Aurora's required square canvas."""
+
+    if artifact.width == size and artifact.height == size:
+        return artifact
+    try:
+        with Image.open(BytesIO(artifact.payload)) as opened:
+            opened.load()
+            materialized = ImageOps.exif_transpose(opened).convert("RGB")
+    except (
+        Image.DecompressionBombError,
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as exc:
+        raise AuroraPlanningError(
+            f"Aurora provider artifact is not a valid image ({type(exc).__name__})"
+        ) from None
+    contained = ImageOps.contain(
+        materialized,
+        (size, size),
+        method=Image.Resampling.LANCZOS,
+    )
+    rendered = Image.new("RGB", (size, size), "white")
+    rendered.paste(
+        contained,
+        ((size - contained.width) // 2, (size - contained.height) // 2),
+    )
+    output = BytesIO()
+    rendered.save(output, format="JPEG", quality=95, optimize=True)
+    payload = output.getvalue()
+    return ProviderArtifact(
+        payload=payload,
+        filename=Path(artifact.filename).with_suffix(".jpg").name,
+        content_type="image/jpeg",
+        width=size,
+        height=size,
+        sha256=_sha256(payload),
+        locally_resampled=True,
+        provider_width=artifact.provider_width or artifact.width,
+        provider_height=artifact.provider_height or artifact.height,
+    )
 
 
 def _failed_image_result(

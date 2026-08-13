@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from app.aurora_main_image_planner import (
     PAGE_ROLES,
@@ -16,13 +19,14 @@ from app.aurora_main_image_planner import (
 from app.aurora_main_image_provider import (
     AuroraMainImageProvider,
     _bounded_visual_audit_sources,
+    _normalize_aurora_square_artifact,
     _normalize_set_role_audit_payload,
     _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
     _visual_judgment_schema,
 )
 from app.aurora_main_image_runtime import AuroraHarnessError, AuroraHarnessRunner
-from app.provider import ProviderOutcome, ProviderRequest
+from app.provider import ProviderArtifact, ProviderOutcome, ProviderRequest
 from app.routes_v1 import _new_job_from_payload, runtime_status_response
 from app.schemas_v1 import DomesticMainImageJobCreate
 from app.xinghe_agent import (
@@ -212,6 +216,33 @@ def test_visual_audit_keeps_candidate_and_bounds_identity_images() -> None:
         "candidate-page-0",
     ]
     assert audit_sources[-1].source_role == "generated_candidate"
+
+
+def test_aurora_normalizes_provider_portrait_without_cropping() -> None:
+    source = Image.new("RGB", (1113, 1413), "green")
+    source.putpixel((0, 0), (255, 0, 0))
+    buffer = BytesIO()
+    source.save(buffer, format="JPEG", quality=95)
+    payload = buffer.getvalue()
+    artifact = ProviderArtifact(
+        payload=payload,
+        filename="portrait.jpg",
+        content_type="image/jpeg",
+        width=1113,
+        height=1413,
+        sha256=hashlib.sha256(payload).hexdigest(),
+        provider_width=1113,
+        provider_height=1413,
+    )
+
+    normalized = _normalize_aurora_square_artifact(artifact)
+
+    assert (normalized.width, normalized.height) == (1024, 1024)
+    assert (normalized.provider_width, normalized.provider_height) == (1113, 1413)
+    assert normalized.locally_resampled is True
+    with Image.open(BytesIO(normalized.payload)) as image:
+        assert image.size == (1024, 1024)
+        assert image.getpixel((0, 0)) == (255, 255, 255)
 
 
 def test_visual_audit_adapts_equivalent_direct_pixel_review_fields() -> None:

@@ -862,12 +862,8 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
             if isinstance(value, Mapping)
             and (value.get("check_name") or value.get("name"))
         }
-    overall_pass = (
-        str(payload.get("overall_verdict", "")).upper() in {"PASS", "APPROVE"}
-        or str(payload.get("approval_recommendation", "")).upper()
-        in {"PASS", "APPROVE"}
-        or payload.get("material_failure_count") == 0
-    )
+    overall_pass = _audit_overall_pass(payload)
+    explicit_material_pass = _explicit_material_pass(payload)
     fallback_evidence = str(
         payload.get("final_reasoning")
         or payload.get("decision_summary")
@@ -890,7 +886,11 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
             )
         status = str((source or {}).get("status", "")).upper()
         passed_value = (source or {}).get("passed")
-        missing_critical_check = source is None and name in _PLAN_CRITICAL_VISUAL_CHECKS
+        missing_critical_check = (
+            source is None
+            and name in _PLAN_CRITICAL_VISUAL_CHECKS
+            and not explicit_material_pass
+        )
         passed = (
             passed_value
             if isinstance(passed_value, bool)
@@ -976,20 +976,7 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
 def _downgrade_nonmaterial_check_failures(payload: dict[str, Any]) -> None:
     """Keep explicit overall PASS check gaps advisory instead of regenerating."""
 
-    verdicts = {
-        str(payload.get(name, "")).upper()
-        for name in ("overall_status", "overall_result", "overall_verdict")
-    }
-    explicit_material_pass = (
-        "PASS" in verdicts
-        and (
-            payload.get("material_failure_count") == 0
-            or payload.get("material_failed_check_count") == 0
-            or payload.get("material_fail_count") == 0
-            or payload.get("overall_material_pass") is True
-        )
-    )
-    if not explicit_material_pass:
+    if not _explicit_material_pass(payload):
         return
     checks = _mapping(payload.get("checks"))
     for value in checks.values():
@@ -1003,6 +990,47 @@ def _downgrade_nonmaterial_check_failures(payload: dict[str, Any]) -> None:
             else 70.0
         )
         value["score"] = max(70.0, score)
+
+
+_AUDIT_VERDICT_FIELDS = (
+    "overall_status",
+    "overall_result",
+    "overall_verdict",
+    "overall_judgment",
+    "approval_recommendation",
+)
+_MATERIAL_FAILURE_COUNT_FIELDS = (
+    "material_failure_count",
+    "material_failed_check_count",
+    "material_fail_count",
+)
+
+
+def _audit_overall_pass(payload: Mapping[str, Any]) -> bool:
+    verdicts = {
+        str(payload.get(name, "")).strip().upper()
+        for name in _AUDIT_VERDICT_FIELDS
+        if payload.get(name) is not None
+    }
+    if verdicts.intersection({"FAIL", "FAILED", "REJECT", "REJECTED"}):
+        return False
+    if verdicts.intersection({"PASS", "PASSED", "APPROVE", "APPROVED"}):
+        return True
+    if payload.get("overall_material_pass") is True:
+        return True
+    return any(
+        payload.get(name) == 0 for name in _MATERIAL_FAILURE_COUNT_FIELDS
+    )
+
+
+def _explicit_material_pass(payload: Mapping[str, Any]) -> bool:
+    """Recognize equivalent provider fields without weakening explicit failures."""
+
+    if not _audit_overall_pass(payload):
+        return False
+    return payload.get("overall_material_pass") is True or any(
+        payload.get(name) == 0 for name in _MATERIAL_FAILURE_COUNT_FIELDS
+    )
 
 
 def _enforce_visual_judgment_consistency(payload: dict[str, Any]) -> dict[str, Any]:

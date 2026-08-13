@@ -251,10 +251,50 @@ def test_visual_audit_adapts_equivalent_direct_pixel_review_fields() -> None:
         _visual_judgment_schema()["properties"]["checks"]["required"]
     )
     assert judgment["checks"]["product_identity_match"]["passed"] is True
+    assert judgment["checks"]["approved_plan_fidelity_match"]["passed"] is True
+    assert judgment["all_observed_deficiencies"] == []
+
+
+def test_visual_audit_accepts_tengli_material_pass_field_aliases() -> None:
+    judgment = _normalize_visual_judgment_payload(
+        {
+            "overall_judgment": "PASS",
+            "material_fail_count": 0,
+            "summary": (
+                "The candidate visibly fulfills the page duty with no material "
+                "pixel-level deficiency."
+            ),
+            "checks": [],
+            "selling_point_proof_observation": {},
+        }
+    )
+
+    assert all(check["passed"] for check in judgment["checks"].values())
+    assert judgment["selling_point_proof_observation"]["visible_without_copy"] is True
+    assert (
+        judgment["selling_point_proof_observation"]["evidence_is_primary_visual"]
+        is True
+    )
+    assert judgment["all_observed_deficiencies"] == []
+
+
+def test_visual_audit_keeps_missing_critical_checks_blocking_on_explicit_fail() -> None:
+    judgment = _normalize_visual_judgment_payload(
+        {
+            "overall_verdict": "FAIL",
+            "material_failed_check_count": 1,
+            "final_reasoning": "The approved page duty is not visibly established.",
+            "checks": [],
+            "selling_point_proof_observation": {
+                "visible_without_copy": False,
+                "evidence_is_primary_visual": False,
+            },
+        }
+    )
+
     assert judgment["checks"]["approved_plan_fidelity_match"]["passed"] is False
-    assert "omitted required plan-critical check" in judgment["checks"][
-        "approved_plan_fidelity_match"
-    ]["observed_evidence"]
+    assert judgment["checks"]["selling_point_visible_without_copy"]["passed"] is False
+    assert judgment["all_observed_deficiencies"]
 
 
 def test_style_calibration_joins_concrete_pixel_evidence() -> None:

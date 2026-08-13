@@ -1560,6 +1560,12 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
+        if request.planning_profile in {
+            "aurora_visual_audit",
+            "aurora_style_calibration",
+            "aurora_set_audit",
+        }:
+            payload.update(_aurora_fast_audit_options(request.planning_profile))
         if request.planning_profile == "amazon_visual_suite":
             payload.update(
                 {
@@ -6027,6 +6033,33 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "schema": _aurora_identity_json_schema(),
             },
         }
+    if request.planning_profile == "aurora_visual_audit":
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_visual_judgment",
+                "strict": True,
+                "schema": _aurora_visual_judgment_response_schema(),
+            },
+        }
+    if request.planning_profile == "aurora_style_calibration":
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_style_calibration",
+                "strict": True,
+                "schema": _aurora_style_calibration_response_schema(),
+            },
+        }
+    if request.planning_profile == "aurora_set_audit":
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_set_role_audit",
+                "strict": True,
+                "schema": _aurora_set_audit_response_schema(),
+            },
+        }
     if request.planning_profile != "amazon_visual_suite":
         return {"type": "json_object"}
     return {
@@ -6036,6 +6069,154 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             "strict": True,
             "schema": _amazon_planner_json_schema(),
         },
+    }
+
+
+def _aurora_fast_audit_options(planning_profile: str) -> dict[str, Any]:
+    """Bound audit output and disable sampling without weakening pixel review."""
+
+    max_tokens = {
+        "aurora_style_calibration": 1_800,
+        "aurora_set_audit": 4_500,
+        "aurora_visual_audit": 6_000,
+    }[planning_profile]
+    return {
+        "reasoning_effort": "low",
+        "max_completion_tokens": max_tokens,
+    }
+
+
+def _aurora_visual_judgment_response_schema() -> dict[str, Any]:
+    schema_path = (
+        Path(__file__).resolve().parent.parent
+        / "skill_sources"
+        / "aurora-domestic-ecommerce-main-image"
+        / "schemas"
+        / "visual-judgment.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    schema.pop("$schema", None)
+    schema.pop("$id", None)
+    _make_json_schema_strict(schema)
+    return schema
+
+
+def _make_json_schema_strict(value: object) -> None:
+    if isinstance(value, dict):
+        properties = value.get("properties")
+        if value.get("type") == "object" and isinstance(properties, dict):
+            value["required"] = list(properties)
+            value["additionalProperties"] = False
+        for nested in value.values():
+            _make_json_schema_strict(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            _make_json_schema_strict(nested)
+
+
+def _aurora_style_calibration_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "agent_pixel_reviewed": {"const": True},
+            "review_mode": {"const": "DIRECT_PIXEL_VISUAL_COMPARISON"},
+            "source_page_indexes": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 0, "maximum": 1},
+                "minItems": 2,
+                "maxItems": 2,
+            },
+            "observed_evidence": {"type": "string", "minLength": 20},
+            "style_tokens": {
+                "type": "object",
+                "properties": {
+                    "photography_finish": {"type": "string", "minLength": 8},
+                    "graphic_language": {"type": "string", "minLength": 8},
+                },
+                "required": ["photography_finish", "graphic_language"],
+                "additionalProperties": False,
+            },
+        },
+        "required": [
+            "agent_pixel_reviewed",
+            "review_mode",
+            "source_page_indexes",
+            "observed_evidence",
+            "style_tokens",
+        ],
+        "additionalProperties": False,
+    }
+
+
+def _aurora_set_audit_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "agent_pixel_reviewed": {"const": True},
+            "review_mode": {"const": "BLIND_SIX_PAGE_ROLE_COMPARISON"},
+            "reviewed_page_indexes": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 0, "maximum": 5},
+                "minItems": 6,
+                "maxItems": 6,
+            },
+            "image_sha256_by_page": {
+                "type": "object",
+                "properties": {
+                    str(index): {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+                    for index in range(6)
+                },
+                "required": [str(index) for index in range(6)],
+                "additionalProperties": False,
+            },
+            "identified_search_page_index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 5,
+            },
+            "search_role_is_unique": {"type": "boolean"},
+            "confusable_page_indexes": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 0, "maximum": 5},
+            },
+            "search_identification_evidence": {
+                "type": "string",
+                "minLength": 20,
+            },
+            "carousel_distinctions": {
+                "type": "array",
+                "minItems": 5,
+                "maxItems": 5,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "page_index": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 5,
+                        },
+                        "why_not_search_cover": {
+                            "type": "string",
+                            "minLength": 12,
+                        },
+                    },
+                    "required": ["page_index", "why_not_search_cover"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": [
+            "agent_pixel_reviewed",
+            "review_mode",
+            "reviewed_page_indexes",
+            "image_sha256_by_page",
+            "identified_search_page_index",
+            "search_role_is_unique",
+            "confusable_page_indexes",
+            "search_identification_evidence",
+            "carousel_distinctions",
+        ],
+        "additionalProperties": False,
     }
 
 

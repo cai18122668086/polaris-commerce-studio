@@ -28,6 +28,8 @@ from app.xinghe_agent import (
     FakeXingheGateway,
     PlannerRequest,
     SourceImage,
+    _aurora_fast_audit_options,
+    _planner_response_format,
 )
 
 
@@ -156,6 +158,36 @@ def test_visual_audit_supplies_the_complete_harness_judgment_schema() -> None:
     assert "decision_summary" in schema["required"]
     assert "performance_observation" in schema["required"]
     assert set(schema["properties"]["checks"]["required"])
+
+
+def test_visual_audit_uses_strict_bounded_low_reasoning_response() -> None:
+    request = PlannerRequest(
+        workspace_id="workspace_one",
+        job_id="job_audit",
+        group_key="job_audit:page:0",
+        sources=(),
+        page_count=1,
+        language="zh-CN",
+        product_name="当前页卖点",
+        product_information=(),
+        platform_code="TAOBAO_AURORA_PIXEL_AUDIT",
+        size="1024x1024",
+        idempotency_key="audit-structure",
+        planning_profile="aurora_visual_audit",
+    )
+
+    response_format = _planner_response_format(request)
+    options = _aurora_fast_audit_options(request.planning_profile)
+
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["strict"] is True
+    schema = response_format["json_schema"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]["checks"]["required"])
+    assert options == {
+        "reasoning_effort": "low",
+        "max_completion_tokens": 6_000,
+    }
 
 
 def test_visual_audit_adapts_equivalent_direct_pixel_review_fields() -> None:
@@ -311,6 +343,39 @@ def test_visual_audit_proof_observation_forces_consistent_material_failures() ->
 
     assert normalized["checks"]["selling_point_visual_dominance"]["passed"] is False
     assert normalized["checks"]["approved_plan_fidelity_match"]["passed"] is False
+
+
+def test_visual_audit_keeps_explicit_overall_pass_failures_advisory() -> None:
+    schema = _visual_judgment_schema()
+    checks = {
+        name: {
+            "passed": name != "headline_treatment_match",
+            "score": 55 if name == "headline_treatment_match" else 90,
+            "observed_evidence": "Direct pixel evidence supports this conclusion.",
+        }
+        for name in schema["properties"]["checks"]["required"]
+    }
+    judgment = {
+        "overall_verdict": "PASS",
+        "material_failure_count": 0,
+        "decision_summary": "The page materially satisfies its approved contract.",
+        "performance_observation": {},
+        "plan_fidelity_observation": {},
+        "source_background_observation": {},
+        "selling_point_proof_observation": {
+            "visible_without_copy": True,
+            "evidence_is_primary_visual": True,
+        },
+        "checks": checks,
+        "audit_completeness_confirmation": True,
+        "all_observed_deficiencies": [],
+    }
+
+    normalized = _normalize_visual_judgment_payload(judgment)
+
+    assert normalized["checks"]["headline_treatment_match"]["passed"] is False
+    assert normalized["checks"]["headline_treatment_match"]["score"] == 70
+    assert normalized["all_observed_deficiencies"] == []
 
 
 def test_compile_v013_builds_campaign_style_and_six_execution_contracts(

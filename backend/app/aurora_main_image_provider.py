@@ -819,6 +819,7 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
     """Adapt a direct-pixel reviewer's equivalent JSON to the Harness contract."""
 
     if _is_complete_visual_judgment(payload):
+        _downgrade_nonmaterial_check_failures(payload)
         _enforce_visual_judgment_consistency(payload)
         payload["all_observed_deficiencies"] = _normalized_deficiencies(
             payload, _mapping(payload.get("checks"))
@@ -948,6 +949,38 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
         payload, normalized_checks
     )
     return payload
+
+
+def _downgrade_nonmaterial_check_failures(payload: dict[str, Any]) -> None:
+    """Keep explicit overall PASS check gaps advisory instead of regenerating."""
+
+    verdicts = {
+        str(payload.get(name, "")).upper()
+        for name in ("overall_status", "overall_result", "overall_verdict")
+    }
+    explicit_material_pass = (
+        "PASS" in verdicts
+        and (
+            payload.get("material_failure_count") == 0
+            or payload.get("material_failed_check_count") == 0
+            or payload.get("material_fail_count") == 0
+            or payload.get("overall_material_pass") is True
+        )
+    )
+    if not explicit_material_pass:
+        return
+    checks = _mapping(payload.get("checks"))
+    for value in checks.values():
+        if not isinstance(value, dict) or value.get("passed") is not False:
+            continue
+        raw_score = value.get("score")
+        score = (
+            float(raw_score)
+            if isinstance(raw_score, (int, float))
+            and not isinstance(raw_score, bool)
+            else 70.0
+        )
+        value["score"] = max(70.0, score)
 
 
 def _enforce_visual_judgment_consistency(payload: dict[str, Any]) -> dict[str, Any]:

@@ -221,6 +221,7 @@ function UploadControl({
   disabled,
   onFile,
   onOpenLibrary,
+  uploadLabel,
 }: {
   title: string;
   description: string;
@@ -229,6 +230,7 @@ function UploadControl({
   disabled: boolean;
   onFile: (file: File) => void;
   onOpenLibrary?: () => void;
+  uploadLabel?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -247,7 +249,7 @@ function UploadControl({
           onClick={() => inputRef.current?.click()}
         >
           {pending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
-          {asset ? "重新上传" : "本地上传"}
+          {uploadLabel ?? (asset ? "重新上传" : "本地上传")}
         </button>
         {onOpenLibrary ? (
           <button type="button" disabled={disabled || pending} onClick={onOpenLibrary}>
@@ -309,6 +311,10 @@ export function ModelPoseTransferWorkspace() {
   );
 
   const isSubmitting = materializePose.isPending || createJob.isPending;
+  const canRestartTask = Boolean(
+    jobId && job.data && ["partial", "completed", "failed", "cancelled"].includes(job.data.status),
+  );
+  const sourceSelectionLocked = isSubmitting || Boolean(jobId && !canRestartTask);
   const selectedPoseReady = poseMode === "catalog" ? Boolean(selectedPose) : Boolean(customPose);
   const runtimeAllowsGeneration = workflow.canSubmit && workflow.canDeliverImages;
   const canSubmit = Boolean(
@@ -442,11 +448,14 @@ export function ModelPoseTransferWorkspace() {
     submissionLock.current = false;
     setJobId(undefined);
     setModelSource(undefined);
+    setSourceLibraryOpen(false);
     setSelectedPoseSlug(undefined);
     setCustomPose(undefined);
     setMaterializedPose(undefined);
     setInstruction("");
     setUiError(undefined);
+    sourceUpload.reset();
+    customPoseUpload.reset();
     createJob.reset();
     materializePose.reset();
   };
@@ -497,8 +506,12 @@ export function ModelPoseTransferWorkspace() {
                   description="上传本地图片，或从个人素材库中选择"
                   asset={modelSource}
                   pending={sourceUpload.isPending}
-                  disabled={Boolean(jobId) || isSubmitting}
-                  onFile={(file) => void uploadModelSource(file)}
+                  disabled={sourceSelectionLocked}
+                  uploadLabel={canRestartTask ? "重新上传并新建任务" : undefined}
+                  onFile={(file) => {
+                    if (canRestartTask) resetTask();
+                    void uploadModelSource(file);
+                  }}
                   onOpenLibrary={() => setSourceLibraryOpen(true)}
                 />
                 <AssetPreview workspaceId={workspace?.id} asset={modelSource} alt="模特服装原图预览" />
@@ -668,13 +681,19 @@ export function ModelPoseTransferWorkspace() {
             workspaceId={workspace?.id}
             title="选择模特服装原图"
             description="选择人物和服装都清晰完整的原始图片。"
-            selectedIds={modelSource ? [modelSource.id] : []}
+            selectedIds={canRestartTask ? [] : modelSource ? [modelSource.id] : []}
             excludedIds={customPose ? [customPose.id] : []}
             maxItems={1}
-            disabled={Boolean(jobId) || isSubmitting}
+            disabled={sourceSelectionLocked}
             onClose={() => setSourceLibraryOpen(false)}
             onConfirm={(assetIds, assets) => {
-              setModelSource(assets.find((asset) => asset.id === assetIds[0]));
+              const nextSource = assets.find((asset) => asset.id === assetIds[0]);
+              if (!nextSource) {
+                setSourceLibraryOpen(false);
+                return;
+              }
+              if (canRestartTask) resetTask();
+              setModelSource(nextSource);
               setSourceLibraryOpen(false);
               setUiError(undefined);
             }}

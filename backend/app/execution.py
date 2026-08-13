@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import re
 import socket
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -590,6 +590,9 @@ class ExecutionCoordinator:
             if not leases:
                 break
             await asyncio.gather(*(self.execute_lease(lease) for lease in leases))
+            if self._domestic_batch_has_failure(job_id, leases):
+                self._skip_domestic_pages_after_execution_failure(job_id)
+                break
 
         # The bundled Amazon Skill owns creative QA. Do not add a second Provider
         # review call to the default execution path: even a read-only review would
@@ -610,6 +613,56 @@ class ExecutionCoordinator:
                 select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
             )
             return job_type == JobType.DOMESTIC_MAIN_IMAGE.value
+
+    def _skip_domestic_pages_after_execution_failure(self, job_id: str) -> None:
+        """Stop a strictly sequential Aurora campaign after an infrastructure failure.
+
+        Later pages have not failed generation and must not be submitted after the
+        Harness rejects the active page. Marking them skipped preserves that fact
+        while allowing the durable job to reach a terminal state.
+        """
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None or job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+                return
+            pending = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status.in_(
+                        [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
+                    ),
+                )
+                .with_for_update()
+            ).all()
+            now = utc_now()
+            for item in pending:
+                item.status = JobItemStatus.SKIPPED.value
+                item.stage = "blocked_by_previous_page"
+                item.error_code = "AURORA_SEQUENCE_HALTED"
+                item.error_message = (
+                    "Not generated because an earlier sequential page failed."
+                )
+                item.finished_at = now
+                item.state_version += 1
+            session.commit()
+
+    def _domestic_batch_has_failure(
+        self, job_id: str, leases: Sequence[AttemptLease]
+    ) -> bool:
+        with self.session_factory() as session:
+            job_type = session.scalar(
+                select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
+            )
+            if job_type != JobType.DOMESTIC_MAIN_IMAGE.value:
+                return False
+            statuses = session.scalars(
+                select(JobItemRecord.status).where(
+                    JobItemRecord.id.in_([lease.item_id for lease in leases])
+                )
+            ).all()
+            return any(status == JobItemStatus.FAILED.value for status in statuses)
 
     def prepare(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:

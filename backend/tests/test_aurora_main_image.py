@@ -13,12 +13,20 @@ from app.aurora_main_image_planner import (
     _build_raw,
     _public_plan_payload,
 )
-from app.aurora_main_image_provider import AuroraMainImageProvider
+from app.aurora_main_image_provider import (
+    AuroraMainImageProvider,
+    _normalize_visual_judgment_payload,
+    _visual_judgment_schema,
+)
 from app.aurora_main_image_runtime import AuroraHarnessError, AuroraHarnessRunner
 from app.provider import ProviderOutcome, ProviderRequest
 from app.routes_v1 import _new_job_from_payload, runtime_status_response
 from app.schemas_v1 import DomesticMainImageJobCreate
-from app.xinghe_agent import FakeXingheGateway, PlannerRequest, SourceImage
+from app.xinghe_agent import (
+    FakeXingheGateway,
+    PlannerRequest,
+    SourceImage,
+)
 
 
 def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
@@ -138,6 +146,53 @@ def test_identity_request_id_is_bound_to_the_current_job() -> None:
     )
 
     assert identity["request_id"] == "job_current"
+
+
+def test_visual_audit_supplies_the_complete_harness_judgment_schema() -> None:
+    schema = _visual_judgment_schema()
+
+    assert "decision_summary" in schema["required"]
+    assert "performance_observation" in schema["required"]
+    assert set(schema["properties"]["checks"]["required"])
+
+
+def test_visual_audit_adapts_equivalent_direct_pixel_review_fields() -> None:
+    judgment = _normalize_visual_judgment_payload(
+        {
+            "overall_verdict": "PASS",
+            "approval_recommendation": "APPROVE",
+            "material_failure_count": 0,
+            "final_reasoning": (
+                "Actual pixels show a complete product, clean isolation, and a "
+                "clear approved page duty."
+            ),
+            "candidate_pixel_summary": {
+                "composition": "A complete product pair dominates the square canvas.",
+                "background": (
+                    "A rebuilt clean studio background surrounds the product."
+                ),
+            },
+            "checks": [
+                {
+                    "check_name": "product_identity",
+                    "status": "PASS",
+                    "actual_pixel_evidence": (
+                        "Visible shape, color blocks, and components match the "
+                        "source product."
+                    ),
+                }
+            ],
+            "selling_point_proof_observation": {},
+            "all_observed_deficiencies": [],
+        }
+    )
+
+    assert len(judgment["decision_summary"]) >= 20
+    assert judgment["audit_completeness_confirmation"] is True
+    assert set(judgment["checks"]) == set(
+        _visual_judgment_schema()["properties"]["checks"]["required"]
+    )
+    assert judgment["checks"]["product_identity_match"]["passed"] is True
 
 
 def test_compile_v013_builds_campaign_style_and_six_execution_contracts(

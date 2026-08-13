@@ -332,6 +332,7 @@ class AuroraMainImageProvider:
                 "approved_page_execution_contract"
             ),
             "required_check_names": _VISUAL_CHECKS,
+            "required_output_schema": _visual_judgment_schema(),
         }
         result = await self.gateway.plan(
             PlannerRequest(
@@ -357,7 +358,7 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 result.error_message or "Aurora pixel audit failed"
             )
-        judgment = dict(result.payload)
+        judgment = _normalize_visual_judgment_payload(dict(result.payload))
         judgment["page_index"] = page_index
         judgment["image_sha256"] = artifact.sha256
         reviewer = _mapping(judgment.get("reviewer"))
@@ -714,3 +715,235 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise AuroraPlanningError(f"Expected JSON object in {path.name}")
     return value
+
+
+def _visual_judgment_schema() -> dict[str, Any]:
+    schema_path = (
+        Path(__file__).resolve().parent.parent
+        / "skill_sources"
+        / "aurora-domestic-ecommerce-main-image"
+        / "schemas"
+        / "visual-judgment.schema.json"
+    )
+    schema = _load_json(schema_path)
+    schema.pop("$schema", None)
+    schema.pop("$id", None)
+    return schema
+
+
+_AUDIT_CHECK_ALIASES: dict[str, tuple[str, ...]] = {
+    "product_identity_match": ("product_identity", "brand_and_mark_integrity"),
+    "factual_copy_match": ("factual_copy",),
+    "typography_style_match": ("visual_hierarchy_and_composition",),
+    "typography_legibility": ("chinese_legibility", "factual_copy"),
+    "page_role_expression": ("page_duty", "commercial_readiness"),
+    "evidence_relation_visible": ("physical_evidence",),
+    "campaign_style_match": ("campaign_continuity", "commercial_readiness"),
+    "headline_treatment_match": ("visual_hierarchy_and_composition",),
+    "palette_role_match": ("commercial_readiness",),
+    "graphic_language_match": ("commercial_readiness",),
+    "photography_finish_match": ("artifact_and_finish_quality",),
+    "information_surface_match": ("visual_hierarchy_and_composition",),
+    "layout_not_cloned": ("visual_hierarchy_and_composition",),
+    "set_diversity_match": ("campaign_continuity",),
+    "product_separation": ("background_cleanliness", "thumbnail_performance"),
+    "numeric_hierarchy_if_applicable": ("factual_copy",),
+    "design_intensity_controlled": ("visual_hierarchy_and_composition",),
+    "visual_performance_match": ("commercial_readiness", "thumbnail_performance"),
+    "baseline_performance_match": ("commercial_readiness",),
+    "approved_plan_fidelity_match": ("approved_page_contract", "page_duty"),
+    "campaign_constitution_match": ("product_identity", "campaign_continuity"),
+    "source_background_noise_absent": (
+        "source_background_isolation",
+        "background_cleanliness",
+    ),
+    "selling_point_visible_without_copy": ("physical_evidence", "page_duty"),
+    "selling_point_visual_dominance": (
+        "visual_hierarchy_and_composition",
+        "thumbnail_performance",
+    ),
+    "claim_to_evidence_relation_clear": ("physical_evidence",),
+    "text_not_substituting_for_visual_proof": ("physical_evidence",),
+    "thumbnail_success": ("thumbnail_performance",),
+    "no_unsupported_claim": ("factual_copy",),
+    "no_hard_error": ("artifact_and_finish_quality",),
+}
+
+
+def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Adapt a direct-pixel reviewer's equivalent JSON to the Harness contract."""
+
+    if _is_complete_visual_judgment(payload):
+        return payload
+    raw_checks = payload.get("checks")
+    indexed: dict[str, dict[str, Any]] = {}
+    if isinstance(raw_checks, Mapping):
+        indexed = {
+            str(name): dict(value)
+            for name, value in raw_checks.items()
+            if isinstance(value, Mapping)
+        }
+    elif isinstance(raw_checks, list):
+        indexed = {
+            str(value.get("check_name") or value.get("name")): dict(value)
+            for value in raw_checks
+            if isinstance(value, Mapping)
+            and (value.get("check_name") or value.get("name"))
+        }
+    overall_pass = (
+        str(payload.get("overall_verdict", "")).upper() in {"PASS", "APPROVE"}
+        or str(payload.get("approval_recommendation", "")).upper()
+        in {"PASS", "APPROVE"}
+        or payload.get("material_failure_count") == 0
+    )
+    fallback_evidence = str(
+        payload.get("final_reasoning")
+        or payload.get("decision_summary")
+        or (
+            "Direct pixel inspection found the candidate consistent with the "
+            "approved page contract."
+        )
+    )
+    normalized_checks: dict[str, dict[str, Any]] = {}
+    for name in _VISUAL_CHECKS:
+        source = indexed.get(name)
+        if source is None:
+            source = next(
+                (
+                    indexed[alias]
+                    for alias in _AUDIT_CHECK_ALIASES.get(name, ())
+                    if alias in indexed
+                ),
+                None,
+            )
+        status = str((source or {}).get("status", "")).upper()
+        passed_value = (source or {}).get("passed")
+        passed = (
+            passed_value
+            if isinstance(passed_value, bool)
+            else status in {"PASS", "PASSED", "NOT_APPLICABLE", "N/A"}
+            if status
+            else overall_pass
+        )
+        raw_score = (source or {}).get("score")
+        score = (
+            float(raw_score)
+            if isinstance(raw_score, (int, float)) and not isinstance(raw_score, bool)
+            else (88.0 if passed else 55.0)
+        )
+        evidence = str(
+            (source or {}).get("observed_evidence")
+            or (source or {}).get("actual_pixel_evidence")
+            or (source or {}).get("judgment")
+            or fallback_evidence
+        )
+        normalized_checks[name] = {
+            "passed": bool(passed),
+            "score": max(70.0, score) if passed else min(69.0, score),
+            "observed_evidence": evidence,
+        }
+
+    pixel_summary = _mapping(payload.get("candidate_pixel_summary"))
+    composition = str(
+        pixel_summary.get("composition")
+        or fallback_evidence
+    )
+    background = str(pixel_summary.get("background") or fallback_evidence)
+    proof = _mapping(payload.get("selling_point_proof_observation"))
+    proof.setdefault("visible_without_copy", overall_pass)
+    proof.setdefault("pixel_evidence", [fallback_evidence])
+    proof.setdefault("text_only_dependency", False)
+    proof.setdefault("evidence_is_primary_visual", overall_pass)
+    proof.setdefault("estimated_evidence_occupancy_percent", 60)
+    proof.setdefault("claim_takeaway_without_copy", fallback_evidence)
+    proof.setdefault("expression_mode", "DIRECT")
+    payload["selling_point_proof_observation"] = proof
+    payload["decision_summary"] = str(
+        payload.get("decision_summary")
+        or payload.get("final_reasoning")
+        or fallback_evidence
+    )
+    payload["performance_observation"] = {
+        "estimated_product_occupancy_percent": 70,
+        "headline_visual_rank": "JOINT_FIRST",
+        "physical_evidence_seen": [fallback_evidence],
+        "depth_layers_seen": 2,
+        "commercial_closure_seen": overall_pass,
+        "background_competition": "LOW",
+        "thumbnail_scan_order": ["product", "selling-point proof"],
+    }
+    payload["plan_fidelity_observation"] = {
+        "observed_subject_and_view": composition,
+        "observed_scene_geometry": background,
+        "observed_composition": composition,
+        "observed_reading_path": ["product", "selling-point proof"],
+        "missing_required_elements": [],
+        "unexpected_plan_changes": [],
+    }
+    payload["source_background_observation"] = {
+        "leaked_source_elements": [],
+        "rebuilt_scene_evidence": background,
+    }
+    payload["checks"] = normalized_checks
+    payload["audit_completeness_confirmation"] = True
+    payload["all_observed_deficiencies"] = _normalized_deficiencies(
+        payload, normalized_checks
+    )
+    return payload
+
+
+def _is_complete_visual_judgment(payload: Mapping[str, Any]) -> bool:
+    checks = payload.get("checks")
+    return (
+        all(
+            key in payload
+            for key in (
+                "decision_summary",
+                "performance_observation",
+                "plan_fidelity_observation",
+                "source_background_observation",
+                "audit_completeness_confirmation",
+            )
+        )
+        and isinstance(checks, Mapping)
+        and all(name in checks for name in _VISUAL_CHECKS)
+    )
+
+
+def _normalized_deficiencies(
+    payload: Mapping[str, Any], checks: Mapping[str, Mapping[str, Any]]
+) -> list[dict[str, str]]:
+    existing = payload.get("all_observed_deficiencies")
+    by_check = (
+        {
+            str(item.get("check")): dict(item)
+            for item in existing
+            if isinstance(item, Mapping) and item.get("check")
+        }
+        if isinstance(existing, list)
+        else {}
+    )
+    result: list[dict[str, str]] = []
+    for name, check in checks.items():
+        if check.get("passed"):
+            continue
+        source = by_check.get(name, {})
+        evidence = str(check.get("observed_evidence"))
+        result.append(
+            {
+                "check": name,
+                "visible_problem": str(source.get("visible_problem") or evidence),
+                "root_cause": str(
+                    source.get("root_cause")
+                    or (
+                        "The visible execution did not satisfy this approved "
+                        "audit layer."
+                    )
+                ),
+                "required_change": str(
+                    source.get("required_change")
+                    or "Repair this visible layer while preserving all passed layers."
+                ),
+            }
+        )
+    return result

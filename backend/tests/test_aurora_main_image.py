@@ -29,7 +29,6 @@ from app.xinghe_agent import (
     FakeXingheGateway,
     PlannerRequest,
     SourceImage,
-    _aurora_fast_audit_options,
     _planner_response_format,
 )
 
@@ -161,7 +160,7 @@ def test_visual_audit_supplies_the_complete_harness_judgment_schema() -> None:
     assert set(schema["properties"]["checks"]["required"])
 
 
-def test_visual_audit_uses_strict_bounded_low_reasoning_response() -> None:
+def test_visual_audit_uses_provider_compatible_json_object_response() -> None:
     request = PlannerRequest(
         workspace_id="workspace_one",
         job_id="job_audit",
@@ -178,17 +177,8 @@ def test_visual_audit_uses_strict_bounded_low_reasoning_response() -> None:
     )
 
     response_format = _planner_response_format(request)
-    options = _aurora_fast_audit_options(request.planning_profile)
 
-    assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["strict"] is True
-    schema = response_format["json_schema"]["schema"]
-    assert schema["additionalProperties"] is False
-    assert set(schema["properties"]["checks"]["required"])
-    assert options == {
-        "reasoning_effort": "low",
-        "max_completion_tokens": 6_000,
-    }
+    assert response_format == {"type": "json_object"}
 
 
 def test_visual_audit_keeps_candidate_and_bounds_identity_images() -> None:

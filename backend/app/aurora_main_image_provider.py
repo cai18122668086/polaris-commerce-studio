@@ -795,11 +795,34 @@ _PLAN_CRITICAL_VISUAL_CHECKS = frozenset(
     }
 )
 
+_HARNESS_BLOCKING_VISUAL_CHECKS = frozenset(
+    {
+        "product_identity_match",
+        "factual_copy_match",
+        "campaign_constitution_match",
+        "source_background_noise_absent",
+        "no_unsupported_claim",
+        "no_hard_error",
+        "typography_legibility",
+        "page_role_expression",
+        "evidence_relation_visible",
+        "approved_plan_fidelity_match",
+        "selling_point_visible_without_copy",
+        "claim_to_evidence_relation_clear",
+        "text_not_substituting_for_visual_proof",
+        "thumbnail_success",
+    }
+)
+
 
 def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Adapt a direct-pixel reviewer's equivalent JSON to the Harness contract."""
 
     if _is_complete_visual_judgment(payload):
+        _enforce_visual_judgment_consistency(payload)
+        payload["all_observed_deficiencies"] = _normalized_deficiencies(
+            payload, _mapping(payload.get("checks"))
+        )
         return payload
     raw_checks = payload.get("checks")
     indexed: dict[str, dict[str, Any]] = {}
@@ -920,9 +943,47 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
     }
     payload["checks"] = normalized_checks
     payload["audit_completeness_confirmation"] = True
+    _enforce_visual_judgment_consistency(payload)
     payload["all_observed_deficiencies"] = _normalized_deficiencies(
         payload, normalized_checks
     )
+    return payload
+
+
+def _enforce_visual_judgment_consistency(payload: dict[str, Any]) -> dict[str, Any]:
+    """Make proof observations and material Harness checks agree."""
+
+    checks = _mapping(payload.get("checks"))
+    proof = _mapping(payload.get("selling_point_proof_observation"))
+    forced_failures: set[str] = set()
+    if proof.get("visible_without_copy") is False:
+        forced_failures.update(
+            {
+                "selling_point_visible_without_copy",
+                "claim_to_evidence_relation_clear",
+                "text_not_substituting_for_visual_proof",
+                "approved_plan_fidelity_match",
+            }
+        )
+    if proof.get("evidence_is_primary_visual") is False:
+        forced_failures.update(
+            {
+                "selling_point_visual_dominance",
+                "visual_performance_match",
+                "thumbnail_success",
+                "approved_plan_fidelity_match",
+            }
+        )
+    for name in forced_failures:
+        check = _mapping(checks.get(name))
+        check["passed"] = False
+        check["score"] = min(float(check.get("score", 55.0)), 69.0)
+        check["observed_evidence"] = str(
+            check.get("observed_evidence")
+            or "Direct pixels do not establish the approved selling-point proof."
+        )
+        checks[name] = check
+    payload["checks"] = checks
     return payload
 
 
@@ -959,7 +1020,11 @@ def _normalized_deficiencies(
     )
     result: list[dict[str, str]] = []
     for name, check in checks.items():
-        if check.get("passed"):
+        if (
+            check.get("passed")
+            or name not in _HARNESS_BLOCKING_VISUAL_CHECKS
+            or float(check.get("score", 100.0)) >= 70.0
+        ):
             continue
         source = by_check.get(name, {})
         evidence = str(check.get("observed_evidence"))

@@ -218,6 +218,36 @@ def test_style_calibration_joins_concrete_pixel_evidence() -> None:
     assert "concrete_observed_evidence" not in observation
 
 
+def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:
+    schema = _visual_judgment_schema()
+    checks = {
+        name: {
+            "passed": True,
+            "score": 90,
+            "observed_evidence": "The reviewer supplied direct pixel evidence.",
+        }
+        for name in schema["properties"]["checks"]["required"]
+    }
+    judgment = {
+        "decision_summary": "The page needs a stronger physical proof treatment.",
+        "performance_observation": {},
+        "plan_fidelity_observation": {},
+        "source_background_observation": {},
+        "selling_point_proof_observation": {
+            "visible_without_copy": False,
+            "evidence_is_primary_visual": False,
+        },
+        "checks": checks,
+        "audit_completeness_confirmation": True,
+        "all_observed_deficiencies": [],
+    }
+
+    normalized = _normalize_visual_judgment_payload(judgment)
+
+    assert normalized["checks"]["selling_point_visual_dominance"]["passed"] is False
+    assert normalized["checks"]["approved_plan_fidelity_match"]["passed"] is False
+
+
 def test_compile_v013_builds_campaign_style_and_six_execution_contracts(
     tmp_path: Path,
 ) -> None:

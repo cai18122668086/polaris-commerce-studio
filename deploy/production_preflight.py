@@ -154,6 +154,14 @@ def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> lis
         errors.append("POLARIS_AUTH_SMTP_PORT must be between 1 and 65535")
     if env.get("POLARIS_AUTH_SMTP_SECURE", "").lower() not in {"true", "false"}:
         errors.append("POLARIS_AUTH_SMTP_SECURE must be true or false")
+    boolean_keys = (
+        *(key for key in PROVIDER_KEYS if key.endswith("_PROVIDER_ENABLED")),
+        "POLARIS_PROVIDER_QUOTA_ENABLED",
+        "POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED",
+    )
+    for key in boolean_keys:
+        if env.get(key, "") not in {"true", "false"}:
+            errors.append(f"{key} must be exactly true or false")
     if base is not None:
         changed = [key for key in PROVIDER_KEYS if key in base and env.get(key) != base.get(key)]
         if changed:

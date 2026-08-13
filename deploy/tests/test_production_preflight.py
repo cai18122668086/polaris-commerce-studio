@@ -141,6 +141,21 @@ class ProductionPreflightTests(unittest.TestCase):
         errors = validate_env(env)
         self.assertTrue(any("POLARIS_SUPERTOKENS_API_KEY" in error for error in errors))
 
+    def test_boolean_provider_controls_are_strict(self) -> None:
+        invalid_values = ("yes", "1", "TRUE", "")
+        keys = (
+            *(key for key in PROVIDER_KEYS if key.endswith("_PROVIDER_ENABLED")),
+            "POLARIS_PROVIDER_QUOTA_ENABLED",
+            "POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED",
+        )
+        for key in keys:
+            for invalid in invalid_values:
+                with self.subTest(key=key, invalid=invalid):
+                    env = self.valid_env()
+                    env[key] = invalid
+                    errors = validate_env(env)
+                    self.assertIn(f"{key} must be exactly true or false", errors)
+
     def test_provider_drift_is_detected_without_values(self) -> None:
         env = self.valid_env()
         base = {key: env[key] for key in PROVIDER_KEYS}

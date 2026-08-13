@@ -11,7 +11,7 @@ provider-egress network; the frontend never receives Provider configuration.
 Execution defaults to the mock runner. The API and worker can use the shared
 Tengli adapter after the server-local Provider configuration is explicitly
 approved. Internal-beta daily/monthly cost and daily request limits stay at
-`0` (unlimited). The five Provider feature switches default to `false`; API,
+`0` (unlimited). The six Provider feature switches default to `false`; API,
 worker, and dispatcher receive the same switch
 values, while Provider credentials remain limited to API and worker. Enabling
 any switch requires `POLARIS_TASK_RUNNER=tengli`, a non-placeholder Provider
@@ -199,10 +199,10 @@ docker compose \
 Inspect the rendered output without copying it off the server. Confirm exactly
 nine services and four networks; migrate and dispatcher pinned to mock; API and
 worker using the shared default-mock Provider settings; API, worker, and
-dispatcher receiving identical values for all five Provider feature switches;
+dispatcher receiving identical values for all six Provider feature switches;
 only API and worker receiving Provider credentials; only worker on
 provider-egress; only Caddy on ingress; edge and backend internal; and only
-`127.0.0.1:8080:8080` published. With all five switches at `false`, this config
+`127.0.0.1:8080:8080` published. With all six switches at `false`, this config
 supports internal validation without authorizing a Provider request.
 
 The server is not assumed to have a Caddy CLI or cached image. After the fixed
@@ -283,7 +283,7 @@ The following phase is documentation, not authorization:
 9. Confirm the only listener is loopback 8080 and all non-Caddy services have
    no host port.
 10. Through the SSH tunnel, run live/ready checks and complete both workflows in
-    mock mode with all five Provider feature switches set to `false`. After
+    mock mode with all six Provider feature switches set to `false`. After
     real Provider path is explicitly approved, replace the Provider API-key
     placeholder, keep the internal-beta daily/monthly/request limits at `0`,
     leave `POLARIS_PROVIDER_QUOTA_ENABLED=false` for the unrestricted test

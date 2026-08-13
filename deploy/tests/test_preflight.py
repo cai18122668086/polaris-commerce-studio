@@ -58,6 +58,7 @@ class SourcePreflightTests(unittest.TestCase):
             (
                 "POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED",
                 "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED",
+                "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED",
                 "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED",
                 "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED",
                 "POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED",
@@ -680,6 +681,12 @@ class SourcePreflightTests(unittest.TestCase):
             POLARIS_TENGLI_API_KEY="<SET_ON_SERVER_PROVIDER_API_KEY>",
         )
         self.assertEqual(errors, [])
+
+    def test_internal_provider_switch_contract_includes_model_pose(self) -> None:
+        self.assertIn(
+            "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED",
+            PREFLIGHT.PROVIDER_FLAG_KEYS,
+        )
 
     def test_invalid_provider_switch_value_is_rejected(self) -> None:
         key = PREFLIGHT.PROVIDER_FLAG_KEYS[0]

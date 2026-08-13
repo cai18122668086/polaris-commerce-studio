@@ -19,6 +19,11 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
   assert.match(page, /DomesticMainImageWorkspace/);
   assert.match(workspace, /type: "domestic_main_image"/);
   assert.match(workspace, /product_asset_ids/);
+  assert.match(workspace, /onDrop={handleDrop}/);
+  assert.match(workspace, /type="file" multiple/);
+  assert.match(workspace, /把多张商品原图拖到这里/);
+  assert.match(workspace, /MAX_SOURCE_IMAGES = 8/);
+  assert.match(workspace, /duplicateCount/);
   assert.match(workspace, /确认方案并开始/);
   assert.match(workspace, /providerReady/);
   assert.match(workspace, /真实生成服务未启用/);

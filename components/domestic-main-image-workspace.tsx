@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, Check, ImagePlus, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
@@ -16,12 +16,12 @@ import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtim
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import type { Asset, DomesticMainImageJobCreate } from "@/lib/api/types";
 import { errorMessage } from "@/lib/api/request";
-import { IMAGE_UPLOAD_ACCEPT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_EXTENSIONS, IMAGE_UPLOAD_FORMAT_HINT, IMAGE_UPLOAD_MIME_TYPES } from "@/lib/image-upload";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./domestic-main-image-workspace.module.css";
 
-type Source = { asset: Asset; previewUrl: string };
+type Source = { asset: Asset; previewUrl: string; fileKey: string };
 type PlanPage = {
   page_index: number;
   page_role: string;
@@ -62,6 +62,18 @@ const roleNames: Record<string, string> = {
   CAROUSEL_OFFER_OR_SPEC_CLOSURE: "权益 / 规格收口",
 };
 
+const MAX_SOURCE_IMAGES = 8;
+
+function fileKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function isSupportedImage(file: File) {
+  const lowerName = file.name.toLowerCase();
+  return IMAGE_UPLOAD_MIME_TYPES.some((mimeType) => mimeType === file.type)
+    || IMAGE_UPLOAD_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+}
+
 function lines(value: string, limit: number) {
   return value.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean).slice(0, limit);
 }
@@ -90,6 +102,8 @@ export function DomesticMainImageWorkspace() {
   const searchParams = useSearchParams();
   const requestedJobId = searchParams.get("jobId")?.trim() || undefined;
   const fileInput = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+  const sourcesRef = useRef<Source[]>([]);
   const { workspace } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
@@ -100,6 +114,7 @@ export function DomesticMainImageWorkspace() {
     runtime.data?.capabilities.features?.domestic_main_image,
   );
   const [sources, setSources] = useState<Source[]>([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [productName, setProductName] = useState("");
   const [category, setCategory] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
@@ -130,18 +145,78 @@ export function DomesticMainImageWorkspace() {
     !jobId && workspace && sources.length && productName.trim() && category.trim() && lines(sellingPoints, 24).length && workflow.canSubmit,
   );
 
+  useEffect(() => {
+    sourcesRef.current = sources;
+  }, [sources]);
+
+  useEffect(() => () => {
+    sourcesRef.current.forEach((source) => URL.revokeObjectURL(source.previewUrl));
+  }, []);
+
   async function addFiles(files: File[]) {
     setLocalError(undefined);
-    for (const file of files.slice(0, 8 - sources.length)) {
+    const existingKeys = new Set(sources.map((source) => source.fileKey));
+    const uniqueFiles = files.filter((file, index, batch) => (
+      isSupportedImage(file)
+      && !existingKeys.has(fileKey(file))
+      && batch.findIndex((candidate) => fileKey(candidate) === fileKey(file)) === index
+    ));
+    const availableSlots = MAX_SOURCE_IMAGES - sources.length;
+    const acceptedFiles = uniqueFiles.slice(0, availableSlots);
+    const unsupportedCount = files.filter((file) => !isSupportedImage(file)).length;
+    const duplicateCount = files.length - unsupportedCount - uniqueFiles.length;
+    const overflowCount = Math.max(0, uniqueFiles.length - availableSlots);
+
+    if (!acceptedFiles.length) {
+      if (availableSlots <= 0) setLocalError(`最多只能上传 ${MAX_SOURCE_IMAGES} 张商品原图。`);
+      else if (unsupportedCount) setLocalError(`${IMAGE_UPLOAD_FORMAT_HINT}。`);
+      else if (duplicateCount) setLocalError("这些照片已经添加过了，无需重复上传。");
+      return;
+    }
+
+    if (unsupportedCount || duplicateCount || overflowCount) {
+      const skipped = [
+        unsupportedCount ? `${unsupportedCount} 张格式不支持` : "",
+        duplicateCount ? `${duplicateCount} 张重复照片` : "",
+        overflowCount ? `${overflowCount} 张超过数量上限` : "",
+      ].filter(Boolean).join("、");
+      setLocalError(`已开始上传 ${acceptedFiles.length} 张；另有${skipped}，已跳过。`);
+    }
+
+    for (const file of acceptedFiles) {
       const previewUrl = URL.createObjectURL(file);
       try {
         const asset = await upload.mutateAsync({ file, mediaKind: "image" });
-        setSources((current) => [...current, { asset, previewUrl }]);
+        setSources((current) => [...current, { asset, previewUrl, fileKey: fileKey(file) }]);
       } catch (error) {
         URL.revokeObjectURL(previewUrl);
         setLocalError(errorMessage(error));
       }
     }
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy || !event.dataTransfer.types.includes("Files")) return;
+    dragDepth.current += 1;
+    setIsDraggingFiles(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDraggingFiles(false);
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepth.current = 0;
+    setIsDraggingFiles(false);
+    if (busy) return;
+    void addFiles(Array.from(event.dataTransfer.files));
   }
 
   function removeSource(id: string) {
@@ -216,11 +291,25 @@ export function DomesticMainImageWorkspace() {
           <main>
             <section className={styles.card}>
               <div className={styles.heading}><span>01</span><div><h2>商品身份权威素材</h2><p>上传真实商品多角度图。生成图不会被反过来当作身份依据。</p></div></div>
-              <div className={styles.uploads}>
-                {jobId ? restoredAssetIds.map((assetId, index) => <RestoredSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <figure key={source.asset.id}><img src={source.previewUrl} alt={`商品素材 ${index + 1}`} /><figcaption>证据 {String(index + 1).padStart(2, "0")}</figcaption><button onClick={() => removeSource(source.asset.id)} aria-label="移除素材"><X size={14} /></button></figure>)}
-                {!jobId && sources.length < 8 && <button className={styles.add} onClick={() => fileInput.current?.click()} disabled={busy}><ImagePlus size={25} /><strong>添加真实商品图</strong><small>最多 8 张</small></button>}
-                <input ref={fileInput} hidden type="file" multiple accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
-              </div>
+              {jobId ? <div className={styles.uploads}>{restoredAssetIds.map((assetId, index) => <RestoredSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />)}</div> : <>
+                {sources.length < MAX_SOURCE_IMAGES && <div
+                  className={styles.dropZone}
+                  data-dragging={isDraggingFiles || undefined}
+                  data-uploading={upload.isPending || undefined}
+                  onDragEnter={handleDragEnter}
+                  onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
+                  <input ref={fileInput} className={styles.fileInput} type="file" multiple accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
+                  <button type="button" className={styles.dropAction} onClick={() => fileInput.current?.click()} disabled={busy}>
+                    <span className={styles.dropIcon}>{upload.isPending ? <LoaderCircle className="spin" size={27} /> : <ImagePlus size={27} />}</span>
+                    <span><strong>{upload.isPending ? "正在上传商品原图" : isDraggingFiles ? "松开即可加入这些照片" : "把多张商品原图拖到这里"}</strong><small>也可以点击选择 · {IMAGE_UPLOAD_FORMAT_HINT} · 最多 {MAX_SOURCE_IMAGES} 张</small></span>
+                    <em>{sources.length} / {MAX_SOURCE_IMAGES}</em>
+                  </button>
+                </div>}
+                {sources.length > 0 && <div className={styles.uploads} aria-live="polite">{sources.map((source, index) => <figure key={source.asset.id}><img src={source.previewUrl} alt={`商品素材 ${index + 1}`} /><figcaption>证据 {String(index + 1).padStart(2, "0")}</figcaption><button type="button" onClick={() => removeSource(source.asset.id)} aria-label={`移除商品素材 ${index + 1}`}><X size={14} /></button></figure>)}</div>}
+              </>}
             </section>
 
             <section className={styles.card}>

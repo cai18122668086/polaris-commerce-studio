@@ -38,7 +38,12 @@ with visible_problem, root_cause and required_change. Minor preferences may be
 advisory. Multiple related selling points are not a defect. Verify Chinese
 legibility, product identity, factual copy, page duty, physical evidence,
 campaign continuity, source-background isolation, thumbnail performance and
-the approved page contract from actual pixels.
+the approved page contract from actual pixels. Return checks using the exact
+required_check_names supplied by the contract. Never infer a missing required
+element from an overall PASS. If any required_visible_element, reading-path
+stop, page-role expression, physical proof, or commercial closure is not
+visibly present, fail the corresponding plan-fidelity check and name the
+missing pixel evidence.
 """.strip()
 
 
@@ -331,8 +336,14 @@ class AuroraMainImageProvider:
             "approved_page_execution_contract": generation_request.get(
                 "approved_page_execution_contract"
             ),
+            "visual_performance_contract": generation_request.get(
+                "visual_performance_contract"
+            ),
             "required_check_names": _VISUAL_CHECKS,
-            "required_output_schema": _visual_judgment_schema(),
+            "review_rule": (
+                "Only direct visible pixels count. Missing checks are failures; "
+                "an overall PASS cannot substitute for exact required checks."
+            ),
         }
         result = await self.gateway.plan(
             PlannerRequest(
@@ -409,7 +420,7 @@ class AuroraMainImageProvider:
                 result.error_message or "Aurora style calibration failed"
             )
         return (
-            dict(result.payload),
+            _normalize_style_calibration_payload(dict(result.payload)),
             dict(result.normalized_usage),
             int(result.actual_cost_micros or 0),
         )
@@ -769,6 +780,21 @@ _AUDIT_CHECK_ALIASES: dict[str, tuple[str, ...]] = {
     "no_hard_error": ("artifact_and_finish_quality",),
 }
 
+_PLAN_CRITICAL_VISUAL_CHECKS = frozenset(
+    {
+        "page_role_expression",
+        "headline_treatment_match",
+        "visual_performance_match",
+        "approved_plan_fidelity_match",
+        "campaign_constitution_match",
+        "selling_point_visible_without_copy",
+        "selling_point_visual_dominance",
+        "claim_to_evidence_relation_clear",
+        "text_not_substituting_for_visual_proof",
+        "thumbnail_success",
+    }
+)
+
 
 def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Adapt a direct-pixel reviewer's equivalent JSON to the Harness contract."""
@@ -818,11 +844,14 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
             )
         status = str((source or {}).get("status", "")).upper()
         passed_value = (source or {}).get("passed")
+        missing_critical_check = source is None and name in _PLAN_CRITICAL_VISUAL_CHECKS
         passed = (
             passed_value
             if isinstance(passed_value, bool)
             else status in {"PASS", "PASSED", "NOT_APPLICABLE", "N/A"}
             if status
+            else False
+            if missing_critical_check
             else overall_pass
         )
         raw_score = (source or {}).get("score")
@@ -835,6 +864,11 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
             (source or {}).get("observed_evidence")
             or (source or {}).get("actual_pixel_evidence")
             or (source or {}).get("judgment")
+            or (
+                f"Reviewer omitted required plan-critical check: {name}."
+                if missing_critical_check
+                else ""
+            )
             or fallback_evidence
         )
         normalized_checks[name] = {
@@ -947,3 +981,21 @@ def _normalized_deficiencies(
             }
         )
     return result
+
+
+def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Accept equivalent concrete-evidence arrays from compatible vision models."""
+
+    evidence = payload.get("observed_evidence")
+    if not isinstance(evidence, str) or len(evidence.strip()) < 20:
+        concrete = payload.get("concrete_observed_evidence")
+        if isinstance(concrete, list):
+            statements = [
+                str(value).strip()
+                for value in concrete
+                if isinstance(value, str) and value.strip()
+            ]
+            if statements:
+                payload["observed_evidence"] = " ".join(statements)
+    payload.pop("concrete_observed_evidence", None)
+    return payload

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import json
 from typing import Any
 
 
@@ -569,44 +568,36 @@ def enhance_v013_plan(plan: dict[str, Any], raw: dict[str, Any], identity: dict[
 
 
 def concise_execution_prompt(raw: dict[str, Any], identity: dict[str, Any], style: dict[str, Any], evidence: dict[str, Any], task: dict[str, Any], page: dict[str, Any]) -> str:
-    legacy = page.get("legacy_v013_contracts", {})
-    claim_visual_full = legacy.get("claim_visualization_contract") or {}
-    useful_claim_fields = (
-        "product_scale_range",
-        "thumbnail_success_condition",
-        "risk_boundary",
-        "forbidden_symbolic_substitutes",
-    )
-    claim_visual = {key: claim_visual_full[key] for key in useful_claim_fields if key in claim_visual_full}
-    search_blueprint = page["approved_page_execution_contract"].get("search_cover_blueprint", {})
+    execution = page["approved_page_execution_contract"]
+    proof = execution["selling_point_visual_proof_contract"]
+    storyboard = proof["visual_storyboard"]
+    performance = page["visual_performance_contract"]
+    identity_locks = list(page["generation_contract"].get("locked_product_invariants", []))
+    compact_identity_locks = identity_locks[:8]
     search_context = (
-        "【搜索入口候选闭合·按画面取舍】" + json.dumps(search_blueprint.get("proof_modules", []), ensure_ascii=False)
-        + "；保持商品/主钩子/商业闭合的搜索主图语法，但具体构图由你决定。"
+        "【搜索主图硬要求】必须同时出现品牌/身份顶栏、商品与强主标题、真实证明锚点、底部商业闭合；"
+        + "至少四级可见字体角色；商品约占画布高度55%–75%；禁止退化成白底商品海报。"
         if page["index"] == 0 else ""
     )
     return "\n".join([
-        "【DOMESTIC E-COMMERCE EXECUTION PROMPT v0.1.17】",
-        f"page={page['index']}；role={page['page_role']}。",
-        "【商品身份】" + identity["identity_summary"],
-        "必须保留=" + "；".join(identity["must_preserve"]) + "。",
-        "绝不改变=" + "；".join(identity["must_not_change"]) + "。",
-        "【视觉世界】摄影完成度=" + str(style.get("photography_finish")) + "；主光=" + str(style.get("light_direction")) + "；综合色系=" + json.dumps(style.get("palette_roles", {}), ensure_ascii=False),
-        "【当前商业任务】页面职责=" + str(task.get("page_role")) + "；买家问题=" + str(task.get("buyer_question") or task.get("buyer_demand")),
-        "【本页主卖点】" + task["primary_selling_point_source_text"],
-        "【辅助卖点·按画面需要取舍】" + json.dumps(task["supporting_selling_points"], ensure_ascii=False),
+        "【最高优先级：只执行当前页已批准合同】",
+        f"第{page['index'] + 1}张；页面职责={page['page_role']}；买家结论={task.get('buyer_question') or task.get('buyer_demand')}。",
+        "本页唯一主卖点=" + task["primary_selling_point_source_text"] + "。",
+        "主卖点必须由真实像素证明，删掉全部文案后仍能看懂；不得只把卖点写成标题。",
+        "【构图蓝图】" + str(execution.get("composition_blueprint")),
+        "【主体与视角】" + str(execution.get("subject_and_view")),
+        "【场景空间】" + str(execution.get("scene_geometry")),
+        "【阅读路径】" + " → ".join(str(item) for item in execution.get("reading_path", [])),
+        "【必须逐项可见】" + "；".join(str(item) for item in execution.get("required_visible_elements", [])),
+        "【物理证明】" + str(storyboard.get("primary_physical_evidence")) + "；关系=" + str(storyboard.get("claim_to_evidence_relation")),
+        "【缩略图目标】商品=" + str(performance.get("product_dominance")) + "；标题=" + str(performance.get("headline_dominance")) + "；闭合=" + str(performance.get("commercial_closure")),
         search_context,
-        "【页面职责与整套去重复】" + task["non_repetition_reason"],
-        "【用户提供即展示】用户主动提供的商品信息均视为USER_PROVIDED_DISPLAY_FACT，直接用于页面，不得停下来要求再次核验；如果画面模型自行添加了用户未提供的卖点，自动删除并在唯一返修中修正。",
-        "【批准方案的战略锁】职责、主卖点意义、商品身份、整套视觉世界和必要商业条件不可变；镜头、构图、比例、空间、光线、动作、短文案措辞和视觉隐喻由你重新判断。",
-        "【画面目标】先找到最能放大主卖点的一个强视觉创意，让商品与利益成为第一视觉；不要把用户资料逐条排成版面，不要把内部合同字段画出来。",
-        "【画面证明方向】" + str(page["approved_page_execution_contract"]["selling_point_visual_proof_contract"]["visual_storyboard"]["primary_physical_evidence"]),
-        "【表现许可】可使用可信的商业夸张、感官氛围、尺度对比、动态、结果场景或视觉隐喻；不得发明数字、认证、结构或效果。辅助卖点只在增强主画面时加入。",
-        "【身份与编辑方式】" + json.dumps({"mode": page["generation_contract"].get("mode"), "locked_product_invariants": page["generation_contract"].get("locked_product_invariants", [])}, ensure_ascii=False),
-        "只使用当前商品原图维持身份。原图背景默认是采集噪声；首次生成必须重建场景。自动返修必须编辑第一稿成片作为REPAIR_CANVAS_ONLY，原图只用于身份核对，禁止再次把完整原始照片作为编辑底图，禁止桌面、墙面、缝隙、杂物或键盘回流。",
-        "生成必须实现批准方案的商业意图，不是复刻施工图。本页可以展示多个相关卖点，也可以为画面力量省略辅助卖点；主卖点必须被商品、材质、动作、状态、结果或可信视觉修辞放大，而非只写在标题里。",
-        "六张图属于同一美术方向：共享可识别的色彩角色、材质/图形语言、字体气质与摄影完成度；可按页面职责改变光线角度、景深、场景、明暗重心和构图。统一不是复制同一棚景。",
-        "商品身份优先于卖点表现：六页必须保持同一商品的轮廓、比例、颜色分区、包装版式、部件数量、连接关系、开合结构与关键标签；不得为了证明卖点而重设计商品。",
-        "输出1:1方图且至少1024×1024；中文完整可读；不得虚构价格、认证、部件、结构、实验或效果。",
+        "【商品身份】" + identity["identity_summary"],
+        "关键身份锁=" + "；".join(str(item) for item in compact_identity_locks) + "。",
+        "【整组风格】摄影=" + str(style.get("photography_finish")) + "；光线=" + str(style.get("light_direction")) + "；字体=" + str(style.get("typography", {}).get("display")) + "。",
+        "【禁止退化】不得生成普通白底棚拍、纯产品目录图或只有标题与商品的模板；不得复制前一页的机位、商品姿态、背景和版式骨架；不得用图标、光效或文字代替物理证明。",
+        "原图仅用于保持商品身份，原图背景是采集噪声，必须重建为符合本页职责的商业场景。不得发明价格、认证、数字、部件、结构或功效。",
+        "输出1:1方图、至少1024×1024，中文必须完整可读。先满足本页职责、构图蓝图、必须可见元素和物理证明，再考虑装饰。",
     ])
 
 

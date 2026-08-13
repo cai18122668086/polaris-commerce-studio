@@ -15,6 +15,7 @@ from app.aurora_main_image_planner import (
 )
 from app.aurora_main_image_provider import (
     AuroraMainImageProvider,
+    _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
     _visual_judgment_schema,
 )
@@ -193,6 +194,28 @@ def test_visual_audit_adapts_equivalent_direct_pixel_review_fields() -> None:
         _visual_judgment_schema()["properties"]["checks"]["required"]
     )
     assert judgment["checks"]["product_identity_match"]["passed"] is True
+    assert judgment["checks"]["approved_plan_fidelity_match"]["passed"] is False
+    assert "omitted required plan-critical check" in judgment["checks"][
+        "approved_plan_fidelity_match"
+    ]["observed_evidence"]
+
+
+def test_style_calibration_joins_concrete_pixel_evidence() -> None:
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "review_mode": "DIRECT_PIXEL_VISUAL_COMPARISON",
+            "concrete_observed_evidence": [
+                "Both accepted pages use the same clean white studio field.",
+                "Both pages preserve matching blue product color and crisp finish.",
+            ],
+            "source_page_indexes": [0, 1],
+            "style_tokens": {"density_band": "spacious commercial catalog"},
+        }
+    )
+
+    assert len(observation["observed_evidence"]) >= 20
+    assert "concrete_observed_evidence" not in observation
 
 
 def test_compile_v013_builds_campaign_style_and_six_execution_contracts(
@@ -264,6 +287,11 @@ def test_compile_v013_builds_campaign_style_and_six_execution_contracts(
     assert all(page["non_repetition_reason"] for page in public["pages"])
     assert all(page["commercial_closure"] for page in public["pages"])
     assert all("发货" not in page["main_selling_point"] for page in public["pages"])
+    prompts = [page["v015_execution_prompt"] for page in session["plan"]["pages"]]
+    assert all(len(prompt) < 3_500 for prompt in prompts)
+    assert "【最高优先级：只执行当前页已批准合同】" in prompts[0]
+    assert "【必须逐项可见】" in prompts[0]
+    assert "禁止退化成白底商品海报" in prompts[0]
 
 
 def test_real_runtime_exposes_registered_aurora_provider_when_enabled() -> None:

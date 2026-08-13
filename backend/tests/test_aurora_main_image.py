@@ -379,6 +379,46 @@ def test_set_role_audit_adapts_page_evidence_to_harness_distinctions() -> None:
     assert observation["confusable_page_indexes"] == []
 
 
+def test_set_role_audit_adapts_tengli_page_reason_and_cover_pass() -> None:
+    observation = _normalize_set_role_audit_payload(
+        {
+            "carousel_distinctions": [
+                {"page_index": index, "why_not_search_cover": ""}
+                for index in range(1, 6)
+            ],
+            "pages": [
+                {
+                    "page_index": index,
+                    "not_search_cover_reason": (
+                        f"Page {index} visibly performs a focused carousel duty."
+                    ),
+                }
+                for index in range(1, 6)
+            ],
+            "search_identification_evidence": "",
+            "search_role_is_unique": False,
+            "search_listing_cover_assessment": {
+                "search_listing_cover_page_index": 0,
+                "cover_uniqueness_status": "PASS",
+                "page_0_pixel_evidence": [
+                    "Page zero alone has a listing-cover commercial hierarchy."
+                ],
+            },
+            "set_level_conclusion": {
+                "page_0_is_the_only_visible_search_cover": True,
+            },
+        }
+    )
+
+    assert all(
+        item["why_not_search_cover"]
+        for item in observation["carousel_distinctions"]
+    )
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is True
+    assert "Page zero alone" in observation["search_identification_evidence"]
+
+
 def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:
     schema = _visual_judgment_schema()
     checks = {

@@ -1200,9 +1200,8 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
     """Adapt an equivalent blind six-page review to the Harness contract."""
 
     pages = payload.get("pages")
-    if not isinstance(payload.get("carousel_distinctions"), list) and isinstance(
-        pages, list
-    ):
+    distinctions_value = payload.get("carousel_distinctions")
+    if not isinstance(distinctions_value, list) and isinstance(pages, list):
         distinctions: list[dict[str, Any]] = []
         for page in pages:
             if not isinstance(page, Mapping) or page.get("page_index") not in range(
@@ -1212,6 +1211,8 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
             evidence = _flatten_style_evidence(
                 page.get("concrete_pixel_evidence_not_search_cover")
                 or page.get("pixel_evidence")
+                or page.get("not_search_cover_reason")
+                or page.get("concrete_pixel_evidence")
             )
             distinctions.append(
                 {
@@ -1220,21 +1221,52 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
                 }
             )
         payload["carousel_distinctions"] = distinctions
+    elif isinstance(distinctions_value, list) and isinstance(pages, list):
+        pages_by_index = {
+            page.get("page_index"): page
+            for page in pages
+            if isinstance(page, Mapping)
+        }
+        for distinction in distinctions_value:
+            if (
+                not isinstance(distinction, dict)
+                or str(distinction.get("why_not_search_cover") or "").strip()
+            ):
+                continue
+            page = pages_by_index.get(distinction.get("page_index"))
+            if not isinstance(page, Mapping):
+                continue
+            evidence = _flatten_style_evidence(
+                page.get("concrete_pixel_evidence_not_search_cover")
+                or page.get("pixel_evidence")
+                or page.get("not_search_cover_reason")
+                or page.get("concrete_pixel_evidence")
+            )
+            distinction["why_not_search_cover"] = " ".join(evidence)
 
     assessment = _mapping(payload.get("search_listing_cover_assessment"))
-    if not isinstance(payload.get("search_identification_evidence"), str):
+    search_evidence = payload.get("search_identification_evidence")
+    if not isinstance(search_evidence, str) or not search_evidence.strip():
         payload["search_identification_evidence"] = " ".join(
-            _flatten_style_evidence(assessment.get("pixel_evidence"))
+            _flatten_style_evidence(
+                assessment.get("pixel_evidence")
+                or assessment.get("page_0_pixel_evidence")
+            )
         )
     payload.setdefault(
         "identified_search_page_index",
         assessment.get("search_listing_cover_page_index"),
     )
     other_cover_indexes = assessment.get("other_search_listing_cover_page_indices")
-    if "search_role_is_unique" not in payload:
+    set_conclusion = _mapping(payload.get("set_level_conclusion"))
+    assessment_passes = (
+        assessment.get("page_0_alone_is_visibly_search_listing_cover") is True
+        or assessment.get("cover_uniqueness_status") == "PASS"
+        or set_conclusion.get("page_0_is_the_only_visible_search_cover") is True
+    )
+    if assessment_passes:
         payload["search_role_is_unique"] = (
-            assessment.get("page_0_alone_is_visibly_search_listing_cover") is True
-            and other_cover_indexes == []
+            not isinstance(other_cover_indexes, list) or other_cover_indexes == []
         )
     payload.setdefault(
         "confusable_page_indexes",

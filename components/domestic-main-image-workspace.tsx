@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, ImagePlus, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, ImagePlus, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -74,6 +74,24 @@ function isSupportedImage(file: File) {
     || IMAGE_UPLOAD_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
 }
 
+function generationItemLabel(status: string, resultSource?: string | null) {
+  if (resultSource === "generated") return "已生成";
+  if (status === "running") return "生成 / 审图中";
+  if (status === "failed") return "生成已失败";
+  if (status === "skipped") return "被前页阻断";
+  if (status === "succeeded") return "已完成但无图片";
+  return "等待生成";
+}
+
+function domesticFailureMessage(message?: string | null) {
+  if (!message) return "生成流程未完成，请查看失败页后按原方案重新生成。";
+  const sizeMatch = message.match(/must be square 1:1, got (\d+)x(\d+)/i);
+  if (sizeMatch) {
+    return `图片服务返回了 ${sizeMatch[1]}×${sizeMatch[2]} 非方图，未满足 1:1 主图要求。`;
+  }
+  return message;
+}
+
 function lines(value: string, limit: number) {
   return value.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean).slice(0, limit);
 }
@@ -137,6 +155,13 @@ export function DomesticMainImageWorkspace() {
   const results = selectJobResultAssets(job.data);
   const providerReady = workflow.mode === "provider";
   const hasCompleteSet = results.length === 6;
+  const failedItem = job.data?.items.find((item) => item.status === "failed");
+  const blockedItemCount = job.data?.items.filter((item) => item.status === "skipped").length ?? 0;
+  const terminalIncomplete = Boolean(
+    job.data
+    && ["partial", "failed", "cancelled"].includes(job.data.status)
+    && !hasCompleteSet,
+  );
   const showGeneration = Boolean(
     job.data && ["processing", "completed", "partial", "failed"].includes(job.data.status),
   );
@@ -363,7 +388,7 @@ export function DomesticMainImageWorkspace() {
               </>}
             </section>
 
-            {showGeneration && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>逐张生成进度</h2><p>严格按页顺序生成与审图，六张全部完成后才进入整组确认。</p></div></div><div className={styles.generationProgress}><strong>{results.length} / 6 张真实图片</strong><div>{job.data!.items.map((item) => <span key={item.id} data-status={item.status}><i>{String(item.ordinal + 1).padStart(2, "0")}</i>{roleNames[plan[item.ordinal]?.page_role] ?? `图 ${item.ordinal + 1}`}<em>{item.result_source === "generated" ? "已生成" : item.status === "running" ? "生成中" : item.status === "failed" ? "失败" : item.status === "succeeded" ? "无图片结果" : "等待"}</em></span>)}</div></div>{job.data?.status === "completed" && !hasCompleteSet && <div className={styles.mockWarning}><strong>没有生成真实图片</strong><p>这条任务由安全 Mock 执行，只模拟了六页状态，不能进入整组图片确认。启用真实 Provider 后请重新运行任务。</p></div>}</section>}
+            {showGeneration && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>逐张生成进度</h2><p>严格按页顺序生成与审图，六张全部完成后才进入整组确认。</p></div></div>{terminalIncomplete && <div className={styles.generationFailure} role="alert"><AlertTriangle size={20} /><div><strong>任务已经终止，不再继续运行</strong><p>{failedItem ? `第 ${failedItem.ordinal + 1} 页：${domesticFailureMessage(failedItem.error_message)}` : "任务没有完成全部六张图片。"}{blockedItemCount ? ` 后续 ${blockedItemCount} 页因顺序生成规则没有执行。` : ""}</p><small>修复原因后，可点击右侧“按原方案重新生成”。</small></div></div>}<div className={styles.generationProgress}><strong>{results.length} / 6 张真实图片</strong><div>{job.data!.items.map((item) => <span key={item.id} data-status={item.status}><i>{String(item.ordinal + 1).padStart(2, "0")}</i>{roleNames[plan[item.ordinal]?.page_role] ?? `图 ${item.ordinal + 1}`}<em>{generationItemLabel(item.status, item.result_source)}</em></span>)}</div></div>{job.data?.status === "completed" && !hasCompleteSet && <div className={styles.mockWarning}><strong>没有生成真实图片</strong><p>这条任务由安全 Mock 执行，只模拟了六页状态，不能进入整组图片确认。启用真实 Provider 后请重新运行任务。</p></div>}</section>}
 
             {results.length > 0 && <section className={styles.card}><div className={styles.heading}><span>05</span><div><h2>六图交付</h2><p>单张可查看与下载，全部完成后可下载整套文件。</p></div></div><div className={styles.results}>{results.map((asset, index) => <JobResultImage key={asset.asset_id} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`国内电商主图 ${index + 1}`} label={roleNames[plan[index]?.page_role] ?? `图 ${index + 1}`} />)}</div>{job.data?.status === "completed" && hasCompleteSet && <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} />}</section>}
           </main>
@@ -372,7 +397,7 @@ export function DomesticMainImageWorkspace() {
             <div><span>AURORA / 06</span><h3>连续创作约束</h3><ul><li><Check size={15} />固定六张，不增不减</li><li><Check size={15} />严格按页顺序生成</li><li><Check size={15} />每页最多自动修复一次</li><li><Check size={15} />最终整组等待人工确认</li></ul></div>
             {localError || createJob.error || confirmPlan.error || cloneJob.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error ?? cloneJob.error)}</p> : null}
             {runtime.data?.environment === "development" && <DevelopmentProviderSettings />}
-            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data && ["completed", "failed", "partial", "cancelled"].includes(job.data.status) && !hasCompleteSet && providerReady && allowsJobAction(job.data.allowed_actions, "clone") ? <button className={styles.primary} disabled={cloneJob.isPending} onClick={() => void rerunWithProvider()}>{cloneJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}按原方案重新生成<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") && providerReady ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data?.status === "completed" && hasCompleteSet ? "等待整组确认" : job.data?.status === "completed" ? "未生成真实图片" : workflow.mode === "mock" && job.data?.status === "awaiting_confirmation" ? "真实生成服务未启用" : "任务处理中"}</button>}
+            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data && ["completed", "failed", "partial", "cancelled"].includes(job.data.status) && !hasCompleteSet && providerReady && allowsJobAction(job.data.allowed_actions, "clone") ? <button className={styles.primary} disabled={cloneJob.isPending} onClick={() => void rerunWithProvider()}>{cloneJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}按原方案重新生成<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") && providerReady ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{terminalIncomplete ? "任务已终止" : job.data?.status === "completed" && hasCompleteSet ? "等待整组确认" : job.data?.status === "completed" ? "未生成真实图片" : workflow.mode === "mock" && job.data?.status === "awaiting_confirmation" ? "真实生成服务未启用" : "任务处理中"}</button>}
             <small className={styles.note}>{providerReady ? "在线生成已启用；确认后将按 Skill 逐张生成与审图" : "当前为安全 Mock：只允许编译和查看规划，不会授权生图或产生图片费用"}</small>
           </aside>
         </div>

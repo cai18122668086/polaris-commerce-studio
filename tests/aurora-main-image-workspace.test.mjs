@@ -32,6 +32,9 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
   assert.match(workspace, /DevelopmentProviderSettings/);
   assert.match(workspace, /按原方案重新生成/);
   assert.match(workspace, /"completed", "failed", "partial", "cancelled"/);
+  assert.match(workspace, /任务已经终止，不再继续运行/);
+  assert.match(workspace, /被前页阻断/);
+  assert.match(workspace, /图片服务返回了/);
   assert.match(workspace, /固定六张，不增不减/);
   assert.match(workspace, /每页最多自动修复一次/);
   assert.match(registry, /aurora-domestic-ecommerce-main-image/);

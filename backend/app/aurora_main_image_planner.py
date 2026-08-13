@@ -659,7 +659,10 @@ def _bind_identity_evidence(
         for index, source in enumerate(sources)
     ]
     identity = {
-        "request_id": str(payload.get("request_id") or sources[0].group_key),
+        # request_id is runtime-owned state, not model-authored product content.
+        # Binding it to the current source group prevents a provider from
+        # returning a stale or hallucinated task id that the Harness must reject.
+        "request_id": sources[0].group_key,
         "product_form": _text(payload.get("product_form"), "当前商品的可见完整形态"),
         "identity_summary": _text(
             payload.get("identity_summary"),

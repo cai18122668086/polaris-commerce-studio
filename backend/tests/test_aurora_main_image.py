@@ -9,6 +9,7 @@ import pytest
 
 from app.aurora_main_image_planner import (
     PAGE_ROLES,
+    _bind_identity_evidence,
     _build_raw,
     _public_plan_payload,
 )
@@ -111,6 +112,32 @@ def test_fake_gateway_returns_an_aurora_identity_contract() -> None:
     assert result.payload["request_id"] == "job_test"
     assert result.payload["evidence"][0]["evidence_id"] == "asset_one"
     assert result.payload["must_preserve"]
+
+
+def test_identity_request_id_is_bound_to_the_current_job() -> None:
+    source = SourceImage(
+        asset_id="asset_one",
+        group_key="job_current",
+        filename="product.png",
+        content_type="image/png",
+        sha256="0" * 64,
+        payload=b"image-pixels",
+    )
+
+    identity = _bind_identity_evidence(
+        {
+            "request_id": "job_stale_provider_value",
+            "product_form": "shoe",
+            "identity_summary": "same shoe",
+            "evidence": [],
+            "must_preserve": ["shape"],
+            "must_not_change": ["color"],
+        },
+        (source,),
+        ("product.png",),
+    )
+
+    assert identity["request_id"] == "job_current"
 
 
 def test_compile_v013_builds_campaign_style_and_six_execution_contracts(

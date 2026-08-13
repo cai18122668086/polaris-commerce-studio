@@ -1082,7 +1082,7 @@ def _normalize_visual_judgment_payload(
     payload["audit_completeness_confirmation"] = True
     _enforce_visual_judgment_consistency(payload)
     payload["all_observed_deficiencies"] = _normalized_deficiencies(
-        payload, normalized_checks
+        payload, _mapping(payload.get("checks"))
     )
     return payload
 

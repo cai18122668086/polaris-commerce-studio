@@ -344,9 +344,44 @@ def test_balanced_audit_keeps_unrequested_soft_checks_advisory() -> None:
     )
 
     assert judgment["checks"]["page_role_expression"]["passed"] is False
-    assert [
+    assert {
         item["check"] for item in judgment["all_observed_deficiencies"]
-    ] == ["page_role_expression"]
+    } == {"page_role_expression", "selling_point_visible_without_copy"}
+
+
+def test_balanced_audit_deficiencies_include_forced_core_proof_failure() -> None:
+    judgment = _normalize_visual_judgment_payload(
+        {
+            "overall_verdict": "FAIL",
+            "material_failed_check_count": 1,
+            "final_reasoning": "The core benefit is not visible without copy.",
+            "checks": [
+                {
+                    "check_name": "product_identity_match",
+                    "status": "PASS",
+                    "actual_pixel_evidence": (
+                        "The product silhouette and components match the reference."
+                    ),
+                }
+            ],
+            "selling_point_proof_observation": {
+                "visible_without_copy": False,
+                "evidence_is_primary_visual": False,
+            },
+        },
+        required_check_names=frozenset(
+            {
+                "product_identity_match",
+                "selling_point_visible_without_copy",
+            }
+        ),
+    )
+
+    deficiency_checks = {
+        item["check"] for item in judgment["all_observed_deficiencies"]
+    }
+    assert "selling_point_visible_without_copy" in deficiency_checks
+    assert judgment["checks"]["selling_point_visible_without_copy"]["passed"] is False
 
 
 def test_repair_audit_focuses_on_failed_checks_and_identity_safety() -> None:

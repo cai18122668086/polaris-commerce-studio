@@ -5,12 +5,13 @@ import { useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
+import { DevelopmentProviderSettings } from "@/components/development-provider-settings";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
-import { useConfirmPlan, useCreateJob, useJob } from "@/features/jobs/api/jobs";
+import { useCloneJob, useConfirmPlan, useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import type { Asset, DomesticMainImageJobCreate } from "@/lib/api/types";
@@ -93,6 +94,7 @@ export function DomesticMainImageWorkspace() {
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
+  const cloneJob = useCloneJob(workspace?.id);
   const runtime = useRuntimeStatus();
   const workflow = presentWorkflow(
     runtime.data?.capabilities.features?.domestic_main_image,
@@ -118,7 +120,12 @@ export function DomesticMainImageWorkspace() {
   const restoredString = (key: string) => typeof restoredSettings?.[key] === "string" ? restoredSettings[key] as string : "";
   const restoredLines = (key: string) => Array.isArray(restoredSettings?.[key]) ? (restoredSettings[key] as unknown[]).map(String).join("\n") : "";
   const results = selectJobResultAssets(job.data);
-  const busy = upload.isPending || createJob.isPending || confirmPlan.isPending;
+  const providerReady = workflow.mode === "provider";
+  const hasCompleteSet = results.length === 6;
+  const showGeneration = Boolean(
+    job.data && ["processing", "completed", "partial", "failed"].includes(job.data.status),
+  );
+  const busy = upload.isPending || createJob.isPending || confirmPlan.isPending || cloneJob.isPending;
   const canCreate = Boolean(
     !jobId && workspace && sources.length && productName.trim() && category.trim() && lines(sellingPoints, 24).length && workflow.canSubmit,
   );
@@ -174,6 +181,19 @@ export function DomesticMainImageWorkspace() {
     }
   }
 
+  async function rerunWithProvider() {
+    if (!job.data || !allowsJobAction(job.data.allowed_actions, "clone")) return;
+    try {
+      const cloned = await cloneJob.mutateAsync({
+        jobId: job.data.id,
+        allowedActions: job.data.allowed_actions,
+      });
+      router.replace(`/workspace/domestic-main-image?jobId=${encodeURIComponent(cloned.id)}`);
+    } catch (error) {
+      setLocalError(errorMessage(error));
+    }
+  }
+
   return (
     <AppShell flush>
       <div className={styles.page}>
@@ -186,7 +206,7 @@ export function DomesticMainImageWorkspace() {
 
         <div className={styles.rail} aria-label="工作流程">
           {["商品证据", "六图方案", "顺序生成", "整组确认"].map((label, index) => (
-            <span key={label} data-active={(index === 0 && !jobId) || (index === 1 && job.data?.status === "awaiting_confirmation") || (index === 2 && job.data?.status === "processing") || (index === 3 && job.data?.status === "completed") || undefined}>
+            <span key={label} data-active={(index === 0 && !jobId) || (index === 1 && job.data?.status === "awaiting_confirmation") || (index === 2 && job.data?.status === "processing") || (index === 3 && job.data?.status === "completed" && hasCompleteSet) || undefined}>
               <i>{index + 1}</i>{label}
             </span>
           ))}
@@ -254,14 +274,17 @@ export function DomesticMainImageWorkspace() {
               </>}
             </section>
 
-            {results.length > 0 && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>六图交付</h2><p>单张可查看与下载，全部完成后可下载整套文件。</p></div></div><div className={styles.results}>{results.map((asset, index) => <JobResultImage key={asset.asset_id} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`国内电商主图 ${index + 1}`} label={roleNames[plan[index]?.page_role] ?? `图 ${index + 1}`} />)}</div>{job.data?.status === "completed" && results.length === 6 && <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} />}</section>}
+            {showGeneration && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>逐张生成进度</h2><p>严格按页顺序生成与审图，六张全部完成后才进入整组确认。</p></div></div><div className={styles.generationProgress}><strong>{results.length} / 6 张真实图片</strong><div>{job.data!.items.map((item) => <span key={item.id} data-status={item.status}><i>{String(item.ordinal + 1).padStart(2, "0")}</i>{roleNames[plan[item.ordinal]?.page_role] ?? `图 ${item.ordinal + 1}`}<em>{item.result_source === "generated" ? "已生成" : item.status === "running" ? "生成中" : item.status === "failed" ? "失败" : item.status === "succeeded" ? "无图片结果" : "等待"}</em></span>)}</div></div>{job.data?.status === "completed" && !hasCompleteSet && <div className={styles.mockWarning}><strong>没有生成真实图片</strong><p>这条任务由安全 Mock 执行，只模拟了六页状态，不能进入整组图片确认。启用真实 Provider 后请重新运行任务。</p></div>}</section>}
+
+            {results.length > 0 && <section className={styles.card}><div className={styles.heading}><span>05</span><div><h2>六图交付</h2><p>单张可查看与下载，全部完成后可下载整套文件。</p></div></div><div className={styles.results}>{results.map((asset, index) => <JobResultImage key={asset.asset_id} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`国内电商主图 ${index + 1}`} label={roleNames[plan[index]?.page_role] ?? `图 ${index + 1}`} />)}</div>{job.data?.status === "completed" && hasCompleteSet && <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} />}</section>}
           </main>
 
           <aside className={styles.side}>
             <div><span>AURORA / 06</span><h3>连续创作约束</h3><ul><li><Check size={15} />固定六张，不增不减</li><li><Check size={15} />严格按页顺序生成</li><li><Check size={15} />每页最多自动修复一次</li><li><Check size={15} />最终整组等待人工确认</li></ul></div>
-            {localError || createJob.error || confirmPlan.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error)}</p> : null}
-            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data?.status === "completed" ? "等待整组确认" : "任务处理中"}</button>}
-            <small className={styles.note}>{workflow.mode === "provider" ? "在线生成已启用" : "当前为安全 Mock：可验证完整规划与状态流程，不会产生图片费用"}</small>
+            {localError || createJob.error || confirmPlan.error || cloneJob.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error ?? cloneJob.error)}</p> : null}
+            {runtime.data?.environment === "development" && <DevelopmentProviderSettings />}
+            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data?.status === "completed" && !hasCompleteSet && providerReady && allowsJobAction(job.data.allowed_actions, "clone") ? <button className={styles.primary} disabled={cloneJob.isPending} onClick={() => void rerunWithProvider()}>{cloneJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}使用真实服务重新运行<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") && providerReady ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data?.status === "completed" && hasCompleteSet ? "等待整组确认" : job.data?.status === "completed" ? "未生成真实图片" : workflow.mode === "mock" && job.data?.status === "awaiting_confirmation" ? "真实生成服务未启用" : "任务处理中"}</button>}
+            <small className={styles.note}>{providerReady ? "在线生成已启用；确认后将按 Skill 逐张生成与审图" : "当前为安全 Mock：只允许编译和查看规划，不会授权生图或产生图片费用"}</small>
           </aside>
         </div>
       </div>

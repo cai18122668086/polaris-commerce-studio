@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/api/v1/development/provider-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Development Provider Settings */
+        get: operations["get_development_provider_settings_api_v1_development_provider_settings_get"];
+        put?: never;
+        /** Update Development Provider Settings */
+        post: operations["update_development_provider_settings_api_v1_development_provider_settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -700,6 +718,39 @@ export interface components {
              */
             type: "detail_pack";
         };
+        /** DevelopmentProviderSettingsResponse */
+        DevelopmentProviderSettingsResponse: {
+            /** Available */
+            available: boolean;
+            /** Base Url */
+            base_url: string;
+            /** Configured */
+            configured: boolean;
+            /** Domestic Main Image Provider Enabled */
+            domestic_main_image_provider_enabled: boolean;
+            /** Image Model */
+            image_model: string;
+            /** Message */
+            message: string;
+            /**
+             * Task Runner
+             * @enum {string}
+             */
+            task_runner: "mock" | "tengli";
+            /** Vision Model */
+            vision_model: string;
+        };
+        /** DevelopmentProviderSettingsUpdate */
+        DevelopmentProviderSettingsUpdate: {
+            /** Api Key */
+            api_key: string;
+            /** Base Url */
+            base_url: string;
+            /** Image Model */
+            image_model: string;
+            /** Vision Model */
+            vision_model: string;
+        };
         /** DomesticMainImageConfiguration */
         DomesticMainImageConfiguration: {
             /** Category */
@@ -1349,6 +1400,59 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_development_provider_settings_api_v1_development_provider_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevelopmentProviderSettingsResponse"];
+                };
+            };
+        };
+    };
+    update_development_provider_settings_api_v1_development_provider_settings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevelopmentProviderSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevelopmentProviderSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     current_user_api_v1_me_get: {
         parameters: {
             query?: never;

@@ -5,6 +5,7 @@ import { Ban, ChevronRight, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 
 import { useCancelJob, useJobs, useRetryJob } from "@/features/jobs/api/jobs";
+import { useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
@@ -56,6 +57,7 @@ export function TaskDrawer({
   const restoreFocusRef = useRef(false);
   const { workspace } = useWorkspace();
   const jobs = useJobs(workspace?.id, { limit: 8 });
+  const runtime = useRuntimeStatus();
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
   const visibleJobs = jobs.data?.items.slice(0, 4) ?? [];
@@ -149,10 +151,10 @@ export function TaskDrawer({
             <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">
                 <div className="drawer-job__top"><StatusBadge status={job.status} /><small>{formatDate(job.created_at)}</small></div>
-                <Link href={jobWorkspaceHref(job)} onClick={onClose} className="drawer-job__link"><strong>{jobTitle(job)}</strong><p>{jobNote(job)}</p></Link>
+                <Link href={jobWorkspaceHref(job)} onClick={onClose} className="drawer-job__link"><strong>{jobTitle(job)}</strong><p>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "Mock 流程已结束，没有生成真实图片。" : jobNote(job)}</p></Link>
                 {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">
-                  <span>{jobCount(job)}</span><span>{presentJobStage(job.stage, job.status)}</span>
+                  <span>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "0 / 6 张图片" : jobCount(job)}</span><span>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "未生成图片" : presentJobStage(job.stage, job.status)}</span>
                   {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} onClick={() => runCancel(job)}><Ban size={14} /></button>}
                   {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试失败项 ${jobTitle(job)}`} onClick={() => runRetry(job)}><RotateCcw size={14} /></button>}
                 </div>

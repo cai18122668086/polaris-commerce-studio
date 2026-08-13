@@ -20,6 +20,12 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
   assert.match(workspace, /type: "domestic_main_image"/);
   assert.match(workspace, /product_asset_ids/);
   assert.match(workspace, /确认方案并开始/);
+  assert.match(workspace, /providerReady/);
+  assert.match(workspace, /真实生成服务未启用/);
+  assert.match(workspace, /没有生成真实图片/);
+  assert.match(workspace, /results\.length === 6/);
+  assert.match(workspace, /DevelopmentProviderSettings/);
+  assert.match(workspace, /使用真实服务重新运行/);
   assert.match(workspace, /固定六张，不增不减/);
   assert.match(workspace, /每页最多自动修复一次/);
   assert.match(registry, /aurora-domestic-ecommerce-main-image/);
@@ -31,5 +37,6 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
   assert.match(jobs, /jobWorkspaceHref\(job\)/);
   assert.match(sidebar, /jobWorkspaceHref\(job\)/);
   assert.match(drawer, /jobWorkspaceHref\(job\)/);
+  assert.match(drawer, /Mock 流程已结束，没有生成真实图片/);
   assert.match(workspaceLink, /feature\.route}\?jobId=/);
 });

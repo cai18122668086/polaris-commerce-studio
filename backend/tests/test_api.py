@@ -1873,6 +1873,85 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
     assert after_download["api_request_count"] == completed["api_request_count"]
 
 
+def test_mock_domestic_main_image_plan_cannot_be_authorized(
+    client: TestClient,
+) -> None:
+    job_id = "job_mock_aurora_confirmation"
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.AWAITING_CONFIRMATION.value,
+                stage="awaiting_confirmation",
+                progress=15,
+                configuration={"settings": {}},
+                expected_item_count=6,
+            )
+        )
+        session.add(
+            JobPlanRecord(
+                id="plan_mock_aurora_confirmation",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={"pages": []},
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="test",
+                validated_at=utc_now(),
+            )
+        )
+        session.commit()
+
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/plan/confirm",
+        headers=idem(),
+        json={"expected_revision": 1, "approval_text": "确认真实六图生成"},
+    )
+    assert response.status_code == 409
+    assert (
+        response.json()["error"]["code"]
+        == "DOMESTIC_MAIN_IMAGE_PROVIDER_UNAVAILABLE"
+    )
+    current = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+    assert current["status"] == JobStatus.AWAITING_CONFIRMATION.value
+
+
+def test_development_provider_settings_enable_real_runner_without_echoing_key(
+    settings,
+    tmp_path: Path,
+) -> None:
+    development = settings.model_copy(deep=True)
+    development.environment = "development"
+    development.development_provider_env_file = tmp_path / "provider.env"
+    with TestClient(create_app(development)) as client:
+        response = client.post(
+            "/api/v1/development/provider-settings",
+            json={
+                "api_key": "test-secret-provider-key",
+                "base_url": "https://provider.example.test",
+                "image_model": "image-model",
+                "vision_model": "vision-model",
+            },
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["configured"] is True
+        assert body["task_runner"] == "tengli"
+        assert body["domestic_main_image_provider_enabled"] is True
+        assert "api_key" not in body
+        assert "test-secret-provider-key" not in response.text
+        stored = development.development_provider_env_file.read_text(encoding="utf-8")
+        assert "POLARIS_TASK_RUNNER=\"tengli\"" in stored
+        assert "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED=\"true\"" in stored
+
+
 def test_missing_assets_and_unknown_workspace_do_not_leak(client: TestClient) -> None:
     unknown_workspace = client.get("/api/v1/workspaces/ws_unknown/assets")
     assert unknown_workspace.status_code == 404

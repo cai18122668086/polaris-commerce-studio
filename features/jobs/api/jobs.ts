@@ -204,6 +204,27 @@ export function useCancelJob(workspaceId: string | undefined) {
   );
 }
 
+export function useCloneJob(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, AuthorizedJobAction>(
+    workspaceId,
+    "clone-job",
+    ({ jobId }) => ({ jobId }),
+    async (id, input, key) => {
+      assertJobAction(input.allowedActions, "clone");
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/clone",
+        {
+          params: {
+            path: { workspace_id: id, job_id: input.jobId },
+            header: { "Idempotency-Key": key },
+          },
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
 type RetryJobAction = AuthorizedJobAction & {
   scope?: RetryScope;
   itemIds?: string[];

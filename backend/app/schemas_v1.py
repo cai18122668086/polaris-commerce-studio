@@ -115,6 +115,24 @@ class RuntimeStatusResponse(BaseModel):
     capabilities: RuntimeCapabilities
 
 
+class DevelopmentProviderSettingsUpdate(BaseModel):
+    api_key: str = Field(min_length=8, max_length=4096, repr=False)
+    base_url: str = Field(min_length=8, max_length=512)
+    image_model: str = Field(min_length=1, max_length=120)
+    vision_model: str = Field(min_length=1, max_length=120)
+
+
+class DevelopmentProviderSettingsResponse(BaseModel):
+    available: bool
+    configured: bool
+    task_runner: Literal["mock", "tengli"]
+    domestic_main_image_provider_enabled: bool
+    base_url: str
+    image_model: str
+    vision_model: str
+    message: str
+
+
 class AssetResponse(BaseModel):
     id: str
     workspace_id: str

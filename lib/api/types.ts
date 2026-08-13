@@ -32,6 +32,10 @@ export type JobCreate =
   | DomesticMainImageJobCreate;
 export type RuntimeStatus = components["schemas"]["RuntimeStatusResponse"];
 export type CapabilityStatus = components["schemas"]["CapabilityStatus"];
+export type DevelopmentProviderSettings =
+  components["schemas"]["DevelopmentProviderSettingsResponse"];
+export type DevelopmentProviderSettingsUpdate =
+  components["schemas"]["DevelopmentProviderSettingsUpdate"];
 
 export const activeJobStatuses: JobStatus[] = [
   "queued",

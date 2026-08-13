@@ -33,6 +33,7 @@ class ProductionEnvGeneratorTests(unittest.TestCase):
                 "POLARIS_ACCESS_URL_SECRET": "existing-access-secret-12345678901234567890",
                 "POLARIS_S3_BUCKET": "existing-assets",
                 "POLARIS_TASK_RUNNER": "tengli",
+                "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED": "true",
                 "POLARIS_TENGLI_API_KEY": "existing-provider-key",
             }
         )
@@ -54,10 +55,31 @@ class ProductionEnvGeneratorTests(unittest.TestCase):
         )
         self.assertEqual(values["POLARIS_POSTGRES_PASSWORD"], base["POLARIS_POSTGRES_PASSWORD"])
         self.assertEqual(values["POLARIS_TASK_RUNNER"], "tengli")
+        self.assertEqual(
+            values["POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED"], "true"
+        )
         self.assertEqual(values["POLARIS_TENGLI_API_KEY"], "existing-provider-key")
         self.assertEqual(values["POLARIS_SUPERTOKENS_IMAGE"], SUPERTOKENS_IMAGE)
         self.assertEqual(values["POLARIS_AUTH_EMAIL_FROM_ADDRESS"], "no-reply@mail.tengliapi.xyz")
         self.assertEqual(values["POLARIS_BACKEND_IMAGE"], f"polaris/backend:{sha}")
+
+    def test_build_defaults_model_pose_provider_to_disabled_when_missing(self) -> None:
+        base = self.base_env()
+        base.pop("POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED")
+        values = build_production_env(
+            base,
+            release_sha="e" * 40,
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_username="smtp-user",
+            smtp_password="smtp-secret",
+            smtp_secure=False,
+            acme_email="ops@tengliapi.xyz",
+            supertokens_api_key="k" * 64,
+        )
+        self.assertEqual(
+            values["POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED"], "false"
+        )
 
     def test_render_and_load_round_trip_special_smtp_password(self) -> None:
         values = build_production_env(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -52,6 +53,7 @@ class ProductionPreflightTests(unittest.TestCase):
             "POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED": "false",
             "POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED": "false",
             "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED": "false",
+            "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED": "false",
             "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED": "false",
             "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED": "false",
             "POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED": "false",
@@ -78,6 +80,16 @@ class ProductionPreflightTests(unittest.TestCase):
         self.assertEqual(validate_caddy(caddy), [])
         self.assertEqual(validate_backend_dockerfile(dockerfile), [])
         self.assertEqual(validate_env(self.valid_env()), [])
+
+    def test_env_generator_tracks_every_compose_provider_flag(self) -> None:
+        compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")
+        compose_provider_keys = set(
+            re.findall(r"\$\{(POLARIS_[A-Z0-9_]+_PROVIDER_ENABLED)(?=[:}])", compose)
+        )
+        generated_provider_keys = {
+            key for key in PROVIDER_KEYS if key.endswith("_PROVIDER_ENABLED")
+        }
+        self.assertEqual(generated_provider_keys, compose_provider_keys)
 
     def test_shared_data_volume_drift_is_rejected(self) -> None:
         compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")

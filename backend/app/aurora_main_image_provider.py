@@ -1073,7 +1073,12 @@ def _audit_overall_pass(payload: Mapping[str, Any]) -> bool:
         return False
     if verdicts.intersection({"PASS", "PASSED", "APPROVE", "APPROVED"}):
         return True
-    if payload.get("overall_material_pass") is True:
+    if any(verdict.startswith("PASS_WITH_") for verdict in verdicts):
+        return True
+    if (
+        payload.get("overall_material_pass") is True
+        or payload.get("material_pass") is True
+    ):
         return True
     return any(
         payload.get(name) == 0 for name in _MATERIAL_FAILURE_COUNT_FIELDS
@@ -1085,8 +1090,10 @@ def _explicit_material_pass(payload: Mapping[str, Any]) -> bool:
 
     if not _audit_overall_pass(payload):
         return False
-    return payload.get("overall_material_pass") is True or any(
-        payload.get(name) == 0 for name in _MATERIAL_FAILURE_COUNT_FIELDS
+    return (
+        payload.get("overall_material_pass") is True
+        or payload.get("material_pass") is True
+        or any(payload.get(name) == 0 for name in _MATERIAL_FAILURE_COUNT_FIELDS)
     )
 
 
@@ -1266,7 +1273,8 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
             ):
                 continue
             evidence = _flatten_style_evidence(
-                page.get("concrete_pixel_evidence_not_search_cover")
+                page.get("concrete_pixel_evidence_explaining_not_search_cover")
+                or page.get("concrete_pixel_evidence_not_search_cover")
                 or page.get("pixel_evidence")
                 or page.get("not_search_cover_reason")
                 or page.get("concrete_pixel_evidence")
@@ -1294,7 +1302,8 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
             if not isinstance(page, Mapping):
                 continue
             evidence = _flatten_style_evidence(
-                page.get("concrete_pixel_evidence_not_search_cover")
+                page.get("concrete_pixel_evidence_explaining_not_search_cover")
+                or page.get("concrete_pixel_evidence_not_search_cover")
                 or page.get("pixel_evidence")
                 or page.get("not_search_cover_reason")
                 or page.get("concrete_pixel_evidence")
@@ -1302,17 +1311,31 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
             distinction["why_not_search_cover"] = " ".join(evidence)
 
     assessment = _mapping(payload.get("search_listing_cover_assessment"))
+    set_verdict = _mapping(payload.get("set_verdict"))
+    page_zero = next(
+        (
+            page
+            for page in pages
+            if isinstance(page, Mapping) and page.get("page_index") == 0
+        ),
+        {},
+    ) if isinstance(pages, list) else {}
     search_evidence = payload.get("search_identification_evidence")
     if not isinstance(search_evidence, str) or not search_evidence.strip():
         payload["search_identification_evidence"] = " ".join(
             _flatten_style_evidence(
                 assessment.get("pixel_evidence")
                 or assessment.get("page_0_pixel_evidence")
+                or page_zero.get("concrete_pixel_evidence")
+                or page_zero.get("why_role_is_distinct")
+                or set_verdict.get("summary")
             )
         )
     payload.setdefault(
         "identified_search_page_index",
-        assessment.get("search_listing_cover_page_index"),
+        assessment.get("search_listing_cover_page_index")
+        if assessment.get("search_listing_cover_page_index") is not None
+        else set_verdict.get("search_listing_cover_page_index"),
     )
     other_cover_indexes = assessment.get("other_search_listing_cover_page_indices")
     set_conclusion = _mapping(payload.get("set_level_conclusion"))
@@ -1320,6 +1343,8 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         assessment.get("page_0_alone_is_visibly_search_listing_cover") is True
         or assessment.get("cover_uniqueness_status") == "PASS"
         or set_conclusion.get("page_0_is_the_only_visible_search_cover") is True
+        or set_verdict.get("page_0_alone_is_visibly_the_search_listing_cover")
+        is True
     )
     if assessment_passes:
         payload["search_role_is_unique"] = (

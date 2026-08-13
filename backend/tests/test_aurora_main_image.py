@@ -450,6 +450,61 @@ def test_set_role_audit_adapts_tengli_page_reason_and_cover_pass() -> None:
     assert "Page zero alone" in observation["search_identification_evidence"]
 
 
+def test_set_role_audit_adapts_tengli_explaining_evidence_and_set_verdict() -> None:
+    observation = _normalize_set_role_audit_payload(
+        {
+            "carousel_distinctions": [
+                {"page_index": index, "why_not_search_cover": ""}
+                for index in range(1, 6)
+            ],
+            "pages": [
+                {
+                    "page_index": 0,
+                    "concrete_pixel_evidence": [
+                        "Page zero visibly combines the product hero and listing headline."
+                    ],
+                },
+                *[
+                    {
+                        "page_index": index,
+                        "concrete_pixel_evidence_explaining_not_search_cover": [
+                            f"Page {index} visibly performs one focused carousel duty."
+                        ],
+                    }
+                    for index in range(1, 6)
+                ],
+            ],
+            "set_verdict": {
+                "page_0_alone_is_visibly_the_search_listing_cover": True,
+                "search_listing_cover_page_index": 0,
+                "set_roles_are_visibly_distinct": True,
+            },
+        }
+    )
+
+    assert all(
+        item["why_not_search_cover"]
+        for item in observation["carousel_distinctions"]
+    )
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is True
+    assert "product hero" in observation["search_identification_evidence"]
+
+
+def test_visual_audit_accepts_material_pass_with_audit_limitations() -> None:
+    normalized = _normalize_visual_judgment_payload(
+        {
+            "overall_status": "PASS_WITH_AUDIT_LIMITATIONS",
+            "material_pass": True,
+            "decision_summary": "Direct pixels establish the planned page duty.",
+        }
+    )
+
+    assert normalized["checks"]["page_role_expression"]["passed"] is True
+    assert normalized["checks"]["approved_plan_fidelity_match"]["passed"] is True
+    assert normalized["all_observed_deficiencies"] == []
+
+
 def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:
     schema = _visual_judgment_schema()
     checks = {

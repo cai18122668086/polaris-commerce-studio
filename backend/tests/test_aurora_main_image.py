@@ -218,6 +218,39 @@ def test_style_calibration_joins_concrete_pixel_evidence() -> None:
     assert "concrete_observed_evidence" not in observation
 
 
+def test_style_calibration_flattens_spaced_nested_evidence_field() -> None:
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {
+                "palette_usage_ratio": {
+                    "blue": "25-40%",
+                    "white": "45-60%",
+                }
+            },
+            "concrete observed_evidence": [
+                {
+                    "source_page_index": 0,
+                    "observations": [
+                        "The page uses a cool blue and white commercial system.",
+                        "Upper-left light reveals the suede and stitching.",
+                    ],
+                },
+                {
+                    "shared_comparison": [
+                        "Both pages share restrained retro-sport typography."
+                    ]
+                },
+            ],
+        }
+    )
+
+    assert "cool blue and white" in observation["observed_evidence"]
+    assert "retro-sport typography" in observation["observed_evidence"]
+    assert "concrete observed_evidence" not in observation
+    assert "palette_usage_ratio" not in observation["style_tokens"]
+
+
 def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:
     schema = _visual_judgment_schema()
     checks = {

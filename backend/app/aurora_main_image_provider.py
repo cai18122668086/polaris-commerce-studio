@@ -1053,14 +1053,61 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
 
     evidence = payload.get("observed_evidence")
     if not isinstance(evidence, str) or len(evidence.strip()) < 20:
-        concrete = payload.get("concrete_observed_evidence")
-        if isinstance(concrete, list):
-            statements = [
-                str(value).strip()
-                for value in concrete
-                if isinstance(value, str) and value.strip()
-            ]
-            if statements:
-                payload["observed_evidence"] = " ".join(statements)
+        concrete = payload.get("concrete_observed_evidence") or payload.get(
+            "concrete observed_evidence"
+        )
+        statements = _flatten_style_evidence(concrete)
+        if statements:
+            payload["observed_evidence"] = " ".join(statements)
     payload.pop("concrete_observed_evidence", None)
+    payload.pop("concrete observed_evidence", None)
+    tokens = _mapping(payload.get("style_tokens"))
+    ratios = _mapping(tokens.get("palette_usage_ratio"))
+    ratio_values = list(ratios.values())
+    if ratios and (
+        not all(
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= 0
+            for value in ratio_values
+        )
+        or abs(
+            sum(
+                float(value)
+                for value in ratio_values
+                if isinstance(value, (int, float))
+            )
+            - 100
+        )
+        > 0.01
+    ):
+        tokens.pop("palette_usage_ratio", None)
+    if "palette_roles" in tokens and not isinstance(
+        tokens["palette_roles"], Mapping
+    ):
+        tokens.pop("palette_roles", None)
+    if "typography" in tokens and not isinstance(tokens["typography"], Mapping):
+        tokens.pop("typography", None)
+    if "prohibited_styles" in tokens and not isinstance(
+        tokens["prohibited_styles"], list
+    ):
+        tokens.pop("prohibited_styles", None)
+    payload["style_tokens"] = tokens
     return payload
+
+
+def _flatten_style_evidence(value: object) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, Mapping):
+        statements: list[str] = []
+        for nested in value.values():
+            statements.extend(_flatten_style_evidence(nested))
+        return statements
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        statements = []
+        for nested in value:
+            statements.extend(_flatten_style_evidence(nested))
+        return statements
+    return []

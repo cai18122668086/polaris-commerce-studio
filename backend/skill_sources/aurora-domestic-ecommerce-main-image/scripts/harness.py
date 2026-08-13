@@ -545,25 +545,52 @@ def cmd_audit_set_role_distinction(args: argparse.Namespace) -> dict[str, Any]:
         expected_hashes[str(index)] = versions[-1]["sha256"]
     require(observation.get("image_sha256_by_page") == expected_hashes, "set-role audit image hashes are stale or incomplete")
     distinctions = observation.get("carousel_distinctions")
-    require(isinstance(distinctions, list) and len(distinctions) == 5, "carousel_distinctions must cover pages 1..5")
-    require(sorted(item.get("page_index") for item in distinctions if isinstance(item, dict)) == list(range(1, 6)), "carousel_distinctions page indexes are incomplete")
-    for item in distinctions:
-        require(isinstance(item.get("why_not_search_cover"), str) and len(item["why_not_search_cover"].strip()) >= 12, "each carousel distinction needs visible evidence")
+    distinction_indexes = (
+        sorted(
+            item.get("page_index")
+            for item in distinctions
+            if isinstance(item, dict) and isinstance(item.get("page_index"), int)
+        )
+        if isinstance(distinctions, list)
+        else []
+    )
+    distinctions_complete = (
+        isinstance(distinctions, list)
+        and len(distinctions) == 5
+        and distinction_indexes == list(range(1, 6))
+        and all(
+            isinstance(item, dict)
+            and isinstance(item.get("why_not_search_cover"), str)
+            and len(item["why_not_search_cover"].strip()) >= 12
+            for item in distinctions
+        )
+    )
     evidence = observation.get("search_identification_evidence")
-    require(isinstance(evidence, str) and len(evidence.strip()) >= 20, "search identification needs concrete visible evidence")
+    evidence_complete = isinstance(evidence, str) and len(evidence.strip()) >= 20
     passed = (
-        observation.get("identified_search_page_index") == 0
+        distinctions_complete
+        and evidence_complete
+        and observation.get("identified_search_page_index") == 0
         and observation.get("search_role_is_unique") is True
         and observation.get("confusable_page_indexes") == []
     )
     session["set_role_distinction_audit"] = copy.deepcopy(observation)
     session["set_role_distinction_passed"] = passed
     if not passed:
+        error = (
+            "SEARCH_ROLE_NOT_UNIQUE_IN_SIX_PAGE_BLIND_TEST"
+            if distinctions_complete and evidence_complete
+            else "SET_ROLE_AUDIT_EVIDENCE_INCOMPLETE"
+        )
         session.setdefault("residual_issues_for_user_final_review", []).append({
             "page_index": 0,
-            "errors": ["SEARCH_ROLE_NOT_UNIQUE_IN_SIX_PAGE_BLIND_TEST"],
+            "errors": [error],
             "failed_checks": ["approved_plan_fidelity_match"],
-            "decision_summary": evidence.strip(),
+            "decision_summary": (
+                evidence.strip()
+                if evidence_complete
+                else "The final set review returned incomplete role evidence; all six generated assets remain available for user final review."
+            ),
         })
     transition(session, "AWAITING_USER_FINAL_REVIEW", "audit-set-role-distinction-complete-ready-for-user-final-review")
     save(args.session, session)

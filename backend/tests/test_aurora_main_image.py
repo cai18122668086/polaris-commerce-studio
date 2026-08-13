@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib
 import json
+import sys
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +25,7 @@ from app.aurora_main_image_provider import (
     _normalize_set_role_audit_payload,
     _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
+    _required_audit_check_names,
     _visual_judgment_schema,
 )
 from app.aurora_main_image_runtime import AuroraHarnessError, AuroraHarnessRunner
@@ -326,6 +329,136 @@ def test_visual_audit_keeps_missing_critical_checks_blocking_on_explicit_fail() 
     assert judgment["checks"]["approved_plan_fidelity_match"]["passed"] is False
     assert judgment["checks"]["selling_point_visible_without_copy"]["passed"] is False
     assert judgment["all_observed_deficiencies"]
+
+
+def test_balanced_audit_keeps_unrequested_soft_checks_advisory() -> None:
+    judgment = _normalize_visual_judgment_payload(
+        {
+            "overall_verdict": "FAIL",
+            "material_failed_check_count": 1,
+            "final_reasoning": "The assigned page role is not visibly established.",
+            "checks": [],
+            "selling_point_proof_observation": {},
+        },
+        required_check_names=frozenset({"page_role_expression"}),
+    )
+
+    assert judgment["checks"]["page_role_expression"]["passed"] is False
+    assert [
+        item["check"] for item in judgment["all_observed_deficiencies"]
+    ] == ["page_role_expression"]
+
+
+def test_repair_audit_focuses_on_failed_checks_and_identity_safety() -> None:
+    required = _required_audit_check_names(
+        {
+            "plan": {
+                "pages": [
+                    {
+                        "repair_instruction": {
+                            "failed_check_names": [
+                                "page_role_expression",
+                                "thumbnail_success",
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "page_index": 0,
+            "generation_origin": "AUTOMATIC_REPAIR",
+        },
+    )
+
+    assert "page_role_expression" in required
+    assert "product_identity_match" in required
+    assert "factual_copy_match" in required
+    assert "thumbnail_success" not in required
+
+
+def test_balanced_gate_does_not_repair_for_low_soft_score_mean() -> None:
+    runtime_dir = (
+        Path(__file__).resolve().parents[1]
+        / "skill_sources"
+        / "aurora-domestic-ecommerce-main-image"
+        / "scripts"
+        / "runtime"
+    )
+    sys.path.insert(0, str(runtime_dir))
+    try:
+        visual_gate = importlib.import_module("visual_gate")
+    finally:
+        sys.path.pop(0)
+    blocking = (
+        visual_gate.HARD_BLOCKING_CHECKS
+        | visual_gate.MATERIAL_BLOCKING_CHECKS
+    )
+    checks = {
+        name: {
+            "passed": name in blocking,
+            "score": 90 if name in blocking else 10,
+            "observed_evidence": "Direct pixels support this audit conclusion.",
+        }
+        for name in _visual_judgment_schema()["properties"]["checks"]["required"]
+    }
+    image_path = str(runtime_dir / "candidate.jpg")
+    result = visual_gate.evaluate(
+        {
+            "page_index": 0,
+            "image_sha256": "a" * 64,
+            "reviewer": {
+                "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+                "pixel_inspection_performed": True,
+                "image_path": image_path,
+            },
+            "decision_summary": (
+                "The product identity, facts, page role and core proof are intact."
+            ),
+            "performance_observation": {
+                "estimated_product_occupancy_percent": 70,
+                "headline_visual_rank": "JOINT_FIRST",
+                "physical_evidence_seen": ["product", "benefit"],
+                "depth_layers_seen": 2,
+                "commercial_closure_seen": True,
+                "background_competition": "LOW",
+                "thumbnail_scan_order": ["product", "benefit"],
+            },
+            "plan_fidelity_observation": {
+                "observed_subject_and_view": "Complete product hero view.",
+                "observed_scene_geometry": "Rebuilt commercial studio scene.",
+                "observed_composition": "Product-led asymmetric composition.",
+                "observed_reading_path": ["product", "benefit"],
+                "missing_required_elements": [],
+                "unexpected_plan_changes": [],
+            },
+            "selling_point_proof_observation": {
+                "source_text": "core benefit",
+                "observability_class": "DIRECTLY_VISIBLE",
+                "visible_without_copy": True,
+                "pixel_evidence": ["Visible product benefit relation."],
+                "text_only_dependency": False,
+                "evidence_is_primary_visual": True,
+                "estimated_evidence_occupancy_percent": 60,
+                "claim_takeaway_without_copy": "The benefit is directly visible.",
+                "expression_mode": "DIRECT",
+            },
+            "source_background_observation": {
+                "leaked_source_elements": [],
+                "rebuilt_scene_evidence": "A clean rebuilt studio is visible.",
+            },
+            "checks": checks,
+            "all_observed_deficiencies": [],
+            "audit_completeness_confirmation": True,
+        },
+        "a" * 64,
+        0,
+        image_path,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["design_score"] < 72
+    assert "thumbnail_success" in result["advisory_checks"]
 
 
 def test_style_calibration_joins_concrete_pixel_evidence() -> None:
@@ -758,6 +891,54 @@ def test_provider_completes_the_harness_controlled_six_page_loop(
     assert provider.state["style_calibrated"] is True
     assert provider.state["search_baseline_calibrated"] is True
     assert provider.state["state"] == "AWAITING_USER_FINAL_REVIEW"
+
+    incomplete_session = dict(provider.state)
+    incomplete_session["state"] = "AWAITING_SET_ROLE_AUDIT"
+    incomplete_session_path = workspace / "incomplete-set-session.json"
+    incomplete_observation_path = workspace / "incomplete-set-observation.json"
+    incomplete_session_path.write_text(
+        json.dumps(incomplete_session, ensure_ascii=False), encoding="utf-8"
+    )
+    expected_hashes = {
+        str(index): next(
+            version["sha256"]
+            for version in reversed(incomplete_session["generated_versions"])
+            if version["page_index"] == index
+            and version["status"] in {"ACCEPTED", "ACCEPTED_WITH_RESIDUALS"}
+        )
+        for index in range(6)
+    }
+    incomplete_observation_path.write_text(
+        json.dumps(
+            {
+                "agent_pixel_reviewed": True,
+                "review_mode": "BLIND_SIX_PAGE_ROLE_COMPARISON",
+                "reviewed_page_indexes": list(range(6)),
+                "image_sha256_by_page": expected_hashes,
+                "carousel_distinctions": [],
+                "search_identification_evidence": "",
+                "identified_search_page_index": 0,
+                "search_role_is_unique": True,
+                "confusable_page_indexes": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    runner.run(
+        "audit-set-role-distinction",
+        workspace,
+        {
+            "session": incomplete_session_path,
+            "observation": incomplete_observation_path,
+        },
+    )
+    recovered = json.loads(incomplete_session_path.read_text(encoding="utf-8"))
+    assert recovered["state"] == "AWAITING_USER_FINAL_REVIEW"
+    assert recovered["set_role_distinction_passed"] is False
+    assert recovered["residual_issues_for_user_final_review"][-1]["errors"] == [
+        "SET_ROLE_AUDIT_EVIDENCE_INCOMPLETE"
+    ]
 
 
 def test_harness_runner_rejects_unknown_commands(tmp_path: Path) -> None:

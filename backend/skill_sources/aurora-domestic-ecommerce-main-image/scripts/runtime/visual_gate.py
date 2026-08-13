@@ -65,7 +65,6 @@ REPAIR_POLICIES = {
 HARD_BLOCKING_CHECKS = {
     "product_identity_match",
     "factual_copy_match",
-    "campaign_constitution_match",
     "source_background_noise_absent",
     "no_unsupported_claim",
     "no_hard_error",
@@ -74,11 +73,7 @@ MATERIAL_BLOCKING_CHECKS = {
     "typography_legibility",
     "page_role_expression",
     "evidence_relation_visible",
-    "approved_plan_fidelity_match",
     "selling_point_visible_without_copy",
-    "claim_to_evidence_relation_clear",
-    "text_not_substituting_for_visual_proof",
-    "thumbnail_success",
 }
 
 
@@ -186,8 +181,9 @@ def evaluate(
             if name in HARD_BLOCKING_CHECKS or (name in MATERIAL_BLOCKING_CHECKS and score < 70):
                 blocking_failed.append(name)
     score = round(sum(scores) / len(scores), 2)
-    if score < 72:
-        blocking_failed.append("design_score_below_72")
+    # Do not spend an image call because many minor styling, density, layout,
+    # thumbnail-polish or optional-proof scores lower the mean. Only a named
+    # material defect above can trigger the one automatic repair.
     passed = not blocking_failed
     if passed:
         scope = "NONE"

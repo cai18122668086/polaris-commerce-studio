@@ -41,8 +41,9 @@ advisory. Multiple related selling points are not a defect. Verify Chinese
 legibility, product identity, factual copy, page duty, physical evidence,
 campaign continuity, source-background isolation, thumbnail performance and
 the approved page contract from actual pixels. Return checks using the exact
-required_check_names supplied by the contract. Never infer a missing required
-element from an overall PASS. If any required_visible_element, reading-path
+required_check_names supplied by the contract. Checks outside that list are
+advisory and must not trigger regeneration by themselves. Never infer a missing
+required element from an overall PASS. If any required_visible_element, reading-path
 stop, page-role expression, physical proof, or commercial closure is not
 visibly present, fail the corresponding plan-fidelity check and name the
 missing pixel evidence.
@@ -342,6 +343,9 @@ class AuroraMainImageProvider:
                 candidate,
             )
         )
+        required_check_names = _required_audit_check_names(
+            session, generation_request
+        )
         audit_contract = {
             "page_index": page_index,
             "page_role": generation_request.get("page_role"),
@@ -353,10 +357,18 @@ class AuroraMainImageProvider:
             "visual_performance_contract": generation_request.get(
                 "visual_performance_contract"
             ),
-            "required_check_names": _VISUAL_CHECKS,
+            "required_check_names": required_check_names,
+            "audit_mode": (
+                "TARGETED_REPAIR_REVIEW"
+                if generation_request.get("generation_origin")
+                == "AUTOMATIC_REPAIR"
+                else "BALANCED_MATERIAL_GATE"
+            ),
             "review_rule": (
-                "Only direct visible pixels count. Missing checks are failures; "
-                "an overall PASS cannot substitute for exact required checks."
+                "Only direct visible pixels count. Missing required checks are "
+                "failures. Styling, density, layout preference, minor campaign "
+                "variance, thumbnail polish and optional supporting proof are "
+                "advisory unless they establish a named material check."
             ),
         }
         result = await self.gateway.plan(
@@ -383,7 +395,10 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 result.error_message or "Aurora pixel audit failed"
             )
-        judgment = _normalize_visual_judgment_payload(dict(result.payload))
+        judgment = _normalize_visual_judgment_payload(
+            dict(result.payload),
+            required_check_names=frozenset(required_check_names),
+        )
         judgment["page_index"] = page_index
         judgment["image_sha256"] = artifact.sha256
         reviewer = _mapping(judgment.get("reviewer"))
@@ -874,29 +889,69 @@ _PLAN_CRITICAL_VISUAL_CHECKS = frozenset(
     }
 )
 
-_HARNESS_BLOCKING_VISUAL_CHECKS = frozenset(
+_HARD_SAFETY_VISUAL_CHECKS = frozenset(
     {
         "product_identity_match",
         "factual_copy_match",
-        "campaign_constitution_match",
         "source_background_noise_absent",
         "no_unsupported_claim",
         "no_hard_error",
         "typography_legibility",
-        "page_role_expression",
-        "evidence_relation_visible",
-        "approved_plan_fidelity_match",
-        "selling_point_visible_without_copy",
-        "claim_to_evidence_relation_clear",
-        "text_not_substituting_for_visual_proof",
-        "thumbnail_success",
     }
 )
 
+_BALANCED_BLOCKING_VISUAL_CHECKS = frozenset(
+    {
+        *_HARD_SAFETY_VISUAL_CHECKS,
+        "page_role_expression",
+        "evidence_relation_visible",
+        "selling_point_visible_without_copy",
+    }
+)
 
-def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any]:
+_HARNESS_BLOCKING_VISUAL_CHECKS = _BALANCED_BLOCKING_VISUAL_CHECKS
+
+
+def _required_audit_check_names(
+    session: Mapping[str, Any], generation_request: Mapping[str, Any]
+) -> tuple[str, ...]:
+    """Focus audits on material defects and the active repair delta."""
+
+    if generation_request.get("generation_origin") != "AUTOMATIC_REPAIR":
+        return tuple(
+            name
+            for name in _VISUAL_CHECKS
+            if name in _BALANCED_BLOCKING_VISUAL_CHECKS
+        )
+    page_index = int(generation_request.get("page_index", 0))
+    pages = _mapping(session.get("plan")).get("pages")
+    page = (
+        pages[page_index]
+        if isinstance(pages, list)
+        and 0 <= page_index < len(pages)
+        and isinstance(pages[page_index], Mapping)
+        else {}
+    )
+    repair = _mapping(page.get("repair_instruction"))
+    failed = {
+        str(name)
+        for name in repair.get("failed_check_names", [])
+        if isinstance(name, str)
+    }
+    required = _HARD_SAFETY_VISUAL_CHECKS | (
+        failed & _BALANCED_BLOCKING_VISUAL_CHECKS
+    )
+    return tuple(name for name in _VISUAL_CHECKS if name in required)
+
+
+def _normalize_visual_judgment_payload(
+    payload: dict[str, Any],
+    *,
+    required_check_names: frozenset[str] | None = None,
+) -> dict[str, Any]:
     """Adapt a direct-pixel reviewer's equivalent JSON to the Harness contract."""
 
+    required_checks = required_check_names or _PLAN_CRITICAL_VISUAL_CHECKS
     if _is_complete_visual_judgment(payload):
         _downgrade_nonmaterial_check_failures(payload)
         _enforce_visual_judgment_consistency(payload)
@@ -945,7 +1000,7 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
         passed_value = (source or {}).get("passed")
         missing_critical_check = (
             source is None
-            and name in _PLAN_CRITICAL_VISUAL_CHECKS
+            and name in required_checks
             and not explicit_material_pass
         )
         passed = (
@@ -953,6 +1008,8 @@ def _normalize_visual_judgment_payload(payload: dict[str, Any]) -> dict[str, Any
             if isinstance(passed_value, bool)
             else status in {"PASS", "PASSED", "NOT_APPLICABLE", "N/A"}
             if status
+            else True
+            if source is None and name not in required_checks
             else False
             if missing_critical_check
             else overall_pass

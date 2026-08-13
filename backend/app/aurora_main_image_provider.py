@@ -316,16 +316,19 @@ class AuroraMainImageProvider:
     ) -> tuple[dict[str, Any], dict[str, Any], int]:
         page_index = int(generation_request["page_index"])
         proof = _mapping(generation_request.get("selling_point_visual_proof_contract"))
-        sources = list(_identity_sources(generation_request, request.job_id))
-        sources.append(
-            SourceImage(
-                asset_id=f"candidate-page-{page_index}",
-                group_key=request.job_id,
-                filename=str(generated_path),
-                content_type=artifact.content_type,
-                sha256=artifact.sha256,
-                payload=artifact.payload,
-                source_role="generated_candidate",
+        candidate = SourceImage(
+            asset_id=f"candidate-page-{page_index}",
+            group_key=request.job_id,
+            filename=str(generated_path),
+            content_type=artifact.content_type,
+            sha256=artifact.sha256,
+            payload=artifact.payload,
+            source_role="generated_candidate",
+        )
+        sources = list(
+            _bounded_visual_audit_sources(
+                _identity_sources(generation_request, request.job_id),
+                candidate,
             )
         )
         audit_contract = {
@@ -554,6 +557,25 @@ def _identity_sources(
     safe_request["repair_canvas"] = None
     safe_request["edit_target"] = None
     return _generation_sources(safe_request, job_id)
+
+
+_MAX_VISUAL_AUDIT_IMAGES = 4
+
+
+def _bounded_visual_audit_sources(
+    identity_sources: Sequence[SourceImage], candidate: SourceImage
+) -> tuple[SourceImage, ...]:
+    """Keep the generated candidate while bounding a multi-image vision request.
+
+    Identity extraction and image generation still receive every approved source.
+    The per-page pixel audit needs the candidate plus representative identity
+    evidence, and the configured compatible vision endpoint rejects five-image
+    chat requests. Keep the first three ordered identity authorities and always
+    reserve the final slot for the generated candidate under review.
+    """
+
+    identity_limit = _MAX_VISUAL_AUDIT_IMAGES - 1
+    return (*tuple(identity_sources[:identity_limit]), candidate)
 
 
 def _accepted_generated_sources(

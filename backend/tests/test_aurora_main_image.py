@@ -15,6 +15,7 @@ from app.aurora_main_image_planner import (
 )
 from app.aurora_main_image_provider import (
     AuroraMainImageProvider,
+    _bounded_visual_audit_sources,
     _normalize_set_role_audit_payload,
     _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
@@ -188,6 +189,39 @@ def test_visual_audit_uses_strict_bounded_low_reasoning_response() -> None:
         "reasoning_effort": "low",
         "max_completion_tokens": 6_000,
     }
+
+
+def test_visual_audit_keeps_candidate_and_bounds_identity_images() -> None:
+    identity_sources = tuple(
+        SourceImage(
+            asset_id=f"identity-{index}",
+            group_key="job_audit",
+            filename=f"identity-{index}.jpg",
+            content_type="image/jpeg",
+            sha256=str(index) * 64,
+            payload=f"identity-{index}".encode(),
+        )
+        for index in range(6)
+    )
+    candidate = SourceImage(
+        asset_id="candidate-page-0",
+        group_key="job_audit",
+        filename="candidate.jpg",
+        content_type="image/jpeg",
+        sha256="f" * 64,
+        payload=b"candidate",
+        source_role="generated_candidate",
+    )
+
+    audit_sources = _bounded_visual_audit_sources(identity_sources, candidate)
+
+    assert [source.asset_id for source in audit_sources] == [
+        "identity-0",
+        "identity-1",
+        "identity-2",
+        "candidate-page-0",
+    ]
+    assert audit_sources[-1].source_role == "generated_candidate"
 
 
 def test_visual_audit_adapts_equivalent_direct_pixel_review_fields() -> None:

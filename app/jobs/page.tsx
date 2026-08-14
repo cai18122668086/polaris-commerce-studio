@@ -14,20 +14,19 @@ import {
   Search,
   Sparkles,
   TimerReset,
-  X,
 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import {
   useCancelJob,
-  useJob,
   useJobs,
   useRetryJob,
+  useConfirmPlan,
 } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
-import type { Job, JobStatus } from "@/lib/api/types";
+import type { Job, JobDetail, JobStatus } from "@/lib/api/types";
 import {
   formatDate,
   jobCount,
@@ -36,6 +35,7 @@ import {
   jobTypeLabel,
 } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
+import { JobDetailPanel } from "@/features/jobs/components/job-detail-panel";
 
 const tabFilters: Record<string, JobStatus[] | undefined> = {
   all: undefined,
@@ -44,44 +44,6 @@ const tabFilters: Record<string, JobStatus[] | undefined> = {
   attention: ["partial", "failed"],
   draft: ["draft"],
 };
-
-function JobDetailPanel({
-  workspaceId,
-  jobId,
-  onClose,
-}: {
-  workspaceId: string;
-  jobId: string;
-  onClose: () => void;
-}) {
-  const detail = useJob(workspaceId, jobId);
-  return (
-    <>
-      <button className="drawer-overlay" onClick={onClose} aria-label="关闭任务详情" />
-      <aside className="task-drawer open" aria-label="任务详情">
-        <div className="drawer-head">
-          <div><p>任务详情</p><strong>{detail.data ? jobTitle(detail.data) : "正在加载"}</strong></div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭任务详情"><X size={19} /></button>
-        </div>
-        {detail.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在更新任务详情…</p></div>}
-        {detail.error && <div className="api-state api-state--error"><FileWarning /><p>{errorMessage(detail.error)}</p></div>}
-        {detail.data && (
-          <div className="job-detail-content">
-            <StatusBadge status={detail.data.status} />
-            <dl>
-              <div><dt>任务编号</dt><dd>{detail.data.id}</dd></div>
-              <div><dt>进度</dt><dd>{detail.data.progress}%</dd></div>
-              <div><dt>成功 / 失败</dt><dd>{detail.data.succeeded_item_count} / {detail.data.failed_item_count}</dd></div>
-            </dl>
-            <p>{jobNote(detail.data)}</p>
-            {detail.data.error_message && <div className="api-inline-error">{detail.data.error_message}</div>}
-            <small>任务详情与处理状态会持续同步更新。</small>
-          </div>
-        )}
-      </aside>
-    </>
-  );
-}
 
 export default function JobsPage() {
   const [tab, setTab] = useState("all");
@@ -92,6 +54,7 @@ export default function JobsPage() {
   const jobsQuery = useJobs(workspace?.id, { statuses: tabFilters[tab], limit: 100 });
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
+  const confirmPlan = useConfirmPlan(workspace?.id);
   const jobs = useMemo(
     () =>
       (jobsQuery.data?.items ?? []).filter((job) =>
@@ -100,9 +63,9 @@ export default function JobsPage() {
     [jobsQuery.data, query],
   );
   const allJobs = jobsQuery.data?.items ?? [];
-  const actionError = cancel.error ?? retry.error;
+  const actionError = cancel.error ?? retry.error ?? confirmPlan.error;
 
-  const runCancel = (job: Job) => {
+  const runCancel = (job: Job | JobDetail) => {
     if (
       !allowsJobAction(job.allowed_actions, "cancel") ||
       !window.confirm("确认取消此任务？已经完成的任务不会回滚。")
@@ -112,9 +75,23 @@ export default function JobsPage() {
     cancel.mutate({ jobId: job.id, allowedActions: job.allowed_actions });
   };
 
-  const runRetry = (job: Job) => {
+  const runRetry = (job: Job | JobDetail, itemId?: string) => {
     if (!allowsJobAction(job.allowed_actions, "retry")) return;
-    retry.mutate({ jobId: job.id, allowedActions: job.allowed_actions });
+    retry.mutate({
+      jobId: job.id,
+      allowedActions: job.allowed_actions,
+      scope: itemId ? "selected" : "failed",
+      itemIds: itemId ? [itemId] : [],
+    });
+  };
+
+  const runConfirmPlan = (job: JobDetail) => {
+    if (!job.plan || !allowsJobAction(job.allowed_actions, "confirm_plan")) return;
+    confirmPlan.mutate({
+      jobId: job.id,
+      allowedActions: job.allowed_actions,
+      revision: job.plan.revision,
+    });
   };
 
   return (
@@ -186,7 +163,20 @@ export default function JobsPage() {
           )}
         </section>
       </div>
-      {workspace && selectedJobId && <JobDetailPanel workspaceId={workspace.id} jobId={selectedJobId} onClose={() => setSelectedJobId(undefined)} />}
+      {workspace && selectedJobId && (
+        <JobDetailPanel
+          workspaceId={workspace.id}
+          jobId={selectedJobId}
+          onClose={() => setSelectedJobId(undefined)}
+          onCancel={runCancel}
+          onRetry={runRetry}
+          onRetryItem={(job, itemId) => runRetry(job, itemId)}
+          onConfirmPlan={runConfirmPlan}
+          cancelPending={cancel.isPending}
+          retryPending={retry.isPending}
+          confirmPending={confirmPlan.isPending}
+        />
+      )}
     </AppShell>
   );
 }

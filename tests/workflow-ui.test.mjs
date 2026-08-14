@@ -10,6 +10,11 @@ import {
   canRetryJob,
   selectJobResultAssets,
 } from "../lib/jobs/results.ts";
+import {
+  jobAssetRoleLabel,
+  jobItemStatusLabel,
+  jobStageLabel,
+} from "../lib/jobs/presentation.ts";
 
 test("display coordinates map to original raster pixels", () => {
   assert.deepEqual(
@@ -83,4 +88,17 @@ test("retry visibility follows allowed_actions only", () => {
   assert.equal(canRetryJob({ allowed_actions: [] }), false);
   assert.equal(canRetryJob({ allowed_actions: ["retry"] }), true);
   assert.equal(canRetryJob(undefined), false);
+});
+
+
+test("job detail displays backend stages without fabricating unknown values", () => {
+  assert.equal(jobStageLabel("generating", "processing"), "\u751f\u6210\u4e2d");
+  assert.equal(jobStageLabel("provider_specific_stage", "processing"), "\u540e\u53f0\u9636\u6bb5:provider_specific_stage");
+  assert.equal(jobStageLabel(null, "completed"), "\u5df2\u5b8c\u6210");
+});
+
+test("job detail labels item statuses and asset roles from backend values", () => {
+  assert.equal(jobItemStatusLabel("failed"), "\u5931\u8d25");
+  assert.equal(jobAssetRoleLabel("pose_reference"), "\u59ff\u52bf\u53c2\u8003");
+  assert.equal(jobAssetRoleLabel("provider_output"), "provider output");
 });

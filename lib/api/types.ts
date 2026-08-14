@@ -8,6 +8,7 @@ export type Job = components["schemas"]["JobListItemResponse"];
 export type JobDetail = components["schemas"]["JobDetailResponse"];
 export type JobList = components["schemas"]["JobListResponse"];
 export type JobStatus = components["schemas"]["JobStatus"];
+export type JobItemStatus = components["schemas"]["JobItemStatus"];
 export type JobType = components["schemas"]["JobType"];
 export type RetryScope = components["schemas"]["RetryScope"];
 export type LocalEditJobCreate = components["schemas"]["LocalEditJobCreate"];

@@ -1,18 +1,21 @@
-﻿"use client";
+"use client";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { LogOut, Mail, ShieldCheck, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { getSessionUserId, signOut } from "@/features/auth/api/auth";
 import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { AUTH_ROUTES } from "@/lib/auth/routes";
+import { useAnnouncementAdminAccess } from "@/features/announcements/api/announcements";
 
 export function AccountPanel() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const currentUser = useCurrentAuthUser();
+  const announcementAccess = useAnnouncementAdminAccess();
   const [sessionUserId, setSessionUserId] = useState<string>();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string>();
@@ -104,6 +107,11 @@ export function AccountPanel() {
       {error ? <p className="auth-form__error" role="alert">{error}</p> : null}
 
       <div className="account-card__actions">
+        {announcementAccess.data?.can_manage ? (
+          <Link className="auth-button auth-button--secondary" href="/admin/announcements">
+            公告管理工作台
+          </Link>
+        ) : null}
         <button
           className="auth-button auth-button--secondary"
           disabled={signingOut}

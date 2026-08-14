@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { TopNavigation } from "./top-navigation";
 import { ToolSidebar } from "./tool-sidebar";
 import { TaskDrawer } from "./task-drawer";
+import { AnnouncementBanner } from "./announcement-banner";
 
 export function AppShell({
   children,
@@ -27,6 +28,7 @@ export function AppShell({
         taskOpen={taskOpen}
         taskTriggerRef={taskTriggerRef}
       />
+      <AnnouncementBanner />
       <div className="app-shell__body">
         {sidebar && (
           <ToolSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, Bell, Check, Eye, FilePlus2, Loader2, Megaphone, Pencil, Pin, Plus, RefreshCw, Send } from "lucide-react";
+import { Archive, Bell, Check, Eye, FilePlus2, ImagePlus, Loader2, Megaphone, Pencil, Pin, Plus, RefreshCw, Send, Trash2 } from "lucide-react";
 
 import {
   useAdminAnnouncements,
@@ -11,6 +11,8 @@ import {
   usePublishAnnouncement,
   useUpdateAnnouncement,
 } from "@/features/announcements/api/announcements";
+import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
+import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
 
@@ -22,6 +24,8 @@ type FormState = {
   title: string;
   summary: string;
   content: string;
+  image_asset_id: string;
+  image_alt: string;
   kind: AnnouncementKind;
   link_url: string;
   starts_at: string;
@@ -33,6 +37,8 @@ const EMPTY_FORM: FormState = {
   title: "",
   summary: "",
   content: "",
+  image_asset_id: "",
+  image_alt: "",
   kind: "info",
   link_url: "",
   starts_at: "",
@@ -71,6 +77,8 @@ function formFromAnnouncement(item: Announcement): FormState {
     title: item.title,
     summary: item.summary ?? "",
     content: item.content,
+    image_asset_id: item.image_asset_id ?? "",
+    image_alt: item.image_alt ?? "",
     kind: item.kind,
     link_url: item.link_url ?? "",
     starts_at: toDateInput(item.starts_at),
@@ -92,6 +100,8 @@ export function AnnouncementAdmin({
   onFilterChange: (filter: AnnouncementFilter) => void;
 }) {
   const access = useAnnouncementAdminAccess();
+  const { workspace } = useWorkspace();
+  const uploadMutation = useUploadAsset(workspace?.id);
   const canManage = access.data?.can_manage === true;
   const announcements = useAdminAnnouncements(filter, canManage);
   const createMutation = useCreateAnnouncement();
@@ -102,15 +112,20 @@ export function AnnouncementAdmin({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [preview, setPreview] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const imageAccess = useAssetAccessUrl(workspace?.id, form.image_asset_id || undefined);
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isUploadingImage = uploadMutation.isPending;
   const isChangingStatus = publishMutation.isPending || archiveMutation.isPending;
   const mutationError = createMutation.error ?? updateMutation.error ?? publishMutation.error ?? archiveMutation.error;
   const list = announcements.data?.items;
   const selectedId = selected?.id;
-  const sortedList = [...(list ?? [])].sort(
-    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-  );
+  const sortedList = [...(list ?? [])].sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+    const publishedDelta = (b.published_at ? new Date(b.published_at).getTime() : 0) - (a.published_at ? new Date(a.published_at).getTime() : 0);
+    return publishedDelta || new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 
   if (access.isLoading) {
     return <div className="announcement-admin-page announcement-admin-page--center"><Loader2 className="spin" size={24} /> 正在检查公告管理权限…</div>;
@@ -130,6 +145,7 @@ export function AnnouncementAdmin({
 
   const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setNotice(null);
+    setImageError(null);
     setForm((current) => ({ ...current, [key]: value }));
   };
 
@@ -138,6 +154,7 @@ export function AnnouncementAdmin({
     setForm({ ...EMPTY_FORM });
     setPreview(false);
     setNotice(null);
+    setImageError(null);
   };
 
   const buildBody = () => ({
@@ -149,7 +166,24 @@ export function AnnouncementAdmin({
     starts_at: toIso(form.starts_at),
     ends_at: toIso(form.ends_at),
     is_pinned: form.is_pinned,
+    image_asset_id: form.image_asset_id || null,
+    image_alt: form.image_alt.trim() || null,
   });
+
+  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImageError(null);
+    try {
+      const asset = await uploadMutation.mutateAsync({ file, mediaKind: "image" });
+      updateField("image_asset_id", asset.id);
+      if (!form.image_alt) updateField("image_alt", file.name.replace(/\.[^.]+$/, ""));
+      setNotice("图片已上传，保存公告后会正式关联。");
+    } catch (error) {
+      setImageError(errorMessage(error));
+    }
+  };
 
   const save = async () => {
     setNotice(null);
@@ -254,6 +288,7 @@ export function AnnouncementAdmin({
               <div className="announcement-preview__label">{kindLabels[form.kind]}</div>
               <h3>{form.title || "公告标题"}</h3>
               {form.summary && <p className="announcement-preview__summary">{form.summary}</p>}
+              {imageAccess.data?.url && <img className="announcement-preview__image" src={imageAccess.data.url} alt={form.image_alt || form.title || "公告图片"} />}
               <div className="announcement-preview__content">{form.content || "公告正文将在这里显示。"}</div>
               {form.link_url && <a href={form.link_url} target="_blank" rel="noreferrer">打开相关链接</a>}
             </div>
@@ -262,6 +297,18 @@ export function AnnouncementAdmin({
               <label><span>标题 <em>*</em></span><input value={form.title} onChange={(event) => updateField("title", event.target.value)} maxLength={160} placeholder="例如：新功能上线通知" /></label>
               <label><span>摘要</span><input value={form.summary} onChange={(event) => updateField("summary", event.target.value)} maxLength={320} placeholder="在公告栏中显示的一句话摘要" /></label>
               <label><span>正文 <em>*</em></span><textarea value={form.content} onChange={(event) => updateField("content", event.target.value)} maxLength={20_000} rows={9} placeholder="支持纯文本换行，不需要填写 HTML。" /></label>
+              <div className="announcement-image-field">
+                <div className="announcement-image-field__heading"><span>公告图片</span><small>支持 JPG，PNG，WEBP，上传后会在公告正文上方展示。</small></div>
+                <div className="announcement-image-field__body">
+                  {imageAccess.data?.url ? <img className="announcement-admin-image-preview" src={imageAccess.data.url} alt={form.image_alt || "公告图片预览"} /> : <div className="announcement-admin-image-placeholder"><ImagePlus size={22} /><span>暂未插入图片</span></div>}
+                  <div className="announcement-image-field__actions">
+                    <label className="button secondary announcement-image-upload"><ImagePlus size={16} /> {isUploadingImage ? "上传中…" : "插入图片"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} disabled={isUploadingImage || !workspace?.id} /></label>
+                    {form.image_asset_id && <button type="button" className="button danger-ghost" onClick={() => { updateField("image_asset_id", ""); updateField("image_alt", ""); }}><Trash2 size={15} /> 移除图片</button>}
+                  </div>
+                  {form.image_asset_id && <label><span>图片说明</span><input value={form.image_alt} onChange={(event) => updateField("image_alt", event.target.value)} maxLength={240} placeholder="用于无障碍阅读和图片加载失败时的说明" /></label>}
+                  {imageError && <div className="form-error">{imageError}</div>}
+                </div>
+              </div>
               <div className="announcement-form-grid">
                 <label><span>公告类型</span><select value={form.kind} onChange={(event) => updateField("kind", event.target.value as AnnouncementKind)}>{(Object.keys(kindLabels) as AnnouncementKind[]).map((key) => <option key={key} value={key}>{kindLabels[key]}</option>)}</select></label>
                 <label><span>相关链接</span><input type="url" value={form.link_url} onChange={(event) => updateField("link_url", event.target.value)} placeholder="可选，以 https:// 开头" /></label>

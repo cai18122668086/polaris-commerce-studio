@@ -1,92 +1,165 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowUpRight, Bell, CalendarDays, ExternalLink, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  AtSign,
+  BellRing,
+  CalendarDays,
+  ChevronDown,
+  Megaphone,
+  Newspaper,
+  Pin,
+  X,
+} from "lucide-react";
 
-import { useCurrentAnnouncement } from "@/features/announcements/api/announcements";
+import { usePublicAnnouncements } from "@/features/announcements/api/announcements";
 import { errorMessage } from "@/lib/api/request";
 
-const DISMISSED_KEY = "polaris.dismissed-announcements";
+const tabs = [
+  { key: "notice", label: "公告通知", Icon: Megaphone },
+  { key: "commerce", label: "电商资讯", Icon: Newspaper },
+  { key: "related", label: "与我相关", Icon: AtSign },
+] as const;
+type AnnouncementTab = (typeof tabs)[number]["key"];
 
-const kindLabels = {
-  info: "公告",
-  success: "更新",
-  warning: "提醒",
-  maintenance: "维护",
-} as const;
-
-function readDismissed(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const value = JSON.parse(window.localStorage.getItem(DISMISSED_KEY) ?? "[]");
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
+function formatPublishedAt(value: string | null) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 export function AnnouncementBanner() {
-  const announcement = useCurrentAnnouncement();
-  const [dismissedIds, setDismissedIds] = useState<string[]>(readDismissed);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const announcements = usePublicAnnouncements();
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<AnnouncementTab>("notice");
 
-  if (announcement.isLoading || announcement.isError || !announcement.data) return null;
-  if (dismissedIds.includes(announcement.data.id)) return null;
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
 
-  const item = announcement.data;
-  const dismiss = () => {
-    const next = [...new Set([...dismissedIds, item.id])];
-    setDismissedIds(next);
-    window.localStorage.setItem(DISMISSED_KEY, JSON.stringify(next.slice(-30)));
-  };
+  const items = announcements.data?.items ?? [];
 
   return (
-    <>
-      <section className={`announcement-banner announcement-banner--${item.kind}`} aria-live="polite">
-        <div className="announcement-banner__inner">
-          <span className="announcement-banner__icon" aria-hidden="true"><Bell size={16} /></span>
-          <div className="announcement-banner__content">
-            <span className="announcement-banner__eyebrow">{kindLabels[item.kind]}</span>
-            <strong>{item.title}</strong>
-            {item.summary && <span>{item.summary}</span>}
-          </div>
-          <button type="button" className="announcement-banner__detail-button" onClick={() => setDetailOpen(true)}>
-            查看详情 <ArrowUpRight size={15} />
-          </button>
-          <button type="button" className="announcement-banner__close" onClick={dismiss} aria-label="关闭公告">
-            <X size={17} />
-          </button>
-        </div>
-      </section>
-      {detailOpen && (
-        <div className="announcement-dialog-backdrop" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setDetailOpen(false);
-        }}>
-          <article className="announcement-dialog" role="dialog" aria-modal="true" aria-labelledby="announcement-dialog-title">
-            <div className={`announcement-dialog__accent announcement-dialog__accent--${item.kind}`} />
-            <header className="announcement-dialog__header">
+    <div className="announcement-center">
+      <button
+        type="button"
+        className="announcement-center__trigger"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        <BellRing size={15} aria-hidden="true" />
+        <span>公告通知</span>
+        {items.length > 0 && <i className="announcement-center__trigger-dot" aria-hidden="true" />}
+        <ChevronDown className="announcement-center__trigger-chevron" size={13} aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div
+          className="announcement-center__overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setOpen(false);
+          }}
+        >
+          <section
+            className="announcement-center__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="announcement-center-title"
+          >
+            <header className="announcement-center__header">
               <div>
-                <span className="announcement-banner__eyebrow">{kindLabels[item.kind]}</span>
-                <h2 id="announcement-dialog-title">{item.title}</h2>
+                <span className="announcement-center__eyebrow">Polaris Commerce Studio</span>
+                <h1 id="announcement-center-title">公告中心</h1>
               </div>
-              <button type="button" className="icon-button" onClick={() => setDetailOpen(false)} aria-label="关闭公告详情"><X size={18} /></button>
+              <button
+                type="button"
+                className="announcement-center__close"
+                onClick={() => setOpen(false)}
+                aria-label="关闭公告中心"
+              >
+                <X size={19} aria-hidden="true" />
+              </button>
             </header>
-            {item.summary && <p className="announcement-dialog__summary">{item.summary}</p>}
-            <div className="announcement-dialog__content">{item.content}</div>
-            <footer className="announcement-dialog__footer">
-              <span><CalendarDays size={15} /> {item.published_at ? new Date(item.published_at).toLocaleDateString("zh-CN") : ""}</span>
-              {item.link_url && <a href={item.link_url} target="_blank" rel="noreferrer">打开相关页面 <ExternalLink size={14} /></a>}
-              <button type="button" className="button secondary" onClick={dismiss}>知道了</button>
-            </footer>
-          </article>
+
+            <div className="announcement-center__tabs" role="tablist" aria-label="公告分类">
+              {tabs.map(({ key, label: tabLabel, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === key}
+                  className={`announcement-center__tab${activeTab === key ? " is-active" : ""}`}
+                  onClick={() => setActiveTab(key)}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  <span>{tabLabel}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="announcement-center__scroll">
+              {activeTab === "notice" && announcements.isPending ? (
+                <div className="announcement-center__empty"><strong>正在加载公告</strong></div>
+              ) : activeTab === "notice" && items.length > 0 ? (
+                items.map((item) => (
+                  <article className="announcement-center__article" key={item.id}>
+                    <div className="announcement-center__article-topline">
+                      <time dateTime={item.published_at ?? undefined}>{formatPublishedAt(item.published_at)}</time>
+                      {item.is_pinned && <span className="announcement-center__pinned"><Pin size={12} />置顶</span>}
+                    </div>
+                    <h2>{item.title}</h2>
+                    {item.summary && <p className="announcement-center__summary">{item.summary}</p>}
+                    {item.image_url && (
+                      <img className="announcement-center__image" src={item.image_url} alt={item.image_alt || item.title} />
+                    )}
+                    <div className="announcement-center__content">{item.content}</div>
+                    {item.link_url && (
+                      <a className="announcement-center__link" href={item.link_url} target="_blank" rel="noreferrer">
+                        查看相关页面
+                      </a>
+                    )}
+                    <div className="announcement-center__meta" aria-label="公告信息">
+                      <span><Megaphone size={14} aria-hidden="true" />公告通知</span>
+                      <span className="announcement-center__meta-date"><CalendarDays size={14} aria-hidden="true" />{formatPublishedAt(item.published_at)}</span>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="announcement-center__empty">
+                  <span className="announcement-center__empty-icon" aria-hidden="true">
+                    {activeTab === "notice" ? <Megaphone size={22} /> : activeTab === "commerce" ? <Newspaper size={22} /> : <AtSign size={22} />}
+                  </span>
+                  <strong>{activeTab === "notice" ? "暂无公告通知" : activeTab === "commerce" ? "暂无电商资讯" : "暂无与你相关的内容"}</strong>
+                  <p>后续有新的内容时，会在这里展示。</p>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
 export function AnnouncementLoadError() {
-  const announcement = useCurrentAnnouncement();
-  if (!announcement.isError) return null;
-  return <span className="sr-only">{errorMessage(announcement.error)}</span>;
+  const announcements = usePublicAnnouncements();
+  if (!announcements.isError) return null;
+  return <span className="sr-only">{errorMessage(announcements.error)}</span>;
 }

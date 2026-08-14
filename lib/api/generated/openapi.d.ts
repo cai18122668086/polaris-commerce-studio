@@ -599,6 +599,10 @@ export interface components {
             content: string;
             /** Ends At */
             ends_at?: string | null;
+            /** Image Alt */
+            image_alt?: string | null;
+            /** Image Asset Id */
+            image_asset_id?: string | null;
             /**
              * Is Pinned
              * @default false
@@ -637,6 +641,12 @@ export interface components {
             ends_at: string | null;
             /** Id */
             id: string;
+            /** Image Alt */
+            image_alt: string | null;
+            /** Image Asset Id */
+            image_asset_id: string | null;
+            /** Image Url */
+            image_url: string | null;
             /** Is Pinned */
             is_pinned: boolean;
             /**
@@ -671,6 +681,10 @@ export interface components {
             content?: string | null;
             /** Ends At */
             ends_at?: string | null;
+            /** Image Alt */
+            image_alt?: string | null;
+            /** Image Asset Id */
+            image_asset_id?: string | null;
             /** Is Pinned */
             is_pinned?: boolean | null;
             /** Kind */

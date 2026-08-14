@@ -11,6 +11,8 @@ class AnnouncementCreate(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     summary: str | None = Field(default=None, max_length=320)
     content: str = Field(min_length=1, max_length=20_000)
+    image_asset_id: str | None = Field(default=None, max_length=40)
+    image_alt: str | None = Field(default=None, max_length=240)
     kind: AnnouncementKind = "info"
     link_url: HttpUrl | None = None
     starts_at: datetime | None = None
@@ -32,6 +34,8 @@ class AnnouncementUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
     summary: str | None = Field(default=None, max_length=320)
     content: str | None = Field(default=None, min_length=1, max_length=20_000)
+    image_asset_id: str | None = Field(default=None, max_length=40)
+    image_alt: str | None = Field(default=None, max_length=240)
     kind: AnnouncementKind | None = None
     link_url: HttpUrl | None = None
     starts_at: datetime | None = None
@@ -56,6 +60,9 @@ class AnnouncementResponse(BaseModel):
     title: str
     summary: str | None
     content: str
+    image_asset_id: str | None
+    image_alt: str | None
+    image_url: str | None
     kind: AnnouncementKind
     status: AnnouncementStatus
     link_url: str | None

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -17,9 +17,9 @@ from .announcement_schemas import (
 )
 from .auth import Principal, get_principal
 from .database import get_session
-from .domain import MembershipRole, MembershipStatus
+from .domain import AssetLifecycleStatus, MembershipRole, MembershipStatus
 from .errors import ApiError
-from .models import AnnouncementRecord, WorkspaceMemberRecord
+from .models import AnnouncementRecord, AssetRecord, WorkspaceMemberRecord
 from .services import new_id
 
 router = APIRouter(prefix="/api/v1")
@@ -33,12 +33,26 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _announcement_response(record: AnnouncementRecord) -> AnnouncementResponse:
+def _announcement_response(
+    record: AnnouncementRecord, request: Request | None = None
+) -> AnnouncementResponse:
+    image_url = None
+    if (
+        record.image_asset_id is not None
+        and record.status == "published"
+        and request is not None
+    ):
+        image_url = str(
+            request.url_for("get_announcement_image", announcement_id=record.id)
+        )
     return AnnouncementResponse(
         id=record.id,
         title=record.title,
         summary=record.summary,
         content=record.content,
+        image_asset_id=record.image_asset_id,
+        image_alt=record.image_alt,
+        image_url=image_url,
         kind=cast(AnnouncementKind, record.kind),
         status=cast(AnnouncementStatus, record.status),
         link_url=record.link_url,
@@ -132,7 +146,9 @@ def _validate_record(record: AnnouncementRecord) -> None:
     response_model=AnnouncementResponse | None,
     tags=["announcements"],
 )
-def get_current_announcement(session: SessionDependency) -> AnnouncementResponse | None:
+def get_current_announcement(
+    request: Request, session: SessionDependency
+) -> AnnouncementResponse | None:
     record = session.scalar(
         select(AnnouncementRecord)
         .where(*_active_filters(_now()))
@@ -143,7 +159,7 @@ def get_current_announcement(session: SessionDependency) -> AnnouncementResponse
         )
         .limit(1)
     )
-    return _announcement_response(record) if record is not None else None
+    return _announcement_response(record, request) if record is not None else None
 
 
 @router.get(
@@ -152,6 +168,7 @@ def get_current_announcement(session: SessionDependency) -> AnnouncementResponse
     tags=["announcements"],
 )
 def list_public_announcements(
+    request: Request,
     session: SessionDependency,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> AnnouncementListResponse:
@@ -166,7 +183,50 @@ def list_public_announcements(
         .limit(limit)
     ).all()
     return AnnouncementListResponse(
-        items=[_announcement_response(item) for item in records]
+        items=[_announcement_response(item, request) for item in records]
+    )
+
+
+@router.get(
+    "/announcements/{announcement_id}/image",
+    name="get_announcement_image",
+    include_in_schema=False,
+)
+async def get_announcement_image(
+    announcement_id: str,
+    request: Request,
+    session: SessionDependency,
+) -> Response:
+    record = session.scalar(
+        select(AnnouncementRecord).where(
+            AnnouncementRecord.id == announcement_id,
+            *_active_filters(_now()),
+        )
+    )
+    if record is None or record.image_asset_id is None:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "ANNOUNCEMENT_IMAGE_NOT_FOUND",
+            "The announcement image was not found.",
+        )
+    asset = session.scalar(
+        select(AssetRecord).where(
+            AssetRecord.id == record.image_asset_id,
+            AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+            AssetRecord.deleted_at.is_(None),
+        )
+    )
+    if asset is None:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "ANNOUNCEMENT_IMAGE_NOT_FOUND",
+            "The announcement image was not found.",
+        )
+    body = await request.app.state.storage.read_bytes(asset.object_key)
+    return Response(
+        body,
+        media_type=asset.content_type,
+        headers={"Cache-Control": "public, max-age=300"},
     )
 
 
@@ -204,7 +264,8 @@ def list_admin_announcements(
         statement = statement.where(*filters)
     records = session.scalars(
         statement.order_by(
-            AnnouncementRecord.updated_at.desc(),
+            AnnouncementRecord.is_pinned.desc(),
+            AnnouncementRecord.published_at.desc().nullslast(),
             AnnouncementRecord.created_at.desc(),
         )
     ).all()
@@ -229,6 +290,8 @@ def create_announcement(
         title=payload.title.strip(),
         summary=payload.summary.strip() if payload.summary else None,
         content=payload.content.strip(),
+        image_asset_id=payload.image_asset_id,
+        image_alt=payload.image_alt.strip() if payload.image_alt else None,
         kind=payload.kind,
         status="draft",
         link_url=str(payload.link_url) if payload.link_url else None,
@@ -242,7 +305,7 @@ def create_announcement(
     session.add(record)
     session.commit()
     session.refresh(record)
-    return _announcement_response(record)
+    return _announcement_response(record, None)
 
 
 @router.patch(
@@ -268,7 +331,7 @@ def update_announcement(
     record.updated_by_user_id = admin.user_id
     session.commit()
     session.refresh(record)
-    return _announcement_response(record)
+    return _announcement_response(record, None)
 
 
 @router.post(
@@ -288,7 +351,7 @@ def publish_announcement(
     record.updated_by_user_id = admin.user_id
     session.commit()
     session.refresh(record)
-    return _announcement_response(record)
+    return _announcement_response(record, None)
 
 
 @router.post(
@@ -307,4 +370,4 @@ def archive_announcement(
     record.updated_by_user_id = admin.user_id
     session.commit()
     session.refresh(record)
-    return _announcement_response(record)
+    return _announcement_response(record, None)

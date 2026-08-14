@@ -933,6 +933,10 @@ class AnnouncementRecord(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     summary: Mapped[str | None] = mapped_column(String(320))
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    image_asset_id: Mapped[str | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL")
+    )
+    image_alt: Mapped[str | None] = mapped_column(String(240))
     kind: Mapped[str] = mapped_column(String(16), default="info", nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="draft", nullable=False)
     link_url: Mapped[str | None] = mapped_column(String(2048))

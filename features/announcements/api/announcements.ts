@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -73,6 +73,8 @@ type AnnouncementMutationInput = {
   title: string;
   summary?: string | null;
   content: string;
+  image_asset_id?: string | null;
+  image_alt?: string | null;
   kind: "info" | "success" | "warning" | "maintenance";
   link_url?: string | null;
   starts_at?: string | null;

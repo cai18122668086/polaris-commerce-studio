@@ -309,6 +309,30 @@
             ],
             "title": "Ends At"
           },
+          "image_alt": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Alt"
+          },
+          "image_asset_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Asset Id"
+          },
           "is_pinned": {
             "default": false,
             "title": "Is Pinned",
@@ -420,6 +444,39 @@
             "title": "Id",
             "type": "string"
           },
+          "image_alt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Alt"
+          },
+          "image_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Asset Id"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
           "is_pinned": {
             "title": "Is Pinned",
             "type": "boolean"
@@ -504,6 +561,9 @@
           "title",
           "summary",
           "content",
+          "image_asset_id",
+          "image_alt",
+          "image_url",
           "kind",
           "status",
           "link_url",
@@ -543,6 +603,30 @@
               }
             ],
             "title": "Ends At"
+          },
+          "image_alt": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Alt"
+          },
+          "image_asset_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Asset Id"
           },
           "is_pinned": {
             "anyOf": [

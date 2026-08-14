@@ -1,15 +1,22 @@
-﻿import SuperTokens from "supertokens-web-js";
+import SuperTokens from "supertokens-web-js";
 import EmailPassword from "supertokens-web-js/recipe/emailpassword";
 import EmailVerification from "supertokens-web-js/recipe/emailverification";
 import Session from "supertokens-web-js/recipe/session";
 
-import { getAuthRuntimeConfig } from "./config";
 import { emitAuthUnauthorised } from "./session-events";
+import { isLocalDevelopmentAuthEnabled } from "./local-dev";
+import { getAuthRuntimeConfig } from "./config";
 
 let authClientInitialized = false;
 
 export function initializeAuthClient(): void {
   if (authClientInitialized || typeof window === "undefined") return;
+  // The local development backend intentionally uses a fixed development
+  // identity instead of SuperTokens. Never enable this flag in production.
+  if (isLocalDevelopmentAuthEnabled()) {
+    authClientInitialized = true;
+    return;
+  }
   const config = getAuthRuntimeConfig();
   SuperTokens.init({
     appInfo: { appName: config.appName, apiDomain: config.apiDomain, apiBasePath: config.apiBasePath },

@@ -1,8 +1,9 @@
-﻿import EmailPassword from "supertokens-web-js/recipe/emailpassword";
+import EmailPassword from "supertokens-web-js/recipe/emailpassword";
 import EmailVerification from "supertokens-web-js/recipe/emailverification";
 import Session from "supertokens-web-js/recipe/session";
 
 import { initializeAuthClient } from "@/lib/auth/client";
+import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
 
 export type AuthFieldError = { id: string; error: string };
 const PASSWORD_ERROR_MESSAGES: Record<string, string> = {
@@ -13,10 +14,23 @@ const PASSWORD_ERROR_MESSAGES: Record<string, string> = {
 };
 const initialise = () => initializeAuthClient();
 
-export async function sessionExists() { initialise(); return Session.doesSessionExist(); }
-export async function getSessionUserId() { initialise(); return Session.getUserId(); }
-export async function signOut() { initialise(); await Session.signOut(); }
+export async function sessionExists() {
+  if (isLocalDevelopmentAuthEnabled()) return true;
+  initialise();
+  return Session.doesSessionExist();
+}
+export async function getSessionUserId() {
+  if (isLocalDevelopmentAuthEnabled()) return LOCAL_DEV_AUTH_USER_ID;
+  initialise();
+  return Session.getUserId();
+}
+export async function signOut() {
+  if (isLocalDevelopmentAuthEnabled()) return;
+  initialise();
+  await Session.signOut();
+}
 export async function signInWithEmailPassword(email: string, password: string) {
+  if (isLocalDevelopmentAuthEnabled()) return { status: "OK" as const };
   initialise();
   return EmailPassword.signIn({ formFields: [{ id: "email", value: email.trim() }, { id: "password", value: password }] });
 }
@@ -32,9 +46,19 @@ export async function submitNewPassword(password: string) {
   initialise();
   return EmailPassword.submitNewPassword({ formFields: [{ id: "password", value: password }] });
 }
-export async function isEmailVerified() { initialise(); return (await EmailVerification.isEmailVerified()).isVerified; }
-export async function verifyEmail() { initialise(); return EmailVerification.verifyEmail(); }
-export async function sendVerificationEmail() { initialise(); return EmailVerification.sendVerificationEmail(); }
+export async function isEmailVerified() {
+  if (isLocalDevelopmentAuthEnabled()) return true;
+  initialise();
+  return (await EmailVerification.isEmailVerified()).isVerified;
+}
+export async function verifyEmail() {
+  initialise();
+  return EmailVerification.verifyEmail();
+}
+export async function sendVerificationEmail() {
+  initialise();
+  return EmailVerification.sendVerificationEmail();
+}
 export function authErrorMessage(error: unknown, fallback = "请求未能完成，请稍后重试。"): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }

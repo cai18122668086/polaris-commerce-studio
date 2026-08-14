@@ -40,6 +40,27 @@ export function useAssets(
   });
 }
 
+export function useAsset(
+  workspaceId: string | undefined,
+  assetId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["asset", workspaceId, assetId],
+    enabled: Boolean(workspaceId && assetId),
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.GET(
+        "/api/v1/workspaces/{workspace_id}/assets/{asset_id}",
+        {
+          params: { path: { workspace_id: workspaceId!, asset_id: assetId! } },
+          signal,
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+    staleTime: 60_000,
+  });
+}
+
 export function useUploadAsset(workspaceId: string | undefined) {
   const queryClient = useQueryClient();
   const registry = useRef<IdempotencyIntentRegistry | null>(null);

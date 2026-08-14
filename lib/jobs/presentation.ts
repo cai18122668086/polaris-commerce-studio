@@ -1,4 +1,4 @@
-import type { Job, JobDetail, JobType } from "@/lib/api/types";
+import type { Job, JobDetail, JobItemStatus, JobStatus, JobType } from "@/lib/api/types";
 
 const JOB_TYPE_LABELS: Record<JobType, string> = {
   local_edit: "一句话改图",
@@ -10,35 +10,94 @@ const JOB_TYPE_LABELS: Record<JobType, string> = {
   amazon_visual_suite: "亚马逊套图",
 };
 
-export function jobTypeLabel(type: JobType): string {
-  return JOB_TYPE_LABELS[type];
+const JOB_STATUS_LABELS: Record<JobStatus, string> = {
+  draft: "草稿",
+  queued: "排队中",
+  planning: "规划中",
+  awaiting_confirmation: "待确认",
+  processing: "处理中",
+  cancelling: "取消中",
+  partial: "部分成功",
+  completed: "已完成",
+  failed: "失败",
+  cancelled: "已取消",
+};
+
+const JOB_STAGE_LABELS: Record<string, string> = {
+  draft: "草稿",
+  queued: "排队中",
+  planning: "规划中",
+  awaiting_confirmation: "等待确认",
+  processing: "处理中",
+  generating: "生成中",
+  validating: "校验中",
+  validation: "校验中",
+  organizing: "整理结果中",
+  planning_failed: "规划失败",
+  suite_quality_reported: "质量检查已完成",
+  suite_quality_passed: "质量检查通过",
+  suite_review_reported: "套图审核已完成",
+  partial: "部分成功",
+  completed: "已完成",
+  failed: "失败",
+  cancelling: "取消中",
+  cancelled: "已取消",
+};
+
+const JOB_ITEM_STATUS_LABELS: Record<JobItemStatus, string> = {
+  pending: "待处理",
+  queued: "排队中",
+  running: "执行中",
+  succeeded: "成功",
+  failed: "失败",
+  cancelled: "已取消",
+  skipped: "已跳过",
+  reused: "已复用",
+};
+
+const JOB_ASSET_ROLE_LABELS: Record<string, string> = {
+  source: "源图",
+  product: "商品图",
+  product_source: "商品源图",
+  model_source: "模特源图",
+  pose_reference: "姿势参考",
+  reference: "参考图",
+  competitor_reference: "竞品参考",
+  input: "输入素材",
+  output: "输出结果",
+  deliverable: "可交付结果",
+};
+
+export function jobTypeLabel(type: JobType): string { return JOB_TYPE_LABELS[type]; }
+export function jobStatusLabel(status: JobStatus): string { return JOB_STATUS_LABELS[status]; }
+
+/** Uses backend stage values as the source of truth; unknown values remain visible. */
+export function jobStageLabel(stage: string | null | undefined, status: JobStatus): string {
+  if (stage && JOB_STAGE_LABELS[stage]) return JOB_STAGE_LABELS[stage];
+  if (stage) return `后台阶段:${stage}`;
+  return JOB_STATUS_LABELS[status];
 }
 
-export function jobTitle(job: Job | JobDetail): string {
-  return job.display_name?.trim() || `${jobTypeLabel(job.type)} · ${job.id.slice(0, 8)}`;
-}
-
-export function jobCount(job: Job | JobDetail): string {
-  return `${job.succeeded_item_count} / ${job.expected_item_count} 项`;
-}
+export function jobItemStatusLabel(status: JobItemStatus): string { return JOB_ITEM_STATUS_LABELS[status]; }
+export function jobAssetRoleLabel(role: string): string { return JOB_ASSET_ROLE_LABELS[role] ?? role.replaceAll("_", " "); }
+export function jobTitle(job: Job | JobDetail): string { return job.display_name?.trim() || `${jobTypeLabel(job.type)} / ${job.id.slice(0, 8)}`; }
+export function jobCount(job: Job | JobDetail): string { return `${job.succeeded_item_count} / ${job.expected_item_count} 项`; }
 
 export function jobNote(job: Job | JobDetail): string {
-  if (job.status === "partial") return "部分项目成功，可仅重试失败项。";
-  if (job.status === "failed") {
-    return ("error_message" in job && job.error_message) || "任务失败，可查看详情后重试。";
-  }
-  if (job.status === "awaiting_confirmation") return "生成方案已就绪，等待确认。";
-  if (job.status === "cancelling") return "正在安全取消任务。";
-  if (job.status === "cancelled") return "任务已取消，未继续处理。";
-  if (job.status === "completed") return "任务已完成。";
-  return job.stage ? `当前阶段：${job.stage}` : "任务正在处理中。";
+  if (job.status === "partial") return "Partial success; retry failed items only.";
+  if (job.status === "failed") return ("error_message" in job && job.error_message) || "Task failed; view details to retry.";
+  if (job.status === "awaiting_confirmation") return "Plan is ready and waiting for confirmation.";
+  if (job.status === "cancelling") return "Cancelling the task safely.";
+  if (job.status === "cancelled") return "Task cancelled before further processing.";
+  if (job.status === "completed") return "Task completed.";
+  return job.stage ? `Current stage: ${jobStageLabel(job.stage, job.status)}` : "Task is processing.";
 }
 
 export function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value));
 }

@@ -91,9 +91,9 @@ test("retry visibility follows allowed_actions only", () => {
 });
 
 
-test("job detail displays backend stages without fabricating unknown values", () => {
+test("job detail displays stages without fabricating unknown values", () => {
   assert.equal(jobStageLabel("generating", "processing"), "\u751f\u6210\u4e2d");
-  assert.equal(jobStageLabel("provider_specific_stage", "processing"), "\u540e\u53f0\u9636\u6bb5:provider_specific_stage");
+  assert.equal(jobStageLabel("provider_specific_stage", "processing"), "\u9636\u6bb5\uff1aprovider_specific_stage");
   assert.equal(jobStageLabel(null, "completed"), "\u5df2\u5b8c\u6210");
 });
 

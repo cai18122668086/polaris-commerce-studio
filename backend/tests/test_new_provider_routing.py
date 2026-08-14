@@ -12,6 +12,7 @@ from app.amazon_visual_suite_provider import (
     AMAZON_VISUAL_SUITE_SKILL_ID,
     AmazonVisualSuiteProvider,
 )
+from app.aurora_main_image_provider import AuroraMainImageProvider
 from app.config import default_skill_root, default_xinghe_skill_root
 from app.creative_image_provider import CreativeImageProvider
 from app.crossborder_detail_provider import (
@@ -423,6 +424,9 @@ def test_real_single_image_route_uses_its_own_skill_delegate_when_enabled(
     assert validator.source_roots == {skill_id: default_skill_root(skill_id)}
 
     for other_operation, other_adapter in router.routes.items():
+        if other_operation == JobType.DOMESTIC_MAIN_IMAGE.value:
+            assert isinstance(other_adapter, UnavailableProvider)
+            continue
         if other_operation != operation:
             assert isinstance(other_adapter.delegate, UnavailableProvider)
 
@@ -439,7 +443,14 @@ def test_real_single_image_routes_receive_independent_delegates(
         amazon_visual_suite_provider_enabled=True,
     )
     router = cast(RegisteredOperationRoutingProvider, coordinator.provider)
-    delegates = [adapter.delegate for adapter in router.routes.values()]
+    delegates = [
+        adapter.delegate
+        for operation, adapter in router.routes.items()
+        if operation != JobType.DOMESTIC_MAIN_IMAGE.value
+    ]
+    assert isinstance(
+        router.routes[JobType.DOMESTIC_MAIN_IMAGE.value], UnavailableProvider
+    )
 
     assert all(
         isinstance(delegate, XingheSingleImageProvider) for delegate in delegates
@@ -592,6 +603,11 @@ def test_mock_coordinator_ignores_real_provider_flags(
         assert router.routes[operation] is router.default_provider
     amazon = router.routes[JobType.AMAZON_VISUAL_SUITE.value]
     assert amazon.delegate is router.default_provider
+    domestic_main_image = router.routes[JobType.DOMESTIC_MAIN_IMAGE.value]
+    assert isinstance(domestic_main_image, AuroraMainImageProvider)
+    assert (
+        domestic_main_image.gateway is coordinator.detail_planner.international.gateway
+    )
     assert planner_router.international.skill_id == "xinghe-ecommerce-detail"
     assert isinstance(router.detail_provider, XingheImageProvider)
     assert not isinstance(router.detail_provider, CrossborderDetailProvider)
@@ -636,7 +652,11 @@ def test_tengli_task_runner_propagates_all_provider_switches(
 
     assert all(
         isinstance(adapter.delegate, XingheSingleImageProvider)
-        for adapter in router.routes.values()
+        for operation, adapter in router.routes.items()
+        if operation != JobType.DOMESTIC_MAIN_IMAGE.value
+    )
+    assert isinstance(
+        router.routes[JobType.DOMESTIC_MAIN_IMAGE.value], UnavailableProvider
     )
     assert isinstance(router.detail_provider, CrossborderDetailProvider)
     assert planner_router.international.skill_id == CROSSBORDER_DETAIL_SKILL_ID

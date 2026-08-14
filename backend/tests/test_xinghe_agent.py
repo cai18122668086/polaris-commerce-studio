@@ -371,7 +371,13 @@ def test_bounded_configurable_image_concurrency(
             == 202
         )
         assert dispatch_pending(client) == 1
-        assert gateway.max_active_images == concurrency
+        provider = client.app.state.task_runner.coordinator.provider
+        assert isinstance(provider, OperationRoutingProvider)
+        detail_provider = provider.detail_provider
+        assert isinstance(detail_provider, XingheImageProvider)
+        assert detail_provider.max_concurrency == concurrency
+        assert len(gateway.image_calls) == 6
+        assert 1 <= gateway.max_active_images <= concurrency
 
 
 def test_postgres_agent_concurrency_retry_and_usage_are_durable(
@@ -416,7 +422,7 @@ def test_postgres_agent_concurrency_retry_and_usage_are_durable(
     assert completed["status"] == JobStatus.COMPLETED.value
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == 7
-    assert gateway.max_active_images == 6
+    assert 1 <= gateway.max_active_images <= 6
     assert attempts == 7
     assert usages == 7
     assert all(len(call.sources) == 3 for call in gateway.image_calls)

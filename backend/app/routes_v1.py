@@ -1,10 +1,13 @@
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
+import os
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 from zipfile import ZIP_STORED, ZipFile
 
@@ -21,6 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response
+from pydantic import SecretStr
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -79,6 +83,9 @@ from .schemas_v1 import (
     CreativeImageJobCreate,
     CurrentUserResponse,
     DetailPackJobCreate,
+    DevelopmentProviderSettingsResponse,
+    DevelopmentProviderSettingsUpdate,
+    DomesticMainImageJobCreate,
     DraftJobUpdate,
     ErrorResponse,
     JobCreate,
@@ -316,8 +323,7 @@ def _commit_catalog_pose_asset(
             actor_user_id=actor_user_id,
             method="POST",
             route_template=(
-                "/api/v1/workspaces/{workspace_id}/"
-                "model-pose-transfer/pose-assets"
+                "/api/v1/workspaces/{workspace_id}/model-pose-transfer/pose-assets"
             ),
             idempotency_key=idempotency_key,
             request_hash=request_hash,
@@ -445,6 +451,7 @@ def runtime_status_response(
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
+    domestic_main_image_provider_enabled: bool = False,
 ) -> RuntimeStatusResponse:
     local_edit = (
         CapabilityStatus(
@@ -497,14 +504,11 @@ def runtime_status_response(
         "local_edit": local_edit,
         "product_image": feature_status(product_image_provider_enabled),
         "reference_remix": feature_status(reference_remix_provider_enabled),
-        "model_pose_transfer": feature_status(
-            model_pose_transfer_provider_enabled
-        ),
+        "model_pose_transfer": feature_status(model_pose_transfer_provider_enabled),
         "creative_image": feature_status(creative_image_provider_enabled),
         "detail_pack": detail_pack,
-        "amazon_visual_suite": feature_status(
-            amazon_visual_suite_provider_enabled
-        ),
+        "amazon_visual_suite": feature_status(amazon_visual_suite_provider_enabled),
+        "domestic_main_image": feature_status(domestic_main_image_provider_enabled),
     }
     if task_runner == "tengli":
         features["crossborder_detail"] = feature_status(
@@ -565,6 +569,141 @@ def get_runtime_status(
         crossborder_detail_provider_enabled=(
             settings.crossborder_detail_provider_enabled
         ),
+        domestic_main_image_provider_enabled=(
+            settings.domestic_main_image_provider_enabled
+        ),
+    )
+
+
+def _development_provider_response(
+    settings: Any, message: str
+) -> DevelopmentProviderSettingsResponse:
+    configured = bool(settings.tengli_api_key.get_secret_value().strip())
+    return DevelopmentProviderSettingsResponse(
+        available=settings.environment == "development"
+        and settings.auth_mode == "development",
+        configured=configured,
+        task_runner=settings.task_runner,
+        domestic_main_image_provider_enabled=(
+            settings.domestic_main_image_provider_enabled
+        ),
+        base_url=settings.tengli_base_url,
+        image_model=settings.tengli_image_model,
+        vision_model=settings.tengli_vision_model,
+        message=message,
+    )
+
+
+def _write_development_provider_env(
+    env_path: Path, updates: dict[str, str]
+) -> None:
+    current = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+    remaining = dict(updates)
+    output: list[str] = []
+    for line in current.splitlines():
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if key in remaining:
+            output.append(f"{key}={json.dumps(remaining.pop(key), ensure_ascii=False)}")
+        else:
+            output.append(line)
+    output.extend(
+        f"{key}={json.dumps(value, ensure_ascii=False)}"
+        for key, value in remaining.items()
+    )
+    temporary = env_path.with_name(f".env.provider-{os.getpid()}.tmp")
+    temporary.write_text("\n".join(output).rstrip() + "\n", encoding="utf-8")
+    os.replace(temporary, env_path)
+
+
+@router.get(
+    "/development/provider-settings",
+    response_model=DevelopmentProviderSettingsResponse,
+    tags=["runtime"],
+)
+def get_development_provider_settings(
+    request: Request,
+    _principal: PrincipalDependency,
+) -> DevelopmentProviderSettingsResponse:
+    settings = request.app.state.settings
+    if settings.environment != "development" or settings.auth_mode != "development":
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "DEVELOPMENT_PROVIDER_SETTINGS_UNAVAILABLE",
+            "开发者生图配置入口不可用。",
+        )
+    return _development_provider_response(settings, "开发者生图配置可用。")
+
+
+@router.post(
+    "/development/provider-settings",
+    response_model=DevelopmentProviderSettingsResponse,
+    tags=["runtime"],
+)
+def update_development_provider_settings(
+    payload: DevelopmentProviderSettingsUpdate,
+    request: Request,
+    _principal: PrincipalDependency,
+) -> DevelopmentProviderSettingsResponse:
+    settings = request.app.state.settings
+    if settings.environment != "development" or settings.auth_mode != "development":
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "DEVELOPMENT_PROVIDER_SETTINGS_UNAVAILABLE",
+            "开发者生图配置入口不可用。",
+        )
+    values = (
+        payload.api_key,
+        payload.base_url,
+        payload.image_model,
+        payload.vision_model,
+    )
+    if any("\r" in value or "\n" in value for value in values):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "DEVELOPMENT_PROVIDER_SETTINGS_INVALID",
+            "生图服务配置不能包含换行符。",
+        )
+    candidate = settings.model_copy(deep=True)
+    candidate.task_runner = "tengli"
+    candidate.domestic_main_image_provider_enabled = True
+    candidate.tengli_api_key = SecretStr(payload.api_key.strip())
+    candidate.tengli_base_url = payload.base_url.strip()
+    candidate.tengli_image_model = payload.image_model.strip()
+    candidate.tengli_vision_model = payload.vision_model.strip()
+    candidate.xinghe_concurrency = 2
+    from .task_runner import build_task_runner, validate_task_runner_settings
+
+    try:
+        validate_task_runner_settings(candidate)
+        runner = build_task_runner(
+            request.app.state.session_factory,
+            candidate,
+            request.app.state.storage,
+        )
+        _write_development_provider_env(
+            candidate.development_provider_env_file,
+            {
+                "POLARIS_TASK_RUNNER": "tengli",
+                "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED": "true",
+                "POLARIS_TENGLI_API_KEY": payload.api_key.strip(),
+                "POLARIS_TENGLI_BASE_URL": candidate.tengli_base_url,
+                "POLARIS_TENGLI_IMAGE_MODEL": candidate.tengli_image_model,
+                "POLARIS_TENGLI_VISION_MODEL": candidate.tengli_vision_model,
+                "POLARIS_XINGHE_CONCURRENCY": "2",
+            }
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "DEVELOPMENT_PROVIDER_SETTINGS_INVALID",
+            "生图服务配置未能启用，请检查地址、模型和密钥格式。",
+            {"reason": type(exc).__name__},
+        ) from exc
+    request.app.state.settings = candidate
+    request.app.state.task_runner = runner
+    return _development_provider_response(
+        candidate,
+        "真实六图 Provider 已在本机启用；请重新运行原 Mock 任务。",
     )
 
 
@@ -714,9 +853,7 @@ async def materialize_model_pose_asset(
     payload: ModelPoseAssetRequest,
     request: Request,
     workspace: WorkspaceWriteDependency,
-    idempotency_header: Annotated[
-        str | None, Header(alias="Idempotency-Key")
-    ] = None,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> AssetResponse:
     """Materialize only a private catalog original resolved by slug and hash."""
 
@@ -1174,8 +1311,7 @@ def _allows_preserved_amazon_partial_archive(
         or JobStatus(job.status) != JobStatus.PARTIAL
         or job.expected_item_count != AMAZON_EXPECTED_ITEM_COUNT
         or len(items) != job.expected_item_count
-        or job.succeeded_item_count + job.failed_item_count
-        != job.expected_item_count
+        or job.succeeded_item_count + job.failed_item_count != job.expected_item_count
     ):
         return False
 
@@ -1205,9 +1341,7 @@ def _allows_preserved_amazon_partial_archive(
     responses={
         status.HTTP_200_OK: {
             "content": {
-                "application/zip": {
-                    "schema": {"type": "string", "format": "binary"}
-                }
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
             },
             "description": "Complete canonical deliverables archive.",
         }
@@ -1224,6 +1358,7 @@ async def download_job_deliverables(
     if job.type not in {
         JobType.DETAIL_PACK.value,
         JobType.AMAZON_VISUAL_SUITE.value,
+        JobType.DOMESTIC_MAIN_IMAGE.value,
     }:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -1246,10 +1381,7 @@ async def download_job_deliverables(
     preserved_partial_archive = _allows_preserved_amazon_partial_archive(
         job, partial_items
     )
-    if (
-        JobStatus(job.status) != JobStatus.COMPLETED
-        and not preserved_partial_archive
-    ):
+    if JobStatus(job.status) != JobStatus.COMPLETED and not preserved_partial_archive:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "DELIVERABLE_ARCHIVE_NOT_READY",
@@ -1278,9 +1410,9 @@ async def download_job_deliverables(
                 "deliverable_count": len(deliverables),
             },
         )
-    if preserved_partial_archive and {
-        item.id for _, item, _ in deliverables
-    } != {item.id for item in partial_items}:
+    if preserved_partial_archive and {item.id for _, item, _ in deliverables} != {
+        item.id for item in partial_items
+    }:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "DELIVERABLE_ARCHIVE_INCOMPLETE",
@@ -1340,9 +1472,7 @@ async def download_job_deliverables(
         archive.getvalue(),
         media_type="application/zip",
         headers={
-            "Content-Disposition": build_content_disposition(
-                "attachment", archive_name
-            )
+            "Content-Disposition": build_content_disposition("attachment", archive_name)
         },
     )
 
@@ -1784,10 +1914,7 @@ def confirm_plan(
             "计划未通过校验，不能开始生成。",
         )
     current_status = JobStatus(job.status)
-    if (
-        current_status == JobStatus.PROCESSING
-        and plan.confirmed_at is not None
-    ):
+    if current_status == JobStatus.PROCESSING and plan.confirmed_at is not None:
         return job_detail_response(session, job)
     if current_status != JobStatus.AWAITING_CONFIRMATION:
         raise ApiError(
@@ -1795,6 +1922,17 @@ def confirm_plan(
             "JOB_NOT_AWAITING_CONFIRMATION",
             "任务当前状态不允许确认计划。",
         )
+    if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+        settings = request.app.state.settings
+        if (
+            settings.task_runner != "tengli"
+            or not settings.domestic_main_image_provider_enabled
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "DOMESTIC_MAIN_IMAGE_PROVIDER_UNAVAILABLE",
+                "真实六图生成服务尚未启用；当前 Mock 只能编译规划，不能授权生图。",
+            )
     idem, replay = claim_idempotency(
         session,
         workspace_id=workspace.workspace_id,
@@ -1803,7 +1941,11 @@ def confirm_plan(
         route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/confirm",
         idempotency_key=key,
         request_hash=canonical_hash(
-            {"job_id": job.id, "expected_revision": payload.expected_revision}
+            {
+                "job_id": job.id,
+                "expected_revision": payload.expected_revision,
+                "approval_text": payload.approval_text,
+            }
         ),
     )
     if replay:
@@ -1838,6 +1980,26 @@ def confirm_plan(
                 "PLAN_INVALID",
                 "The Amazon plan is invalid and cannot be confirmed.",
                 {"reason": exc.code},
+            ) from exc
+    elif job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+        from .aurora_main_image_planner import (
+            AuroraPlanningError,
+            authorize_aurora_plan,
+        )
+        from .aurora_main_image_runtime import AuroraHarnessError
+
+        try:
+            authorize_aurora_plan(
+                plan,
+                job,
+                payload.approval_text or "用户确认六图规划并授权逐张生成",
+            )
+        except (AuroraPlanningError, AuroraHarnessError) as exc:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "AURORA_AUTHORIZATION_FAILED",
+                "六图规划未能通过 Aurora Harness 授权，不能开始生成。",
+                {"reason": getattr(exc, "code", type(exc).__name__)},
             ) from exc
     plan.confirmed_at = utc_now()
     transition_job(job, JobStatus.PROCESSING, stage="generating", progress=20)
@@ -1909,6 +2071,7 @@ def _new_job_from_payload(
         | CreativeImageJobCreate
         | DetailPackJobCreate
         | AmazonVisualSuiteJobCreate
+        | DomesticMainImageJobCreate
     ),
     *,
     detail_medium_price_micros: int = 45_000,
@@ -1964,6 +2127,12 @@ def _new_job_from_payload(
                 (asset_id, "style_reference", ordinal)
                 for ordinal, asset_id in enumerate(payload.input.reference_asset_ids)
             ],
+        ]
+    elif isinstance(payload, DomesticMainImageJobCreate):
+        item_count = 6
+        asset_roles = [
+            (asset_id, "product_identity_authority", ordinal)
+            for ordinal, asset_id in enumerate(payload.input.product_asset_ids)
         ]
     else:
         item_count = 21
@@ -2022,6 +2191,7 @@ _REAL_PROVIDER_ENABLE_FLAGS = {
     JobType.MODEL_POSE_TRANSFER.value: "model_pose_transfer_provider_enabled",
     JobType.CREATIVE_IMAGE.value: "creative_image_provider_enabled",
     JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual_suite_provider_enabled",
+    JobType.DOMESTIC_MAIN_IMAGE.value: "domestic_main_image_provider_enabled",
 }
 
 
@@ -2034,6 +2204,21 @@ _AMAZON_PROVIDER_REQUEST_ENVELOPE = (
     + _AMAZON_MAX_REDRAW_REQUESTS
     + _AMAZON_PLANNER_REQUESTS
     + _AMAZON_MAX_SUITE_REVIEW_REQUESTS
+)
+_AURORA_INITIAL_IMAGE_REQUESTS = 6
+_AURORA_MAX_REPAIR_IMAGE_REQUESTS = 6
+_AURORA_IDENTITY_PLANNER_REQUESTS = 1
+_AURORA_MAX_PAGE_AUDIT_REQUESTS = 12
+_AURORA_STYLE_AND_SET_AUDIT_REQUESTS = 2
+_AURORA_PLANNER_REQUEST_ENVELOPE = (
+    _AURORA_IDENTITY_PLANNER_REQUESTS
+    + _AURORA_MAX_PAGE_AUDIT_REQUESTS
+    + _AURORA_STYLE_AND_SET_AUDIT_REQUESTS
+)
+_AURORA_PROVIDER_REQUEST_ENVELOPE = (
+    _AURORA_INITIAL_IMAGE_REQUESTS
+    + _AURORA_MAX_REPAIR_IMAGE_REQUESTS
+    + _AURORA_PLANNER_REQUEST_ENVELOPE
 )
 
 
@@ -2071,8 +2256,7 @@ def _reserve_real_provider_job_if_enabled(
                 select(JobPlanRecord.id)
                 .where(
                     JobPlanRecord.job_id == job_id,
-                    JobPlanRecord.validation_status
-                    == PlanValidationStatus.VALID.value,
+                    JobPlanRecord.validation_status == PlanValidationStatus.VALID.value,
                     JobPlanRecord.confirmed_at.is_not(None),
                 )
                 .limit(1)
@@ -2085,13 +2269,21 @@ def _reserve_real_provider_job_if_enabled(
         # images, up to 21 automatic redraws, one planner call, and up to two
         # whole-suite reviews. Reused plans release the unused planner allowance
         # during settlement rather than weakening the production reservation.
-        estimated_cost = (
-            image_cost * 2
-            + settings.tengli_planner_reserve_micros
-            * (_AMAZON_PLANNER_REQUESTS + _AMAZON_MAX_SUITE_REVIEW_REQUESTS)
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * (
+            _AMAZON_PLANNER_REQUESTS + _AMAZON_MAX_SUITE_REVIEW_REQUESTS
         )
         provider_requests = _AMAZON_PROVIDER_REQUEST_ENVELOPE
         group_count = int(planner_required)
+    elif job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+        # Reserve the complete Skill envelope before the identity-planner call:
+        # six initial generations, one repair per page, identity inspection,
+        # one audit per attempt, first-pair style calibration and final set audit.
+        estimated_cost = (
+            image_cost * 2
+            + settings.tengli_planner_reserve_micros * _AURORA_PLANNER_REQUEST_ENVELOPE
+        )
+        provider_requests = _AURORA_PROVIDER_REQUEST_ENVELOPE
+        group_count = _AURORA_PLANNER_REQUEST_ENVELOPE
     elif enable_flag is not None:
         estimated_cost = image_cost
         provider_requests = (
@@ -2124,7 +2316,6 @@ def _reserve_real_provider_job_if_enabled(
     )
 
 
-
 _AMAZON_ITEM_KEYS = (
     "MAIN-01",
     *(f"SECONDARY-{index:02d}" for index in range(1, 7)),
@@ -2146,6 +2337,7 @@ def _job_item_key(job_type: str, ordinal: int) -> str:
     }:
         return f"image-{ordinal + 1:03d}"
     return f"page-{ordinal + 1:03d}"
+
 
 def _job_item_configuration(job_type: str, ordinal: int) -> dict[str, object]:
     if job_type != JobType.AMAZON_VISUAL_SUITE.value:

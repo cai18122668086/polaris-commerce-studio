@@ -204,6 +204,27 @@ export function useCancelJob(workspaceId: string | undefined) {
   );
 }
 
+export function useCloneJob(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, AuthorizedJobAction>(
+    workspaceId,
+    "clone-job",
+    ({ jobId }) => ({ jobId }),
+    async (id, input, key) => {
+      assertJobAction(input.allowedActions, "clone");
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/clone",
+        {
+          params: {
+            path: { workspace_id: id, job_id: input.jobId },
+            header: { "Idempotency-Key": key },
+          },
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
 type RetryJobAction = AuthorizedJobAction & {
   scope?: RetryScope;
   itemIds?: string[];
@@ -241,7 +262,7 @@ export function useRetryJob(workspaceId: string | undefined) {
 export function useConfirmPlan(workspaceId: string | undefined) {
   return useJobMutation<
     JobDetail,
-    AuthorizedJobAction & { revision: number }
+    AuthorizedJobAction & { revision: number; approvalText?: string }
   >(
     workspaceId,
     "confirm-plan",
@@ -255,7 +276,10 @@ export function useConfirmPlan(workspaceId: string | undefined) {
             path: { workspace_id: id, job_id: input.jobId },
             header: { "Idempotency-Key": key },
           },
-          body: { expected_revision: input.revision },
+          body: {
+            expected_revision: input.revision,
+            approval_text: input.approvalText,
+          },
         },
       );
       return unwrapApiResponse(result);

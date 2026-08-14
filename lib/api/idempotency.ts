@@ -3,6 +3,7 @@ export type IdempotentOperation =
   | "create-job"
   | "cancel-job"
   | "retry-job"
+  | "clone-job"
   | "confirm-plan";
 
 export class IdempotencyIntentRegistry {

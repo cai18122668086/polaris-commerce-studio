@@ -1,12 +1,14 @@
 "use client";
 
 import { FileWarning, LoaderCircle, RefreshCw, X } from "lucide-react";
+import Link from "next/link";
 
 import { JobAssetPreview } from "@/components/job-asset-preview";
 import { StatusBadge } from "@/components/status-badge";
 import { useJob } from "@/features/jobs/api/jobs";
 import { errorMessage } from "@/lib/api/request";
 import { formatDateTime, jobStageLabel, jobTitle, jobTypeLabel } from "@/lib/jobs/presentation";
+import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 import { JobProgress } from "./job-progress";
 
 function isReferenceRole(role: string): boolean {
@@ -53,6 +55,7 @@ export function JobDetailPanel({
               </button>
             </div>
             <JobProgress job={job} />
+            <Link className="secondary-button" href={jobWorkspaceHref(job)}>打开对应工作台</Link>
             <section className="job-detail-section">
               <div className="job-detail-section__head"><div><span className="job-section-eyebrow">任务信息</span><h3>任务概况</h3></div><small>{detail.isFetching ? "更新中…" : "实时更新"}</small></div>
               <dl className="job-detail-facts">

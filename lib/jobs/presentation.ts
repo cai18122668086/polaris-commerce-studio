@@ -8,6 +8,7 @@ const JOB_TYPE_LABELS: Record<JobType, string> = {
   creative_image: "电商创意图",
   detail_pack: "商品详情图",
   amazon_visual_suite: "亚马逊套图",
+  domestic_main_image: "国内电商主图",
 };
 
 const JOB_STATUS_LABELS: Record<JobStatus, string> = {

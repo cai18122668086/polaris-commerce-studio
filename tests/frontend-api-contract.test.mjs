@@ -69,6 +69,17 @@ test("browser API client defaults to the same-origin edge proxy", async () => {
   assert.equal(client.includes("localhost:8000"), false);
 });
 
+test("development auth bypass is explicit and skips SuperTokens initialization", async () => {
+  const config = await utf8("lib/auth/config.ts");
+  const providers = await utf8("app/providers.tsx");
+  const boundary = await utf8("components/auth/auth-boundary.tsx");
+
+  assert.match(config, /NEXT_PUBLIC_AUTH_MODE === "development"/);
+  assert.match(providers, /getAuthMode\(\) !== "development"/);
+  assert.match(boundary, /if \(!developmentAuth\) initializeAuthClient\(\)/);
+  assert.match(boundary, /if \(developmentAuth\) return routeRequiresWorkspace/);
+});
+
 test("runtime sources contain no non-loopback remote URLs", async () => {
   const files = await sourceFiles(["app", "components", "features", "lib"]);
   for (const file of files) {

@@ -61,6 +61,7 @@ class SourcePreflightTests(unittest.TestCase):
                 "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED",
                 "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED",
                 "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED",
+                "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED",
                 "POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED",
             ),
         )

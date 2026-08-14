@@ -3,18 +3,19 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build } from "esbuild";
 
-const root = path.resolve(new URL("..", import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, (value) => value.slice(1)));
+const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const utf8 = (relativePath) => readFile(path.join(root, relativePath), "utf8");
 
 async function importBundled(entry) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "polaris-auth-test-"));
   const output = path.join(directory, "module.mjs");
   await build({
-    entryPoints: [path.join(root, entry)],
+    absWorkingDir: root,
+    entryPoints: [entry],
     bundle: true,
     format: "esm",
     platform: "node",
@@ -113,7 +114,7 @@ test("final API 401 is centralised without browser token storage", async () => {
   assert.match(client, /fetch: runtimeFetch/);
   assert.match(boundary, /queryClient\.clear\(\)/);
   assert.match(boundary, /onAuthUnauthorised\(redirectToLogin\)/);
-  assert.match(boundary, /if \(publicRoute\) return;\s*return onAuthUnauthorised/);
+  assert.match(boundary, /if \(publicRoute \|\| developmentAuth\) return;\s*return onAuthUnauthorised/);
   assert.match(sessionEvents, /polaris:auth:unauthorised/);
   assert.match(providers, /<AuthBoundary>\{children\}<\/AuthBoundary>/);
 

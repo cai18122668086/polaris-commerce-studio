@@ -4812,10 +4812,18 @@ select:focus-visible {
 }
 
 .records-list {
+  --record-list-inline-padding: 17px;
   padding: 0 17px;
 }
 
+.records-list > .record-row:hover {
+  margin-inline: calc(var(--record-list-inline-padding) * -1);
+  padding-inline: var(--record-list-inline-padding);
+}
+
 .record-row {
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
   display: grid;
   grid-template-columns: 68px minmax(260px, 1fr) 130px 166px;
   align-items: center;
@@ -4839,7 +4847,7 @@ select:focus-visible {
   object-fit: cover;
 }
 
-.record-cover span {
+.record-cover > span:not(.record-cover__empty) {
   position: absolute;
   right: 4px;
   bottom: 4px;
@@ -4951,10 +4959,6 @@ select:focus-visible {
   background: var(--violet-50);
 }
 
-.record-actions .row-open {
-  color: #fff;
-  background: var(--ink-800);
-}
 
 .records-grid {
   display: grid;
@@ -4964,6 +4968,8 @@ select:focus-visible {
 }
 
 .records-grid .record-row {
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
   display: grid;
   min-height: 0;
   grid-template-columns: 70px 1fr;
@@ -5941,11 +5947,6 @@ select:focus-visible {
 
   .record-row {
     grid-template-columns: 65px minmax(230px, 1fr) 115px 132px;
-  }
-
-  .record-actions button:nth-child(3),
-  .record-actions button:last-child {
-    display: none;
   }
 
   .asset-grid {
@@ -6991,8 +6992,8 @@ select:focus-visible {
 .api-job-cover {
   display: grid;
   place-items: center;
-  color: #6752a0;
-  background: linear-gradient(135deg, #f0eaff, #e7ddff);
+  color: var(--ink-400);
+  background: var(--ink-50);
 }
 
 .recent-job-list .api-job-cover {
@@ -7706,4 +7707,30 @@ select:focus-visible {
   .announcement-prompt__header, .announcement-prompt__body { padding-left: 16px; padding-right: 16px; }
   .announcement-prompt__footer { align-items: stretch; flex-direction: column; padding-left: 16px; padding-right: 16px; }
   .announcement-prompt__footer .button { justify-content: center; }
+}
+
+.record-row:hover {
+  background: #fffaf8 !important;
+  border-color: var(--studio-line) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.record-row:focus-visible {
+  outline: 2px solid var(--violet-500);
+  outline-offset: 2px;
+}
+@media (min-width: 901px) {
+  .records-list {
+    --record-list-inline-padding: 22px;
+  }
+}
+
+.record-cover__empty {
+  position: static !important;
+  padding: 0 !important;
+  color: var(--ink-400) !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  font-size: 8px !important;
 }

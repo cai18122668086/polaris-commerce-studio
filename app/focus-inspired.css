@@ -557,8 +557,10 @@ select:focus-visible {
 }
 
 .record-row:hover {
-  background: #fffaf8;
-  box-shadow: inset 3px 0 var(--studio-orange);
+  background: #fffaf8 !important;
+  border-color: var(--studio-line) !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 .record-actions button {

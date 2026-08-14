@@ -74,7 +74,7 @@ export function jobStatusLabel(status: JobStatus): string { return JOB_STATUS_LA
 /** Uses backend stage values as the source of truth; unknown values remain visible. */
 export function jobStageLabel(stage: string | null | undefined, status: JobStatus): string {
   if (stage && JOB_STAGE_LABELS[stage]) return JOB_STAGE_LABELS[stage];
-  if (stage) return `后台阶段:${stage}`;
+  if (stage) return `阶段：${stage}`;
   return JOB_STATUS_LABELS[status];
 }
 

@@ -904,3 +904,49 @@ class AuditEventRecord(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
+
+class AnnouncementRecord(TimestampMixin, Base):
+    __tablename__ = "announcements"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'published', 'archived')",
+            name="ck_announcements_status",
+        ),
+        CheckConstraint(
+            "kind IN ('info', 'success', 'warning', 'maintenance')",
+            name="ck_announcements_kind",
+        ),
+        CheckConstraint(
+            "ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at",
+            name="ck_announcements_valid_window",
+        ),
+        Index(
+            "ix_announcements_public_order",
+            "status",
+            "is_pinned",
+            "published_at",
+        ),
+        Index("ix_announcements_schedule", "status", "starts_at", "ends_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    summary: Mapped[str | None] = mapped_column(String(320))
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    image_asset_id: Mapped[str | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL")
+    )
+    image_alt: Mapped[str | None] = mapped_column(String(240))
+    kind: Mapped[str] = mapped_column(String(16), default="info", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="draft", nullable=False)
+    link_url: Mapped[str | None] = mapped_column(String(2048))
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )

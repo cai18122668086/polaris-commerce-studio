@@ -114,7 +114,9 @@ test("final API 401 is centralised without browser token storage", async () => {
   assert.match(client, /fetch: runtimeFetch/);
   assert.match(boundary, /queryClient\.clear\(\)/);
   assert.match(boundary, /onAuthUnauthorised\(redirectToLogin\)/);
+  assert.match(boundary, /if \(!developmentAuth\) initializeAuthClient/);
   assert.match(boundary, /if \(publicRoute \|\| developmentAuth\) return;\s*return onAuthUnauthorised/);
+  assert.match(boundary, /if \(publicRoute \|\| developmentAuth\) return;\s*let cancelled = false/);
   assert.match(sessionEvents, /polaris:auth:unauthorised/);
   assert.match(providers, /<AuthBoundary>\{children\}<\/AuthBoundary>/);
 

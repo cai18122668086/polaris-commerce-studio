@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { TopNavigation } from "./top-navigation";
 import { ToolSidebar } from "./tool-sidebar";
 import { TaskDrawer } from "./task-drawer";
+import { AnnouncementPrompt } from "./announcement-prompt";
 
 export function AppShell({
   children,
@@ -48,6 +49,7 @@ export function AppShell({
         onClose={() => setTaskOpen(false)}
         triggerRef={taskTriggerRef}
       />
+      <AnnouncementPrompt />
     </div>
   );
 }

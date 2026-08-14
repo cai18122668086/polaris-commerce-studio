@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 
+from .announcement_routes import router as announcement_router
 from .auth import ensure_development_identity
 from .config import Settings
 from .database import Base, build_database
@@ -192,6 +193,7 @@ def create_app(
         )
 
     application.include_router(v1_router)
+    application.include_router(announcement_router)
     return application
 
 

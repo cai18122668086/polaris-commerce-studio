@@ -24,6 +24,7 @@ import {
   type NavigationMenuDefinition,
 } from "@/lib/navigation-registry";
 import { BrandMark } from "./brand-mark";
+import { AnnouncementBanner } from "./announcement-banner";
 import {
   MobileNavigationMenu,
   NavigationMegaMenu,
@@ -170,6 +171,7 @@ export function TopNavigation({
           pathname={pathname}
         />
         <div className="top-nav__actions">
+          <AnnouncementBanner />
           <Link href="/dashboard" className="usage-pill" aria-label="套餐与用量">
             <Zap size={15} />
             <span>套餐与用量</span>

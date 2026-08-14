@@ -3,18 +3,19 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build } from "esbuild";
 
-const root = path.resolve(new URL("..", import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, (value) => value.slice(1)));
+const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const utf8 = (relativePath) => readFile(path.join(root, relativePath), "utf8");
 
 async function importBundled(entry) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "polaris-auth-test-"));
   const output = path.join(directory, "module.mjs");
   await build({
-    entryPoints: [path.join(root, entry)],
+    absWorkingDir: root,
+    entryPoints: [entry],
     bundle: true,
     format: "esm",
     platform: "node",

@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import re
 import socket
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -523,6 +523,7 @@ class ExecutionCoordinator:
         heartbeat_seconds: float = 10,
         usage_writer: UsageEventWriter | None = None,
         detail_planner: DetailPlanner | None = None,
+        campaign_planner: DetailPlanner | None = None,
         max_concurrency: int = 1,
         max_detail_retries: int = 0,
         max_amazon_retries: int = 0,
@@ -546,6 +547,7 @@ class ExecutionCoordinator:
         self.heartbeat_seconds = heartbeat_seconds
         self.usage_writer = usage_writer or DatabaseUsageEventWriter()
         self.detail_planner = detail_planner
+        self.campaign_planner = campaign_planner
         self.max_concurrency = max_concurrency
         self.max_detail_retries = max_detail_retries
         self.max_amazon_retries = max_amazon_retries
@@ -559,9 +561,14 @@ class ExecutionCoordinator:
         if current == JobStatus.CANCELLING:
             return self.cancel(job_id)
         if current == JobStatus.PLANNING:
-            if self.detail_planner is None:
+            planner = (
+                self.campaign_planner
+                if self._is_domestic_main_image_job(job_id)
+                else self.detail_planner
+            )
+            if planner is None:
                 return self.fail_missing_detail_planner(job_id)
-            planned = await self.detail_planner.plan(job_id)
+            planned = await planner.plan(job_id)
             current = self.auto_confirm_detail_plan(job_id, planned)
             if current != JobStatus.PROCESSING:
                 return current
@@ -570,9 +577,12 @@ class ExecutionCoordinator:
             if current != JobStatus.PROCESSING:
                 return current
 
+        claim_width = (
+            1 if self._is_domestic_main_image_job(job_id) else self.max_concurrency
+        )
         while True:
             leases: list[AttemptLease] = []
-            for _ in range(self.max_concurrency):
+            for _ in range(claim_width):
                 lease = self.claim_next_item(job_id)
                 if lease is None:
                     break
@@ -580,6 +590,9 @@ class ExecutionCoordinator:
             if not leases:
                 break
             await asyncio.gather(*(self.execute_lease(lease) for lease in leases))
+            if self._domestic_batch_has_failure(job_id, leases):
+                self._skip_domestic_pages_after_execution_failure(job_id)
+                break
 
         # The bundled Amazon Skill owns creative QA. Do not add a second Provider
         # review call to the default execution path: even a read-only review would
@@ -593,6 +606,63 @@ class ExecutionCoordinator:
                 select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
             )
             return job_type == JobType.AMAZON_VISUAL_SUITE.value
+
+    def _is_domestic_main_image_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job_type = session.scalar(
+                select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
+            )
+            return job_type == JobType.DOMESTIC_MAIN_IMAGE.value
+
+    def _skip_domestic_pages_after_execution_failure(self, job_id: str) -> None:
+        """Stop a strictly sequential Aurora campaign after an infrastructure failure.
+
+        Later pages have not failed generation and must not be submitted after the
+        Harness rejects the active page. Marking them skipped preserves that fact
+        while allowing the durable job to reach a terminal state.
+        """
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None or job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+                return
+            pending = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status.in_(
+                        [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
+                    ),
+                )
+                .with_for_update()
+            ).all()
+            now = utc_now()
+            for item in pending:
+                item.status = JobItemStatus.SKIPPED.value
+                item.stage = "blocked_by_previous_page"
+                item.error_code = "AURORA_SEQUENCE_HALTED"
+                item.error_message = (
+                    "Not generated because an earlier sequential page failed."
+                )
+                item.finished_at = now
+                item.state_version += 1
+            session.commit()
+
+    def _domestic_batch_has_failure(
+        self, job_id: str, leases: Sequence[AttemptLease]
+    ) -> bool:
+        with self.session_factory() as session:
+            job_type = session.scalar(
+                select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
+            )
+            if job_type != JobType.DOMESTIC_MAIN_IMAGE.value:
+                return False
+            statuses = session.scalars(
+                select(JobItemRecord.status).where(
+                    JobItemRecord.id.in_([lease.item_id for lease in leases])
+                )
+            ).all()
+            return any(status == JobItemStatus.FAILED.value for status in statuses)
 
     def prepare(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
@@ -608,6 +678,7 @@ class ExecutionCoordinator:
             if current == JobStatus.QUEUED and job.type in {
                 JobType.DETAIL_PACK.value,
                 JobType.AMAZON_VISUAL_SUITE.value,
+                JobType.DOMESTIC_MAIN_IMAGE.value,
             }:
                 confirmed_plan = session.scalar(
                     select(JobPlanRecord.id)
@@ -1694,6 +1765,7 @@ def _output_asset_role(job_type: str) -> str:
         JobType.CREATIVE_IMAGE.value: "creative_image_result",
         JobType.DETAIL_PACK.value: "detail_page",
         JobType.AMAZON_VISUAL_SUITE.value: "amazon_visual",
+        JobType.DOMESTIC_MAIN_IMAGE.value: "domestic_main_image",
     }.get(job_type, "generated_image")
 
 
@@ -1750,11 +1822,15 @@ def build_fake_coordinator(
     creative_image_provider_enabled: bool = False,
     amazon_visual_suite_provider_enabled: bool = False,
     crossborder_detail_provider_enabled: bool = False,
+    domestic_main_image_provider_enabled: bool = False,
+    aurora_work_root: Path | None = None,
 ) -> ExecutionCoordinator:
     from .amazon_visual_suite_provider import (
         AMAZON_VISUAL_SUITE_SKILL_ID,
         AmazonVisualSuiteProvider,
     )
+    from .aurora_main_image_planner import AuroraMainImagePlanner
+    from .aurora_main_image_provider import AuroraMainImageProvider
     from .creative_image_provider import CreativeImageProvider
     from .domestic_detail_provider import DomesticDetailProvider
     from .model_pose_transfer_provider import ModelPoseTransferProvider
@@ -1886,6 +1962,14 @@ def build_fake_coordinator(
             skill_root=default_masked_skill_root(),
         )
     manifest_validator = BundledSkillManifestValidator()
+    if storage is None:
+        raise ValueError("Aurora main-image workflow requires image storage.")
+    aurora_provider: Provider = AuroraMainImageProvider(
+        session_factory,
+        gateway,
+        storage,
+        work_root=aurora_work_root,
+    )
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
             JobType.PRODUCT_IMAGE.value: default_provider,
@@ -1896,6 +1980,7 @@ def build_fake_coordinator(
                 default_provider,
                 manifest_validator=manifest_validator,
             ),
+            JobType.DOMESTIC_MAIN_IMAGE.value: aurora_provider,
         }
     else:
 
@@ -1965,6 +2050,11 @@ def build_fake_coordinator(
                 ),
                 manifest_validator=manifest_validator,
             ),
+            JobType.DOMESTIC_MAIN_IMAGE.value: (
+                aurora_provider
+                if domestic_main_image_provider_enabled
+                else UnavailableProvider()
+            ),
         }
     provider = RegisteredOperationRoutingProvider(
         default_provider,
@@ -1989,6 +2079,12 @@ def build_fake_coordinator(
         session_factory,
         provider,
         detail_planner=routed_planner,
+        campaign_planner=AuroraMainImagePlanner(
+            session_factory,
+            storage=storage,
+            gateway=gateway,
+            work_root=aurora_work_root,
+        ),
         max_concurrency=xinghe_concurrency,
         # Detail-pack behavior remains unchanged. Amazon follows its own Skill
         # incomplete-execution and regenerate-on-invalid-output contract.

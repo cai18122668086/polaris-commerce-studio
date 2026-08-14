@@ -124,6 +124,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/development/provider-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Development Provider Settings */
+        get: operations["get_development_provider_settings_api_v1_development_provider_settings_get"];
+        put?: never;
+        /** Update Development Provider Settings */
+        post: operations["update_development_provider_settings_api_v1_development_provider_settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -930,6 +948,92 @@ export interface components {
              */
             type: "detail_pack";
         };
+        /** DevelopmentProviderSettingsResponse */
+        DevelopmentProviderSettingsResponse: {
+            /** Available */
+            available: boolean;
+            /** Base Url */
+            base_url: string;
+            /** Configured */
+            configured: boolean;
+            /** Domestic Main Image Provider Enabled */
+            domestic_main_image_provider_enabled: boolean;
+            /** Image Model */
+            image_model: string;
+            /** Message */
+            message: string;
+            /**
+             * Task Runner
+             * @enum {string}
+             */
+            task_runner: "mock" | "tengli";
+            /** Vision Model */
+            vision_model: string;
+        };
+        /** DevelopmentProviderSettingsUpdate */
+        DevelopmentProviderSettingsUpdate: {
+            /** Api Key */
+            api_key: string;
+            /** Base Url */
+            base_url: string;
+            /** Image Model */
+            image_model: string;
+            /** Vision Model */
+            vision_model: string;
+        };
+        /** DomesticMainImageConfiguration */
+        DomesticMainImageConfiguration: {
+            /** Category */
+            category: string;
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Language
+             * @default zh-CN
+             * @constant
+             */
+            language: "zh-CN";
+            /** Offers */
+            offers?: string[];
+            /** Product Attributes */
+            product_attributes?: string[];
+            /** Product Name */
+            product_name: string;
+            /** Scenes */
+            scenes?: string[];
+            /** Selling Points */
+            selling_points: string[];
+            /** Service Or Trust Facts */
+            service_or_trust_facts?: string[];
+            /** Style Preferences */
+            style_preferences?: string[];
+        };
+        /** DomesticMainImageInput */
+        DomesticMainImageInput: {
+            /** Product Asset Ids */
+            product_asset_ids: string[];
+        };
+        /** DomesticMainImageJobCreate */
+        DomesticMainImageJobCreate: {
+            configuration: components["schemas"]["DomesticMainImageConfiguration"];
+            /** Display Name */
+            display_name?: string | null;
+            input: components["schemas"]["DomesticMainImageInput"];
+            /**
+             * Intent
+             * @default submit
+             * @enum {string}
+             */
+            intent: "draft" | "submit";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "domestic_main_image";
+        };
         /** DraftJobUpdate */
         DraftJobUpdate: {
             /** Configuration */
@@ -1158,7 +1262,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite";
+        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite" | "domestic_main_image";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /** Instruction */
@@ -1283,6 +1387,8 @@ export interface components {
         };
         /** PlanConfirmRequest */
         PlanConfirmRequest: {
+            /** Approval Text */
+            approval_text?: string | null;
             /** Expected Revision */
             expected_revision: number;
         };
@@ -1756,6 +1862,59 @@ export interface operations {
             };
         };
     };
+    get_development_provider_settings_api_v1_development_provider_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevelopmentProviderSettingsResponse"];
+                };
+            };
+        };
+    };
+    update_development_provider_settings_api_v1_development_provider_settings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevelopmentProviderSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevelopmentProviderSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     current_user_api_v1_me_get: {
         parameters: {
             query?: never;
@@ -2048,7 +2207,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["ModelPoseTransferJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"];
+                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["ModelPoseTransferJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"] | components["schemas"]["DomesticMainImageJobCreate"];
             };
         };
         responses: {

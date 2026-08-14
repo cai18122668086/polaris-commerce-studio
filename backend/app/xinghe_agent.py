@@ -4901,6 +4901,186 @@ def _fake_usage(
 
 
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "aurora_style_calibration":
+        return {
+            "agent_pixel_reviewed": True,
+            "review_mode": "DIRECT_PIXEL_VISUAL_COMPARISON",
+            "source_page_indexes": [0, 1],
+            "observed_evidence": (
+                "两张已通过页面共享一致的综合色彩角色、字体层级、"
+                "信息面几何和商业摄影完成度，同时镜头与阅读路径明确不同。"
+            ),
+            "style_tokens": {
+                "photography_finish": "以当前商品为主导的统一商业摄影完成度",
+                "graphic_language": (
+                    "由当前商品形态与页面证明关系共同提取的克制图形语言"
+                ),
+            },
+        }
+    if request.planning_profile == "aurora_set_audit":
+        hashes = {
+            str(index): source.sha256 for index, source in enumerate(request.sources)
+        }
+        return {
+            "agent_pixel_reviewed": True,
+            "review_mode": "BLIND_SIX_PAGE_ROLE_COMPARISON",
+            "reviewed_page_indexes": [0, 1, 2, 3, 4, 5],
+            "image_sha256_by_page": hashes,
+            "identified_search_page_index": 0,
+            "search_role_is_unique": True,
+            "confusable_page_indexes": [],
+            "search_identification_evidence": (
+                "第0页具有唯一的搜索入口商品钩子、商业框架与闭合区，"
+                "其余页面均承担轮播中的独立购买问题。"
+            ),
+            "carousel_distinctions": [
+                {
+                    "page_index": index,
+                    "why_not_search_cover": (
+                        f"第{index}页采用轮播职责对应的证据结构与阅读路径，"
+                        "不具备搜索入口完整商业框架。"
+                    ),
+                }
+                for index in range(1, 6)
+            ],
+        }
+    if request.planning_profile == "aurora_visual_audit":
+        page_index = max(0, min(5, request.page_count - 1))
+        candidate = request.sources[-1]
+        source_text = request.product_name or "当前页主卖点"
+        observability = "DIRECTLY_VISIBLE"
+        if request.product_information:
+            try:
+                contract = json.loads(request.product_information[0])
+                source_text = str(contract.get("source_text") or source_text)
+                observability = str(
+                    contract.get("observability_class") or observability
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+        check_names = (
+            "product_identity_match",
+            "factual_copy_match",
+            "typography_style_match",
+            "typography_legibility",
+            "page_role_expression",
+            "evidence_relation_visible",
+            "campaign_style_match",
+            "headline_treatment_match",
+            "palette_role_match",
+            "graphic_language_match",
+            "photography_finish_match",
+            "information_surface_match",
+            "layout_not_cloned",
+            "set_diversity_match",
+            "product_separation",
+            "numeric_hierarchy_if_applicable",
+            "design_intensity_controlled",
+            "visual_performance_match",
+            "baseline_performance_match",
+            "approved_plan_fidelity_match",
+            "campaign_constitution_match",
+            "source_background_noise_absent",
+            "selling_point_visible_without_copy",
+            "selling_point_visual_dominance",
+            "claim_to_evidence_relation_clear",
+            "text_not_substituting_for_visual_proof",
+            "thumbnail_success",
+            "no_unsupported_claim",
+            "no_hard_error",
+        )
+        return {
+            "page_index": page_index,
+            "image_sha256": candidate.sha256,
+            "reviewer": {
+                "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+                "pixel_inspection_performed": True,
+                "image_path": candidate.filename,
+                "comparison_reference_ids": [
+                    source.asset_id for source in request.sources[:-1]
+                ],
+            },
+            "decision_summary": (
+                "模拟审图已直接检查候选图像像素，商品、主张、"
+                "构图与整套视觉合同均满足当前页面要求。"
+            ),
+            "performance_observation": {
+                "estimated_product_occupancy_percent": 62,
+                "headline_visual_rank": "JOINT_FIRST",
+                "physical_evidence_seen": ["当前商品主体与页面职责对应的可见证明关系"],
+                "depth_layers_seen": 3,
+                "commercial_closure_seen": True,
+                "background_competition": "LOW",
+                "thumbnail_scan_order": ["商品主体", "主标题", "商业闭合"],
+            },
+            "plan_fidelity_observation": {
+                "observed_subject_and_view": "完整商品主体以清晰可识别的商业视角呈现",
+                "observed_scene_geometry": "主体、证明区域与背景形成清楚的前中后景关系",
+                "observed_composition": "商品与主标题共同主导并保留明确商业闭合区域",
+                "observed_reading_path": ["商品主体", "主标题", "商业闭合"],
+                "missing_required_elements": [],
+                "unexpected_plan_changes": [],
+            },
+            "selling_point_proof_observation": {
+                "source_text": source_text,
+                "observability_class": observability,
+                "visible_without_copy": observability != "TEXT_ONLY_VERIFIED",
+                "pixel_evidence": ["商品主体与真实结构或场景关系承担主利益表达"],
+                "text_only_dependency": observability == "TEXT_ONLY_VERIFIED",
+                "evidence_is_primary_visual": True,
+                "estimated_evidence_occupancy_percent": 48,
+                "claim_takeaway_without_copy": "画面能够传达当前页面主利益的明确方向",
+                "expression_mode": "TEXT_ONLY"
+                if observability == "TEXT_ONLY_VERIFIED"
+                else "DIRECT",
+            },
+            "source_background_observation": {
+                "leaked_source_elements": [],
+                "rebuilt_scene_evidence": (
+                    "背景为重新组织的干净商业场景，未见来源环境杂物"
+                ),
+            },
+            "all_observed_deficiencies": [],
+            "audit_completeness_confirmation": True,
+            "checks": {
+                name: {
+                    "passed": True,
+                    "score": 92,
+                    "observed_evidence": (
+                        f"候选图像像素中可见{name}对应层级满足当前合同要求"
+                    ),
+                }
+                for name in check_names
+            },
+        }
+    if request.planning_profile == "aurora_identity":
+        return {
+            "request_id": request.job_id,
+            "product_form": f"{request.product_name}的可见完整商品形态",
+            "identity_summary": (
+                f"由{len(request.sources)}张原始商品图片共同锁定同一款"
+                f"{request.product_name}；只保留素材中可见的身份特征。"
+            ),
+            "evidence": [
+                {
+                    "evidence_id": source.asset_id,
+                    "view_tags": [f"原始商品视图 {index + 1}"],
+                }
+                for index, source in enumerate(request.sources)
+            ],
+            "must_preserve": [
+                "原始素材中可见的商品整体轮廓与比例",
+                "原始素材中可见的颜色分区与表面关系",
+                "原始素材中可见的部件数量、连接和相对位置",
+                "原始素材中可见的包装、开合结构与标识位置",
+            ],
+            "must_not_change": [
+                "不得增加、删除或重设计商品结构",
+                "不得改变商品颜色分区、比例或部件关系",
+                "不得把来源照片背景当作商品身份或活动场景",
+                "不得使用生成图片作为商品身份依据",
+            ],
+        }
     if request.planning_profile == "amazon_visual_suite":
         return _fake_amazon_plan(request)
     roles = (
@@ -5799,7 +5979,58 @@ def _amazon_planner_json_schema() -> dict[str, Any]:
     return _strict_json_object({"analysis": analysis, "plan": plan})
 
 
+def _aurora_identity_json_schema() -> dict[str, Any]:
+    string = {"type": "string", "minLength": 1}
+    string_array = {
+        "type": "array",
+        "minItems": 1,
+        "items": string,
+    }
+    evidence = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["evidence_id", "view_tags"],
+        "properties": {
+            "evidence_id": string,
+            "view_tags": string_array,
+        },
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "request_id",
+            "product_form",
+            "identity_summary",
+            "evidence",
+            "must_preserve",
+            "must_not_change",
+        ],
+        "properties": {
+            "request_id": string,
+            "product_form": string,
+            "identity_summary": string,
+            "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": evidence,
+            },
+            "must_preserve": string_array,
+            "must_not_change": string_array,
+        },
+    }
+
+
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "aurora_identity":
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_product_identity",
+                "strict": True,
+                "schema": _aurora_identity_json_schema(),
+            },
+        }
     if request.planning_profile != "amazon_visual_suite":
         return {"type": "json_object"}
     return {
@@ -5813,6 +6044,46 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "aurora_style_calibration":
+        return (
+            "Directly compare the two attached accepted Aurora campaign pages. "
+            "Return JSON with agent_pixel_reviewed=true, review_mode exactly "
+            "DIRECT_PIXEL_VISUAL_COMPARISON, source_page_indexes [0,1], concrete "
+            "observed_evidence, and nonempty style_tokens containing only shared "
+            "photography_finish, light_direction, color_temperature, palette_roles, "
+            "palette_usage_ratio, typography, graphic_language, "
+            "information_surface_geometry, density_band, or prohibited_styles. "
+            "Never put product identity, copy, camera, pose, or layout in style_tokens."
+        )
+    if request.planning_profile == "aurora_set_audit":
+        return (
+            "Blindly compare all six attached accepted Aurora pages in their supplied "
+            "page order. Return the complete set-role-distinction JSON contract. "
+            "Identify whether page 0 alone is visibly the search listing cover and "
+            "give concrete pixel evidence explaining why each page 1 through 5 is "
+            "not a search cover. Use the exact supplied image hashes."
+        )
+    if request.planning_profile == "aurora_visual_audit":
+        return (
+            "Directly inspect the last attached image as the generated candidate; "
+            "all earlier images are original product identity references. Return a "
+            "complete Aurora visual-judgment JSON object. Evaluate actual pixels, "
+            "not the prompt or receipt. Cover every required check, record concrete "
+            "pixel evidence, and list every material failed check exactly once in "
+            "all_observed_deficiencies. Do not fail a page merely because it carries "
+            "multiple related selling points. The first product_information entry "
+            "contains the current approved proof contract and required field names."
+        )
+    if request.planning_profile == "aurora_identity":
+        return (
+            "Inspect all attached original images as complementary views of one "
+            f"exact product named {request.product_name!r}. Return request_id "
+            f"exactly as {request.job_id!r}. For every source return its asset_id "
+            "and one or more concise view_tags. Build a factual product_form, an "
+            "identity_summary, must_preserve invariants and must_not_change "
+            "boundaries. Use only visible pixels for identity; ignore source "
+            "backgrounds and do not add unverified product facts."
+        )
     if request.planning_profile == "amazon_visual_suite":
         return _amazon_planner_prompt(request)
     if request.planning_profile == "crossborder_detail":

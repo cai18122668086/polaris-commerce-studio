@@ -7390,6 +7390,8 @@ select:focus-visible {
   .job-progress-card__meta { display: grid; gap: 3px; }
   .job-item-card__head { align-items: flex-start; }
   .job-item-failure { flex-wrap: wrap; }
+}
+
 /* Site announcements */
 .announcement-banner {
   position: relative;

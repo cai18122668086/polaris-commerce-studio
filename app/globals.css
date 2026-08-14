@@ -4941,7 +4941,8 @@ select:focus-visible {
   gap: 5px;
 }
 
-.record-actions button {
+.record-actions button,
+.record-actions a {
   display: grid;
   width: 31px;
   height: 31px;
@@ -4953,12 +4954,31 @@ select:focus-visible {
 }
 
 .record-actions button:hover,
+.record-actions a:hover,
 .record-actions .emphasis {
   border-color: var(--violet-200);
   color: var(--violet-700);
   background: var(--violet-50);
 }
 
+
+.record-main h3 a {
+  color: inherit;
+}
+
+.record-main h3 a:hover {
+  color: var(--violet-700);
+  text-decoration: underline;
+}
+
+.drawer-job__link {
+  display: block;
+  color: inherit;
+}
+
+.drawer-job__link:hover strong {
+  text-decoration: underline;
+}
 
 .records-grid {
   display: grid;

@@ -40,6 +40,7 @@ KNOWN_SKILLS = {
     "xinghe-ecommerce-detail-domestic-3",
     "xinghe-crossborder-detail-3",
     "xinghe-amazon-visual-suite",
+    "aurora-domestic-ecommerce-main-image",
 }
 OPERATION_SKILLS = {
     JobType.LOCAL_EDIT.value: "masked-image-repair",
@@ -49,6 +50,7 @@ OPERATION_SKILLS = {
     JobType.CREATIVE_IMAGE.value: "xinghe-ecommerce-creative-image",
     JobType.DETAIL_PACK.value: "xinghe-ecommerce-detail",
     JobType.AMAZON_VISUAL_SUITE.value: "xinghe-amazon-visual-suite",
+    JobType.DOMESTIC_MAIN_IMAGE.value: "aurora-domestic-ecommerce-main-image",
 }
 ALLOWED_PROVIDER_TYPES = {"fake", "mock"}
 SENSITIVE_DETAIL_KEYS = {
@@ -79,6 +81,7 @@ class SkillCapability(StrEnum):
     CREATIVE_IMAGE = "creative_image"
     ECOMMERCE_DETAIL_PACK = "ecommerce_detail_pack"
     AMAZON_VISUAL_SUITE = "amazon_visual_suite"
+    DOMESTIC_MAIN_IMAGE = "domestic_main_image"
 
 
 class SafeExpansionMode(StrEnum):

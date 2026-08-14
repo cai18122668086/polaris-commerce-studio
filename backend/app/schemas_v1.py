@@ -115,6 +115,24 @@ class RuntimeStatusResponse(BaseModel):
     capabilities: RuntimeCapabilities
 
 
+class DevelopmentProviderSettingsUpdate(BaseModel):
+    api_key: str = Field(min_length=8, max_length=4096, repr=False)
+    base_url: str = Field(min_length=8, max_length=512)
+    image_model: str = Field(min_length=1, max_length=120)
+    vision_model: str = Field(min_length=1, max_length=120)
+
+
+class DevelopmentProviderSettingsResponse(BaseModel):
+    available: bool
+    configured: bool
+    task_runner: Literal["mock", "tengli"]
+    domestic_main_image_provider_enabled: bool
+    base_url: str
+    image_model: str
+    vision_model: str
+    message: str
+
+
 class AssetResponse(BaseModel):
     id: str
     workspace_id: str
@@ -250,12 +268,8 @@ class ModelPoseTransferInput(BaseModel):
 
     model_source_asset_id: str
     pose_reference_asset_id: str
-    pose_slug: str | None = Field(
-        default=None, pattern=r"^(?:male|female)-[0-9]{3}$"
-    )
-    pose_reference_sha256: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
+    pose_slug: str | None = Field(default=None, pattern=r"^(?:male|female)-[0-9]{3}$")
+    pose_reference_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_pose_inputs(self) -> "ModelPoseTransferInput":
@@ -390,6 +404,29 @@ class AmazonVisualSuiteConfiguration(BaseModel):
     language: str = Field(default="en-US", min_length=2, max_length=16)
 
 
+class DomesticMainImageInput(BaseModel):
+    product_asset_ids: list[str] = Field(min_length=1, max_length=8)
+
+    @model_validator(mode="after")
+    def unique_assets(self) -> "DomesticMainImageInput":
+        if len(self.product_asset_ids) != len(set(self.product_asset_ids)):
+            raise ValueError("product assets must not contain duplicates")
+        return self
+
+
+class DomesticMainImageConfiguration(BaseModel):
+    product_name: str = Field(min_length=1, max_length=160)
+    category: str = Field(min_length=1, max_length=120)
+    selling_points: list[str] = Field(min_length=1, max_length=24)
+    product_attributes: list[str] = Field(default_factory=list, max_length=24)
+    scenes: list[str] = Field(default_factory=list, max_length=12)
+    offers: list[str] = Field(default_factory=list, max_length=12)
+    service_or_trust_facts: list[str] = Field(default_factory=list, max_length=12)
+    style_preferences: list[str] = Field(default_factory=list, max_length=12)
+    instruction: str = Field(default="", max_length=4000)
+    language: Literal["zh-CN"] = "zh-CN"
+
+
 class JobCreateBase(BaseModel):
     intent: Literal["draft", "submit"] = "submit"
     display_name: str | None = Field(default=None, max_length=160)
@@ -437,6 +474,12 @@ class AmazonVisualSuiteJobCreate(JobCreateBase):
     configuration: AmazonVisualSuiteConfiguration
 
 
+class DomesticMainImageJobCreate(JobCreateBase):
+    type: Literal[JobType.DOMESTIC_MAIN_IMAGE]
+    input: DomesticMainImageInput
+    configuration: DomesticMainImageConfiguration
+
+
 JobCreate = Annotated[
     LocalEditJobCreate
     | ProductImageJobCreate
@@ -444,7 +487,8 @@ JobCreate = Annotated[
     | ModelPoseTransferJobCreate
     | CreativeImageJobCreate
     | DetailPackJobCreate
-    | AmazonVisualSuiteJobCreate,
+    | AmazonVisualSuiteJobCreate
+    | DomesticMainImageJobCreate,
     Field(discriminator="type"),
 ]
 
@@ -560,6 +604,7 @@ class PlanUpdateRequest(BaseModel):
 
 class PlanConfirmRequest(BaseModel):
     expected_revision: int = Field(ge=1)
+    approval_text: str | None = Field(default=None, min_length=2, max_length=240)
 
 
 class HealthResponse(BaseModel):

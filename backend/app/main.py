@@ -103,7 +103,7 @@ def create_app(
     application.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.cors_origins,
-        allow_credentials=app_settings.auth_mode == "external",
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
         allow_headers=allowed_headers,
         expose_headers=auth_cors_headers,

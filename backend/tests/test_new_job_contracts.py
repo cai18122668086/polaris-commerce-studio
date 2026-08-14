@@ -234,6 +234,7 @@ def test_new_operation_skill_mapping_preserves_existing_skills() -> None:
         "creative_image": "xinghe-ecommerce-creative-image",
         "detail_pack": "xinghe-ecommerce-detail",
         "amazon_visual_suite": "xinghe-amazon-visual-suite",
+        "domestic_main_image": "aurora-domestic-ecommerce-main-image",
     }
 
 
@@ -251,6 +252,7 @@ def test_runtime_features_expose_all_job_families() -> None:
         "creative_image",
         "detail_pack",
         "amazon_visual_suite",
+        "domestic_main_image",
     }
     assert all(
         capability.execution == "mock"

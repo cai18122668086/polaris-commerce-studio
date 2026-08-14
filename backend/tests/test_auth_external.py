@@ -113,6 +113,24 @@ def test_external_mode_ignores_x_user_id_and_reports_ready(tmp_path: Path) -> No
     assert preflight.headers["access-control-allow-credentials"] == "true"
 
 
+def test_development_mode_allows_credentialed_browser_requests(tmp_path: Path) -> None:
+    settings = external_settings(tmp_path).model_copy(
+        update={"auth_mode": "development"}
+    )
+    with TestClient(create_app(settings)) as client:
+        preflight = client.options(
+            "/api/v1/workspaces",
+            headers={
+                "Origin": "https://www.tengliapi.xyz",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "X-Request-Id",
+            },
+        )
+
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-credentials"] == "true"
+
+
 def test_email_verification_claim_error_maps_to_403(tmp_path: Path) -> None:
     backend = FakeExternalAuthBackend(
         authentication_error=ExternalEmailNotVerifiedError(

@@ -22,6 +22,7 @@ export type FeatureJobType =
   | "reference_remix"
   | "creative_image"
   | "detail_pack"
+  | "domestic_main_image"
   | "amazon_visual_suite";
 export type ProductImagePreset =
   | "scene_main"
@@ -57,7 +58,7 @@ export type FeatureDefinition = {
   taskPreset?: ProductImagePreset;
   presetSlug?: ProductImagePresetSlug;
   runtimeCapability: string;
-  workspaceTemplate: "masked_edit" | "product_image" | "detail_pack" | "fixed_pack";
+  workspaceTemplate: "masked_edit" | "product_image" | "detail_pack" | "fixed_pack" | "domestic_main_image";
   inputRoles: string[];
   resultTemplate: "before_after" | "result_grid" | "page_grid" | "grouped_grid";
   completionPolicy: string;
@@ -440,6 +441,33 @@ export const FEATURE_REGISTRY = [
     inputHint: "多角度商品图；参考图可选",
     outputHint: "按规划逐页交付",
     guidance: "页面内选择国内或国际市场；现有国际稳定链路保持不变。",
+  },
+  {
+    id: "domestic-main-image",
+    title: "国内电商主图",
+    shortTitle: "国内主图六件套",
+    description: "先锁定商品身份与六图方案，再按顺序生成搜索主图和五张轮播图。",
+    category: "commerce_pack",
+    route: "/workspace/domestic-main-image",
+    icon: Images,
+    tone: "coral",
+    badge: "固定 6 张",
+    skillId: "aurora-domestic-ecommerce-main-image",
+    jobType: "domestic_main_image",
+    runtimeCapability: "domestic_main_image",
+    workspaceTemplate: "domestic_main_image",
+    inputRoles: ["product_identity_authority"],
+    resultTemplate: "grouped_grid",
+    completionPolicy: "aurora_six_page_reviewed_set",
+    supportsAssetPicker: true,
+    supportsMultiSelect: true,
+    supportsZipDownload: true,
+    supportsContinueEditing: false,
+    searchKeywords: ["国内电商", "淘宝", "天猫", "主图", "轮播图", "六图"],
+    featured: false,
+    inputHint: "1–8 张真实商品图 + 已核实卖点",
+    outputHint: "1 张搜索主图 + 5 张轮播图",
+    guidance: "必须先确认整组六图计划；生成期间保持商品身份与视觉连续性。",
   },
   {
     id: "amazon-visual-suite",

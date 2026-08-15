@@ -101,6 +101,7 @@ export function TopNavigation({
     <NavigationMegaMenu
       key={menu.key}
       definition={menu}
+      activeFeatureId={currentFeature?.id}
       active={
         pathname === menu.href ||
         (menu.href === "/tools" && pathname.startsWith("/tools/")) ||

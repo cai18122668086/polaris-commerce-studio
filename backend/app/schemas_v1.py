@@ -544,6 +544,8 @@ class JobListItemResponse(BaseModel):
     expected_item_count: int
     succeeded_item_count: int
     failed_item_count: int
+    output_asset_count: int = 0
+    primary_output_asset_id: str | None = None
     allowed_actions: list[str]
     cost: CostSummary
     created_at: datetime

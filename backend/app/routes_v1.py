@@ -1257,13 +1257,57 @@ def list_jobs(
     ).all()
     has_more = len(rows) > limit
     items = rows[:limit]
+    output_summaries: dict[str, tuple[int, str | None]] = {}
+    if items:
+        output_rows = session.execute(
+            select(
+                JobAssetRecord.job_id,
+                JobAssetRecord.asset_id,
+                AssetRecord.lifecycle_status,
+            )
+            .join(
+                AssetRecord,
+                and_(
+                    AssetRecord.workspace_id == JobAssetRecord.workspace_id,
+                    AssetRecord.id == JobAssetRecord.asset_id,
+                ),
+            )
+            .where(
+                JobAssetRecord.workspace_id == workspace.workspace_id,
+                JobAssetRecord.job_id.in_([item.id for item in items]),
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                JobAssetRecord.is_deliverable.is_(True),
+            )
+            .order_by(
+                JobAssetRecord.job_id,
+                JobAssetRecord.ordinal,
+                JobAssetRecord.id,
+            )
+        ).all()
+        for output_job_id, asset_id, lifecycle_status in output_rows:
+            count, primary_asset_id = output_summaries.get(
+                output_job_id, (0, None)
+            )
+            if (
+                primary_asset_id is None
+                and lifecycle_status == AssetLifecycleStatus.READY.value
+            ):
+                primary_asset_id = asset_id
+            output_summaries[output_job_id] = (count + 1, primary_asset_id)
     total = (
         session.scalar(select(func.count()).select_from(JobRecord).where(*base_filters))
         if include_total
         else None
     )
     return JobListResponse(
-        items=[job_list_response(item) for item in items],
+        items=[
+            job_list_response(
+                item,
+                output_asset_count=output_summaries.get(item.id, (0, None))[0],
+                primary_output_asset_id=output_summaries.get(item.id, (0, None))[1],
+            )
+            for item in items
+        ],
         next_cursor=(
             encode_cursor(items[-1].created_at, items[-1].id, scope)
             if has_more and items

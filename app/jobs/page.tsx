@@ -21,6 +21,7 @@ import { AppShell } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import {
   useCancelJob,
+  useConfirmPlan,
   useJobs,
   useRetryJob,
 } from "@/features/jobs/api/jobs";
@@ -55,6 +56,7 @@ export default function JobsPage() {
   const jobsQuery = useJobs(workspace?.id, { statuses: tabFilters[tab], limit: 100 });
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
+  const confirmPlan = useConfirmPlan(workspace?.id);
   const jobs = useMemo(
     () =>
       (jobsQuery.data?.items ?? []).filter((job) =>
@@ -63,7 +65,7 @@ export default function JobsPage() {
     [jobsQuery.data, query],
   );
   const allJobs = jobsQuery.data?.items ?? [];
-  const actionError = cancel.error ?? retry.error;
+  const actionError = cancel.error ?? retry.error ?? confirmPlan.error;
 
   const runCancel = (job: Job | JobDetail) => {
     if (
@@ -82,6 +84,16 @@ export default function JobsPage() {
       allowedActions: job.allowed_actions,
       scope: itemId ? "selected" : "failed",
       itemIds: itemId ? [itemId] : [],
+    });
+  };
+
+  const runConfirmPlan = (job: JobDetail) => {
+    if (!job.plan || !allowsJobAction(job.allowed_actions, "confirm_plan")) return;
+    confirmPlan.mutate({
+      jobId: job.id,
+      revision: job.plan.revision,
+      allowedActions: job.allowed_actions,
+      approvalText: "我已检查并确认当前生成方案。",
     });
   };
 
@@ -172,6 +184,13 @@ export default function JobsPage() {
           workspaceId={workspace.id}
           jobId={selectedJobId}
           onClose={() => setSelectedJobId(undefined)}
+          onCancel={runCancel}
+          onRetry={(job) => runRetry(job)}
+          onRetryItem={(job, itemId) => runRetry(job, itemId)}
+          onConfirmPlan={runConfirmPlan}
+          cancelPending={cancel.isPending}
+          retryPending={retry.isPending}
+          confirmPending={confirmPlan.isPending}
         />
       )}
     </AppShell>

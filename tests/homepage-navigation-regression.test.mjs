@@ -237,6 +237,26 @@ test("the homepage AI toolbox excludes all one-click featured tasks", async () =
   assert.match(source, /id="ai-toolbox"/);
 });
 
+test("Aurora domestic main image has discoverable entrypoints across the product", async () => {
+  const route = "/workspace/domestic-main-image";
+  const toolDirectory = await utf8("components/tool-directory.tsx");
+  const navigation = await utf8("components/navigation-mega-menu.tsx");
+  const toolsPage = await utf8("app/tools/page.tsx");
+  const dashboard = await utf8("app/dashboard/page.tsx");
+  const help = await utf8("app/help/page.tsx");
+
+  assert.equal(FEATURE_REGISTRY.find((feature) => feature.id === "domestic-main-image")?.featured, false);
+  assert.match(toolDirectory, /home-aurora-entry/);
+  assert.match(toolDirectory, /tool\.id === "domestic-main-image"/);
+  assert.match(toolDirectory, /featuredTools\.map/);
+  assert.match(navigation, /aria-current=\{active \? "page" : undefined\}/);
+  assert.match(navigation, /pathname === item\.href \|\| pathname\.startsWith/);
+  assert.match(toolsPage, /FEATURE_REGISTRY/);
+  assert.match(dashboard, new RegExp(route.replaceAll("/", "\\/")));
+  assert.match(help, new RegExp(route.replaceAll("/", "\\/")));
+  assert.match(help, /1 张搜索主图和 5 张轮播图/);
+});
+
 test("homepage and navigation public copy no longer exposes internal implementation wording", async () => {
   const publicFiles = [
     "components/app-shell.tsx",

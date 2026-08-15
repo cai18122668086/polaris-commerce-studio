@@ -10,9 +10,11 @@ import type {
 
 function FeatureLinks({
   groups,
+  activeFeatureId,
   onNavigate,
 }: {
   groups: readonly NavigationFeatureGroup[];
+  activeFeatureId?: string;
   onNavigate: () => void;
 }) {
   return groups.map((group, index) => (
@@ -29,11 +31,13 @@ function FeatureLinks({
       <div className="nav-mega__grid">
         {group.items.map((item) => {
           const Icon = item.icon;
+          const active = item.featureId === activeFeatureId;
           return (
             <Link
               key={item.featureId}
               href={item.href}
-              className="nav-tool-link"
+              className={`nav-tool-link${active ? " is-active" : ""}`}
+              aria-current={active ? "page" : undefined}
               onClick={onNavigate}
             >
               <span className={`tool-icon ${item.tone}`} aria-hidden="true">
@@ -53,12 +57,14 @@ function FeatureLinks({
 
 export function NavigationMegaMenu({
   definition,
+  activeFeatureId,
   active,
   open,
   onClose,
   onToggle,
 }: {
   definition: NavigationMenuDefinition;
+  activeFeatureId?: string;
   active: boolean;
   open: boolean;
   onClose: () => void;
@@ -107,7 +113,11 @@ export function NavigationMegaMenu({
         </button>
       </div>
       <div id={menuId} className="nav-mega" aria-hidden={!open}>
-        <FeatureLinks groups={definition.groups} onNavigate={onClose} />
+        <FeatureLinks
+          groups={definition.groups}
+          activeFeatureId={activeFeatureId}
+          onNavigate={onClose}
+        />
         {definition.footer && (
           <div className="nav-mega__footer">
             <Link href={definition.footer.href} onClick={onClose}>
@@ -260,25 +270,30 @@ export function MobileNavigationMenu({
                         {group.label}
                       </strong>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
-                        {group.items.map((item) => (
-                          <Link
-                            key={item.featureId}
-                            href={item.href}
-                            onClick={onClose}
-                            style={{
-                              minWidth: 0,
-                              padding: "10px 9px",
-                              border: "1px solid #eceef3",
-                              borderRadius: 9,
-                              color: "#252938",
-                              background: "#fafbfc",
-                              fontSize: 12,
-                              fontWeight: 650,
-                            }}
-                          >
-                            {item.label}
-                          </Link>
-                        ))}
+                        {group.items.map((item) => {
+                          const active =
+                            pathname === item.href || pathname.startsWith(`${item.href}/`);
+                          return (
+                            <Link
+                              key={item.featureId}
+                              href={item.href}
+                              onClick={onClose}
+                              aria-current={active ? "page" : undefined}
+                              style={{
+                                minWidth: 0,
+                                padding: "10px 9px",
+                                border: `1px solid ${active ? "#cfc4ff" : "#eceef3"}`,
+                                borderRadius: 9,
+                                color: active ? "#5d42c7" : "#252938",
+                                background: active ? "#f4f0ff" : "#fafbfc",
+                                fontSize: 12,
+                                fontWeight: 650,
+                              }}
+                            >
+                              {item.label}
+                            </Link>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}

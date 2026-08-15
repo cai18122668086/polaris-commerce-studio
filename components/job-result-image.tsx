@@ -18,6 +18,7 @@ export function JobResultImage({ workspaceId, assetId, alt, label }: {
   const access = useAssetAccessUrl(workspaceId, assetId);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string>();
+  const [failedUrl, setFailedUrl] = useState<string>();
   const download = async () => {
     if (!workspaceId || isDownloading) return;
     setIsDownloading(true);
@@ -43,9 +44,17 @@ export function JobResultImage({ workspaceId, assetId, alt, label }: {
   };
   if (access.isPending) return <div className={styles.resultState}><LoaderCircle className="spin" />正在获取结果…</div>;
   if (access.error || !access.data?.url) return <div className={`${styles.resultState} ${styles.resultStateError}`} role="alert">{errorMessage(access.error ?? new Error("结果访问地址不可用。"))}</div>;
+  if (failedUrl === access.data.url) {
+    return (
+      <div className={`${styles.resultState} ${styles.resultStateError}`} role="alert">
+        <span>结果图片加载失败。</span>
+        <button type="button" onClick={() => { setFailedUrl(undefined); void access.refetch(); }}>重新加载</button>
+      </div>
+    );
+  }
   return (
     <article className={styles.resultCard}>
-      <a href={access.data.url} target="_blank" rel="noreferrer" aria-label={`${alt}，单张查看`}><img src={access.data.url} alt={alt} /><ExternalLink size={15} /></a>
+      <a href={access.data.url} target="_blank" rel="noreferrer" aria-label={`${alt}，单张查看`}><img src={access.data.url} alt={alt} onError={() => setFailedUrl(access.data?.url)} /><ExternalLink size={15} /></a>
       <div><strong>{label ?? alt}</strong><button type="button" onClick={download} disabled={isDownloading || !workspaceId} aria-label={`下载${alt}`}>{isDownloading ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />}{isDownloading ? "准备中…" : "下载"}</button></div>
       {downloadError ? <p className={styles.downloadError} role="alert">{downloadError}</p> : null}
     </article>

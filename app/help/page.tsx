@@ -38,6 +38,11 @@ const faqs = [
       "建议保持相近光线、焦段和背景，至少包含正面、45 度与侧面。不要在同一商品分组中混入不同款式或规格。",
   },
   {
+    question: "国内电商主图会生成哪些图片？",
+    answer:
+      "每个任务会先确认六图方案，再依次生成 1 张搜索主图和 5 张轮播图。建议上传 1–8 张同一商品的真实图片，并只填写已经核实的卖点。",
+  },
+  {
     question: "图片结果会被公开或用于展示吗？",
     answer:
       "当前工作台中的图片默认只在你的素材与任务中使用。对外展示、协作或分享功能后续会提供独立授权设置。",
@@ -106,6 +111,25 @@ export default function HelpPage() {
                 </ol>
                 <Link href="/workspace/detail-pack">
                   创建商品详情图
+                  <ArrowRight size={16} />
+                </Link>
+              </article>
+              <article className="aurora">
+                <div className="help-flow__title">
+                  <span><ImageIcon size={22} /></span>
+                  <div>
+                    <small>固定交付 6 张</small>
+                    <h3>一键生成国内电商主图</h3>
+                  </div>
+                </div>
+                <ol>
+                  <li><i><UploadCloud size={16} /></i><span><strong>上传真实商品图</strong><small>同一商品 1–8 张</small></span></li>
+                  <li><i><FileQuestion size={16} /></i><span><strong>填写已核实卖点</strong><small>避免夸大或未知信息</small></span></li>
+                  <li><i><BookOpen size={16} /></i><span><strong>确认整组六图方案</strong><small>生成前检查每张用途</small></span></li>
+                  <li><i><CheckCircle2 size={16} /></i><span><strong>查看并下载结果</strong><small>1 张主图 + 5 张轮播图</small></span></li>
+                </ol>
+                <Link href="/workspace/domestic-main-image">
+                  创建国内电商主图
                   <ArrowRight size={16} />
                 </Link>
               </article>

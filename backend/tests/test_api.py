@@ -1978,6 +1978,157 @@ def test_missing_assets_and_unknown_workspace_do_not_leak(client: TestClient) ->
     assert missing.json()["error"]["code"] == "INPUT_ASSET_NOT_FOUND"
 
 
+def _seed_asset_classification_job(
+    client: TestClient,
+    *,
+    status: JobStatus,
+    input_asset_id: str,
+    output_asset_ids: list[str],
+    intermediate_asset_id: str | None = None,
+) -> str:
+    job_id = f"job_{uuid4().hex}"
+    terminal = status in {
+        JobStatus.COMPLETED,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+        JobStatus.PARTIAL,
+    }
+    expected_count = len(output_asset_ids) if status == JobStatus.COMPLETED else 1
+    succeeded_count = len(output_asset_ids) if status == JobStatus.COMPLETED else 0
+    failed_count = 1 if status == JobStatus.FAILED else 0
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.CREATIVE_IMAGE.value,
+                status=status.value,
+                stage=status.value,
+                display_name=f"Asset classification {status.value}",
+                progress=100 if terminal else 45,
+                configuration={},
+                expected_item_count=expected_count,
+                succeeded_item_count=succeeded_count,
+                failed_item_count=failed_count,
+                error_code="PROVIDER_TIMEOUT" if status == JobStatus.FAILED else None,
+                error_message=(
+                    "Provider request failed"
+                    if status == JobStatus.FAILED
+                    else None
+                ),
+                currency="USD",
+                finished_at=utc_now() if terminal else None,
+            )
+        )
+        session.flush()
+        session.add(
+            JobAssetRecord(
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                asset_id=input_asset_id,
+                direction="input",
+                role="product_reference",
+                ordinal=0,
+                is_deliverable=False,
+                validation={},
+            )
+        )
+        if intermediate_asset_id is not None:
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    asset_id=intermediate_asset_id,
+                    direction="intermediate",
+                    role="provider_preview",
+                    ordinal=0,
+                    is_deliverable=False,
+                    validation={},
+                )
+            )
+        for ordinal, asset_id in enumerate(output_asset_ids, start=1):
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    asset_id=asset_id,
+                    direction="output",
+                    role="creative_image",
+                    ordinal=ordinal,
+                    is_deliverable=True,
+                    validation={},
+                )
+            )
+        session.commit()
+    return job_id
+
+
+def test_job_list_and_detail_classify_deliverable_outputs_without_input_fallback(
+    client: TestClient,
+) -> None:
+    input_asset = upload_asset(client, filename="classification-input.png")
+    intermediate_asset = upload_asset(client, filename="classification-preview.png")
+    first_output = upload_asset(client, filename="classification-output-1.png")
+    second_output = upload_asset(client, filename="classification-output-2.png")
+    completed_job_id = _seed_asset_classification_job(
+        client,
+        status=JobStatus.COMPLETED,
+        input_asset_id=input_asset["id"],
+        output_asset_ids=[first_output["id"], second_output["id"]],
+        intermediate_asset_id=intermediate_asset["id"],
+    )
+    empty_job_id = _seed_asset_classification_job(
+        client,
+        status=JobStatus.COMPLETED,
+        input_asset_id=input_asset["id"],
+        output_asset_ids=[],
+    )
+    failed_job_id = _seed_asset_classification_job(
+        client,
+        status=JobStatus.FAILED,
+        input_asset_id=input_asset["id"],
+        output_asset_ids=[],
+    )
+
+    response = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs?limit=100")
+    assert response.status_code == 200, response.text
+    jobs = {job["id"]: job for job in response.json()["items"]}
+    assert jobs[completed_job_id]["output_asset_count"] == 2
+    assert jobs[completed_job_id]["primary_output_asset_id"] == first_output["id"]
+    assert jobs[empty_job_id]["output_asset_count"] == 0
+    assert jobs[empty_job_id]["primary_output_asset_id"] is None
+    assert jobs[failed_job_id]["output_asset_count"] == 0
+    assert jobs[failed_job_id]["primary_output_asset_id"] is None
+
+    detail = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{completed_job_id}"
+    )
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["output_asset_count"] == 2
+    assert [
+        relation["asset_id"]
+        for relation in body["assets"]
+        if relation["direction"] == "input"
+    ] == [input_asset["id"]]
+    assert [
+        relation["asset_id"]
+        for relation in body["assets"]
+        if relation["direction"] == "intermediate"
+    ] == [intermediate_asset["id"]]
+    assert [
+        relation["asset_id"]
+        for relation in body["assets"]
+        if relation["direction"] == "output" and relation["is_deliverable"]
+    ] == [first_output["id"], second_output["id"]]
+
+    cross_workspace = client.get(
+        f"/api/v1/workspaces/ws_other/jobs/{completed_job_id}"
+    )
+    assert cross_workspace.status_code == 404
+    assert completed_job_id not in cross_workspace.text
+
+
 def test_outbox_failure_stays_recoverable(client: TestClient) -> None:
     source = upload_asset(client, filename="source.png")
     mask = upload_asset(client, filename="mask.png", media_kind="mask")

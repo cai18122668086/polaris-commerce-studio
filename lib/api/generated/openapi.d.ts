@@ -1140,7 +1140,14 @@ export interface components {
             id: string;
             /** Items */
             items: components["schemas"]["JobItemResponse"][];
+            /**
+             * Output Asset Count
+             * @default 0
+             */
+            output_asset_count: number;
             plan: components["schemas"]["PlanResponse"] | null;
+            /** Primary Output Asset Id */
+            primary_output_asset_id?: string | null;
             /** Progress */
             progress: number;
             /** Prompt Version */
@@ -1226,6 +1233,13 @@ export interface components {
             failed_item_count: number;
             /** Id */
             id: string;
+            /**
+             * Output Asset Count
+             * @default 0
+             */
+            output_asset_count: number;
+            /** Primary Output Asset Id */
+            primary_output_asset_id?: string | null;
             /** Progress */
             progress: number;
             /** Stage */

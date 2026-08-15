@@ -1895,6 +1895,11 @@
             "title": "Items",
             "type": "array"
           },
+          "output_asset_count": {
+            "default": 0,
+            "title": "Output Asset Count",
+            "type": "integer"
+          },
           "plan": {
             "anyOf": [
               {
@@ -1904,6 +1909,17 @@
                 "type": "null"
               }
             ]
+          },
+          "primary_output_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Output Asset Id"
           },
           "progress": {
             "title": "Progress",
@@ -2231,6 +2247,22 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "output_asset_count": {
+            "default": 0,
+            "title": "Output Asset Count",
+            "type": "integer"
+          },
+          "primary_output_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Output Asset Id"
           },
           "progress": {
             "title": "Progress",

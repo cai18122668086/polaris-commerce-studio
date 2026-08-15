@@ -1,30 +1,31 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
+import { AlertTriangle, LoaderCircle } from "lucide-react";
+import { useState } from "react";
 import { useAssetAccessUrl } from "@/features/assets/api/assets";
-import { useJob } from "@/features/jobs/api/jobs";
 import type { Job } from "@/lib/api/types";
 import { jobTypeLabel } from "@/lib/jobs/presentation";
-import { selectJobResultAssets } from "@/lib/jobs/results";
-
-const resultStatuses = new Set(["completed", "partial", "failed"]);
 
 export function JobRecordCover({ workspaceId, job }: { workspaceId: string; job: Job }) {
-  const canHaveResults = resultStatuses.has(job.status);
-  const detail = useJob(workspaceId, canHaveResults ? job.id : undefined);
-  const resultAsset = selectJobResultAssets(detail.data)?.[0];
-  const access = useAssetAccessUrl(workspaceId, resultAsset?.asset_id);
+  const access = useAssetAccessUrl(workspaceId, job.primary_output_asset_id ?? undefined);
+  const [failedUrl, setFailedUrl] = useState<string>();
   const title = job.display_name?.trim() || jobTypeLabel(job.type);
+  const processing = ["queued", "planning", "awaiting_confirmation", "processing", "cancelling"].includes(job.status);
 
   return (
     <div className="record-cover api-job-cover" aria-label={`${title}生成结果预览`}>
-      {access.data?.url ? (
-        <img src={access.data.url} alt={`${title}生成结果`} />
-      ) : detail.isFetching || access.isFetching ? (
+      {access.data?.url && failedUrl !== access.data.url ? (
+        <img src={access.data.url} alt={`${title}生成结果`} onError={() => setFailedUrl(access.data?.url)} />
+      ) : access.isFetching || processing ? (
         <LoaderCircle className="spin" size={20} aria-label="正在加载结果预览" />
+      ) : job.status === "failed" ? (
+        <span className="record-cover__empty record-cover__empty--failed"><AlertTriangle size={15} />生成失败</span>
       ) : (
         <span className="record-cover__empty">暂无结果</span>
       )}
+      {job.output_asset_count > 1 ? (
+        <span className="record-cover__count">+{job.output_asset_count - 1}</span>
+      ) : null}
     </div>
   );
 }

@@ -19,6 +19,7 @@ from .domain import (
     AttemptStatus,
     CreditReservationStatus,
     IdempotencyStatus,
+    JobAssetDirection,
     JobItemStatus,
     JobStatus,
     JobType,
@@ -328,7 +329,12 @@ def allowed_actions(job: JobRecord) -> list[str]:
     return actions
 
 
-def job_list_response(job: JobRecord) -> JobListItemResponse:
+def job_list_response(
+    job: JobRecord,
+    *,
+    output_asset_count: int = 0,
+    primary_output_asset_id: str | None = None,
+) -> JobListItemResponse:
     return JobListItemResponse(
         id=job.id,
         workspace_id=job.workspace_id,
@@ -340,6 +346,8 @@ def job_list_response(job: JobRecord) -> JobListItemResponse:
         expected_item_count=job.expected_item_count,
         succeeded_item_count=job.succeeded_item_count,
         failed_item_count=job.failed_item_count,
+        output_asset_count=output_asset_count,
+        primary_output_asset_id=primary_output_asset_id,
         allowed_actions=allowed_actions(job),
         cost=cost_summary(job),
         created_at=job.created_at,
@@ -348,7 +356,6 @@ def job_list_response(job: JobRecord) -> JobListItemResponse:
 
 
 def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
-    base = job_list_response(job).model_dump()
     items = session.scalars(
         select(JobItemRecord)
         .where(
@@ -365,6 +372,19 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         )
         .order_by(JobAssetRecord.ordinal)
     ).all()
+    deliverable_outputs = [
+        relation
+        for relation in assets
+        if relation.direction == JobAssetDirection.OUTPUT.value
+        and relation.is_deliverable
+    ]
+    base = job_list_response(
+        job,
+        output_asset_count=len(deliverable_outputs),
+        primary_output_asset_id=(
+            deliverable_outputs[0].asset_id if deliverable_outputs else None
+        ),
+    ).model_dump()
     plan = session.scalar(
         select(JobPlanRecord)
         .where(

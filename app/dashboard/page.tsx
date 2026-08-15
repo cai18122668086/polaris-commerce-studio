@@ -48,6 +48,7 @@ export default function DashboardPage() {
             <div className="card-heading"><div><span>快捷开始</span><h2>常用创作工具</h2></div><ImagePlus size={22} /></div>
             <Link href="/workspace/local-edit"><strong>一句话改图</strong><span>上传素材并进行局部精修</span><ArrowRight size={16} /></Link>
             <Link href="/workspace/detail-pack"><strong>商品详情图</strong><span>自动规划并生成商品详情套图</span><ArrowRight size={16} /></Link>
+            <Link href="/workspace/domestic-main-image"><strong>国内电商主图</strong><span>生成 1 张搜索主图和 5 张连续轮播图</span><ArrowRight size={16} /></Link>
           </div>
         </section>
       </div>

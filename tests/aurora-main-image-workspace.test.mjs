@@ -5,7 +5,7 @@ import test from "node:test";
 const read = (file) => readFile(file, "utf8");
 
 test("Aurora domestic main image keeps the six-page Harness workflow visible", async () => {
-  const [page, workspace, registry, navigation, jobs, sidebar, drawer, workspaceLink] = await Promise.all([
+  const [page, workspace, registry, navigation, jobs, sidebar, drawer, workspaceLink, workspaceLinkResolution] = await Promise.all([
     read("app/workspace/domestic-main-image/page.tsx"),
     read("components/domestic-main-image-workspace.tsx"),
     read("lib/feature-registry.ts"),
@@ -14,6 +14,7 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
     read("components/tool-sidebar.tsx"),
     read("components/task-drawer.tsx"),
     read("lib/jobs/workspace-link.ts"),
+    read("lib/jobs/workspace-link-resolution.ts"),
   ]);
 
   assert.match(page, /DomesticMainImageWorkspace/);
@@ -47,5 +48,6 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
   assert.match(sidebar, /jobWorkspaceHref\(job\)/);
   assert.match(drawer, /jobWorkspaceHref\(job\)/);
   assert.match(drawer, /Mock 流程已结束，没有生成真实图片/);
-  assert.match(workspaceLink, /feature\.route}\?jobId=/);
+  assert.match(workspaceLink, /resolveJobWorkspaceHref\(job, FEATURE_REGISTRY\)/);
+  assert.match(workspaceLinkResolution, /feature\.route}\?jobId=/);
 });

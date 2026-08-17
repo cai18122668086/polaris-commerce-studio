@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
   Ban,
@@ -48,6 +49,9 @@ const tabFilters: Record<string, JobStatus[] | undefined> = {
 };
 
 export default function JobsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedJobId = searchParams.get("jobId") ?? undefined;
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
@@ -66,6 +70,7 @@ export default function JobsPage() {
   );
   const allJobs = jobsQuery.data?.items ?? [];
   const actionError = cancel.error ?? retry.error ?? confirmPlan.error;
+  const activeJobId = selectedJobId ?? requestedJobId;
 
   const runCancel = (job: Job | JobDetail) => {
     if (
@@ -179,11 +184,14 @@ export default function JobsPage() {
           )}
         </section>
       </div>
-      {workspace && selectedJobId && (
+      {workspace && activeJobId && (
         <JobDetailPanel
           workspaceId={workspace.id}
-          jobId={selectedJobId}
-          onClose={() => setSelectedJobId(undefined)}
+          jobId={activeJobId}
+          onClose={() => {
+            setSelectedJobId(undefined);
+            if (requestedJobId) router.replace("/jobs");
+          }}
           onCancel={runCancel}
           onRetry={(job) => runRetry(job)}
           onRetryItem={(job, itemId) => runRetry(job, itemId)}

@@ -540,6 +540,7 @@ class JobListItemResponse(BaseModel):
     status: JobStatus
     stage: str | None
     display_name: str | None
+    task_preset: ProductImageTaskType | None = None
     progress: int
     expected_item_count: int
     succeeded_item_count: int

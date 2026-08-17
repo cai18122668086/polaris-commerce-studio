@@ -1,8 +1,9 @@
 import { FEATURE_REGISTRY } from "@/lib/feature-registry";
-import type { JobType } from "@/lib/api/types";
+import type { Job, JobDetail } from "@/lib/api/types";
+import { resolveJobWorkspaceHref } from "@/lib/jobs/workspace-link-resolution";
 
-export function jobWorkspaceHref(job: { id: string; type: JobType }): string {
-  const feature = FEATURE_REGISTRY.find((candidate) => candidate.jobType === job.type);
-  if (!feature) return `/jobs?jobId=${encodeURIComponent(job.id)}`;
-  return `${feature.route}?jobId=${encodeURIComponent(job.id)}`;
+export function jobWorkspaceHref(
+  job: Pick<Job, "id" | "type" | "task_preset"> & Partial<Pick<JobDetail, "configuration">>,
+): string {
+  return resolveJobWorkspaceHref(job, FEATURE_REGISTRY);
 }

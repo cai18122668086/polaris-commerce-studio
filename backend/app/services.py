@@ -3,7 +3,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast, get_args
 from uuid import uuid4
 
 from fastapi import status
@@ -53,6 +53,7 @@ from .schemas_v1 import (
     JobListItemResponse,
     MoneyAmount,
     PlanResponse,
+    ProductImageTaskType,
 )
 
 
@@ -329,6 +330,20 @@ def allowed_actions(job: JobRecord) -> list[str]:
     return actions
 
 
+_PRODUCT_IMAGE_TASK_PRESETS = frozenset(get_args(ProductImageTaskType))
+
+
+def job_task_preset(job: JobRecord) -> ProductImageTaskType | None:
+    """Return only a supported product-image preset for public job responses."""
+    if job.type != JobType.PRODUCT_IMAGE.value:
+        return None
+    settings = job.configuration.get("settings")
+    task_preset = settings.get("task_type") if isinstance(settings, dict) else None
+    if task_preset not in _PRODUCT_IMAGE_TASK_PRESETS:
+        return None
+    return cast(ProductImageTaskType, task_preset)
+
+
 def job_list_response(
     job: JobRecord,
     *,
@@ -342,6 +357,7 @@ def job_list_response(
         status=JobStatus(job.status),
         stage=job.stage,
         display_name=job.display_name,
+        task_preset=job_task_preset(job),
         progress=job.progress,
         expected_item_count=job.expected_item_count,
         succeeded_item_count=job.succeeded_item_count,

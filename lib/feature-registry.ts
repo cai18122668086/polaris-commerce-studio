@@ -464,7 +464,7 @@ export const FEATURE_REGISTRY = [
     supportsZipDownload: true,
     supportsContinueEditing: false,
     searchKeywords: ["国内电商", "淘宝", "天猫", "主图", "轮播图", "六图"],
-    featured: false,
+    featured: true,
     inputHint: "1–8 张真实商品图 + 已核实卖点",
     outputHint: "1 张搜索主图 + 5 张轮播图",
     guidance: "必须先确认整组六图计划；生成期间保持商品身份与视觉连续性。",

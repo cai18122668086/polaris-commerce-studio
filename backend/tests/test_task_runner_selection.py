@@ -39,7 +39,7 @@ def _settings(tmp_path: Path, **updates: object) -> Settings:
         tengli_daily_budget_usd=1,
         tengli_monthly_budget_usd=5,
         tengli_daily_request_limit=20,
-        xinghe_concurrency=2,
+        xinghe_concurrency=6,
     )
     return settings.model_copy(update=updates)
 
@@ -122,7 +122,7 @@ def test_factory_tengli_selects_existing_real_builder(
 
     for _, session_factory, storage in _factory_dependencies(settings):
         runner = task_runner.build_task_runner(session_factory, settings, storage)
-        assert calls == [(session_factory, settings, storage, 2)]
+        assert calls == [(session_factory, settings, storage, 6)]
 
     assert runner is sentinel
 
@@ -247,7 +247,7 @@ def test_default_mock_runner_still_allows_quota_disabled(
         ({"tengli_smoke_budget_usd": 20_000_001}, "budget"),
         ({"tengli_smoke_budget_usd": float("nan")}, "budget"),
         ({"xinghe_concurrency": 1}, "concurrency"),
-        ({"xinghe_concurrency": 6}, "concurrency"),
+        ({"xinghe_concurrency": 2}, "concurrency"),
         ({"tengli_monthly_budget_usd": 0.5}, "monthly budget"),
         ({"tengli_base_url": ""}, "base URL"),
         ({"tengli_base_url": "ftp://provider.example"}, "base URL"),
@@ -314,7 +314,7 @@ def test_tengli_default_recurring_limits_are_unlimited(
         _env_file=None,
         task_runner="tengli",
         tengli_api_key=SecretStr("test-provider-key"),
-        xinghe_concurrency=2,
+        xinghe_concurrency=6,
         database_url=f"sqlite:///{tmp_path / 'runner.db'}",
         storage_backend="local",
         storage_dir=tmp_path / "storage",
@@ -340,11 +340,11 @@ def test_task_runner_mode_uses_explicit_prefixed_environment_setting(
 def test_xinghe_concurrency_uses_prefixed_environment_setting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("POLARIS_XINGHE_CONCURRENCY", "2")
+    monkeypatch.setenv("POLARIS_XINGHE_CONCURRENCY", "6")
 
     settings = Settings(_env_file=None)
 
-    assert settings.xinghe_concurrency == 2
+    assert settings.xinghe_concurrency == 6
 
 
 def test_settings_accept_maximum_provider_allowance() -> None:

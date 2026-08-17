@@ -107,8 +107,8 @@ def validate_task_runner_settings(settings: Settings) -> None:
             "tengli task runner budget must be greater than 0 and at most "
             f"USD {MAX_PROVIDER_ALLOWANCE}"
         )
-    if settings.xinghe_concurrency != 2:
-        raise RuntimeError("tengli task runner concurrency must be exactly 2")
+    if settings.xinghe_concurrency != 6:
+        raise RuntimeError("tengli task runner concurrency must be exactly 6")
     if (
         settings.provider_quota_enabled
         and settings.tengli_daily_budget_usd > 0
@@ -170,7 +170,7 @@ def build_tengli_task_runner(
     settings: Settings,
     storage: ImageStorage,
     *,
-    concurrency: int = 2,
+    concurrency: int = 6,
 ) -> MockTaskRunner:
     """Explicit real-provider factory for the independently controlled smoke."""
 

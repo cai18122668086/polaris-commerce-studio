@@ -1950,6 +1950,7 @@ def test_development_provider_settings_enable_real_runner_without_echoing_key(
         stored = development.development_provider_env_file.read_text(encoding="utf-8")
         assert "POLARIS_TASK_RUNNER=\"tengli\"" in stored
         assert "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED=\"true\"" in stored
+        assert "POLARIS_XINGHE_CONCURRENCY=\"6\"" in stored
 
 
 def test_missing_assets_and_unknown_workspace_do_not_leak(client: TestClient) -> None:

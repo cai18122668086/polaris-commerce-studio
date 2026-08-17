@@ -329,7 +329,7 @@ class XingheSingleImageProvider:
         operation: str,
         skill_id: str,
         manifest_validator: ManifestValidator | Callable[[str], object],
-        max_concurrency: int = 2,
+        max_concurrency: int = 6,
         allowed_prompt_fields: frozenset[str] | None = None,
     ) -> None:
         if not operation or not skill_id:

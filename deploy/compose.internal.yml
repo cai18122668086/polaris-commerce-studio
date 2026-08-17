@@ -52,7 +52,7 @@ x-provider-environment: &provider-environment
   POLARIS_TENGLI_MONTHLY_BUDGET_USD: ${POLARIS_TENGLI_MONTHLY_BUDGET_USD:-0}
   POLARIS_TENGLI_DAILY_REQUEST_LIMIT: ${POLARIS_TENGLI_DAILY_REQUEST_LIMIT:-0}
   POLARIS_TENGLI_PLANNER_RESERVE_MICROS: ${POLARIS_TENGLI_PLANNER_RESERVE_MICROS:-250000}
-  POLARIS_XINGHE_CONCURRENCY: ${POLARIS_XINGHE_CONCURRENCY:-2}
+  POLARIS_XINGHE_CONCURRENCY: ${POLARIS_XINGHE_CONCURRENCY:-6}
   POLARIS_XINGHE_SKILL_ROOT: ${POLARIS_XINGHE_SKILL_ROOT:-/app/skill_sources/xinghe-ecommerce-detail}
 
 x-backend-build: &backend-build
@@ -238,7 +238,7 @@ services:
       - app.celery_app:celery_app
       - worker
       - --loglevel=INFO
-      - --concurrency=2
+      - --concurrency=6
       - --prefetch-multiplier=1
     depends_on:
       migrate:

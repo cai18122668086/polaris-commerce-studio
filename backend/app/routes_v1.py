@@ -670,7 +670,7 @@ def update_development_provider_settings(
     candidate.tengli_base_url = payload.base_url.strip()
     candidate.tengli_image_model = payload.image_model.strip()
     candidate.tengli_vision_model = payload.vision_model.strip()
-    candidate.xinghe_concurrency = 2
+    candidate.xinghe_concurrency = 6
     from .task_runner import build_task_runner, validate_task_runner_settings
 
     try:
@@ -689,7 +689,7 @@ def update_development_provider_settings(
                 "POLARIS_TENGLI_BASE_URL": candidate.tengli_base_url,
                 "POLARIS_TENGLI_IMAGE_MODEL": candidate.tengli_image_model,
                 "POLARIS_TENGLI_VISION_MODEL": candidate.tengli_vision_model,
-                "POLARIS_XINGHE_CONCURRENCY": "2",
+                "POLARIS_XINGHE_CONCURRENCY": "6",
             },
         )
     except (OSError, RuntimeError, ValueError) as exc:

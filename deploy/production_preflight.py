@@ -47,6 +47,8 @@ EXPECTED_SERVICE_VOLUMES = {
     "redis": "redis_data:/data",
     "minio": "minio_data:/data",
 }
+AURORA_WORK_VOLUME = "polaris_aurora_work_data:/app/.data/aurora-main-image"
+AURORA_WORK_SERVICES = {"api", "worker", "dispatcher"}
 EXPECTED_SERVICE_NETWORKS = {
     "postgres": {"backend"},
     "redis": {"backend"},
@@ -292,6 +294,16 @@ def validate_compose(compose: str) -> list[str]:
             rf"^      - {re.escape(expected_mount)}$", block, re.MULTILINE
         ):
             errors.append(f"{service} must mount the approved existing data volume")
+    if "polaris_aurora_work_data" not in volumes:
+        errors.append("production Compose is missing the Aurora work volume")
+    for service in AURORA_WORK_SERVICES:
+        block = services.get(service, "")
+        if not re.search(
+            rf"^      - {re.escape(AURORA_WORK_VOLUME)}$", block, re.MULTILINE
+        ):
+            errors.append(f"{service} must mount the shared Aurora work volume")
+    if "POLARIS_AURORA_WORK_ROOT: /app/.data/aurora-main-image" not in compose:
+        errors.append("production Compose must configure the Aurora work root")
     return errors
 
 

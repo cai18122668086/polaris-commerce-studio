@@ -46,6 +46,11 @@ export const PRIMARY_NAVIGATION_LINKS = [
   { label: "生成记录", href: "/jobs" },
 ] as const;
 
+export const MOBILE_PRIMARY_NAVIGATION_LINKS = [
+  ...PRIMARY_NAVIGATION_LINKS,
+  { label: "帮助中心", href: "/help" },
+] as const;
+
 export const AI_FEATURES_MENU = {
   key: "all-features",
   label: "AI功能大全",

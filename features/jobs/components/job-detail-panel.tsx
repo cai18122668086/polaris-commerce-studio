@@ -121,6 +121,7 @@ export function JobDetailPanel({
                 <div><dt>开始时间</dt><dd>{formatDateTime(job.started_at)}</dd></div>
                 <div><dt>更新时间</dt><dd>{formatDateTime(job.updated_at)}</dd></div>
                 <div><dt>完成时间</dt><dd>{formatDateTime(job.finished_at)}</dd></div>
+                <div><dt>记录保留至</dt><dd>{formatDateTime(job.history_expires_at)}</dd></div>
                 <div><dt>成功 / 失败 / 总数</dt><dd>{job.succeeded_item_count} / {job.failed_item_count} / {job.expected_item_count}</dd></div>
               </dl>
             </section>

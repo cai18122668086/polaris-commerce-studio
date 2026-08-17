@@ -106,7 +106,7 @@ export default function JobsPage() {
     <AppShell>
       <div className="content-page">
         <div className="page-title-row">
-          <div><span>创作管理</span><h1>生成记录</h1><p>查看任务状态、生成结果与错误信息。</p></div>
+          <div><span>创作管理</span><h1>生成记录</h1><p>任务结束后记录保留 30 天；草稿从创建起保留 30 天，请及时下载结果。</p></div>
         </div>
         <section className="job-stats">
           <div><span className="stat-icon stat-icon--violet"><Sparkles size={19} /></span><p>当前加载</p><strong>{jobsQuery.data?.total ?? allJobs.length}</strong><small>由任务列表统计</small></div>
@@ -172,7 +172,7 @@ export default function JobsPage() {
                     <h3><Link href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}>{jobTitle(job)}</Link></h3><p>{jobNote(job)}</p>
                     {["queued", "planning", "processing", "cancelling"].includes(job.status) && <div className="record-progress"><i style={{ width: `${job.progress}%` }} /><span>{job.progress}%</span></div>}
                   </div>
-                  <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>实时更新</small></div>
+                  <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>{job.history_expires_at ? `保留至 ${formatDate(job.history_expires_at)}` : "实时更新"}</small></div>
                   <div className="record-actions">
                     {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={(event) => { event.stopPropagation(); runRetry(job); }} disabled={retry.isPending}><RotateCcw size={16} /></button>}
                     {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} title="取消任务" onClick={(event) => { event.stopPropagation(); runCancel(job); }} disabled={cancel.isPending}><Ban size={16} /></button>}

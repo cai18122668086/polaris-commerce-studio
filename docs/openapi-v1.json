@@ -801,6 +801,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "height": {
             "anyOf": [
               {
@@ -861,7 +873,8 @@
           "width",
           "height",
           "sha256",
-          "created_at"
+          "created_at",
+          "expires_at"
         ],
         "title": "AssetResponse",
         "type": "object"
@@ -1884,6 +1897,18 @@
             ],
             "title": "Finished At"
           },
+          "history_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Expires At"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2065,6 +2090,7 @@
           "cost",
           "created_at",
           "updated_at",
+          "history_expires_at",
           "configuration",
           "configuration_schema",
           "prompt_version",
@@ -2265,6 +2291,18 @@
             "title": "Failed Item Count",
             "type": "integer"
           },
+          "history_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Expires At"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2355,7 +2393,8 @@
           "allowed_actions",
           "cost",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "history_expires_at"
         ],
         "title": "JobListItemResponse",
         "type": "object"

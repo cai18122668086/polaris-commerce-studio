@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/1"
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=40_000_000, ge=1)
+    retention_enabled: bool = False
+    retention_days: int = Field(default=30, ge=30, le=30)
+    retention_interval_seconds: int = Field(default=3600, ge=60, le=86400)
+    retention_batch_size: int = Field(default=100, ge=1, le=1000)
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",

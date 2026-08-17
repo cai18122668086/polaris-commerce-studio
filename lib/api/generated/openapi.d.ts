@@ -753,6 +753,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Expires At */
+            expires_at: string | null;
             /** Height */
             height: number | null;
             /** Id */
@@ -1136,6 +1138,8 @@ export interface components {
             failed_item_count: number;
             /** Finished At */
             finished_at: string | null;
+            /** History Expires At */
+            history_expires_at: string | null;
             /** Id */
             id: string;
             /** Items */
@@ -1233,6 +1237,8 @@ export interface components {
             expected_item_count: number;
             /** Failed Item Count */
             failed_item_count: number;
+            /** History Expires At */
+            history_expires_at: string | null;
             /** Id */
             id: string;
             /**

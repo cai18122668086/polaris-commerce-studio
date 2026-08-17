@@ -178,7 +178,7 @@ export function MobileNavigationMenu({
       <div style={{ display: "grid", gap: 8 }}>
         <nav
           aria-label="移动端主导航链接"
-          style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7 }}
+          style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 7 }}
         >
           {primaryLinks.map((item) => {
             const active =

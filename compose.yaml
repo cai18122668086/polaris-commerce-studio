@@ -100,6 +100,10 @@ services:
       # Shared by API/workers so Aurora identity locks and Harness sessions survive
       # task hand-off and container restarts.
       POLARIS_AURORA_WORK_ROOT: /app/.data/aurora-main-image
+      POLARIS_RETENTION_ENABLED: "true"
+      POLARIS_RETENTION_DAYS: "30"
+      POLARIS_RETENTION_INTERVAL_SECONDS: "3600"
+      POLARIS_RETENTION_BATCH_SIZE: "100"
       POLARIS_AUTO_PROCESS_JOBS: "true"
       POLARIS_TASK_DISPATCHER: celery
       POLARIS_CELERY_BROKER_URL: redis://redis:6379/0

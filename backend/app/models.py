@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import (
@@ -49,6 +49,13 @@ def json_type() -> JSON:
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+RETENTION_DAYS = 30
+
+
+def retention_deadline() -> datetime:
+    return utc_now() + timedelta(days=RETENTION_DAYS)
 
 
 class TimestampMixin:
@@ -159,6 +166,7 @@ class AssetRecord(Base):
             text("created_at DESC"),
             text("id DESC"),
         ),
+        Index("ix_assets_retention_due", "retention_class", "expires_at"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -199,6 +207,23 @@ class AssetRecord(Base):
         nullable=False,
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retention_class: Mapped[str] = mapped_column(
+        String(24),
+        default="user_30d",
+        server_default=text("'user_30d'"),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=retention_deadline
+    )
+    purge_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
+    purge_next_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    purge_last_error: Mapped[str | None] = mapped_column(String(120))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Compatibility aliases used only by the Phase 1 migration/backfill.
     @property
@@ -283,6 +308,7 @@ class JobRecord(TimestampMixin, Base):
             "created_at",
             "id",
         ),
+        Index("ix_jobs_history_due", "history_expires_at", "history_deleted_at"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -348,6 +374,10 @@ class JobRecord(TimestampMixin, Base):
     queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    history_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=retention_deadline
+    )
+    history_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class JobItemRecord(TimestampMixin, Base):
@@ -904,6 +934,7 @@ class AuditEventRecord(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
+
 
 class AnnouncementRecord(TimestampMixin, Base):
     __tablename__ = "announcements"

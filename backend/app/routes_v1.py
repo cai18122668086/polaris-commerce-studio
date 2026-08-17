@@ -106,6 +106,7 @@ from .schemas_v1 import (
 )
 from .services import (
     add_outbox_event,
+    asset_is_available,
     asset_response,
     canonical_hash,
     claim_idempotency,
@@ -118,6 +119,7 @@ from .services import (
     get_workspace_asset,
     get_workspace_job,
     job_detail_response,
+    job_history_is_available,
     job_list_response,
     lock_workspace_limits,
     new_id,
@@ -594,9 +596,7 @@ def _development_provider_response(
     )
 
 
-def _write_development_provider_env(
-    env_path: Path, updates: dict[str, str]
-) -> None:
+def _write_development_provider_env(env_path: Path, updates: dict[str, str]) -> None:
     current = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
     remaining = dict(updates)
     output: list[str] = []
@@ -690,7 +690,7 @@ def update_development_provider_settings(
                 "POLARIS_TENGLI_IMAGE_MODEL": candidate.tengli_image_model,
                 "POLARIS_TENGLI_VISION_MODEL": candidate.tengli_vision_model,
                 "POLARIS_XINGHE_CONCURRENCY": "2",
-            }
+            },
         )
     except (OSError, RuntimeError, ValueError) as exc:
         raise ApiError(
@@ -960,7 +960,7 @@ def list_assets(
     )
     filters: list[Any] = [
         AssetRecord.workspace_id == workspace.workspace_id,
-        AssetRecord.deleted_at.is_(None),
+        asset_is_available(),
     ]
     if origin_kind is not None:
         filters.append(AssetRecord.origin_kind == origin_kind.value)
@@ -1040,13 +1040,22 @@ async def create_asset_access_url(
             "素材尚未就绪。",
         )
     expires_at = datetime.now(UTC) + timedelta(minutes=10)
+    if asset.expires_at is not None:
+        asset_expires_at = asset.expires_at
+        if asset_expires_at.tzinfo is None:
+            asset_expires_at = asset_expires_at.replace(tzinfo=UTC)
+        expires_at = min(expires_at, asset_expires_at)
+    expires_seconds = max(
+        1,
+        int((expires_at - datetime.now(UTC)).total_seconds()),
+    )
     url = None
     if request.app.state.settings.asset_access_url_mode == "auto":
         url = await request.app.state.storage.create_access_url(
             asset.object_key,
             asset.original_filename,
             payload.disposition,
-            600,
+            expires_seconds,
         )
     if url is None:
         expires = int(expires_at.timestamp())
@@ -1234,7 +1243,10 @@ def list_jobs(
             "statuses": status_values,
         }
     )
-    base_filters: list[Any] = [JobRecord.workspace_id == workspace.workspace_id]
+    base_filters: list[Any] = [
+        JobRecord.workspace_id == workspace.workspace_id,
+        job_history_is_available(),
+    ]
     if job_type is not None:
         base_filters.append(JobRecord.type == job_type.value)
     if status_values:
@@ -1277,6 +1289,7 @@ def list_jobs(
                 JobAssetRecord.job_id.in_([item.id for item in items]),
                 JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
                 JobAssetRecord.is_deliverable.is_(True),
+                asset_is_available(),
             )
             .order_by(
                 JobAssetRecord.job_id,
@@ -1285,9 +1298,7 @@ def list_jobs(
             )
         ).all()
         for output_job_id, asset_id, lifecycle_status in output_rows:
-            count, primary_asset_id = output_summaries.get(
-                output_job_id, (0, None)
-            )
+            count, primary_asset_id = output_summaries.get(output_job_id, (0, None))
             if (
                 primary_asset_id is None
                 and lifecycle_status == AssetLifecycleStatus.READY.value
@@ -1441,6 +1452,7 @@ async def download_job_deliverables(
             JobAssetRecord.job_id == job.id,
             JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
             JobAssetRecord.is_deliverable.is_(True),
+            asset_is_available(),
         )
         .order_by(JobAssetRecord.ordinal)
     ).all()
@@ -2037,6 +2049,7 @@ def confirm_plan(
                 plan,
                 job,
                 payload.approval_text or "用户确认六图规划并授权逐张生成",
+                work_root=request.app.state.settings.aurora_work_root,
             )
         except (AuroraPlanningError, AuroraHarnessError) as exc:
             raise ApiError(
@@ -2225,6 +2238,7 @@ def _new_job_from_payload(
         estimated_credits=credits,
         currency="USD",
         queued_at=utc_now() if is_submit else None,
+        history_expires_at=None if is_submit else utc_now() + timedelta(days=30),
     )
     return job, asset_roles
 

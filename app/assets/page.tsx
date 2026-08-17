@@ -70,6 +70,7 @@ function AssetCard({
           {" · "}
           {(asset.byte_size / 1024 / 1024).toFixed(1)} MB
         </span>
+        {asset.expires_at && <span>保留至 {formatDate(asset.expires_at)}</span>}
       </div>
     </article>
   );
@@ -107,7 +108,7 @@ export default function AssetsPage() {
           <div>
             <span>素材管理</span>
             <h1>个人素材库</h1>
-            <p>上传后的素材会保存到当前工作区，可用于后续创作。</p>
+            <p>上传素材和生成图片保留 30 天，到期自动删除且无法恢复，请及时下载。</p>
           </div>
           <button className="primary-button" onClick={chooseFile} disabled={!workspace || upload.isPending}>
             {upload.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}

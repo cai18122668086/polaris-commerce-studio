@@ -1,7 +1,23 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.domain import MembershipRole, MembershipStatus, UserStatus
 from app.models import UserRecord, WorkspaceMemberRecord
+
+ANNOUNCEMENT_ADMIN_EMAIL = "admin@example.com"
+
+
+@pytest.fixture(autouse=True)
+def configure_announcement_admin(client):
+    client.app.state.settings.announcement_admin_emails = [ANNOUNCEMENT_ADMIN_EMAIL]
+    session_factory = client.app.state.session_factory
+    with session_factory() as session:
+        user = session.get(UserRecord, "usr_test")
+        assert user is not None
+        user.email_normalized = ANNOUNCEMENT_ADMIN_EMAIL
+        session.commit()
+    yield
 
 
 def announcement_payload(**overrides):
@@ -72,6 +88,9 @@ def test_public_endpoint_filters_schedule_and_prioritizes_pinned(client):
 
 
 def test_admin_can_edit_publish_and_archive(client):
+    assert client.get("/api/v1/admin/announcements/access").json() == {
+        "can_manage": True
+    }
     created = client.post("/api/v1/admin/announcements", json=announcement_payload())
     announcement_id = created.json()["id"]
     updated = client.patch(
@@ -101,6 +120,7 @@ def test_non_admin_cannot_manage_announcements(client):
                 id="usr_member",
                 auth_provider="development",
                 auth_subject="usr_member",
+                email_normalized=ANNOUNCEMENT_ADMIN_EMAIL,
                 display_name="Member",
                 status=UserStatus.ACTIVE.value,
             )
@@ -126,6 +146,70 @@ def test_non_admin_cannot_manage_announcements(client):
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "ANNOUNCEMENT_ADMIN_REQUIRED"
+
+
+def test_personal_workspace_owner_outside_allowlist_cannot_manage(client):
+    session_factory = client.app.state.session_factory
+    with session_factory() as session:
+        session.add(
+            UserRecord(
+                id="usr_unlisted_owner",
+                auth_provider="development",
+                auth_subject="usr_unlisted_owner",
+                email_normalized="other@example.com",
+                display_name="Unlisted owner",
+                status=UserStatus.ACTIVE.value,
+            )
+        )
+        session.add(
+            WorkspaceMemberRecord(
+                workspace_id="ws_test",
+                user_id="usr_unlisted_owner",
+                role=MembershipRole.OWNER.value,
+                status=MembershipStatus.ACTIVE.value,
+            )
+        )
+        session.commit()
+
+    headers = {"X-User-Id": "usr_unlisted_owner"}
+    assert client.get(
+        "/api/v1/admin/announcements/access",
+        headers=headers,
+    ).json() == {"can_manage": False}
+    response = client.post(
+        "/api/v1/admin/announcements",
+        headers=headers,
+        json=announcement_payload(),
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "ANNOUNCEMENT_ADMIN_REQUIRED"
+
+    created = client.post(
+        "/api/v1/admin/announcements",
+        json=announcement_payload(),
+    ).json()
+    protected_requests = (
+        client.get("/api/v1/admin/announcements", headers=headers),
+        client.patch(
+            f"/api/v1/admin/announcements/{created['id']}",
+            headers=headers,
+            json={"title": "Forbidden update"},
+        ),
+        client.post(
+            f"/api/v1/admin/announcements/{created['id']}/publish",
+            headers=headers,
+        ),
+        client.post(
+            f"/api/v1/admin/announcements/{created['id']}/archive",
+            headers=headers,
+        ),
+    )
+    for protected_response in protected_requests:
+        assert protected_response.status_code == 403
+        assert (
+            protected_response.json()["error"]["code"]
+            == "ANNOUNCEMENT_ADMIN_REQUIRED"
+        )
 
 
 def test_invalid_content_and_time_window_are_rejected(client):

@@ -20,6 +20,7 @@ import {
   AI_FEATURES_MENU,
   AI_NAVIGATION_MENUS,
   AI_TOOLBOX_MENU,
+  MOBILE_PRIMARY_NAVIGATION_LINKS,
   PRIMARY_NAVIGATION_LINKS,
   type NavigationMenuDefinition,
 } from "@/lib/navigation-registry";
@@ -168,7 +169,7 @@ export function TopNavigation({
           menus={AI_NAVIGATION_MENUS}
           onClose={() => setOpenMenu(null)}
           panelRef={mobilePanelRef}
-          primaryLinks={PRIMARY_NAVIGATION_LINKS}
+          primaryLinks={MOBILE_PRIMARY_NAVIGATION_LINKS}
           pathname={pathname}
         />
         <div className="top-nav__actions">

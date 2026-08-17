@@ -154,6 +154,20 @@ def _validate_record(record: AnnouncementRecord) -> None:
         )
 
 
+def _preserve_announcement_image(session: Session, image_asset_id: str | None) -> None:
+    if image_asset_id is None:
+        return
+    asset = session.get(AssetRecord, image_asset_id)
+    if asset is None or asset.deleted_at is not None:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "ANNOUNCEMENT_IMAGE_NOT_FOUND",
+            "The announcement image was not found.",
+        )
+    asset.retention_class = "system_persistent"
+    asset.expires_at = None
+
+
 @router.get(
     "/announcements/current",
     response_model=AnnouncementResponse | None,
@@ -320,6 +334,7 @@ def create_announcement(
         updated_by_user_id=admin.user_id,
     )
     _validate_record(record)
+    _preserve_announcement_image(session, record.image_asset_id)
     session.add(record)
     session.commit()
     session.refresh(record)
@@ -346,6 +361,7 @@ def update_announcement(
             value = value.strip()
         setattr(record, key, value)
     _validate_record(record)
+    _preserve_announcement_image(session, record.image_asset_id)
     record.updated_by_user_id = admin.user_id
     session.commit()
     session.refresh(record)

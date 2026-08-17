@@ -146,6 +146,7 @@ class AssetResponse(BaseModel):
     height: int | None
     sha256: str
     created_at: datetime
+    expires_at: datetime | None
 
 
 class AssetListResponse(BaseModel):
@@ -551,6 +552,7 @@ class JobListItemResponse(BaseModel):
     cost: CostSummary
     created_at: datetime
     updated_at: datetime
+    history_expires_at: datetime | None
 
 
 class JobDetailResponse(JobListItemResponse):

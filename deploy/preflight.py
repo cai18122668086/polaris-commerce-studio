@@ -56,6 +56,8 @@ MOCK_SERVICES = {"migrate", "dispatcher"}
 ALLOWED_TASK_RUNNERS = {"mock", "tengli"}
 INTERNAL_DEPLOYMENT_ENVIRONMENT = "development"
 MAX_PROVIDER_ALLOWANCE = 20_000_000
+AURORA_WORK_VOLUME = "polaris_aurora_work_data:/app/.data/aurora-main-image"
+AURORA_WORK_SERVICES = {"api", "worker", "dispatcher"}
 THIRD_PARTY_IMAGE_KEYS = {
     "POLARIS_PYTHON_BASE_IMAGE",
     "POLARIS_NODE_BASE_IMAGE",
@@ -392,6 +394,11 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
             errors.append(f"{key} must be environment-selectable with false default")
     if compose.count("POLARIS_ASSET_ACCESS_URL_MODE: same_origin") != 1:
         errors.append("internal S3 assets must use the same-origin access proxy")
+    if compose.count("POLARIS_AURORA_WORK_ROOT: /app/.data/aurora-main-image") != 1:
+        errors.append("internal staging must configure the Aurora work root")
+    for name in AURORA_WORK_SERVICES:
+        if AURORA_WORK_VOLUME not in services.get(name, ""):
+            errors.append(f"{name} must mount the shared Aurora work volume")
     skill_root_expression = (
         "POLARIS_XINGHE_SKILL_ROOT: "
         "${POLARIS_XINGHE_SKILL_ROOT:-/app/skill_sources/xinghe-ecommerce-detail}"

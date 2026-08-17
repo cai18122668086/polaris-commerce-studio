@@ -568,7 +568,12 @@ class ExecutionCoordinator:
             )
             if planner is None:
                 return self.fail_missing_detail_planner(job_id)
-            planned = await planner.plan(job_id)
+            try:
+                planned = await planner.plan(job_id)
+            except Exception as exc:
+                if self._is_domestic_main_image_job(job_id):
+                    return self.fail_domestic_main_image_planning(job_id, exc)
+                raise
             current = self.auto_confirm_detail_plan(job_id, planned)
             if current != JobStatus.PROCESSING:
                 return current
@@ -809,6 +814,50 @@ class ExecutionCoordinator:
             job.failed_item_count = len(items)
             job.error_code = "DETAIL_PLANNER_UNAVAILABLE"
             job.error_message = "The mandatory detail planner is unavailable."
+            transition_job(
+                job,
+                JobStatus.FAILED,
+                stage="planning_failed",
+                progress=100,
+            )
+            settle_credits(session, job, 0)
+            session.commit()
+            return JobStatus.FAILED
+
+    def fail_domestic_main_image_planning(
+        self, job_id: str, error: Exception
+    ) -> JobStatus | None:
+        """Persist Aurora planning failures instead of redelivering forever."""
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            if JobStatus(job.status) != JobStatus.PLANNING:
+                return JobStatus(job.status)
+            items = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job.id,
+                    JobItemRecord.status.in_(
+                        [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
+                    ),
+                )
+                .with_for_update()
+            ).all()
+            now = utc_now()
+            for item in items:
+                item.status = JobItemStatus.FAILED.value
+                item.stage = "planning_failed"
+                item.error_code = "AURORA_PLANNING_FAILED"
+                item.error_message = "国内电商主图规划失败，请重新提交任务。"
+                item.error_details = {"reason": type(error).__name__}
+                item.finished_at = now
+                item.state_version += 1
+            job.failed_item_count = len(items)
+            job.error_code = "AURORA_PLANNING_FAILED"
+            job.error_message = "国内电商主图规划失败，请重新提交任务。"
+            job.error_details = {"reason": type(error).__name__}
             transition_job(
                 job,
                 JobStatus.FAILED,

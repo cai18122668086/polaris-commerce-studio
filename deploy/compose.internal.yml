@@ -17,6 +17,7 @@ x-backend-common-environment: &backend-common-environment
   POLARIS_S3_BUCKET: ${POLARIS_S3_BUCKET:?set private mock asset bucket}
   POLARIS_S3_AUTO_CREATE_BUCKET: "true"
   POLARIS_ASSET_ACCESS_URL_MODE: same_origin
+  POLARIS_AURORA_WORK_ROOT: /app/.data/aurora-main-image
   POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED: ${POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED:-false}
   POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED: ${POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED:-false}
   POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED: ${POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED:-false}
@@ -30,6 +31,10 @@ x-backend-common-environment: &backend-common-environment
   POLARIS_CELERY_RESULT_BACKEND: redis://:${POLARIS_REDIS_PASSWORD:?set Redis password}@redis:6379/1
   POLARIS_MAX_UPLOAD_BYTES: "20971520"
   POLARIS_MAX_IMAGE_PIXELS: "40000000"
+  POLARIS_RETENTION_ENABLED: "true"
+  POLARIS_RETENTION_DAYS: "30"
+  POLARIS_RETENTION_INTERVAL_SECONDS: "3600"
+  POLARIS_RETENTION_BATCH_SIZE: "100"
   POLARIS_CORS_ORIGINS: '["http://127.0.0.1:8080","http://localhost:8080"]'
 
 # Internal development may disable quota tracking for an unrestricted test account.
@@ -178,6 +183,8 @@ services:
     build: *backend-build
     environment:
       <<: [*backend-common-environment, *provider-environment]
+    volumes:
+      - polaris_aurora_work_data:/app/.data/aurora-main-image
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
       migrate:
@@ -221,6 +228,8 @@ services:
     build: *backend-build
     environment:
       <<: [*backend-common-environment, *provider-environment]
+    volumes:
+      - polaris_aurora_work_data:/app/.data/aurora-main-image
     command:
       - python
       - -m
@@ -272,6 +281,8 @@ services:
     environment:
       <<: *backend-common-environment
       POLARIS_TASK_RUNNER: mock
+    volumes:
+      - polaris_aurora_work_data:/app/.data/aurora-main-image
     command: ["python", "-m", "app.outbox_worker"]
     depends_on:
       migrate:
@@ -395,3 +406,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  polaris_aurora_work_data:

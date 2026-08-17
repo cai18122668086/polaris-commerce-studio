@@ -7,7 +7,7 @@ from typing import Any, cast, get_args
 from uuid import uuid4
 
 from fastapi import status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
@@ -222,6 +222,30 @@ def asset_response(asset: AssetRecord) -> AssetResponse:
         height=asset.height,
         sha256=asset.sha256,
         created_at=asset.created_at,
+        expires_at=asset.expires_at,
+    )
+
+
+def asset_is_available() -> Any:
+    now = utc_now()
+    return and_(
+        AssetRecord.deleted_at.is_(None),
+        or_(
+            AssetRecord.retention_class == "system_persistent",
+            AssetRecord.expires_at.is_(None),
+            AssetRecord.expires_at > now,
+        ),
+    )
+
+
+def job_history_is_available() -> Any:
+    now = utc_now()
+    return and_(
+        JobRecord.history_deleted_at.is_(None),
+        or_(
+            JobRecord.history_expires_at.is_(None),
+            JobRecord.history_expires_at > now,
+        ),
     )
 
 
@@ -368,6 +392,7 @@ def job_list_response(
         cost=cost_summary(job),
         created_at=job.created_at,
         updated_at=job.updated_at,
+        history_expires_at=getattr(job, "history_expires_at", None),
     )
 
 
@@ -382,9 +407,17 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
     ).all()
     assets = session.scalars(
         select(JobAssetRecord)
+        .join(
+            AssetRecord,
+            and_(
+                AssetRecord.workspace_id == JobAssetRecord.workspace_id,
+                AssetRecord.id == JobAssetRecord.asset_id,
+            ),
+        )
         .where(
             JobAssetRecord.workspace_id == job.workspace_id,
             JobAssetRecord.job_id == job.id,
+            asset_is_available(),
         )
         .order_by(JobAssetRecord.ordinal)
     ).all()
@@ -486,7 +519,7 @@ def get_workspace_asset(
         select(AssetRecord).where(
             AssetRecord.workspace_id == workspace_id,
             AssetRecord.id == asset_id,
-            AssetRecord.deleted_at.is_(None),
+            asset_is_available(),
         )
     )
     if asset is None:
@@ -508,7 +541,7 @@ def get_ready_assets(
                 AssetRecord.workspace_id == workspace_id,
                 AssetRecord.id.in_(asset_ids),
                 AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
-                AssetRecord.deleted_at.is_(None),
+                asset_is_available(),
             )
         ).all()
     }
@@ -533,6 +566,7 @@ def get_workspace_job(
     statement = select(JobRecord).where(
         JobRecord.workspace_id == workspace_id,
         JobRecord.id == job_id,
+        job_history_is_available(),
     )
     if for_update:
         statement = statement.with_for_update()
@@ -620,10 +654,12 @@ def transition_job(
     now = utc_now()
     if target == JobStatus.QUEUED:
         job.queued_at = now
+        job.history_expires_at = None
     if target in {JobStatus.PLANNING, JobStatus.PROCESSING} and job.started_at is None:
         job.started_at = now
     if target in TERMINAL_JOB_STATUSES:
         job.finished_at = now
+        job.history_expires_at = now + timedelta(days=30)
     if target == JobStatus.CANCELLING or target in TERMINAL_JOB_STATUSES:
         session = object_session(job)
         if session is not None:

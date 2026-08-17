@@ -94,6 +94,38 @@ def _coordinator(
     )
 
 
+class _FailingDomesticPlanner:
+    async def plan(self, job_id: str) -> JobStatus:
+        raise OSError(f"workspace unavailable for {job_id}")
+
+
+def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) -> None:
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        campaign_planner=_FailingDomesticPlanner(),
+    )
+
+    assert asyncio.run(coordinator.run(job_id)) == JobStatus.FAILED
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        items = session.scalars(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        ).all()
+        assert job is not None
+        assert job.status == JobStatus.FAILED.value
+        assert job.error_code == "AURORA_PLANNING_FAILED"
+        assert job.history_expires_at is not None
+        assert {item.status for item in items} == {JobItemStatus.FAILED.value}
+
+
 def _expand_job_to_three_items(client: TestClient, job_id: str) -> None:
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)
@@ -600,6 +632,7 @@ def test_finalize_amazon_review_falls_back_to_legacy_plan_usage(
         assert job.actual_cost_micros == 7
         assert job.api_request_count == 1
         assert job.usage_completeness == UsageCompleteness.COMPLETE.value
+
 
 def test_finalize_amazon_review_merges_mixed_evidence_into_quota_settlement(
     client: TestClient,

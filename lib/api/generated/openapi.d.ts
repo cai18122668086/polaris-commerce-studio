@@ -1173,6 +1173,8 @@ export interface components {
             strategy_version: string;
             /** Succeeded Item Count */
             succeeded_item_count: number;
+            /** Task Preset */
+            task_preset?: ("scene_main" | "white_background" | "model_image" | "change_model" | "try_on" | "change_scene" | "change_background" | "change_color") | null;
             type: components["schemas"]["JobType"];
             /**
              * Updated At
@@ -1247,6 +1249,8 @@ export interface components {
             status: components["schemas"]["JobStatus"];
             /** Succeeded Item Count */
             succeeded_item_count: number;
+            /** Task Preset */
+            task_preset?: ("scene_main" | "white_background" | "model_image" | "change_model" | "try_on" | "change_scene" | "change_background" | "change_color") | null;
             type: components["schemas"]["JobType"];
             /**
              * Updated At

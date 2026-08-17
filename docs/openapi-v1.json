@@ -2016,6 +2016,27 @@
             "title": "Succeeded Item Count",
             "type": "integer"
           },
+          "task_preset": {
+            "anyOf": [
+              {
+                "enum": [
+                  "scene_main",
+                  "white_background",
+                  "model_image",
+                  "change_model",
+                  "try_on",
+                  "change_scene",
+                  "change_background",
+                  "change_color"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Preset"
+          },
           "type": {
             "$ref": "#/components/schemas/JobType"
           },
@@ -2285,6 +2306,27 @@
           "succeeded_item_count": {
             "title": "Succeeded Item Count",
             "type": "integer"
+          },
+          "task_preset": {
+            "anyOf": [
+              {
+                "enum": [
+                  "scene_main",
+                  "white_background",
+                  "model_image",
+                  "change_model",
+                  "try_on",
+                  "change_scene",
+                  "change_background",
+                  "change_color"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Preset"
           },
           "type": {
             "$ref": "#/components/schemas/JobType"

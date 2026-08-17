@@ -66,6 +66,7 @@ const FEATURED_TASK_IDS = [
   "change-background",
   "reference-remix",
   "detail-pack",
+  "domestic-main-image",
   "amazon-visual-suite",
 ];
 
@@ -245,9 +246,8 @@ test("Aurora domestic main image has discoverable entrypoints across the product
   const dashboard = await utf8("app/dashboard/page.tsx");
   const help = await utf8("app/help/page.tsx");
 
-  assert.equal(FEATURE_REGISTRY.find((feature) => feature.id === "domestic-main-image")?.featured, false);
-  assert.match(toolDirectory, /home-aurora-entry/);
-  assert.match(toolDirectory, /tool\.id === "domestic-main-image"/);
+  assert.equal(FEATURE_REGISTRY.find((feature) => feature.id === "domestic-main-image")?.featured, true);
+  assert.doesNotMatch(toolDirectory, /home-aurora-entry/);
   assert.match(toolDirectory, /featuredTools\.map/);
   assert.match(navigation, /aria-current=\{active \? "page" : undefined\}/);
   assert.match(navigation, /pathname === item\.href \|\| pathname\.startsWith/);

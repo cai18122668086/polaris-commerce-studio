@@ -134,12 +134,6 @@ export function ToolDirectory() {
   const searchRef = useRef<HTMLInputElement>(null);
   const featureGridRef = useRef<HTMLDivElement>(null);
   const runtime = useRuntimeStatus();
-  const auroraTool = searchableTools.find((tool) => tool.id === "domestic-main-image");
-  const auroraCapability = auroraTool
-    ? resolveRuntimeCapability(runtime.data, auroraTool.runtimeCapability)
-    : undefined;
-  const auroraUnavailable =
-    auroraCapability !== undefined && auroraCapability.availability !== "available";
   const keyword = query.trim().toLowerCase();
   const searchResults = keyword
     ? searchableTools
@@ -209,39 +203,6 @@ export function ToolDirectory() {
           <h2>一键直达任务</h2>
           <p>快速定位，保留你熟悉的电商工作流程</p>
         </header>
-
-        {auroraTool ? (
-          <Link
-            href={auroraTool.href}
-            className={`home-aurora-entry${auroraUnavailable ? " is-unavailable" : ""}`}
-            data-feature-id={auroraTool.id}
-            data-runtime-capability={auroraTool.runtimeCapability}
-            data-capability-state={auroraCapability?.availability ?? "unknown"}
-            aria-disabled={auroraUnavailable || undefined}
-            tabIndex={auroraUnavailable ? -1 : undefined}
-            onClick={
-              auroraUnavailable
-                ? (event) => {
-                    event.preventDefault();
-                  }
-                : undefined
-            }
-          >
-            <span className="home-aurora-entry__icon" aria-hidden="true">
-              <auroraTool.icon size={27} />
-            </span>
-            <span className="home-aurora-entry__copy">
-              <small>Aurora 六图套装</small>
-              <strong>一键生成国内电商主图</strong>
-              <span>上传真实商品图，先确认整组六图方案，再按顺序生成。</span>
-            </span>
-            <span className="home-aurora-entry__deliverables" aria-label="输出 1 张搜索主图和 5 张轮播图">
-              <i>1 张搜索主图</i>
-              <i>5 张轮播图</i>
-            </span>
-            <ArrowRight size={20} />
-          </Link>
-        ) : null}
 
         <div className="home-feature-grid" ref={featureGridRef}>
           {featuredTools.map((tool) => {

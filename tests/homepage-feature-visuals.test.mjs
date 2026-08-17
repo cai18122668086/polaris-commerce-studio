@@ -17,8 +17,13 @@ const EXPECTED_FEATURE_IDS = [
   "change-background",
   "reference-remix",
   "detail-pack",
+  "domestic-main-image",
   "amazon-visual-suite",
 ];
+
+const EXPECTED_RICH_VISUAL_IDS = EXPECTED_FEATURE_IDS.filter(
+  (featureId) => featureId !== "domestic-main-image",
+);
 
 const EXPECTED_FILES = [
   "card-01-local-edit-after-v1.webp",
@@ -74,13 +79,13 @@ function mappedImages() {
   });
 }
 
-test("the homepage visual map covers the five featured routes without changing navigation", () => {
+test("the homepage grid covers all six one-click tasks without changing navigation", () => {
   const featured = FEATURE_REGISTRY.filter((feature) => feature.featured);
   assert.deepEqual(
     featured.map((feature) => feature.id),
     EXPECTED_FEATURE_IDS,
   );
-  assert.deepEqual(Object.keys(HOME_FEATURE_VISUALS), EXPECTED_FEATURE_IDS);
+  assert.deepEqual(Object.keys(HOME_FEATURE_VISUALS), EXPECTED_RICH_VISUAL_IDS);
   assert.deepEqual(
     featured.map((feature) => feature.route),
     [
@@ -88,6 +93,7 @@ test("the homepage visual map covers the five featured routes without changing n
       "/workspace/product-image/change-background",
       "/workspace/reference-remix",
       "/workspace/detail-pack",
+      "/workspace/domestic-main-image",
       "/workspace/amazon-visual-suite",
     ],
   );
@@ -131,8 +137,8 @@ test("homepage cards expose hover, keyboard, mobile-once, and reduced-motion sta
   assert.match(css, /home-feature-card__image--detail-cover/);
   assert.match(css, /animation:\s*none !important/);
   assert.match(css, /grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
-  assert.match(css, /home-feature-card:nth-child\(4\)[\s\S]*grid-column: 2 \/ span 2/);
-  assert.match(css, /home-feature-card:nth-child\(5\)[\s\S]*grid-column: 4 \/ span 2/);
+  assert.doesNotMatch(css, /home-feature-card:nth-child/);
+  assert.doesNotMatch(component, /home-aurora-entry/);
   assert.doesNotMatch(component, /home-feature-card__remix-reference/);
   assert.doesNotMatch(productionSource, /\.gif\b/i);
 });

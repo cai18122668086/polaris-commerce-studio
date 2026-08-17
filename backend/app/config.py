@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     auth_smtp_secure: bool = False
     auth_email_from_name: str = "Polaris Commerce Studio"
     auth_email_from_address: str = ""
+    announcement_admin_emails: list[str] = Field(default_factory=list)
     development_user_id: str = "usr_development"
     development_workspace_id: str = "ws_development"
     development_workspace_name: str = "开发工作区"
@@ -159,6 +160,25 @@ class Settings(BaseSettings):
                 pass
         return value
 
+    @field_validator("announcement_admin_emails")
+    @classmethod
+    def normalize_announcement_admin_emails(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for value in values:
+            email = value.strip().casefold()
+            local, separator, domain = email.partition("@")
+            if (
+                not local
+                or separator != "@"
+                or not domain
+                or "." not in domain
+                or any(character.isspace() for character in email)
+            ):
+                raise ValueError("announcement admin emails must be valid addresses")
+            if email not in normalized:
+                normalized.append(email)
+        return normalized
+
     def validate_runtime_safety(self) -> None:
         required_smtp = {
             "POLARIS_AUTH_SMTP_HOST": self.auth_smtp_host,
@@ -189,6 +209,10 @@ class Settings(BaseSettings):
             raise RuntimeError("production SuperTokens Core API key is required")
         if not smtp_configured:
             raise RuntimeError("production transaction email SMTP is required")
+        if not self.announcement_admin_emails:
+            raise RuntimeError(
+                "production announcement admin email allowlist is required"
+            )
         forbidden_secrets = {
             "polaris_minio_dev_only",
             "development-access-url-secret-change-me",

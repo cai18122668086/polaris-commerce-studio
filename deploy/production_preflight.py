@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from generate_production_env import (
+    AUTHORIZATION_KEYS,
     IMAGE_KEYS,
     INFRA_SECRET_KEYS,
     PROVIDER_KEYS,
@@ -24,8 +25,16 @@ from generate_production_env import (
 )
 
 EXPECTED_SERVICES = {
-    "postgres", "redis", "minio", "supertokens", "migrate", "api", "worker",
-    "dispatcher", "frontend", "caddy",
+    "postgres",
+    "redis",
+    "minio",
+    "supertokens",
+    "migrate",
+    "api",
+    "worker",
+    "dispatcher",
+    "frontend",
+    "caddy",
 }
 EXPECTED_NETWORKS = {"edge", "backend", "ingress", "mail-egress", "provider-egress"}
 EXPECTED_EXTERNAL_VOLUMES = {
@@ -51,7 +60,9 @@ EXPECTED_SERVICE_NETWORKS = {
     "caddy": {"edge", "ingress"},
 }
 RELEASE_SHA = re.compile(r"^[0-9a-f]{40}$")
-DIGEST_REFERENCE = re.compile(r"^[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$")
+DIGEST_REFERENCE = re.compile(
+    r"^[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$"
+)
 APP_REFERENCE = re.compile(r"^polaris/(backend|frontend):([0-9a-f]{40})$")
 MARKER = re.compile(r"<[^>]+>|replace-with|change-me|dev_only", re.IGNORECASE)
 SUPERTOKENS_REFERENCE = (
@@ -59,12 +70,24 @@ SUPERTOKENS_REFERENCE = (
     "4516ec7c00b8fb2a773012694d8ebf03b54799d59cfc974160590f16d235ce72"
 )
 REQUIRED_ENV_KEYS = {
-    "POLARIS_RELEASE_SHA", "POLARIS_BACKEND_IMAGE", "POLARIS_FRONTEND_IMAGE",
-    *IMAGE_KEYS, "POLARIS_SUPERTOKENS_IMAGE", *INFRA_SECRET_KEYS,
-    "POLARIS_SUPERTOKENS_API_KEY", "POLARIS_AUTH_SMTP_HOST", "POLARIS_AUTH_SMTP_PORT",
-    "POLARIS_AUTH_SMTP_USERNAME", "POLARIS_AUTH_SMTP_PASSWORD", "POLARIS_AUTH_SMTP_SECURE",
-    "POLARIS_AUTH_EMAIL_FROM_NAME", "POLARIS_AUTH_EMAIL_FROM_ADDRESS", "POLARIS_ACME_EMAIL",
-    "POLARIS_S3_BUCKET", *PROVIDER_KEYS,
+    "POLARIS_RELEASE_SHA",
+    "POLARIS_BACKEND_IMAGE",
+    "POLARIS_FRONTEND_IMAGE",
+    *IMAGE_KEYS,
+    "POLARIS_SUPERTOKENS_IMAGE",
+    *INFRA_SECRET_KEYS,
+    "POLARIS_SUPERTOKENS_API_KEY",
+    "POLARIS_AUTH_SMTP_HOST",
+    "POLARIS_AUTH_SMTP_PORT",
+    "POLARIS_AUTH_SMTP_USERNAME",
+    "POLARIS_AUTH_SMTP_PASSWORD",
+    "POLARIS_AUTH_SMTP_SECURE",
+    "POLARIS_AUTH_EMAIL_FROM_NAME",
+    "POLARIS_AUTH_EMAIL_FROM_ADDRESS",
+    "POLARIS_ACME_EMAIL",
+    "POLARIS_S3_BUCKET",
+    *AUTHORIZATION_KEYS,
+    *PROVIDER_KEYS,
 }
 SENSITIVE_MIN_LENGTH = {
     "POLARIS_POSTGRES_PASSWORD": 24,
@@ -131,19 +154,45 @@ def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> lis
         value = env.get(key, "")
         match = APP_REFERENCE.fullmatch(value)
         if not match or match.group(2) != sha:
-            errors.append(f"{key} must be an immutable application image matching POLARIS_RELEASE_SHA")
+            errors.append(
+                f"{key} must be an immutable application image matching POLARIS_RELEASE_SHA"
+            )
     for key in (*IMAGE_KEYS, "POLARIS_SUPERTOKENS_IMAGE"):
         if not DIGEST_REFERENCE.fullmatch(env.get(key, "")):
             errors.append(f"{key} must be pinned by sha256 digest")
     if env.get("POLARIS_SUPERTOKENS_IMAGE") != SUPERTOKENS_REFERENCE:
-        errors.append("POLARIS_SUPERTOKENS_IMAGE must be the approved Core v12.0.10 linux/amd64 manifest")
+        errors.append(
+            "POLARIS_SUPERTOKENS_IMAGE must be the approved Core v12.0.10 linux/amd64 manifest"
+        )
     for key, minimum in SENSITIVE_MIN_LENGTH.items():
         if len(env.get(key, "")) < minimum:
             errors.append(f"{key} is shorter than the production minimum")
     if not re.fullmatch(r"[A-Za-z0-9=-]+", env.get("POLARIS_SUPERTOKENS_API_KEY", "")):
-        errors.append("POLARIS_SUPERTOKENS_API_KEY contains characters rejected by Core v12.0.10")
+        errors.append(
+            "POLARIS_SUPERTOKENS_API_KEY contains characters rejected by Core v12.0.10"
+        )
     if env.get("POLARIS_AUTH_EMAIL_FROM_ADDRESS") != "no-reply@mail.tengliapi.xyz":
-        errors.append("POLARIS_AUTH_EMAIL_FROM_ADDRESS must be no-reply@mail.tengliapi.xyz")
+        errors.append(
+            "POLARIS_AUTH_EMAIL_FROM_ADDRESS must be no-reply@mail.tengliapi.xyz"
+        )
+    admin_emails_value = env.get("POLARIS_ANNOUNCEMENT_ADMIN_EMAILS", "")
+    try:
+        admin_emails = json.loads(admin_emails_value)
+    except json.JSONDecodeError:
+        admin_emails = None
+    if not isinstance(admin_emails, list) or not admin_emails:
+        errors.append(
+            "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS must be a non-empty JSON array"
+        )
+    elif any(
+        not isinstance(email, str)
+        or email != email.strip().casefold()
+        or re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) is None
+        for email in admin_emails
+    ) or len(set(admin_emails)) != len(admin_emails):
+        errors.append(
+            "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS must contain unique normalized emails"
+        )
     if "@" not in env.get("POLARIS_ACME_EMAIL", ""):
         errors.append("POLARIS_ACME_EMAIL must be a valid contact email")
     try:
@@ -163,9 +212,25 @@ def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> lis
         if env.get(key, "") not in {"true", "false"}:
             errors.append(f"{key} must be exactly true or false")
     if base is not None:
-        changed = [key for key in PROVIDER_KEYS if key in base and env.get(key) != base.get(key)]
+        changed_authorization = [
+            key
+            for key in AUTHORIZATION_KEYS
+            if key in base and env.get(key) != base.get(key)
+        ]
+        if changed_authorization:
+            errors.append(
+                "Authorization settings changed during deployment: "
+                + ", ".join(changed_authorization)
+            )
+        changed = [
+            key
+            for key in PROVIDER_KEYS
+            if key in base and env.get(key) != base.get(key)
+        ]
         if changed:
-            errors.append("Provider settings changed during auth cutover: " + ", ".join(changed))
+            errors.append(
+                "Provider settings changed during auth cutover: " + ", ".join(changed)
+            )
     return errors
 
 
@@ -188,15 +253,30 @@ def validate_compose(compose: str) -> list[str]:
         if port not in caddy:
             errors.append(f"caddy is missing production port {port}")
     supertokens = services.get("supertokens", "")
-    for required in ("API_KEYS:", "POSTGRESQL_CONNECTION_URI:", "http://127.0.0.1:3567/hello"):
+    for required in (
+        "API_KEYS:",
+        "POSTGRESQL_CONNECTION_URI:",
+        "http://127.0.0.1:3567/hello",
+    ):
         if required not in supertokens:
             errors.append(f"supertokens service is missing {required}")
-    if "POLARIS_ENVIRONMENT: production" not in compose or "POLARIS_AUTH_MODE: external" not in compose:
-        errors.append("production Compose must force production/external authentication")
-    if "POLARIS_SUPERTOKENS_COOKIE_SECURE: \"true\"" not in compose:
+    if (
+        "POLARIS_ENVIRONMENT: production" not in compose
+        or "POLARIS_AUTH_MODE: external" not in compose
+    ):
+        errors.append(
+            "production Compose must force production/external authentication"
+        )
+    if 'POLARIS_SUPERTOKENS_COOKIE_SECURE: "true"' not in compose:
         errors.append("production Compose must force Secure authentication cookies")
-    if 'POLARIS_CORS_ORIGINS: \'["https://www.tengliapi.xyz"]\'' not in compose:
-        errors.append("production Compose must use the exact same-origin CORS allowlist")
+    if "POLARIS_CORS_ORIGINS: '[\"https://www.tengliapi.xyz\"]'" not in compose:
+        errors.append(
+            "production Compose must use the exact same-origin CORS allowlist"
+        )
+    if "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS:" not in compose:
+        errors.append(
+            "production Compose must require the announcement admin allowlist"
+        )
     volumes = parse_mapping_blocks(compose, "volumes")
     for volume, expected_name in EXPECTED_EXTERNAL_VOLUMES.items():
         block = volumes.get(volume, "")
@@ -244,12 +324,16 @@ def dockerfile_copy_sources(dockerfile: str) -> list[tuple[str, list[str], str]]
                 break
             payload = remainder.lstrip()
         try:
-            arguments = json.loads(payload) if payload.startswith("[") else shlex.split(payload)
+            arguments = (
+                json.loads(payload) if payload.startswith("[") else shlex.split(payload)
+            )
         except (json.JSONDecodeError, ValueError):
             continue
         if not isinstance(arguments, list) or len(arguments) < 2:
             continue
-        result.append((instruction, [str(item) for item in arguments[:-1]], str(arguments[-1])))
+        result.append(
+            (instruction, [str(item) for item in arguments[:-1]], str(arguments[-1]))
+        )
     return result
 
 
@@ -290,15 +374,19 @@ def validate_backend_dockerfile(dockerfile: str) -> list[str]:
 def validate_caddy(caddy: str) -> list[str]:
     errors: list[str] = []
     for required in (
-        "www.tengliapi.xyz {", "reverse_proxy api:8000",
-        "reverse_proxy frontend:3000", "Strict-Transport-Security",
+        "www.tengliapi.xyz {",
+        "reverse_proxy api:8000",
+        "reverse_proxy frontend:3000",
+        "Strict-Transport-Security",
     ):
         if required not in caddy:
             errors.append(f"production Caddyfile is missing {required}")
     if "auto_https off" in caddy:
         errors.append("production Caddyfile must not disable automatic HTTPS")
     if "\ntengliapi.xyz {" in caddy:
-        errors.append("production Caddyfile must not claim the apex domain before its DNS is approved")
+        errors.append(
+            "production Caddyfile must not claim the apex domain before its DNS is approved"
+        )
     if ":8080" in caddy:
         errors.append("production Caddyfile must not use the internal-only :8080 site")
     return errors
@@ -315,8 +403,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--base-env", type=Path)
-    parser.add_argument("--compose-file", type=Path, default=Path(__file__).with_name("compose.production.yml"))
-    parser.add_argument("--caddyfile", type=Path, default=Path(__file__).with_name("Caddyfile.production"))
+    parser.add_argument(
+        "--compose-file",
+        type=Path,
+        default=Path(__file__).with_name("compose.production.yml"),
+    )
+    parser.add_argument(
+        "--caddyfile",
+        type=Path,
+        default=Path(__file__).with_name("Caddyfile.production"),
+    )
     parser.add_argument(
         "--backend-dockerfile",
         type=Path,
@@ -346,7 +442,9 @@ def main() -> int:
         for error in errors:
             print(f"BLOCKED: {error}", file=sys.stderr)
         return 2
-    print("PASS: production authentication deployment preflight completed without displaying secrets")
+    print(
+        "PASS: production authentication deployment preflight completed without displaying secrets"
+    )
     return 0
 
 

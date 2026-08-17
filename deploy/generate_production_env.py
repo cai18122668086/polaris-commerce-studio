@@ -37,6 +37,7 @@ INFRA_SECRET_KEYS = (
     "POLARIS_MINIO_ROOT_PASSWORD",
     "POLARIS_ACCESS_URL_SECRET",
 )
+AUTHORIZATION_KEYS = ("POLARIS_ANNOUNCEMENT_ADMIN_EMAILS",)
 PROVIDER_KEYS = (
     "POLARIS_TASK_RUNNER",
     "POLARIS_PROVIDER_QUOTA_ENABLED",
@@ -132,7 +133,9 @@ def build_production_env(
     supertokens_api_key: str | None = None,
 ) -> dict[str, str]:
     if not RELEASE_SHA.fullmatch(release_sha):
-        raise ValueError("release SHA must be exactly 40 lowercase hexadecimal characters")
+        raise ValueError(
+            "release SHA must be exactly 40 lowercase hexadecimal characters"
+        )
     for name, value in {
         "SMTP host": smtp_host,
         "SMTP username": smtp_username,
@@ -149,7 +152,10 @@ def build_production_env(
     result: dict[str, str] = {}
     missing_images = [key for key in IMAGE_KEYS if not base.get(key)]
     if missing_images:
-        raise ValueError("base env is missing approved image references: " + ", ".join(missing_images))
+        raise ValueError(
+            "base env is missing approved image references: "
+            + ", ".join(missing_images)
+        )
     for key in IMAGE_KEYS:
         result[key] = base[key]
 
@@ -164,6 +170,14 @@ def build_production_env(
 
     for key in INFRA_SECRET_KEYS:
         result[key] = base.get(key) or _random_secret()
+    missing_authorization = [key for key in AUTHORIZATION_KEYS if not base.get(key)]
+    if missing_authorization:
+        raise ValueError(
+            "base env is missing authorization configuration: "
+            + ", ".join(missing_authorization)
+        )
+    for key in AUTHORIZATION_KEYS:
+        result[key] = base[key]
     result["POLARIS_SUPERTOKENS_API_KEY"] = (
         supertokens_api_key or _random_supertokens_api_key()
     )
@@ -196,17 +210,35 @@ def quote_env_value(value: str) -> str:
 
 def render_env(values: dict[str, str]) -> str:
     groups = (
-        ("Release and immutable images", (
-            "POLARIS_RELEASE_SHA", "POLARIS_BACKEND_IMAGE", "POLARIS_FRONTEND_IMAGE",
-            *IMAGE_KEYS, "POLARIS_SUPERTOKENS_IMAGE",
-        )),
+        (
+            "Release and immutable images",
+            (
+                "POLARIS_RELEASE_SHA",
+                "POLARIS_BACKEND_IMAGE",
+                "POLARIS_FRONTEND_IMAGE",
+                *IMAGE_KEYS,
+                "POLARIS_SUPERTOKENS_IMAGE",
+            ),
+        ),
         ("Server-local secrets", (*INFRA_SECRET_KEYS, "POLARIS_SUPERTOKENS_API_KEY")),
-        ("Transaction email and TLS", (
-            "POLARIS_AUTH_SMTP_HOST", "POLARIS_AUTH_SMTP_PORT", "POLARIS_AUTH_SMTP_USERNAME",
-            "POLARIS_AUTH_SMTP_PASSWORD", "POLARIS_AUTH_SMTP_SECURE",
-            "POLARIS_AUTH_EMAIL_FROM_NAME", "POLARIS_AUTH_EMAIL_FROM_ADDRESS", "POLARIS_ACME_EMAIL",
-        )),
-        ("Storage and preserved Provider configuration", ("POLARIS_S3_BUCKET", *PROVIDER_KEYS)),
+        ("Authorization allowlists", AUTHORIZATION_KEYS),
+        (
+            "Transaction email and TLS",
+            (
+                "POLARIS_AUTH_SMTP_HOST",
+                "POLARIS_AUTH_SMTP_PORT",
+                "POLARIS_AUTH_SMTP_USERNAME",
+                "POLARIS_AUTH_SMTP_PASSWORD",
+                "POLARIS_AUTH_SMTP_SECURE",
+                "POLARIS_AUTH_EMAIL_FROM_NAME",
+                "POLARIS_AUTH_EMAIL_FROM_ADDRESS",
+                "POLARIS_ACME_EMAIL",
+            ),
+        ),
+        (
+            "Storage and preserved Provider configuration",
+            ("POLARIS_S3_BUCKET", *PROVIDER_KEYS),
+        ),
     )
     lines = [
         "# Generated on the production server. Never copy this file into Git, logs,",
@@ -249,8 +281,12 @@ def _prompt_required(label: str, *, hidden: bool = False) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-env", type=Path, default=Path("/etc/polaris/polaris.env"))
-    parser.add_argument("--output", type=Path, default=Path("/etc/polaris/polaris.production.env"))
+    parser.add_argument(
+        "--base-env", type=Path, default=Path("/etc/polaris/polaris.env")
+    )
+    parser.add_argument(
+        "--output", type=Path, default=Path("/etc/polaris/polaris.production.env")
+    )
     parser.add_argument("--release-sha", required=True)
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
@@ -267,7 +303,11 @@ def main() -> int:
         port_raw = input("SMTP port [587]: ").strip() or "587"
         smtp_username = _prompt_required("SMTP username")
         smtp_password = _prompt_required("SMTP password", hidden=True)
-        secure_raw = input("Implicit TLS (normally true only for port 465) [false]: ").strip().lower()
+        secure_raw = (
+            input("Implicit TLS (normally true only for port 465) [false]: ")
+            .strip()
+            .lower()
+        )
         if secure_raw not in {"", "false", "no", "n", "true", "yes", "y"}:
             raise ValueError("implicit TLS answer must be true/false or yes/no")
         smtp_secure = secure_raw in {"true", "yes", "y"}
@@ -286,7 +326,9 @@ def main() -> int:
     except (ValueError, FileExistsError, OSError) as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2
-    print(f"Created protected production env file at {args.output} (values not displayed).")
+    print(
+        f"Created protected production env file at {args.output} (values not displayed)."
+    )
     return 0
 
 

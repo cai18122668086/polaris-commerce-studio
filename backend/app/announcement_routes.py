@@ -16,6 +16,7 @@ from .announcement_schemas import (
     AnnouncementUpdate,
 )
 from .auth import Principal, get_principal
+from .config import Settings
 from .database import get_session
 from .domain import AssetLifecycleStatus, MembershipRole, MembershipStatus
 from .errors import ApiError
@@ -76,7 +77,18 @@ def _active_filters(now: datetime) -> tuple[ColumnElement[bool], ...]:
     )
 
 
-def _is_announcement_admin(principal: Principal, session: Session) -> bool:
+def _is_announcement_admin(
+    principal: Principal,
+    session: Session,
+    settings: Settings,
+) -> bool:
+    email = principal.email.strip().casefold() if principal.email else None
+    if (
+        not principal.email_verified
+        or email is None
+        or email not in settings.announcement_admin_emails
+    ):
+        return False
     return (
         session.scalar(
             select(WorkspaceMemberRecord.user_id)
@@ -92,10 +104,11 @@ def _is_announcement_admin(principal: Principal, session: Session) -> bool:
 
 
 def require_announcement_admin(
+    request: Request,
     principal: PrincipalDependency,
     session: SessionDependency,
 ) -> Principal:
-    if not _is_announcement_admin(principal, session):
+    if not _is_announcement_admin(principal, session, request.app.state.settings):
         raise ApiError(
             status.HTTP_403_FORBIDDEN,
             "ANNOUNCEMENT_ADMIN_REQUIRED",
@@ -236,11 +249,16 @@ async def get_announcement_image(
     tags=["announcements-admin"],
 )
 def get_announcement_admin_access(
+    request: Request,
     principal: PrincipalDependency,
     session: SessionDependency,
 ) -> AnnouncementAdminAccessResponse:
     return AnnouncementAdminAccessResponse(
-        can_manage=_is_announcement_admin(principal, session)
+        can_manage=_is_announcement_admin(
+            principal,
+            session,
+            request.app.state.settings,
+        )
     )
 
 

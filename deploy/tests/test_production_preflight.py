@@ -43,10 +43,16 @@ class ProductionPreflightTests(unittest.TestCase):
             "POLARIS_AUTH_SMTP_SECURE": "false",
             "POLARIS_AUTH_EMAIL_FROM_NAME": "Polaris Commerce Studio",
             "POLARIS_AUTH_EMAIL_FROM_ADDRESS": "no-reply@mail.tengliapi.xyz",
+            "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS": '["admin@example.com"]',
             "POLARIS_ACME_EMAIL": "ops@tengliapi.xyz",
             "POLARIS_S3_BUCKET": "polaris-production",
         }
-        env.update({key: f"example/{key.lower()}:approved@sha256:{digest}" for key in IMAGE_KEYS})
+        env.update(
+            {
+                key: f"example/{key.lower()}:approved@sha256:{digest}"
+                for key in IMAGE_KEYS
+            }
+        )
         defaults = {
             "POLARIS_TASK_RUNNER": "mock",
             "POLARIS_PROVIDER_QUOTA_ENABLED": "true",
@@ -136,6 +142,25 @@ class ProductionPreflightTests(unittest.TestCase):
         errors = validate_env(env)
         self.assertTrue(any("characters rejected" in error for error in errors))
 
+    def test_announcement_admin_allowlist_is_required_and_normalized(self) -> None:
+        invalid_values = (
+            "[]",
+            '"admin@example.com"',
+            '["Admin@example.com"]',
+            '["admin@example.com", "admin@example.com"]',
+            '["not-an-email"]',
+        )
+        for value in invalid_values:
+            with self.subTest(value=value):
+                env = self.valid_env()
+                env["POLARIS_ANNOUNCEMENT_ADMIN_EMAILS"] = value
+                self.assertTrue(
+                    any(
+                        "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS" in error
+                        for error in validate_env(env)
+                    )
+                )
+
     def test_template_markers_and_short_secrets_fail(self) -> None:
         env = self.valid_env()
         env["POLARIS_SUPERTOKENS_API_KEY"] = "<GENERATE_ON_SERVER>"
@@ -162,7 +187,26 @@ class ProductionPreflightTests(unittest.TestCase):
         base = {key: env[key] for key in PROVIDER_KEYS}
         env["POLARIS_TASK_RUNNER"] = "tengli"
         errors = validate_env(env, base)
-        self.assertIn("Provider settings changed during auth cutover: POLARIS_TASK_RUNNER", errors)
+        self.assertIn(
+            "Provider settings changed during auth cutover: POLARIS_TASK_RUNNER", errors
+        )
+
+    def test_announcement_admin_drift_is_detected_without_values(self) -> None:
+        env = self.valid_env()
+        base = {
+            "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS": env[
+                "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS"
+            ]
+        }
+        env["POLARIS_ANNOUNCEMENT_ADMIN_EMAILS"] = '["other@example.com"]'
+
+        errors = validate_env(env, base)
+
+        self.assertIn(
+            "Authorization settings changed during deployment: "
+            "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS",
+            errors,
+        )
 
 
 if __name__ == "__main__":

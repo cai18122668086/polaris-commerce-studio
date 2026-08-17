@@ -23,7 +23,9 @@ from generate_production_env import (
 class ProductionEnvGeneratorTests(unittest.TestCase):
     def base_env(self) -> dict[str, str]:
         digest = "a" * 64
-        base = {key: f"example/{key.lower()}:approved@sha256:{digest}" for key in IMAGE_KEYS}
+        base = {
+            key: f"example/{key.lower()}:approved@sha256:{digest}" for key in IMAGE_KEYS
+        }
         base.update(
             {
                 "POLARIS_POSTGRES_PASSWORD": "existing-postgres-secret-123456789",
@@ -31,6 +33,7 @@ class ProductionEnvGeneratorTests(unittest.TestCase):
                 "POLARIS_MINIO_ROOT_USER": "existing-minio-user",
                 "POLARIS_MINIO_ROOT_PASSWORD": "existing-minio-secret-123456789012",
                 "POLARIS_ACCESS_URL_SECRET": "existing-access-secret-12345678901234567890",
+                "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS": '["admin@example.com"]',
                 "POLARIS_S3_BUCKET": "existing-assets",
                 "POLARIS_TASK_RUNNER": "tengli",
                 "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED": "true",
@@ -53,15 +56,37 @@ class ProductionEnvGeneratorTests(unittest.TestCase):
             acme_email="ops@tengliapi.xyz",
             supertokens_api_key="s" * 64,
         )
-        self.assertEqual(values["POLARIS_POSTGRES_PASSWORD"], base["POLARIS_POSTGRES_PASSWORD"])
-        self.assertEqual(values["POLARIS_TASK_RUNNER"], "tengli")
         self.assertEqual(
-            values["POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED"], "true"
+            values["POLARIS_POSTGRES_PASSWORD"], base["POLARIS_POSTGRES_PASSWORD"]
         )
+        self.assertEqual(values["POLARIS_TASK_RUNNER"], "tengli")
+        self.assertEqual(values["POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED"], "true")
         self.assertEqual(values["POLARIS_TENGLI_API_KEY"], "existing-provider-key")
         self.assertEqual(values["POLARIS_SUPERTOKENS_IMAGE"], SUPERTOKENS_IMAGE)
-        self.assertEqual(values["POLARIS_AUTH_EMAIL_FROM_ADDRESS"], "no-reply@mail.tengliapi.xyz")
+        self.assertEqual(
+            values["POLARIS_AUTH_EMAIL_FROM_ADDRESS"], "no-reply@mail.tengliapi.xyz"
+        )
         self.assertEqual(values["POLARIS_BACKEND_IMAGE"], f"polaris/backend:{sha}")
+        self.assertEqual(
+            values["POLARIS_ANNOUNCEMENT_ADMIN_EMAILS"],
+            base["POLARIS_ANNOUNCEMENT_ADMIN_EMAILS"],
+        )
+
+    def test_build_requires_announcement_admin_allowlist(self) -> None:
+        base = self.base_env()
+        base.pop("POLARIS_ANNOUNCEMENT_ADMIN_EMAILS")
+        with self.assertRaisesRegex(ValueError, "authorization configuration"):
+            build_production_env(
+                base,
+                release_sha="f" * 40,
+                smtp_host="smtp.example.com",
+                smtp_port=587,
+                smtp_username="smtp-user",
+                smtp_password="smtp-secret",
+                smtp_secure=False,
+                acme_email="ops@tengliapi.xyz",
+                supertokens_api_key="k" * 64,
+            )
 
     def test_build_defaults_model_pose_provider_to_disabled_when_missing(self) -> None:
         base = self.base_env()

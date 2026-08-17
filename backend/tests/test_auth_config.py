@@ -21,6 +21,7 @@ def production_settings(**overrides: object) -> Settings:
         "auth_smtp_password": "smtp-password",
         "auth_email_from_name": "Polaris Commerce Studio",
         "auth_email_from_address": "no-reply@mail.tengliapi.xyz",
+        "announcement_admin_emails": ["admin@example.com"],
         "s3_secret_key": "production-s3-secret",
         "access_url_secret": "production-access-url-secret",
     }
@@ -55,4 +56,26 @@ def test_production_requires_supertokens_core_api_key() -> None:
     settings = production_settings(supertokens_api_key="")
 
     with pytest.raises(RuntimeError, match="Core API key is required"):
+        settings.validate_runtime_safety()
+
+
+def test_announcement_admin_emails_are_normalized_and_deduplicated() -> None:
+    settings = Settings(
+        announcement_admin_emails=[
+            " Admin@Example.com ",
+            "admin@example.com",
+            "second@example.com",
+        ]
+    )
+
+    assert settings.announcement_admin_emails == [
+        "admin@example.com",
+        "second@example.com",
+    ]
+
+
+def test_production_requires_announcement_admin_allowlist() -> None:
+    settings = production_settings(announcement_admin_emails=[])
+
+    with pytest.raises(RuntimeError, match="admin email allowlist is required"):
         settings.validate_runtime_safety()

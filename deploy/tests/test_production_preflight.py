@@ -73,7 +73,7 @@ class ProductionPreflightTests(unittest.TestCase):
             "POLARIS_TENGLI_MONTHLY_BUDGET_USD": "0",
             "POLARIS_TENGLI_DAILY_REQUEST_LIMIT": "0",
             "POLARIS_TENGLI_PLANNER_RESERVE_MICROS": "250000",
-            "POLARIS_XINGHE_CONCURRENCY": "2",
+            "POLARIS_XINGHE_CONCURRENCY": "6",
             "POLARIS_XINGHE_SKILL_ROOT": "/app/skill_sources/xinghe-ecommerce-detail",
         }
         env.update(defaults)
@@ -87,6 +87,20 @@ class ProductionPreflightTests(unittest.TestCase):
         self.assertEqual(validate_caddy(caddy), [])
         self.assertEqual(validate_backend_dockerfile(dockerfile), [])
         self.assertEqual(validate_env(self.valid_env()), [])
+
+    def test_repository_compose_files_use_six_way_concurrency(self) -> None:
+        compose_files = (
+            DEPLOY.parent / "compose.yaml",
+            DEPLOY / "compose.internal.yml",
+            DEPLOY / "compose.production.yml",
+        )
+        for compose_file in compose_files:
+            with self.subTest(compose_file=compose_file.name):
+                compose = compose_file.read_text(encoding="utf-8")
+                self.assertIn("POLARIS_XINGHE_CONCURRENCY:-6", compose)
+                self.assertIn("--concurrency=6", compose)
+                self.assertNotIn("POLARIS_XINGHE_CONCURRENCY:-2", compose)
+                self.assertNotIn("--concurrency=2", compose)
 
     def test_env_generator_tracks_every_compose_provider_flag(self) -> None:
         compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")

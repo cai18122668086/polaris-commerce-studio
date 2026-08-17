@@ -562,7 +562,7 @@ class SourcePreflightTests(unittest.TestCase):
             "POLARIS_TENGLI_MONTHLY_BUDGET_USD": "10",
             "POLARIS_TENGLI_DAILY_REQUEST_LIMIT": "20",
             "POLARIS_TENGLI_PLANNER_RESERVE_MICROS": "250000",
-            "POLARIS_XINGHE_CONCURRENCY": "2",
+            "POLARIS_XINGHE_CONCURRENCY": "6",
         }
         values.update({key: "false" for key in PREFLIGHT.PROVIDER_FLAG_KEYS})
         return values
@@ -610,6 +610,19 @@ class SourcePreflightTests(unittest.TestCase):
             POLARIS_PROVIDER_QUOTA_ENABLED="true",
         )
         self.assertEqual(errors, [])
+
+    def test_tengli_runner_rejects_non_six_concurrency(self) -> None:
+        for concurrency in ("1", "2"):
+            with self.subTest(concurrency=concurrency):
+                errors = self.validate_synthetic_deployment(
+                    POLARIS_XINGHE_CONCURRENCY=concurrency,
+                )
+                self.assertTrue(
+                    any(
+                        "POLARIS_XINGHE_CONCURRENCY must be exactly 6" in item
+                        for item in errors
+                    )
+                )
 
     def test_zero_recurring_provider_limits_mean_unlimited(self) -> None:
         errors = self.validate_synthetic_deployment(

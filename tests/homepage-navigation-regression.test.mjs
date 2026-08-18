@@ -245,6 +245,7 @@ test("Aurora domestic main image has discoverable entrypoints across the product
   const toolsPage = await utf8("app/tools/page.tsx");
   const dashboard = await utf8("app/dashboard/page.tsx");
   const help = await utf8("app/help/page.tsx");
+  const helpContent = await utf8("lib/help-center-content.ts");
 
   assert.equal(FEATURE_REGISTRY.find((feature) => feature.id === "domestic-main-image")?.featured, true);
   assert.doesNotMatch(toolDirectory, /home-aurora-entry/);
@@ -253,8 +254,8 @@ test("Aurora domestic main image has discoverable entrypoints across the product
   assert.match(navigation, /pathname === item\.href \|\| pathname\.startsWith/);
   assert.match(toolsPage, /FEATURE_REGISTRY/);
   assert.match(dashboard, new RegExp(route.replaceAll("/", "\\/")));
-  assert.match(help, new RegExp(route.replaceAll("/", "\\/")));
-  assert.match(help, /1 张搜索主图和 5 张轮播图/);
+  assert.match(help, /HELP_FAQS/);
+  assert.match(helpContent, /1 张搜索主图和 5 张轮播图/);
 });
 
 test("homepage and navigation public copy no longer exposes internal implementation wording", async () => {
@@ -319,3 +320,4 @@ test("the exact two desktop and two mobile homepage banners are present", async 
   assert.match(carousel, /<picture>/);
   assert.match(carousel, /max-width:\s*720px/);
 });
+

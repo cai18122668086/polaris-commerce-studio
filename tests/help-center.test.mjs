@@ -4,37 +4,37 @@ import test from "node:test";
 
 const utf8 = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("help center search, category filters, anchors, and FAQ controls are functional", async () => {
+test("help center search suggests matching FAQs and opens the selected answer", async () => {
   const page = await utf8("app/help/page.tsx");
 
-  assert.match(page, /value=\{query\}/);
-  assert.match(page, /onChange=\{\(event\) => setQuery\(event\.target\.value\)\}/);
+  assert.match(page, /value=\{searchQuery\}/);
+  assert.match(page, /onChange=\{\(event\) => setSearchQuery\(event\.target\.value\)\}/);
   assert.match(page, /event\.metaKey \|\| event\.ctrlKey/);
-  assert.match(page, /filteredTopics/);
   assert.match(page, /filteredFaqs/);
-  assert.match(page, /setCategory\(item\.id\)/);
-  assert.match(page, /aria-pressed=\{category === item\.id\}/);
-  assert.match(page, /href="#quick-start"/);
-  assert.match(page, /href="#all-features"/);
-  assert.match(page, /href="#guides"/);
-  assert.match(page, /href="#faq"/);
-  assert.match(page, /href="#support"/);
-  assert.match(page, /aria-expanded=\{open\}/);
-  assert.match(page, /没有找到完全匹配的内容/);
+  assert.match(page, /role="listbox"/);
+  assert.match(page, /selectSearchResult\(index\)/);
+  assert.match(page, /scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
+  assert.match(page, /如何上传一句话改图的原始图片/);
+  assert.match(page, /上传图片支持哪些格式和大小/);
+  assert.match(page, /上传后图片没有显示怎么办/);
+  assert.match(page, /上传多角度商品图时应该如何分组/);
 });
 
-test("help center renders the live feature registry instead of a copied feature list", async () => {
+test("help center removes the crowded quick-start and feature-picker sections and uses a guide dialog", async () => {
   const page = await utf8("app/help/page.tsx");
 
-  assert.match(page, /import \{ FEATURE_GROUPS \} from "@\/lib\/feature-registry"/);
-  assert.match(page, /FEATURE_GROUPS\.map/);
-  assert.match(page, /group\.features\.map/);
-  assert.match(page, /feature\.route/);
-  assert.match(page, /feature\.inputHint/);
-  assert.match(page, /feature\.outputHint/);
+  assert.doesNotMatch(page, /id="quick-start"/);
+  assert.doesNotMatch(page, /id="all-features"/);
+  assert.doesNotMatch(page, /FEATURE_GROUPS/);
+  assert.match(page, /setGuideOpen\(true\)/);
+  assert.match(page, /aria-labelledby="guide-modal-title"/);
+  assert.match(page, /从上传到下载，完成一次创作/);
+  assert.match(page, /准备并上传素材/);
+  assert.match(page, /明确需要修改的范围/);
+  assert.match(page, /提交后查看任务状态/);
 });
 
-test("help center states the final 30-day retention rules and real support channel", async () => {
+test("help center preserves retention guidance and uses online WeChat contact", async () => {
   const [page, content] = await Promise.all([
     utf8("app/help/page.tsx"),
     utf8("lib/help-center-content.ts"),
@@ -46,11 +46,11 @@ test("help center states the final 30-day retention rules and real support chann
   assert.match(combined, /终态任务记录，从任务结束起保存 30 天/);
   assert.match(combined, /草稿从创建起保存 30 天/);
   assert.match(combined, /到期后相关内容不可恢复/);
-  assert.match(combined, /1474953130@qq\.com/);
-  assert.match(page, /mailto:/);
-  assert.doesNotMatch(combined, /篇指南/);
-  assert.doesNotMatch(combined, /平均 5 分钟/);
-  assert.doesNotMatch(combined, /联系在线支持/);
+  assert.match(page, /在线联系/);
+  assert.match(page, /contact-wechat-qr\.jpg/);
+  assert.match(page, /扫码添加企业微信/);
+  assert.doesNotMatch(page, /mailto:/);
+  assert.doesNotMatch(page, /发送问题邮件/);
 });
 
 test("mobile primary navigation includes a direct help-center entry", async () => {

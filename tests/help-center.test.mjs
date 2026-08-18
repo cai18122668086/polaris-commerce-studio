@@ -28,10 +28,10 @@ test("help center removes the crowded quick-start and feature-picker sections an
   assert.doesNotMatch(page, /FEATURE_GROUPS/);
   assert.match(page, /setGuideOpen\(true\)/);
   assert.match(page, /aria-labelledby="guide-modal-title"/);
-  assert.match(page, /从上传到下载，完成一次创作/);
-  assert.match(page, /准备并上传素材/);
-  assert.match(page, /明确需要修改的范围/);
-  assert.match(page, /提交后查看任务状态/);
+  assert.match(page, /唯一需要涂选/);
+  assert.match(page, /不需要手动涂选/);
+  assert.match(page, /详情图 \/ 亚马逊套图/);
+  assert.match(page, /按功能完成创作/);
 });
 
 test("help center preserves retention guidance and uses online WeChat contact", async () => {

@@ -4300,3 +4300,31 @@ select:focus-visible {
     min-height: 82px;
   }
 }
+
+/* Shared desktop sidebar: viewport-aligned and independently scrollable. */
+@media (min-width: 1081px) {
+  .app-shell__body {
+    align-items: stretch;
+    background: #fff;
+  }
+
+  .tool-sidebar {
+    position: sticky;
+    top: var(--nav-height);
+    height: calc(100vh - var(--nav-height)) !important;
+    min-height: 0;
+    max-height: calc(100vh - var(--nav-height));
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    align-self: flex-start;
+  }
+
+  .sidebar-tip {
+    flex: 0 0 auto;
+    margin-top: 24px;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+}

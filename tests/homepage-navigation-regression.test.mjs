@@ -254,7 +254,7 @@ test("Aurora domestic main image has discoverable entrypoints across the product
   assert.match(navigation, /pathname === item\.href \|\| pathname\.startsWith/);
   assert.match(toolsPage, /FEATURE_REGISTRY/);
   assert.match(dashboard, new RegExp(route.replaceAll("/", "\\/")));
-  assert.match(help, /HELP_FAQS/);
+  assert.match(help, /const faqs: Faq\[\] = \[/);
   assert.match(helpContent, /1 张搜索主图和 5 张轮播图/);
 });
 

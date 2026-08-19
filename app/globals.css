@@ -395,7 +395,42 @@ select:focus-visible {
   display: grid;
   gap: 2px;
 }
+.nav-tool-link__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 
+.nav-tool-link.is-hot .nav-tool-link__copy {
+  padding-right: 20px;
+}
+
+.nav-tool-link__hot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  display: inline-flex;
+  color: #e94724;
+  filter:
+    drop-shadow(0 1px 2px rgb(109 29 13 / 35%))
+    drop-shadow(0 0 4px rgb(233 71 36 / 52%));
+}
+
+.nav-tool-link__hot svg {
+  display: block;
+  stroke-width: 2.5;
+}
+.mobile-nav-tool-link__hot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: block;
+  color: #e94724;
+  filter:
+    drop-shadow(0 1px 2px rgb(109 29 13 / 35%))
+    drop-shadow(0 0 4px rgb(233 71 36 / 52%));
+}
 .nav-tool-link strong {
   font-size: 12px;
 }

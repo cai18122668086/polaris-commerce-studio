@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Search, Sparkles, type LucideIcon } from "lucide-react";
+import { ArrowRight, Check, Flame, Search, Sparkles, type LucideIcon } from "lucide-react";
 
 import { HomeAiToolbox } from "@/components/home-ai-toolbox";
 import { HomeBannerCarousel } from "@/components/home-banner-carousel";
@@ -17,6 +17,7 @@ import {
   HOME_FEATURE_VISUALS,
   type HomeFeatureImage,
 } from "@/lib/home-feature-visuals";
+import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
@@ -50,7 +51,53 @@ const searchableTools = FEATURE_REGISTRY.map((feature) => {
   };
 });
 
-const featuredTools = searchableTools.filter((tool) => tool.featured);
+const featuredTools = [
+  ...searchableTools.filter((tool) => tool.featured && HOT_FEATURE_IDS.has(tool.id)),
+  ...searchableTools.filter((tool) => tool.featured && !HOT_FEATURE_IDS.has(tool.id)),
+];
+
+const RELATED_SCENARIO_RECOMMENDATIONS = [
+  {
+    pattern: /亚马逊|amazon|跨境|a\+/iu,
+    featureIds: ["amazon-visual-suite", "detail-pack", "white-background"],
+  },
+  {
+    pattern: /主图|淘宝|天猫|京东|轮播/iu,
+    featureIds: ["domestic-main-image", "scene-main", "white-background"],
+  },
+  {
+    pattern: /背景|场景|环境|光影/iu,
+    featureIds: ["change-background", "change-scene", "scene-main"],
+  },
+  {
+    pattern: /模特|服装|穿搭|姿势|试穿/iu,
+    featureIds: ["model-pose-transfer", "try-on", "change-model"],
+  },
+  {
+    pattern: /颜色|换色|配色/iu,
+    featureIds: ["change-color", "local-edit", "creative-image"],
+  },
+  {
+    pattern: /详情|套图|整套/iu,
+    featureIds: ["detail-pack", "domestic-main-image", "amazon-visual-suite"],
+  },
+] as const;
+
+function getRelatedScenarioTools(query: string) {
+  const recommendation = RELATED_SCENARIO_RECOMMENDATIONS.find(({ pattern }) =>
+    pattern.test(query),
+  );
+  const featureIds = recommendation?.featureIds ?? [
+    "local-edit",
+    "change-background",
+    "detail-pack",
+  ];
+
+  return featureIds.flatMap((featureId) => {
+    const tool = searchableTools.find((item) => item.id === featureId);
+    return tool ? [tool] : [];
+  });
+}
 
 function FeatureVisualImage({
   image,
@@ -144,6 +191,9 @@ export function ToolDirectory() {
         })
         .slice(0, 8)
     : [];
+  const relatedScenarioTools = keyword && !searchResults.length
+    ? getRelatedScenarioTools(keyword)
+    : [];
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -199,59 +249,8 @@ export function ToolDirectory() {
       <HomeBannerCarousel />
 
       <div className="focus-home__content">
-        <header className="focus-home__section-head">
-          <h2>一键直达任务</h2>
-          <p>快速定位，保留你熟悉的电商工作流程</p>
-        </header>
-
-        <div className="home-feature-grid" ref={featureGridRef}>
-          {featuredTools.map((tool) => {
-              const capability = resolveRuntimeCapability(
-                runtime.data,
-                tool.runtimeCapability,
-              );
-              const unavailable =
-                capability !== undefined &&
-                capability.availability !== "available";
-              const Icon = tool.icon;
-
-              return (
-                <Link
-                  href={tool.href}
-                  className={`home-feature-card ${tool.className}${
-                    unavailable ? " is-unavailable" : ""
-                  }`}
-                  data-feature-id={tool.id}
-                  data-feature-visual={HOME_FEATURE_VISUALS[tool.id]?.kind}
-                  data-runtime-capability={tool.runtimeCapability}
-                  data-capability-state={capability?.availability ?? "unknown"}
-                  aria-disabled={unavailable || undefined}
-                  tabIndex={unavailable ? -1 : undefined}
-                  onClick={
-                    unavailable
-                      ? (event) => {
-                          event.preventDefault();
-                        }
-                      : undefined
-                  }
-                  key={tool.id}
-                >
-                  <HomeFeatureCardArt
-                    featureId={tool.id}
-                    FallbackIcon={Icon}
-                  />
-                  <div>
-                    <strong>{tool.title}</strong>
-                    <span>{tool.description}</span>
-                    <ArrowRight size={18} />
-                  </div>
-                </Link>
-              );
-          })}
-        </div>
-
-        <div className="home-command">
-          <h2>没找到你的类目？用下面这个快速入口</h2>
+        <div className="home-command home-command--primary">
+          <h2>描述你的商品图需求，快速找到合适功能</h2>
           <p>
             <strong>全品类</strong> 都可以用
           </p>
@@ -275,7 +274,7 @@ export function ToolDirectory() {
                 } else if (event.key === "ArrowUp" && searchResults.length) {
                   event.preventDefault();
                   setActiveSearchIndex((current) => Math.max(current - 1, 0));
-                } else if (event.key === "Enter") {
+                } else if (event.key === "Enter" && searchResults.length) {
                   event.preventDefault();
                   openSearchResult(activeSearchIndex);
                 } else if (event.key === "Escape") {
@@ -308,8 +307,8 @@ export function ToolDirectory() {
             <div
               className="home-search-results"
               id="home-search-results"
-              role="listbox"
-              aria-label="功能搜索结果"
+              role={searchResults.length ? "listbox" : "region"}
+              aria-label={searchResults.length ? "功能搜索结果" : "相近场景推荐"}
             >
               {searchResults.length ? (
                 searchResults.map((tool, index) => {
@@ -355,11 +354,57 @@ export function ToolDirectory() {
                 })
               ) : (
                 <div className="home-search-empty">
-                  <Search size={20} />
-                  <strong>没有找到匹配功能</strong>
-                  <button type="button" onClick={() => setQuery("")}>
-                    清除搜索
-                  </button>
+                  <div className="home-search-empty__head">
+                    <span className="home-search-empty__icon" aria-hidden="true">
+                      <Search size={20} />
+                    </span>
+                    <div>
+                      <strong>没有找到精确匹配</strong>
+                      <p>试试下面这些相近场景</p>
+                    </div>
+                    <button type="button" onClick={() => setQuery("")}>
+                      清除搜索
+                    </button>
+                  </div>
+                  <div className="home-search-recommendations">
+                    {relatedScenarioTools.map((tool) => {
+                      const capability = resolveRuntimeCapability(
+                        runtime.data,
+                        tool.runtimeCapability,
+                      );
+                      const unavailable =
+                        capability !== undefined &&
+                        capability.availability !== "available";
+                      const Icon = tool.icon;
+
+                      return (
+                        <Link
+                          href={tool.href}
+                          className={`home-search-recommendation${
+                            unavailable ? " is-unavailable" : ""
+                          }`}
+                          aria-disabled={unavailable || undefined}
+                          onClick={
+                            unavailable
+                              ? (event) => {
+                                  event.preventDefault();
+                                }
+                              : undefined
+                          }
+                          key={tool.id}
+                        >
+                          <span aria-hidden="true">
+                            <Icon size={18} />
+                          </span>
+                          <span>
+                            <strong>{tool.title}</strong>
+                            <small>{tool.description}</small>
+                          </span>
+                          {unavailable ? <em>暂不可用</em> : <ArrowRight size={15} />}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -375,6 +420,66 @@ export function ToolDirectory() {
               <Check size={13} /> 支持生成记录追踪
             </span>
           </div>
+        </div>
+
+        <header className="focus-home__section-head">
+          <h2>一键直达任务</h2>
+          <p>快速定位，保留你熟悉的电商工作流程</p>
+        </header>
+
+        <div className="home-feature-grid" ref={featureGridRef}>
+          {featuredTools.map((tool) => {
+              const capability = resolveRuntimeCapability(
+                runtime.data,
+                tool.runtimeCapability,
+              );
+              const unavailable =
+                capability !== undefined &&
+                capability.availability !== "available";
+              const Icon = tool.icon;
+
+              return (
+                <Link
+                  href={tool.href}
+                  className={`home-feature-card ${tool.className}${
+                    unavailable ? " is-unavailable" : ""
+                  }`}
+                  data-feature-id={tool.id}
+                  data-feature-visual={HOME_FEATURE_VISUALS[tool.id]?.kind}
+                  data-runtime-capability={tool.runtimeCapability}
+                  data-capability-state={capability?.availability ?? "unknown"}
+                  aria-disabled={unavailable || undefined}
+                  tabIndex={unavailable ? -1 : undefined}
+                  onClick={
+                    unavailable
+                      ? (event) => {
+                          event.preventDefault();
+                        }
+                      : undefined
+                  }
+                  key={tool.id}
+                >
+                  <HomeFeatureCardArt
+                    featureId={tool.id}
+                    FallbackIcon={Icon}
+                  />
+                  {HOT_FEATURE_IDS.has(tool.id) ? (
+                    <span
+                      className="home-feature-card__hot"
+                      aria-label="热门功能"
+                      title="热门功能"
+                    >
+                      <Flame size={16} fill="currentColor" />
+                    </span>
+                  ) : null}
+                  <div>
+                    <strong>{tool.title}</strong>
+                    <span>{tool.description}</span>
+                    <ArrowRight size={18} />
+                  </div>
+                </Link>
+              );
+          })}
         </div>
 
         <HomeAiToolbox />

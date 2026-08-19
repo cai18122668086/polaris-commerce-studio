@@ -12,6 +12,7 @@ import {
   useRuntimeStatus,
 } from "@/features/runtime/api/runtime";
 import { FEATURE_REGISTRY } from "@/lib/feature-registry";
+import { searchFeatures } from "@/lib/feature-search";
 import {
   HOME_FEATURE_VISUALS,
   type HomeFeatureImage,
@@ -134,14 +135,13 @@ export function ToolDirectory() {
   const searchRef = useRef<HTMLInputElement>(null);
   const featureGridRef = useRef<HTMLDivElement>(null);
   const runtime = useRuntimeStatus();
-  const keyword = query.trim().toLowerCase();
+  const keyword = query.trim();
   const searchResults = keyword
-    ? searchableTools
-        .filter((tool) =>
-          `${tool.title} ${tool.description} ${tool.keywords.join(" ")}`
-            .toLowerCase()
-            .includes(keyword),
-        )
+    ? searchFeatures(keyword, FEATURE_REGISTRY)
+        .flatMap((match) => {
+          const tool = searchableTools.find((item) => item.id === match.feature.id);
+          return tool ? [{ ...match, ...tool }] : [];
+        })
         .slice(0, 8)
     : [];
 
@@ -286,7 +286,7 @@ export function ToolDirectory() {
               aria-label="搜索创作任务"
               role="combobox"
               aria-autocomplete="list"
-              aria-expanded={Boolean(keyword && searchResults.length)}
+              aria-expanded={Boolean(keyword)}
               aria-controls="home-search-results"
               aria-activedescendant={
                 searchResults[activeSearchIndex]
@@ -346,7 +346,8 @@ export function ToolDirectory() {
                       </span>
                       <span>
                         <strong>{tool.title}</strong>
-                        <small>{tool.description}</small>
+                        <small className="home-search-result__description">{tool.description}</small>
+                        <small className="home-search-result__reason">{tool.matchReason}</small>
                       </span>
                       {unavailable ? <em>暂不可用</em> : <ArrowRight size={16} />}
                     </Link>

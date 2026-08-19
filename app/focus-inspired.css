@@ -4067,7 +4067,7 @@ select:focus-visible {
 .home-search-result > span:nth-child(2) {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 3px;
 }
 
 .home-search-result strong {
@@ -4078,8 +4078,14 @@ select:focus-visible {
   overflow: hidden;
   color: var(--ink-500);
   font-size: 10px;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.home-search-result__reason {
+  color: var(--studio-orange-dark) !important;
+  font-size: 9px !important;
 }
 
 .home-search-result > svg {

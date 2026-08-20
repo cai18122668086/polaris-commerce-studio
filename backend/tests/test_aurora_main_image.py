@@ -690,6 +690,37 @@ def test_visual_audit_accepts_material_pass_with_audit_limitations() -> None:
     assert normalized["all_observed_deficiencies"] == []
 
 
+def test_visual_audit_normalizes_incomplete_evidence_in_complete_shape() -> None:
+    schema = _visual_judgment_schema()
+    checks = {
+        name: {
+            "passed": True,
+            "score": 90,
+            "observed_evidence": (
+                "The reviewer supplied direct pixel evidence."
+                if name != "page_role_expression"
+                else ""
+            ),
+        }
+        for name in schema["properties"]["checks"]["required"]
+    }
+    normalized = _normalize_visual_judgment_payload(
+        {
+            "decision_summary": "Direct pixels establish the planned page duty.",
+            "performance_observation": {},
+            "plan_fidelity_observation": {},
+            "source_background_observation": {},
+            "selling_point_proof_observation": {},
+            "checks": checks,
+            "audit_completeness_confirmation": True,
+        }
+    )
+
+    assert len(
+        normalized["checks"]["page_role_expression"]["observed_evidence"].strip()
+    ) >= 12
+
+
 def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:
     schema = _visual_judgment_schema()
     checks = {

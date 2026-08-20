@@ -1204,6 +1204,12 @@ def _is_complete_visual_judgment(payload: Mapping[str, Any]) -> bool:
         )
         and isinstance(checks, Mapping)
         and all(name in checks for name in _VISUAL_CHECKS)
+        and all(
+            isinstance(checks.get(name), Mapping)
+            and isinstance(checks[name].get("observed_evidence"), str)
+            and len(checks[name]["observed_evidence"].strip()) >= 12
+            for name in _VISUAL_CHECKS
+        )
     )
 
 

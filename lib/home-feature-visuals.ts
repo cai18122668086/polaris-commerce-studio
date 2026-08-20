@@ -49,7 +49,7 @@ export const HOME_FEATURE_VISUALS: Readonly<Record<string, HomeFeatureVisual>> =
   "reference-remix": {
     kind: "remix",
     before: square("card-03-remix-before-v1.webp"),
-    after: square("card-03-remix-after-v1.webp"),
+    after: square("card-03-remix-result-serum-landscape-v1.png"),
     reference: square("card-03-remix-reference-v1.webp"),
   },
   "detail-pack": {
@@ -65,6 +65,7 @@ export const HOME_FEATURE_VISUALS: Readonly<Record<string, HomeFeatureVisual>> =
   "amazon-visual-suite": {
     kind: "amazon",
     before: square("card-05-amazon-before-v1.webp"),
-    after: square("card-05-amazon-after-v1.webp"),
+    after: square("card-05-amazon-hero-v2.png"),
   },
 };
+

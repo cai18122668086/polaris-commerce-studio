@@ -20,7 +20,10 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [result, setResult] = useState<BoundaryResult>();
   const [retryKey, setRetryKey] = useState(0);
-  const publicRoute = isPublicRoute(pathname);
+  // This opt-in is only supplied by an ignored local .env.local file so the help UI can be reviewed without an external auth service.
+  // Production and normal local runs retain the existing route protection because this is false unless explicitly configured.
+  const localHelpPreview = process.env.NEXT_PUBLIC_LOCAL_HELP_PREVIEW === "true" && pathname === "/help";
+  const publicRoute = isPublicRoute(pathname) || localHelpPreview;
 
   const redirectToLogin = useCallback(() => {
     queryClient.clear();

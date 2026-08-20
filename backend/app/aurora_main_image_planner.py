@@ -10,16 +10,25 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, object_session, sessionmaker
 
 from .aurora_main_image_runtime import (
+    AURORA_MAIN_IMAGE_V20_VERSION,
     AURORA_MAIN_IMAGE_VERSION,
     AuroraHarnessRunner,
+    AuroraV20HarnessRunner,
     write_contract,
 )
 from .config import default_aurora_work_root
 from .domain import JobStatus, PlanValidationStatus
-from .models import AssetRecord, AuditEventRecord, JobPlanRecord, JobRecord, utc_now
+from .models import (
+    AssetRecord,
+    AuditEventRecord,
+    JobItemRecord,
+    JobPlanRecord,
+    JobRecord,
+    utc_now,
+)
 from .services import canonical_hash, new_id, transition_job
 from .storage import ImageStorage
 from .xinghe_agent import PlannerRequest, SourceImage, XingheGateway
@@ -63,9 +72,15 @@ class AuroraMainImagePlanner:
         storage: ImageStorage | None = None,
         gateway: XingheGateway | _PlannerGateway | None = None,
         work_root: Path | None = None,
+        execution_mode: str = "sequential_v017",
     ) -> None:
         self.session_factory = session_factory
-        self.harness = harness or AuroraHarnessRunner()
+        self.execution_mode = execution_mode
+        self.harness = harness or (
+            AuroraV20HarnessRunner()
+            if execution_mode == "parallel_v20"
+            else AuroraHarnessRunner()
+        )
         self.storage = storage
         self.gateway = gateway
         self.work_root = (work_root or default_aurora_work_root()).resolve()
@@ -112,11 +127,17 @@ class AuroraMainImagePlanner:
         raw = _build_raw(job_id, settings, evidence_paths)
         identity = await self._inspect_identity(job_id, workspace_id, settings, sources)
         identity = _bind_identity_evidence(identity, sources, evidence_paths)
+        if self.execution_mode == "parallel_v20":
+            identity.pop("profile01_semantics_read", None)
         workspace = self.job_workspace(job_id)
         input_path = workspace / "input.json"
         identity_path = workspace / "identity.json"
         session_path = workspace / "session.json"
-        compiled_path = workspace / "compiled-v013.json"
+        compiled_path = workspace / (
+            "compiled-v20.json"
+            if self.execution_mode == "parallel_v20"
+            else "compiled-v013.json"
+        )
         write_contract(input_path, raw)
         write_contract(identity_path, identity)
 
@@ -135,18 +156,29 @@ class AuroraMainImagePlanner:
             )
             harness_session = _load_json(session_path)
         if harness_session.get("state") == "IDENTITY_LOCKED":
-            self.harness.run(
-                "compile-v013",
-                workspace,
-                {"session": session_path, "output": compiled_path},
-            )
+            if self.execution_mode == "parallel_v20":
+                self.harness.run(
+                    "compile",
+                    workspace,
+                    {"session": session_path},
+                )
+            else:
+                self.harness.run(
+                    "compile-v013",
+                    workspace,
+                    {"session": session_path, "output": compiled_path},
+                )
             harness_session = _load_json(session_path)
         if harness_session.get("state") != "AWAITING_AUTHORIZATION":
             raise AuroraPlanningError(
                 f"Aurora compilation ended in {harness_session.get('state')}"
             )
 
-        payload = _public_plan_payload(settings, identity, harness_session)
+        payload = (
+            _public_v20_plan_payload(settings, identity, harness_session)
+            if self.execution_mode == "parallel_v20"
+            else _public_plan_payload(settings, identity, harness_session)
+        )
         payload["_harness_session"] = harness_session
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
@@ -167,14 +199,22 @@ class AuroraMainImagePlanner:
                 payload_hash=canonical_hash(payload),
                 validation_status=PlanValidationStatus.VALID.value,
                 validation_errors=[],
-                validator_version=f"aurora-harness-{AURORA_MAIN_IMAGE_VERSION}",
+                validator_version=(
+                    f"aurora-harness-{AURORA_MAIN_IMAGE_V20_VERSION}"
+                    if self.execution_mode == "parallel_v20"
+                    else f"aurora-harness-{AURORA_MAIN_IMAGE_VERSION}"
+                ),
                 validated_at=utc_now(),
             )
             session.add(plan)
             session.add(
                 AuditEventRecord(
                     workspace_id=job.workspace_id,
-                    action="aurora.plan_compiled_v013",
+                    action=(
+                        "aurora.plan_compiled_v20"
+                        if self.execution_mode == "parallel_v20"
+                        else "aurora.plan_compiled_v013"
+                    ),
                     resource_type="job",
                     resource_id=job.id,
                     request_id=plan.id,
@@ -290,6 +330,7 @@ def authorize_aurora_plan(
     *,
     harness: AuroraHarnessRunner | None = None,
     work_root: Path | None = None,
+    execution_mode: str | None = None,
 ) -> None:
     """Record the first and only pre-generation user authorization in Harness."""
 
@@ -301,7 +342,16 @@ def authorize_aurora_plan(
     if not isinstance(stored, Mapping):
         raise AuroraPlanningError("Aurora Harness session is missing")
     write_contract(session_path, dict(stored))
-    runner = harness or AuroraHarnessRunner()
+    policy = plan.payload.get("execution_policy")
+    stored_mode = (
+        policy.get("execution_mode") if isinstance(policy, Mapping) else None
+    )
+    mode = execution_mode or str(stored_mode or "sequential_v017")
+    runner = harness or (
+        AuroraV20HarnessRunner()
+        if mode == "parallel_v20"
+        else AuroraHarnessRunner()
+    )
     runner.run(
         "authorize",
         workspace,
@@ -313,12 +363,131 @@ def authorize_aurora_plan(
     payload["harness_state"] = harness_session["state"]
     plan.payload = payload
     plan.payload_hash = canonical_hash(payload)
+    if mode == "parallel_v20":
+        _persist_parallel_v20_snapshots(
+            plan,
+            job,
+            workspace,
+            harness_session,
+            runner,
+        )
 
 
 def public_aurora_plan_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Keep internal execution contracts durable without returning them to browsers."""
 
     return {key: value for key, value in payload.items() if not key.startswith("_")}
+
+
+def _persist_parallel_v20_snapshots(
+    plan: JobPlanRecord,
+    job: JobRecord,
+    workspace: Path,
+    authorized_session: Mapping[str, Any],
+    runner: AuroraHarnessRunner,
+) -> None:
+    """Freeze all page requests before the first provider call.
+
+    Each raw v2.0 session clone is page-local.  The adapter only changes the
+    outer sequencing fields needed to select that page; the v2.0 harness still
+    compiles the request, token, references, prompt and page contract.
+    """
+
+    db = object_session(plan)
+    if db is None:
+        raise AuroraPlanningError("Aurora plan is detached from its transaction")
+    items = db.scalars(
+        select(JobItemRecord)
+        .where(JobItemRecord.job_id == job.id)
+        .order_by(JobItemRecord.ordinal)
+        .with_for_update()
+    ).all()
+    if len(items) != 6:
+        raise AuroraPlanningError("Aurora parallel mode requires exactly six items")
+    style_lock = _mapping(
+        _mapping(authorized_session.get("plan")).get("campaign_style")
+    )
+    identity_hash = str(authorized_session.get("identity_digest") or "")
+    plan_hash = str(authorized_session.get("plan_digest") or plan.payload_hash)
+    source_hashes: dict[str, str] = {}
+    for row in _mapping_list(
+        _mapping(authorized_session.get("identity")).get("evidence")
+    ):
+        source_path = Path(str(row.get("path") or ""))
+        if not source_path.is_file():
+            raise AuroraPlanningError("Aurora identity evidence disappeared")
+        source_hashes[str(row.get("evidence_id"))] = hashlib.sha256(
+            source_path.read_bytes()
+        ).hexdigest()
+    snapshots: list[dict[str, Any]] = []
+    for item in items:
+        page_workspace = workspace / "parallel-v20" / f"page-{item.ordinal + 1:02d}"
+        page_session = dict(authorized_session)
+        page_session["state"] = "AUTHORIZED"
+        page_session["accepted_pages"] = list(range(item.ordinal))
+        page_session["active_page_index"] = None
+        page_session["pending_generation"] = None
+        # Parallel v2.0 freezes the pre-generation style.  The native
+        # post-page-2 calibration remains a later audit observation only.
+        page_session["style_calibrated"] = True
+        session_path = page_workspace / "session.json"
+        request_path = page_workspace / "generation-request.json"
+        write_contract(session_path, page_session)
+        result = runner.run(
+            "generate-next",
+            page_workspace,
+            {"session": session_path, "out": request_path},
+        )
+        request_value = result.get("generation_request")
+        request_payload = (
+            dict(request_value)
+            if isinstance(request_value, Mapping)
+            else _load_json(request_path)
+        )
+        if int(request_payload.get("page_index", -1)) != item.ordinal:
+            raise AuroraPlanningError("Aurora page snapshot ordinal mismatch")
+        snapshot = {
+            "schema_version": "aurora-parallel-page-snapshot-v1",
+            "execution_mode": "parallel_v20",
+            "page_index": item.ordinal,
+            "group_key": job.id,
+            "prompt": request_payload["prompt"],
+            "imagegen_reference_paths": request_payload[
+                "imagegen_reference_paths"
+            ],
+            "edit_target": request_payload.get("edit_target"),
+            "generation_token": request_payload["generation_token"],
+            "page_revision": int(request_payload.get("revision", 0)),
+            "plan_revision": plan.revision,
+            "plan_hash": plan_hash,
+            "identity_hash": identity_hash,
+            "style_lock": style_lock,
+            "source_asset_hashes": source_hashes,
+            "logical_idempotency_key": (
+                f"{job.id}:{item.id}:plan-{plan.revision}:"
+                f"page-{int(request_payload.get('revision', 0))}"
+            ),
+            "request": request_payload,
+            "session": _load_json(session_path),
+        }
+        snapshot["snapshot_hash"] = canonical_hash(snapshot)
+        configuration = dict(item.configuration or {})
+        configuration.update(
+            {
+                "aurora_execution_mode": "parallel_v20",
+                "aurora_snapshot": snapshot,
+                "size": "1024x1024",
+            }
+        )
+        item.configuration = configuration
+        snapshots.append(snapshot)
+    payload = dict(plan.payload)
+    payload["_parallel_v20_snapshots"] = snapshots
+    payload["snapshot_manifest_hash"] = canonical_hash(
+        [snapshot["snapshot_hash"] for snapshot in snapshots]
+    )
+    plan.payload = payload
+    plan.payload_hash = canonical_hash(payload)
 
 
 def _build_raw(
@@ -634,6 +803,64 @@ def _public_plan_payload(
         "pages": pages,
         "execution_policy": {
             "sequence": "strictly_sequential",
+            "max_automatic_repairs_per_page": 1,
+            "plan_authorization_required": True,
+            "final_set_approval_required": True,
+        },
+    }
+
+
+def _public_v20_plan_payload(
+    settings: Mapping[str, Any],
+    identity: Mapping[str, Any],
+    harness_session: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Expose the native v2.0 plan without passing through v013 rewrites."""
+
+    native_plan = _mapping(harness_session.get("plan"))
+    native_pages = _mapping_list(native_plan.get("pages"))
+    pages = [
+        {
+            "page_index": int(page.get("index", index)),
+            "page_role": page.get("page_role", PAGE_ROLES[index]),
+            "main_selling_point": page.get("primary_claim", ""),
+            "supporting_selling_points": page.get("supporting_claims", []),
+            "visual_proof": page.get("visual_proof", ""),
+            "composition_and_subject": page.get("composition", ""),
+            "reading_path_and_type_hierarchy": " → ".join(
+                _text_list(page.get("reading_path"))
+            ),
+            "non_repetition_reason": page.get("non_repetition_reason", ""),
+            "commercial_closure": page.get("commercial_closure", ""),
+            "status": "awaiting_plan_approval",
+        }
+        for index, page in enumerate(native_pages)
+    ]
+    if len(pages) != 6:
+        raise AuroraPlanningError("Native Aurora v2.0 plan must contain six pages")
+    return {
+        "schema_version": "aurora-main-image-plan-v2",
+        "skill_id": "aurora-domestic-ecommerce-main-image",
+        "skill_version": AURORA_MAIN_IMAGE_V20_VERSION,
+        "compiler_lineage": "aurora-native-v2.0.0",
+        "harness_state": harness_session.get("state"),
+        "approval_checkpoint": "six_page_plan",
+        "product": {
+            "name": settings.get("product_name"),
+            "category": settings.get("category"),
+        },
+        "product_identity_lock": {
+            "product_form": identity.get("product_form"),
+            "identity_summary": identity.get("identity_summary"),
+            "must_preserve": identity.get("must_preserve", []),
+            "must_not_change": identity.get("must_not_change", []),
+        },
+        "campaign_style": native_plan.get("campaign_style", {}),
+        "pages": pages,
+        "execution_policy": {
+            "execution_mode": "parallel_v20",
+            "sequence": "parallel_frozen_snapshots",
+            "max_parallel_pages": 6,
             "max_automatic_repairs_per_page": 1,
             "plan_authorization_required": True,
             "final_set_approval_required": True,

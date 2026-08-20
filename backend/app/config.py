@@ -39,6 +39,16 @@ def default_aurora_work_root() -> Path:
     return Path(__file__).resolve().parents[1] / ".data" / "aurora-main-image"
 
 
+def default_aurora_v20_skill_root() -> Path:
+    """Immutable source tree imported from the Aurora v2.0 ZIP."""
+
+    return (
+        Path(__file__).resolve().parents[1]
+        / "skill_sources"
+        / "aurora-domestic-ecommerce-main-image-v20"
+    )
+
+
 def default_development_provider_env_file() -> Path:
     return Path(__file__).resolve().parents[1] / ".env"
 
@@ -96,10 +106,17 @@ class Settings(BaseSettings):
     creative_image_provider_enabled: bool = Field(default=False)
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
     domestic_main_image_provider_enabled: bool = Field(default=False)
+    aurora_execution_mode: Literal["sequential_v017", "parallel_v20"] = (
+        "sequential_v017"
+    )
+    aurora_max_transient_retries: int = Field(default=2, ge=0, le=2)
+    aurora_retry_backoff_base_seconds: float = Field(default=2, ge=0, le=30)
+    aurora_retry_backoff_max_seconds: float = Field(default=30, ge=0, le=300)
     development_provider_env_file: Path = Field(
         default_factory=default_development_provider_env_file
     )
     aurora_work_root: Path = Field(default_factory=default_aurora_work_root)
+    aurora_v20_skill_root: Path = Field(default_factory=default_aurora_v20_skill_root)
     crossborder_detail_provider_enabled: bool = Field(default=False)
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
     tengli_api_key: SecretStr = SecretStr("")

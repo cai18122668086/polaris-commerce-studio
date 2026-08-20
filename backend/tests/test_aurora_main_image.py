@@ -28,10 +28,16 @@ from app.aurora_main_image_provider import (
     _required_audit_check_names,
     _visual_judgment_schema,
 )
-from app.aurora_main_image_runtime import AuroraHarnessError, AuroraHarnessRunner
+from app.aurora_main_image_runtime import (
+    AuroraHarnessError,
+    AuroraHarnessRunner,
+    AuroraV20HarnessRunner,
+    verify_aurora_v20_source,
+)
 from app.provider import ProviderArtifact, ProviderOutcome, ProviderRequest
 from app.routes_v1 import _new_job_from_payload, runtime_status_response
 from app.schemas_v1 import DomesticMainImageJobCreate
+from app.services import canonical_hash
 from app.xinghe_agent import (
     FakeXingheGateway,
     PlannerRequest,
@@ -1028,6 +1034,142 @@ def test_harness_runner_rejects_unknown_commands(tmp_path: Path) -> None:
     with pytest.raises(AuroraHarnessError) as captured:
         AuroraHarnessRunner().run("python", tmp_path, {})
     assert captured.value.code == "HARNESS_COMMAND_NOT_ALLOWED"
+
+
+def test_aurora_v20_source_matches_the_original_zip_manifest() -> None:
+    manifest = verify_aurora_v20_source()
+
+    assert manifest["source_version"] == "2.0.0"
+    assert manifest["source_file_count"] == 24
+    assert manifest["archive_sha256"] == (
+        "0c5d3daa3889d0ff5964114996a49c428dce9b200b3591d9b690991170869d3c"
+    )
+    assert manifest["skill_md_sha256"] == (
+        "a6ce9864e5a6522339db5e69cca90242dfb700320633f802f783f951eed9cb6c"
+    )
+
+
+def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
+    tmp_path: Path,
+) -> None:
+    job_id = "job_v20_snapshot"
+    evidence_path = tmp_path / "product.png"
+    evidence_path.write_bytes(
+        (Path(__file__).resolve().parents[2] / "public" / "og.png").read_bytes()
+    )
+    raw = {
+        "request_id": job_id,
+        "product": {
+            "name": "轻量随行杯",
+            "category": "保温杯",
+            "original_references": [str(evidence_path)],
+            "verified_selling_points": ["杯盖防误开", "轻量便携"],
+            "verified_attributes": ["可见杯盖结构"],
+            "verified_scenes": ["城市通勤"],
+            "verified_offers": [],
+            "verified_service_or_trust_facts": ["48小时内发货"],
+        },
+    }
+    identity = {
+        "request_id": job_id,
+        "product_form": "带盖随行杯",
+        "identity_summary": "由原始图片锁定同一款带盖随行杯。",
+        "evidence": [
+            {
+                "evidence_id": "asset_one",
+                "path": str(evidence_path),
+                "view_tags": ["商品主视图"],
+            }
+        ],
+        "must_preserve": ["杯体轮廓", "杯盖结构", "颜色分区"],
+        "must_not_change": ["不得增加部件", "不得改变杯体比例"],
+        "previous_generated_images_used": False,
+    }
+    input_path = tmp_path / "input.json"
+    identity_path = tmp_path / "identity.json"
+    session_path = tmp_path / "session.json"
+    request_path = tmp_path / "request.json"
+    input_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    identity_path.write_text(
+        json.dumps(identity, ensure_ascii=False), encoding="utf-8"
+    )
+    runner = AuroraV20HarnessRunner()
+    runner.run("start", tmp_path, {"input": input_path, "session": session_path})
+    runner.run(
+        "lock-identity",
+        tmp_path,
+        {"session": session_path, "identity": identity_path},
+    )
+    runner.run("compile", tmp_path, {"session": session_path})
+    runner.run(
+        "authorize",
+        tmp_path,
+        {"session": session_path, "approval-text": "确认六图规划并授权生成"},
+    )
+    result = runner.run(
+        "generate-next",
+        tmp_path,
+        {"session": session_path, "out": request_path},
+    )
+    generation_request = dict(result["generation_request"])
+    snapshot = {
+        "schema_version": "aurora-parallel-page-snapshot-v1",
+        "execution_mode": "parallel_v20",
+        "page_index": 0,
+        "group_key": job_id,
+        "prompt": generation_request["prompt"],
+        "imagegen_reference_paths": generation_request[
+            "imagegen_reference_paths"
+        ],
+        "edit_target": generation_request.get("edit_target"),
+        "generation_token": generation_request["generation_token"],
+        "page_revision": 0,
+        "plan_revision": 1,
+        "plan_hash": generation_request["plan_digest"],
+        "identity_hash": "identity",
+        "style_lock": generation_request["campaign_constitution"][
+            "campaign_style"
+        ],
+        "source_asset_hashes": {
+            "asset_one": hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+        },
+        "logical_idempotency_key": f"{job_id}:item_0:plan-1:page-0",
+        "request": generation_request,
+        "session": json.loads(session_path.read_text(encoding="utf-8")),
+    }
+    snapshot["snapshot_hash"] = canonical_hash(snapshot)
+    provider = AuroraMainImageProvider(
+        session_factory=None,  # type: ignore[arg-type]
+        gateway=FakeXingheGateway(),
+        storage=None,  # type: ignore[arg-type]
+        work_root=tmp_path / "work",
+        execution_mode="parallel_v20",
+    )
+
+    provider_result = asyncio.run(
+        provider.execute(
+            ProviderRequest(
+                workspace_id="workspace_one",
+                job_id=job_id,
+                job_item_id="item_0",
+                attempt_id="attempt_0",
+                operation="domestic_main_image",
+                idempotency_key=snapshot["logical_idempotency_key"],
+                configuration={
+                    "item": {
+                        "aurora_execution_mode": "parallel_v20",
+                        "aurora_snapshot": snapshot,
+                    }
+                },
+            )
+        )
+    )
+
+    assert provider_result.outcome == ProviderOutcome.SUCCEEDED
+    metrics = provider_result.raw_usage["metrics"]
+    assert metrics["aurora_execution_mode"] == "parallel_v20"
+    assert metrics["page_index"] == 0
+    assert metrics["harness_state"] == "AWAITING_SEARCH_CALIBRATION"
 
 
 def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> None:

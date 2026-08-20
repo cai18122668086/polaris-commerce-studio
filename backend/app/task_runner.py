@@ -36,6 +36,10 @@ class MockTaskRunner:
         crossborder_detail_provider_enabled: bool = False,
         domestic_main_image_provider_enabled: bool = False,
         aurora_work_root: Path | None = None,
+        aurora_execution_mode: str = "sequential_v017",
+        aurora_max_transient_retries: int = 2,
+        aurora_retry_backoff_base_seconds: float = 2,
+        aurora_retry_backoff_max_seconds: float = 30,
     ) -> None:
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
@@ -55,6 +59,10 @@ class MockTaskRunner:
             crossborder_detail_provider_enabled=(crossborder_detail_provider_enabled),
             domestic_main_image_provider_enabled=(domestic_main_image_provider_enabled),
             aurora_work_root=aurora_work_root,
+            aurora_execution_mode=aurora_execution_mode,
+            aurora_max_transient_retries=aurora_max_transient_retries,
+            aurora_retry_backoff_base_seconds=aurora_retry_backoff_base_seconds,
+            aurora_retry_backoff_max_seconds=aurora_retry_backoff_max_seconds,
         )
 
     @property
@@ -155,6 +163,14 @@ def build_task_runner(
             high_price_micros=settings.xinghe_high_price_micros,
             xinghe_skill_root=settings.xinghe_skill_root,
             aurora_work_root=settings.aurora_work_root,
+            aurora_execution_mode=settings.aurora_execution_mode,
+            aurora_max_transient_retries=settings.aurora_max_transient_retries,
+            aurora_retry_backoff_base_seconds=(
+                settings.aurora_retry_backoff_base_seconds
+            ),
+            aurora_retry_backoff_max_seconds=(
+                settings.aurora_retry_backoff_max_seconds
+            ),
         )
 
     return build_tengli_task_runner(
@@ -202,4 +218,10 @@ def build_tengli_task_runner(
             settings.domestic_main_image_provider_enabled
         ),
         aurora_work_root=settings.aurora_work_root,
+        aurora_execution_mode=settings.aurora_execution_mode,
+        aurora_max_transient_retries=settings.aurora_max_transient_retries,
+        aurora_retry_backoff_base_seconds=(
+            settings.aurora_retry_backoff_base_seconds
+        ),
+        aurora_retry_backoff_max_seconds=settings.aurora_retry_backoff_max_seconds,
     )

@@ -527,6 +527,9 @@ class ExecutionCoordinator:
         max_concurrency: int = 1,
         max_detail_retries: int = 0,
         max_amazon_retries: int = 0,
+        max_aurora_retries: int = 2,
+        aurora_retry_backoff_base_seconds: float = 2,
+        aurora_retry_backoff_max_seconds: float = 30,
         artifact_storage: ImageStorage | None = None,
         amazon_suite_reviewer: AmazonSuiteReviewer | None = None,
     ) -> None:
@@ -540,6 +543,8 @@ class ExecutionCoordinator:
             raise ValueError("max_detail_retries must be from 0 through 2")
         if max_amazon_retries < 0 or max_amazon_retries > 2:
             raise ValueError("max_amazon_retries must be from 0 through 2")
+        if max_aurora_retries < 0 or max_aurora_retries > 2:
+            raise ValueError("max_aurora_retries must be from 0 through 2")
         self.session_factory = session_factory
         self.provider = provider
         self.worker_id = worker_id or f"worker-{socket.gethostname()}-{uuid4().hex}"
@@ -551,6 +556,14 @@ class ExecutionCoordinator:
         self.max_concurrency = max_concurrency
         self.max_detail_retries = max_detail_retries
         self.max_amazon_retries = max_amazon_retries
+        self.max_aurora_retries = max_aurora_retries
+        self.aurora_retry_backoff_base_seconds = max(
+            0.0, aurora_retry_backoff_base_seconds
+        )
+        self.aurora_retry_backoff_max_seconds = max(
+            self.aurora_retry_backoff_base_seconds,
+            aurora_retry_backoff_max_seconds,
+        )
         self.artifact_storage = artifact_storage
         self.amazon_suite_reviewer = amazon_suite_reviewer
 
@@ -582,8 +595,11 @@ class ExecutionCoordinator:
             if current != JobStatus.PROCESSING:
                 return current
 
+        is_parallel_aurora = self._is_parallel_aurora_job(job_id)
         claim_width = (
-            1 if self._is_domestic_main_image_job(job_id) else self.max_concurrency
+            1
+            if self._is_domestic_main_image_job(job_id) and not is_parallel_aurora
+            else self.max_concurrency
         )
         while True:
             leases: list[AttemptLease] = []
@@ -593,9 +609,19 @@ class ExecutionCoordinator:
                     break
                 leases.append(lease)
             if not leases:
+                retry_delay = (
+                    self._seconds_until_aurora_retry(job_id)
+                    if is_parallel_aurora
+                    else None
+                )
+                if retry_delay is not None:
+                    await asyncio.sleep(retry_delay)
+                    continue
                 break
             await asyncio.gather(*(self.execute_lease(lease) for lease in leases))
-            if self._domestic_batch_has_failure(job_id, leases):
+            if not is_parallel_aurora and self._domestic_batch_has_failure(
+                job_id, leases
+            ):
                 self._skip_domestic_pages_after_execution_failure(job_id)
                 break
 
@@ -603,7 +629,62 @@ class ExecutionCoordinator:
         # review call to the default execution path: even a read-only review would
         # add latency and alter the original one-pass delivery protocol. The durable
         # review service remains available for an explicitly requested diagnostic run.
+        if is_parallel_aurora:
+            set_audit = await self._run_parallel_aurora_set_audit(job_id)
+            if set_audit is False:
+                self._mark_parallel_aurora_set_audit_failed(job_id)
         return self.finalize_job(job_id)
+
+    async def _run_parallel_aurora_set_audit(self, job_id: str) -> bool | None:
+        provider: object = self.provider
+        routes = getattr(provider, "routes", None)
+        if isinstance(routes, Mapping):
+            provider = routes.get(JobType.DOMESTIC_MAIN_IMAGE.value, provider)
+        audit = getattr(provider, "audit_parallel_set", None)
+        if not callable(audit):
+            return None
+        try:
+            return bool(await audit(job_id))
+        except Exception:
+            return False
+
+    def _mark_parallel_aurora_set_audit_failed(self, job_id: str) -> None:
+        with self.session_factory() as session:
+            item = session.scalar(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status == JobItemStatus.SUCCEEDED.value,
+                )
+                .order_by(JobItemRecord.ordinal.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if item is None:
+                return
+            item.status = JobItemStatus.FAILED.value
+            item.stage = "set_audit_failed"
+            item.error_code = "AURORA_SET_AUDIT_FAILED"
+            item.error_message = "Aurora v2.0 six-page set audit did not pass."
+            item.error_details = {"retryable": False, "scope": "set_audit"}
+            item.finished_at = utc_now()
+            item.state_version += 1
+            session.commit()
+
+    def _seconds_until_aurora_retry(self, job_id: str) -> float | None:
+        with self.session_factory() as session:
+            due = session.scalar(
+                select(func.min(JobItemRecord.next_attempt_at)).where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status == JobItemStatus.RETRY_WAIT.value,
+                )
+            )
+        if due is None:
+            return None
+        now = utc_now()
+        if due.tzinfo is None and now.tzinfo is not None:
+            now = now.replace(tzinfo=None)
+        return max(0.01, min(30.0, (due - now).total_seconds()))
 
     def _is_amazon_job(self, job_id: str) -> bool:
         with self.session_factory() as session:
@@ -618,6 +699,25 @@ class ExecutionCoordinator:
                 select(JobRecord.type).where(JobRecord.id == job_id).limit(1)
             )
             return job_type == JobType.DOMESTIC_MAIN_IMAGE.value
+
+    def _is_parallel_aurora_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            if job is None or job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+                return False
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            if plan is None or not isinstance(plan.payload, Mapping):
+                return False
+            policy = plan.payload.get("execution_policy")
+            return (
+                isinstance(policy, Mapping)
+                and policy.get("execution_mode") == "parallel_v20"
+            )
 
     def _skip_domestic_pages_after_execution_failure(self, job_id: str) -> None:
         """Stop a strictly sequential Aurora campaign after an infrastructure failure.
@@ -901,10 +1001,22 @@ class ExecutionCoordinator:
             item_query = select(JobItemRecord).where(
                 JobItemRecord.job_id == job.id,
                 JobItemRecord.status.in_(
-                    [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
+                    [
+                        JobItemStatus.PENDING.value,
+                        JobItemStatus.QUEUED.value,
+                        JobItemStatus.RETRY_WAIT.value,
+                    ]
                 ),
+                (
+                    JobItemRecord.status != JobItemStatus.RETRY_WAIT.value
+                )
+                | (JobItemRecord.next_attempt_at.is_(None))
+                | (JobItemRecord.next_attempt_at <= utc_now()),
             )
-            if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+            if (
+                job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                and not self._job_uses_parallel_aurora(session, job.id)
+            ):
                 # Aurora owns a strict page-by-page protocol. Outbox delivery is
                 # at-least-once, so a duplicate process_job invocation may enter
                 # while the preceding page is still running. Keep the configured
@@ -957,11 +1069,16 @@ class ExecutionCoordinator:
                     JobItemRecord.job_id == job.id,
                     JobItemRecord.state_version == previous_version,
                     JobItemRecord.status.in_(
-                        [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
+                        [
+                            JobItemStatus.PENDING.value,
+                            JobItemStatus.QUEUED.value,
+                            JobItemStatus.RETRY_WAIT.value,
+                        ]
                     ),
                 )
                 .values(
                     status=JobItemStatus.RUNNING.value,
+                    next_attempt_at=None,
                     started_at=func.coalesce(JobItemRecord.started_at, utc_now()),
                     attempt_count=JobItemRecord.attempt_count + 1,
                     state_version=JobItemRecord.state_version + 1,
@@ -981,6 +1098,24 @@ class ExecutionCoordinator:
                 session.rollback()
                 return None
             return self._lease_from_records(job, item, lease)
+
+    @staticmethod
+    def _job_uses_parallel_aurora(
+        session: Session, job_id: str
+    ) -> bool:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job_id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None or not isinstance(plan.payload, Mapping):
+            return False
+        policy = plan.payload.get("execution_policy")
+        return (
+            isinstance(policy, Mapping)
+            and policy.get("execution_mode") == "parallel_v20"
+        )
 
     def _recover_expired_attempt(
         self, session: Session, job: JobRecord
@@ -1017,6 +1152,30 @@ class ExecutionCoordinator:
         attempt.error_code = "PROVIDER_OUTCOME_UNKNOWN"
         attempt.error_message = "Worker lease expired after provider invocation."
         attempt.finished_at = now
+        if (
+            job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+            and self._job_uses_parallel_aurora(session, job.id)
+            and attempt.attempt_no <= self.max_aurora_retries
+        ):
+            # The v2.0 page snapshot and Provider idempotency key are immutable.
+            # Re-entering through RETRY_WAIT therefore asks the upstream to
+            # reconcile the same logical request rather than submitting a new
+            # page revision after the worker disappears.
+            item.status = JobItemStatus.RETRY_WAIT.value
+            item.stage = "retry_wait_outcome_reconciliation"
+            item.error_code = "PROVIDER_OUTCOME_UNKNOWN"
+            item.error_message = (
+                "Worker lease expired; reconciling the same idempotent page request."
+            )
+            item.error_details = {
+                "retryable": True,
+                "outcome_unknown": True,
+                "provider_idempotency_key": attempt.provider_idempotency_key,
+            }
+            item.next_attempt_at = now
+            item.finished_at = None
+            item.state_version += 1
+            return None, True
         item.status = JobItemStatus.FAILED.value
         item.error_code = "PROVIDER_OUTCOME_UNKNOWN"
         item.error_message = (
@@ -1028,6 +1187,20 @@ class ExecutionCoordinator:
 
     def _new_attempt(self, job: JobRecord, item: JobItemRecord) -> JobAttemptRecord:
         attempt_no = item.attempt_count
+        provider_idempotency_key = f"{job.id}:{item.id}:{attempt_no}"
+        snapshot = (
+            item.configuration.get("aurora_snapshot")
+            if isinstance(item.configuration, Mapping)
+            else None
+        )
+        if (
+            job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+            and isinstance(snapshot, Mapping)
+        ):
+            provider_idempotency_key = (
+                f"{job.id}:{item.id}:plan-{snapshot.get('plan_revision', 1)}:"
+                f"page-{snapshot.get('page_revision', 0)}"
+            )
         return JobAttemptRecord(
             id=new_id("attempt"),
             workspace_id=job.workspace_id,
@@ -1040,7 +1213,7 @@ class ExecutionCoordinator:
             lease_expires_at=utc_now() + timedelta(seconds=self.lease_seconds),
             provider=self.provider.name,
             operation=job.type,
-            provider_idempotency_key=f"{job.id}:{item.id}:{attempt_no}",
+            provider_idempotency_key=provider_idempotency_key,
         )
 
     @staticmethod
@@ -1386,13 +1559,49 @@ class ExecutionCoordinator:
                         job.type == JobType.AMAZON_VISUAL_SUITE.value
                         and attempt.attempt_no <= self.max_amazon_retries
                     )
+                    or (
+                        job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                        and self._job_uses_parallel_aurora(session, job.id)
+                        and attempt.attempt_no <= self.max_aurora_retries
+                    )
+                )
+                aurora_retry = (
+                    should_retry
+                    and job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                    and self._job_uses_parallel_aurora(session, job.id)
                 )
                 item.status = (
-                    JobItemStatus.PENDING.value
+                    JobItemStatus.RETRY_WAIT.value
+                    if aurora_retry
+                    else JobItemStatus.PENDING.value
                     if should_retry
                     else JobItemStatus.FAILED.value
                 )
-                item.stage = "retrying" if should_retry else "failed"
+                item.stage = (
+                    "retry_wait"
+                    if aurora_retry
+                    else "retrying"
+                    if should_retry
+                    else "failed"
+                )
+                if aurora_retry:
+                    schedule = (1.0, 2.5, 7.5)
+                    multiplier = schedule[
+                        min(attempt.attempt_no - 1, len(schedule) - 1)
+                    ]
+                    jitter_seed = hashlib.sha256(
+                        f"{item.id}:{attempt.attempt_no}".encode()
+                    ).digest()[0]
+                    jitter = 1.0 + (jitter_seed / 2550.0)
+                    retry_delay = min(
+                        self.aurora_retry_backoff_max_seconds,
+                        self.aurora_retry_backoff_base_seconds
+                        * multiplier
+                        * jitter,
+                    )
+                    item.next_attempt_at = now + timedelta(seconds=retry_delay)
+                else:
+                    item.next_attempt_at = None
             else:
                 attempt.status = AttemptStatus.OUTCOME_UNKNOWN.value
                 item.status = JobItemStatus.FAILED.value
@@ -1407,12 +1616,22 @@ class ExecutionCoordinator:
                 delivery_status = failure_metrics.get("delivery_status")
                 item.error_details = {
                     "retryable": bool(result.retryable),
+                    "http_status": result.http_status,
+                    "provider_request_id": result.provider_request_id,
+                    "next_attempt_at": (
+                        item.next_attempt_at.isoformat()
+                        if item.next_attempt_at is not None
+                        else None
+                    ),
                     "needs_reselection": bool(failure_metrics.get("needs_reselection"))
                     or delivery_status == "needs_reselection_for_strict_lock",
                     "provider_outcome": result.outcome.value,
                 }
             item.finished_at = (
-                None if item.status == JobItemStatus.PENDING.value else now
+                None
+                if item.status
+                in {JobItemStatus.PENDING.value, JobItemStatus.RETRY_WAIT.value}
+                else now
             )
             item.state_version += 1
 
@@ -1808,6 +2027,7 @@ class ExecutionCoordinator:
                         [
                             JobItemStatus.PENDING.value,
                             JobItemStatus.QUEUED.value,
+                            JobItemStatus.RETRY_WAIT.value,
                             JobItemStatus.RUNNING.value,
                         ]
                     ),
@@ -1890,6 +2110,10 @@ def build_fake_coordinator(
     crossborder_detail_provider_enabled: bool = False,
     domestic_main_image_provider_enabled: bool = False,
     aurora_work_root: Path | None = None,
+    aurora_execution_mode: str = "sequential_v017",
+    aurora_max_transient_retries: int = 2,
+    aurora_retry_backoff_base_seconds: float = 2,
+    aurora_retry_backoff_max_seconds: float = 30,
 ) -> ExecutionCoordinator:
     from .amazon_visual_suite_provider import (
         AMAZON_VISUAL_SUITE_SKILL_ID,
@@ -2035,6 +2259,7 @@ def build_fake_coordinator(
         gateway,
         storage,
         work_root=aurora_work_root,
+        execution_mode=aurora_execution_mode,
     )
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
@@ -2150,12 +2375,16 @@ def build_fake_coordinator(
             storage=storage,
             gateway=gateway,
             work_root=aurora_work_root,
+            execution_mode=aurora_execution_mode,
         ),
         max_concurrency=xinghe_concurrency,
         # Detail-pack behavior remains unchanged. Amazon follows its own Skill
         # incomplete-execution and regenerate-on-invalid-output contract.
         max_detail_retries=0,
         max_amazon_retries=2,
+        max_aurora_retries=aurora_max_transient_retries,
+        aurora_retry_backoff_base_seconds=aurora_retry_backoff_base_seconds,
+        aurora_retry_backoff_max_seconds=aurora_retry_backoff_max_seconds,
         artifact_storage=storage,
         amazon_suite_reviewer=amazon_suite_reviewer,
     )

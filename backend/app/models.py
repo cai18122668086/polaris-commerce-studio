@@ -420,6 +420,7 @@ class JobItemRecord(TimestampMixin, Base):
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
     error_details: Mapped[dict[str, Any] | None] = mapped_column(json_type())
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -528,9 +529,7 @@ class JobAttemptRecord(Base):
             name="ck_job_attempts_attempt_no_positive",
         ),
         UniqueConstraint("job_item_id", "attempt_no", name="uq_job_attempt_no"),
-        UniqueConstraint(
-            "provider", "provider_idempotency_key", name="uq_attempt_provider_idem"
-        ),
+        Index("ix_attempt_provider_idem", "provider", "provider_idempotency_key"),
         UniqueConstraint(
             "workspace_id",
             "job_id",

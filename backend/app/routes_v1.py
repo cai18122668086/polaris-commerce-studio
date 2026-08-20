@@ -2336,11 +2336,19 @@ def _reserve_real_provider_job_if_enabled(
         # Reserve the complete Skill envelope before the identity-planner call:
         # six initial generations, one repair per page, identity inspection,
         # one audit per attempt, first-pair style calibration and final set audit.
+        transient_retry_count = (
+            settings.aurora_max_transient_retries
+            if settings.aurora_execution_mode == "parallel_v20"
+            else 0
+        )
         estimated_cost = (
-            image_cost * 2
+            image_cost * (2 + transient_retry_count)
             + settings.tengli_planner_reserve_micros * _AURORA_PLANNER_REQUEST_ENVELOPE
         )
-        provider_requests = _AURORA_PROVIDER_REQUEST_ENVELOPE
+        provider_requests = (
+            _AURORA_PROVIDER_REQUEST_ENVELOPE
+            + _AURORA_INITIAL_IMAGE_REQUESTS * transient_retry_count
+        )
         group_count = _AURORA_PLANNER_REQUEST_ENVELOPE
     elif enable_flag is not None:
         estimated_cost = image_cost
@@ -2583,6 +2591,7 @@ def _copy_job_relations_for_retry(
     if source.type in {
         JobType.DETAIL_PACK.value,
         JobType.AMAZON_VISUAL_SUITE.value,
+        JobType.DOMESTIC_MAIN_IMAGE.value,
     }:
         source_plan = session.scalar(
             select(JobPlanRecord)

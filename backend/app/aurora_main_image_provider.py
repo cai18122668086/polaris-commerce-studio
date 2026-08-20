@@ -1,4 +1,4 @@
-"""Sequential image provider driven exclusively by the Aurora Harness."""
+"""Aurora providers for the legacy sequence and immutable v2.0 snapshots."""
 
 from __future__ import annotations
 
@@ -16,10 +16,17 @@ from .aurora_main_image_planner import AuroraPlanningError
 from .aurora_main_image_runtime import (
     AuroraHarnessError,
     AuroraHarnessRunner,
+    AuroraV20HarnessRunner,
     write_contract,
 )
 from .config import default_aurora_work_root
-from .models import JobItemRecord, JobPlanRecord, JobRecord
+from .models import (
+    AuditEventRecord,
+    JobAttemptRecord,
+    JobItemRecord,
+    JobPlanRecord,
+    JobRecord,
+)
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
 from .services import canonical_hash
 from .storage import ImageStorage
@@ -65,14 +72,29 @@ class AuroraMainImageProvider:
         *,
         harness: AuroraHarnessRunner | None = None,
         work_root: Path | None = None,
+        execution_mode: str = "sequential_v017",
     ) -> None:
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage
-        self.harness = harness or AuroraHarnessRunner()
+        self.harness = harness or (
+            AuroraV20HarnessRunner()
+            if execution_mode == "parallel_v20"
+            else AuroraHarnessRunner()
+        )
+        self.execution_mode = execution_mode
+        self.pricing_version = (
+            "aurora-v2.0.0"
+            if execution_mode == "parallel_v20"
+            else "aurora-v0.1.17"
+        )
         self.work_root = (work_root or default_aurora_work_root()).resolve()
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
+        if self.execution_mode == "parallel_v20" or _request_uses_parallel_v20(
+            request
+        ):
+            return await self._execute_parallel_v20(request)
         try:
             item, harness_session = self._load_authorized_context(request)
             page_index = item.ordinal
@@ -264,6 +286,418 @@ class AuroraMainImageProvider:
                 model_name=self.gateway.image_model,
                 pricing_version=self.gateway.pricing_version,
             )
+
+    async def _execute_parallel_v20(
+        self, request: ProviderRequest
+    ) -> ProviderResult:
+        """Execute one pre-authorized page without shared session writes."""
+
+        try:
+            item_configuration = _mapping(request.configuration.get("item"))
+            snapshot = _mapping(item_configuration.get("aurora_snapshot"))
+            generation_request = _mapping(snapshot.get("request"))
+            if snapshot.get("execution_mode") != "parallel_v20":
+                raise AuroraPlanningError("Aurora v2.0 page snapshot is missing")
+            expected_hash = str(snapshot.get("snapshot_hash") or "")
+            hash_payload = dict(snapshot)
+            hash_payload.pop("snapshot_hash", None)
+            if expected_hash != canonical_hash(hash_payload):
+                raise AuroraPlanningError("Aurora v2.0 page snapshot hash mismatch")
+            page_index = int(snapshot["page_index"])
+            workspace = (
+                self._workspace(request.job_id)
+                / "parallel-v20"
+                / f"page-{page_index + 1:02d}"
+                / f"attempt-{request.attempt_id}"
+            )
+            workspace.mkdir(parents=True, exist_ok=True)
+            write_contract(workspace / "snapshot.json", snapshot)
+            session_path = workspace / "session.json"
+            write_contract(session_path, _mapping(snapshot.get("session")))
+            runner = (
+                self.harness
+                if isinstance(self.harness, AuroraV20HarnessRunner)
+                else AuroraV20HarnessRunner()
+            )
+            logical_key = str(
+                snapshot.get("logical_idempotency_key") or request.idempotency_key
+            )
+            raw_usage: dict[str, Any] = {}
+            audit_usage: list[dict[str, Any]] = []
+            actual_cost = 0
+            artifact: ProviderArtifact | None = None
+            image_result: Any = None
+            for visual_attempt in range(2):
+                sources = _generation_sources(generation_request, request.job_id)
+                revision = int(generation_request.get("revision", visual_attempt))
+                image_result = await self.gateway.edit(
+                    ImageEditRequest(
+                        workspace_id=request.workspace_id,
+                        job_id=request.job_id,
+                        job_item_id=request.job_item_id,
+                        attempt_id=request.attempt_id,
+                        page_number=page_index + 1,
+                        group_key=request.job_id,
+                        sources=sources,
+                        prompt=str(generation_request["prompt"]),
+                        quality="high",
+                        idempotency_key=f"{logical_key}:visual-revision-{revision}",
+                        size="1024x1024",
+                        preserve_provider_artifact=True,
+                    )
+                )
+                if (
+                    image_result.outcome != ProviderOutcome.SUCCEEDED
+                    or image_result.artifact is None
+                ):
+                    return _failed_image_result(image_result, self)
+                artifact = _normalize_aurora_square_artifact(image_result.artifact)
+                raw_usage = dict(image_result.raw_usage or {})
+                actual_cost += int(image_result.actual_cost_micros or 0)
+                generated_path = _write_generated_artifact(
+                    workspace, page_index, visual_attempt, artifact
+                )
+                runner.run(
+                    "record-generation",
+                    workspace,
+                    {
+                        "session": session_path,
+                        "token": str(generation_request["generation_token"]),
+                        "image": generated_path,
+                    },
+                )
+                judgment, usage, cost = await self._audit_v20_candidate(
+                    request,
+                    generation_request,
+                    generated_path,
+                    artifact,
+                )
+                audit_usage.append(usage)
+                actual_cost += cost
+                judgment_path = workspace / f"judgment-{visual_attempt + 1}.json"
+                write_contract(judgment_path, judgment)
+                runner.run(
+                    "audit-current",
+                    workspace,
+                    {"session": session_path, "judgment": judgment_path},
+                )
+                current = _load_json(session_path)
+                if current.get("state") == "REPAIR_REQUIRED" and visual_attempt == 0:
+                    repair_path = workspace / "repair.json"
+                    write_contract(repair_path, _v20_repair_plan(current))
+                    runner.run(
+                        "prepare-repair",
+                        workspace,
+                        {"session": session_path, "repair-plan": repair_path},
+                    )
+                    next_request_path = workspace / "repair-generation-request.json"
+                    result = runner.run(
+                        "generate-next",
+                        workspace,
+                        {"session": session_path, "out": next_request_path},
+                    )
+                    next_request = result.get("generation_request")
+                    generation_request = (
+                        dict(next_request)
+                        if isinstance(next_request, Mapping)
+                        else _load_json(next_request_path)
+                    )
+                    continue
+                break
+            if artifact is None or image_result is None:
+                raise AuroraPlanningError("Aurora v2.0 returned no artifact")
+            raw_usage["aurora_audit_calls"] = audit_usage
+            network_requests = raw_usage.get("network_requests", 1)
+            if not isinstance(network_requests, int) or network_requests < 0:
+                network_requests = 1
+            raw_usage["network_requests"] = (
+                network_requests
+                + max(0, len(audit_usage) - 1)
+                + len(audit_usage)
+            )
+            metrics = _mapping(raw_usage.get("metrics"))
+            metrics.update(
+                {
+                    "aurora_execution_mode": "parallel_v20",
+                    "page_index": page_index,
+                    "snapshot_hash": expected_hash,
+                    "logical_idempotency_key": logical_key,
+                    "independent_workspace": str(workspace),
+                    "provider_width": artifact.provider_width,
+                    "provider_height": artifact.provider_height,
+                    "locally_resampled": artifact.locally_resampled,
+                    "harness_state": _load_json(session_path).get("state"),
+                    "automatic_repairs_used": int(
+                        _load_json(session_path)
+                        .get("modifications_used_by_page", {})
+                        .get(str(page_index), 0)
+                    ),
+                }
+            )
+            raw_usage["metrics"] = metrics
+            return ProviderResult(
+                outcome=ProviderOutcome.SUCCEEDED,
+                provider_request_id=image_result.provider_request_id,
+                usage_reported=bool(image_result.raw_usage),
+                raw_usage=raw_usage,
+                estimated_cost_micros=image_result.estimated_cost_micros,
+                actual_cost_micros=actual_cost,
+                artifact=artifact,
+                provider_name=self.gateway.provider_name,
+                model_name=self.gateway.image_model,
+                pricing_version=self.gateway.pricing_version,
+            )
+        except Exception as exc:
+            retryable, http_status = _classify_transient_failure(exc)
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                error_code=getattr(exc, "code", "AURORA_EXECUTION_FAILED"),
+                error_message=str(exc),
+                usage_reported=False,
+                raw_usage={
+                    "provider_type": self.gateway.provider_name,
+                    "called": retryable,
+                    "metrics": {"aurora_execution_mode": "parallel_v20"},
+                },
+                retryable=retryable,
+                http_status=http_status,
+                provider_name=self.gateway.provider_name,
+                model_name=self.gateway.image_model,
+                pricing_version=self.gateway.pricing_version,
+            )
+
+    async def _audit_v20_candidate(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        generated_path: Path,
+        artifact: ProviderArtifact,
+    ) -> tuple[dict[str, Any], dict[str, Any], int]:
+        page_index = int(generation_request["page_index"])
+        candidate = SourceImage(
+            asset_id=f"candidate-page-{page_index}",
+            group_key=request.job_id,
+            filename=str(generated_path),
+            content_type=artifact.content_type,
+            sha256=artifact.sha256,
+            payload=artifact.payload,
+            source_role="generated_candidate",
+        )
+        sources = _bounded_visual_audit_sources(
+            _identity_sources(generation_request, request.job_id), candidate
+        )
+        audit_contract = {
+            "page_index": page_index,
+            "page_role": generation_request.get("page_role"),
+            "page_contract": generation_request.get("page_contract"),
+            "campaign_constitution": generation_request.get(
+                "campaign_constitution"
+            ),
+            "required_check_names": list(_VISUAL_CHECKS),
+        }
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                group_key=f"{request.job_id}:v20-audit:{page_index}",
+                sources=tuple(sources),
+                page_count=page_index + 1,
+                language="zh-CN",
+                product_name="Aurora v2.0 direct-pixel audit",
+                product_information=(
+                    json.dumps(audit_contract, ensure_ascii=False),
+                ),
+                platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+                size="1024x1024",
+                idempotency_key=(
+                    f"{request.idempotency_key}:v20-audit:{page_index}:"
+                    f"{generation_request.get('revision', 0)}"
+                ),
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_v20_visual_audit",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora v2.0 pixel audit failed"
+            )
+        judgment = dict(result.payload)
+        judgment["page_index"] = page_index
+        judgment["image_sha256"] = artifact.sha256
+        reviewer = _mapping(judgment.get("reviewer"))
+        reviewer.update(
+            {
+                "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+                "pixel_inspection_performed": True,
+                "image_path": str(generated_path),
+            }
+        )
+        judgment["reviewer"] = reviewer
+        return (
+            judgment,
+            dict(result.normalized_usage),
+            int(result.actual_cost_micros or 0),
+        )
+
+    async def audit_parallel_set(self, job_id: str) -> bool:
+        """Merge six page-local sessions and run the native v2.0 set audit."""
+
+        with self.session_factory() as db:
+            plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            items = db.scalars(
+                select(JobItemRecord)
+                .where(JobItemRecord.job_id == job_id)
+                .order_by(JobItemRecord.ordinal)
+            ).all()
+            attempts = db.scalars(
+                select(JobAttemptRecord)
+                .where(
+                    JobAttemptRecord.job_id == job_id,
+                    JobAttemptRecord.status == "succeeded",
+                )
+                .order_by(
+                    JobAttemptRecord.job_item_id,
+                    JobAttemptRecord.attempt_no.desc(),
+                )
+            ).all()
+            if plan is None or len(items) != 6:
+                raise AuroraPlanningError("Aurora v2.0 set context is incomplete")
+            attempt_by_item: dict[str, JobAttemptRecord] = {}
+            for attempt in attempts:
+                attempt_by_item.setdefault(attempt.job_item_id, attempt)
+
+        set_workspace = self._workspace(job_id) / "parallel-v20" / "set-audit"
+        set_workspace.mkdir(parents=True, exist_ok=True)
+        page_sessions: list[dict[str, Any]] = []
+        sources: list[SourceImage] = []
+        for item in items:
+            attempt = attempt_by_item.get(item.id)
+            if attempt is None:
+                raise AuroraPlanningError(
+                    f"Aurora v2.0 page {item.ordinal} has no succeeded attempt"
+                )
+            page_workspace = (
+                self._workspace(job_id)
+                / "parallel-v20"
+                / f"page-{item.ordinal + 1:02d}"
+                / f"attempt-{attempt.id}"
+            )
+            page_session = _load_json(page_workspace / "session.json")
+            versions = page_session.get("generated_versions")
+            selected = [
+                value
+                for value in versions or []
+                if isinstance(value, Mapping)
+                and value.get("page_index") == item.ordinal
+                and value.get("status") in {"ACCEPTED", "ACCEPTED_WITH_RESIDUALS"}
+            ]
+            if not selected:
+                raise AuroraPlanningError(
+                    f"Aurora v2.0 page {item.ordinal} has no accepted version"
+                )
+            version = selected[-1]
+            image_path = Path(str(version["file"])).resolve()
+            payload = image_path.read_bytes()
+            sources.append(
+                SourceImage(
+                    asset_id=f"accepted-page-{item.ordinal}",
+                    group_key=job_id,
+                    filename=str(image_path),
+                    content_type=_content_type(image_path),
+                    sha256=str(version["sha256"]),
+                    payload=payload,
+                    source_role="generated_candidate",
+                )
+            )
+            page_sessions.append(page_session)
+
+        base = dict(page_sessions[0])
+        base["state"] = "AWAITING_SET_AUDIT"
+        base["accepted_pages"] = list(range(6))
+        base["active_page_index"] = None
+        base["pending_generation"] = None
+        base["search_calibrated"] = True
+        base["style_calibrated"] = True
+        base["generated_versions"] = [
+            version
+            for page_session in page_sessions
+            for version in page_session.get("generated_versions", [])
+            if isinstance(version, Mapping)
+            and version.get("status") in {"ACCEPTED", "ACCEPTED_WITH_RESIDUALS"}
+        ]
+        set_session_path = set_workspace / "session.json"
+        write_contract(set_session_path, base)
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=items[0].workspace_id,
+                job_id=job_id,
+                group_key=f"{job_id}:v20-set-audit",
+                sources=tuple(sources),
+                page_count=6,
+                language="zh-CN",
+                product_name="Aurora v2.0 six-page set audit",
+                product_information=(),
+                platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
+                size="1024x1024",
+                idempotency_key=f"{job_id}:aurora-v20-set-audit:v1",
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_set_audit",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora v2.0 set audit failed"
+            )
+        observation_path = set_workspace / "observation.json"
+        write_contract(observation_path, dict(result.payload))
+        runner = (
+            self.harness
+            if isinstance(self.harness, AuroraV20HarnessRunner)
+            else AuroraV20HarnessRunner()
+        )
+        runner.run(
+            "audit-set",
+            set_workspace,
+            {"session": set_session_path, "observation": observation_path},
+        )
+        audited = _load_json(set_session_path)
+        passed = audited.get("set_audit_passed") is True
+        with self.session_factory() as db:
+            stored_plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if stored_plan is None:
+                raise AuroraPlanningError("Aurora v2.0 plan disappeared")
+            payload = dict(stored_plan.payload)
+            payload["_parallel_v20_set_session"] = audited
+            payload["set_audit_passed"] = passed
+            payload["harness_state"] = audited.get("state")
+            stored_plan.payload = payload
+            stored_plan.payload_hash = canonical_hash(payload)
+            db.add(
+                AuditEventRecord(
+                    workspace_id=items[0].workspace_id,
+                    action="aurora.parallel_v20_set_audited",
+                    resource_type="job",
+                    resource_id=job_id,
+                    request_id=f"{job_id}:v20-set-audit",
+                    details={
+                        "passed": passed,
+                        "harness_state": audited.get("state"),
+                    },
+                )
+            )
+            db.commit()
+        return passed
 
     def _load_authorized_context(
         self, request: ProviderRequest
@@ -715,6 +1149,34 @@ def _repair_plan(session: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _v20_repair_plan(session: Mapping[str, Any]) -> dict[str, Any]:
+    required = _mapping(session.get("required_repair"))
+    failed_checks = [str(value) for value in required.get("failed_checks", [])]
+    findings = [
+        dict(item)
+        for item in required.get("findings", [])
+        if isinstance(item, Mapping)
+    ]
+    if not failed_checks or not findings:
+        raise AuroraPlanningError("Aurora v2.0 repair diagnosis is incomplete")
+    return {
+        "scope": required.get("repair_scope"),
+        "failed_checks": failed_checks,
+        "findings": findings,
+        "preserve": [
+            "商品身份和全部已核验事实",
+            "当前页已通过的视觉检查",
+            "冻结的整套 Campaign Style",
+        ],
+        "strategy": (
+            "只在一次修改槽位内修正全部材料性失败，并保持其余像素层级不变"
+        ),
+        "expected_visible_change": (
+            "失败检查对应的可见问题被集中修正，商品身份、事实和已通过层保持不变"
+        ),
+    }
+
+
 def _write_generated_artifact(
     workspace: Path, page_index: int, attempt_index: int, artifact: ProviderArtifact
 ) -> Path:
@@ -780,8 +1242,18 @@ def _normalize_aurora_square_artifact(
 def _failed_image_result(
     result: Any, provider: AuroraMainImageProvider
 ) -> ProviderResult:
+    http_status = result.http_status
+    retryable_status = http_status in {408, 429} or (
+        isinstance(http_status, int) and 500 <= http_status <= 599
+    )
+    source_outcome = getattr(result, "outcome", ProviderOutcome.FAILED)
+    outcome = (
+        ProviderOutcome.OUTCOME_UNKNOWN
+        if source_outcome == ProviderOutcome.OUTCOME_UNKNOWN
+        else ProviderOutcome.FAILED
+    )
     return ProviderResult(
-        outcome=ProviderOutcome.FAILED,
+        outcome=outcome,
         provider_request_id=result.provider_request_id,
         error_code=result.error_code or "AURORA_IMAGE_GENERATION_FAILED",
         error_message=result.error_message or "Aurora image generation failed",
@@ -789,12 +1261,48 @@ def _failed_image_result(
         raw_usage=dict(result.raw_usage or {}),
         estimated_cost_micros=result.estimated_cost_micros,
         actual_cost_micros=result.actual_cost_micros,
-        retryable=bool(result.retryable),
-        http_status=result.http_status,
+        retryable=bool(result.retryable) or retryable_status,
+        http_status=http_status,
         provider_name=provider.gateway.provider_name,
         model_name=provider.gateway.image_model,
         pricing_version=provider.gateway.pricing_version,
     )
+
+
+def _request_uses_parallel_v20(request: ProviderRequest) -> bool:
+    item = request.configuration.get("item")
+    return (
+        isinstance(item, Mapping)
+        and item.get("aurora_execution_mode") == "parallel_v20"
+    )
+
+
+def _classify_transient_failure(exc: Exception) -> tuple[bool, int | None]:
+    """Classify only transport failures; validation and Skill failures fail closed."""
+
+    status = getattr(exc, "http_status", None) or getattr(exc, "status_code", None)
+    http_status = status if isinstance(status, int) else None
+    if http_status in {408, 429} or (
+        http_status is not None and 500 <= http_status <= 599
+    ):
+        return True, http_status
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True, http_status
+    if isinstance(exc, OSError) and not isinstance(
+        exc, (FileNotFoundError, PermissionError)
+    ):
+        return True, http_status
+    message = str(exc).casefold()
+    transient_markers = (
+        "temporary unavailable",
+        "temporarily unavailable",
+        "connection reset",
+        "connection refused",
+        "timed out",
+        "timeout",
+        "rate limit",
+    )
+    return any(marker in message for marker in transient_markers), http_status
 
 
 def _content_type(path: Path) -> str:

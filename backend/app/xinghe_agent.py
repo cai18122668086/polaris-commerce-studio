@@ -4901,6 +4901,109 @@ def _fake_usage(
 
 
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "aurora_v20_visual_audit":
+        page_index = max(0, min(5, request.page_count - 1))
+        candidate = request.sources[-1]
+        contract: dict[str, Any] = {}
+        if request.product_information:
+            try:
+                loaded = json.loads(request.product_information[0])
+                contract = loaded if isinstance(loaded, dict) else {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                contract = {}
+        page_contract = contract.get("page_contract")
+        page_contract = page_contract if isinstance(page_contract, dict) else {}
+        layout = page_contract.get("layout_contract")
+        layout = layout if isinstance(layout, dict) else {}
+        display = page_contract.get("display_copy_contract")
+        display = display if isinstance(display, dict) else {}
+        check_names = tuple(contract.get("required_check_names") or ())
+        material_checks = {
+            "product_identity_match",
+            "factual_copy_match",
+            "source_background_noise_absent",
+            "no_unsupported_claim",
+            "no_hard_error",
+            "typography_legibility",
+            "page_role_expression",
+            "evidence_relation_visible",
+            "visual_performance_match",
+            "baseline_performance_match",
+            "approved_plan_fidelity_match",
+            "campaign_constitution_match",
+            "selling_point_visible_without_copy",
+            "selling_point_visual_dominance",
+            "claim_to_evidence_relation_clear",
+            "text_not_substituting_for_visual_proof",
+            "thumbnail_success",
+            "layout_not_cloned",
+        }
+        return {
+            "page_index": page_index,
+            "image_sha256": candidate.sha256,
+            "reviewer": {
+                "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+                "pixel_inspection_performed": True,
+                "image_path": candidate.filename,
+            },
+            "decision_summary": (
+                "模拟审图已直接检查候选图像像素，全部材料性检查满足本页合同。"
+            ),
+            "observations": {
+                "product_prominence": 72,
+                "headline_rank": "JOINT_FIRST",
+                "headline_text": str(
+                    display.get("headline_seed_source_segment") or "核心卖点"
+                ),
+                "headline_line_count": 1,
+                "physical_evidence": ["当前商品与本页利益形成直接可见的证据关系"],
+                "evidence_is_primary_visual": True,
+                "depth_layers": 3,
+                "commercial_closure_visible": True,
+                "background_competition": "LOW",
+                "thumbnail_scan_order": ["商品", "主标题", "证据"],
+                "type_roles_seen": 4,
+                "unequal_information_modules_seen": 2,
+                "visual_tension_seen": "商品、标题与证据形成明确的定向阅读张力",
+                "composition_archetype_seen": str(
+                    layout.get("composition_archetype") or "VISIBLE_ARCHETYPE"
+                ),
+                "product_zone_seen": str(
+                    layout.get("product_zone") or "VISIBLE_PRODUCT_ZONE"
+                ),
+                "copy_zone_seen": str(
+                    layout.get("copy_zone") or "VISIBLE_COPY_ZONE"
+                ),
+                "dominant_view_seen": str(
+                    layout.get("dominant_view") or "VISIBLE_DOMINANT_VIEW"
+                ),
+                "evidence_topology_seen": str(
+                    layout.get("evidence_topology") or "VISIBLE_EVIDENCE_TOPOLOGY"
+                ),
+                "neighbor_layout_difference": (
+                    "本页主体锚点、证据拓扑和阅读方向与相邻页面均明显不同"
+                ),
+                "claim_to_evidence_relation": (
+                    "主卖点由当前商品的真实结构与使用关系直接承担"
+                ),
+                "claim_takeaway_without_copy": (
+                    "遮住文字后仍能从商品与证据关系识别本页利益方向"
+                ),
+                "source_background_leakage": [],
+            },
+            "checks": [
+                {
+                    "name": name,
+                    "passed": True,
+                    "score": 92,
+                    "material": name in material_checks,
+                    "observed_evidence": f"候选图像像素中可见{name}满足本页合同要求",
+                }
+                for name in check_names
+            ],
+            "all_material_deficiencies": [],
+            "audit_complete": True,
+        }
     if request.planning_profile == "aurora_style_calibration":
         return {
             "agent_pixel_reviewed": True,
@@ -6044,6 +6147,16 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "aurora_v20_visual_audit":
+        return (
+            "Directly inspect the last attached image as the generated Aurora "
+            "v2.0 candidate; earlier images are original identity references. "
+            "Return the native v2.0 visual-judgment JSON shape requested in the "
+            "first product_information entry. checks must be an ordered array "
+            "containing every required_check_name exactly once, with material "
+            "matching policy. Report only direct pixel observations and include "
+            "one complete deficiency for every material failed check."
+        )
     if request.planning_profile == "aurora_style_calibration":
         return (
             "Directly compare the two attached accepted Aurora campaign pages. "

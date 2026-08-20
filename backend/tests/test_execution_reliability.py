@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 from datetime import timedelta
 from io import BytesIO
 from uuid import uuid4
@@ -124,6 +125,117 @@ def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) ->
         assert job.error_code == "AURORA_PLANNING_FAILED"
         assert job.history_expires_at is not None
         assert {item.status for item in items} == {JobItemStatus.FAILED.value}
+
+
+class _ParallelAuroraFakeProvider:
+    name = "aurora-fake"
+    model = "none"
+    pricing_version = "test"
+
+    def __init__(self) -> None:
+        self.active = 0
+        self.max_active = 0
+        self.calls: defaultdict[int, int] = defaultdict(int)
+        self.idempotency_keys: defaultdict[int, list[str]] = defaultdict(list)
+
+    async def execute(self, request):  # type: ignore[no-untyped-def]
+        page = int(request.configuration["item"]["aurora_snapshot"]["page_index"])
+        self.calls[page] += 1
+        self.idempotency_keys[page].append(request.idempotency_key)
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        await asyncio.sleep(0.03)
+        self.active -= 1
+        if page == 2 and self.calls[page] == 1:
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                error_code="UPSTREAM_502",
+                error_message="temporary unavailable",
+                retryable=True,
+                http_status=502,
+                usage_reported=True,
+                raw_usage={"network_requests": 1},
+            )
+        return ProviderResult(
+            outcome=ProviderOutcome.SUCCEEDED,
+            provider_request_id=f"fake:{page}:{self.calls[page]}",
+            usage_reported=True,
+            raw_usage={"network_requests": 1},
+        )
+
+
+def test_parallel_aurora_overlaps_six_pages_and_retries_only_failure(
+    client: TestClient,
+) -> None:
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id, with_for_update=True)
+        assert job is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert first is not None
+        first.item_key = "page-001"
+        items = [first]
+        for ordinal in range(1, 6):
+            item = JobItemRecord(
+                id=f"item_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                item_key=f"page-{ordinal + 1:03d}",
+                ordinal=ordinal,
+                status=JobItemStatus.PENDING.value,
+                configuration={},
+            )
+            session.add(item)
+            items.append(item)
+        for item in items:
+            item.configuration = {
+                "aurora_execution_mode": "parallel_v20",
+                "aurora_snapshot": {
+                    "page_index": item.ordinal,
+                    "plan_revision": 1,
+                    "page_revision": 0,
+                },
+            }
+        now = utc_now()
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {"execution_mode": "parallel_v20"}
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    provider = _ParallelAuroraFakeProvider()
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-aurora",
+        max_concurrency=6,
+        max_aurora_retries=2,
+        aurora_retry_backoff_base_seconds=0.01,
+        aurora_retry_backoff_max_seconds=0.01,
+    )
+
+    assert asyncio.run(coordinator.run(job_id)) == JobStatus.COMPLETED
+    assert provider.max_active == 6
+    assert provider.calls == {0: 1, 1: 1, 2: 2, 3: 1, 4: 1, 5: 1}
+    assert len(set(provider.idempotency_keys[2])) == 1
 
 
 def _expand_job_to_three_items(client: TestClient, job_id: str) -> None:

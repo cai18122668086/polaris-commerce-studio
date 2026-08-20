@@ -136,7 +136,8 @@ test("homepage cards expose hover, keyboard, mobile-once, and reduced-motion sta
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /home-feature-card__image--detail-cover/);
   assert.match(css, /animation:\s*none !important/);
-  assert.match(css, /grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-rows: repeat\(2, var\(--home-feature-grid-row\)\)/);
   assert.doesNotMatch(css, /home-feature-card:nth-child/);
   assert.doesNotMatch(component, /home-aurora-entry/);
   assert.doesNotMatch(component, /home-feature-card__remix-reference/);

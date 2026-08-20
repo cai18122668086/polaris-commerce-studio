@@ -62,12 +62,24 @@ export function TopNavigation({
   const desktopNavigationRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const mobilePanelRef = useRef<HTMLDivElement>(null);
+  const activeTaskStatuses = [
+    "queued",
+    "planning",
+    "awaiting_confirmation",
+    "processing",
+    "cancelling",
+  ];
   const activeCount =
-    jobs.data?.items.filter((job) =>
-      ["queued", "planning", "awaiting_confirmation", "processing", "cancelling"].includes(
-        job.status,
-      ),
-    ).length ?? 0;
+    jobs.data?.items.filter((job) => activeTaskStatuses.includes(job.status)).length ?? 0;
+  const errorCount =
+    jobs.data?.items.filter((job) => ["failed", "partial"].includes(job.status)).length ?? 0;
+  const taskStateClass = errorCount ? "has-error" : activeCount ? "is-active" : "";
+  const taskLabel = errorCount ? "异常" : activeCount ? "进行中" : "任务中心";
+  const taskAriaLabel = errorCount
+    ? `打开任务中心，${errorCount} 个异常任务`
+    : activeCount
+      ? `打开任务中心，${activeCount} 个进行中任务`
+      : "打开任务中心";
 
   useEffect(() => {
     if (!openMenu) {
@@ -184,16 +196,16 @@ export function TopNavigation({
           </Link>
           <button
             ref={taskTriggerRef}
-            className="task-trigger"
+            className={`task-trigger ${taskStateClass}`}
             onClick={onOpenTasks}
-            aria-label={`打开任务中心，${activeCount} 个进行中任务`}
+            aria-label={taskAriaLabel}
             aria-controls="task-drawer"
             aria-expanded={taskOpen}
             aria-haspopup="dialog"
           >
             <PanelRightOpen size={18} />
-            <span>任务</span>
-            <i>{activeCount}</i>
+            <span>{taskLabel}</span>
+            {errorCount || activeCount ? <i>{errorCount || activeCount}</i> : null}
           </button>
           <Link
             href="/account"

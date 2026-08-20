@@ -134,10 +134,10 @@ class WorkspaceLimitRecord(TimestampMixin, Base):
     max_active_jobs: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
     max_concurrent_jobs: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
     daily_provider_cost_limit_micros: Mapped[int] = mapped_column(
-        BigInteger, default=10_000_000, nullable=False
+        BigInteger, default=10_000_000_000_000, nullable=False
     )
     monthly_provider_cost_limit_micros: Mapped[int] = mapped_column(
-        BigInteger, default=100_000_000, nullable=False
+        BigInteger, default=10_000_000_000_000, nullable=False
     )
     max_upload_bytes: Mapped[int] = mapped_column(
         BigInteger, default=20 * 1024 * 1024, nullable=False

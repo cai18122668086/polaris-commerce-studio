@@ -9402,3 +9402,76 @@ select:focus-visible {
   .guide-step p { font-size: 14px; }
   .guide-flow-tip { font-size: 13px; }
 }
+
+
+/* Required local help-center layout refinements. */
+@media (min-width: 1081px) {
+  /* Let long pages carry the sidebar naturally instead of clipping its lower tools. */
+  .app-shell__body {
+    align-items: stretch;
+  }
+
+  .tool-sidebar {
+    position: relative;
+    top: auto;
+    height: auto;
+    min-height: calc(100vh - var(--nav-height));
+    overflow: visible;
+    align-self: stretch;
+  }
+}
+
+
+/* Help center polish: keep navigation, contact QR, and guide easy to scan. */
+@media (min-width: 1081px) {
+  .app-shell,
+  .app-shell__body,
+  .tool-sidebar {
+    background: #fff;
+  }
+
+  .tool-sidebar {
+    position: relative;
+    top: auto;
+    height: auto;
+    min-height: calc(100vh - var(--nav-height));
+    max-height: none;
+    overflow: visible !important;
+    align-self: stretch;
+  }
+
+  .sidebar-tip {
+    flex: 0 0 auto;
+    margin-top: 24px;
+  }
+}
+
+
+/* The sidebar must participate in the page flow on desktop so the lower card is never clipped. */
+@media (min-width: 1081px) {
+  .tool-sidebar {
+    overflow: visible !important;
+  }
+
+  .sidebar-tip {
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+}
+
+
+@media (min-width: 1081px) {
+  .tool-sidebar {
+    height: max-content;
+    min-height: calc(100vh - var(--nav-height));
+    align-self: flex-start;
+  }
+}
+
+@media (min-width: 1081px) {
+  .tool-sidebar {
+    height: auto !important;
+    min-height: 0;
+    align-self: flex-start;
+  }
+}

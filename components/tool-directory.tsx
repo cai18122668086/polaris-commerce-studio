@@ -99,6 +99,14 @@ function getRelatedScenarioTools(query: string) {
   });
 }
 
+const HOME_FEATURE_FLOW_COPY: Record<string, [string, string]> = {
+  "local-edit": ["原图", "局部精修"],
+  "change-background": ["商品不变", "场景升级"],
+  "reference-remix": ["我的商品", "参考构图"],
+  "detail-pack": ["商品素材", "详情页规划"],
+  "amazon-visual-suite": ["商品素材", "21 张套图"],
+};
+
 function FeatureVisualImage({
   image,
   className,
@@ -140,6 +148,9 @@ function HomeFeatureCardArt({
     );
   }
 
+  const heroImage = visual.kind === "detail-scroll" ? visual.before : visual.after;
+  const flowCopy = HOME_FEATURE_FLOW_COPY[featureId] ?? ["输入", "生成结果"];
+
   return (
     <span
       className={`home-feature-card__art home-feature-card__art--${visual.kind}`}
@@ -147,28 +158,19 @@ function HomeFeatureCardArt({
     >
       <span className="home-feature-card__visual-stage">
         <FeatureVisualImage
-          image={visual.before}
-          className="home-feature-card__image home-feature-card__image--before"
+          image={heroImage}
+          className="home-feature-card__image home-feature-card__image--hero"
         />
-        <FeatureVisualImage
-          image={visual.after}
-          className={`home-feature-card__image home-feature-card__image--after${
-            visual.kind === "detail-scroll"
-              ? " home-feature-card__image--detail-long"
-              : ""
-          }`}
-        />
-        {visual.kind === "wipe" ? (
-          <span className="home-feature-card__wipe-line" />
-        ) : null}
-        {visual.kind === "detail-scroll" ? (
-          <FeatureVisualImage
-            image={visual.reducedMotionCover}
-            className="home-feature-card__image home-feature-card__image--detail-cover"
-          />
-        ) : null}
+        <span className="home-feature-card__flow">
+          <span>{flowCopy[0]}</span>
+          <ArrowRight size={13} />
+          <span>{flowCopy[1]}</span>
+        </span>
         {visual.kind === "amazon" ? (
           <span className="home-feature-card__count-badge">{"21 \u5f20"}</span>
+        ) : null}
+        {visual.kind === "detail-scroll" ? (
+          <span className="home-feature-card__detail-hint">结构 · 场景 · 卖点</span>
         ) : null}
       </span>
     </span>

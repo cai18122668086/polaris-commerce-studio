@@ -4497,3 +4497,103 @@ select:focus-visible {
     overflow-wrap: anywhere;
   }
 }
+
+
+/* Homepage single-hero capability cards v2 */
+
+.home-feature-card__image--hero {
+  z-index: 1;
+  opacity: 1 !important;
+  clip-path: inset(0) !important;
+  transform: scale(1) !important;
+  object-fit: cover;
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.home-feature-card__flow {
+  position: absolute;
+  z-index: 4;
+  top: 14px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 58%);
+  border-radius: 999px;
+  color: #fff;
+  background: rgb(27 25 24 / 58%);
+  box-shadow: 0 8px 20px rgb(25 20 18 / 18%);
+  backdrop-filter: blur(10px);
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.01em;
+}
+
+.home-feature-card__flow svg {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #ffd5c9;
+}
+
+.home-feature-card__count-badge {
+  opacity: 1;
+  transform: none;
+}
+
+.home-feature-card__detail-hint {
+  position: absolute;
+  z-index: 4;
+  right: 14px;
+  top: 14px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 58%);
+  border-radius: 999px;
+  color: #fff;
+  background: rgb(27 25 24 / 52%);
+  backdrop-filter: blur(10px);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.home-feature-card:not(.is-unavailable):is(:hover, :focus-visible, :focus-within, .is-mobile-played) .home-feature-card__image--hero {
+  transform: scale(1.045) !important;
+}
+
+.home-feature-card__art--detail-scroll .home-feature-card__image--hero {
+  object-position: center;
+}
+
+.home-feature-card__art--amazon .home-feature-card__image--hero {
+  object-position: center;
+}
+
+/* Keep the hero visual dominant while making the title readable without a hard contact-sheet bar. */
+.home-feature-card > div {
+  min-height: 62px;
+  align-items: flex-end;
+  padding: 26px 16px 14px;
+  background: linear-gradient(180deg, rgb(21 18 17 / 0%) 0%, rgb(21 18 17 / 82%) 76%);
+  backdrop-filter: none;
+}
+
+.home-feature-card strong {
+  text-shadow: 0 2px 12px rgb(0 0 0 / 28%);
+}
+
+.home-feature-card > div > span {
+  text-shadow: 0 2px 10px rgb(0 0 0 / 28%);
+}
+
+.home-feature-card__art--remix .home-feature-card__image--hero {
+  object-position: center center;
+}
+
+.home-feature-card__art--amazon .home-feature-card__image--hero {
+  object-position: center 54%;
+}
+

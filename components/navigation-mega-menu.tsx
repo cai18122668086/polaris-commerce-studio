@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown, Grid2X2, Sparkles } from "lucide-react";
+import { ChevronDown, Flame, Grid2X2, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
 import type {
   NavigationFeatureGroup,
   NavigationMenuDefinition,
@@ -32,21 +33,33 @@ function FeatureLinks({
         {group.items.map((item) => {
           const Icon = item.icon;
           const active = item.featureId === activeFeatureId;
+          const isHot = HOT_FEATURE_IDS.has(item.featureId);
           return (
             <Link
               key={item.featureId}
               href={item.href}
-              className={`nav-tool-link${active ? " is-active" : ""}`}
+              className={`nav-tool-link${active ? " is-active" : ""}${isHot ? " is-hot" : ""}`}
               aria-current={active ? "page" : undefined}
               onClick={onNavigate}
             >
               <span className={`tool-icon ${item.tone}`} aria-hidden="true">
                 <Icon size={19} />
               </span>
-              <span>
-                <strong>{item.label}</strong>
+              <span className="nav-tool-link__copy">
+                <span className="nav-tool-link__title">
+                  <strong>{item.label}</strong>
+                </span>
                 <small>{item.description}</small>
               </span>
+              {isHot ? (
+                <span
+                  className="nav-tool-link__hot"
+                  aria-label="热门功能"
+                  title="热门功能"
+                >
+                  <Flame size={14} fill="currentColor" />
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -282,15 +295,29 @@ export function MobileNavigationMenu({
                               style={{
                                 minWidth: 0,
                                 padding: "10px 9px",
+                                paddingRight: HOT_FEATURE_IDS.has(item.featureId) ? 30 : 9,
                                 border: `1px solid ${active ? "#cfc4ff" : "#eceef3"}`,
                                 borderRadius: 9,
                                 color: active ? "#5d42c7" : "#252938",
                                 background: active ? "#f4f0ff" : "#fafbfc",
                                 fontSize: 12,
                                 fontWeight: 650,
+                                position: "relative",
                               }}
                             >
-                              {item.label}
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, paddingRight: HOT_FEATURE_IDS.has(item.featureId) ? 20 : 0 }}>
+                                {item.label}
+                                {HOT_FEATURE_IDS.has(item.featureId) ? (
+                                  <Flame
+                                    size={13}
+                                    fill="currentColor"
+                                    color="#e94724"
+                                    className="mobile-nav-tool-link__hot"
+                                    style={{ position: "absolute", top: 7, right: 7, display: "block" }}
+                                    aria-label="热门功能"
+                                  />
+                                ) : null}
+                              </span>
                             </Link>
                           );
                         })}

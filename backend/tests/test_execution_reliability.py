@@ -306,6 +306,82 @@ def test_ten_concurrent_deliveries_execute_provider_once(
     assert _counts(client, job_id) == (1, 1)
 
 
+def test_non_domestic_jobs_keep_configured_parallel_claims(
+    client: TestClient,
+) -> None:
+    job_id = _create_job(client)
+    _expand_job_to_three_items(client, job_id)
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="parallel-delivery",
+        lease_seconds=2,
+        heartbeat_seconds=0.2,
+        max_concurrency=6,
+    )
+    assert coordinator.prepare(job_id) == JobStatus.PROCESSING
+
+    first = coordinator.claim_next_item(job_id)
+    second = coordinator.claim_next_item(job_id)
+    assert first is not None
+    assert second is not None
+    with client.app.state.session_factory() as session:
+        ordinals = {
+            session.get(JobItemRecord, lease.item_id).ordinal
+            for lease in (first, second)
+        }
+    assert ordinals == {0, 1}
+
+
+def test_domestic_pages_wait_for_predecessor_across_duplicate_deliveries(
+    client: TestClient,
+) -> None:
+    job_id = _create_job(client)
+    _expand_job_to_three_items(client, job_id)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.status = JobStatus.PROCESSING.value
+        job.stage = "processing"
+        session.commit()
+
+    first = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="aurora-first-delivery",
+        lease_seconds=2,
+        heartbeat_seconds=0.2,
+        max_concurrency=6,
+    )
+    duplicate = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="aurora-duplicate-delivery",
+        lease_seconds=2,
+        heartbeat_seconds=0.2,
+        max_concurrency=6,
+    )
+    first_page = first.claim_next_item(job_id)
+    assert first_page is not None
+    with client.app.state.session_factory() as session:
+        claimed = session.get(JobItemRecord, first_page.item_id)
+        assert claimed is not None
+        assert claimed.ordinal == 0
+
+    # A redelivered process_job must not claim page 2 while page 1 is active,
+    # even though the normal site concurrency remains six.
+    assert duplicate.claim_next_item(job_id) is None
+
+    assert asyncio.run(first.execute_lease(first_page))
+    second_page = duplicate.claim_next_item(job_id)
+    assert second_page is not None
+    with client.app.state.session_factory() as session:
+        claimed = session.get(JobItemRecord, second_page.item_id)
+        assert claimed is not None
+        assert claimed.ordinal == 1
+
+
 def test_running_job_aggregates_follow_terminal_item_statuses(
     client: TestClient,
 ) -> None:

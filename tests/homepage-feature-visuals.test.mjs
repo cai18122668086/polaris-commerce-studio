@@ -30,17 +30,22 @@ const EXPECTED_FILES = [
   "card-01-local-edit-before-v1.webp",
   "card-02-background-after-v1.webp",
   "card-02-background-before-v1.webp",
-  "card-03-remix-after-v1.webp",
   "card-03-remix-before-v1.webp",
   "card-03-remix-reference-v1.webp",
+  "card-03-remix-result-serum-landscape-v1.png",
   "card-04-detail-after-cover-v1.webp",
   "card-04-detail-after-long-v1.webp",
   "card-04-detail-before-v1.webp",
-  "card-05-amazon-after-v1.webp",
   "card-05-amazon-before-v1.webp",
+  "card-05-amazon-hero-v2.png",
 ];
 
-function webpDimensions(buffer) {
+function imageDimensions(buffer, file) {
+  if (file.endsWith(".png")) {
+    assert.deepEqual([...buffer.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+
   assert.equal(buffer.toString("ascii", 0, 4), "RIFF");
   assert.equal(buffer.toString("ascii", 8, 12), "WEBP");
   const format = buffer.toString("ascii", 12, 16);
@@ -67,7 +72,7 @@ function webpDimensions(buffer) {
     }
   }
 
-  throw new Error(`Unsupported WebP header: ${format}`);
+  throw new Error(`Unsupported image header for ${file}: ${format}`);
 }
 
 function mappedImages() {
@@ -99,7 +104,7 @@ test("the homepage grid covers all six one-click tasks without changing navigati
   );
 });
 
-test("all twelve production assets are WebP files with the declared stable dimensions", async () => {
+test("all twelve production assets use supported formats with declared stable dimensions", async () => {
   const files = (await readdir(assetDirectory)).sort();
   assert.deepEqual(files, EXPECTED_FILES);
   assert.equal(files.some((file) => file.toLowerCase().endsWith(".gif")), false);
@@ -113,7 +118,7 @@ test("all twelve production assets are WebP files with the declared stable dimen
 
   for (const image of images) {
     const buffer = await readFile(path.join(root, "public", image.src));
-    assert.deepEqual(webpDimensions(buffer), {
+    assert.deepEqual(imageDimensions(buffer, path.basename(image.src)), {
       width: image.width,
       height: image.height,
     });
@@ -136,7 +141,8 @@ test("homepage cards expose hover, keyboard, mobile-once, and reduced-motion sta
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /home-feature-card__image--detail-cover/);
   assert.match(css, /animation:\s*none !important/);
-  assert.match(css, /grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-rows: repeat\(2, var\(--home-feature-grid-row\)\)/);
   assert.doesNotMatch(css, /home-feature-card:nth-child/);
   assert.doesNotMatch(component, /home-aurora-entry/);
   assert.doesNotMatch(component, /home-feature-card__remix-reference/);

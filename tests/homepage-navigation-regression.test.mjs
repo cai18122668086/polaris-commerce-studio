@@ -254,10 +254,48 @@ test("Aurora domestic main image has discoverable entrypoints across the product
   assert.match(navigation, /pathname === item\.href \|\| pathname\.startsWith/);
   assert.match(toolsPage, /FEATURE_REGISTRY/);
   assert.match(dashboard, new RegExp(route.replaceAll("/", "\\/")));
-  assert.match(help, /HELP_FAQS/);
+  assert.match(help, /const faqs: Faq\[\] = \[/);
   assert.match(helpContent, /1 张搜索主图和 5 张轮播图/);
 });
 
+test("homepage search recommendations, hot cards, and task status cues stay scoped", async () => {
+  const toolDirectory = await utf8("components/tool-directory.tsx");
+  const topNavigation = await utf8("components/top-navigation.tsx");
+  const navigation = await utf8("components/navigation-mega-menu.tsx");
+  const featurePriorities = await utf8("lib/feature-priorities.ts");
+  const styles = await utf8("app/focus-inspired.css");
+  const globalStyles = await utf8("app/globals.css");
+
+  assert.match(featurePriorities, /HOT_FEATURE_IDS = new Set\(\[\s*"local-edit",\s*"detail-pack",\s*"domestic-main-image",\s*\]\)/s);
+  assert.match(toolDirectory, /import \{ HOT_FEATURE_IDS \} from "@\/lib\/feature-priorities"/);
+  assert.match(toolDirectory, /tool\.featured && HOT_FEATURE_IDS\.has\(tool\.id\)/);
+  assert.match(toolDirectory, /tool\.featured && !HOT_FEATURE_IDS\.has\(tool\.id\)/);
+  assert.match(toolDirectory, /pattern: \/亚马逊\|amazon\|跨境\|a\\\+\/iu[\s\S]*?featureIds: \["amazon-visual-suite", "detail-pack", "white-background"\]/);
+  assert.match(toolDirectory, /pattern: \/主图\|淘宝\|天猫\|京东\|轮播\/iu[\s\S]*?featureIds: \["domestic-main-image", "scene-main", "white-background"\]/);
+  assert.match(toolDirectory, /role=\{searchResults\.length \? "listbox" : "region"\}/);
+  assert.match(toolDirectory, /aria-label=\{searchResults\.length \? "功能搜索结果" : "相近场景推荐"\}/);
+  assert.match(toolDirectory, /home-search-recommendation/);
+  assert.match(toolDirectory, /home-command home-command--primary/);
+  assert.match(toolDirectory, /<HomeBannerCarousel \/>[\s\S]*?home-command home-command--primary/);
+  assert.match(toolDirectory, /event\.key === "Enter" && searchResults\.length/);
+  assert.match(styles, /\.home-command--primary > label\s*\{[\s\S]*?min-height: 96px;/);
+  assert.match(styles, /\.home-search-recommendation\.is-unavailable/);
+  assert.match(styles, /\.home-feature-card__hot\s*\{/);
+  assert.match(styles, /\.home-feature-card__hot svg\s*\{[\s\S]*?width: 23px;/);
+  assert.match(styles, /@media \(min-width: 1200px\)\s*\{[\s\S]*?\.home-feature-grid\s*\{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[\s\S]*?grid-template-rows: repeat\(2, var\(--home-feature-grid-row\)\);/);
+  assert.match(navigation, /import \{ HOT_FEATURE_IDS \} from "@\/lib\/feature-priorities"/);
+  assert.match(navigation, /const isHot = HOT_FEATURE_IDS\.has\(item\.featureId\);/);
+  assert.match(navigation, /nav-tool-link__hot/);
+  assert.match(globalStyles, /\.nav-tool-link__hot\s*\{/);
+
+  assert.match(topNavigation, /const errorCount =/);
+  assert.match(topNavigation, /const taskStateClass = errorCount \? "has-error" : activeCount \? "is-active"/);
+  assert.match(topNavigation, /className=\{`task-trigger \$\{taskStateClass\}`\}/);
+  assert.match(topNavigation, /const taskAriaLabel = errorCount/);
+  assert.match(topNavigation, /aria-label=\{taskAriaLabel\}/);
+  assert.match(styles, /\.task-trigger\.is-active\s*\{/);
+  assert.match(styles, /\.task-trigger\.has-error\s*\{/);
+});
 test("homepage and navigation public copy no longer exposes internal implementation wording", async () => {
   const publicFiles = [
     "components/app-shell.tsx",

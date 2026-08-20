@@ -904,7 +904,24 @@ class ExecutionCoordinator:
                     [JobItemStatus.PENDING.value, JobItemStatus.QUEUED.value]
                 ),
             )
-            if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+            if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+                # Aurora owns a strict page-by-page protocol. Outbox delivery is
+                # at-least-once, so a duplicate process_job invocation may enter
+                # while the preceding page is still running. Keep the configured
+                # site concurrency unchanged and make only the next contiguous
+                # page claimable at the database boundary.
+                succeeded_pages = session.scalar(
+                    select(func.count())
+                    .select_from(JobItemRecord)
+                    .where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status == JobItemStatus.SUCCEEDED.value,
+                    )
+                )
+                item_query = item_query.where(
+                    JobItemRecord.ordinal == int(succeeded_pages or 0)
+                )
+            elif job.type == JobType.AMAZON_VISUAL_SUITE.value:
                 active_ordinal = session.scalar(
                     select(func.min(JobItemRecord.ordinal)).where(
                         JobItemRecord.job_id == job.id,

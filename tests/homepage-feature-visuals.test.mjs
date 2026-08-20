@@ -40,6 +40,12 @@ const EXPECTED_FILES = [
   "card-05-amazon-hero-v2.png",
 ];
 
+// Keep the checked-in frontend variant available for the next responsive visual pass,
+// while only mapped production visuals participate in the twelve-image contract below.
+const EXPECTED_AUXILIARY_FILES = [
+  "card-03-remix-result-serum-v2.png",
+];
+
 function imageDimensions(buffer, file) {
   if (file.endsWith(".png")) {
     assert.deepEqual([...buffer.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
@@ -106,7 +112,7 @@ test("the homepage grid covers all six one-click tasks without changing navigati
 
 test("all twelve production assets use supported formats with declared stable dimensions", async () => {
   const files = (await readdir(assetDirectory)).sort();
-  assert.deepEqual(files, EXPECTED_FILES);
+  assert.deepEqual(files, [...EXPECTED_FILES, ...EXPECTED_AUXILIARY_FILES].sort());
   assert.equal(files.some((file) => file.toLowerCase().endsWith(".gif")), false);
 
   const images = mappedImages();

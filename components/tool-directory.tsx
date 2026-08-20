@@ -107,6 +107,14 @@ const HOME_FEATURE_FLOW_COPY: Record<string, [string, string]> = {
   "amazon-visual-suite": ["商品素材", "21 张套图"],
 };
 
+const HOME_FEATURE_FLOW_COPY: Record<string, [string, string]> = {
+  "local-edit": ["原图", "局部精修"],
+  "change-background": ["商品不变", "场景升级"],
+  "reference-remix": ["我的商品", "参考构图"],
+  "detail-pack": ["商品素材", "详情页规划"],
+  "amazon-visual-suite": ["商品素材", "21 张套图"],
+};
+
 function FeatureVisualImage({
   image,
   className,

@@ -1264,26 +1264,25 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
     payload.pop("concrete_observed_evidence", None)
     payload.pop("concrete observed_evidence", None)
     tokens = _mapping(payload.get("style_tokens"))
-    ratios = _mapping(tokens.get("palette_usage_ratio"))
-    ratio_values = list(ratios.values())
-    if ratios and (
-        not all(
+    if "palette_usage_ratio" in tokens:
+        ratios = _mapping(tokens["palette_usage_ratio"])
+        ratio_values = list(ratios.values())
+        valid_ratios = bool(ratios) and all(
             isinstance(value, (int, float))
             and not isinstance(value, bool)
             and value >= 0
             for value in ratio_values
         )
-        or abs(
-            sum(
-                float(value)
-                for value in ratio_values
-                if isinstance(value, (int, float))
-            )
-            - 100
+        valid_ratios = valid_ratios and (
+            abs(sum(float(value) for value in ratio_values) - 100) <= 0.01
         )
-        > 0.01
-    ):
-        tokens.pop("palette_usage_ratio", None)
+        if not valid_ratios:
+            # The compiled Harness campaign style is the source of truth. A
+            # provider calibration response may omit this optional override or
+            # return an empty/non-numeric object; never pass that invalid value
+            # through as it violates validate_campaign_style's non-empty map
+            # contract and terminates the page sequence at calibration.
+            tokens.pop("palette_usage_ratio", None)
     if "palette_roles" in tokens and not isinstance(
         tokens["palette_roles"], Mapping
     ):

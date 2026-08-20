@@ -547,6 +547,22 @@ def test_style_calibration_flattens_spaced_nested_evidence_field() -> None:
     assert "palette_usage_ratio" not in observation["style_tokens"]
 
 
+def test_style_calibration_drops_empty_palette_ratio_override() -> None:
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {
+                "palette_usage_ratio": {},
+                "density_band": "spacious commercial catalog",
+            },
+        }
+    )
+
+    assert observation["style_tokens"] == {
+        "density_band": "spacious commercial catalog"
+    }
+
+
 def test_set_role_audit_adapts_page_evidence_to_harness_distinctions() -> None:
     observation = _normalize_set_role_audit_payload(
         {

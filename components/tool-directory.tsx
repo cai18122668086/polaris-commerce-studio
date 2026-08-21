@@ -15,7 +15,7 @@ import { FEATURE_REGISTRY } from "@/lib/feature-registry";
 import { searchFeatures } from "@/lib/feature-search";
 import {
   HOME_FEATURE_VISUALS,
-  type HomeFeatureImage,
+  type HomeFeatureResponsiveImage,
 } from "@/lib/home-feature-visuals";
 import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
 
@@ -99,33 +99,30 @@ function getRelatedScenarioTools(query: string) {
   });
 }
 
-const HOME_FEATURE_FLOW_COPY: Record<string, [string, string]> = {
-  "local-edit": ["原图", "局部精修"],
-  "change-background": ["商品不变", "场景升级"],
-  "reference-remix": ["我的商品", "参考构图"],
-  "detail-pack": ["商品素材", "详情页规划"],
-  "amazon-visual-suite": ["商品素材", "21 张套图"],
-};
-
-
 function FeatureVisualImage({
   image,
   className,
+  eager = false,
 }: {
-  image: HomeFeatureImage;
+  image: HomeFeatureResponsiveImage;
   className: string;
+  eager?: boolean;
 }) {
   return (
-    <img
-      src={image.src}
-      width={image.width}
-      height={image.height}
-      className={className}
-      alt=""
-      loading="eager"
-      decoding="async"
-      draggable={false}
-    />
+    <picture className={className}>
+      <source media="(max-width: 720px)" srcSet={image.mobile.src} />
+      <source media="(max-width: 1199px)" srcSet={image.tablet.src} />
+      <img
+        src={image.desktop.src}
+        width={image.desktop.width}
+        height={image.desktop.height}
+        className="home-feature-card__picture-image"
+        alt=""
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        draggable={false}
+      />
+    </picture>
   );
 }
 
@@ -137,6 +134,12 @@ function HomeFeatureCardArt({
   FallbackIcon: LucideIcon;
 }) {
   const visual = HOME_FEATURE_VISUALS[featureId];
+  const [previewState, setPreviewState] = useState<"idle" | "armed" | "playing" | "done">("idle");
+  const previewTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => {
+    if (previewTimerRef.current !== undefined) window.clearTimeout(previewTimerRef.current);
+  }, []);
 
   if (!visual) {
     return (
@@ -149,30 +152,46 @@ function HomeFeatureCardArt({
     );
   }
 
-  const heroImage = visual.kind === "detail-scroll" ? visual.before : visual.after;
-  const flowCopy = HOME_FEATURE_FLOW_COPY[featureId] ?? ["输入", "生成结果"];
+  const replayPreview = () => {
+    if (previewTimerRef.current !== undefined) window.clearTimeout(previewTimerRef.current);
+    setPreviewState("armed");
+    previewTimerRef.current = window.setTimeout(() => {
+      setPreviewState("playing");
+      previewTimerRef.current = window.setTimeout(() => setPreviewState("done"), 5600);
+    }, 220);
+  };
+
+  const stopPreview = () => {
+    if (previewTimerRef.current !== undefined) window.clearTimeout(previewTimerRef.current);
+    setPreviewState("idle");
+  };
 
   return (
     <span
-      className={`home-feature-card__art home-feature-card__art--${visual.kind}`}
+      className={`home-feature-card__art home-feature-card__art--${visual.kind}${previewState !== "idle" ? ` is-preview-${previewState}` : ""}`}
       aria-hidden="true"
+      onMouseEnter={replayPreview}
+      onFocusCapture={replayPreview}
+      onTouchStart={replayPreview}
+      onMouseLeave={stopPreview}
+      onBlurCapture={stopPreview}
     >
       <span className="home-feature-card__visual-stage">
         <FeatureVisualImage
-          image={heroImage}
-          className="home-feature-card__image home-feature-card__image--hero"
+          image={visual.primary}
+          className="home-feature-card__image home-feature-card__image--primary"
+          eager
         />
-        <span className="home-feature-card__flow">
-          <span>{flowCopy[0]}</span>
-          <ArrowRight size={13} />
-          <span>{flowCopy[1]}</span>
-        </span>
-        {visual.kind === "amazon" ? (
-          <span className="home-feature-card__count-badge">{"21 \u5f20"}</span>
-        ) : null}
-        {visual.kind === "detail-scroll" ? (
-          <span className="home-feature-card__detail-hint">结构 · 场景 · 卖点</span>
-        ) : null}
+        <FeatureVisualImage
+          image={visual.input}
+          className="home-feature-card__image home-feature-card__image--input"
+          eager
+        />
+        <FeatureVisualImage
+          image={visual.primary}
+          className="home-feature-card__image home-feature-card__image--result"
+          eager
+        />
       </span>
     </span>
   );

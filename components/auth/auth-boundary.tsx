@@ -24,7 +24,8 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   // This opt-in is only supplied by an ignored local .env.local file so the help UI can be reviewed without an external auth service.
   // Production and normal local runs retain the existing route protection because this is false unless explicitly configured.
   const localHelpPreview = process.env.NEXT_PUBLIC_LOCAL_HELP_PREVIEW === "true" && pathname === "/help";
-  const publicRoute = isPublicRoute(pathname) || localHelpPreview;
+  const localHomePreview = process.env.NEXT_PUBLIC_LOCAL_HOME_PREVIEW === "true" && pathname === "/";
+  const publicRoute = isPublicRoute(pathname) || localHelpPreview || localHomePreview;
   const developmentAuth = getAuthMode() === "development";
 
   const redirectToLogin = useCallback(() => {

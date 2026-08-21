@@ -9,7 +9,7 @@ import {
 } from "../lib/home-feature-visuals.ts";
 
 const root = process.cwd();
-const assetDirectory = path.join(root, "public", "images", "homepage-features");
+const assetDirectory = path.join(root, "public", "images", "homepage-features", "native-v2");
 const utf8 = (file) => readFile(path.join(root, file), "utf8");
 
 const EXPECTED_FEATURE_IDS = [
@@ -21,30 +21,26 @@ const EXPECTED_FEATURE_IDS = [
   "amazon-visual-suite",
 ];
 
-const EXPECTED_RICH_VISUAL_IDS = EXPECTED_FEATURE_IDS.filter(
-  (featureId) => featureId !== "domestic-main-image",
-);
-
-const EXPECTED_FILES = [
-  "card-01-local-edit-after-v1.webp",
-  "card-01-local-edit-before-v1.webp",
-  "card-02-background-after-v1.webp",
-  "card-02-background-before-v1.webp",
-  "card-03-remix-before-v1.webp",
-  "card-03-remix-reference-v1.webp",
-  "card-03-remix-result-serum-landscape-v1.png",
-  "card-04-detail-after-cover-v1.webp",
-  "card-04-detail-after-long-v1.webp",
-  "card-04-detail-before-v1.webp",
-  "card-05-amazon-before-v1.webp",
-  "card-05-amazon-hero-v2.png",
+const EXPECTED_PRIMARY_PREFIXES = [
+  "01-masked",
+  "02-background",
+  "03-remix",
+  "04-detail",
+  "05-domestic",
+  "06-amazon",
 ];
 
-// Keep the checked-in frontend variant available for the next responsive visual pass,
-// while only mapped production visuals participate in the twelve-image contract below.
-const EXPECTED_AUXILIARY_FILES = [
-  "card-03-remix-result-serum-v2.png",
-];
+const EXPECTED_FILES = EXPECTED_PRIMARY_PREFIXES.flatMap((prefix) => [
+  `${prefix}-primary-desktop.png`,
+  `${prefix}-primary-tablet.png`,
+  `${prefix}-primary-mobile.png`,
+]);
+
+const EXPECTED_INPUT_FILES = ["01", "02", "03", "04", "05", "06"].flatMap((prefix) => [
+  `${prefix}-input-desktop.png`,
+  `${prefix}-input-tablet.png`,
+  `${prefix}-input-mobile.png`,
+]);
 
 function imageDimensions(buffer, file) {
   if (file.endsWith(".png")) {
@@ -82,12 +78,10 @@ function imageDimensions(buffer, file) {
 }
 
 function mappedImages() {
-  return Object.values(HOME_FEATURE_VISUALS).flatMap((visual) => {
-    const images = [visual.before, visual.after];
-    if (visual.kind === "remix") images.push(visual.reference);
-    if (visual.kind === "detail-scroll") images.push(visual.reducedMotionCover);
-    return images;
-  });
+  return Object.values(HOME_FEATURE_VISUALS).flatMap((visual) => [
+    ...Object.values(visual.primary),
+    ...Object.values(visual.input),
+  ]);
 }
 
 test("the homepage grid covers all six one-click tasks without changing navigation", () => {
@@ -96,7 +90,7 @@ test("the homepage grid covers all six one-click tasks without changing navigati
     featured.map((feature) => feature.id),
     EXPECTED_FEATURE_IDS,
   );
-  assert.deepEqual(Object.keys(HOME_FEATURE_VISUALS), EXPECTED_RICH_VISUAL_IDS);
+  assert.deepEqual(Object.keys(HOME_FEATURE_VISUALS), EXPECTED_FEATURE_IDS);
   assert.deepEqual(
     featured.map((feature) => feature.route),
     [
@@ -110,16 +104,16 @@ test("the homepage grid covers all six one-click tasks without changing navigati
   );
 });
 
-test("all twelve production assets use supported formats with declared stable dimensions", async () => {
+test("all responsive production assets use supported formats with declared stable dimensions", async () => {
   const files = (await readdir(assetDirectory)).sort();
-  assert.deepEqual(files, [...EXPECTED_FILES, ...EXPECTED_AUXILIARY_FILES].sort());
+  assert.deepEqual(files, [...EXPECTED_FILES, ...EXPECTED_INPUT_FILES].sort());
   assert.equal(files.some((file) => file.toLowerCase().endsWith(".gif")), false);
 
   const images = mappedImages();
-  assert.equal(images.length, 12);
+  assert.equal(images.length, 36);
   assert.deepEqual(
     images.map((image) => path.basename(image.src)).sort(),
-    EXPECTED_FILES,
+    [...EXPECTED_FILES, ...EXPECTED_INPUT_FILES].sort(),
   );
 
   for (const image of images) {

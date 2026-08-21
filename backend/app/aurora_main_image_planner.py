@@ -56,7 +56,9 @@ generated image as evidence. Keep profile01_semantics_read false.
 
 
 class AuroraPlanningError(RuntimeError):
-    pass
+    # Optional bounded response-shape evidence attached by provider boundary
+    # failures.  Raw prompts, response bodies and credentials are never stored.
+    aurora_gateway_diagnostics: dict[str, Any] | None = None
 
 
 class _PlannerGateway(Protocol):
@@ -370,6 +372,7 @@ def authorize_aurora_plan(
             workspace,
             harness_session,
             runner,
+            page_indexes=(0, 1),
         )
 
 
@@ -385,6 +388,8 @@ def _persist_parallel_v20_snapshots(
     workspace: Path,
     authorized_session: Mapping[str, Any],
     runner: AuroraHarnessRunner,
+    *,
+    page_indexes: Sequence[int] = tuple(range(6)),
 ) -> None:
     """Freeze all page requests before the first provider call.
 
@@ -419,8 +424,13 @@ def _persist_parallel_v20_snapshots(
         source_hashes[str(row.get("evidence_id"))] = hashlib.sha256(
             source_path.read_bytes()
         ).hexdigest()
+    requested_indexes = set(page_indexes)
+    if not requested_indexes.issubset(set(range(6))):
+        raise AuroraPlanningError("Aurora parallel snapshot page index is invalid")
     snapshots: list[dict[str, Any]] = []
     for item in items:
+        if item.ordinal not in requested_indexes:
+            continue
         page_workspace = workspace / "parallel-v20" / f"page-{item.ordinal + 1:02d}"
         page_workspace.mkdir(parents=True, exist_ok=True)
         page_session = dict(authorized_session)
@@ -433,8 +443,9 @@ def _persist_parallel_v20_snapshots(
         # first-two-page Campaign Style calibration. Later pages inherit the
         # already confirmed campaign style so they can still be dispatched in
         # the six-page parallel batch.
-        page_session["search_calibrated"] = item.ordinal >= 1
-        page_session["style_calibrated"] = item.ordinal >= 2
+        style_ready = authorized_session.get("style_calibrated") is True
+        page_session["search_calibrated"] = item.ordinal >= 1 or style_ready
+        page_session["style_calibrated"] = style_ready
         session_path = page_workspace / "session.json"
         request_path = page_workspace / "generation-request.json"
         write_contract(session_path, page_session)
@@ -487,9 +498,21 @@ def _persist_parallel_v20_snapshots(
         item.configuration = configuration
         snapshots.append(snapshot)
     payload = dict(plan.payload)
-    payload["_parallel_v20_snapshots"] = snapshots
+    existing = payload.get("_parallel_v20_snapshots")
+    existing_snapshots = (
+        [dict(item) for item in existing if isinstance(item, Mapping)]
+        if isinstance(existing, list)
+        else []
+    )
+    by_page = {
+        int(item["page_index"]): item
+        for item in existing_snapshots
+        if item.get("page_index") is not None
+    }
+    by_page.update({int(item["page_index"]): item for item in snapshots})
+    payload["_parallel_v20_snapshots"] = [by_page[index] for index in sorted(by_page)]
     payload["snapshot_manifest_hash"] = canonical_hash(
-        [snapshot["snapshot_hash"] for snapshot in snapshots]
+        [snapshot["snapshot_hash"] for snapshot in payload["_parallel_v20_snapshots"]]
     )
     plan.payload = payload
     plan.payload_hash = canonical_hash(payload)

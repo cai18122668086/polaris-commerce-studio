@@ -2551,6 +2551,13 @@ def _copy_job_relations_for_retry(
             item.error_code == "AURORA_SET_AUDIT_FAILED"
             and item.id in preserved_set_audit_ids
         )
+        copied_configuration = dict(item.configuration or {})
+        # A parallel v2 retry may reuse page 0 while retrying page 1.  The
+        # native Campaign Style gate still needs the accepted page-0 pixels;
+        # retain the source job id so the provider can read that durable
+        # session/artifact without regenerating the reused page.
+        if source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+            copied_configuration["aurora_parallel_source_job_id"] = source.id
         session.add(
             JobItemRecord(
                 id=new_item_id,
@@ -2569,7 +2576,7 @@ def _copy_job_relations_for_retry(
                 ),
                 stage="retry" if retry_this else "reused",
                 quality=item.quality,
-                configuration=item.configuration,
+                configuration=copied_configuration,
                 source_job_item_id=item.id,
                 result_source="reused" if reused else None,
             )

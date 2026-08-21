@@ -85,6 +85,41 @@ PROMPT_POLICY_VERSION = "xinghe-skill-parity-prompt-v2"
 RESUME_SIGNATURE_VERSION = "xinghe-resume-v2"
 PLAN_SCHEMA_VERSION = "xinghe-plan-v2"
 PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v3"
+
+# This is the native Aurora v2 visual-judgment check order.  Keep the gateway
+# response contract in the same order as the Skill/runtime contract; the
+# provider still validates the order again before it can advance the Harness.
+_AURORA_V20_VISUAL_CHECKS = (
+    "product_identity_match",
+    "factual_copy_match",
+    "typography_style_match",
+    "typography_legibility",
+    "page_role_expression",
+    "evidence_relation_visible",
+    "campaign_style_match",
+    "headline_treatment_match",
+    "palette_role_match",
+    "graphic_language_match",
+    "photography_finish_match",
+    "information_surface_match",
+    "layout_not_cloned",
+    "set_diversity_match",
+    "product_separation",
+    "numeric_hierarchy_if_applicable",
+    "design_intensity_controlled",
+    "visual_performance_match",
+    "baseline_performance_match",
+    "approved_plan_fidelity_match",
+    "campaign_constitution_match",
+    "source_background_noise_absent",
+    "selling_point_visible_without_copy",
+    "selling_point_visual_dominance",
+    "claim_to_evidence_relation_clear",
+    "text_not_substituting_for_visual_proof",
+    "thumbnail_success",
+    "no_unsupported_claim",
+    "no_hard_error",
+)
 PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
 IMAGE_SIZE = "1024x1536"
 SUPPORTED_IMAGE_SIZES = frozenset(
@@ -1568,6 +1603,16 @@ class TengliOpenAICompatibleGateway:
             payload.update(
                 {
                     "max_completion_tokens": 12_000,
+                }
+            )
+        elif request.planning_profile == "aurora_v20_visual_audit":
+            payload.update(
+                {
+                    # A v2 audit contains 29 ordered checks plus 22 observation
+                    # fields.  The previous generic default was small enough
+                    # to encourage abbreviated/string observations or a stale
+                    # runtime envelope before local validation could explain it.
+                    "max_completion_tokens": 16_000,
                 }
             )
         response: Mapping[str, Any] | None = None
@@ -6124,6 +6169,111 @@ def _aurora_identity_json_schema() -> dict[str, Any]:
     }
 
 
+def _aurora_v20_visual_judgment_json_schema() -> dict[str, Any]:
+    """Return the strict gateway contract for native v2 semantic judgment.
+
+    Runtime-owned fields (page index, candidate hash, reviewer attestation and
+    ``audit_complete``) intentionally do not belong in this response schema.
+    The local provider binds those fields after validating the semantic payload.
+    This prevents a vision model from returning stale page metadata while also
+    making malformed values such as a string-valued ``observations`` impossible
+    to accept as a successful native judgment.
+    """
+
+    string = {"type": "string", "minLength": 1}
+    observations_properties: dict[str, Any] = {
+        "product_prominence": {"type": "number", "minimum": 0, "maximum": 100},
+        "headline_rank": {
+            "type": "string",
+            "enum": ["FIRST", "JOINT_FIRST", "SECOND", "WEAK"],
+        },
+        "headline_text": string,
+        "headline_line_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+        },
+        "physical_evidence": {"type": "array", "items": string},
+        "evidence_is_primary_visual": {"type": "boolean"},
+        "depth_layers": {"type": "integer", "minimum": 0, "maximum": 5},
+        "commercial_closure_visible": {"type": "boolean"},
+        "background_competition": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH"],
+        },
+        "thumbnail_scan_order": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "items": string,
+        },
+        "type_roles_seen": {"type": "integer", "minimum": 0, "maximum": 8},
+        "unequal_information_modules_seen": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8,
+        },
+        "visual_tension_seen": {"type": "string", "minLength": 8},
+        "composition_archetype_seen": string,
+        "product_zone_seen": string,
+        "copy_zone_seen": string,
+        "dominant_view_seen": string,
+        "evidence_topology_seen": string,
+        "neighbor_layout_difference": string,
+        "claim_to_evidence_relation": {"type": "string", "minLength": 8},
+        "claim_takeaway_without_copy": {"type": "string", "minLength": 8},
+        "source_background_leakage": {"type": "array", "items": string},
+    }
+    observation_names = list(observations_properties)
+    check = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["name", "passed", "score", "material", "observed_evidence"],
+        "properties": {
+            "name": {"type": "string", "enum": list(_AURORA_V20_VISUAL_CHECKS)},
+            "passed": {"type": "boolean"},
+            "score": {"type": "number", "minimum": 0, "maximum": 100},
+            "material": {"type": "boolean"},
+            "observed_evidence": {"type": "string", "minLength": 8},
+        },
+    }
+    deficiency = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["check", "visible_problem", "root_cause", "required_change"],
+        "properties": {
+            "check": {"type": "string", "enum": list(_AURORA_V20_VISUAL_CHECKS)},
+            "visible_problem": {"type": "string", "minLength": 8},
+            "root_cause": {"type": "string", "minLength": 8},
+            "required_change": {"type": "string", "minLength": 8},
+        },
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "decision_summary",
+            "observations",
+            "checks",
+            "all_material_deficiencies",
+        ],
+        "properties": {
+            "decision_summary": {"type": "string", "minLength": 12},
+            "observations": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": observation_names,
+                "properties": observations_properties,
+            },
+            "checks": {"type": "array", "minItems": 1, "items": check},
+            "all_material_deficiencies": {
+                "type": "array",
+                "items": deficiency,
+            },
+        },
+    }
+
+
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
     if request.planning_profile == "aurora_identity":
         return {
@@ -6132,6 +6282,15 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "name": "aurora_product_identity",
                 "strict": True,
                 "schema": _aurora_identity_json_schema(),
+            },
+        }
+    if request.planning_profile == "aurora_v20_visual_audit":
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_v20_visual_judgment_semantics",
+                "strict": True,
+                "schema": _aurora_v20_visual_judgment_json_schema(),
             },
         }
     if request.planning_profile != "amazon_visual_suite":
@@ -6151,8 +6310,13 @@ def _planner_prompt(request: PlannerRequest) -> str:
         return (
             "Directly inspect the last attached image as the generated Aurora "
             "v2.0 candidate; earlier images are original identity references. "
-            "Return the native v2.0 visual-judgment JSON shape requested in the "
-            "first product_information entry. checks must be an ordered array "
+            "Return only the semantic fields in the strict native v2.0 "
+            "visual-judgment response schema requested by the gateway. Do not "
+            "return page_index, image_sha256, reviewer, image_path or "
+            "audit_complete; the local runtime owns and binds those fields. "
+            "observations must be a JSON object with every required member, "
+            "never a string, list, null, prose paragraph or nested envelope. "
+            "checks must be an ordered array "
             "containing every required_check_name exactly once, with material "
             "matching policy. Report only direct pixel observations and include "
             "one complete deficiency for every material failed check. "

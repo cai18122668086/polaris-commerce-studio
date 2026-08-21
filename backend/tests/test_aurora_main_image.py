@@ -138,6 +138,86 @@ def test_v20_visual_judgment_binds_runtime_fields_after_semantic_validation() ->
     assert normalized["all_material_deficiencies"] == []
 
 
+@pytest.mark.parametrize("bad_observations", ["像素观察文本", [], None])
+def test_v20_visual_judgment_rejects_non_object_observations(
+    bad_observations: object,
+) -> None:
+    source = SourceImage(
+        asset_id="candidate",
+        group_key="job_bad_observations",
+        filename="candidate.png",
+        content_type="image/png",
+        sha256="b" * 64,
+        payload=b"candidate-pixels",
+        source_role="generated_candidate",
+    )
+    result = asyncio.run(
+        FakeXingheGateway().plan(
+            PlannerRequest(
+                workspace_id="workspace_one",
+                job_id="job_bad_observations",
+                group_key="audit",
+                sources=(source,),
+                page_count=1,
+                language="zh-CN",
+                product_name="Aurora v2 audit",
+                product_information=(
+                    json.dumps(
+                        {"required_check_names": list(_VISUAL_CHECKS)},
+                        ensure_ascii=False,
+                    ),
+                ),
+                platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+                size="1024x1024",
+                idempotency_key="job_bad_observations:audit",
+                planning_profile="aurora_v20_visual_audit",
+            )
+        )
+    )
+    assert isinstance(result.payload, dict)
+    payload = dict(result.payload)
+    payload["observations"] = bad_observations
+    with pytest.raises(AuroraPlanningError, match="observations must be an object"):
+        AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+            payload,
+            {"page_index": 0},
+            runtime_image_sha256=source.sha256,
+        )
+
+
+def test_v20_gateway_contract_is_strict_semantic_json_only() -> None:
+    request = PlannerRequest(
+        workspace_id="workspace_one",
+        job_id="job_contract",
+        group_key="audit",
+        sources=(),
+        page_count=1,
+        language="zh-CN",
+        product_name="Aurora v2 audit",
+        product_information=(),
+        platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+        size="1024x1024",
+        idempotency_key="job_contract:audit",
+        planning_profile="aurora_v20_visual_audit",
+    )
+    response_format = _planner_response_format(request)
+    assert response_format["type"] == "json_schema"
+    json_schema = response_format["json_schema"]
+    assert json_schema["strict"] is True
+    schema = json_schema["schema"]
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {
+        "decision_summary",
+        "observations",
+        "checks",
+        "all_material_deficiencies",
+    }
+    assert set(
+        ("page_index", "image_sha256", "reviewer", "audit_complete")
+    ).isdisjoint(schema["properties"])
+    assert schema["properties"]["observations"]["type"] == "object"
+
+
 def test_v20_visual_judgment_rejects_non_native_enum() -> None:
     payload = {
         "page_index": 0,

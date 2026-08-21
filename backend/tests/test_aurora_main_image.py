@@ -5,6 +5,7 @@ import hashlib
 import importlib
 import json
 import sys
+from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +21,7 @@ from app.aurora_main_image_planner import (
     _public_plan_payload,
 )
 from app.aurora_main_image_provider import (
+    _VISUAL_CHECKS,
     AuroraMainImageProvider,
     _bounded_visual_audit_sources,
     _normalize_aurora_square_artifact,
@@ -82,6 +84,58 @@ def test_v20_visual_judgment_fails_closed_on_missing_native_fields() -> None:
             },
             {"page_index": 0},
         )
+
+
+def test_v20_visual_judgment_binds_runtime_fields_after_semantic_validation() -> None:
+    source = SourceImage(
+        asset_id="candidate",
+        group_key="job_runtime_binding",
+        filename="candidate.png",
+        content_type="image/png",
+        sha256="a" * 64,
+        payload=b"candidate-pixels",
+        source_role="generated_candidate",
+    )
+    result = asyncio.run(
+        FakeXingheGateway().plan(
+            PlannerRequest(
+                workspace_id="workspace_one",
+                job_id="job_runtime_binding",
+                group_key="audit",
+                sources=(source,),
+                page_count=1,
+                language="zh-CN",
+                product_name="Aurora v2 audit",
+                product_information=(
+                    json.dumps(
+                        {"required_check_names": list(_VISUAL_CHECKS)},
+                        ensure_ascii=False,
+                    ),
+                ),
+                platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+                size="1024x1024",
+                idempotency_key="job_runtime_binding:audit",
+                planning_profile="aurora_v20_visual_audit",
+            )
+        )
+    )
+    assert isinstance(result.payload, dict)
+    sparse_payload = dict(result.payload)
+    for field in ("page_index", "image_sha256", "reviewer", "audit_complete"):
+        sparse_payload.pop(field, None)
+
+    normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        sparse_payload,
+        {"page_index": 0},
+        runtime_image_sha256=source.sha256,
+    )
+
+    assert normalized["page_index"] == 0
+    assert normalized["audit_complete"] is True
+    assert normalized["decision_summary"]
+    assert normalized["observations"]
+    assert normalized["checks"]
+    assert normalized["all_material_deficiencies"] == []
 
 
 def test_v20_visual_judgment_rejects_non_native_enum() -> None:
@@ -1113,6 +1167,24 @@ def test_aurora_v20_source_matches_the_original_zip_manifest() -> None:
 def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     tmp_path: Path,
 ) -> None:
+    class SparseNativeGateway(FakeXingheGateway):
+        async def plan(self, request: PlannerRequest):
+            result = await super().plan(request)
+            if (
+                request.planning_profile == "aurora_v20_visual_audit"
+                and isinstance(result.payload, dict)
+            ):
+                payload = dict(result.payload)
+                for field in (
+                    "page_index",
+                    "image_sha256",
+                    "reviewer",
+                    "audit_complete",
+                ):
+                    payload.pop(field, None)
+                return replace(result, payload=payload)
+            return result
+
     job_id = "job_v20_snapshot"
     evidence_path = tmp_path / "product.png"
     evidence_path.write_bytes(
@@ -1201,7 +1273,7 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     snapshot["snapshot_hash"] = canonical_hash(snapshot)
     provider = AuroraMainImageProvider(
         session_factory=None,  # type: ignore[arg-type]
-        gateway=FakeXingheGateway(),
+        gateway=SparseNativeGateway(),
         storage=None,  # type: ignore[arg-type]
         work_root=tmp_path / "work",
         execution_mode="parallel_v20",
@@ -1240,6 +1312,30 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         / "attempt-attempt_0"
         / "search-baseline-observation.json"
     ).is_file()
+    attempt_workspace = (
+        tmp_path
+        / "work"
+        / job_id
+        / "parallel-v20"
+        / "page-01"
+        / "attempt-attempt_0"
+    )
+    judgment = json.loads(
+        (attempt_workspace / "judgment-1.json").read_text(encoding="utf-8")
+    )
+    generated_path = (
+        attempt_workspace / "generated" / "page-01-attempt-1.jpg"
+    )
+    assert judgment["page_index"] == 0
+    assert judgment["image_sha256"] == hashlib.sha256(
+        generated_path.read_bytes()
+    ).hexdigest()
+    assert judgment["reviewer"] == {
+        "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+        "pixel_inspection_performed": True,
+        "image_path": str(generated_path),
+    }
+    assert judgment["audit_complete"] is True
 
 
 def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> None:

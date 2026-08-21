@@ -55,10 +55,13 @@ advisory and must not trigger regeneration by themselves. Never infer a missing
 required element from an overall PASS. If any required_visible_element, reading-path
 stop, page-role expression, physical proof, or commercial closure is not
 visibly present, fail the corresponding plan-fidelity check and name the
-missing pixel evidence. Return the native v2 JSON contract exactly: never omit
-decision_summary, observations, checks, or all_material_deficiencies; never
-use legacy aliases or synthesize defaults; and use only the declared enum values
-for headline_rank and background_competition.
+missing pixel evidence. Return the native v2 semantic judgment exactly: never
+omit decision_summary, observations, checks, or all_material_deficiencies; never
+use legacy aliases or synthesize semantic defaults; and use only the declared
+enum values for headline_rank and background_competition. The runtime binds
+page_index, image_sha256 and reviewer, then derives the final audit_complete
+attestation only after all semantic checks pass. Do not invent image paths or
+hashes for those runtime-owned fields.
 """.strip()
 
 
@@ -523,6 +526,18 @@ class AuroraMainImageProvider:
             ),
             "required_check_names": list(_VISUAL_CHECKS),
             "response_contract": "aurora-native-v2-visual-judgment",
+            "runtime_bound_fields": [
+                "page_index",
+                "image_sha256",
+                "reviewer",
+                "audit_complete",
+            ],
+            "semantic_fields_required_from_reviewer": [
+                "decision_summary",
+                "observations",
+                "checks",
+                "all_material_deficiencies",
+            ],
             "legacy_aliases_allowed": False,
             "default_field_synthesis_allowed": False,
         }
@@ -553,7 +568,9 @@ class AuroraMainImageProvider:
                 result.error_message or "Aurora v2.0 pixel audit failed"
             )
         judgment = self._normalize_v20_visual_judgment_payload(
-            dict(result.payload), generation_request
+            dict(result.payload),
+            generation_request,
+            runtime_image_sha256=artifact.sha256,
         )
         judgment["page_index"] = page_index
         judgment["image_sha256"] = artifact.sha256
@@ -657,19 +674,25 @@ class AuroraMainImageProvider:
 
     @staticmethod
     def _normalize_v20_visual_judgment_payload(
-        payload: dict[str, Any], generation_request: Mapping[str, Any]
+        payload: dict[str, Any],
+        generation_request: Mapping[str, Any],
+        *,
+        runtime_image_sha256: str | None = None,
     ) -> dict[str, Any]:
-        """Validate native v2 judgment without legacy/default coercion."""
+        """Validate native v2 semantics and bind only trusted runtime data.
+
+        The gateway can inspect pixels and report semantic observations, but it
+        cannot authoritatively know the local page index, generated artifact
+        hash, reviewer path, or whether this process completed every required
+        validation step. Those fields are bound by the caller after this
+        function returns. Missing semantic fields still fail closed.
+        """
 
         required = {
-            "page_index",
-            "image_sha256",
             "decision_summary",
-            "reviewer",
             "observations",
             "checks",
             "all_material_deficiencies",
-            "audit_complete",
         }
         missing = sorted(required - payload.keys())
         if missing:
@@ -681,26 +704,38 @@ class AuroraMainImageProvider:
         if "page_index" in payload and payload.get("page_index") != expected_page:
             raise AuroraPlanningError("Aurora v2 judgment page_index is stale")
         image_sha256 = payload.get("image_sha256")
-        if (
-            not isinstance(image_sha256, str)
-            or len(image_sha256) != 64
-            or any(char not in "0123456789abcdefABCDEF" for char in image_sha256)
-        ):
-            raise AuroraPlanningError("Aurora v2 image_sha256 is invalid")
+        if image_sha256 is not None:
+            if (
+                not isinstance(image_sha256, str)
+                or len(image_sha256) != 64
+                or any(
+                    char not in "0123456789abcdefABCDEF" for char in image_sha256
+                )
+            ):
+                raise AuroraPlanningError("Aurora v2 image_sha256 is invalid")
+            if (
+                runtime_image_sha256 is not None
+                and image_sha256.lower() != runtime_image_sha256.lower()
+            ):
+                raise AuroraPlanningError("Aurora v2 judgment image hash is stale")
         summary = payload.get("decision_summary")
         if not isinstance(summary, str) or len(summary.strip()) < 12:
             raise AuroraPlanningError("Aurora v2 decision_summary is invalid")
-        if payload.get("audit_complete") is not True:
+        if "audit_complete" in payload and payload.get("audit_complete") is not True:
             raise AuroraPlanningError("Aurora v2 audit_complete must be true")
         reviewer = payload.get("reviewer")
-        if not isinstance(reviewer, Mapping):
-            raise AuroraPlanningError("Aurora v2 reviewer is missing")
-        if reviewer.get("mode") != "AGENT_DIRECT_PIXEL_REVIEW":
-            raise AuroraPlanningError("Aurora v2 reviewer mode is invalid")
-        if reviewer.get("pixel_inspection_performed") is not True:
-            raise AuroraPlanningError(
-                "Aurora v2 reviewer did not confirm pixel inspection"
-            )
+        if reviewer is not None:
+            if not isinstance(reviewer, Mapping):
+                raise AuroraPlanningError("Aurora v2 reviewer is invalid")
+            if reviewer.get("mode") not in {
+                None,
+                "AGENT_DIRECT_PIXEL_REVIEW",
+            }:
+                raise AuroraPlanningError("Aurora v2 reviewer mode is invalid")
+            if reviewer.get("pixel_inspection_performed") not in {None, True}:
+                raise AuroraPlanningError(
+                    "Aurora v2 reviewer did not confirm pixel inspection"
+                )
 
         observations = payload.get("observations")
         if not isinstance(observations, Mapping):
@@ -817,6 +852,7 @@ class AuroraMainImageProvider:
 
         normalized = dict(payload)
         normalized["page_index"] = expected_page
+        normalized["audit_complete"] = True
         return normalized
 
     async def audit_parallel_set(self, job_id: str) -> bool:

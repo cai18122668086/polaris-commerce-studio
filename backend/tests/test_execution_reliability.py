@@ -291,6 +291,66 @@ def test_parallel_aurora_overlaps_six_pages_and_retries_only_failure(
     assert len(set(provider.idempotency_keys[2])) == 1
 
 
+def test_parallel_aurora_does_not_claim_later_pages_before_style_gate(
+    client: TestClient,
+) -> None:
+    """A failed first-two-page gate must not dispatch pages 3-6."""
+
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert job is not None and first is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first.status = JobItemStatus.SUCCEEDED.value
+        first.ordinal = 0
+        for ordinal in range(1, 6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"page-{ordinal + 1:03d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if ordinal == 1
+                        else JobItemStatus.PENDING.value
+                    ),
+                    configuration={},
+                )
+            )
+        now = utc_now()
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={"execution_policy": {"execution_mode": "parallel_v20"}},
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="parallel-style-gate-claim",
+    )
+
+    assert coordinator.claim_next_item(job_id) is None
+
+
 def _expand_job_to_three_items(client: TestClient, job_id: str) -> None:
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)

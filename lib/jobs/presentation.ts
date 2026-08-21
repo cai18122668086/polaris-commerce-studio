@@ -49,6 +49,7 @@ const JOB_ITEM_STATUS_LABELS: Record<JobItemStatus, string> = {
   pending: "待处理",
   queued: "排队中",
   running: "执行中",
+  retry_wait: "等待重试",
   succeeded: "成功",
   failed: "失败",
   cancelled: "已取消",

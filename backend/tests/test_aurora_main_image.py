@@ -14,6 +14,7 @@ from PIL import Image
 
 from app.aurora_main_image_planner import (
     PAGE_ROLES,
+    AuroraPlanningError,
     _bind_identity_evidence,
     _build_raw,
     _public_plan_payload,
@@ -66,19 +67,64 @@ def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
     ]
 
 
-def test_v20_visual_judgment_normalizes_native_enum() -> None:
-    judgment = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
-        {
-            "decision_summary": "The generated page was inspected directly.",
-            "observations": {"background_competition": "LOW_TO_MEDIUM"},
-            "checks": [],
-        },
-        {"page_index": 0},
-    )
+def test_v20_visual_judgment_fails_closed_on_missing_native_fields() -> None:
+    with pytest.raises(AuroraPlanningError, match="decision_summary"):
+        AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+            {
+                "page_index": 0,
+                "image_sha256": "0" * 64,
+                "reviewer": {
+                    "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+                    "pixel_inspection_performed": True,
+                },
+                "observations": {},
+                "checks": [],
+            },
+            {"page_index": 0},
+        )
 
-    assert judgment["observations"]["background_competition"] == "MEDIUM"
-    assert len(judgment["checks"]) >= 20
-    assert judgment["audit_complete"] is True
+
+def test_v20_visual_judgment_rejects_non_native_enum() -> None:
+    payload = {
+        "page_index": 0,
+        "image_sha256": "0" * 64,
+        "reviewer": {
+            "mode": "AGENT_DIRECT_PIXEL_REVIEW",
+            "pixel_inspection_performed": True,
+        },
+        "decision_summary": "The generated page was inspected directly.",
+        "observations": {
+            "product_prominence": 70,
+            "headline_rank": "JOINT_FIRST",
+            "headline_text": "核心卖点",
+            "headline_line_count": 1,
+            "physical_evidence": ["商品结构可见"],
+            "evidence_is_primary_visual": True,
+            "depth_layers": 2,
+            "commercial_closure_visible": True,
+            "background_competition": "LOW_TO_MEDIUM",
+            "thumbnail_scan_order": ["商品", "标题"],
+            "type_roles_seen": 4,
+            "unequal_information_modules_seen": 2,
+            "visual_tension_seen": "商品与标题形成明确张力",
+            "composition_archetype_seen": "独立构图",
+            "product_zone_seen": "主体区域",
+            "copy_zone_seen": "标题区域",
+            "dominant_view_seen": "完整商品",
+            "evidence_topology_seen": "结构证据",
+            "neighbor_layout_difference": "与相邻页采用不同构图骨架",
+            "claim_to_evidence_relation": "商品结构承担主卖点证明",
+            "claim_takeaway_without_copy": "去除文字后仍能识别利益方向",
+            "source_background_leakage": [],
+        },
+        "checks": [],
+        "all_material_deficiencies": [],
+        "audit_complete": True,
+    }
+    with pytest.raises(AuroraPlanningError, match="background_competition"):
+        AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+            payload, {"page_index": 0}
+        )
 
 
 def test_pasted_product_dossier_routes_service_away_from_product_page_leads() -> None:
@@ -1184,7 +1230,16 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     metrics = provider_result.raw_usage["metrics"]
     assert metrics["aurora_execution_mode"] == "parallel_v20"
     assert metrics["page_index"] == 0
-    assert metrics["harness_state"] == "AWAITING_SEARCH_CALIBRATION"
+    assert metrics["harness_state"] == "AUTHORIZED"
+    assert (
+        tmp_path
+        / "work"
+        / job_id
+        / "parallel-v20"
+        / "page-01"
+        / "attempt-attempt_0"
+        / "search-baseline-observation.json"
+    ).is_file()
 
 
 def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> None:

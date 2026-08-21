@@ -428,9 +428,13 @@ def _persist_parallel_v20_snapshots(
         page_session["accepted_pages"] = list(range(item.ordinal))
         page_session["active_page_index"] = None
         page_session["pending_generation"] = None
-        # Parallel v2.0 freezes the pre-generation style.  The native
-        # post-page-2 calibration remains a later audit observation only.
-        page_session["style_calibrated"] = True
+        # Keep the first two native v2 gates live in their page-local sessions.
+        # Page 0 performs search-baseline calibration and page 1 performs the
+        # first-two-page Campaign Style calibration. Later pages inherit the
+        # already confirmed campaign style so they can still be dispatched in
+        # the six-page parallel batch.
+        page_session["search_calibrated"] = item.ordinal >= 1
+        page_session["style_calibrated"] = item.ordinal >= 2
         session_path = page_workspace / "session.json"
         request_path = page_workspace / "generation-request.json"
         write_contract(session_path, page_session)

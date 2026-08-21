@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping, Sequence
 from io import BytesIO
@@ -54,7 +55,10 @@ advisory and must not trigger regeneration by themselves. Never infer a missing
 required element from an overall PASS. If any required_visible_element, reading-path
 stop, page-role expression, physical proof, or commercial closure is not
 visibly present, fail the corresponding plan-fidelity check and name the
-missing pixel evidence.
+missing pixel evidence. Return the native v2 JSON contract exactly: never omit
+decision_summary, observations, checks, or all_material_deficiencies; never
+use legacy aliases or synthesize defaults; and use only the declared enum values
+for headline_rank and background_competition.
 """.strip()
 
 
@@ -383,6 +387,29 @@ class AuroraMainImageProvider:
                     {"session": session_path, "judgment": judgment_path},
                 )
                 current = _load_json(session_path)
+                if current.get("state") == "AWAITING_SEARCH_CALIBRATION":
+                    baseline_path = workspace / "search-baseline-observation.json"
+                    write_contract(baseline_path, _baseline_observation(judgment))
+                    runner.run(
+                        "calibrate-search",
+                        workspace,
+                        {"session": session_path, "observation": baseline_path},
+                    )
+                    current = _load_json(session_path)
+                if current.get("state") == "AWAITING_STYLE_CALIBRATION":
+                    observation, usage, cost = await self._calibrate_parallel_style(
+                        request, workspace, generated_path, artifact
+                    )
+                    audit_usage.append(usage)
+                    actual_cost += cost
+                    style_path = workspace / "style-calibration.json"
+                    write_contract(style_path, observation)
+                    runner.run(
+                        "calibrate-style",
+                        workspace,
+                        {"session": session_path, "observation": style_path},
+                    )
+                    current = _load_json(session_path)
                 if current.get("state") == "REPAIR_REQUIRED" and visual_attempt == 0:
                     repair_path = workspace / "repair.json"
                     write_contract(repair_path, _v20_repair_plan(current))
@@ -495,6 +522,9 @@ class AuroraMainImageProvider:
                 "campaign_constitution"
             ),
             "required_check_names": list(_VISUAL_CHECKS),
+            "response_contract": "aurora-native-v2-visual-judgment",
+            "legacy_aliases_allowed": False,
+            "default_field_synthesis_allowed": False,
         }
         result = await self.gateway.plan(
             PlannerRequest(
@@ -542,167 +572,252 @@ class AuroraMainImageProvider:
             int(result.actual_cost_micros or 0),
         )
 
+    async def _calibrate_parallel_style(
+        self,
+        request: ProviderRequest,
+        workspace: Path,
+        generated_path: Path,
+        artifact: ProviderArtifact,
+    ) -> tuple[dict[str, Any], dict[str, Any], int]:
+        """Run native Campaign Style calibration for the page-1 worker.
+
+        Page workers have independent sessions. When page 0 is already
+        durable, include its accepted pixels; otherwise the current page is
+        still reviewed by the style profile and the Harness remains the final
+        validator of the observation contract.
+        """
+
+        sources: list[SourceImage] = []
+        parallel_root = workspace.parent.parent
+        page_zero: list[Path] = []
+        # Six page workers start together. Give page 0 a bounded opportunity
+        # to publish its accepted pixels before calibrating page 1; otherwise
+        # a normal scheduling race would silently reduce the native two-page
+        # style calibration to a single image.
+        for _ in range(60):
+            page_zero = sorted(
+                parallel_root.glob("page-01/attempt-*/generated/*"),
+                key=lambda path: path.stat().st_mtime if path.exists() else 0,
+            )
+            if page_zero:
+                break
+            await asyncio.sleep(0.25)
+        if page_zero:
+            path = page_zero[-1]
+            data = path.read_bytes()
+            sources.append(
+                SourceImage(
+                    asset_id="accepted-page-0",
+                    group_key=request.job_id,
+                    filename=str(path),
+                    content_type=_content_type(path),
+                    sha256=_sha256(data),
+                    payload=data,
+                    source_role="style_reference",
+                )
+            )
+        sources.append(
+            SourceImage(
+                asset_id="accepted-page-1",
+                group_key=request.job_id,
+                filename=str(generated_path),
+                content_type=artifact.content_type,
+                sha256=artifact.sha256,
+                payload=artifact.payload,
+                source_role="style_reference",
+            )
+        )
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                group_key=f"{request.job_id}:style-calibration",
+                sources=tuple(sources),
+                page_count=2,
+                language="zh-CN",
+                product_name="Aurora Campaign Style",
+                product_information=(),
+                platform_code="TAOBAO_AURORA_STYLE_CALIBRATION",
+                size="1024x1024",
+                idempotency_key=f"{request.idempotency_key}:style-calibration:v1",
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_style_calibration",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora v2.0 style calibration failed"
+            )
+        return (
+            _normalize_style_calibration_payload(dict(result.payload)),
+            dict(result.normalized_usage),
+            int(result.actual_cost_micros or 0),
+        )
+
 
     @staticmethod
     def _normalize_v20_visual_judgment_payload(
         payload: dict[str, Any], generation_request: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """Adapt equivalent vision JSON to the immutable v2.0 audit contract."""
+        """Validate native v2 judgment without legacy/default coercion."""
 
-        normalized = _normalize_visual_judgment_payload(dict(payload))
-        legacy_checks = _mapping(normalized.get("checks"))
-        fallback = str(
-            payload.get("decision_summary")
-            or payload.get("summary")
-            or payload.get("final_reasoning")
-            or "Direct pixel review completed for the generated candidate."
-        )
-        page_contract = _mapping(generation_request.get("page_contract"))
-        execution = _mapping(page_contract.get("approved_page_execution_contract"))
-        layout = _mapping(execution.get("layout_contract"))
-        visual = _mapping(execution.get("visual_performance_contract"))
-        copy_contract = _mapping(execution.get("display_copy_contract"))
-        raw_observations = _mapping(payload.get("observations"))
-        observations = {
-            "product_prominence": _number(
-                raw_observations.get("product_prominence"), 70
-            ),
-            "headline_rank": str(
-                raw_observations.get("headline_rank") or "JOINT_FIRST"
-            ),
-            "headline_text": str(
-                raw_observations.get("headline_text")
-                or copy_contract.get("headline_seed_source_segment")
-                or generation_request.get("primary_claim")
-                or "当前商品"
-            ),
-            "headline_line_count": int(
-                raw_observations.get("headline_line_count") or 1
-            ),
-            "physical_evidence": _string_list(
-                raw_observations.get("physical_evidence")
-            )
-            or ["商品结构与页面证据在生成画面中可见"],
-            "evidence_is_primary_visual": bool(
-                raw_observations.get("evidence_is_primary_visual", True)
-            ),
-            "depth_layers": int(raw_observations.get("depth_layers") or 2),
-            "commercial_closure_visible": bool(
-                raw_observations.get("commercial_closure_visible", True)
-            ),
-            "background_competition": _normalize_background_competition(
-                raw_observations.get("background_competition")
-                or visual.get("background_competition")
-                or "LOW"
-            ),
-            "thumbnail_scan_order": _string_list(
-                raw_observations.get("thumbnail_scan_order")
-            )
-            or ["product", "headline", "evidence"],
-            "type_roles_seen": int(raw_observations.get("type_roles_seen") or 4),
-            "unequal_information_modules_seen": int(
-                raw_observations.get("unequal_information_modules_seen") or 2
-            ),
-            "visual_tension_seen": str(
-                raw_observations.get("visual_tension_seen")
-                or visual.get("visual_tension")
-                or "商品、标题与证据形成清晰视觉关系"
-            ),
-            "composition_archetype_seen": str(
-                raw_observations.get("composition_archetype_seen")
-                or layout.get("composition_archetype")
-                or "独立页面构图"
-            ),
-            "product_zone_seen": str(
-                raw_observations.get("product_zone_seen")
-                or layout.get("product_zone")
-                or "主商品区域"
-            ),
-            "copy_zone_seen": str(
-                raw_observations.get("copy_zone_seen")
-                or layout.get("copy_zone")
-                or "标题信息区域"
-            ),
-            "dominant_view_seen": str(
-                raw_observations.get("dominant_view_seen")
-                or layout.get("dominant_view")
-                or "完整商品视图"
-            ),
-            "evidence_topology_seen": str(
-                raw_observations.get("evidence_topology_seen")
-                or layout.get("evidence_topology")
-                or "商品与真实证据"
-            ),
-            "neighbor_layout_difference": str(
-                raw_observations.get("neighbor_layout_difference")
-                or "本页采用与相邻页面不同的页面职责和构图骨架"
-            ),
-            "claim_to_evidence_relation": str(
-                raw_observations.get("claim_to_evidence_relation") or fallback
-            ),
-            "claim_takeaway_without_copy": str(
-                raw_observations.get("claim_takeaway_without_copy") or fallback
-            ),
-            "source_background_leakage": _string_list(
-                raw_observations.get("source_background_leakage")
-            ),
+        required = {
+            "page_index",
+            "image_sha256",
+            "decision_summary",
+            "reviewer",
+            "observations",
+            "checks",
+            "all_material_deficiencies",
+            "audit_complete",
         }
-        checks: list[dict[str, Any]] = []
-        material_deficiencies: list[dict[str, str]] = []
-        existing_deficiencies = {
-            str(item.get("check")): item
-            for item in normalized.get("all_observed_deficiencies", [])
-            if isinstance(item, Mapping) and item.get("check")
-        }
-        for name in _VISUAL_CHECKS:
-            source = _mapping(legacy_checks.get(name))
-            passed = bool(source.get("passed", True))
-            score = float(source.get("score", 88 if passed else 55))
-            score = max(70.0, score) if passed else min(69.0, score)
-            evidence = str(source.get("observed_evidence") or fallback)
-            checks.append(
-                {
-                    "name": name,
-                    "passed": passed,
-                    "score": score,
-                    "material": name in _V20_MATERIAL_CHECKS,
-                    "observed_evidence": evidence,
-                }
+        missing = sorted(required - payload.keys())
+        if missing:
+            raise AuroraPlanningError(
+                "Aurora v2 native visual judgment is incomplete: "
+                + ", ".join(missing)
             )
-            if not passed and name in _V20_MATERIAL_CHECKS:
-                deficiency = existing_deficiencies.get(name, {})
-                material_deficiencies.append(
-                    {
-                        "check": name,
-                        "visible_problem": str(
-                            deficiency.get("visible_problem") or evidence
-                        ),
-                    "root_cause": str(
-                        deficiency.get("root_cause")
-                        or (
-                            "The visible candidate did not satisfy this material "
-                            "audit check."
-                        )
-                    ),
-                    "required_change": str(
-                        deficiency.get("required_change")
-                        or (
-                            "Repair the visible deficiency while preserving the "
-                            "approved product identity."
-                        )
-                    ),
-                    }
+        expected_page = int(generation_request.get("page_index", 0))
+        if "page_index" in payload and payload.get("page_index") != expected_page:
+            raise AuroraPlanningError("Aurora v2 judgment page_index is stale")
+        image_sha256 = payload.get("image_sha256")
+        if (
+            not isinstance(image_sha256, str)
+            or len(image_sha256) != 64
+            or any(char not in "0123456789abcdefABCDEF" for char in image_sha256)
+        ):
+            raise AuroraPlanningError("Aurora v2 image_sha256 is invalid")
+        summary = payload.get("decision_summary")
+        if not isinstance(summary, str) or len(summary.strip()) < 12:
+            raise AuroraPlanningError("Aurora v2 decision_summary is invalid")
+        if payload.get("audit_complete") is not True:
+            raise AuroraPlanningError("Aurora v2 audit_complete must be true")
+        reviewer = payload.get("reviewer")
+        if not isinstance(reviewer, Mapping):
+            raise AuroraPlanningError("Aurora v2 reviewer is missing")
+        if reviewer.get("mode") != "AGENT_DIRECT_PIXEL_REVIEW":
+            raise AuroraPlanningError("Aurora v2 reviewer mode is invalid")
+        if reviewer.get("pixel_inspection_performed") is not True:
+            raise AuroraPlanningError(
+                "Aurora v2 reviewer did not confirm pixel inspection"
+            )
+
+        observations = payload.get("observations")
+        if not isinstance(observations, Mapping):
+            raise AuroraPlanningError("Aurora v2 observations must be an object")
+        required_observations = {
+            "product_prominence",
+            "headline_rank",
+            "headline_text",
+            "headline_line_count",
+            "physical_evidence",
+            "evidence_is_primary_visual",
+            "depth_layers",
+            "commercial_closure_visible",
+            "background_competition",
+            "thumbnail_scan_order",
+            "type_roles_seen",
+            "unequal_information_modules_seen",
+            "visual_tension_seen",
+            "composition_archetype_seen",
+            "product_zone_seen",
+            "copy_zone_seen",
+            "dominant_view_seen",
+            "evidence_topology_seen",
+            "neighbor_layout_difference",
+            "claim_to_evidence_relation",
+            "claim_takeaway_without_copy",
+            "source_background_leakage",
+        }
+        missing_observations = sorted(required_observations - observations.keys())
+        if missing_observations:
+            raise AuroraPlanningError(
+                "Aurora v2 observations are incomplete: "
+                + ", ".join(missing_observations)
+            )
+        if observations.get("headline_rank") not in {
+            "FIRST",
+            "JOINT_FIRST",
+            "SECOND",
+            "WEAK",
+        }:
+            raise AuroraPlanningError("Aurora v2 headline_rank is invalid")
+        if observations.get("background_competition") not in {
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+        }:
+            raise AuroraPlanningError("Aurora v2 background_competition is invalid")
+        if not isinstance(observations.get("physical_evidence"), list):
+            raise AuroraPlanningError("Aurora v2 physical_evidence is invalid")
+        if not isinstance(observations.get("source_background_leakage"), list):
+            raise AuroraPlanningError(
+                "Aurora v2 source_background_leakage is invalid"
+            )
+
+        checks = payload.get("checks")
+        if not isinstance(checks, list) or [
+            item.get("name") for item in checks if isinstance(item, Mapping)
+        ] != list(_VISUAL_CHECKS):
+            raise AuroraPlanningError(
+                "Aurora v2 checks must contain the complete ordered native check set"
+            )
+        for item in checks:
+            if not isinstance(item, Mapping):
+                raise AuroraPlanningError("Aurora v2 check is not an object")
+            name = str(item.get("name"))
+            expected_material = name in _V20_MATERIAL_CHECKS
+            if item.get("material") is not expected_material:
+                raise AuroraPlanningError(
+                    f"Aurora v2 {name}.material does not match v2 policy"
                 )
-        return {
-            "page_index": int(generation_request.get("page_index", 0)),
-            "image_sha256": str(payload.get("image_sha256") or ""),
-            "reviewer": _mapping(payload.get("reviewer")),
-            "decision_summary": fallback,
-            "observations": observations,
-            "checks": checks,
-            "all_material_deficiencies": material_deficiencies,
-            "audit_complete": True,
+            if not isinstance(item.get("passed"), bool):
+                raise AuroraPlanningError("Aurora v2 check passed must be boolean")
+            score = item.get("score")
+            if (
+                not isinstance(score, (int, float))
+                or isinstance(score, bool)
+                or not 0 <= score <= 100
+            ):
+                raise AuroraPlanningError("Aurora v2 check score is invalid")
+            evidence = item.get("observed_evidence")
+            if not isinstance(evidence, str) or len(evidence.strip()) < 8:
+                raise AuroraPlanningError("Aurora v2 check evidence is missing")
+
+        deficiencies = payload.get("all_material_deficiencies")
+        if not isinstance(deficiencies, list):
+            raise AuroraPlanningError(
+                "Aurora v2 all_material_deficiencies must be an array"
+            )
+        failed_material = {
+            str(item["name"])
+            for item in checks
+            if item.get("material") is True and item.get("passed") is False
         }
+        deficiency_names: list[str] = []
+        for item in deficiencies:
+            if not isinstance(item, Mapping):
+                raise AuroraPlanningError("Aurora v2 deficiency is not an object")
+            deficiency_name = item.get("check")
+            if not isinstance(deficiency_name, str) or not deficiency_name:
+                raise AuroraPlanningError("Aurora v2 deficiency check is invalid")
+            deficiency_names.append(deficiency_name)
+            for field in ("visible_problem", "root_cause", "required_change"):
+                value = item.get(field)
+                if not isinstance(value, str) or len(value.strip()) < 8:
+                    raise AuroraPlanningError(
+                        f"Aurora v2 deficiency {field} is missing"
+                    )
+        if set(deficiency_names) != failed_material or len(deficiency_names) != len(
+            set(deficiency_names)
+        ):
+            raise AuroraPlanningError(
+                "Aurora v2 material deficiencies do not match failed material checks"
+            )
+
+        normalized = dict(payload)
+        normalized["page_index"] = expected_page
+        return normalized
 
     async def audit_parallel_set(self, job_id: str) -> bool:
         """Merge six page-local sessions and run the native v2.0 set audit."""
@@ -1279,7 +1394,19 @@ def _accepted_generated_sources(
 
 
 def _baseline_observation(judgment: Mapping[str, Any]) -> dict[str, Any]:
-    checks = _mapping(judgment.get("checks"))
+    raw_checks = judgment.get("checks")
+    if isinstance(raw_checks, Mapping):
+        checks = _mapping(raw_checks)
+    elif isinstance(raw_checks, list):
+        checks = {
+            str(item.get("name")): dict(item)
+            for item in raw_checks
+            if isinstance(item, Mapping) and item.get("name")
+        }
+    else:
+        raise AuroraPlanningError(
+            "Aurora v2 search baseline requires native visual checks"
+        )
     mapping = {
         "product_dominance": "product_separation",
         "headline_performance": "headline_treatment_match",

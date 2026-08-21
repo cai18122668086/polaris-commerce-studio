@@ -1448,6 +1448,26 @@ def _generation_sources(
     allowlist = generation_request.get("reference_allowlist")
     if isinstance(allowlist, list):
         references.extend(item for item in allowlist if isinstance(item, Mapping))
+    requested_paths = generation_request.get("imagegen_reference_paths")
+    if isinstance(requested_paths, list):
+        metadata_by_path = {
+            str(Path(str(reference.get("path") or reference.get("file") or "")).resolve()): reference
+            for reference in references
+            if str(reference.get("path") or reference.get("file") or "").strip()
+        }
+        exact_references: list[Mapping[str, Any]] = []
+        for raw_path in requested_paths:
+            path_text = str(raw_path or "").strip()
+            if not path_text:
+                continue
+            path = Path(path_text).resolve()
+            exact_references.append(
+                metadata_by_path.get(
+                    str(path),
+                    {"path": path_text, "role": "product_reference"},
+                )
+            )
+        references = exact_references
     seen: set[str] = set()
     result: list[SourceImage] = []
     for index, reference in enumerate(references):

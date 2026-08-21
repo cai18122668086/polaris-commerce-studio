@@ -24,6 +24,7 @@ from app.aurora_main_image_provider import (
     _VISUAL_CHECKS,
     AuroraMainImageProvider,
     _bounded_visual_audit_sources,
+    _generation_sources,
     _normalize_aurora_square_artifact,
     _normalize_set_role_audit_payload,
     _normalize_style_calibration_payload,
@@ -447,6 +448,29 @@ def test_aurora_normalizes_provider_portrait_without_cropping() -> None:
     with Image.open(BytesIO(normalized.payload)) as image:
         assert image.size == (1024, 1024)
         assert image.getpixel((0, 0)) == (255, 255, 255)
+
+
+def test_v20_generation_uses_exact_skill_reference_paths_for_repair(tmp_path: Path) -> None:
+    repair_path = tmp_path / "repair.jpg"
+    product_path = tmp_path / "product.jpg"
+    repair_path.write_bytes(b"repair-pixels")
+    product_path.write_bytes(b"product-pixels")
+
+    sources = _generation_sources(
+        {
+            "edit_target": {
+                "path": str(repair_path),
+                "role": "REPAIR_CANVAS_ONLY",
+            },
+            "reference_allowlist": [
+                {"path": str(product_path), "role": "PRODUCT_IDENTITY_AUTHORITY"}
+            ],
+            "imagegen_reference_paths": [str(repair_path)],
+        },
+        "job-repair",
+    )
+
+    assert [source.filename for source in sources] == [repair_path.name]
 
 
 def test_visual_audit_adapts_equivalent_direct_pixel_review_fields() -> None:

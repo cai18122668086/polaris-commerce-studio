@@ -9,6 +9,7 @@ WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 COPY app ./app
 COPY skill_sources ./skill_sources
+COPY source_manifests ./source_manifests
 COPY catalog_assets ./catalog_assets
 COPY migrations ./migrations
 

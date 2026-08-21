@@ -16,6 +16,7 @@ COPY backend/alembic.ini ./
 COPY backend/app ./app
 COPY backend/catalog_assets ./catalog_assets
 COPY backend/skill_sources ./skill_sources
+COPY backend/source_manifests ./source_manifests
 COPY backend/migrations ./migrations
 COPY backend/scripts/assign_workspace_owner.py ./scripts/assign_workspace_owner.py
 

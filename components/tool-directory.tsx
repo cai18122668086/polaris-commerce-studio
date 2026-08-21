@@ -137,6 +137,10 @@ function HomeFeatureCardArt({
   const [previewState, setPreviewState] = useState<"idle" | "armed" | "playing" | "done">("idle");
   const previewTimerRef = useRef<number | undefined>(undefined);
 
+  useEffect(() => () => {
+    if (previewTimerRef.current !== undefined) window.clearTimeout(previewTimerRef.current);
+  }, []);
+
   if (!visual) {
     return (
       <span
@@ -147,10 +151,6 @@ function HomeFeatureCardArt({
       </span>
     );
   }
-
-  useEffect(() => () => {
-    if (previewTimerRef.current !== undefined) window.clearTimeout(previewTimerRef.current);
-  }, []);
 
   const replayPreview = () => {
     if (previewTimerRef.current !== undefined) window.clearTimeout(previewTimerRef.current);

@@ -4,74 +4,73 @@ export type HomeFeatureImage = {
   height: number;
 };
 
-type BeforeAfterVisual = {
-  kind: "wipe" | "background" | "amazon";
-  before: HomeFeatureImage;
-  after: HomeFeatureImage;
+export type HomeFeatureResponsiveImage = {
+  desktop: HomeFeatureImage;
+  tablet: HomeFeatureImage;
+  mobile: HomeFeatureImage;
 };
 
-type RemixVisual = {
-  kind: "remix";
-  before: HomeFeatureImage;
-  after: HomeFeatureImage;
-  reference: HomeFeatureImage;
+export type HomeFeatureVisual = {
+  kind: "native" | "domestic";
+  primary: HomeFeatureResponsiveImage;
+  input: HomeFeatureResponsiveImage;
 };
 
-type DetailVisual = {
-  kind: "detail-scroll";
-  before: HomeFeatureImage;
-  after: HomeFeatureImage;
-  reducedMotionCover: HomeFeatureImage;
-};
-
-export type HomeFeatureVisual =
-  | BeforeAfterVisual
-  | RemixVisual
-  | DetailVisual;
-
-const square = (file: string): HomeFeatureImage => ({
-  src: `/images/homepage-features/${file}`,
-  width: 640,
-  height: 640,
+const image = (file: string, width: number, height: number): HomeFeatureImage => ({
+  src: `/images/homepage-features/native-v2/${file}`,
+  width,
+  height,
 });
 
-const landscape = (file: string): HomeFeatureImage => ({
-  src: `/images/homepage-features/${file}`,
-  width: 1536,
-  height: 1024,
-});
+const responsive = (
+  desktop: HomeFeatureImage,
+  tablet: HomeFeatureImage,
+  mobile: HomeFeatureImage,
+): HomeFeatureResponsiveImage => ({ desktop, tablet, mobile });
+
+const nativePrimary = (prefix: string) =>
+  responsive(
+    image(`${prefix}-primary-desktop.png`, 1374, 1145),
+    image(`${prefix}-primary-tablet.png`, 1536, 1024),
+    image(`${prefix}-primary-mobile.png`, 1774, 887),
+  );
+
+const nativeInput = (prefix: string) =>
+  responsive(
+    image(`${prefix}-input-desktop.png`, 1374, 1145),
+    image(`${prefix}-input-tablet.png`, 1536, 1024),
+    image(`${prefix}-input-mobile.png`, 1774, 887),
+  );
 
 export const HOME_FEATURE_VISUALS: Readonly<Record<string, HomeFeatureVisual>> = {
   "local-edit": {
-    kind: "wipe",
-    before: square("card-01-local-edit-before-v1.webp"),
-    after: square("card-01-local-edit-after-v1.webp"),
+    kind: "native",
+    primary: nativePrimary("01-masked"),
+    input: nativeInput("01"),
   },
   "change-background": {
-    kind: "background",
-    before: square("card-02-background-before-v1.webp"),
-    after: square("card-02-background-after-v1.webp"),
+    kind: "native",
+    primary: nativePrimary("02-background"),
+    input: nativeInput("02"),
   },
   "reference-remix": {
-    kind: "remix",
-    before: square("card-03-remix-before-v1.webp"),
-    after: landscape("card-03-remix-result-serum-landscape-v1.png"),
-    reference: square("card-03-remix-reference-v1.webp"),
+    kind: "native",
+    primary: nativePrimary("03-remix"),
+    input: nativeInput("03"),
   },
   "detail-pack": {
-    kind: "detail-scroll",
-    before: square("card-04-detail-before-v1.webp"),
-    after: {
-      src: "/images/homepage-features/card-04-detail-after-long-v1.webp",
-      width: 720,
-      height: 960,
-    },
-    reducedMotionCover: square("card-04-detail-after-cover-v1.webp"),
+    kind: "native",
+    primary: nativePrimary("04-detail"),
+    input: nativeInput("04"),
+  },
+  "domestic-main-image": {
+    kind: "domestic",
+    primary: nativePrimary("05-domestic"),
+    input: nativeInput("05"),
   },
   "amazon-visual-suite": {
-    kind: "amazon",
-    before: square("card-05-amazon-before-v1.webp"),
-    after: landscape("card-05-amazon-hero-v2.png"),
+    kind: "native",
+    primary: nativePrimary("06-amazon"),
+    input: nativeInput("06"),
   },
 };
-

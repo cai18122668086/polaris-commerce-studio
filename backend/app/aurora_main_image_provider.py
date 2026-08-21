@@ -61,7 +61,9 @@ use legacy aliases or synthesize semantic defaults; and use only the declared
 enum values for headline_rank and background_competition. The runtime binds
 page_index, image_sha256 and reviewer, then derives the final audit_complete
 attestation only after all semantic checks pass. Do not invent image paths or
-hashes for those runtime-owned fields.
+hashes for those runtime-owned fields. decision_summary must be a concrete
+direct-pixel verdict sentence of at least 12 characters; never return a
+one-word verdict such as PASS, 合格 or 通过.
 """.strip()
 
 
@@ -538,6 +540,7 @@ class AuroraMainImageProvider:
                 "checks",
                 "all_material_deficiencies",
             ],
+            "decision_summary_min_length": 12,
             "legacy_aliases_allowed": False,
             "default_field_synthesis_allowed": False,
         }

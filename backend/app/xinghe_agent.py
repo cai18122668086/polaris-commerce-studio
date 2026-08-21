@@ -6155,7 +6155,10 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "first product_information entry. checks must be an ordered array "
             "containing every required_check_name exactly once, with material "
             "matching policy. Report only direct pixel observations and include "
-            "one complete deficiency for every material failed check."
+            "one complete deficiency for every material failed check. "
+            "decision_summary must be a concrete direct-pixel verdict sentence "
+            "with at least 12 characters; never use a one-word verdict such as "
+            "PASS, 合格 or 通过."
         )
     if request.planning_profile == "aurora_style_calibration":
         return (

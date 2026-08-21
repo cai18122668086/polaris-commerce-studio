@@ -576,8 +576,8 @@ class AuroraMainImageProvider:
         page_sessions: list[dict[str, Any]] = []
         sources: list[SourceImage] = []
         for item in items:
-            attempt = attempt_by_item.get(item.id)
-            if attempt is None:
+            page_attempt = attempt_by_item.get(item.id)
+            if page_attempt is None:
                 raise AuroraPlanningError(
                     f"Aurora v2.0 page {item.ordinal} has no succeeded attempt"
                 )
@@ -585,7 +585,7 @@ class AuroraMainImageProvider:
                 self._workspace(job_id)
                 / "parallel-v20"
                 / f"page-{item.ordinal + 1:02d}"
-                / f"attempt-{attempt.id}"
+                / f"attempt-{page_attempt.id}"
             )
             page_session = _load_json(page_workspace / "session.json")
             versions = page_session.get("generated_versions")
@@ -602,7 +602,7 @@ class AuroraMainImageProvider:
                 )
             version = selected[-1]
             image_path = Path(str(version["file"])).resolve()
-            payload = image_path.read_bytes()
+            image_payload = image_path.read_bytes()
             sources.append(
                 SourceImage(
                     asset_id=f"accepted-page-{item.ordinal}",
@@ -610,7 +610,7 @@ class AuroraMainImageProvider:
                     filename=str(image_path),
                     content_type=_content_type(image_path),
                     sha256=str(version["sha256"]),
-                    payload=payload,
+                    payload=image_payload,
                     source_role="generated_candidate",
                 )
             )

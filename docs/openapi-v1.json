@@ -2246,6 +2246,7 @@
           "pending",
           "queued",
           "running",
+          "retry_wait",
           "succeeded",
           "failed",
           "cancelled",

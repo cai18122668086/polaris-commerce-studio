@@ -1220,7 +1220,7 @@ export interface components {
          * JobItemStatus
          * @enum {string}
          */
-        JobItemStatus: "pending" | "queued" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "reused";
+        JobItemStatus: "pending" | "queued" | "running" | "retry_wait" | "succeeded" | "failed" | "cancelled" | "skipped" | "reused";
         /** JobListItemResponse */
         JobListItemResponse: {
             /** Allowed Actions */

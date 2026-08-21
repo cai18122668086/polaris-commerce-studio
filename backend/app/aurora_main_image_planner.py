@@ -422,6 +422,7 @@ def _persist_parallel_v20_snapshots(
     snapshots: list[dict[str, Any]] = []
     for item in items:
         page_workspace = workspace / "parallel-v20" / f"page-{item.ordinal + 1:02d}"
+        page_workspace.mkdir(parents=True, exist_ok=True)
         page_session = dict(authorized_session)
         page_session["state"] = "AUTHORIZED"
         page_session["accepted_pages"] = list(range(item.ordinal))

@@ -261,7 +261,8 @@ def test_parallel_aurora_overlaps_six_pages_and_retries_only_failure(
                 revision=1,
                 schema_version="aurora-main-image-plan-v2",
                 payload={
-                    "execution_policy": {"execution_mode": "parallel_v20"}
+                    "execution_policy": {"execution_mode": "parallel_v20"},
+                    "_parallel_v20_style_calibrated": True,
                 },
                 payload_hash="0" * 64,
                 validation_status=PlanValidationStatus.VALID.value,
@@ -604,6 +605,76 @@ def test_domestic_pages_wait_for_predecessor_across_duplicate_deliveries(
         claimed = session.get(JobItemRecord, second_page.item_id)
         assert claimed is not None
         assert claimed.ordinal == 1
+
+
+def test_parallel_style_gate_failure_closes_unclaimable_pages(
+    client: TestClient,
+) -> None:
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert job is not None and first is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first.status = JobItemStatus.SUCCEEDED.value
+        first.ordinal = 0
+        for ordinal in range(1, 6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"page-{ordinal + 1:03d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if ordinal == 1
+                        else JobItemStatus.PENDING.value
+                    ),
+                    configuration={},
+                )
+            )
+        now = utc_now()
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {"execution_mode": "parallel_v20"}
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="parallel-style-gate",
+    )
+    coordinator._skip_parallel_pages_after_style_failure(job_id)
+    with client.app.state.session_factory() as session:
+        later = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job_id, JobItemRecord.ordinal >= 2)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        assert len(later) == 4
+        assert {item.status for item in later} == {JobItemStatus.SKIPPED.value}
+        assert {item.error_code for item in later} == {
+            "AURORA_STYLE_GATE_BLOCKED"
+        }
 
 
 def test_running_job_aggregates_follow_terminal_item_statuses(

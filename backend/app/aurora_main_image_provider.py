@@ -13,7 +13,10 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .aurora_main_image_planner import AuroraPlanningError
+from .aurora_main_image_planner import (
+    AuroraPlanningError,
+    _persist_parallel_v20_snapshots,
+)
 from .aurora_main_image_runtime import (
     AuroraHarnessError,
     AuroraHarnessRunner,
@@ -33,6 +36,7 @@ from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, Provid
 from .services import canonical_hash
 from .storage import ImageStorage
 from .xinghe_agent import (
+    _AURORA_V20_VISUAL_CHECKS,
     ImageEditRequest,
     PlannerRequest,
     SourceImage,
@@ -415,6 +419,11 @@ class AuroraMainImageProvider:
                         {"session": session_path, "observation": style_path},
                     )
                     current = _load_json(session_path)
+                    if page_index == 1:
+                        self._publish_parallel_v20_style_calibration(
+                            request.job_id,
+                            current,
+                        )
                 if current.get("state") == "REPAIR_REQUIRED" and visual_attempt == 0:
                     repair_path = workspace / "repair.json"
                     write_contract(repair_path, _v20_repair_plan(current))
@@ -490,7 +499,12 @@ class AuroraMainImageProvider:
                 raw_usage={
                     "provider_type": self.gateway.provider_name,
                     "called": retryable,
-                    "metrics": {"aurora_execution_mode": "parallel_v20"},
+                    "metrics": {
+                        "aurora_execution_mode": "parallel_v20",
+                        "aurora_gateway_diagnostics": getattr(
+                            exc, "aurora_gateway_diagnostics", None
+                        ),
+                    },
                 },
                 retryable=retryable,
                 http_status=http_status,
@@ -567,14 +581,21 @@ class AuroraMainImageProvider:
             )
         )
         if result.error_code or not isinstance(result.payload, Mapping):
-            raise AuroraPlanningError(
-                result.error_message or "Aurora v2.0 pixel audit failed"
+            raise _v20_gateway_error(
+                result,
+                result.error_message or "Aurora v2.0 pixel audit failed",
             )
-        judgment = self._normalize_v20_visual_judgment_payload(
-            dict(result.payload),
-            generation_request,
-            runtime_image_sha256=artifact.sha256,
-        )
+        try:
+            judgment = self._normalize_v20_visual_judgment_payload(
+                dict(result.payload),
+                generation_request,
+                runtime_image_sha256=artifact.sha256,
+            )
+        except AuroraPlanningError as exc:
+            # Preserve the validator's fail-closed message while attaching only
+            # bounded response-shape diagnostics for the next investigation.
+            exc.aurora_gateway_diagnostics = _safe_planner_diagnostics(result)
+            raise
         judgment["page_index"] = page_index
         judgment["image_sha256"] = artifact.sha256
         reviewer = _mapping(judgment.get("reviewer"))
@@ -609,33 +630,71 @@ class AuroraMainImageProvider:
 
         sources: list[SourceImage] = []
         parallel_root = workspace.parent.parent
-        page_zero: list[Path] = []
-        # Six page workers start together. Give page 0 a bounded opportunity
-        # to publish its accepted pixels before calibrating page 1; otherwise
-        # a normal scheduling race would silently reduce the native two-page
-        # style calibration to a single image.
-        for _ in range(60):
-            page_zero = sorted(
-                parallel_root.glob("page-01/attempt-*/generated/*"),
-                key=lambda path: path.stat().st_mtime if path.exists() else 0,
-            )
-            if page_zero:
+        item_configuration = _mapping(request.configuration.get("item"))
+        source_job_id = str(
+            item_configuration.get("aurora_parallel_source_job_id") or ""
+        ).strip()
+        search_roots = [parallel_root]
+        if source_job_id and source_job_id != request.job_id:
+            # Retry jobs preserve successful deliverables.  If page 0 was
+            # reused, its native accepted session is in the source job's
+            # durable workspace rather than the retry workspace.
+            source_root = self._workspace(source_job_id) / "parallel-v20"
+            if source_root not in search_roots:
+                search_roots.append(source_root)
+        page_zero: Path | None = None
+        # Style calibration is a native gate: page 0 must have passed its
+        # direct-pixel audit and search calibration, not merely produced bytes.
+        # The wait is bounded so a failed page cannot leave page 1 hanging.
+        for _ in range(720):
+            for search_root in search_roots:
+                for session_path in search_root.glob(
+                    "page-01/attempt-*/session.json"
+                ):
+                    try:
+                        page_session = _load_json(session_path)
+                    except (OSError, ValueError):
+                        continue
+                    if (
+                        0 in page_session.get("accepted_pages", [])
+                        and page_session.get("search_calibrated") is True
+                    ):
+                        versions = page_session.get("generated_versions")
+                        accepted = [
+                            item
+                            for item in versions or []
+                            if isinstance(item, Mapping)
+                            and item.get("page_index") == 0
+                            and item.get("status")
+                            in {"ACCEPTED", "ACCEPTED_WITH_RESIDUALS"}
+                        ]
+                        if accepted:
+                            candidate = Path(str(accepted[-1].get("file") or ""))
+                            if candidate.is_file():
+                                page_zero = candidate
+                                break
+                if page_zero is not None:
+                    break
+            if page_zero is not None:
                 break
             await asyncio.sleep(0.25)
-        if page_zero:
-            path = page_zero[-1]
-            data = path.read_bytes()
-            sources.append(
-                SourceImage(
-                    asset_id="accepted-page-0",
-                    group_key=request.job_id,
-                    filename=str(path),
-                    content_type=_content_type(path),
-                    sha256=_sha256(data),
-                    payload=data,
-                    source_role="style_reference",
-                )
+        if page_zero is None:
+            raise AuroraPlanningError(
+                "Aurora v2.0 style calibration requires an accepted page 0"
             )
+        path = page_zero
+        data = path.read_bytes()
+        sources.append(
+            SourceImage(
+                asset_id="accepted-page-0",
+                group_key=request.job_id,
+                filename=str(path),
+                content_type=_content_type(path),
+                sha256=_sha256(data),
+                payload=data,
+                source_role="style_reference",
+            )
+        )
         sources.append(
             SourceImage(
                 asset_id="accepted-page-1",
@@ -673,6 +732,50 @@ class AuroraMainImageProvider:
             dict(result.normalized_usage),
             int(result.actual_cost_micros or 0),
         )
+
+
+    def _publish_parallel_v20_style_calibration(
+        self,
+        job_id: str,
+        calibrated_session: Mapping[str, Any],
+    ) -> None:
+        """Release pages 2–5 only after native style calibration completes."""
+
+        with self.session_factory() as db:
+            plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            job = db.get(JobRecord, job_id, with_for_update=True)
+            if plan is None or job is None:
+                raise AuroraPlanningError("Aurora v2.0 continuation context is missing")
+            payload = dict(plan.payload)
+            if payload.get("_parallel_v20_style_calibrated") is True:
+                return
+            root = self._workspace(job_id)
+            runner = (
+                self.harness
+                if isinstance(self.harness, AuroraV20HarnessRunner)
+                else AuroraV20HarnessRunner()
+            )
+            _persist_parallel_v20_snapshots(
+                plan,
+                job,
+                root,
+                calibrated_session,
+                runner,
+                page_indexes=(2, 3, 4, 5),
+            )
+            payload = dict(plan.payload)
+            payload["_parallel_v20_style_calibrated"] = True
+            payload["_harness_session"] = dict(calibrated_session)
+            payload["harness_state"] = calibrated_session.get("state")
+            plan.payload = payload
+            plan.payload_hash = canonical_hash(payload)
+            db.commit()
 
 
     @staticmethod
@@ -1276,37 +1379,7 @@ class AuroraMainImageProvider:
         return workspace
 
 
-_VISUAL_CHECKS = (
-    "product_identity_match",
-    "factual_copy_match",
-    "typography_style_match",
-    "typography_legibility",
-    "page_role_expression",
-    "evidence_relation_visible",
-    "campaign_style_match",
-    "headline_treatment_match",
-    "palette_role_match",
-    "graphic_language_match",
-    "photography_finish_match",
-    "information_surface_match",
-    "layout_not_cloned",
-    "set_diversity_match",
-    "product_separation",
-    "numeric_hierarchy_if_applicable",
-    "design_intensity_controlled",
-    "visual_performance_match",
-    "baseline_performance_match",
-    "approved_plan_fidelity_match",
-    "campaign_constitution_match",
-    "source_background_noise_absent",
-    "selling_point_visible_without_copy",
-    "selling_point_visual_dominance",
-    "claim_to_evidence_relation_clear",
-    "text_not_substituting_for_visual_proof",
-    "thumbnail_success",
-    "no_unsupported_claim",
-    "no_hard_error",
-)
+_VISUAL_CHECKS = _AURORA_V20_VISUAL_CHECKS
 
 _V20_MATERIAL_CHECKS = frozenset(
     {
@@ -1330,6 +1403,36 @@ _V20_MATERIAL_CHECKS = frozenset(
         "layout_not_cloned",
     }
 )
+
+
+def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:
+    """Keep response-shape evidence without storing raw prompts or secrets."""
+
+    return {
+        "provider_request_id_presence": (
+            "present" if getattr(result, "provider_request_id", None) else "absent"
+        ),
+        "http_status": getattr(result, "http_status", None),
+        "parse_trace": list(getattr(result, "parse_trace", ()) or ()),
+        "structure_fingerprint": getattr(result, "structure_fingerprint", None),
+        "structure_profile": getattr(result, "structure_profile", None),
+        "provider_envelope": getattr(result, "provider_envelope", None),
+        "content_utf8_bytes": getattr(result, "content_utf8_bytes", None),
+        "content_sha256": getattr(result, "content_sha256", None),
+        "request_id_presence": getattr(result, "request_id_presence", "not_available"),
+        "usage_presence": getattr(result, "usage_presence", "not_available"),
+        "usage_completeness": getattr(
+            result, "usage_completeness", "not_available"
+        ),
+    }
+
+
+def _v20_gateway_error(result: Any, message: str) -> AuroraPlanningError:
+    error = AuroraPlanningError(message)
+    # The execution layer persists this under metrics and never includes the
+    # raw response body, prompt, authorization header or API key.
+    error.aurora_gateway_diagnostics = _safe_planner_diagnostics(result)
+    return error
 
 
 def _generation_sources(

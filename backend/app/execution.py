@@ -630,10 +630,79 @@ class ExecutionCoordinator:
         # add latency and alter the original one-pass delivery protocol. The durable
         # review service remains available for an explicitly requested diagnostic run.
         if is_parallel_aurora:
+            self._skip_parallel_pages_after_style_failure(job_id)
             set_audit = await self._run_parallel_aurora_set_audit(job_id)
             if set_audit is False:
                 self._mark_parallel_aurora_set_audit_failed(job_id)
         return self.finalize_job(job_id)
+
+    def _skip_parallel_pages_after_style_failure(self, job_id: str) -> None:
+        """Close pages that can no longer pass the native two-page gate.
+
+        Pages 2–5 are intentionally unclaimable until page 0 and page 1 have
+        both been accepted and Campaign Style calibration has completed.  If a
+        first-two page is terminally failed after its retries, leaving those
+        gated rows pending would strand the job in ``processing`` forever.
+        """
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None or job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+                return
+            if not self._job_uses_parallel_aurora(session, job_id):
+                return
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            if plan is None or not isinstance(plan.payload, Mapping):
+                return
+            if plan.payload.get("_parallel_v20_style_calibrated") is True:
+                return
+            first_two = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.ordinal < 2,
+                )
+                .order_by(JobItemRecord.ordinal)
+            ).all()
+            if len(first_two) != 2 or any(
+                item.status not in TERMINAL_ITEM_STATUSES for item in first_two
+            ):
+                return
+            if not any(item.status == JobItemStatus.FAILED.value for item in first_two):
+                return
+            blocked = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.ordinal >= 2,
+                    JobItemRecord.status.in_(
+                        [
+                            JobItemStatus.PENDING.value,
+                            JobItemStatus.QUEUED.value,
+                            JobItemStatus.RETRY_WAIT.value,
+                        ]
+                    ),
+                )
+                .with_for_update()
+            ).all()
+            now = utc_now()
+            for item in blocked:
+                item.status = JobItemStatus.SKIPPED.value
+                item.stage = "blocked_by_style_gate"
+                item.error_code = "AURORA_STYLE_GATE_BLOCKED"
+                item.error_message = (
+                    "Not generated because native Campaign Style calibration "
+                    "could not complete after an earlier page failed."
+                )
+                item.finished_at = now
+                item.state_version += 1
+            if blocked:
+                session.commit()
 
     async def _run_parallel_aurora_set_audit(self, job_id: str) -> bool | None:
         with self.session_factory() as session:
@@ -1022,6 +1091,25 @@ class ExecutionCoordinator:
                 | (JobItemRecord.next_attempt_at <= utc_now()),
             )
             if (
+                job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                and self._job_uses_parallel_aurora(session, job.id)
+            ):
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(JobPlanRecord.job_id == job.id)
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                )
+                style_ready = bool(
+                    isinstance(plan.payload, Mapping)
+                    and plan.payload.get("_parallel_v20_style_calibrated") is True
+                ) if plan is not None else False
+                if not style_ready:
+                    # Native v2 gates page 2+ on the first two accepted pages
+                    # and Campaign Style calibration.  Do not claim those pages
+                    # while page 1 is still establishing that contract.
+                    item_query = item_query.where(JobItemRecord.ordinal < 2)
+            elif (
                 job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                 and not self._job_uses_parallel_aurora(session, job.id)
             ):
@@ -1621,11 +1709,23 @@ class ExecutionCoordinator:
                 failure_metrics = (
                     dict(metrics_value) if isinstance(metrics_value, dict) else {}
                 )
-                delivery_status = failure_metrics.get("delivery_status")
-                item.error_details = {
+                failure_details: dict[str, Any] = {
                     "retryable": bool(result.retryable),
                     "http_status": result.http_status,
                     "provider_request_id": result.provider_request_id,
+                    "provider_outcome": result.outcome.value,
+                }
+                gateway_diagnostics = failure_metrics.get(
+                    "aurora_gateway_diagnostics"
+                )
+                if isinstance(gateway_diagnostics, Mapping):
+                    failure_details["aurora_gateway_diagnostics"] = dict(
+                        gateway_diagnostics
+                    )
+                attempt.error_details = failure_details
+                delivery_status = failure_metrics.get("delivery_status")
+                item.error_details = {
+                    **failure_details,
                     "next_attempt_at": (
                         item.next_attempt_at.isoformat()
                         if item.next_attempt_at is not None
@@ -1633,7 +1733,6 @@ class ExecutionCoordinator:
                     ),
                     "needs_reselection": bool(failure_metrics.get("needs_reselection"))
                     or delivery_status == "needs_reselection_for_strict_lock",
-                    "provider_outcome": result.outcome.value,
                 }
             item.finished_at = (
                 None

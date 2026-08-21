@@ -1451,7 +1451,11 @@ def _generation_sources(
     requested_paths = generation_request.get("imagegen_reference_paths")
     if isinstance(requested_paths, list):
         metadata_by_path = {
-            str(Path(str(reference.get("path") or reference.get("file") or "")).resolve()): reference
+            str(
+                Path(
+                    str(reference.get("path") or reference.get("file") or "")
+                ).resolve()
+            ): reference
             for reference in references
             if str(reference.get("path") or reference.get("file") or "").strip()
         }

@@ -450,7 +450,9 @@ def test_aurora_normalizes_provider_portrait_without_cropping() -> None:
         assert image.getpixel((0, 0)) == (255, 255, 255)
 
 
-def test_v20_generation_uses_exact_skill_reference_paths_for_repair(tmp_path: Path) -> None:
+def test_v20_generation_uses_exact_skill_reference_paths_for_repair(
+    tmp_path: Path,
+) -> None:
     repair_path = tmp_path / "repair.jpg"
     product_path = tmp_path / "product.jpg"
     repair_path.write_bytes(b"repair-pixels")

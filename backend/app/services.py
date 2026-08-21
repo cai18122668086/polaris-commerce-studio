@@ -954,8 +954,23 @@ def retry_item_ids(
     statuses = {JobItemStatus.FAILED.value}
     if scope == RetryScope.MISSING:
         statuses.add(JobItemStatus.CANCELLED.value)
+    preserved_set_audit_ids = {
+        item_id
+        for item_id in session.scalars(
+            select(JobAssetRecord.job_item_id).where(
+                JobAssetRecord.job_id == source.id,
+                JobAssetRecord.is_deliverable.is_(True),
+                JobAssetRecord.job_item_id.is_not(None),
+            )
+        ).all()
+    }
     return [
         item.id
         for item in items
-        if item.status in statuses and item.id not in blocker_ids
+        if item.status in statuses
+        and item.id not in blocker_ids
+        and not (
+            item.error_code == "AURORA_SET_AUDIT_FAILED"
+            and item.id in preserved_set_audit_ids
+        )
     ]

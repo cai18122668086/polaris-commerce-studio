@@ -20,6 +20,7 @@ from app.domain import (
     JobType,
     OutboxStatus,
     PlanValidationStatus,
+    RetryScope,
 )
 from app.main import create_app
 from app.model_pose_catalog import resolve_model_pose_catalog_item
@@ -39,7 +40,11 @@ from app.models import (
 )
 from app.outbox import publish_pending_events
 from app.routes_v1 import runtime_status_response
-from app.services import set_credit_enforcement_enabled, set_quota_enabled
+from app.services import (
+    retry_item_ids,
+    set_credit_enforcement_enabled,
+    set_quota_enabled,
+)
 
 WORKSPACE_ID = "ws_test"
 
@@ -1282,6 +1287,78 @@ def _attach_retry_fixture_deliverables(
                 )
             )
         session.commit()
+
+
+def test_domestic_set_audit_failure_preserves_deliverables_on_failed_retry(
+    client: TestClient,
+) -> None:
+    asset = upload_asset(client, filename="aurora-preserved.png")
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.FAILED.value,
+                stage=JobStatus.FAILED.value,
+                display_name="Aurora set audit retry fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=6,
+                failed_item_count=6,
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        for ordinal in range(6):
+            item_id = f"item_{uuid4().hex}"
+            preserved = ordinal < 2
+            session.add(
+                JobItemRecord(
+                    id=item_id,
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"PAGE-{ordinal + 1:02d}",
+                    ordinal=ordinal,
+                    status=JobItemStatus.FAILED.value,
+                    configuration={},
+                    error_code=(
+                        "AURORA_SET_AUDIT_FAILED" if preserved else "HARNESS_BLOCKED"
+                    ),
+                    error_message=(
+                        "set audit did not pass" if preserved else "page failed"
+                    ),
+                    finished_at=now,
+                )
+            )
+            if preserved:
+                session.add(
+                    JobAssetRecord(
+                        workspace_id=WORKSPACE_ID,
+                        job_id=job_id,
+                        job_item_id=item_id,
+                        asset_id=asset["id"],
+                        direction="output",
+                        role="domestic_main_image",
+                        ordinal=ordinal,
+                        is_deliverable=True,
+                        validation={},
+                    )
+                )
+        session.commit()
+
+        source = session.get(JobRecord, job_id)
+        assert source is not None
+        selected = retry_item_ids(session, source, RetryScope.FAILED, [])
+        selected_items = session.scalars(
+            select(JobItemRecord).where(JobItemRecord.id.in_(selected))
+        ).all()
+        assert [
+            item.ordinal
+            for item in sorted(selected_items, key=lambda value: value.ordinal)
+        ] == [2, 3, 4, 5]
 
 
 def test_amazon_partial_review_infrastructure_failure_allows_complete_archive(

@@ -2529,6 +2529,16 @@ def _copy_job_relations_for_retry(
         .order_by(JobItemRecord.ordinal)
     ).all()
     item_map: dict[str, str] = {}
+    preserved_set_audit_ids = {
+        item_id
+        for item_id in session.scalars(
+            select(JobAssetRecord.job_item_id).where(
+                JobAssetRecord.job_id == source.id,
+                JobAssetRecord.is_deliverable.is_(True),
+                JobAssetRecord.job_item_id.is_not(None),
+            )
+        ).all()
+    }
     for item in source_items:
         new_item_id = new_id("item")
         item_map[item.id] = new_item_id
@@ -2537,6 +2547,10 @@ def _copy_job_relations_for_retry(
             JobItemStatus.SUCCEEDED.value,
             JobItemStatus.REUSED.value,
         }
+        reused = reused or (
+            item.error_code == "AURORA_SET_AUDIT_FAILED"
+            and item.id in preserved_set_audit_ids
+        )
         session.add(
             JobItemRecord(
                 id=new_item_id,

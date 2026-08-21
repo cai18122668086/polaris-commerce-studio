@@ -20,6 +20,7 @@ from .aurora_main_image_runtime import (
     write_contract,
 )
 from .config import default_aurora_work_root
+from .domain import JobItemStatus
 from .models import (
     AuditEventRecord,
     JobAttemptRecord,
@@ -548,17 +549,6 @@ class AuroraMainImageProvider:
     ) -> dict[str, Any]:
         """Adapt equivalent vision JSON to the immutable v2.0 audit contract."""
 
-        if all(
-            key in payload
-            for key in (
-                "decision_summary",
-                "observations",
-                "all_material_deficiencies",
-                "audit_complete",
-            )
-        ) and isinstance(payload.get("checks"), list):
-            return payload
-
         normalized = _normalize_visual_judgment_payload(dict(payload))
         legacy_checks = _mapping(normalized.get("checks"))
         fallback = str(
@@ -600,7 +590,7 @@ class AuroraMainImageProvider:
             "commercial_closure_visible": bool(
                 raw_observations.get("commercial_closure_visible", True)
             ),
-            "background_competition": str(
+            "background_competition": _normalize_background_competition(
                 raw_observations.get("background_competition")
                 or visual.get("background_competition")
                 or "LOW"
@@ -729,10 +719,27 @@ class AuroraMainImageProvider:
                 .where(JobItemRecord.job_id == job_id)
                 .order_by(JobItemRecord.ordinal)
             ).all()
+            source_items = {
+                item.id: item
+                for item in db.scalars(
+                    select(JobItemRecord).where(
+                        JobItemRecord.id.in_(
+                            [
+                                item.source_job_item_id
+                                for item in items
+                                if item.status == JobItemStatus.REUSED.value
+                                and item.source_job_item_id
+                            ]
+                        )
+                    )
+                ).all()
+            }
+            attempt_job_ids = {job_id}
+            attempt_job_ids.update(item.job_id for item in source_items.values())
             attempts = db.scalars(
                 select(JobAttemptRecord)
                 .where(
-                    JobAttemptRecord.job_id == job_id,
+                    JobAttemptRecord.job_id.in_(attempt_job_ids),
                     JobAttemptRecord.status == "succeeded",
                 )
                 .order_by(
@@ -751,13 +758,16 @@ class AuroraMainImageProvider:
         page_sessions: list[dict[str, Any]] = []
         sources: list[SourceImage] = []
         for item in items:
-            page_attempt = attempt_by_item.get(item.id)
+            source_item = source_items.get(item.source_job_item_id or "")
+            origin_item_id = source_item.id if source_item is not None else item.id
+            origin_job_id = source_item.job_id if source_item is not None else job_id
+            page_attempt = attempt_by_item.get(origin_item_id)
             if page_attempt is None:
                 raise AuroraPlanningError(
                     f"Aurora v2.0 page {item.ordinal} has no succeeded attempt"
                 )
             page_workspace = (
-                self._workspace(job_id)
+                self._workspace(origin_job_id)
                 / "parallel-v20"
                 / f"page-{item.ordinal + 1:02d}"
                 / f"attempt-{page_attempt.id}"
@@ -1523,6 +1533,24 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item).strip()]
+
+
+def _normalize_background_competition(value: object) -> str:
+    normalized = str(value or "").strip().upper().replace(" ", "_")
+    if normalized in {"LOW", "MEDIUM", "HIGH"}:
+        return normalized
+    if normalized in {
+        "LOW_TO_MEDIUM",
+        "MEDIUM_TO_LOW",
+        "HIGH_TO_MEDIUM",
+        "MEDIUM_HIGH",
+    }:
+        return "MEDIUM"
+    if "HIGH" in normalized:
+        return "HIGH"
+    if "MEDIUM" in normalized or "MID" in normalized:
+        return "MEDIUM"
+    return "LOW"
 
 
 def _number(value: object, fallback: float) -> float:

@@ -636,6 +636,14 @@ class ExecutionCoordinator:
         return self.finalize_job(job_id)
 
     async def _run_parallel_aurora_set_audit(self, job_id: str) -> bool | None:
+        with self.session_factory() as session:
+            statuses = session.scalars(
+                select(JobItemRecord.status).where(JobItemRecord.job_id == job_id)
+            ).all()
+        if len(statuses) != 6 or any(
+            status not in SUCCESS_ITEM_STATUSES for status in statuses
+        ):
+            return None
         provider: object = self.provider
         routes = getattr(provider, "routes", None)
         if isinstance(routes, Mapping):

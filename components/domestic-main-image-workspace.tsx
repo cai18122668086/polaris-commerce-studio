@@ -11,7 +11,7 @@ import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
-import { useCloneJob, useConfirmPlan, useCreateJob, useJob } from "@/features/jobs/api/jobs";
+import { useConfirmPlan, useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import type { Asset, DomesticMainImageJobCreate } from "@/lib/api/types";
@@ -126,7 +126,7 @@ export function DomesticMainImageWorkspace() {
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
-  const cloneJob = useCloneJob(workspace?.id);
+  const retryJob = useRetryJob(workspace?.id);
   const runtime = useRuntimeStatus();
   const workflow = presentWorkflow(
     runtime.data?.capabilities.features?.domestic_main_image,
@@ -165,7 +165,7 @@ export function DomesticMainImageWorkspace() {
   const showGeneration = Boolean(
     job.data && ["processing", "completed", "partial", "failed"].includes(job.data.status),
   );
-  const busy = upload.isPending || createJob.isPending || confirmPlan.isPending || cloneJob.isPending;
+  const busy = upload.isPending || createJob.isPending || confirmPlan.isPending || retryJob.isPending;
   const canCreate = Boolean(
     !jobId && workspace && sources.length && productName.trim() && category.trim() && lines(sellingPoints, 24).length && workflow.canSubmit,
   );
@@ -281,14 +281,16 @@ export function DomesticMainImageWorkspace() {
     }
   }
 
-  async function rerunWithProvider() {
-    if (!job.data || !allowsJobAction(job.data.allowed_actions, "clone")) return;
+  async function retryFailedPages() {
+    if (!job.data || !allowsJobAction(job.data.allowed_actions, "retry")) return;
     try {
-      const cloned = await cloneJob.mutateAsync({
+      const retried = await retryJob.mutateAsync({
         jobId: job.data.id,
         allowedActions: job.data.allowed_actions,
+        scope: "failed",
+        itemIds: [],
       });
-      router.replace(`/workspace/domestic-main-image?jobId=${encodeURIComponent(cloned.id)}`);
+      router.replace(`/workspace/domestic-main-image?jobId=${encodeURIComponent(retried.id)}`);
     } catch (error) {
       setLocalError(errorMessage(error));
     }
@@ -395,9 +397,9 @@ export function DomesticMainImageWorkspace() {
 
           <aside className={styles.side}>
             <div><span>AURORA / 06</span><h3>连续创作约束</h3><ul><li><Check size={15} />固定六张，不增不减</li><li><Check size={15} />严格按页顺序生成</li><li><Check size={15} />每页最多自动修复一次</li><li><Check size={15} />最终整组等待人工确认</li></ul></div>
-            {localError || createJob.error || confirmPlan.error || cloneJob.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error ?? cloneJob.error)}</p> : null}
+            {localError || createJob.error || confirmPlan.error || retryJob.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error ?? retryJob.error)}</p> : null}
             {runtime.data?.environment === "development" && <DevelopmentProviderSettings />}
-            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data && ["completed", "failed", "partial", "cancelled"].includes(job.data.status) && !hasCompleteSet && providerReady && allowsJobAction(job.data.allowed_actions, "clone") ? <button className={styles.primary} disabled={cloneJob.isPending} onClick={() => void rerunWithProvider()}>{cloneJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}按原方案重新生成<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") && providerReady ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{terminalIncomplete ? "任务已终止" : job.data?.status === "completed" && hasCompleteSet ? "等待整组确认" : job.data?.status === "completed" ? "未生成真实图片" : workflow.mode === "mock" && job.data?.status === "awaiting_confirmation" ? "真实生成服务未启用" : "任务处理中"}</button>}
+            {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成六图方案<ArrowRight size={17} /></button> : job.data && ["completed", "failed", "partial", "cancelled"].includes(job.data.status) && !hasCompleteSet && providerReady && allowsJobAction(job.data.allowed_actions, "retry") ? <button className={styles.primary} disabled={retryJob.isPending} onClick={() => void retryFailedPages()}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}按原方案重新生成<ArrowRight size={17} /></button> : job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") && providerReady ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{terminalIncomplete ? "任务已终止" : job.data?.status === "completed" && hasCompleteSet ? "等待整组确认" : job.data?.status === "completed" ? "未生成真实图片" : workflow.mode === "mock" && job.data?.status === "awaiting_confirmation" ? "真实生成服务未启用" : "任务处理中"}</button>}
             <small className={styles.note}>{providerReady ? "在线生成已启用；确认后将按 Skill 逐张生成与审图" : "当前为安全 Mock：只允许编译和查看规划，不会授权生图或产生图片费用"}</small>
           </aside>
         </div>

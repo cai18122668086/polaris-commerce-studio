@@ -66,6 +66,21 @@ def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
     ]
 
 
+def test_v20_visual_judgment_normalizes_native_enum() -> None:
+    judgment = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        {
+            "decision_summary": "The generated page was inspected directly.",
+            "observations": {"background_competition": "LOW_TO_MEDIUM"},
+            "checks": [],
+        },
+        {"page_index": 0},
+    )
+
+    assert judgment["observations"]["background_competition"] == "MEDIUM"
+    assert len(judgment["checks"]) >= 20
+    assert judgment["audit_complete"] is True
+
+
 def test_pasted_product_dossier_routes_service_away_from_product_page_leads() -> None:
     raw = _build_raw(
         "job_fact_routing",

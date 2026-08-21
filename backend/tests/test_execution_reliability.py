@@ -100,6 +100,58 @@ class _FailingDomesticPlanner:
         raise OSError(f"workspace unavailable for {job_id}")
 
 
+class _SetAuditTrackingProvider(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.set_audit_calls = 0
+
+    async def audit_parallel_set(self, job_id: str) -> bool:
+        self.set_audit_calls += 1
+        return True
+
+
+def test_parallel_aurora_skips_set_audit_when_any_page_failed(
+    client: TestClient,
+) -> None:
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert job is not None and first is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first.status = JobItemStatus.SUCCEEDED.value
+        for ordinal in range(1, 6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"page-{ordinal + 1:03d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if ordinal == 1
+                        else JobItemStatus.SUCCEEDED.value
+                    ),
+                    configuration={},
+                )
+            )
+        session.commit()
+
+    provider = _SetAuditTrackingProvider()
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-audit-skip",
+    )
+
+    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) is None
+    assert provider.set_audit_calls == 0
+
+
 def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) -> None:
     job_id = _create_job(client)
     with client.app.state.session_factory() as session:

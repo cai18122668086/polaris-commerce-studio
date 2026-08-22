@@ -1451,7 +1451,11 @@ def _generation_sources(
     requested_paths = generation_request.get("imagegen_reference_paths")
     if isinstance(requested_paths, list):
         metadata_by_path = {
-            str(Path(str(reference.get("path") or reference.get("file") or "")).resolve()): reference
+            str(
+                Path(
+                    str(reference.get("path") or reference.get("file") or "")
+                ).resolve()
+            ): reference
             for reference in references
             if str(reference.get("path") or reference.get("file") or "").strip()
         }
@@ -2305,6 +2309,20 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
     payload.pop("concrete_observed_evidence", None)
     payload.pop("concrete observed_evidence", None)
     tokens = _mapping(payload.get("style_tokens"))
+    # The style-calibration prompt historically used the descriptive alias
+    # ``information_surface_geometry`` while the v2 Harness contract uses
+    # ``information_surfaces``. Normalize the alias at this boundary so the
+    # Harness receives one canonical field and continues to reject unrelated
+    # identity/layout/copy keys fail-closed.
+    if (
+        "information_surfaces" not in tokens
+        and "information_surface_geometry" in tokens
+    ):
+        tokens["information_surfaces"] = tokens["information_surface_geometry"]
+    tokens.pop("information_surface_geometry", None)
+    # prohibited_styles belongs to the compiled campaign-style contract, not
+    # the pixel-observation token allowlist enforced by the v2 Harness.
+    tokens.pop("prohibited_styles", None)
     if "palette_usage_ratio" in tokens:
         ratios = _mapping(tokens["palette_usage_ratio"])
         ratio_values = list(ratios.values())
@@ -2330,10 +2348,6 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
         tokens.pop("palette_roles", None)
     if "typography" in tokens and not isinstance(tokens["typography"], Mapping):
         tokens.pop("typography", None)
-    if "prohibited_styles" in tokens and not isinstance(
-        tokens["prohibited_styles"], list
-    ):
-        tokens.pop("prohibited_styles", None)
     payload["style_tokens"] = tokens
     return payload
 

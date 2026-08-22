@@ -286,20 +286,54 @@ def test_pasted_product_dossier_routes_service_away_from_product_page_leads() ->
         ["product.jpg"],
     )
     product = raw["product"]
-    assert product["verified_selling_points"][:6] == [
+    assert product["verified_selling_points"][:5] == [
         "主打透气清爽",
         "适配人群：学生党、小个子、宽胖脚/高脚背人群",
         "主推配色：天蓝色+米白撞色",
         "翻毛皮浅蓝主体搭配米白流线型装饰",
-        "日常休闲、通勤、出游、慢跑均可",
         "男女同款情侣板鞋",
     ]
     assert "一、基础商品信息" not in product["verified_selling_points"]
+    assert product["verified_scenes"] == ["日常休闲、通勤、出游、慢跑均可"]
     assert product["verified_service_or_trust_facts"] == [
         "发货与物流：免运费；平均16小时发货",
         "客服响应快（平均27秒回复）",
         "售后保障：7天无理由退货",
     ]
+
+
+def test_electronics_dossier_preserves_display_facts_and_scene_source() -> None:
+    raw = _build_raw(
+        "job_electronics_fact_routing",
+        {
+            "product_name": "199档冷风手持制冷小风扇",
+            "category": "便携式半导体制冷手持风扇",
+            "user_provided_display_facts": ["199档", "20m/s", "体感直降16℃"],
+            "selling_points": [
+                "三、核心产品参数与功能",
+                "1. 核心制冷风力",
+                "不是单纯吹风，自带半导体制冷片，可冰敷降温",
+                "静音不扰人，适合学生课堂、宿舍、图书馆",
+                "可给手机辅助散热",
+                "超长续航，室内外通用",
+            ],
+        },
+        ["product.jpg"],
+    )
+
+    product = raw["product"]
+    assert product["user_provided_display_facts"] == [
+        "199档",
+        "20m/s",
+        "体感直降16℃",
+    ]
+    assert "三、核心产品参数与功能" not in product["verified_selling_points"]
+    assert "1. 核心制冷风力" not in product["verified_selling_points"]
+    assert product["verified_scenes"] == [
+        "静音不扰人，适合学生课堂、宿舍、图书馆",
+        "可给手机辅助散热",
+    ]
+    assert "超长续航，室内外通用" in product["verified_selling_points"]
 
 
 def test_fake_gateway_returns_an_aurora_identity_contract() -> None:
@@ -450,7 +484,9 @@ def test_aurora_normalizes_provider_portrait_without_cropping() -> None:
         assert image.getpixel((0, 0)) == (255, 255, 255)
 
 
-def test_v20_generation_uses_exact_skill_reference_paths_for_repair(tmp_path: Path) -> None:
+def test_v20_generation_uses_exact_skill_reference_paths_for_repair(
+    tmp_path: Path,
+) -> None:
     repair_path = tmp_path / "repair.jpg"
     product_path = tmp_path / "product.jpg"
     repair_path.write_bytes(b"repair-pixels")
@@ -786,6 +822,98 @@ def test_style_calibration_drops_empty_palette_ratio_override() -> None:
     assert observation["style_tokens"] == {
         "density_band": "spacious commercial catalog"
     }
+
+
+def test_style_calibration_maps_geometry_alias_to_harness_field() -> None:
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {
+                "information_surface_geometry": "asymmetric evidence-led surfaces",
+                "prohibited_styles": ["equal-card wall"],
+            },
+        }
+    )
+
+    assert observation["style_tokens"] == {
+        "information_surfaces": "asymmetric evidence-led surfaces"
+    }
+
+
+@pytest.mark.parametrize(
+    "prohibited_styles",
+    [["equal-card wall"], "equal-card wall", {"name": "equal-card wall"}],
+)
+def test_style_calibration_drops_prohibited_styles_for_any_type(
+    prohibited_styles: object,
+) -> None:
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {
+                "prohibited_styles": prohibited_styles,
+                "density_band": "medium",
+            },
+        }
+    )
+
+    assert observation["style_tokens"] == {"density_band": "medium"}
+
+
+def test_style_calibration_preserves_native_tokens_and_valid_palette_ratio() -> None:
+    tokens = {
+        "photography_finish": "crisp studio",
+        "light_direction": "upper left",
+        "color_temperature": "cool neutral",
+        "palette_roles": {"background": "white", "accent": "blue"},
+        "palette_usage_ratio": {"background": 60, "product": 30, "accent": 10},
+        "typography": {"headline": "bold sans"},
+        "graphic_language": "evidence-led lines",
+        "information_surfaces": "asymmetric evidence-led surfaces",
+        "density_band": "medium",
+    }
+
+    observation = _normalize_style_calibration_payload(
+        {"agent_pixel_reviewed": True, "style_tokens": tokens}
+    )
+
+    assert observation["style_tokens"] == tokens
+
+
+@pytest.mark.parametrize("field", ["identity", "layout", "copy", "unknown"])
+def test_style_calibration_keeps_unknown_fields_fail_closed(field: str) -> None:
+    runtime_path = (
+        Path(__file__).resolve().parents[1]
+        / "skill_sources"
+        / "aurora-domestic-ecommerce-main-image-v20"
+        / "scripts"
+        / "runtime"
+    )
+    existing_core = sys.modules.pop("core", None)
+    existing_audit = sys.modules.pop("audit", None)
+    sys.path.insert(0, str(runtime_path))
+    try:
+        native_validator = importlib.import_module("audit").validate_style_observation
+    finally:
+        sys.path.remove(str(runtime_path))
+        sys.modules.pop("audit", None)
+        sys.modules.pop("core", None)
+        if existing_audit is not None:
+            sys.modules["audit"] = existing_audit
+        if existing_core is not None:
+            sys.modules["core"] = existing_core
+
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "source_page_indexes": [0],
+            "observed_evidence": "Visible pixel evidence is present.",
+            "style_tokens": {"density_band": "medium", field: "must block"},
+        }
+    )
+
+    with pytest.raises(Exception, match="style tokens contain identity, layout, copy"):
+        native_validator(observation)
 
 
 def test_set_role_audit_adapts_page_evidence_to_harness_distinctions() -> None:

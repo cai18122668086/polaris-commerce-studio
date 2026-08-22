@@ -13,7 +13,7 @@ import { AUTH_ROUTES, isPublicRoute, routeRequiresWorkspace } from "@/lib/auth/r
 import { onAuthUnauthorised } from "@/lib/auth/session-events";
 import { AuthStatus } from "./auth-status";
 
-type BoundaryResult = { pathname: string; state: "authenticated" | "error" };
+type BoundaryResult = { state: "authenticated" | "error" };
 
 export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -51,14 +51,14 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
           if (!cancelled) { queryClient.clear(); router.replace(verifyEmailHref(currentReturnTo())); }
           return;
         }
-        if (!cancelled) setResult({ pathname, state: "authenticated" });
+        if (!cancelled) setResult({ state: "authenticated" });
       } catch {
-        if (!cancelled) setResult({ pathname, state: "error" });
+        if (!cancelled) setResult({ state: "error" });
       }
     }
     void checkAuthentication();
     return () => { cancelled = true; };
-  }, [developmentAuth, pathname, publicRoute, queryClient, redirectToLogin, retryKey, router]);
+  }, [developmentAuth, publicRoute, queryClient, redirectToLogin, retryKey, router]);
 
   if (publicRoute) return <>{children}</>;
   if (developmentAuth) return routeRequiresWorkspace(pathname) ? <WorkspaceGate>{children}</WorkspaceGate> : <>{children}</>;

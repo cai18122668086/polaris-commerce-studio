@@ -17,10 +17,14 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-		Cache-Control "no-store"
 	}
 
 	@api path /api/* /health/*
+	header @api Cache-Control "no-store"
+
+	@immutable path /_polaris-static/* /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
 	handle @api {
 		reverse_proxy api:8000
 	}

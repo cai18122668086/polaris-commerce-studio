@@ -12,6 +12,12 @@ export function WorkspaceHeader({
   description: string;
   meta?: React.ReactNode;
 }) {
+  function startNewTask() {
+    if (typeof window !== "undefined") {
+      window.location.replace(window.location.pathname);
+    }
+  }
+
   return (
     <div className="workspace-header">
       <div>
@@ -25,7 +31,7 @@ export function WorkspaceHeader({
       </div>
       <div className="workspace-header__actions">
         {meta}
-        <button className="secondary-button">
+        <button type="button" className="secondary-button" onClick={startNewTask}>
           <Plus size={16} />
           新建任务
         </button>

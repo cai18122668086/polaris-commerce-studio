@@ -153,8 +153,17 @@ export function DomesticMainImageWorkspace() {
   const restoredString = (key: string) => typeof restoredSettings?.[key] === "string" ? restoredSettings[key] as string : "";
   const restoredLines = (key: string) => Array.isArray(restoredSettings?.[key]) ? (restoredSettings[key] as unknown[]).map(String).join("\n") : "";
   const results = selectJobResultAssets(job.data);
+  const acceptedResultCount = job.data
+    ? results.filter((asset) => job.data?.items.some(
+      (item) => item.ordinal === asset.ordinal && ["succeeded", "reused"].includes(item.status),
+    )).length
+    : 0;
   const providerReady = workflow.mode === "provider";
-  const hasCompleteSet = results.length === 6;
+  const hasCompleteSet = Boolean(
+    job.data?.status === "completed"
+    && acceptedResultCount === 6
+    && results.length === 6,
+  );
   const failedItem = job.data?.items.find((item) => item.status === "failed");
   const blockedItemCount = job.data?.items.filter((item) => item.status === "skipped").length ?? 0;
   const terminalIncomplete = Boolean(
@@ -390,7 +399,7 @@ export function DomesticMainImageWorkspace() {
               </>}
             </section>
 
-            {showGeneration && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>逐张生成进度</h2><p>严格按页顺序生成与审图，六张全部完成后才进入整组确认。</p></div></div>{terminalIncomplete && <div className={styles.generationFailure} role="alert"><AlertTriangle size={20} /><div><strong>任务已经终止，不再继续运行</strong><p>{failedItem ? `第 ${failedItem.ordinal + 1} 页：${domesticFailureMessage(failedItem.error_message)}` : "任务没有完成全部六张图片。"}{blockedItemCount ? ` 后续 ${blockedItemCount} 页因顺序生成规则没有执行。` : ""}</p><small>修复原因后，可点击右侧“按原方案重新生成”。</small></div></div>}<div className={styles.generationProgress}><strong>{results.length} / 6 张真实图片</strong><div>{job.data!.items.map((item) => <span key={item.id} data-status={item.status}><i>{String(item.ordinal + 1).padStart(2, "0")}</i>{roleNames[plan[item.ordinal]?.page_role] ?? `图 ${item.ordinal + 1}`}<em>{generationItemLabel(item.status, item.result_source)}</em></span>)}</div></div>{job.data?.status === "completed" && !hasCompleteSet && <div className={styles.mockWarning}><strong>没有生成真实图片</strong><p>这条任务由安全 Mock 执行，只模拟了六页状态，不能进入整组图片确认。启用真实 Provider 后请重新运行任务。</p></div>}</section>}
+            {showGeneration && <section className={styles.card}><div className={styles.heading}><span>04</span><div><h2>逐张生成进度</h2><p>严格按页顺序生成与审图，六张全部完成后才进入整组确认。</p></div></div>{terminalIncomplete && <div className={styles.generationFailure} role="alert"><AlertTriangle size={20} /><div><strong>任务已经终止，不再继续运行</strong><p>{failedItem ? `第 ${failedItem.ordinal + 1} 页：${domesticFailureMessage(failedItem.error_message)}` : "任务没有完成全部六张图片。"}{blockedItemCount ? ` 后续 ${blockedItemCount} 页因顺序生成规则没有执行。` : ""}</p><small>修复原因后，可点击右侧“按原方案重新生成”。</small></div></div>}<div className={styles.generationProgress}><strong>{acceptedResultCount} / 6 张已通过审核</strong><div>{job.data!.items.map((item) => <span key={item.id} data-status={item.status}><i>{String(item.ordinal + 1).padStart(2, "0")}</i>{roleNames[plan[item.ordinal]?.page_role] ?? `图 ${item.ordinal + 1}`}<em>{generationItemLabel(item.status, item.result_source)}</em></span>)}</div></div>{job.data?.status === "completed" && !hasCompleteSet && <div className={styles.mockWarning}><strong>没有生成真实图片</strong><p>这条任务由安全 Mock 执行，只模拟了六页状态，不能进入整组图片确认。启用真实 Provider 后请重新运行任务。</p></div>}</section>}
 
             {results.length > 0 && <section className={styles.card}><div className={styles.heading}><span>05</span><div><h2>六图交付</h2><p>单张可查看与下载，全部完成后可下载整套文件。</p></div></div><div className={styles.results}>{results.map((asset, index) => <JobResultImage key={asset.asset_id} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`国内电商主图 ${index + 1}`} label={roleNames[plan[index]?.page_role] ?? `图 ${index + 1}`} />)}</div>{job.data?.status === "completed" && hasCompleteSet && <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} />}</section>}
           </main>

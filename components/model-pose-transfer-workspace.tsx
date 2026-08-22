@@ -36,6 +36,7 @@ import { errorMessage, unwrapApiResponse } from "@/lib/api/request";
 import type { Asset, JobCreate } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
 import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { jobNote } from "@/lib/jobs/presentation";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./model-pose-transfer-workspace.module.css";
 
@@ -461,7 +462,7 @@ export function ModelPoseTransferWorkspace() {
   };
 
   const progressText = job.data
-    ? `${job.data.status === "completed" ? "已完成" : "处理中"} · ${Math.round(job.data.progress)}%`
+    ? `${jobNote(job.data)} · ${Math.round(job.data.progress)}%`
     : "预计生成 1 张图片";
 
   if (!feature) {

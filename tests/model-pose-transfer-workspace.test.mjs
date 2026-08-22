@@ -130,6 +130,7 @@ test("completed or failed tasks can replace the source image without refreshing 
   assert.equal(resetLogic.includes("setCustomPose(undefined);"), true);
   assert.equal(resetLogic.includes("sourceUpload.reset();"), true);
   assert.equal(resetLogic.includes("customPoseUpload.reset();"), true);
+  assert.equal(source.includes("jobNote(job.data)"), true);
 });
 
 test("custom pose upload is exclusive with catalog selection and submission is fail closed", async () => {

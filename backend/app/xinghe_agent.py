@@ -6370,6 +6370,8 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "checks must be an ordered array "
             "containing every required_check_name exactly once, with material "
             "matching policy. Report only direct pixel observations and include "
+            "check score values as 0-100 percentage numbers (write 98, never "
+            "0.98); a passed check must have score at least 70. "
             "the exact values supplied in layout_observation_contract for "
             "composition_archetype_seen, product_zone_seen, copy_zone_seen, "
             "dominant_view_seen, and evidence_topology_seen; never paraphrase "

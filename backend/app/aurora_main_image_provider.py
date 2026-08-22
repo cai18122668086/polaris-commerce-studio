@@ -955,6 +955,11 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 "Aurora v2 checks must contain the complete ordered native check set"
             )
+        checks_mutable: list[dict[str, Any]] = [
+            dict(item) for item in checks if isinstance(item, Mapping)
+        ]
+        checks = checks_mutable
+        payload["checks"] = checks
         for item in checks:
             if not isinstance(item, Mapping):
                 raise AuroraPlanningError("Aurora v2 check is not an object")
@@ -973,9 +978,50 @@ class AuroraMainImageProvider:
                 or not 0 <= score <= 100
             ):
                 raise AuroraPlanningError("Aurora v2 check score is invalid")
+            # The native v2 contract is a 0–100 percentage. Some vision
+            # gateways emit the equivalent confidence as 0–1; normalize that
+            # representation at the application boundary before invoking the
+            # immutable Skill runtime.
+            if 0 <= float(score) <= 1:
+                item["score"] = round(float(score) * 100, 2)
             evidence = item.get("observed_evidence")
             if not isinstance(evidence, str) or len(evidence.strip()) < 8:
                 raise AuroraPlanningError("Aurora v2 check evidence is missing")
+
+        observations = _mapping(payload.get("observations"))
+        if expected_page == 0:
+            baseline_visible = (
+                observations.get("type_roles_seen", 0) >= 4
+                and observations.get("headline_rank") in {"FIRST", "JOINT_FIRST"}
+                and observations.get("depth_layers", 0) >= 2
+                and observations.get("commercial_closure_visible") is True
+                and bool(observations.get("physical_evidence"))
+            )
+            baseline_check = next(
+                item
+                for item in checks
+                if item.get("name") == "baseline_performance_match"
+            )
+            if baseline_check.get("passed") is True and not baseline_visible:
+                baseline_check["passed"] = False
+                baseline_check["score"] = min(
+                    float(baseline_check.get("score", 69)), 69
+                )
+                baseline_check["observed_evidence"] = (
+                    "搜索页像素未同时呈现四级文字角色、强标题、纵深、"
+                    "真实物理证据和已核验事实闭合。"
+                )
+
+        # A contradictory passed=true/score<70 response must become a normal
+        # material failure so the Harness can enter its one-repair state rather
+        # than terminating the entire job during validation.
+        for item in checks:
+            if item.get("passed") is True and float(item["score"]) < 70:
+                item["passed"] = False
+                item["observed_evidence"] = str(
+                    item.get("observed_evidence")
+                    or "像素审核置信度低于材料性通过阈值。"
+                )
 
         deficiencies = payload.get("all_material_deficiencies")
         if not isinstance(deficiencies, list):
@@ -987,6 +1033,33 @@ class AuroraMainImageProvider:
             for item in checks
             if item.get("material") is True and item.get("passed") is False
         }
+        existing_by_name = {
+            str(item.get("check")): dict(item)
+            for item in deficiencies
+            if isinstance(item, Mapping) and item.get("check")
+        }
+        normalized_deficiencies: list[dict[str, Any]] = []
+        for check in checks:
+            name = str(check["name"])
+            if name not in failed_material:
+                continue
+            normalized_deficiencies.append(
+                existing_by_name.get(
+                    name,
+                    {
+                        "check": name,
+                        "visible_problem": str(check.get("observed_evidence")),
+                        "root_cause": (
+                            "当前候选图未满足该材料性 Aurora v2 页面合同。"
+                        ),
+                        "required_change": (
+                            "仅修正该失败层，保留商品身份、已核验事实和其余通过层。"
+                        ),
+                    },
+                )
+            )
+        payload["all_material_deficiencies"] = normalized_deficiencies
+        deficiencies = normalized_deficiencies
         deficiency_names: list[str] = []
         for item in deficiencies:
             if not isinstance(item, Mapping):

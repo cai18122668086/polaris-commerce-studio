@@ -174,6 +174,68 @@ def test_v20_visual_judgment_binds_runtime_fields_after_semantic_validation() ->
     assert normalized["all_material_deficiencies"] == []
 
 
+def test_v20_visual_judgment_normalizes_fractional_scores_and_routes_baseline_to_repair(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "candidate.png"
+    source_path.write_bytes(b"candidate-pixels")
+    result = asyncio.run(
+        FakeXingheGateway().plan(
+            PlannerRequest(
+                workspace_id="workspace_one",
+                job_id="job_fractional_scores",
+                group_key="audit",
+                sources=(
+                    SourceImage(
+                        asset_id="candidate",
+                        group_key="job_fractional_scores",
+                        filename=str(source_path),
+                        content_type="image/png",
+                        sha256="a" * 64,
+                        payload=b"candidate-pixels",
+                    ),
+                ),
+                page_count=1,
+                language="zh-CN",
+                product_name="Aurora v2 audit",
+                product_information=(
+                    json.dumps({"required_check_names": list(_VISUAL_CHECKS)}),
+                ),
+                platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+                size="1024x1024",
+                idempotency_key="job_fractional_scores:audit",
+                planning_profile="aurora_v20_visual_audit",
+            )
+        )
+    )
+    assert isinstance(result.payload, dict)
+    payload = dict(result.payload)
+    for check in payload["checks"]:
+        check["score"] = 0.98
+    payload["observations"].update(
+        {
+            "type_roles_seen": 3,
+            "commercial_closure_visible": False,
+        }
+    )
+    normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        payload,
+        {"page_index": 0},
+    )
+
+    assert normalized["checks"][0]["score"] == 98
+    baseline = next(
+        item
+        for item in normalized["checks"]
+        if item["name"] == "baseline_performance_match"
+    )
+    assert baseline["passed"] is False
+    assert baseline["score"] == 69
+    assert [
+        item["check"] for item in normalized["all_material_deficiencies"]
+    ] == ["baseline_performance_match"]
+
+
 @pytest.mark.parametrize("bad_observations", ["像素观察文本", [], None])
 def test_v20_visual_judgment_rejects_non_object_observations(
     bad_observations: object,

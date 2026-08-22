@@ -184,11 +184,12 @@ class _ParallelAuroraFakeProvider:
     model = "none"
     pricing_version = "test"
 
-    def __init__(self) -> None:
+    def __init__(self, permanently_failed_pages: set[int] | None = None) -> None:
         self.active = 0
         self.max_active = 0
         self.calls: defaultdict[int, int] = defaultdict(int)
         self.idempotency_keys: defaultdict[int, list[str]] = defaultdict(list)
+        self.permanently_failed_pages = permanently_failed_pages or set()
 
     async def execute(self, request):  # type: ignore[no-untyped-def]
         page = int(request.configuration["item"]["aurora_snapshot"]["page_index"])
@@ -198,6 +199,15 @@ class _ParallelAuroraFakeProvider:
         self.max_active = max(self.max_active, self.active)
         await asyncio.sleep(0.03)
         self.active -= 1
+        if page in self.permanently_failed_pages:
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                error_code="PERMANENT_PAGE_FAILURE",
+                error_message="controlled page failure",
+                retryable=False,
+                usage_reported=False,
+                raw_usage={"network_requests": 1},
+            )
         if page == 2 and self.calls[page] == 1:
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
@@ -262,7 +272,6 @@ def test_parallel_aurora_overlaps_six_pages_and_retries_only_failure(
                 schema_version="aurora-main-image-plan-v2",
                 payload={
                     "execution_policy": {"execution_mode": "parallel_v20"},
-                    "_parallel_v20_style_calibrated": True,
                 },
                 payload_hash="0" * 64,
                 validation_status=PlanValidationStatus.VALID.value,
@@ -291,10 +300,82 @@ def test_parallel_aurora_overlaps_six_pages_and_retries_only_failure(
     assert len(set(provider.idempotency_keys[2])) == 1
 
 
-def test_parallel_aurora_does_not_claim_later_pages_before_style_gate(
+def test_parallel_page_zero_failure_does_not_block_other_pages(
     client: TestClient,
 ) -> None:
-    """A failed first-two-page gate must not dispatch pages 3-6."""
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id, with_for_update=True)
+        assert job is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert first is not None
+        first.item_key = "page-001"
+        items = [first]
+        for ordinal in range(1, 6):
+            item = JobItemRecord(
+                id=f"item_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                item_key=f"page-{ordinal + 1:03d}",
+                ordinal=ordinal,
+                status=JobItemStatus.PENDING.value,
+                configuration={},
+            )
+            session.add(item)
+            items.append(item)
+        for item in items:
+            item.configuration = {
+                "aurora_execution_mode": "parallel_v20",
+                "aurora_snapshot": {"page_index": item.ordinal},
+            }
+        now = utc_now()
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={"execution_policy": {"execution_mode": "parallel_v20"}},
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    provider = _ParallelAuroraFakeProvider(permanently_failed_pages={0})
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-page-zero-failure",
+        max_concurrency=6,
+    )
+
+    assert asyncio.run(coordinator.run(job_id)) == JobStatus.PARTIAL
+    assert set(provider.calls) == set(range(6))
+    with client.app.state.session_factory() as session:
+        later = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job_id, JobItemRecord.ordinal >= 1)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        assert {item.status for item in later} == {
+            JobItemStatus.SUCCEEDED.value
+        }
+
+
+def test_parallel_aurora_claims_all_pages_before_style_calibration(
+    client: TestClient,
+) -> None:
+    """Parallel mode dispatches all frozen pages without a two-page gate."""
 
     job_id = _create_job(client)
     with client.app.state.session_factory() as session:
@@ -305,8 +386,11 @@ def test_parallel_aurora_does_not_claim_later_pages_before_style_gate(
         assert job is not None and first is not None
         job.type = JobType.DOMESTIC_MAIN_IMAGE.value
         job.expected_item_count = 6
-        first.status = JobItemStatus.SUCCEEDED.value
         first.ordinal = 0
+        first.configuration = {
+            "aurora_execution_mode": "parallel_v20",
+            "aurora_snapshot": {"page_index": 0},
+        }
         for ordinal in range(1, 6):
             session.add(
                 JobItemRecord(
@@ -315,12 +399,11 @@ def test_parallel_aurora_does_not_claim_later_pages_before_style_gate(
                     job_id=job_id,
                     item_key=f"page-{ordinal + 1:03d}",
                     ordinal=ordinal,
-                    status=(
-                        JobItemStatus.FAILED.value
-                        if ordinal == 1
-                        else JobItemStatus.PENDING.value
-                    ),
-                    configuration={},
+                    status=JobItemStatus.PENDING.value,
+                    configuration={
+                        "aurora_execution_mode": "parallel_v20",
+                        "aurora_snapshot": {"page_index": ordinal},
+                    },
                 )
             )
         now = utc_now()
@@ -346,9 +429,19 @@ def test_parallel_aurora_does_not_claim_later_pages_before_style_gate(
         client.app.state.session_factory,
         FakeProvider(),
         worker_id="parallel-style-gate-claim",
+        max_concurrency=6,
     )
 
-    assert coordinator.claim_next_item(job_id) is None
+    claimed = [
+        lease
+        for lease in (coordinator.claim_next_item(job_id) for _ in range(6))
+        if lease is not None
+    ]
+
+    assert [
+        lease.configuration["item"]["aurora_snapshot"]["page_index"]
+        for lease in claimed
+    ] == list(range(6))
 
 
 def _expand_job_to_three_items(client: TestClient, job_id: str) -> None:
@@ -607,7 +700,7 @@ def test_domestic_pages_wait_for_predecessor_across_duplicate_deliveries(
         assert claimed.ordinal == 1
 
 
-def test_parallel_style_gate_failure_closes_unclaimable_pages(
+def test_parallel_page_failure_does_not_skip_other_pages(
     client: TestClient,
 ) -> None:
     job_id = _create_job(client)
@@ -671,10 +764,8 @@ def test_parallel_style_gate_failure_closes_unclaimable_pages(
             .order_by(JobItemRecord.ordinal)
         ).all()
         assert len(later) == 4
-        assert {item.status for item in later} == {JobItemStatus.SKIPPED.value}
-        assert {item.error_code for item in later} == {
-            "AURORA_STYLE_GATE_BLOCKED"
-        }
+        assert {item.status for item in later} == {JobItemStatus.PENDING.value}
+        assert {item.error_code for item in later} == {None}
 
 
 def test_running_job_aggregates_follow_terminal_item_statuses(

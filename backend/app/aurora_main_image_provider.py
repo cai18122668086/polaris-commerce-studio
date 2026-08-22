@@ -36,6 +36,7 @@ from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, Provid
 from .services import canonical_hash
 from .storage import ImageStorage
 from .xinghe_agent import (
+    _AURORA_V20_MATERIAL_CHECKS,
     _AURORA_V20_VISUAL_CHECKS,
     ImageEditRequest,
     PlannerRequest,
@@ -62,7 +63,11 @@ visibly present, fail the corresponding plan-fidelity check and name the
 missing pixel evidence. Return the native v2 semantic judgment exactly: never
 omit decision_summary, observations, checks, or all_material_deficiencies; never
 use legacy aliases or synthesize semantic defaults; and use only the declared
-enum values for headline_rank and background_competition. The runtime binds
+enum values for headline_rank and background_competition. For the five layout
+observations composition_archetype_seen, product_zone_seen, copy_zone_seen,
+dominant_view_seen, and evidence_topology_seen, copy the exact corresponding
+token from layout_observation_contract; do not replace it with a natural-language
+description of the pixels. The runtime binds
 page_index, image_sha256 and reviewer, then derives the final audit_complete
 attestation only after all semantic checks pass. Do not invent image paths or
 hashes for those runtime-owned fields. decision_summary must be a concrete
@@ -558,6 +563,21 @@ class AuroraMainImageProvider:
             "legacy_aliases_allowed": False,
             "default_field_synthesis_allowed": False,
         }
+        page_contract = _mapping(generation_request.get("page_contract"))
+        layout_contract = _mapping(page_contract.get("layout_contract"))
+        audit_contract["layout_observation_contract"] = {
+            "composition_archetype_seen": str(
+                layout_contract.get("composition_archetype") or ""
+            ),
+            "product_zone_seen": str(layout_contract.get("product_zone") or ""),
+            "copy_zone_seen": str(layout_contract.get("copy_zone") or ""),
+            "dominant_view_seen": str(
+                layout_contract.get("dominant_view") or ""
+            ),
+            "evidence_topology_seen": str(
+                layout_contract.get("evidence_topology") or ""
+            ),
+        }
         result = await self.gateway.plan(
             PlannerRequest(
                 workspace_id=request.workspace_id,
@@ -647,6 +667,21 @@ class AuroraMainImageProvider:
         # direct-pixel audit and search calibration, not merely produced bytes.
         # The wait is bounded so a failed page cannot leave page 1 hanging.
         for _ in range(720):
+            with self.session_factory() as db:
+                page_zero_status = db.scalar(
+                    select(JobItemRecord.status).where(
+                        JobItemRecord.job_id == request.job_id,
+                        JobItemRecord.ordinal == 0,
+                    )
+                )
+            if page_zero_status in {
+                JobItemStatus.FAILED.value,
+                JobItemStatus.CANCELLED.value,
+                JobItemStatus.SKIPPED.value,
+            }:
+                raise AuroraPlanningError(
+                    "Aurora v2.0 style calibration cannot use failed page 0"
+                )
             for search_root in search_roots:
                 for session_path in search_root.glob(
                     "page-01/attempt-*/session.json"
@@ -739,7 +774,12 @@ class AuroraMainImageProvider:
         job_id: str,
         calibrated_session: Mapping[str, Any],
     ) -> None:
-        """Release pages 2–5 only after native style calibration completes."""
+        """Persist post-generation style calibration without gating pages.
+
+        New parallel jobs already contain all six immutable snapshots.  The
+        missing-page fallback keeps recovery of older jobs safe, but never
+        replaces a snapshot that may already have been claimed by a worker.
+        """
 
         with self.session_factory() as db:
             plan = db.scalar(
@@ -755,20 +795,32 @@ class AuroraMainImageProvider:
             payload = dict(plan.payload)
             if payload.get("_parallel_v20_style_calibrated") is True:
                 return
-            root = self._workspace(job_id)
-            runner = (
-                self.harness
-                if isinstance(self.harness, AuroraV20HarnessRunner)
-                else AuroraV20HarnessRunner()
+            existing = plan.payload.get("_parallel_v20_snapshots")
+            existing_indexes: set[int] = set()
+            for snapshot in existing or ():
+                if not isinstance(snapshot, Mapping):
+                    continue
+                raw_index = snapshot.get("page_index")
+                if isinstance(raw_index, int):
+                    existing_indexes.add(raw_index)
+            missing_indexes = tuple(
+                index for index in range(2, 6) if index not in existing_indexes
             )
-            _persist_parallel_v20_snapshots(
-                plan,
-                job,
-                root,
-                calibrated_session,
-                runner,
-                page_indexes=(2, 3, 4, 5),
-            )
+            if missing_indexes:
+                root = self._workspace(job_id)
+                runner = (
+                    self.harness
+                    if isinstance(self.harness, AuroraV20HarnessRunner)
+                    else AuroraV20HarnessRunner()
+                )
+                _persist_parallel_v20_snapshots(
+                    plan,
+                    job,
+                    root,
+                    calibrated_session,
+                    runner,
+                    page_indexes=missing_indexes,
+                )
             payload = dict(plan.payload)
             payload["_parallel_v20_style_calibrated"] = True
             payload["_harness_session"] = dict(calibrated_session)
@@ -903,6 +955,11 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 "Aurora v2 checks must contain the complete ordered native check set"
             )
+        checks_mutable: list[dict[str, Any]] = [
+            dict(item) for item in checks if isinstance(item, Mapping)
+        ]
+        checks = checks_mutable
+        payload["checks"] = checks
         for item in checks:
             if not isinstance(item, Mapping):
                 raise AuroraPlanningError("Aurora v2 check is not an object")
@@ -921,9 +978,50 @@ class AuroraMainImageProvider:
                 or not 0 <= score <= 100
             ):
                 raise AuroraPlanningError("Aurora v2 check score is invalid")
+            # The native v2 contract is a 0–100 percentage. Some vision
+            # gateways emit the equivalent confidence as 0–1; normalize that
+            # representation at the application boundary before invoking the
+            # immutable Skill runtime.
+            if 0 <= float(score) <= 1:
+                item["score"] = round(float(score) * 100, 2)
             evidence = item.get("observed_evidence")
             if not isinstance(evidence, str) or len(evidence.strip()) < 8:
                 raise AuroraPlanningError("Aurora v2 check evidence is missing")
+
+        observations = _mapping(payload.get("observations"))
+        if expected_page == 0:
+            baseline_visible = (
+                observations.get("type_roles_seen", 0) >= 4
+                and observations.get("headline_rank") in {"FIRST", "JOINT_FIRST"}
+                and observations.get("depth_layers", 0) >= 2
+                and observations.get("commercial_closure_visible") is True
+                and bool(observations.get("physical_evidence"))
+            )
+            baseline_check = next(
+                item
+                for item in checks
+                if item.get("name") == "baseline_performance_match"
+            )
+            if baseline_check.get("passed") is True and not baseline_visible:
+                baseline_check["passed"] = False
+                baseline_check["score"] = min(
+                    float(baseline_check.get("score", 69)), 69
+                )
+                baseline_check["observed_evidence"] = (
+                    "搜索页像素未同时呈现四级文字角色、强标题、纵深、"
+                    "真实物理证据和已核验事实闭合。"
+                )
+
+        # A contradictory passed=true/score<70 response must become a normal
+        # material failure so the Harness can enter its one-repair state rather
+        # than terminating the entire job during validation.
+        for item in checks:
+            if item.get("passed") is True and float(item["score"]) < 70:
+                item["passed"] = False
+                item["observed_evidence"] = str(
+                    item.get("observed_evidence")
+                    or "像素审核置信度低于材料性通过阈值。"
+                )
 
         deficiencies = payload.get("all_material_deficiencies")
         if not isinstance(deficiencies, list):
@@ -935,6 +1033,33 @@ class AuroraMainImageProvider:
             for item in checks
             if item.get("material") is True and item.get("passed") is False
         }
+        existing_by_name = {
+            str(item.get("check")): dict(item)
+            for item in deficiencies
+            if isinstance(item, Mapping) and item.get("check")
+        }
+        normalized_deficiencies: list[dict[str, Any]] = []
+        for check in checks:
+            name = str(check["name"])
+            if name not in failed_material:
+                continue
+            normalized_deficiencies.append(
+                existing_by_name.get(
+                    name,
+                    {
+                        "check": name,
+                        "visible_problem": str(check.get("observed_evidence")),
+                        "root_cause": (
+                            "当前候选图未满足该材料性 Aurora v2 页面合同。"
+                        ),
+                        "required_change": (
+                            "仅修正该失败层，保留商品身份、已核验事实和其余通过层。"
+                        ),
+                    },
+                )
+            )
+        payload["all_material_deficiencies"] = normalized_deficiencies
+        deficiencies = normalized_deficiencies
         deficiency_names: list[str] = []
         for item in deficiencies:
             if not isinstance(item, Mapping):
@@ -1381,28 +1506,7 @@ class AuroraMainImageProvider:
 
 _VISUAL_CHECKS = _AURORA_V20_VISUAL_CHECKS
 
-_V20_MATERIAL_CHECKS = frozenset(
-    {
-        "product_identity_match",
-        "factual_copy_match",
-        "source_background_noise_absent",
-        "no_unsupported_claim",
-        "no_hard_error",
-        "typography_legibility",
-        "page_role_expression",
-        "evidence_relation_visible",
-        "visual_performance_match",
-        "baseline_performance_match",
-        "approved_plan_fidelity_match",
-        "campaign_constitution_match",
-        "selling_point_visible_without_copy",
-        "selling_point_visual_dominance",
-        "claim_to_evidence_relation_clear",
-        "text_not_substituting_for_visual_proof",
-        "thumbnail_success",
-        "layout_not_cloned",
-    }
-)
+_V20_MATERIAL_CHECKS = _AURORA_V20_MATERIAL_CHECKS
 
 
 def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:

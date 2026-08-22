@@ -4,7 +4,7 @@ import hmac
 import json
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -1757,6 +1757,12 @@ def retry_job(
     session.add(retried)
     session.flush()
     _copy_job_relations_for_retry(session, source, retried, selected)
+    session.flush()
+    _ensure_parallel_aurora_retry_snapshots(
+        session,
+        retried,
+        work_root=request.app.state.settings.aurora_work_root,
+    )
     release_credits(session, source)
     _reserve_real_provider_job_if_enabled(
         session,
@@ -1836,6 +1842,12 @@ def clone_job(
     session.add(cloned)
     session.flush()
     _copy_job_relations_for_retry(session, source, cloned, selected)
+    session.flush()
+    _ensure_parallel_aurora_retry_snapshots(
+        session,
+        cloned,
+        work_root=request.app.state.settings.aurora_work_root,
+    )
     release_credits(session, source)
     _reserve_real_provider_job_if_enabled(
         session,
@@ -2691,6 +2703,76 @@ def _copy_job_relations_for_retry(
                     confirmed_at=utc_now(),
                 )
             )
+
+
+def _ensure_parallel_aurora_retry_snapshots(
+    session: Session,
+    job: JobRecord,
+    *,
+    work_root: Path,
+) -> None:
+    """Rebuild missing v2 page snapshots on a retry/clone before dispatch.
+
+    Older parallel jobs may have persisted only pages 0–1 before the style gate
+    blocked the remaining rows.  A retry copies the confirmed plan, but those
+    skipped rows have no immutable generation request to execute.  Materialize
+    the six native v2 requests now, in the same way plan authorization does,
+    while leaving successful deliverables reusable and untouched.
+    """
+
+    if job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+        return
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    if plan is None or not isinstance(plan.payload, dict):
+        return
+    policy = plan.payload.get("execution_policy")
+    if not (
+        isinstance(policy, dict)
+        and policy.get("execution_mode") == "parallel_v20"
+    ):
+        return
+    items = session.scalars(
+        select(JobItemRecord)
+        .where(JobItemRecord.job_id == job.id)
+        .order_by(JobItemRecord.ordinal)
+        .with_for_update()
+    ).all()
+    if len(items) != 6:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_RETRY_SNAPSHOT_INCOMPLETE",
+            "Aurora 并发重试缺少完整六页条目，无法安全恢复。",
+        )
+    if all(
+        isinstance(item.configuration, dict)
+        and isinstance(item.configuration.get("aurora_snapshot"), dict)
+        for item in items
+    ):
+        return
+    authorized_session = plan.payload.get("_harness_session")
+    if not isinstance(authorized_session, Mapping):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_RETRY_SESSION_MISSING",
+            "Aurora 并发重试缺少已授权的原生 Skill 会话。",
+        )
+    from .aurora_main_image_planner import _persist_parallel_v20_snapshots
+    from .aurora_main_image_runtime import AuroraV20HarnessRunner
+
+    workspace = (work_root / job.id).resolve()
+    _persist_parallel_v20_snapshots(
+        plan,
+        job,
+        workspace,
+        authorized_session,
+        AuroraV20HarnessRunner(),
+        page_indexes=tuple(range(6)),
+    )
 
 
 def _validate_plan_payload(

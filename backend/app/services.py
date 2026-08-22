@@ -1,7 +1,7 @@
 import base64
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from typing import Any, cast, get_args
 from uuid import uuid4
@@ -964,7 +964,7 @@ def retry_item_ids(
             )
         ).all()
     }
-    return [
+    selected = [
         item.id
         for item in items
         if item.status in statuses
@@ -974,3 +974,29 @@ def retry_item_ids(
             and item.id in preserved_set_audit_ids
         )
     ]
+    # A parallel Aurora retry must recover pages that an older sequential/style
+    # gate marked as synthetic SKIPPED rows.  They never produced an artifact,
+    # so treating the retry scope as FAILED-only would permanently reduce a
+    # six-page retry to the first two failed pages.  Aurora has no user-visible
+    # skip state; cancellation is represented by CANCELLED, so every SKIPPED
+    # Aurora page is safe to regenerate from the immutable plan.
+    if source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == source.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        policy = plan.payload.get("execution_policy") if plan is not None else None
+        if (
+            isinstance(policy, Mapping)
+            and policy.get("execution_mode") == "parallel_v20"
+        ):
+            selected.extend(
+                item.id
+                for item in items
+                if item.status == JobItemStatus.SKIPPED.value
+                and item.id not in blocker_ids
+                and item.id not in selected
+            )
+    return selected

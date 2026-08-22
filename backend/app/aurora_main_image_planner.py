@@ -540,6 +540,7 @@ def _build_raw(
             "name": _text(settings.get("product_name"), "当前商品"),
             "category": _text(settings.get("category"), "商品"),
             "original_references": list(evidence_paths),
+            "user_provided_display_facts": fact_pool["display_facts"],
             "verified_selling_points": fact_pool["selling_points"],
             "verified_attributes": fact_pool["attributes"],
             "verified_scenes": fact_pool["scenes"],
@@ -552,6 +553,10 @@ def _build_raw(
 _SECTION_HEADING_TERMS = (
     "完整产品信息",
     "基础商品信息",
+    "核心产品参数与功能",
+    "核心制冷风力",
+    "机身设计",
+    "续航与供电",
     "款式定位与适配人群",
     "外观配色与版型",
     "商品信息",
@@ -578,6 +583,12 @@ _SCENE_TERMS = (
     "办公",
     "户外",
     "旅行",
+    "课堂",
+    "上课",
+    "宿舍",
+    "图书馆",
+    "桌面",
+    "手机辅助散热",
     "使用场景",
 )
 _FIT_TERMS = (
@@ -654,6 +665,7 @@ def _normalize_commercial_fact_pool(
     """
 
     pasted = _text_list(settings.get("selling_points"))
+    display_facts = _text_list(settings.get("user_provided_display_facts"))
     explicit_attributes = _text_list(settings.get("product_attributes"))
     explicit_scenes = _text_list(settings.get("scenes"))
     explicit_offers = _text_list(settings.get("offers"))
@@ -675,17 +687,19 @@ def _normalize_commercial_fact_pool(
             continue
         if _contains_any(fact, _SCENE_TERMS):
             scenes.append(fact)
+            continue
         if _contains_any(fact, _IDENTITY_ONLY_TERMS):
             attributes.append(fact)
             continue
         product_claims.append(fact)
 
-    # The compiler consumes one ranked truth pool. Re-introduce scenes and
-    # attributes as eligible claims, but arrange the first six candidates by
-    # commercial page duty so service facts cannot displace product evidence.
-    eligible = list(dict.fromkeys([*product_claims, *scenes, *attributes]))
-    selling_points = _prioritize_for_six_page_duties(eligible)
+    # The compiler already consumes every authority bucket. Keep scenes and
+    # attributes out of ``verified_selling_points`` so fact_records preserves
+    # their source provenance and the page-role bonuses can select them for
+    # the scene/detail duties instead of treating them as generic benefits.
+    selling_points = _prioritize_for_six_page_duties(product_claims)
     return {
+        "display_facts": list(dict.fromkeys(display_facts)),
         "selling_points": selling_points,
         "attributes": list(dict.fromkeys(attributes)),
         "scenes": list(dict.fromkeys(scenes)),
@@ -946,6 +960,7 @@ def _bind_identity_evidence(
 def _all_facts(settings: Mapping[str, Any]) -> list[str]:
     values = [
         f"商品类目：{_text(settings.get('category'), '商品')}",
+        *_text_list(settings.get("user_provided_display_facts")),
         *_text_list(settings.get("selling_points")),
         *_text_list(settings.get("product_attributes")),
         *_text_list(settings.get("scenes")),

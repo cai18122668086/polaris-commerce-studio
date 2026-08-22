@@ -219,6 +219,46 @@ def test_v20_gateway_contract_is_strict_semantic_json_only() -> None:
     assert schema["properties"]["observations"]["type"] == "object"
 
 
+def test_v20_gateway_schema_rejects_typography_material_policy_mismatch() -> None:
+    request = PlannerRequest(
+        workspace_id="workspace_one",
+        job_id="job_material_policy",
+        group_key="audit",
+        sources=(
+            SourceImage(
+                asset_id="candidate",
+                group_key="job_material_policy",
+                filename="candidate.png",
+                content_type="image/png",
+                sha256="c" * 64,
+                payload=b"candidate-pixels",
+                source_role="generated_candidate",
+            ),
+        ),
+        page_count=1,
+        language="zh-CN",
+        product_name="Aurora v2 audit",
+        product_information=(
+            json.dumps(
+                {"required_check_names": list(_VISUAL_CHECKS)},
+                ensure_ascii=False,
+            ),
+        ),
+        platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+        size="1024x1024",
+        idempotency_key="job_material_policy:audit",
+        planning_profile="aurora_v20_visual_audit",
+    )
+    schema = _planner_response_format(request)["json_schema"]["schema"]
+    variants = schema["properties"]["checks"]["items"]["anyOf"]
+    typography = next(
+        item
+        for item in variants
+        if item["properties"]["name"]["enum"] == ["typography_style_match"]
+    )
+    assert typography["properties"]["material"]["enum"] == [False]
+
+
 def test_v20_visual_judgment_rejects_non_native_enum() -> None:
     payload = {
         "page_index": 0,

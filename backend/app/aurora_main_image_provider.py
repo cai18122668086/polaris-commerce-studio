@@ -36,6 +36,7 @@ from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, Provid
 from .services import canonical_hash
 from .storage import ImageStorage
 from .xinghe_agent import (
+    _AURORA_V20_MATERIAL_CHECKS,
     _AURORA_V20_VISUAL_CHECKS,
     ImageEditRequest,
     PlannerRequest,
@@ -647,6 +648,21 @@ class AuroraMainImageProvider:
         # direct-pixel audit and search calibration, not merely produced bytes.
         # The wait is bounded so a failed page cannot leave page 1 hanging.
         for _ in range(720):
+            with self.session_factory() as db:
+                page_zero_status = db.scalar(
+                    select(JobItemRecord.status).where(
+                        JobItemRecord.job_id == request.job_id,
+                        JobItemRecord.ordinal == 0,
+                    )
+                )
+            if page_zero_status in {
+                JobItemStatus.FAILED.value,
+                JobItemStatus.CANCELLED.value,
+                JobItemStatus.SKIPPED.value,
+            }:
+                raise AuroraPlanningError(
+                    "Aurora v2.0 style calibration cannot use failed page 0"
+                )
             for search_root in search_roots:
                 for session_path in search_root.glob(
                     "page-01/attempt-*/session.json"
@@ -739,7 +755,12 @@ class AuroraMainImageProvider:
         job_id: str,
         calibrated_session: Mapping[str, Any],
     ) -> None:
-        """Release pages 2–5 only after native style calibration completes."""
+        """Persist post-generation style calibration without gating pages.
+
+        New parallel jobs already contain all six immutable snapshots.  The
+        missing-page fallback keeps recovery of older jobs safe, but never
+        replaces a snapshot that may already have been claimed by a worker.
+        """
 
         with self.session_factory() as db:
             plan = db.scalar(
@@ -755,20 +776,32 @@ class AuroraMainImageProvider:
             payload = dict(plan.payload)
             if payload.get("_parallel_v20_style_calibrated") is True:
                 return
-            root = self._workspace(job_id)
-            runner = (
-                self.harness
-                if isinstance(self.harness, AuroraV20HarnessRunner)
-                else AuroraV20HarnessRunner()
+            existing = plan.payload.get("_parallel_v20_snapshots")
+            existing_indexes: set[int] = set()
+            for snapshot in existing or ():
+                if not isinstance(snapshot, Mapping):
+                    continue
+                raw_index = snapshot.get("page_index")
+                if isinstance(raw_index, int):
+                    existing_indexes.add(raw_index)
+            missing_indexes = tuple(
+                index for index in range(2, 6) if index not in existing_indexes
             )
-            _persist_parallel_v20_snapshots(
-                plan,
-                job,
-                root,
-                calibrated_session,
-                runner,
-                page_indexes=(2, 3, 4, 5),
-            )
+            if missing_indexes:
+                root = self._workspace(job_id)
+                runner = (
+                    self.harness
+                    if isinstance(self.harness, AuroraV20HarnessRunner)
+                    else AuroraV20HarnessRunner()
+                )
+                _persist_parallel_v20_snapshots(
+                    plan,
+                    job,
+                    root,
+                    calibrated_session,
+                    runner,
+                    page_indexes=missing_indexes,
+                )
             payload = dict(plan.payload)
             payload["_parallel_v20_style_calibrated"] = True
             payload["_harness_session"] = dict(calibrated_session)
@@ -1381,28 +1414,7 @@ class AuroraMainImageProvider:
 
 _VISUAL_CHECKS = _AURORA_V20_VISUAL_CHECKS
 
-_V20_MATERIAL_CHECKS = frozenset(
-    {
-        "product_identity_match",
-        "factual_copy_match",
-        "source_background_noise_absent",
-        "no_unsupported_claim",
-        "no_hard_error",
-        "typography_legibility",
-        "page_role_expression",
-        "evidence_relation_visible",
-        "visual_performance_match",
-        "baseline_performance_match",
-        "approved_plan_fidelity_match",
-        "campaign_constitution_match",
-        "selling_point_visible_without_copy",
-        "selling_point_visual_dominance",
-        "claim_to_evidence_relation_clear",
-        "text_not_substituting_for_visual_proof",
-        "thumbnail_success",
-        "layout_not_cloned",
-    }
-)
+_V20_MATERIAL_CHECKS = _AURORA_V20_MATERIAL_CHECKS
 
 
 def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:

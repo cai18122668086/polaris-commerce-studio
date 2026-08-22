@@ -120,6 +120,28 @@ _AURORA_V20_VISUAL_CHECKS = (
     "no_unsupported_claim",
     "no_hard_error",
 )
+_AURORA_V20_MATERIAL_CHECKS = frozenset(
+    {
+        "product_identity_match",
+        "factual_copy_match",
+        "source_background_noise_absent",
+        "no_unsupported_claim",
+        "no_hard_error",
+        "typography_legibility",
+        "page_role_expression",
+        "evidence_relation_visible",
+        "visual_performance_match",
+        "baseline_performance_match",
+        "approved_plan_fidelity_match",
+        "campaign_constitution_match",
+        "selling_point_visible_without_copy",
+        "selling_point_visual_dominance",
+        "claim_to_evidence_relation_clear",
+        "text_not_substituting_for_visual_proof",
+        "thumbnail_success",
+        "layout_not_cloned",
+    }
+)
 PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
 IMAGE_SIZE = "1024x1536"
 SUPPORTED_IMAGE_SIZES = frozenset(
@@ -4963,26 +4985,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
         display = page_contract.get("display_copy_contract")
         display = display if isinstance(display, dict) else {}
         check_names = tuple(contract.get("required_check_names") or ())
-        material_checks = {
-            "product_identity_match",
-            "factual_copy_match",
-            "source_background_noise_absent",
-            "no_unsupported_claim",
-            "no_hard_error",
-            "typography_legibility",
-            "page_role_expression",
-            "evidence_relation_visible",
-            "visual_performance_match",
-            "baseline_performance_match",
-            "approved_plan_fidelity_match",
-            "campaign_constitution_match",
-            "selling_point_visible_without_copy",
-            "selling_point_visual_dominance",
-            "claim_to_evidence_relation_clear",
-            "text_not_substituting_for_visual_proof",
-            "thumbnail_success",
-            "layout_not_cloned",
-        }
+        material_checks = _AURORA_V20_MATERIAL_CHECKS
         return {
             "page_index": page_index,
             "image_sha256": candidate.sha256,
@@ -6225,18 +6228,36 @@ def _aurora_v20_visual_judgment_json_schema() -> dict[str, Any]:
         "source_background_leakage": {"type": "array", "items": string},
     }
     observation_names = list(observations_properties)
-    check = {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["name", "passed", "score", "material", "observed_evidence"],
-        "properties": {
-            "name": {"type": "string", "enum": list(_AURORA_V20_VISUAL_CHECKS)},
-            "passed": {"type": "boolean"},
-            "score": {"type": "number", "minimum": 0, "maximum": 100},
-            "material": {"type": "boolean"},
-            "observed_evidence": {"type": "string", "minLength": 8},
-        },
-    }
+    check_required = [
+        "name",
+        "passed",
+        "score",
+        "material",
+        "observed_evidence",
+    ]
+    check_variants = []
+    for name in _AURORA_V20_VISUAL_CHECKS:
+        check_variants.append(
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": check_required,
+                "properties": {
+                    "name": {"enum": [name]},
+                    "passed": {"type": "boolean"},
+                    "score": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100,
+                    },
+                    "material": {
+                        "enum": [name in _AURORA_V20_MATERIAL_CHECKS]
+                    },
+                    "observed_evidence": {"type": "string", "minLength": 8},
+                },
+            }
+        )
+    check = {"anyOf": check_variants}
     deficiency = {
         "type": "object",
         "additionalProperties": False,

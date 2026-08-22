@@ -372,7 +372,12 @@ def authorize_aurora_plan(
             workspace,
             harness_session,
             runner,
-            page_indexes=(0, 1),
+            # Parallel mode freezes every page request before any provider
+            # call.  The native sequential harness still performs the search
+            # and Campaign Style calibration stages in the page-local workers,
+            # but those post-generation observations cannot be used to gate
+            # requests that are already in flight.
+            page_indexes=tuple(range(6)),
         )
 
 
@@ -438,14 +443,16 @@ def _persist_parallel_v20_snapshots(
         page_session["accepted_pages"] = list(range(item.ordinal))
         page_session["active_page_index"] = None
         page_session["pending_generation"] = None
-        # Keep the first two native v2 gates live in their page-local sessions.
         # Page 0 performs search-baseline calibration and page 1 performs the
-        # first-two-page Campaign Style calibration. Later pages inherit the
-        # already confirmed campaign style so they can still be dispatched in
-        # the six-page parallel batch.
+        # first-two-page Campaign Style calibration after their pixels return.
+        # Pages 2-5 use the immutable campaign style lock compiled during
+        # planning. Marking that lock as frozen in their page-local sessions
+        # lets all six requests be dispatched together; it does not fabricate
+        # a calibration result or alter the native page contracts.
         style_ready = authorized_session.get("style_calibrated") is True
         page_session["search_calibrated"] = item.ordinal >= 1 or style_ready
-        page_session["style_calibrated"] = style_ready
+        page_session["style_calibrated"] = style_ready or item.ordinal >= 2
+        page_session["parallel_style_lock_frozen"] = item.ordinal >= 2
         session_path = page_workspace / "session.json"
         request_path = page_workspace / "generation-request.json"
         write_contract(session_path, page_session)

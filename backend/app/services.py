@@ -977,9 +977,9 @@ def retry_item_ids(
     # A parallel Aurora retry must recover pages that an older sequential/style
     # gate marked as synthetic SKIPPED rows.  They never produced an artifact,
     # so treating the retry scope as FAILED-only would permanently reduce a
-    # six-page retry to the first two failed pages.  Do not include user- or
-    # provider-cancelled rows here: only the two known synthetic blockers are
-    # safe to regenerate from the immutable Aurora plan.
+    # six-page retry to the first two failed pages.  Aurora has no user-visible
+    # skip state; cancellation is represented by CANCELLED, so every SKIPPED
+    # Aurora page is safe to regenerate from the immutable plan.
     if source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
         plan = session.scalar(
             select(JobPlanRecord)
@@ -992,15 +992,10 @@ def retry_item_ids(
             isinstance(policy, Mapping)
             and policy.get("execution_mode") == "parallel_v20"
         ):
-            synthetic_blockers = {
-                "AURORA_STYLE_GATE_BLOCKED",
-                "AURORA_SEQUENCE_HALTED",
-            }
             selected.extend(
                 item.id
                 for item in items
                 if item.status == JobItemStatus.SKIPPED.value
-                and item.error_code in synthetic_blockers
                 and item.id not in blocker_ids
                 and item.id not in selected
             )

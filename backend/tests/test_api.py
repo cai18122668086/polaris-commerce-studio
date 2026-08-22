@@ -1401,8 +1401,9 @@ def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
                     error_code=(
                         "HARNESS_BLOCKED"
                         if ordinal < 2
-                        else "AURORA_STYLE_GATE_BLOCKED"
+                        else None
                     ),
+                    stage="reused" if ordinal >= 2 else "failed",
                     finished_at=now,
                 )
             )

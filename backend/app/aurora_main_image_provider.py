@@ -63,7 +63,11 @@ visibly present, fail the corresponding plan-fidelity check and name the
 missing pixel evidence. Return the native v2 semantic judgment exactly: never
 omit decision_summary, observations, checks, or all_material_deficiencies; never
 use legacy aliases or synthesize semantic defaults; and use only the declared
-enum values for headline_rank and background_competition. The runtime binds
+enum values for headline_rank and background_competition. For the five layout
+observations composition_archetype_seen, product_zone_seen, copy_zone_seen,
+dominant_view_seen, and evidence_topology_seen, copy the exact corresponding
+token from layout_observation_contract; do not replace it with a natural-language
+description of the pixels. The runtime binds
 page_index, image_sha256 and reviewer, then derives the final audit_complete
 attestation only after all semantic checks pass. Do not invent image paths or
 hashes for those runtime-owned fields. decision_summary must be a concrete
@@ -558,6 +562,21 @@ class AuroraMainImageProvider:
             "decision_summary_min_length": 12,
             "legacy_aliases_allowed": False,
             "default_field_synthesis_allowed": False,
+        }
+        page_contract = _mapping(generation_request.get("page_contract"))
+        layout_contract = _mapping(page_contract.get("layout_contract"))
+        audit_contract["layout_observation_contract"] = {
+            "composition_archetype_seen": str(
+                layout_contract.get("composition_archetype") or ""
+            ),
+            "product_zone_seen": str(layout_contract.get("product_zone") or ""),
+            "copy_zone_seen": str(layout_contract.get("copy_zone") or ""),
+            "dominant_view_seen": str(
+                layout_contract.get("dominant_view") or ""
+            ),
+            "evidence_topology_seen": str(
+                layout_contract.get("evidence_topology") or ""
+            ),
         }
         result = await self.gateway.plan(
             PlannerRequest(

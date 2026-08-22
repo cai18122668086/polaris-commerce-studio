@@ -1361,6 +1361,81 @@ def test_domestic_set_audit_failure_preserves_deliverables_on_failed_retry(
         ] == [2, 3, 4, 5]
 
 
+def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
+    client: TestClient,
+) -> None:
+    """A retry of an old style-gated run must restore all six pending pages."""
+
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.FAILED.value,
+                stage=JobStatus.FAILED.value,
+                display_name="Aurora parallel retry fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=6,
+                failed_item_count=2,
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        for ordinal in range(6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"PAGE-{ordinal + 1:02d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if ordinal < 2
+                        else JobItemStatus.SKIPPED.value
+                    ),
+                    error_code=(
+                        "HARNESS_BLOCKED"
+                        if ordinal < 2
+                        else "AURORA_STYLE_GATE_BLOCKED"
+                    ),
+                    finished_at=now,
+                )
+            )
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {"execution_mode": "parallel_v20"}
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+        source = session.get(JobRecord, job_id)
+        assert source is not None
+        selected = retry_item_ids(session, source, RetryScope.FAILED, [])
+        selected_items = session.scalars(
+            select(JobItemRecord).where(JobItemRecord.id.in_(selected))
+        ).all()
+        assert [
+            item.ordinal for item in sorted(selected_items, key=lambda v: v.ordinal)
+        ] == list(range(6))
+
+
 def test_amazon_partial_review_infrastructure_failure_allows_complete_archive(
     client: TestClient,
 ) -> None:

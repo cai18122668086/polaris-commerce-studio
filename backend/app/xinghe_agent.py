@@ -6172,7 +6172,9 @@ def _aurora_identity_json_schema() -> dict[str, Any]:
     }
 
 
-def _aurora_v20_visual_judgment_json_schema() -> dict[str, Any]:
+def _aurora_v20_visual_judgment_json_schema(
+    layout_observation_contract: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """Return the strict gateway contract for native v2 semantic judgment.
 
     Runtime-owned fields (page index, candidate hash, reviewer attestation and
@@ -6227,6 +6229,18 @@ def _aurora_v20_visual_judgment_json_schema() -> dict[str, Any]:
         "claim_takeaway_without_copy": {"type": "string", "minLength": 8},
         "source_background_leakage": {"type": "array", "items": string},
     }
+    # The native audit runtime compares these five observations to the
+    # page-specific layout contract by exact token, not by prose similarity.
+    # Supplying the enum in the provider schema prevents a vision model from
+    # returning a descriptive paraphrase such as "right half" for a required
+    # contract token such as RIGHT_OR_CENTER_DOMINANT.
+    if layout_observation_contract:
+        for field, value in layout_observation_contract.items():
+            if field in observations_properties and value:
+                observations_properties[field] = {
+                    "type": "string",
+                    "enum": [value],
+                }
     observation_names = list(observations_properties)
     check_required = [
         "name",
@@ -6306,12 +6320,28 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             },
         }
     if request.planning_profile == "aurora_v20_visual_audit":
+        layout_contract: dict[str, str] = {}
+        if request.product_information:
+            try:
+                contract = json.loads(request.product_information[0])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                contract = None
+            if isinstance(contract, Mapping):
+                raw_layout = contract.get("layout_observation_contract")
+                if isinstance(raw_layout, Mapping):
+                    layout_contract = {
+                        str(key): str(value)
+                        for key, value in raw_layout.items()
+                        if str(value).strip()
+                    }
         return {
             "type": "json_schema",
             "json_schema": {
                 "name": "aurora_v20_visual_judgment_semantics",
                 "strict": True,
-                "schema": _aurora_v20_visual_judgment_json_schema(),
+                "schema": _aurora_v20_visual_judgment_json_schema(
+                    layout_contract
+                ),
             },
         }
     if request.planning_profile != "amazon_visual_suite":
@@ -6340,6 +6370,10 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "checks must be an ordered array "
             "containing every required_check_name exactly once, with material "
             "matching policy. Report only direct pixel observations and include "
+            "the exact values supplied in layout_observation_contract for "
+            "composition_archetype_seen, product_zone_seen, copy_zone_seen, "
+            "dominant_view_seen, and evidence_topology_seen; never paraphrase "
+            "those tokens as free-form spatial prose. "
             "one complete deficiency for every material failed check. "
             "decision_summary must be a concrete direct-pixel verdict sentence "
             "with at least 12 characters; never use a one-word verdict such as "

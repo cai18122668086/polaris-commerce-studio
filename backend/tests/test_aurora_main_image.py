@@ -70,6 +70,41 @@ def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
     ]
 
 
+def test_v20_audit_schema_binds_page_layout_tokens_exactly() -> None:
+    request = PlannerRequest(
+        workspace_id="workspace_one",
+        job_id="job_layout_schema",
+        group_key="job_layout_schema",
+        sources=(),
+        page_count=1,
+        language="zh-CN",
+        product_name="商品",
+        product_information=(
+            json.dumps(
+                {
+                    "layout_observation_contract": {
+                        "composition_archetype_seen": "ASYMMETRIC_SEARCH_FRAME",
+                        "product_zone_seen": "RIGHT_OR_CENTER_DOMINANT",
+                        "copy_zone_seen": "LEFT_OR_INTERLOCKED",
+                        "dominant_view_seen": "FULL_PRODUCT_HERO",
+                        "evidence_topology_seen": "UNEVEN_MODULES_PLUS_REAL_ACTION",
+                    }
+                }
+            ),
+        ),
+        platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+        size="1024x1024",
+        idempotency_key="layout-schema",
+        planning_profile="aurora_v20_visual_audit",
+    )
+    schema = _planner_response_format(request)["json_schema"]["schema"]
+    properties = schema["properties"]["observations"]["properties"]
+    assert properties["composition_archetype_seen"]["enum"] == [
+        "ASYMMETRIC_SEARCH_FRAME"
+    ]
+    assert properties["product_zone_seen"]["enum"] == ["RIGHT_OR_CENTER_DOMINANT"]
+
+
 def test_v20_visual_judgment_fails_closed_on_missing_native_fields() -> None:
     with pytest.raises(AuroraPlanningError, match="decision_summary"):
         AuroraMainImageProvider._normalize_v20_visual_judgment_payload(

@@ -75,7 +75,9 @@ function isSupportedImage(file: File) {
 }
 
 function generationItemLabel(status: string, resultSource?: string | null) {
-  if (resultSource === "generated") return "已生成";
+  // A retry child job carries pages that already passed in the first job as
+  // `reused`. They are successful plan items, not pages waiting to run.
+  if (resultSource === "generated" || resultSource === "reused" || status === "reused") return "已生成";
   if (status === "running") return "生成 / 审图中";
   if (status === "failed") return "生成已失败";
   if (status === "skipped") return "被前页阻断";

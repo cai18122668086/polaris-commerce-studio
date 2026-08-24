@@ -368,27 +368,53 @@ def job_task_preset(job: JobRecord) -> ProductImageTaskType | None:
     return cast(ProductImageTaskType, task_preset)
 
 
+def _is_audit_only_generated_set(
+    job: JobRecord,
+    items: Sequence[JobItemRecord],
+    output_asset_count: int,
+) -> bool:
+    """Treat the legacy synthetic set-audit marker as a QA warning only."""
+
+    return bool(
+        job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+        and job.status == JobStatus.PARTIAL.value
+        and output_asset_count == job.expected_item_count == 6
+        and any(item.error_code == "AURORA_SET_AUDIT_FAILED" for item in items)
+        and all(
+            item.status in {JobItemStatus.SUCCEEDED.value, JobItemStatus.REUSED.value}
+            or item.error_code == "AURORA_SET_AUDIT_FAILED"
+            for item in items
+        )
+    )
+
+
 def job_list_response(
     job: JobRecord,
     *,
     output_asset_count: int = 0,
     primary_output_asset_id: str | None = None,
+    generated_set_complete: bool = False,
 ) -> JobListItemResponse:
+    status = JobStatus.COMPLETED if generated_set_complete else JobStatus(job.status)
     return JobListItemResponse(
         id=job.id,
         workspace_id=job.workspace_id,
         type=JobType(job.type),
-        status=JobStatus(job.status),
-        stage=job.stage,
+        status=status,
+        stage="completed" if generated_set_complete else job.stage,
         display_name=job.display_name,
         task_preset=job_task_preset(job),
         progress=job.progress,
         expected_item_count=job.expected_item_count,
-        succeeded_item_count=job.succeeded_item_count,
-        failed_item_count=job.failed_item_count,
+        succeeded_item_count=(
+            job.expected_item_count
+            if generated_set_complete
+            else job.succeeded_item_count
+        ),
+        failed_item_count=0 if generated_set_complete else job.failed_item_count,
         output_asset_count=output_asset_count,
         primary_output_asset_id=primary_output_asset_id,
-        allowed_actions=allowed_actions(job),
+        allowed_actions=["clone"] if generated_set_complete else allowed_actions(job),
         cost=cost_summary(job),
         created_at=job.created_at,
         updated_at=job.updated_at,
@@ -427,12 +453,16 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         if relation.direction == JobAssetDirection.OUTPUT.value
         and relation.is_deliverable
     ]
+    generated_set_complete = _is_audit_only_generated_set(
+        job, items, len(deliverable_outputs)
+    )
     base = job_list_response(
         job,
         output_asset_count=len(deliverable_outputs),
         primary_output_asset_id=(
             deliverable_outputs[0].asset_id if deliverable_outputs else None
         ),
+        generated_set_complete=generated_set_complete,
     ).model_dump()
     plan = session.scalar(
         select(JobPlanRecord)

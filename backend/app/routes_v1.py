@@ -105,6 +105,7 @@ from .schemas_v1 import (
     WorkspaceResponse,
 )
 from .services import (
+    _is_audit_only_generated_set,
     add_outbox_event,
     asset_is_available,
     asset_response,
@@ -1310,12 +1311,25 @@ def list_jobs(
         if include_total
         else None
     )
+    item_rows = session.execute(
+        select(JobItemRecord).where(
+            JobItemRecord.job_id.in_([item.id for item in items])
+        )
+    ).scalars().all() if items else []
+    item_groups: dict[str, list[JobItemRecord]] = {}
+    for job_item in item_rows:
+        item_groups.setdefault(job_item.job_id, []).append(job_item)
     return JobListResponse(
         items=[
             job_list_response(
                 item,
                 output_asset_count=output_summaries.get(item.id, (0, None))[0],
                 primary_output_asset_id=output_summaries.get(item.id, (0, None))[1],
+                generated_set_complete=_is_audit_only_generated_set(
+                    item,
+                    item_groups.get(item.id, []),
+                    output_summaries.get(item.id, (0, None))[0],
+                ),
             )
             for item in items
         ],

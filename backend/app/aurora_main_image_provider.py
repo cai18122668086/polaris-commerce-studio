@@ -1220,8 +1220,11 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 result.error_message or "Aurora v2.0 set audit failed"
             )
+        observation = _normalize_parallel_set_audit_payload(
+            dict(result.payload), sources
+        )
         observation_path = set_workspace / "observation.json"
-        write_contract(observation_path, dict(result.payload))
+        write_contract(observation_path, observation)
         runner = (
             self.harness
             if isinstance(self.harness, AuroraV20HarnessRunner)
@@ -2568,3 +2571,18 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         other_cover_indexes if isinstance(other_cover_indexes, list) else [],
     )
     return payload
+
+
+def _normalize_parallel_set_audit_payload(
+    payload: dict[str, Any], sources: Sequence[SourceImage]
+) -> dict[str, Any]:
+    """Bind equivalent provider output to the native six-page Harness contract."""
+
+    observation = _normalize_set_role_audit_payload(payload)
+    observation["agent_pixel_reviewed"] = True
+    observation["review_mode"] = "BLIND_SIX_PAGE_ROLE_COMPARISON"
+    observation["reviewed_page_indexes"] = list(range(6))
+    observation["image_sha256_by_page"] = {
+        str(index): source.sha256 for index, source in enumerate(sources)
+    }
+    return observation

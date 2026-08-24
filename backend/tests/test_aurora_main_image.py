@@ -26,6 +26,7 @@ from app.aurora_main_image_provider import (
     _bounded_visual_audit_sources,
     _generation_sources,
     _normalize_aurora_square_artifact,
+    _normalize_parallel_set_audit_payload,
     _normalize_set_role_audit_payload,
     _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
@@ -1082,6 +1083,36 @@ def test_set_role_audit_adapts_page_evidence_to_harness_distinctions() -> None:
     assert observation["identified_search_page_index"] == 0
     assert observation["search_role_is_unique"] is True
     assert observation["confusable_page_indexes"] == []
+
+
+def test_parallel_set_audit_binds_provider_output_to_harness_contract() -> None:
+    sources = [SimpleNamespace(sha256=f"hash-{index}") for index in range(6)]
+    observation = _normalize_parallel_set_audit_payload(
+        {
+            "pages": [
+                {
+                    "page_index": index,
+                    "concrete_pixel_evidence_not_search_cover": [
+                        f"Page {index} visibly performs a unique carousel duty."
+                    ],
+                }
+                for index in range(1, 6)
+            ],
+            "search_listing_cover_assessment": {
+                "search_listing_cover_page_index": 0,
+                "page_0_alone_is_visibly_search_listing_cover": True,
+                "other_search_listing_cover_page_indices": [],
+                "pixel_evidence": ["Page zero is the unique listing cover."],
+            },
+        },
+        sources,
+    )
+
+    assert observation["agent_pixel_reviewed"] is True
+    assert observation["reviewed_page_indexes"] == list(range(6))
+    assert observation["image_sha256_by_page"] == {
+        str(index): f"hash-{index}" for index in range(6)
+    }
 
 
 def test_set_role_audit_adapts_tengli_page_reason_and_cover_pass() -> None:

@@ -33,6 +33,9 @@ test("Aurora domestic main image keeps the six-page Harness workflow visible", a
   assert.match(workspace, /acceptedResultCount/);
   assert.match(workspace, /job\.data\?\.status === "completed"/);
   assert.match(workspace, /张已通过审核/);
+  assert.match(workspace, /张图片已生成/);
+  assert.match(workspace, /六张图片已生成，但整组审核未通过/);
+  assert.match(workspace, /set-audit-failed/);
   assert.match(workspace, /DevelopmentProviderSettings/);
   assert.match(workspace, /按原方案重新生成/);
   assert.match(workspace, /resultSource === "generated" \|\| resultSource === "reused"/);

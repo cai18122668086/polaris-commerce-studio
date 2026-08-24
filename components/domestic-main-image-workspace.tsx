@@ -161,13 +161,13 @@ export function DomesticMainImageWorkspace() {
     )).length
     : 0;
   const providerReady = workflow.mode === "provider";
-  const hasCompleteSet = Boolean(
-    job.data?.status === "completed"
-    && acceptedResultCount === 6
-    && results.length === 6,
-  );
   const failedItem = job.data?.items.find((item) => item.status === "failed");
   const setAuditFailed = failedItem?.error_code === "AURORA_SET_AUDIT_FAILED";
+  const hasCompleteSet = Boolean(
+    job.data?.status === "completed"
+    && results.length === 6
+    && (acceptedResultCount === 6 || setAuditFailed),
+  );
   const generatedResultCount = results.length;
   const hasAllGeneratedImages = generatedResultCount === 6;
   const blockedItemCount = job.data?.items.filter((item) => item.status === "skipped").length ?? 0;

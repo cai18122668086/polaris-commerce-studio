@@ -1,7 +1,7 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { LogOut, Mail, ShieldCheck, UserRound } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { LogOut, Mail, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,12 +10,23 @@ import { getSessionUserId, signOut } from "@/features/auth/api/auth";
 import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { AUTH_ROUTES } from "@/lib/auth/routes";
 import { useAnnouncementAdminAccess } from "@/features/announcements/api/announcements";
+import { apiClient } from "@/lib/api/client";
+import { unwrapApiResponse } from "@/lib/api/request";
 
 export function AccountPanel() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const currentUser = useCurrentAuthUser();
   const announcementAccess = useAnnouncementAdminAccess();
+  const inspirationAccess = useQuery({
+    queryKey: ["inspiration", "admin-access"],
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.GET("/api/v1/admin/inspiration/cases/access", { signal });
+      return unwrapApiResponse(result);
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
   const [sessionUserId, setSessionUserId] = useState<string>();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string>();
@@ -110,6 +121,12 @@ export function AccountPanel() {
         {announcementAccess.data?.can_manage ? (
           <Link className="auth-button auth-button--secondary" href="/admin/announcements">
             公告管理工作台
+          </Link>
+        ) : null}
+        {inspirationAccess.data?.can_manage ? (
+          <Link className="auth-button auth-button--secondary" href="/admin/inspiration">
+            <Sparkles size={17} />
+            灵感案例管理工作台
           </Link>
         ) : null}
         <button

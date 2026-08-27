@@ -943,7 +943,7 @@ export interface components {
              * @default 1:1
              * @enum {string}
              */
-            aspect_ratio: "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
+            aspect_ratio: "follow-reference" | "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
             /**
              * Creative Direction
              * @default selling_point

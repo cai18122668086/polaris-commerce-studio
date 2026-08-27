@@ -30,10 +30,14 @@ function jobAspectRatio(ratio: string): RemixAspectRatio {
     : "follow-reference";
 }
 
-function inspirationAspectToApi(value: InspirationAspectRatio): Exclude<RemixAspectRatio, "follow-reference"> {
+function inspirationAspectToApi(value: InspirationAspectRatio): RemixAspectRatio {
+  // "自动" must remain dynamic. The backend resolves it to the first
+  // reference canvas, falling back to the first product canvas when no
+  // explicit reference image is present. Do not silently coerce it to square.
+  if (value === "自动") return "follow-reference";
   // Keep the Focus-style menu while adapting choices to the provider's
   // current canonical canvases.
-  if (value === "自动" || value === "1:1") return "1:1";
+  if (value === "1:1") return "1:1";
   if (value === "16:9" || value === "21:9") return "16:9";
   if (value === "4:3" || value === "3:2") return "4:3";
   if (value === "4:5" || value === "5:4") return "4:5";
@@ -436,7 +440,7 @@ export function InspirationGalleryDb() {
         platform_code: "tmall",
         language: "zh-CN",
         selling_points: [],
-        aspect_ratio: aspectRatio === "自动" ? "follow-reference" : inspirationAspectToApi(aspectRatio),
+        aspect_ratio: inspirationAspectToApi(aspectRatio),
         image_count: imageCount,
         // Reuse the proven two-stage workflow: inspect the reference layout,
         // compile its spatial strategy, then execute with Image 1 = reference

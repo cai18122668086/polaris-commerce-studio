@@ -188,9 +188,9 @@ class ReferenceRemixRouterProvider:
     def __init__(self, legacy: Provider, exact: Provider) -> None:
         self.legacy = legacy
         self.exact = exact
-        self.name = getattr(legacy, "name", "reference-remix")
-        self.model = getattr(legacy, "model", None)
-        self.pricing_version = getattr(legacy, "pricing_version", None)
+        self.name = legacy.name
+        self.model = legacy.model
+        self.pricing_version = legacy.pricing_version
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         try:

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy import delete, select
@@ -55,7 +55,7 @@ def _asset_response(
 ) -> InspirationAssetResponse:
     return InspirationAssetResponse(
         asset_id=rel.asset_id,
-        role=rel.role,
+        role=cast(Literal["result", "user_upload", "reference"], rel.role),
         ordinal=rel.ordinal,
         label=rel.label,
         url=str(
@@ -101,7 +101,11 @@ def _response(
     )
 
 
-def _save_assets(item: InspirationCaseRecord, payload, session: Session) -> None:
+def _save_assets(
+    item: InspirationCaseRecord,
+    payload: InspirationCaseCreate | InspirationCaseUpdate,
+    session: Session,
+) -> None:
     session.execute(
         delete(InspirationCaseAssetRecord).where(
             InspirationCaseAssetRecord.case_id == item.id

@@ -84,9 +84,11 @@ export function useUploadAsset(workspaceId: string | undefined) {
     mutationFn: async ({
       file,
       mediaKind = "image",
+      originKind = "upload",
     }: {
       file: File;
       mediaKind?: "image" | "mask";
+      originKind?: AssetOriginKind;
     }) => {
       if (!workspaceId) throw new Error("工作区尚未就绪。");
       const signature = await signatureFor({ file, mediaKind });
@@ -101,13 +103,13 @@ export function useUploadAsset(workspaceId: string | undefined) {
           body: {
             file: file as unknown as string,
             media_kind: mediaKind,
-            origin_kind: "upload",
+            origin_kind: originKind,
           },
           bodySerializer() {
             const form = new FormData();
             form.set("file", file);
             form.set("media_kind", mediaKind);
-            form.set("origin_kind", "upload");
+            form.set("origin_kind", originKind);
             return form;
           },
         },

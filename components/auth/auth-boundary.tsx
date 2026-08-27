@@ -25,7 +25,10 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   // Production and normal local runs retain the existing route protection because this is false unless explicitly configured.
   const localHelpPreview = process.env.NEXT_PUBLIC_LOCAL_HELP_PREVIEW === "true" && pathname === "/help";
   const localHomePreview = process.env.NEXT_PUBLIC_LOCAL_HOME_PREVIEW === "true" && pathname === "/";
-  const publicRoute = isPublicRoute(pathname) || localHelpPreview || localHomePreview;
+  const localInspirationPreview =
+    process.env.NEXT_PUBLIC_LOCAL_INSPIRATION_PREVIEW === "true" && pathname === "/inspiration";
+  const publicRoute =
+    isPublicRoute(pathname) || localHelpPreview || localHomePreview || localInspirationPreview;
   const developmentAuth = getAuthMode() === "development";
 
   const redirectToLogin = useCallback(() => {

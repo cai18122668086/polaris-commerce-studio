@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     auth_email_from_address: str = ""
     announcement_admin_emails: list[str] = Field(default_factory=list)
     development_user_id: str = "usr_development"
+    development_user_email: str = "admin@example.com"
     development_workspace_id: str = "ws_development"
     development_workspace_name: str = "开发工作区"
     access_url_secret: str = "development-access-url-secret-change-me"

@@ -343,6 +343,7 @@ class ImageEditRequest:
     size: str
     output_format: str = IMAGE_FORMAT
     jpeg_quality: int = JPEG_QUALITY
+    input_fidelity: str = "high"
     preserve_provider_artifact: bool = False
 
 
@@ -1741,9 +1742,13 @@ class TengliOpenAICompatibleGateway:
             ("size", request.size),
             ("quality", request.quality),
             ("output_format", request.output_format),
-            ("output_compression", str(request.jpeg_quality)),
+            ("input_fidelity", request.input_fidelity),
             ("response_format", "b64_json"),
         ]
+        # Tengli rejects output_compression for PNG (even when set to 100).
+        # Send compression only for formats where the API defines it.
+        if request.output_format in {"jpeg", "webp"}:
+            fields.insert(6, ("output_compression", str(request.jpeg_quality)))
         files = [
             ("image", source.filename, source.content_type, source.payload)
             for source in request.sources
@@ -6319,6 +6324,8 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "schema": _aurora_identity_json_schema(),
             },
         }
+    if request.planning_profile == "reference_visual_remix":
+        return {"type": "json_object"}
     if request.planning_profile == "aurora_v20_visual_audit":
         layout_contract: dict[str, str] = {}
         if request.product_information:
@@ -6357,6 +6364,27 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "reference_visual_remix":
+        return (
+            "You are the reference-visual-reverse-remix visual analysis stage. "
+            "The first attached image is visual_strategy_reference and the second "
+            "is product_identity_reference. Inspect the actual pixels before writing. "
+            "Return one JSON object with exactly these top-level keys: "
+            "product_identity_lock, product_text_inventory, selected_product_subset, "
+            "excluded_product_elements, reference_visual_analysis, "
+            "hard_composition_skeleton, normalized_anchors, product_role_map, "
+            "typography_zones, commercial_intent, reusable_visual_strategy, "
+            "original_remix_prompt, forbidden_transfer, post_generation_review. "
+            "The product image is the only authority for product identity; the reference "
+            "image supplies composition, scale, camera, lighting, typography geometry, "
+            "depth order and commercial relationships only. Include at least five "
+            "normalized 0..1 spatial anchors, explicit must_preserve/may_adapt/"
+            "must_not_transfer relations, product role count and depth order. "
+            "Keep original source brand, logo, watermark, exact wording and unsupported "
+            "claims out of the result. The original_remix_prompt must put the hard "
+            "composition skeleton before style adjectives and must be executable by "
+            "an image model using the same two attached images. Return JSON only."
+        )
     if request.planning_profile == "aurora_v20_visual_audit":
         return (
             "Directly inspect the last attached image as the generated Aurora "

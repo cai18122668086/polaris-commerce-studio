@@ -247,6 +247,7 @@ class ReferenceRemixInput(BaseModel):
 
 
 class ReferenceRemixConfiguration(BaseModel):
+    reference_skill: Literal["reference-visual-reverse-remix"] | None = None
     platform_code: str = Field(default="tmall", min_length=1, max_length=32)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
@@ -254,7 +255,18 @@ class ReferenceRemixConfiguration(BaseModel):
         "follow-reference", "1:1", "3:4", "4:3", "4:5", "9:16", "16:9"
     ] = "follow-reference"
     image_count: int = Field(default=1, ge=1, le=12)
+    execution_mode: Literal["planner", "direct_prompt"] = "planner"
+    inspiration_product_first: bool = False
+    quality: Literal["low", "medium", "high"] = "high"
+    output_format: Literal["png", "jpeg", "webp"] = "png"
     instruction: str = Field(default="", max_length=4000)
+    product_identity_lock: str = Field(default="", max_length=2000)
+    reference_visual_analysis: str = Field(default="", max_length=2000)
+    commercial_intent: str = Field(default="", max_length=2000)
+    reusable_visual_strategy: str = Field(default="", max_length=2000)
+    original_remix_prompt: str = Field(default="", max_length=4000)
+    forbidden_transfer: str = Field(default="", max_length=2000)
+    post_generation_review: str = Field(default="", max_length=2000)
 
 
 class ModelPoseAssetRequest(BaseModel):
@@ -317,6 +329,8 @@ class CreativeImageConfiguration(BaseModel):
     selling_points: list[str] = Field(default_factory=list, max_length=12)
     aspect_ratio: Literal["1:1", "3:4", "4:3", "4:5", "9:16", "16:9"] = "1:1"
     image_count: int = Field(default=1, ge=1, le=12)
+    inspiration_planning: bool = False
+    inspiration_reference_planning: bool = False
     instruction: str = Field(default="", max_length=4000)
 
 

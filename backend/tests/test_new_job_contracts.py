@@ -283,6 +283,24 @@ def test_amazon_item_configuration_matches_canonical_sizes() -> None:
     assert mobile["target_size"] == {"width": 1600, "height": 1200}
 
 
+@pytest.mark.parametrize("job_type", (JobType.REFERENCE_REMIX.value, JobType.CREATIVE_IMAGE.value))
+def test_inspiration_item_configuration_preserves_output_identity(
+    job_type: str,
+) -> None:
+    assert _job_item_configuration(job_type, 0, inspiration_workflow=True) == {
+        "item_key": "image-001",
+        "ordinal": 0,
+    }
+    assert _job_item_configuration(job_type, 1, inspiration_workflow=True) == {
+        "item_key": "image-002",
+        "ordinal": 1,
+    }
+
+
+def test_non_inspiration_item_configuration_keeps_existing_contract() -> None:
+    assert _job_item_configuration(JobType.CREATIVE_IMAGE.value, 0) == {}
+
+
 @pytest.mark.parametrize(
     ("job_type", "expected_role"),
     (

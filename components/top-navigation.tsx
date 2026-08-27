@@ -7,6 +7,7 @@ import type { RefObject } from "react";
 import {
   ChevronDown,
   CircleHelp,
+  Flame,
   Menu,
   PanelRightOpen,
   UserRound,
@@ -142,12 +143,28 @@ export function TopNavigation({
           <BrandMark />
         </Link>
         <nav ref={desktopNavigationRef} className="main-nav" aria-label="主导航">
-          <Link href="/" className={pathname === "/" ? "active" : ""}>
-            首页
-          </Link>
+          {PRIMARY_NAVIGATION_LINKS.slice(0, 2).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={
+                pathname === item.href || pathname.startsWith(`${item.href}/`) ? "active" : ""
+              }
+            >
+              {item.href === "/inspiration" ? (
+                <Flame
+                  className="main-nav__flame"
+                  size={14}
+                  fill="currentColor"
+                  aria-hidden="true"
+                />
+              ) : null}
+              {item.label}
+            </Link>
+          ))}
           {renderMegaMenu(AI_FEATURES_MENU)}
           {renderMegaMenu(AI_TOOLBOX_MENU)}
-          {PRIMARY_NAVIGATION_LINKS.slice(1).map((item) => (
+          {PRIMARY_NAVIGATION_LINKS.slice(2).map((item) => (
             <Link
               key={item.href}
               href={item.href}

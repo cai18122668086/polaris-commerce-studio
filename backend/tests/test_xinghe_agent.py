@@ -2692,6 +2692,7 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     assert fields["size"] == requested_size
     assert fields["output_format"] == IMAGE_FORMAT
     assert fields["output_compression"] == str(JPEG_QUALITY)
+    assert fields["input_fidelity"] == "high"
     assert len(transport.multipart_calls[0]["files"]) == 3
     assert all(record[0] == "image" for record in transport.multipart_calls[0]["files"])
     assert "test-placeholder-key" not in repr(adapter)

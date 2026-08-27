@@ -215,6 +215,15 @@ export function MobileNavigationMenu({
                   fontWeight: 700,
                 }}
               >
+                {item.href === "/inspiration" ? (
+                  <Flame
+                    size={14}
+                    fill="currentColor"
+                    color="#e94724"
+                    aria-hidden="true"
+                    style={{ verticalAlign: "-2px", marginRight: 4 }}
+                  />
+                ) : null}
                 {item.label}
               </Link>
             );

@@ -666,6 +666,13 @@ def update_development_provider_settings(
         )
     candidate = settings.model_copy(deep=True)
     candidate.task_runner = "tengli"
+    # The development provider settings endpoint is the single local entry
+    # point for enabling the Tengli-backed image workflows. Keep the existing
+    # domestic-main-image capability enabled, and also enable the two image
+    # workflows exposed by the standalone Inspiration tab. This does not
+    # change any job contracts or production configuration.
+    candidate.reference_remix_provider_enabled = True
+    candidate.creative_image_provider_enabled = True
     candidate.domestic_main_image_provider_enabled = True
     candidate.tengli_api_key = SecretStr(payload.api_key.strip())
     candidate.tengli_base_url = payload.base_url.strip()
@@ -685,6 +692,8 @@ def update_development_provider_settings(
             candidate.development_provider_env_file,
             {
                 "POLARIS_TASK_RUNNER": "tengli",
+                "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED": "true",
+                "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED": "true",
                 "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED": "true",
                 "POLARIS_TENGLI_API_KEY": payload.api_key.strip(),
                 "POLARIS_TENGLI_BASE_URL": candidate.tengli_base_url,
@@ -2376,6 +2385,16 @@ def _reserve_real_provider_job_if_enabled(
             + _AURORA_INITIAL_IMAGE_REQUESTS * transient_retry_count
         )
         group_count = _AURORA_PLANNER_REQUEST_ENVELOPE
+    elif job.type == JobType.REFERENCE_REMIX.value and settings.task_runner == "tengli":
+        # Reference remix now performs one bounded vision-analysis call before
+        # the image edit so the Skill's composition skeleton reaches the image
+        # model. Reserve both calls before dispatching the job.
+        estimated_cost = image_cost + settings.tengli_planner_reserve_micros
+        provider_requests = (
+            (runnable_item_count if runnable_item_count is not None else job.expected_item_count)
+            + 1
+        )
+        group_count = 1
     elif enable_flag is not None:
         estimated_cost = image_cost
         provider_requests = (
@@ -2431,7 +2450,27 @@ def _job_item_key(job_type: str, ordinal: int) -> str:
     return f"page-{ordinal + 1:03d}"
 
 
-def _job_item_configuration(job_type: str, ordinal: int) -> dict[str, object]:
+def _job_item_configuration(
+    job_type: str,
+    ordinal: int,
+    *,
+    inspiration_workflow: bool = False,
+) -> dict[str, object]:
+    # Inspiration's single-image providers execute one durable JobItem per
+    # requested output. Preserve the durable identity in the item envelope so
+    # image_count=N does not make every adapter request look like image-001.
+    # The caller gates this by the Inspiration-only configuration markers;
+    # other tabs retain their existing item configuration contract.
+    if job_type == JobType.REFERENCE_REMIX.value and inspiration_workflow:
+        return {
+            "item_key": _job_item_key(job_type, ordinal),
+            "ordinal": ordinal,
+        }
+    if job_type == JobType.CREATIVE_IMAGE.value and inspiration_workflow:
+        return {
+            "item_key": _job_item_key(job_type, ordinal),
+            "ordinal": ordinal,
+        }
     if job_type != JobType.AMAZON_VISUAL_SUITE.value:
         return {}
 
@@ -2457,6 +2496,17 @@ def _add_items_and_inputs(
     job: JobRecord,
     asset_roles: list[tuple[str, str, int]],
 ) -> None:
+    settings = job.configuration.get("settings", {})
+    inspiration_workflow = (
+        (
+            job.type == JobType.REFERENCE_REMIX.value
+            and settings.get("reference_skill") == "reference-visual-reverse-remix"
+        )
+        or (
+            job.type == JobType.CREATIVE_IMAGE.value
+            and settings.get("inspiration_planning") is True
+        )
+    )
     for ordinal in range(job.expected_item_count):
         session.add(
             JobItemRecord(
@@ -2466,7 +2516,11 @@ def _add_items_and_inputs(
                 item_key=_job_item_key(job.type, ordinal),
                 ordinal=ordinal,
                 status=JobItemStatus.PENDING.value,
-                configuration=_job_item_configuration(job.type, ordinal),
+                configuration=_job_item_configuration(
+                    job.type,
+                    ordinal,
+                    inspiration_workflow=inspiration_workflow,
+                ),
             )
         )
     for asset_id, role, ordinal in asset_roles:

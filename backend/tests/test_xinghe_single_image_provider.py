@@ -173,14 +173,31 @@ class RecordingGateway:
     def __init__(self, result: ImageCallResult | None = None) -> None:
         self.result = result or _success_result()
         self.requests: list[ImageEditRequest] = []
+        self.plan_requests: list[object] = []
         self.amazon_reviews: list[AmazonVisualReviewRequest] = []
         self.plan_calls = 0
         self.error: Exception | None = None
 
     async def plan(self, request: object) -> object:
-        del request
+        self.plan_requests.append(request)
         self.plan_calls += 1
-        raise AssertionError("single-image delegate must not call plan")
+        return type(
+            "AnalysisResult",
+            (),
+            {
+                "error_code": None,
+                "error_message": None,
+                "payload": {
+                    "product_identity_lock": "fan identity",
+                    "reference_visual_analysis": "reference observations",
+                    "hard_composition_skeleton": "hard skeleton",
+                    "normalized_anchors": ["x=.3.. .78, y=.32.. .88"],
+                    "product_role_map": "one hero product",
+                    "typography_zones": "upper title zone",
+                    "original_remix_prompt": "preserve the reference composition",
+                },
+            },
+        )()
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
         self.requests.append(request)
@@ -423,9 +440,15 @@ def _reference_follow_request(
     harness: Harness,
     *,
     reference_payload: bytes,
+    exact_skill: bool = False,
+    inspiration_product_first: bool = False,
 ) -> tuple[XingheSingleImageProvider, ProviderRequest]:
     operation = "reference_remix"
-    skill_id = "xinghe-reference-image-remix-3"
+    skill_id = (
+        "reference-visual-reverse-remix"
+        if exact_skill
+        else "xinghe-reference-image-remix-3"
+    )
     with harness.session_factory() as session:
         job = session.get(JobRecord, "job_test")
         attempt = session.get(JobAttemptRecord, "attempt_test")
@@ -464,6 +487,18 @@ def _reference_follow_request(
         fit="contain",
     )
     envelope.update({"skill_id": skill_id, "operation": operation})
+    if exact_skill:
+        envelope["prompt_input"] = {
+            "language": "zh-CN",
+            "platform_code": "tmall",
+            "product_identity_lock": "current product identity only",
+            "reference_guidance": "current case composition guidance",
+            "original_remix_prompt": "original current case instruction",
+            "forbidden_transfer": "no source brand",
+        }
+        if inspiration_product_first:
+            envelope["prompt_input"]["execution_mode"] = "direct_prompt"
+            envelope["prompt_input"]["inspiration_product_first"] = True
     envelope["target"] = {
         "width": None,
         "height": None,
@@ -818,6 +853,86 @@ def test_reference_follow_target_uses_real_first_style_canvas_for_final_delivery
     assert prompt["target"]["width"] == reference_size[0]
     assert prompt["target"]["height"] == reference_size[1]
     assert prompt["target"]["fit"] == "contain"
+
+
+def test_reference_visual_reverse_remix_runs_analysis_before_image_edit(
+    harness: Harness,
+) -> None:
+    provider, request = _reference_follow_request(
+        harness,
+        reference_payload=_image_bytes((675, 1199), image_format="JPEG"),
+        exact_skill=True,
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.gateway.plan_calls == 1
+    analysis_request = harness.gateway.plan_requests[0]
+    assert getattr(analysis_request, "planning_profile") == "reference_visual_remix"
+    assert [source.source_role for source in getattr(analysis_request, "sources")] == [
+        "style_reference",
+        "product_reference",
+    ]
+    assert [source.source_role for source in harness.gateway.requests[0].sources] == [
+        "style_reference",
+        "product_reference",
+    ]
+    assert "VERIFIED SKILL PROTOCOL" in getattr(analysis_request, "system_prompt")
+    assert any(
+        "original" in value.lower()
+        for value in getattr(analysis_request, "product_information")
+    )
+    prompt = harness.gateway.requests[0].prompt
+    assert not prompt.lstrip().startswith("{")
+    assert "Image 1 is the visual-strategy reference" in prompt
+    assert "Image 2 is the product-identity reference" in prompt
+    assert "HARD COMPOSITION SKELETON" in prompt
+    assert "hard skeleton" in prompt
+    assert "NORMALIZED 0..1 ANCHORS" in prompt
+    assert "preserve the reference composition" in prompt
+    assert len(prompt.encode("utf-8")) < 24_000
+
+
+def test_reference_visual_direct_prompt_keeps_reference_first_without_planner(
+    harness: Harness,
+) -> None:
+    provider, request = _reference_follow_request(
+        harness,
+        reference_payload=_image_bytes((675, 1199), image_format="JPEG"),
+        exact_skill=True,
+    )
+    adapter = request.configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY]
+    adapter["prompt_input"]["execution_mode"] = "direct_prompt"
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.gateway.plan_calls == 0
+    assert [source.source_role for source in harness.gateway.requests[0].sources] == [
+        "style_reference",
+        "product_reference",
+    ]
+    assert harness.gateway.requests[0].prompt == "original current case instruction"
+
+
+def test_inspiration_direct_remix_can_put_product_before_style_reference(
+    harness: Harness,
+) -> None:
+    provider, request = _reference_follow_request(
+        harness,
+        reference_payload=_image_bytes((675, 1199), image_format="JPEG"),
+        exact_skill=True,
+        inspiration_product_first=True,
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert [source.source_role for source in harness.gateway.requests[0].sources] == [
+        "product_reference",
+        "style_reference",
+    ]
 
 
 def test_reference_follow_target_fails_closed_when_real_canvas_is_unsafe(

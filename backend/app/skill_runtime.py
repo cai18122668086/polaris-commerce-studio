@@ -35,6 +35,7 @@ KNOWN_SKILLS = {
     "xinghe-ecommerce-detail",
     "xinghe-wanneng-shengtu-3-0",
     "xinghe-reference-image-remix-3",
+    "reference-visual-reverse-remix",
     "ecommerce-model-pose-transfer",
     "xinghe-ecommerce-creative-image",
     "xinghe-ecommerce-detail-domestic-3",

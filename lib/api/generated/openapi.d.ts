@@ -90,6 +90,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/inspiration/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin List */
+        get: operations["admin_list_api_v1_admin_inspiration_cases_get"];
+        put?: never;
+        /** Create Case */
+        post: operations["create_case_api_v1_admin_inspiration_cases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/inspiration/cases/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Access */
+        get: operations["admin_access_api_v1_admin_inspiration_cases_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/inspiration/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Case */
+        patch: operations["update_case_api_v1_admin_inspiration_cases__case_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/inspiration/cases/{case_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Case */
+        post: operations["archive_case_api_v1_admin_inspiration_cases__case_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/inspiration/cases/{case_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Case */
+        post: operations["publish_case_api_v1_admin_inspiration_cases__case_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/announcements": {
         parameters: {
             query?: never;
@@ -136,6 +222,40 @@ export interface paths {
         put?: never;
         /** Update Development Provider Settings */
         post: operations["update_development_provider_settings_api_v1_development_provider_settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inspiration/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cases */
+        get: operations["list_cases_api_v1_inspiration_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inspiration/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Case */
+        get: operations["get_case_api_v1_inspiration_cases__case_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -836,6 +956,16 @@ export interface components {
              */
             image_count: number;
             /**
+             * Inspiration Planning
+             * @default false
+             */
+            inspiration_planning: boolean;
+            /**
+             * Inspiration Reference Planning
+             * @default false
+             */
+            inspiration_reference_planning: boolean;
+            /**
              * Instruction
              * @default
              */
@@ -1080,6 +1210,210 @@ export interface components {
             status: "ok" | "degraded";
             /** Version */
             version: string;
+        };
+        /** InspirationAdminAccessResponse */
+        InspirationAdminAccessResponse: {
+            /** Can Manage */
+            can_manage: boolean;
+        };
+        /** InspirationAssetInput */
+        InspirationAssetInput: {
+            /** Asset Id */
+            asset_id: string;
+            /** Label */
+            label?: string | null;
+            /**
+             * Ordinal
+             * @default 0
+             */
+            ordinal: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "result" | "user_upload" | "reference";
+        };
+        /** InspirationAssetResponse */
+        InspirationAssetResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Label */
+            label: string | null;
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "result" | "user_upload" | "reference";
+            /** Url */
+            url: string;
+        };
+        /** InspirationCaseCreate */
+        InspirationCaseCreate: {
+            /** Assets */
+            assets?: components["schemas"]["InspirationAssetInput"][];
+            /**
+             * Category
+             * @default 其他
+             */
+            category: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /**
+             * Platform
+             * @default 国内
+             */
+            platform: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Ratio
+             * @default 自动
+             */
+            ratio: string;
+            /**
+             * Role
+             * @default
+             */
+            role: string;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default 万能改图
+             */
+            type: string;
+        };
+        /** InspirationCaseListResponse */
+        InspirationCaseListResponse: {
+            /** Items */
+            items: components["schemas"]["InspirationCaseResponse"][];
+        };
+        /** InspirationCaseResponse */
+        InspirationCaseResponse: {
+            /** Category */
+            category: string;
+            cover_image: components["schemas"]["InspirationAssetResponse"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Gallery */
+            gallery: components["schemas"]["InspirationAssetResponse"][];
+            /** Id */
+            id: string;
+            /** Intent */
+            intent: string;
+            /** Is Pinned */
+            is_pinned: boolean;
+            /** Platform */
+            platform: string;
+            /** Prompt */
+            prompt: string;
+            /** Published At */
+            published_at: string | null;
+            /** Ratio */
+            ratio: string;
+            /** Role */
+            role: string;
+            /** Slug */
+            slug: string | null;
+            /** Sort Order */
+            sort_order: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "published" | "archived";
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** InspirationCaseUpdate */
+        InspirationCaseUpdate: {
+            /** Assets */
+            assets?: components["schemas"]["InspirationAssetInput"][];
+            /**
+             * Category
+             * @default 其他
+             */
+            category: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /**
+             * Platform
+             * @default 国内
+             */
+            platform: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Ratio
+             * @default 自动
+             */
+            ratio: string;
+            /**
+             * Role
+             * @default
+             */
+            role: string;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default 万能改图
+             */
+            type: string;
         };
         /** JobAssetResponse */
         JobAssetResponse: {
@@ -1518,10 +1852,31 @@ export interface components {
              */
             aspect_ratio: "follow-reference" | "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
             /**
+             * Commercial Intent
+             * @default
+             */
+            commercial_intent: string;
+            /**
+             * Execution Mode
+             * @default planner
+             * @enum {string}
+             */
+            execution_mode: "planner" | "direct_prompt";
+            /**
+             * Forbidden Transfer
+             * @default
+             */
+            forbidden_transfer: string;
+            /**
              * Image Count
              * @default 1
              */
             image_count: number;
+            /**
+             * Inspiration Product First
+             * @default false
+             */
+            inspiration_product_first: boolean;
             /**
              * Instruction
              * @default
@@ -1533,10 +1888,49 @@ export interface components {
              */
             language: string;
             /**
+             * Original Remix Prompt
+             * @default
+             */
+            original_remix_prompt: string;
+            /**
+             * Output Format
+             * @default png
+             * @enum {string}
+             */
+            output_format: "png" | "jpeg" | "webp";
+            /**
              * Platform Code
              * @default tmall
              */
             platform_code: string;
+            /**
+             * Post Generation Review
+             * @default
+             */
+            post_generation_review: string;
+            /**
+             * Product Identity Lock
+             * @default
+             */
+            product_identity_lock: string;
+            /**
+             * Quality
+             * @default high
+             * @enum {string}
+             */
+            quality: "low" | "medium" | "high";
+            /** Reference Skill */
+            reference_skill?: "reference-visual-reverse-remix" | null;
+            /**
+             * Reference Visual Analysis
+             * @default
+             */
+            reference_visual_analysis: string;
+            /**
+             * Reusable Visual Strategy
+             * @default
+             */
+            reusable_visual_strategy: string;
             /** Selling Points */
             selling_points?: string[];
         };
@@ -1835,6 +2229,187 @@ export interface operations {
             };
         };
     };
+    admin_list_api_v1_admin_inspiration_cases_get: {
+        parameters: {
+            query?: {
+                status?: "all" | "draft" | "published" | "archived";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationCaseListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_case_api_v1_admin_inspiration_cases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InspirationCaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_access_api_v1_admin_inspiration_cases_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationAdminAccessResponse"];
+                };
+            };
+        };
+    };
+    update_case_api_v1_admin_inspiration_cases__case_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InspirationCaseUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_case_api_v1_admin_inspiration_cases__case_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_case_api_v1_admin_inspiration_cases__case_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_public_announcements_api_v1_announcements_get: {
         parameters: {
             query?: {
@@ -1926,6 +2501,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DevelopmentProviderSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cases_api_v1_inspiration_cases_get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+                category?: string | null;
+                platform?: string | null;
+                query?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationCaseListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_api_v1_inspiration_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspirationCaseResponse"];
                 };
             };
             /** @description Validation Error */

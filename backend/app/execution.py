@@ -2160,7 +2160,11 @@ def build_fake_coordinator(
         RegisteredOperationRoutingProvider,
         UnavailableProvider,
     )
-    from .reference_remix_provider import ReferenceRemixProvider
+    from .reference_remix_provider import (
+        ReferenceRemixProvider,
+        ReferenceRemixRouterProvider,
+        ReferenceVisualReverseRemixProvider,
+    )
     from .xinghe_agent import (
         FakeXingheGateway,
         XingheGateway,
@@ -2338,13 +2342,23 @@ def build_fake_coordinator(
                 ),
                 manifest_validator=manifest_validator.validate,
             ),
-            JobType.REFERENCE_REMIX.value: ReferenceRemixProvider(
-                single_image_delegate(
-                    reference_remix_provider_enabled,
-                    JobType.REFERENCE_REMIX.value,
-                    ReferenceRemixProvider.skill_id,
+            JobType.REFERENCE_REMIX.value: ReferenceRemixRouterProvider(
+                ReferenceRemixProvider(
+                    single_image_delegate(
+                        reference_remix_provider_enabled,
+                        JobType.REFERENCE_REMIX.value,
+                        ReferenceRemixProvider.skill_id,
+                    ),
+                    manifest_validator=manifest_validator.validate,
                 ),
-                manifest_validator=manifest_validator.validate,
+                ReferenceVisualReverseRemixProvider(
+                    single_image_delegate(
+                        reference_remix_provider_enabled,
+                        JobType.REFERENCE_REMIX.value,
+                        ReferenceVisualReverseRemixProvider.skill_id,
+                    ),
+                    manifest_validator=manifest_validator.validate,
+                ),
             ),
             JobType.MODEL_POSE_TRANSFER.value: ModelPoseTransferProvider(
                 single_image_delegate(

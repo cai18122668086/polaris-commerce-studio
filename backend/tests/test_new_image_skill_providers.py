@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import math
 import re
 from dataclasses import dataclass, field
@@ -22,8 +23,13 @@ from app.provider import (
     ProviderRequest,
     ProviderResult,
 )
-from app.reference_remix_provider import ReferenceRemixProvider
+from app.reference_remix_provider import (
+    ReferenceRemixProvider,
+    ReferenceVisualReverseRemixProvider,
+)
 from app.xinghe_single_image_provider import DEFAULT_ALLOWED_PROMPT_FIELDS
+from app.xinghe_single_image_provider import XingheSingleImageProvider
+from app.skill_protocol import load_skill_protocol
 
 
 @dataclass
@@ -144,6 +150,72 @@ def _request(
             "item": {"item_key": "image-001", "ordinal": 0},
         },
     )
+
+
+def test_reference_remix_compiles_canonical_prompt_with_skill_protocol() -> None:
+    """Reference remix keeps the task prompt and verified Skill protocol together."""
+
+    provider = XingheSingleImageProvider(
+        session_factory=None,  # type: ignore[arg-type]
+        gateway=type(
+            "Gateway",
+            (),
+            {
+                "provider_name": "test",
+                "image_model": "gpt-image-2",
+                "pricing_version": "test",
+            },
+        )(),
+        storage=None,  # type: ignore[arg-type]
+        operation="reference_remix",
+        skill_id="reference-visual-reverse-remix",
+        manifest_validator=lambda _: "a" * 64,
+    )
+    protocol = load_skill_protocol(
+        "reference-visual-reverse-remix", source_content_hash="a" * 64
+    )
+    canonical = (
+        "[Product Identity Lock] product image is the only identity authority.\n"
+        "[Visual Strategy Lock] transfer composition and lighting only.\n"
+        "[Original Remix Prompt] Create one original ecommerce image.\n"
+        "[Forbidden Transfer] no source brand, logo, watermark, or exact copy."
+    )
+    envelope = type(
+        "Envelope",
+        (),
+        {
+            "skill_id": "reference-visual-reverse-remix",
+            "operation": "reference_remix",
+            "item_key": "image-001",
+            "item_ordinal": 1,
+            "source_assets": (
+                type("Source", (), {"asset_id": "asset-product", "role": "product_reference"})(),
+                type("Source", (), {"asset_id": "asset-style", "role": "style_reference"})(),
+            ),
+            "target": type(
+                "Target",
+                (),
+                {
+                    "aspect_ratio": "4:5",
+                    "fit": "contain",
+                    "height": 1280,
+                    "output_format": "png",
+                    "quality": "auto",
+                    "width": 1024,
+                },
+            )(),
+            "prompt_input": {"original_remix_prompt": canonical},
+        },
+    )()
+
+    compiled = provider._compile_prompt(envelope, protocol)
+    payload = json.loads(compiled)
+    assert payload["instructions"]["original_remix_prompt"] == canonical
+    assert payload["skill_protocol"]["skill_id"] == "reference-visual-reverse-remix"
+    assert payload["source_images"] == [
+        {"asset_id": "asset-product", "ordinal": 1, "role": "product_reference"},
+        {"asset_id": "asset-style", "ordinal": 2, "role": "style_reference"},
+    ]
 
 
 @pytest.mark.parametrize("preset", sorted(PRODUCT_IMAGE_PRESETS))
@@ -492,6 +564,26 @@ def test_creative_adapter_uses_competitor_reference_role_and_whitelist() -> None
     }
 
 
+def test_inspiration_creative_brief_is_first_class_user_instruction() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+    request = _request(
+        "creative_image",
+        input_config={"product_asset_ids": ["asset-product"]},
+        settings={
+            "image_count": 1,
+            "inspiration_planning": True,
+            "instruction": '标签必须写“好凉快！”，禁止出现数显面板。',
+        },
+    )
+
+    asyncio.run(provider.execute(request))
+
+    adapter = _adapter_request(delegate)
+    assert adapter["prompt_input"]["user_instruction"] == '标签必须写“好凉快！”，禁止出现数显面板。'
+    assert "negative_constraints" not in adapter["prompt_input"]
+
+
 @pytest.mark.parametrize(
     ("provider_class", "operation", "input_config", "extra_settings"),
     [
@@ -571,6 +663,30 @@ def test_reference_remix_defaults_to_follow_reference_wire_contract() -> None:
         "output_format": "png",
         "fit": "contain",
     }
+
+
+def test_reference_visual_reverse_remix_preserves_portrait_composition_when_targeting_four_by_five() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = ReferenceVisualReverseRemixProvider(
+        delegate,
+        manifest_validator=ManifestSpy(),
+    )
+
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "reference_remix",
+                input_config={
+                    "product_asset_ids": ["asset-product"],
+                    "reference_asset_ids": ["asset-reference"],
+                },
+                settings={"aspect_ratio": "4:5", "image_count": 1},
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert _adapter_request(delegate)["target"]["fit"] == "contain"
 
 
 def test_cross_role_duplicate_asset_is_rejected_before_delegate() -> None:

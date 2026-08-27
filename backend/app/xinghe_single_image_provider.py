@@ -53,6 +53,7 @@ from .xinghe_agent import (
     AmazonVisualReviewRequest,
     ImageCallResult,
     ImageEditRequest,
+    PlannerRequest,
     SourceImage,
     XingheGateway,
     normalize_usage,
@@ -62,6 +63,7 @@ SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY = "new_skill_adapter"
 SINGLE_IMAGE_ADAPTER_SCHEMA_VERSION = "single-image-skill-adapter-v1"
 SINGLE_IMAGE_PROMPT_SCHEMA_VERSION = "single-image-prompt-v1"
 _MODEL_POSE_TRANSFER_SKILL_ID = "ecommerce-model-pose-transfer"
+_REFERENCE_VISUAL_REMIX_SKILL_ID = "reference-visual-reverse-remix"
 _MODEL_POSE_PROMPT_CONTRACT_VERSION = "model-pose-direct-edit-v1"
 _MODEL_POSE_REQUIRED_PROTOCOL_CLAUSES = (
     "Send `model_source` first as Image 1 and the only editable base.",
@@ -161,6 +163,18 @@ DEFAULT_ALLOWED_PROMPT_FIELDS = frozenset(
         "style_preferences",
         "user_instruction",
         "reference_guidance",
+        "input_roles",
+        "product_identity_lock",
+        "reference_visual_analysis",
+        "reference_geometry_analysis",
+        "commercial_intent",
+        "reusable_visual_strategy",
+        "original_remix_prompt",
+        "forbidden_transfer",
+        "post_generation_review",
+        "execution_mode",
+        "inspiration_product_first",
+        "planning_mode",
         "scene",
         "style",
         "subject",
@@ -210,7 +224,11 @@ _MAX_SOURCE_COUNT = 8
 _MAX_TARGET_DIMENSION = 8192
 _MAX_TARGET_PIXELS = 64_000_000
 _MAX_PROMPT_FIELDS = 32
-_MAX_PROMPT_STRING_LENGTH = 2_000
+# Keep this aligned with the API contract for canonical remix instructions
+# (`original_remix_prompt` allows up to 4,000 characters). Inspiration cases
+# persist the complete Skill-derived instruction, which can legitimately exceed
+# the old 2,000-character adapter limit without being unbounded.
+_MAX_PROMPT_STRING_LENGTH = 4_000
 _MAX_PROMPT_LIST_LENGTH = 32
 _MAX_COMPILED_PROMPT_BYTES = 256 * 1024
 _MAX_SOURCE_PIXELS = 100_000_000
@@ -384,9 +402,85 @@ class XingheSingleImageProvider:
             )
 
         try:
-            prompt = self._compile_prompt(envelope, protocol)
+            direct_prompt = envelope.prompt_input.get("execution_mode") == "direct_prompt"
+            creative_planning = envelope.prompt_input.get("planning_mode") in {"creative", "reference"}
+            creative_reference = envelope.prompt_input.get("planning_mode") == "reference"
+            creative_analysis = (
+                await self._analyze_creative_visuals(
+                    request, envelope=envelope, protocol=protocol, sources=sources
+                )
+                if creative_planning and not direct_prompt
+                else None
+            )
+            analysis = None if (direct_prompt or creative_analysis) else await self._analyze_reference_visuals(
+                request,
+                envelope=envelope,
+                protocol=protocol,
+                sources=sources,
+            )
+            if direct_prompt:
+                prompt = str(
+                    envelope.prompt_input.get("original_remix_prompt")
+                    or envelope.prompt_input.get("reference_guidance")
+                    or ""
+                ).strip()
+                if not prompt:
+                    raise SingleImageProviderError(
+                        "REFERENCE_DIRECT_PROMPT_MISSING",
+                        "Direct prompt execution requires original_remix_prompt or instruction.",
+                    )
+                style_specs = tuple(spec for spec in envelope.source_assets if spec.role == "style_reference")
+                product_specs = tuple(spec for spec in envelope.source_assets if spec.role == "product_reference")
+                style_sources = tuple(source for source in sources if source.source_role == "style_reference")
+                product_sources = tuple(source for source in sources if source.source_role == "product_reference")
+                if envelope.prompt_input.get("inspiration_product_first") is True:
+                    envelope = replace(envelope, source_assets=product_specs + style_specs)
+                    sources = product_sources + style_sources
+                else:
+                    envelope = replace(envelope, source_assets=style_specs + product_specs)
+                    sources = style_sources + product_sources
+            elif creative_analysis:
+                if creative_reference:
+                    reference_specs = tuple(spec for spec in envelope.source_assets if spec.role == "competitor_reference")
+                    product_specs = tuple(spec for spec in envelope.source_assets if spec.role == "product_reference")
+                    reference_sources = tuple(source for source in sources if source.source_role == "competitor_reference")
+                    product_sources = tuple(source for source in sources if source.source_role == "product_reference")
+                    envelope = replace(envelope, source_assets=reference_specs + product_specs)
+                    sources = reference_sources + product_sources
+                prompt = self._compile_creative_execution_prompt(
+                    envelope, creative_analysis
+                )
+            elif analysis:
+                prompt_input = dict(envelope.prompt_input)
+                prompt_input["reference_geometry_analysis"] = json.dumps(
+                    analysis,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                prompt_input["reference_composition_priority"] = (
+                    "Treat the visual-strategy reference as the composition authority. "
+                    "Preserve its crop, subject scale, text zones, prop positions, "
+                    "depth order and major negative space. Replace only the product "
+                    "identity with the product-reference image; do not redesign the "
+                    "layout or add a new floor, reflection, or product role."
+                )
+                envelope = replace(envelope, prompt_input=prompt_input)
+                style_specs = tuple(spec for spec in envelope.source_assets if spec.role == "style_reference")
+                product_specs = tuple(spec for spec in envelope.source_assets if spec.role == "product_reference")
+                style_sources = tuple(source for source in sources if source.source_role == "style_reference")
+                product_sources = tuple(source for source in sources if source.source_role == "product_reference")
+                envelope = replace(envelope, source_assets=style_specs + product_specs)
+                sources = style_sources + product_sources
+            if not direct_prompt and not creative_analysis:
+                prompt = self._compile_prompt(envelope, protocol, reference_analysis=analysis)
         except SingleImageProviderError as exc:
             return self._rejection(exc.code, str(exc))
+        except Exception as exc:
+            return self._rejection(
+                "REFERENCE_VISUAL_ANALYSIS_FAILED",
+                f"Reference visual analysis failed ({type(exc).__name__}).",
+            )
 
         image_request = ImageEditRequest(
             workspace_id=request.workspace_id,
@@ -403,7 +497,7 @@ class XingheSingleImageProvider:
                 envelope.target,
                 skill_id=envelope.skill_id,
             ),
-            output_format="jpeg",
+            output_format=("png" if (direct_prompt or creative_analysis) else "jpeg"),
             preserve_provider_artifact=True,
         )
         prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -451,6 +545,197 @@ class XingheSingleImageProvider:
         # here; subjective review is deferred to the suite reviewer so one judgement
         # cannot discard an otherwise valid generated asset.
         return result
+
+    async def _analyze_reference_visuals(
+        self,
+        request: ProviderRequest,
+        *,
+        envelope: SingleImageEnvelope,
+        protocol: SkillProtocol,
+        sources: tuple[SourceImage, ...],
+    ) -> Mapping[str, Any]:
+        """Run the Skill's visual-analysis stage before image generation."""
+
+        if envelope.skill_id != _REFERENCE_VISUAL_REMIX_SKILL_ID:
+            return {}
+        product_sources = [source for source in sources if source.source_role == "product_reference"]
+        style_sources = [source for source in sources if source.source_role == "style_reference"]
+        if not product_sources or not style_sources:
+            raise SingleImageProviderError(
+                "REFERENCE_REMIX_SOURCE_ROLES_INVALID",
+                "Reference remix requires product and visual-strategy source images.",
+            )
+        # Match the proven reference-remix workflow: the planner receives the
+        # visual-strategy reference as Image 1 and the user's product as Image 2.
+        # The image model receives the same role order below.  Keeping planner
+        # and execution roles identical prevents the planner from describing the
+        # product image as the layout authority.
+        planner_request = PlannerRequest(
+            workspace_id=request.workspace_id,
+            job_id=request.job_id,
+            group_key=envelope.item_key,
+            sources=tuple(style_sources + product_sources),
+            page_count=1,
+            language=str(envelope.prompt_input.get("language") or "zh-CN"),
+            product_name="visible product from the product identity reference",
+            product_information=(
+                str(envelope.prompt_input.get("product_identity_lock") or ""),
+                str(envelope.prompt_input.get("reference_guidance") or ""),
+                str(envelope.prompt_input.get("original_remix_prompt") or ""),
+                str(envelope.prompt_input.get("forbidden_transfer") or ""),
+            ),
+            platform_code=str(envelope.prompt_input.get("platform_code") or "tmall"),
+            size=(
+                f"{envelope.target.width or 1024}x"
+                f"{envelope.target.height or 1536}"
+            ),
+            idempotency_key=f"{request.idempotency_key}:reference-analysis",
+            system_prompt=(
+                "Follow the verified reference-visual-reverse-remix Skill protocol below. "
+                "Image 1 is the visual-strategy reference; Image 2 is the user's "
+                "product-identity reference. This is analysis only; do not generate "
+                "an image or use any previous generated result.\nVERIFIED SKILL PROTOCOL:\n"
+                + json.dumps(
+                    protocol.prompt_payload(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            ),
+            planning_profile="reference_visual_remix",
+        )
+        analysis = await self.gateway.plan(planner_request)
+        if analysis.error_code is not None:
+            raise SingleImageProviderError(
+                "REFERENCE_VISUAL_ANALYSIS_FAILED",
+                analysis.error_message or "Reference visual analysis failed.",
+            )
+        if not isinstance(analysis.payload, Mapping):
+            raise SingleImageProviderError(
+                "REFERENCE_VISUAL_ANALYSIS_INVALID",
+                "Reference visual analysis did not return a JSON object.",
+            )
+        required = {
+            "product_identity_lock",
+            "reference_visual_analysis",
+            "hard_composition_skeleton",
+            "normalized_anchors",
+            "product_role_map",
+            "typography_zones",
+            "original_remix_prompt",
+        }
+        missing = sorted(key for key in required if key not in analysis.payload)
+        if missing:
+            raise SingleImageProviderError(
+                "REFERENCE_VISUAL_ANALYSIS_INVALID",
+                "Reference visual analysis omitted required fields.",
+            )
+        return dict(analysis.payload)
+
+    async def _analyze_creative_visuals(
+        self,
+        request: ProviderRequest,
+        *,
+        envelope: SingleImageEnvelope,
+        protocol: SkillProtocol,
+        sources: tuple[SourceImage, ...],
+    ) -> Mapping[str, Any] | None:
+        """Opt-in planner for the Inspiration tab's freeform one-line mode."""
+        if envelope.skill_id != "xinghe-ecommerce-creative-image":
+            return None
+        has_reference = any(source.source_role == "competitor_reference" for source in sources)
+        planner_request = PlannerRequest(
+            workspace_id=request.workspace_id,
+            job_id=request.job_id,
+            group_key=envelope.item_key,
+            sources=sources,
+            page_count=1,
+            language=str(envelope.prompt_input.get("language") or "zh-CN"),
+            product_name="the uploaded product",
+            product_information=(
+                str(envelope.prompt_input.get("user_instruction") or ""),
+                str(envelope.prompt_input.get("creative_direction") or "selling_point"),
+            ),
+            platform_code=str(envelope.prompt_input.get("platform_code") or "tmall"),
+            size=envelope.target.size,
+            idempotency_key=f"{request.idempotency_key}:creative-analysis",
+            system_prompt=(
+                ("Use the verified ecommerce creative-image Skill protocol below. "
+                "Inspect the uploaded product image and the user's brief. Plan one "
+                "commercial image, then return JSON only with these keys: "
+                "product_identity_lock, hard_composition_skeleton, normalized_anchors, "
+                "product_role_map, typography_zones, commercial_intent, "
+                "forbidden_transfer, original_execution_prompt. Preserve the product "
+                "as the only identity authority. The original_execution_prompt must "
+                "be a concise executable image prompt, not a plan summary. Include "
+                "the user's brief, canvas, subject scale, layout, text zones and "
+                "negative constraints. The USER INSTRUCTION is the highest-priority "
+                "user requirement: preserve it verbatim in the execution prompt and "
+                "never let the reference image or planner reinterpret, weaken, or "
+                "contradict it. "
+                + ("The second image is a visual-strategy reference only: preserve its composition, subject scale, lighting, typography zones and prop relationships, but never copy its product, brand or wording. " if has_reference else "")
+                + "\nVERIFIED SKILL PROTOCOL:\n")
+                + json.dumps(
+                    protocol.prompt_payload(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            ),
+            planning_profile="creative_image",
+        )
+        analysis = await self.gateway.plan(planner_request)
+        if analysis.error_code is not None or not isinstance(analysis.payload, Mapping):
+            raise SingleImageProviderError(
+                "CREATIVE_VISUAL_ANALYSIS_FAILED",
+                analysis.error_message or "Creative visual planning failed.",
+            )
+        required = {
+            "product_identity_lock",
+            "hard_composition_skeleton",
+            "normalized_anchors",
+            "product_role_map",
+            "typography_zones",
+            "original_execution_prompt",
+        }
+        missing = sorted(key for key in required if key not in analysis.payload)
+        if missing:
+            raise SingleImageProviderError(
+                "CREATIVE_VISUAL_ANALYSIS_INVALID",
+                "Creative planner omitted required fields.",
+            )
+        return dict(analysis.payload)
+
+    def _compile_creative_execution_prompt(
+        self,
+        envelope: SingleImageEnvelope,
+        analysis: Mapping[str, Any],
+    ) -> str:
+        def field(name: str) -> str:
+            value = analysis.get(name, "")
+            return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+        prompt = "\n\n".join(
+            (
+                "Create exactly ONE original ecommerce image. The uploaded product image is the only product identity authority.",
+                f"OUTPUT: {envelope.target.size}; aspect ratio {envelope.target.aspect_ratio}; preserve product geometry and visible text.",
+                "PRODUCT IDENTITY LOCK\n" + field("product_identity_lock"),
+                "HARD COMPOSITION SKELETON\n" + field("hard_composition_skeleton"),
+                "NORMALIZED ANCHORS\n" + field("normalized_anchors"),
+                "PRODUCT ROLE MAP\n" + field("product_role_map"),
+                "TYPOGRAPHY ZONES\n" + field("typography_zones"),
+                "USER INSTRUCTION — HIGHEST PRIORITY\n" + str(envelope.prompt_input.get("user_instruction") or "No additional user instruction."),
+                "EXECUTION PROMPT\n" + field("original_execution_prompt"),
+                "FORBIDDEN TRANSFER\n" + field("forbidden_transfer"),
+                "Do not redesign the product, add variants, import the source background, or invent unsupported claims.",
+            )
+        )
+        if len(prompt.encode("utf-8")) > 24_000:
+            raise SingleImageProviderError(
+                "CREATIVE_VISUAL_ANALYSIS_INVALID",
+                "The compiled creative execution prompt is unexpectedly large.",
+            )
+        return prompt
 
     async def _execute_model_pose_transfer(
         self,
@@ -1099,11 +1384,102 @@ class XingheSingleImageProvider:
             )
         return tuple(sources)
 
+    def _compile_reference_visual_execution_prompt(
+        self,
+        envelope: SingleImageEnvelope,
+        protocol: SkillProtocol,
+        analysis: Mapping[str, Any],
+    ) -> str:
+        """Compile the Skill analysis into one concise image-model instruction.
+
+        The planner has already consumed the verified Skill and inspected the
+        current images. The image model needs that compiled decision, not the
+        complete Skill source plus legacy case prose a second time.
+        """
+
+        def field(name: str, fallback: str = "Not specified.") -> str:
+            raw = analysis.get(name)
+            if raw is None or raw == "":
+                return fallback
+            if isinstance(raw, str):
+                return raw.strip()
+            return json.dumps(raw, ensure_ascii=False, sort_keys=True)
+
+        width = envelope.target.width or 1024
+        height = envelope.target.height or 1536
+        language = str(envelope.prompt_input.get("language") or "zh-CN")
+        prompt = "\n\n".join(
+            (
+                (
+                    "Create exactly ONE original ecommerce image. "
+                    "Image 1 is the visual-strategy reference and is the binding "
+                    "authority for composition only. Image 2 is the product-identity "
+                    "reference and is the only authority for product appearance."
+                ),
+                (
+                    f"OUTPUT CONTRACT\nCanvas: {width}x{height}; aspect ratio: "
+                    f"{envelope.target.aspect_ratio}; language: {language}; quality: "
+                    f"{envelope.target.quality}. Preserve the reference crop and full "
+                    "composition inside this canvas."
+                ),
+                "PRODUCT IDENTITY LOCK\n" + field("product_identity_lock"),
+                "VISIBLE PRODUCT TEXT\n" + field("product_text_inventory"),
+                "SELECTED PRODUCT SUBSET\n" + field("selected_product_subset"),
+                "EXCLUDED PRODUCT ELEMENTS\n" + field("excluded_product_elements"),
+                "REFERENCE VISUAL ANALYSIS\n" + field("reference_visual_analysis"),
+                (
+                    "HARD COMPOSITION SKELETON — binding; preserve these relationships "
+                    "before applying style adjectives\n"
+                    + field("hard_composition_skeleton")
+                ),
+                "NORMALIZED 0..1 ANCHORS — binding\n" + field("normalized_anchors"),
+                "PRODUCT ROLE MAP AND DEPTH ORDER\n" + field("product_role_map"),
+                "TYPOGRAPHY ZONES\n" + field("typography_zones"),
+                "COMMERCIAL INTENT\n" + field("commercial_intent"),
+                "REUSABLE VISUAL STRATEGY\n" + field("reusable_visual_strategy"),
+                "IMAGE EXECUTION PROMPT\n" + field("original_remix_prompt"),
+                "FORBIDDEN TRANSFER\n" + field("forbidden_transfer"),
+                "FINAL SELF-CHECK\n" + field("post_generation_review"),
+                (
+                    "Do not redesign the layout, change the product count or role, add "
+                    "new product variants, import the product photo background, or copy "
+                    "the reference product/brand/copy. Preserve the analyzed subject "
+                    "scale, crop, negative space, prop positions, typography zones and "
+                    "depth order. Replace only product identity with Image 2."
+                ),
+                (
+                    "Compiled from verified Skill "
+                    f"{protocol.skill_id}@{protocol.source_content_hash}."
+                ),
+            )
+        )
+        if len(prompt.encode("utf-8")) > 24_000:
+            raise SingleImageProviderError(
+                "REFERENCE_VISUAL_ANALYSIS_INVALID",
+                "The compiled reference execution prompt is unexpectedly large.",
+            )
+        return prompt
+
     def _compile_prompt(
         self,
         envelope: SingleImageEnvelope,
         protocol: SkillProtocol,
+        *,
+        reference_analysis: Mapping[str, Any] | None = None,
     ) -> str:
+        if (
+            envelope.skill_id == _REFERENCE_VISUAL_REMIX_SKILL_ID
+            and reference_analysis
+        ):
+            return self._compile_reference_visual_execution_prompt(
+                envelope,
+                protocol,
+                reference_analysis,
+            )
+        # Keep the model-facing request on the same Skill Protocol path as the
+        # local Skill runtime. The durable prompt fields remain visible in the
+        # inspiration UI, while the provider also receives the verified Skill
+        # source and source-role/target contract needed to interpret them.
         prompt_contract = {
             "schema_version": SINGLE_IMAGE_PROMPT_SCHEMA_VERSION,
             "skill_id": envelope.skill_id,
@@ -1570,7 +1946,6 @@ def _target_artifact(
     *,
     skill_id: str = "",
 ) -> ProviderArtifact:
-    del skill_id  # Retained for adapter-call compatibility.
     target_width, target_height = target.dimensions
     try:
         with Image.open(BytesIO(artifact.payload)) as opened:

@@ -13,7 +13,7 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
@@ -444,6 +444,46 @@ export function CommerceSkillWorkspace({
   const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
   const [libraryRole, setLibraryRole] = useState<RoleKey>();
+  const [autoStart, setAutoStart] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (featureId !== "reference-remix") {
+        const rawCompose = window.localStorage.getItem("polaris-inspiration-compose");
+        if (rawCompose) {
+          const compose = JSON.parse(rawCompose) as { instruction?: string };
+          if (compose.instruction) setInstruction((current) => current || compose.instruction!);
+          window.localStorage.removeItem("polaris-inspiration-compose");
+        }
+        return;
+      }
+      const raw = window.localStorage.getItem("polaris-inspiration-strategy");
+      if (!raw) return;
+      const strategy = JSON.parse(raw) as { visualStrategyLock?: string; ratio?: AspectRatio; intent?: string; productAssetIds?: string[]; referenceAssetIds?: string[]; autoStart?: boolean };
+      if (strategy.productAssetIds?.length || strategy.referenceAssetIds?.length) {
+        setSelections((current) => ({
+          ...current,
+          product: strategy.productAssetIds ?? [],
+          reference: strategy.referenceAssetIds ?? [],
+        }));
+      }
+      if (strategy.intent || strategy.visualStrategyLock) {
+        const handoffInstruction = [
+          strategy.intent,
+          strategy.visualStrategyLock ? `灵感策略（已锁定，仅迁移视觉关系）：${strategy.visualStrategyLock}` : "",
+        ].filter(Boolean).join("\n\n");
+        setInstruction((current) => current || handoffInstruction);
+      }
+      if (strategy.ratio && referenceAspectRatios.some((item) => item.value === strategy.ratio)) {
+        setAspectRatio(strategy.ratio);
+      }
+      if (strategy.autoStart) setAutoStart(true);
+      window.localStorage.removeItem("polaris-inspiration-strategy");
+    } catch {
+      // Ignore malformed handoff data and keep the normal workspace flow intact.
+    }
+  }, [featureId]);
 
   const job = useJob(workspace?.id, jobId);
   const resultAssets = selectJobResultAssets(job.data);
@@ -624,7 +664,18 @@ export function CommerceSkillWorkspace({
           selling_points: splitList(sellingPoints),
           aspect_ratio: aspectRatio,
           image_count: imageCount,
+          execution_mode: "planner",
+          inspiration_product_first: false,
+          quality: "high",
+          output_format: "png",
           instruction: instruction.trim(),
+          product_identity_lock: "",
+          reference_visual_analysis: "",
+          commercial_intent: "",
+          reusable_visual_strategy: "",
+          original_remix_prompt: "",
+          forbidden_transfer: "",
+          post_generation_review: "",
         },
       };
     }
@@ -643,6 +694,8 @@ export function CommerceSkillWorkspace({
           selling_points: splitList(sellingPoints),
           aspect_ratio: aspectRatio as Exclude<AspectRatio, "follow-reference">,
           image_count: imageCount,
+          inspiration_planning: false,
+          inspiration_reference_planning: false,
           instruction: instruction.trim(),
         },
       };
@@ -692,6 +745,12 @@ export function CommerceSkillWorkspace({
       setUiError(errorMessage(error));
     }
   };
+
+  useEffect(() => {
+    if (!autoStart || !canSubmit || jobId) return;
+    setAutoStart(false);
+    void submit();
+  }, [autoStart, canSubmit, jobId]);
 
   const resetTask = () => {
     setJobId(undefined);

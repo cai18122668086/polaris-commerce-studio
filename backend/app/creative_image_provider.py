@@ -60,6 +60,17 @@ class CreativeImageProvider(NewImageSkillProvider):
         optional_string(settings, "language", default="zh-CN")
         optional_string_list(settings, "selling_points")
         optional_string(settings, "instruction")
+        optional_string(settings, "user_instruction")
+        if settings.get("inspiration_planning") not in {None, True}:
+            raise NewImageSkillContractError(
+                "INSPIRATION_PLANNING_INVALID",
+                "inspiration_planning is reserved for the Inspiration tab.",
+            )
+        if settings.get("inspiration_reference_planning") not in {None, True, False}:
+            raise NewImageSkillContractError(
+                "INSPIRATION_REFERENCE_PLANNING_INVALID",
+                "inspiration_reference_planning must be a boolean.",
+            )
 
     def source_assets(
         self,
@@ -82,6 +93,8 @@ class CreativeImageProvider(NewImageSkillProvider):
         item_config: Mapping[str, Any],
     ) -> dict[str, Any]:
         del item_config
+        inspiration_mode = settings.get("inspiration_planning") is True
+        instruction = optional_string(settings, "instruction")
         return compact_prompt_input(
             {
                 "creative_direction": optional_string(
@@ -96,6 +109,20 @@ class CreativeImageProvider(NewImageSkillProvider):
                 "product_information": optional_string_list(
                     settings, "selling_points"
                 ),
-                "negative_constraints": optional_string(settings, "instruction"),
+                "user_instruction": (
+                    optional_string(settings, "user_instruction") or instruction
+                )
+                if inspiration_mode
+                else "",
+                # Preserve the established creative-image contract everywhere
+                # outside the Inspiration tab. Only the opt-in Inspiration
+                # path promotes the one-line brief to a first-class field.
+                "negative_constraints": instruction
+                if not inspiration_mode
+                else optional_string(settings, "negative_constraints"),
+                "planning_mode": (
+                    "reference" if settings.get("inspiration_reference_planning") is True
+                    else ("creative" if settings.get("inspiration_planning") is True else "")
+                ),
             }
         )

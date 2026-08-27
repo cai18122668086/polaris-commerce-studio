@@ -77,9 +77,12 @@ def ensure_development_identity(request: Any) -> None:
                 auth_provider="development",
                 auth_subject=settings.development_user_id,
                 display_name="Development User",
+                email_normalized=settings.development_user_email.strip().casefold(),
                 status=UserStatus.ACTIVE.value,
             )
             session.add(user)
+        elif not user.email_normalized:
+            user.email_normalized = settings.development_user_email.strip().casefold()
         workspace = session.get(WorkspaceRecord, settings.development_workspace_id)
         if workspace is None:
             workspace = WorkspaceRecord(

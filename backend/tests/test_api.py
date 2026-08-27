@@ -2098,10 +2098,16 @@ def test_development_provider_settings_enable_real_runner_without_echoing_key(
         assert body["configured"] is True
         assert body["task_runner"] == "tengli"
         assert body["domestic_main_image_provider_enabled"] is True
+        runtime = client.get("/api/v1/runtime").json()
+        assert runtime["task_runner"] == "tengli"
+        assert runtime["capabilities"]["features"]["reference_remix"]["execution"] == "provider"
+        assert runtime["capabilities"]["features"]["creative_image"]["execution"] == "provider"
         assert "api_key" not in body
         assert "test-secret-provider-key" not in response.text
         stored = development.development_provider_env_file.read_text(encoding="utf-8")
         assert "POLARIS_TASK_RUNNER=\"tengli\"" in stored
+        assert "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED=\"true\"" in stored
+        assert "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED=\"true\"" in stored
         assert "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED=\"true\"" in stored
         assert "POLARIS_XINGHE_CONCURRENCY=\"6\"" in stored
 

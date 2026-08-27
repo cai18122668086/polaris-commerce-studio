@@ -1072,6 +1072,16 @@
             "title": "Image Count",
             "type": "integer"
           },
+          "inspiration_planning": {
+            "default": false,
+            "title": "Inspiration Planning",
+            "type": "boolean"
+          },
+          "inspiration_reference_planning": {
+            "default": false,
+            "title": "Inspiration Reference Planning",
+            "type": "boolean"
+          },
           "instruction": {
             "default": "",
             "maxLength": 4000,
@@ -1730,6 +1740,441 @@
           "checks"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "InspirationAdminAccessResponse": {
+        "properties": {
+          "can_manage": {
+            "title": "Can Manage",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "can_manage"
+        ],
+        "title": "InspirationAdminAccessResponse",
+        "type": "object"
+      },
+      "InspirationAssetInput": {
+        "properties": {
+          "asset_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "ordinal": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "result",
+              "user_upload",
+              "reference"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "role"
+        ],
+        "title": "InspirationAssetInput",
+        "type": "object"
+      },
+      "InspirationAssetResponse": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "result",
+              "user_upload",
+              "reference"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "role",
+          "ordinal",
+          "label",
+          "url"
+        ],
+        "title": "InspirationAssetResponse",
+        "type": "object"
+      },
+      "InspirationCaseCreate": {
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/InspirationAssetInput"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "category": {
+            "default": "其他",
+            "maxLength": 80,
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "intent": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Intent",
+            "type": "string"
+          },
+          "is_pinned": {
+            "default": false,
+            "title": "Is Pinned",
+            "type": "boolean"
+          },
+          "platform": {
+            "default": "国内",
+            "maxLength": 16,
+            "title": "Platform",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "ratio": {
+            "default": "自动",
+            "maxLength": 24,
+            "title": "Ratio",
+            "type": "string"
+          },
+          "role": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Role",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "sort_order": {
+            "default": 0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "default": "万能改图",
+            "maxLength": 40,
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "prompt"
+        ],
+        "title": "InspirationCaseCreate",
+        "type": "object"
+      },
+      "InspirationCaseListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InspirationCaseResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "InspirationCaseListResponse",
+        "type": "object"
+      },
+      "InspirationCaseResponse": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "cover_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InspirationAssetResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "gallery": {
+            "items": {
+              "$ref": "#/components/schemas/InspirationAssetResponse"
+            },
+            "title": "Gallery",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "intent": {
+            "title": "Intent",
+            "type": "string"
+          },
+          "is_pinned": {
+            "title": "Is Pinned",
+            "type": "boolean"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ratio": {
+            "title": "Ratio",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "published",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "description",
+          "role",
+          "type",
+          "category",
+          "platform",
+          "ratio",
+          "intent",
+          "prompt",
+          "status",
+          "sort_order",
+          "is_pinned",
+          "cover_image",
+          "gallery",
+          "published_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InspirationCaseResponse",
+        "type": "object"
+      },
+      "InspirationCaseUpdate": {
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/InspirationAssetInput"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "category": {
+            "default": "其他",
+            "maxLength": 80,
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "intent": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Intent",
+            "type": "string"
+          },
+          "is_pinned": {
+            "default": false,
+            "title": "Is Pinned",
+            "type": "boolean"
+          },
+          "platform": {
+            "default": "国内",
+            "maxLength": 16,
+            "title": "Platform",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "ratio": {
+            "default": "自动",
+            "maxLength": 24,
+            "title": "Ratio",
+            "type": "string"
+          },
+          "role": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Role",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "sort_order": {
+            "default": 0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "default": "万能改图",
+            "maxLength": 40,
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "prompt"
+        ],
+        "title": "InspirationCaseUpdate",
         "type": "object"
       },
       "JobAssetResponse": {
@@ -3022,12 +3467,38 @@
             "title": "Aspect Ratio",
             "type": "string"
           },
+          "commercial_intent": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Commercial Intent",
+            "type": "string"
+          },
+          "execution_mode": {
+            "default": "planner",
+            "enum": [
+              "planner",
+              "direct_prompt"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "forbidden_transfer": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Forbidden Transfer",
+            "type": "string"
+          },
           "image_count": {
             "default": 1,
             "maximum": 12.0,
             "minimum": 1.0,
             "title": "Image Count",
             "type": "integer"
+          },
+          "inspiration_product_first": {
+            "default": false,
+            "title": "Inspiration Product First",
+            "type": "boolean"
           },
           "instruction": {
             "default": "",
@@ -3042,11 +3513,73 @@
             "title": "Language",
             "type": "string"
           },
+          "original_remix_prompt": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Original Remix Prompt",
+            "type": "string"
+          },
+          "output_format": {
+            "default": "png",
+            "enum": [
+              "png",
+              "jpeg",
+              "webp"
+            ],
+            "title": "Output Format",
+            "type": "string"
+          },
           "platform_code": {
             "default": "tmall",
             "maxLength": 32,
             "minLength": 1,
             "title": "Platform Code",
+            "type": "string"
+          },
+          "post_generation_review": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Post Generation Review",
+            "type": "string"
+          },
+          "product_identity_lock": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Product Identity Lock",
+            "type": "string"
+          },
+          "quality": {
+            "default": "high",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "reference_skill": {
+            "anyOf": [
+              {
+                "const": "reference-visual-reverse-remix",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Skill"
+          },
+          "reference_visual_analysis": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reference Visual Analysis",
+            "type": "string"
+          },
+          "reusable_visual_strategy": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reusable Visual Strategy",
             "type": "string"
           },
           "selling_points": {
@@ -3608,6 +4141,281 @@
         ]
       }
     },
+    "/api/v1/admin/inspiration/cases": {
+      "get": {
+        "operationId": "admin_list_api_v1_admin_inspiration_cases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "draft",
+                "published",
+                "archived"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationCaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Admin List",
+        "tags": [
+          "inspiration-admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_case_api_v1_admin_inspiration_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspirationCaseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Case",
+        "tags": [
+          "inspiration-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/inspiration/cases/access": {
+      "get": {
+        "operationId": "admin_access_api_v1_admin_inspiration_cases_access_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationAdminAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Admin Access",
+        "tags": [
+          "inspiration-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/inspiration/cases/{case_id}": {
+      "patch": {
+        "operationId": "update_case_api_v1_admin_inspiration_cases__case_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspirationCaseUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Update Case",
+        "tags": [
+          "inspiration-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/inspiration/cases/{case_id}/archive": {
+      "post": {
+        "operationId": "archive_case_api_v1_admin_inspiration_cases__case_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Archive Case",
+        "tags": [
+          "inspiration-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/inspiration/cases/{case_id}/publish": {
+      "post": {
+        "operationId": "publish_case_api_v1_admin_inspiration_cases__case_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Publish Case",
+        "tags": [
+          "inspiration-admin"
+        ]
+      }
+    },
     "/api/v1/announcements": {
       "get": {
         "operationId": "list_public_announcements_api_v1_announcements_get",
@@ -3749,6 +4557,157 @@
         "summary": "Update Development Provider Settings",
         "tags": [
           "runtime"
+        ]
+      }
+    },
+    "/api/v1/inspiration/cases": {
+      "get": {
+        "operationId": "list_cases_api_v1_inspiration_cases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationCaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Cases",
+        "tags": [
+          "inspiration"
+        ]
+      }
+    },
+    "/api/v1/inspiration/cases/{case_id}": {
+      "get": {
+        "operationId": "get_case_api_v1_inspiration_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspirationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Case",
+        "tags": [
+          "inspiration"
         ]
       }
     },

@@ -256,6 +256,12 @@ select:focus-visible {
   transition: 160ms ease;
 }
 
+.main-nav__flame {
+  flex: 0 0 auto;
+  margin-right: 4px;
+  color: #e94724;
+}
+
 .main-nav > a::after,
 .nav-menu__trigger::after {
   position: absolute;

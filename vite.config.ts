@@ -50,9 +50,14 @@ export default defineConfig(async () => {
       // production server to serve this directory consistently on every OS.
       assetsDir: "_polaris-static",
     },
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    server: {
+      ...(isCodexSeatbeltSandbox
+        ? { watch: { useFsEvents: false, usePolling: true } }
+        : {}),
+      proxy: {
+        "/api": "http://127.0.0.1:8000",
+      },
+    },
     plugins: [
       vinext(),
       sites(),

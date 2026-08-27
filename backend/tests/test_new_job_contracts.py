@@ -147,9 +147,7 @@ def test_detail_market_region_is_stored_without_changing_job_type() -> None:
     payload = DetailPackJobCreate(
         type="detail_pack",
         input={
-            "product_groups": [
-                {"group_key": "primary", "asset_ids": ["product"]}
-            ],
+            "product_groups": [{"group_key": "primary", "asset_ids": ["product"]}],
             "reference_asset_ids": ["style"],
         },
         configuration={
@@ -283,7 +281,9 @@ def test_amazon_item_configuration_matches_canonical_sizes() -> None:
     assert mobile["target_size"] == {"width": 1600, "height": 1200}
 
 
-@pytest.mark.parametrize("job_type", (JobType.REFERENCE_REMIX.value, JobType.CREATIVE_IMAGE.value))
+@pytest.mark.parametrize(
+    "job_type", (JobType.REFERENCE_REMIX.value, JobType.CREATIVE_IMAGE.value)
+)
 def test_inspiration_item_configuration_preserves_output_identity(
     job_type: str,
 ) -> None:

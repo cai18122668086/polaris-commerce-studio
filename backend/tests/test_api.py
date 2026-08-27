@@ -666,6 +666,7 @@ def test_real_provider_zero_recurring_limits_keep_usage_ledger_unbounded(
         settings.workspace_credit_enforcement_enabled = True
         set_credit_enforcement_enabled(True)
 
+
 def test_amazon_real_provider_reserves_complete_automation_envelope(
     client: TestClient,
 ) -> None:
@@ -1398,11 +1399,7 @@ def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
                         if ordinal < 2
                         else JobItemStatus.SKIPPED.value
                     ),
-                    error_code=(
-                        "HARNESS_BLOCKED"
-                        if ordinal < 2
-                        else None
-                    ),
+                    error_code=("HARNESS_BLOCKED" if ordinal < 2 else None),
                     stage="reused" if ordinal >= 2 else "failed",
                     finished_at=now,
                 )
@@ -1414,9 +1411,7 @@ def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
                 job_id=job_id,
                 revision=1,
                 schema_version="aurora-main-image-plan-v2",
-                payload={
-                    "execution_policy": {"execution_mode": "parallel_v20"}
-                },
+                payload={"execution_policy": {"execution_mode": "parallel_v20"}},
                 payload_hash="0" * 64,
                 validation_status=PlanValidationStatus.VALID.value,
                 validation_errors=[],
@@ -1954,8 +1949,7 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
     )
     assert unavailable_archive.status_code == 409
     assert (
-        unavailable_archive.json()["error"]["code"]
-        == "DELIVERABLE_ARCHIVE_NOT_READY"
+        unavailable_archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
     )
 
     confirmed = client.post(
@@ -2012,8 +2006,9 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
             if asset["direction"] == "output" and asset["is_deliverable"]
         }
         for ordinal, name in enumerate(bundle.namelist()):
-            assert hashlib.sha256(bundle.read(name)).hexdigest() == (
-                deliverables[ordinal]["validation"]["sha256"]
+            assert (
+                hashlib.sha256(bundle.read(name)).hexdigest()
+                == (deliverables[ordinal]["validation"]["sha256"])
             )
 
     repeated = client.get(
@@ -2067,12 +2062,9 @@ def test_mock_domestic_main_image_plan_cannot_be_authorized(
     )
     assert response.status_code == 409
     assert (
-        response.json()["error"]["code"]
-        == "DOMESTIC_MAIN_IMAGE_PROVIDER_UNAVAILABLE"
+        response.json()["error"]["code"] == "DOMESTIC_MAIN_IMAGE_PROVIDER_UNAVAILABLE"
     )
-    current = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
-    ).json()
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
     assert current["status"] == JobStatus.AWAITING_CONFIRMATION.value
 
 
@@ -2100,16 +2092,22 @@ def test_development_provider_settings_enable_real_runner_without_echoing_key(
         assert body["domestic_main_image_provider_enabled"] is True
         runtime = client.get("/api/v1/runtime").json()
         assert runtime["task_runner"] == "tengli"
-        assert runtime["capabilities"]["features"]["reference_remix"]["execution"] == "provider"
-        assert runtime["capabilities"]["features"]["creative_image"]["execution"] == "provider"
+        assert (
+            runtime["capabilities"]["features"]["reference_remix"]["execution"]
+            == "provider"
+        )
+        assert (
+            runtime["capabilities"]["features"]["creative_image"]["execution"]
+            == "provider"
+        )
         assert "api_key" not in body
         assert "test-secret-provider-key" not in response.text
         stored = development.development_provider_env_file.read_text(encoding="utf-8")
-        assert "POLARIS_TASK_RUNNER=\"tengli\"" in stored
-        assert "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED=\"true\"" in stored
-        assert "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED=\"true\"" in stored
-        assert "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED=\"true\"" in stored
-        assert "POLARIS_XINGHE_CONCURRENCY=\"6\"" in stored
+        assert 'POLARIS_TASK_RUNNER="tengli"' in stored
+        assert 'POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED="true"' in stored
+        assert 'POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED="true"' in stored
+        assert 'POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED="true"' in stored
+        assert 'POLARIS_XINGHE_CONCURRENCY="6"' in stored
 
 
 def test_missing_assets_and_unknown_workspace_do_not_leak(client: TestClient) -> None:
@@ -2172,9 +2170,7 @@ def _seed_asset_classification_job(
                 failed_item_count=failed_count,
                 error_code="PROVIDER_TIMEOUT" if status == JobStatus.FAILED else None,
                 error_message=(
-                    "Provider request failed"
-                    if status == JobStatus.FAILED
-                    else None
+                    "Provider request failed" if status == JobStatus.FAILED else None
                 ),
                 currency="USD",
                 finished_at=utc_now() if terminal else None,
@@ -2260,9 +2256,7 @@ def test_job_list_and_detail_classify_deliverable_outputs_without_input_fallback
     assert jobs[failed_job_id]["output_asset_count"] == 0
     assert jobs[failed_job_id]["primary_output_asset_id"] is None
 
-    detail = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{completed_job_id}"
-    )
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{completed_job_id}")
     assert detail.status_code == 200, detail.text
     body = detail.json()
     assert body["output_asset_count"] == 2
@@ -2282,9 +2276,7 @@ def test_job_list_and_detail_classify_deliverable_outputs_without_input_fallback
         if relation["direction"] == "output" and relation["is_deliverable"]
     ] == [first_output["id"], second_output["id"]]
 
-    cross_workspace = client.get(
-        f"/api/v1/workspaces/ws_other/jobs/{completed_job_id}"
-    )
+    cross_workspace = client.get(f"/api/v1/workspaces/ws_other/jobs/{completed_job_id}")
     assert cross_workspace.status_code == 404
     assert completed_job_id not in cross_workspace.text
 

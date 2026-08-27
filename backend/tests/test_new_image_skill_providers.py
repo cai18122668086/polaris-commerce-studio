@@ -27,9 +27,11 @@ from app.reference_remix_provider import (
     ReferenceRemixProvider,
     ReferenceVisualReverseRemixProvider,
 )
-from app.xinghe_single_image_provider import DEFAULT_ALLOWED_PROMPT_FIELDS
-from app.xinghe_single_image_provider import XingheSingleImageProvider
 from app.skill_protocol import load_skill_protocol
+from app.xinghe_single_image_provider import (
+    DEFAULT_ALLOWED_PROMPT_FIELDS,
+    XingheSingleImageProvider,
+)
 
 
 @dataclass
@@ -57,8 +59,6 @@ class StubDelegate:
         _assert_strict_single_image_envelope(request)
         self.requests.append(request)
         return self.result
-
-
 
 
 def _assert_strict_single_image_envelope(request: ProviderRequest) -> None:
@@ -189,8 +189,14 @@ def test_reference_remix_compiles_canonical_prompt_with_skill_protocol() -> None
             "item_key": "image-001",
             "item_ordinal": 1,
             "source_assets": (
-                type("Source", (), {"asset_id": "asset-product", "role": "product_reference"})(),
-                type("Source", (), {"asset_id": "asset-style", "role": "style_reference"})(),
+                type(
+                    "Source",
+                    (),
+                    {"asset_id": "asset-product", "role": "product_reference"},
+                )(),
+                type(
+                    "Source", (), {"asset_id": "asset-style", "role": "style_reference"}
+                )(),
             ),
             "target": type(
                 "Target",
@@ -573,14 +579,17 @@ def test_inspiration_creative_brief_is_first_class_user_instruction() -> None:
         settings={
             "image_count": 1,
             "inspiration_planning": True,
-            "instruction": '标签必须写“好凉快！”，禁止出现数显面板。',
+            "instruction": "标签必须写“好凉快！”，禁止出现数显面板。",
         },
     )
 
     asyncio.run(provider.execute(request))
 
     adapter = _adapter_request(delegate)
-    assert adapter["prompt_input"]["user_instruction"] == '标签必须写“好凉快！”，禁止出现数显面板。'
+    assert (
+        adapter["prompt_input"]["user_instruction"]
+        == "标签必须写“好凉快！”，禁止出现数显面板。"
+    )
     assert "negative_constraints" not in adapter["prompt_input"]
 
 
@@ -665,7 +674,8 @@ def test_reference_remix_defaults_to_follow_reference_wire_contract() -> None:
     }
 
 
-def test_reference_visual_reverse_remix_preserves_portrait_composition_when_targeting_four_by_five() -> None:
+def test_reference_visual_reverse_remix_preserves_portrait_composition_when_targeting_four_by_five(  # noqa: E501
+) -> None:
     delegate = StubDelegate(_artifact_result())
     provider = ReferenceVisualReverseRemixProvider(
         delegate,

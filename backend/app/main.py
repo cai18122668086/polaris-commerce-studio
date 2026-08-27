@@ -9,11 +9,11 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 
 from .announcement_routes import router as announcement_router
-from .inspiration_routes import router as inspiration_router
 from .auth import ensure_development_identity
 from .config import Settings
 from .database import Base, build_database
 from .errors import ApiError
+from .inspiration_routes import router as inspiration_router
 from .models import WorkspaceLimitRecord
 from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse

@@ -641,8 +641,7 @@ def test_model_pose_transfer_sends_both_images_once_in_fixed_role_order(
     )
     assert "stride as a proportion of body height" in image_request.prompt
     assert (
-        "do not copy Image 2's body proportions or leg length"
-        in image_request.prompt
+        "do not copy Image 2's body proportions or leg length" in image_request.prompt
     )
     assert "limb crossing and overlap order" in image_request.prompt
     assert "same viewer-left or viewer-right side" in image_request.prompt
@@ -770,9 +769,7 @@ def test_model_pose_transfer_reorders_envelope_sources_before_edit(
     harness: Harness,
 ) -> None:
     provider, request = _model_pose_request(harness)
-    envelope = dict(
-        request.configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY]
-    )
+    envelope = dict(request.configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY])
     envelope["source_assets"] = list(reversed(envelope["source_assets"]))
     configuration = dict(request.configuration)
     configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY] = envelope
@@ -804,9 +801,7 @@ def test_model_pose_transfer_image_exception_counts_one_two_image_request(
     assert result.raw_usage["request_count"] == 1
     assert result.raw_usage["network_requests"] == 1
     assert result.raw_usage["input_images"] == 2
-    assert result.raw_usage["metrics"]["pose_transfer_mode"] == (
-        "direct_two_image"
-    )
+    assert result.raw_usage["metrics"]["pose_transfer_mode"] == ("direct_two_image")
     assert harness.gateway.plan_calls == 0
     assert len(harness.gateway.requests) == 1
 
@@ -869,8 +864,8 @@ def test_reference_visual_reverse_remix_runs_analysis_before_image_edit(
     assert result.outcome == ProviderOutcome.SUCCEEDED
     assert harness.gateway.plan_calls == 1
     analysis_request = harness.gateway.plan_requests[0]
-    assert getattr(analysis_request, "planning_profile") == "reference_visual_remix"
-    assert [source.source_role for source in getattr(analysis_request, "sources")] == [
+    assert analysis_request.planning_profile == "reference_visual_remix"
+    assert [source.source_role for source in analysis_request.sources] == [
         "style_reference",
         "product_reference",
     ]
@@ -878,10 +873,10 @@ def test_reference_visual_reverse_remix_runs_analysis_before_image_edit(
         "style_reference",
         "product_reference",
     ]
-    assert "VERIFIED SKILL PROTOCOL" in getattr(analysis_request, "system_prompt")
+    assert "VERIFIED SKILL PROTOCOL" in analysis_request.system_prompt
     assert any(
         "original" in value.lower()
-        for value in getattr(analysis_request, "product_information")
+        for value in analysis_request.product_information
     )
     prompt = harness.gateway.requests[0].prompt
     assert not prompt.lstrip().startswith("{")

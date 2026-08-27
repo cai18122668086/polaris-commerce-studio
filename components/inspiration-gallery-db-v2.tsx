@@ -144,6 +144,9 @@ export function InspirationGalleryDb() {
     if (!detail || !jobId) return;
 
     if (["failed", "cancelled"].includes(detail.status)) {
+      // The job polling hook is an external subscription; synchronize the
+      // local composer state when its status changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setGenerating(false);
       setComposeError(detail.error_message || "生成未完成，请稍后重试。");
       return;
@@ -190,6 +193,9 @@ export function InspirationGalleryDb() {
     return () => {
       cancelled = true;
     };
+  // The selected fields above are the stable polling signals; depending on the
+  // whole response object would rerun this effect for unrelated query updates.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.data?.status, job.data?.error_message, job.data?.primary_output_asset_id, jobId, workspace?.id]);
 
   useEffect(() => {
@@ -218,6 +224,8 @@ export function InspirationGalleryDb() {
 
   useEffect(() => {
     if (activeCase) {
+      // Reset the composer inputs when the user selects a different case.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setComposerAssets(activeCase.gallery.filter((asset) => asset.role !== "result"));
     }
   }, [activeCase]);

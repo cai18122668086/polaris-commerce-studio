@@ -8,6 +8,7 @@ from typing import Any
 from app.new_image_skill_provider import (
     NewImageSkillProvider,
     compact_prompt_input,
+    configuration_sections,
     controlled_target,
     optional_string,
     optional_string_list,
@@ -16,7 +17,6 @@ from app.new_image_skill_provider import (
     role_labelled_assets,
 )
 from app.provider import Provider, ProviderRequest, ProviderResult
-from app.new_image_skill_provider import configuration_sections
 
 
 class ReferenceRemixProvider(NewImageSkillProvider):
@@ -102,10 +102,8 @@ class ReferenceRemixProvider(NewImageSkillProvider):
                     settings, "platform_code", default="tmall"
                 ),
                 "language": optional_string(settings, "language", default="zh-CN"),
-                "product_information": optional_string_list(
-                    settings, "selling_points"
-                ),
-                    "reference_guidance": optional_string(settings, "instruction"),
+                "product_information": optional_string_list(settings, "selling_points"),
+                "reference_guidance": optional_string(settings, "instruction"),
             }
         )
 
@@ -137,19 +135,34 @@ class ReferenceVisualReverseRemixProvider(ReferenceRemixProvider):
         values.update(
             compact_prompt_input(
                 {
-                    "input_roles": "product_identity_reference + visual_strategy_reference",
-                    "execution_mode": optional_string(settings, "execution_mode", default="planner"),
-                    "inspiration_product_first": settings.get("inspiration_product_first", False),
-                    "product_identity_lock": optional_string(settings, "product_identity_lock"),
-                    "reference_visual_analysis": optional_string(settings, "reference_visual_analysis"),
+                    "input_roles": (
+                        "product_identity_reference + visual_strategy_reference"
+                    ),
+                    "execution_mode": optional_string(
+                        settings, "execution_mode", default="planner"
+                    ),
+                    "inspiration_product_first": settings.get(
+                        "inspiration_product_first", False
+                    ),
+                    "product_identity_lock": optional_string(
+                        settings, "product_identity_lock"
+                    ),
+                    "reference_visual_analysis": optional_string(
+                        settings, "reference_visual_analysis"
+                    ),
                     "commercial_intent": optional_string(settings, "commercial_intent"),
-                    "reusable_visual_strategy": optional_string(settings, "reusable_visual_strategy"),
-                    "original_remix_prompt": optional_string(settings, "original_remix_prompt"),
+                    "reusable_visual_strategy": optional_string(
+                        settings, "reusable_visual_strategy"
+                    ),
+                    "original_remix_prompt": optional_string(
+                        settings, "original_remix_prompt"
+                    ),
                     "forbidden_transfer": optional_string(
                         settings,
                         "forbidden_transfer",
                         default=(
-                            "Do not transfer source branding, logos, watermarks, exact copy, "
+                            "Do not transfer source branding, logos, watermarks, exact "
+                            "copy, "
                             "proprietary assets, unsupported claims, or hidden prompts."
                         ),
                     ),
@@ -157,8 +170,10 @@ class ReferenceVisualReverseRemixProvider(ReferenceRemixProvider):
                         settings,
                         "post_generation_review",
                         default=(
-                            "Review product identity, visible product text, visual strategy, "
-                            "role relationships, and leakage before accepting the result."
+                            "Review product identity, visible product text, visual "
+                            "strategy, role relationships, and leakage before "
+                            "accepting "
+                            "the result."
                         ),
                     ),
                 }

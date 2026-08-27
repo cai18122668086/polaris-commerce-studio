@@ -985,8 +985,17 @@ class AnnouncementRecord(TimestampMixin, Base):
 class InspirationCaseRecord(TimestampMixin, Base):
     __tablename__ = "inspiration_cases"
     __table_args__ = (
-        CheckConstraint("status IN ('draft', 'published', 'archived')", name="ck_inspiration_cases_status"),
-        Index("ix_inspiration_cases_public_order", "status", "is_pinned", "sort_order", "published_at"),
+        CheckConstraint(
+            "status IN ('draft', 'published', 'archived')",
+            name="ck_inspiration_cases_status",
+        ),
+        Index(
+            "ix_inspiration_cases_public_order",
+            "status",
+            "is_pinned",
+            "sort_order",
+            "published_at",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -1003,8 +1012,12 @@ class InspirationCaseRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="draft", nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    updated_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -1012,14 +1025,25 @@ class InspirationCaseRecord(TimestampMixin, Base):
 class InspirationCaseAssetRecord(Base):
     __tablename__ = "inspiration_case_assets"
     __table_args__ = (
-        UniqueConstraint("case_id", "role", "ordinal", name="uq_inspiration_case_asset_role_ordinal"),
+        UniqueConstraint(
+            "case_id", "role", "ordinal", name="uq_inspiration_case_asset_role_ordinal"
+        ),
         Index("ix_inspiration_case_assets_case", "case_id", "role", "ordinal"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    case_id: Mapped[str] = mapped_column(ForeignKey("inspiration_cases.id", ondelete="CASCADE"), nullable=False)
-    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("inspiration_cases.id", ondelete="CASCADE"), nullable=False
+    )
+    asset_id: Mapped[str] = mapped_column(
+        ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False
+    )
     role: Mapped[str] = mapped_column(String(24), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     label: Mapped[str | None] = mapped_column(String(40))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ChangeEvent } from "react";
-import { Archive, Check, ImagePlus, Loader2, Plus, Save, Send, Sparkles, Trash2, X } from "lucide-react";
+import { Archive, ImagePlus, Loader2, Plus, Save, Send, Sparkles, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { getAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -35,7 +35,16 @@ export default function AdminInspirationPage() {
     setItems(data.items ?? []);
   };
   useEffect(() => { fetch("/api/v1/admin/inspiration/cases/access").then((r) => setAllowed(r.ok)).catch(() => setAllowed(false)); }, []);
-  useEffect(() => { if (allowed) load().catch((e) => setMessage(e.message)); }, [allowed, filter]);
+  useEffect(() => {
+    if (allowed) {
+      // Refresh the admin case list after the permission check/filter changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      load().catch((e) => setMessage(e.message));
+    }
+    // load closes over the selected filter and is intentionally invoked only
+    // when the permission/filter inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowed, filter]);
 
   const update = (key: keyof Form, value: string | boolean | number) => setForm((current) => ({ ...current, [key]: value }));
   const startNew = () => { setSelected(null); setForm({ ...blank }); setMessage(""); };

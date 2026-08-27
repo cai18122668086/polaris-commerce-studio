@@ -11,8 +11,11 @@ from .database import get_session
 from .domain import AssetLifecycleStatus
 from .errors import ApiError
 from .inspiration_schemas import (
-    InspirationAdminAccessResponse, InspirationAssetResponse,
-    InspirationCaseCreate, InspirationCaseListResponse, InspirationCaseResponse,
+    InspirationAdminAccessResponse,
+    InspirationAssetResponse,
+    InspirationCaseCreate,
+    InspirationCaseListResponse,
+    InspirationCaseResponse,
     InspirationCaseUpdate,
 )
 from .models import AssetRecord, InspirationCaseAssetRecord, InspirationCaseRecord
@@ -22,95 +25,337 @@ router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
 PrincipalDependency = Annotated[Principal, Depends(get_principal)]
 
-def _admin(request: Request, principal: PrincipalDependency, session: SessionDependency) -> Principal:
+
+def _admin(
+    request: Request, principal: PrincipalDependency, session: SessionDependency
+) -> Principal:
     if not _is_announcement_admin(principal, session, request.app.state.settings):
-        raise ApiError(status.HTTP_403_FORBIDDEN, "INSPIRATION_ADMIN_REQUIRED", "An active workspace owner or admin role is required.")
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "INSPIRATION_ADMIN_REQUIRED",
+            "An active workspace owner or admin role is required.",
+        )
     return principal
 
+
 AdminDependency = Annotated[Principal, Depends(_admin)]
+
 
 def _record(case_id: str, session: Session) -> InspirationCaseRecord:
     item = session.get(InspirationCaseRecord, case_id)
     if item is None:
-        raise ApiError(404, "INSPIRATION_CASE_NOT_FOUND", "The inspiration case was not found.")
+        raise ApiError(
+            404, "INSPIRATION_CASE_NOT_FOUND", "The inspiration case was not found."
+        )
     return item
 
-def _asset_response(rel: InspirationCaseAssetRecord, request: Request) -> InspirationAssetResponse:
-    return InspirationAssetResponse(asset_id=rel.asset_id, role=rel.role, ordinal=rel.ordinal, label=rel.label, url=str(request.url_for("get_inspiration_case_asset", case_id=rel.case_id, asset_id=rel.asset_id)))
 
-def _response(item: InspirationCaseRecord, session: Session, request: Request) -> InspirationCaseResponse:
-    rels = session.scalars(select(InspirationCaseAssetRecord).where(InspirationCaseAssetRecord.case_id == item.id).order_by(InspirationCaseAssetRecord.role, InspirationCaseAssetRecord.ordinal)).all()
+def _asset_response(
+    rel: InspirationCaseAssetRecord, request: Request
+) -> InspirationAssetResponse:
+    return InspirationAssetResponse(
+        asset_id=rel.asset_id,
+        role=rel.role,
+        ordinal=rel.ordinal,
+        label=rel.label,
+        url=str(
+            request.url_for(
+                "get_inspiration_case_asset", case_id=rel.case_id, asset_id=rel.asset_id
+            )
+        ),
+    )
+
+
+def _response(
+    item: InspirationCaseRecord, session: Session, request: Request
+) -> InspirationCaseResponse:
+    rels = session.scalars(
+        select(InspirationCaseAssetRecord)
+        .where(InspirationCaseAssetRecord.case_id == item.id)
+        .order_by(InspirationCaseAssetRecord.role, InspirationCaseAssetRecord.ordinal)
+    ).all()
     assets = [_asset_response(rel, request) for rel in rels]
     cover = next((a for a in assets if a.role == "result" and a.ordinal == 0), None)
-    return InspirationCaseResponse.model_validate({"id": item.id, "slug": item.slug, "title": item.title, "description": item.description, "role": item.role, "type": item.type, "category": item.category, "platform": item.platform, "ratio": item.ratio, "intent": item.intent, "prompt": item.prompt, "status": item.status, "sort_order": item.sort_order, "is_pinned": item.is_pinned, "cover_image": cover, "gallery": assets, "published_at": item.published_at, "created_at": item.created_at, "updated_at": item.updated_at})
+    return InspirationCaseResponse.model_validate(
+        {
+            "id": item.id,
+            "slug": item.slug,
+            "title": item.title,
+            "description": item.description,
+            "role": item.role,
+            "type": item.type,
+            "category": item.category,
+            "platform": item.platform,
+            "ratio": item.ratio,
+            "intent": item.intent,
+            "prompt": item.prompt,
+            "status": item.status,
+            "sort_order": item.sort_order,
+            "is_pinned": item.is_pinned,
+            "cover_image": cover,
+            "gallery": assets,
+            "published_at": item.published_at,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+        }
+    )
+
 
 def _save_assets(item: InspirationCaseRecord, payload, session: Session) -> None:
-    session.execute(delete(InspirationCaseAssetRecord).where(InspirationCaseAssetRecord.case_id == item.id))
+    session.execute(
+        delete(InspirationCaseAssetRecord).where(
+            InspirationCaseAssetRecord.case_id == item.id
+        )
+    )
     seen: set[tuple[str, int]] = set()
     for asset in payload.assets:
         key = (asset.role, asset.ordinal)
         if key in seen:
-            raise ApiError(422, "INSPIRATION_DUPLICATE_ASSET_ORDER", "Duplicate asset role and ordinal.")
+            raise ApiError(
+                422,
+                "INSPIRATION_DUPLICATE_ASSET_ORDER",
+                "Duplicate asset role and ordinal.",
+            )
         seen.add(key)
         stored = session.get(AssetRecord, asset.asset_id)
-        if stored is None or stored.deleted_at is not None or stored.lifecycle_status != AssetLifecycleStatus.READY.value:
-            raise ApiError(422, "INSPIRATION_ASSET_NOT_FOUND", "One or more image assets are unavailable.")
+        if (
+            stored is None
+            or stored.deleted_at is not None
+            or stored.lifecycle_status != AssetLifecycleStatus.READY.value
+        ):
+            raise ApiError(
+                422,
+                "INSPIRATION_ASSET_NOT_FOUND",
+                "One or more image assets are unavailable.",
+            )
         stored.retention_class = "system_persistent"
         stored.expires_at = None
-        session.add(InspirationCaseAssetRecord(id=new_id("ica"), case_id=item.id, asset_id=asset.asset_id, role=asset.role, ordinal=asset.ordinal, label=asset.label))
+        session.add(
+            InspirationCaseAssetRecord(
+                id=new_id("ica"),
+                case_id=item.id,
+                asset_id=asset.asset_id,
+                role=asset.role,
+                ordinal=asset.ordinal,
+                label=asset.label,
+            )
+        )
 
-@router.get("/inspiration/cases", response_model=InspirationCaseListResponse, tags=["inspiration"])
-def list_cases(request: Request, session: SessionDependency, type: str | None = None, category: str | None = None, platform: str | None = None, query: str | None = None, limit: Annotated[int, Query(ge=1, le=100)] = 50) -> InspirationCaseListResponse:
+
+@router.get(
+    "/inspiration/cases",
+    response_model=InspirationCaseListResponse,
+    tags=["inspiration"],
+)
+def list_cases(
+    request: Request,
+    session: SessionDependency,
+    type: str | None = None,
+    category: str | None = None,
+    platform: str | None = None,
+    query: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> InspirationCaseListResponse:
     filters = [InspirationCaseRecord.status == "published"]
-    if type: filters.append(InspirationCaseRecord.type == type)
-    if category: filters.append(InspirationCaseRecord.category == category)
-    if platform: filters.append(InspirationCaseRecord.platform == platform)
-    if query: filters.append(InspirationCaseRecord.title.ilike(f"%{query}%"))
-    items = session.scalars(select(InspirationCaseRecord).where(*filters).order_by(InspirationCaseRecord.is_pinned.desc(), InspirationCaseRecord.sort_order.asc(), InspirationCaseRecord.published_at.desc().nullslast()).limit(limit)).all()
-    return InspirationCaseListResponse(items=[_response(i, session, request) for i in items])
+    if type:
+        filters.append(InspirationCaseRecord.type == type)
+    if category:
+        filters.append(InspirationCaseRecord.category == category)
+    if platform:
+        filters.append(InspirationCaseRecord.platform == platform)
+    if query:
+        filters.append(InspirationCaseRecord.title.ilike(f"%{query}%"))
+    items = session.scalars(
+        select(InspirationCaseRecord)
+        .where(*filters)
+        .order_by(
+            InspirationCaseRecord.is_pinned.desc(),
+            InspirationCaseRecord.sort_order.asc(),
+            InspirationCaseRecord.published_at.desc().nullslast(),
+        )
+        .limit(limit)
+    ).all()
+    return InspirationCaseListResponse(
+        items=[_response(i, session, request) for i in items]
+    )
 
-@router.get("/inspiration/cases/{case_id}", response_model=InspirationCaseResponse, tags=["inspiration"])
-def get_case(case_id: str, request: Request, session: SessionDependency) -> InspirationCaseResponse:
+
+@router.get(
+    "/inspiration/cases/{case_id}",
+    response_model=InspirationCaseResponse,
+    tags=["inspiration"],
+)
+def get_case(
+    case_id: str, request: Request, session: SessionDependency
+) -> InspirationCaseResponse:
     item = _record(case_id, session)
-    if item.status != "published": raise ApiError(404, "INSPIRATION_CASE_NOT_FOUND", "The inspiration case was not found.")
+    if item.status != "published":
+        raise ApiError(
+            404, "INSPIRATION_CASE_NOT_FOUND", "The inspiration case was not found."
+        )
     return _response(item, session, request)
 
-@router.get("/inspiration/cases/{case_id}/assets/{asset_id}", name="get_inspiration_case_asset", include_in_schema=False)
-async def get_case_asset(case_id: str, asset_id: str, request: Request, session: SessionDependency) -> Response:
-    item = session.scalar(select(InspirationCaseRecord).where(InspirationCaseRecord.id == case_id, InspirationCaseRecord.status == "published"))
-    rel = session.scalar(select(InspirationCaseAssetRecord).where(InspirationCaseAssetRecord.case_id == case_id, InspirationCaseAssetRecord.asset_id == asset_id))
-    asset = session.scalar(select(AssetRecord).where(AssetRecord.id == asset_id, AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value, AssetRecord.deleted_at.is_(None)))
-    if item is None or rel is None or asset is None: raise ApiError(404, "INSPIRATION_ASSET_NOT_FOUND", "The inspiration image was not found.")
-    return Response(await request.app.state.storage.read_bytes(asset.object_key), media_type=asset.content_type, headers={"Cache-Control": "public, max-age=300"})
 
-@router.get("/admin/inspiration/cases/access", response_model=InspirationAdminAccessResponse, tags=["inspiration-admin"])
-def admin_access(request: Request, principal: PrincipalDependency, session: SessionDependency) -> InspirationAdminAccessResponse:
-    return InspirationAdminAccessResponse(can_manage=_is_announcement_admin(principal, session, request.app.state.settings))
+@router.get(
+    "/inspiration/cases/{case_id}/assets/{asset_id}",
+    name="get_inspiration_case_asset",
+    include_in_schema=False,
+)
+async def get_case_asset(
+    case_id: str, asset_id: str, request: Request, session: SessionDependency
+) -> Response:
+    item = session.scalar(
+        select(InspirationCaseRecord).where(
+            InspirationCaseRecord.id == case_id,
+            InspirationCaseRecord.status == "published",
+        )
+    )
+    rel = session.scalar(
+        select(InspirationCaseAssetRecord).where(
+            InspirationCaseAssetRecord.case_id == case_id,
+            InspirationCaseAssetRecord.asset_id == asset_id,
+        )
+    )
+    asset = session.scalar(
+        select(AssetRecord).where(
+            AssetRecord.id == asset_id,
+            AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+            AssetRecord.deleted_at.is_(None),
+        )
+    )
+    if item is None or rel is None or asset is None:
+        raise ApiError(
+            404, "INSPIRATION_ASSET_NOT_FOUND", "The inspiration image was not found."
+        )
+    return Response(
+        await request.app.state.storage.read_bytes(asset.object_key),
+        media_type=asset.content_type,
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
-@router.get("/admin/inspiration/cases", response_model=InspirationCaseListResponse, tags=["inspiration-admin"])
-def admin_list(request: Request, session: SessionDependency, _admin: AdminDependency, status_filter: Literal["all", "draft", "published", "archived"] = Query("all", alias="status")) -> InspirationCaseListResponse:
+
+@router.get(
+    "/admin/inspiration/cases/access",
+    response_model=InspirationAdminAccessResponse,
+    tags=["inspiration-admin"],
+)
+def admin_access(
+    request: Request, principal: PrincipalDependency, session: SessionDependency
+) -> InspirationAdminAccessResponse:
+    return InspirationAdminAccessResponse(
+        can_manage=_is_announcement_admin(
+            principal, session, request.app.state.settings
+        )
+    )
+
+
+@router.get(
+    "/admin/inspiration/cases",
+    response_model=InspirationCaseListResponse,
+    tags=["inspiration-admin"],
+)
+def admin_list(
+    request: Request,
+    session: SessionDependency,
+    _admin: AdminDependency,
+    status_filter: Literal["all", "draft", "published", "archived"] = Query(
+        "all", alias="status"
+    ),
+) -> InspirationCaseListResponse:
     stmt = select(InspirationCaseRecord)
-    if status_filter != "all": stmt = stmt.where(InspirationCaseRecord.status == status_filter)
-    items = session.scalars(stmt.order_by(InspirationCaseRecord.is_pinned.desc(), InspirationCaseRecord.sort_order.asc(), InspirationCaseRecord.updated_at.desc())).all()
-    return InspirationCaseListResponse(items=[_response(i, session, request) for i in items])
+    if status_filter != "all":
+        stmt = stmt.where(InspirationCaseRecord.status == status_filter)
+    items = session.scalars(
+        stmt.order_by(
+            InspirationCaseRecord.is_pinned.desc(),
+            InspirationCaseRecord.sort_order.asc(),
+            InspirationCaseRecord.updated_at.desc(),
+        )
+    ).all()
+    return InspirationCaseListResponse(
+        items=[_response(i, session, request) for i in items]
+    )
 
-@router.post("/admin/inspiration/cases", response_model=InspirationCaseResponse, status_code=201, tags=["inspiration-admin"])
-def create_case(payload: InspirationCaseCreate, request: Request, session: SessionDependency, admin: AdminDependency) -> InspirationCaseResponse:
-    item = InspirationCaseRecord(id=new_id("ins"), **payload.model_dump(exclude={"assets"}), created_by_user_id=admin.user_id, updated_by_user_id=admin.user_id)
-    session.add(item); session.flush(); _save_assets(item, payload, session); session.commit(); session.refresh(item)
+
+@router.post(
+    "/admin/inspiration/cases",
+    response_model=InspirationCaseResponse,
+    status_code=201,
+    tags=["inspiration-admin"],
+)
+def create_case(
+    payload: InspirationCaseCreate,
+    request: Request,
+    session: SessionDependency,
+    admin: AdminDependency,
+) -> InspirationCaseResponse:
+    item = InspirationCaseRecord(
+        id=new_id("ins"),
+        **payload.model_dump(exclude={"assets"}),
+        created_by_user_id=admin.user_id,
+        updated_by_user_id=admin.user_id,
+    )
+    session.add(item)
+    session.flush()
+    _save_assets(item, payload, session)
+    session.commit()
+    session.refresh(item)
     return _response(item, session, request)
 
-@router.patch("/admin/inspiration/cases/{case_id}", response_model=InspirationCaseResponse, tags=["inspiration-admin"])
-def update_case(case_id: str, payload: InspirationCaseUpdate, request: Request, session: SessionDependency, admin: AdminDependency) -> InspirationCaseResponse:
+
+@router.patch(
+    "/admin/inspiration/cases/{case_id}",
+    response_model=InspirationCaseResponse,
+    tags=["inspiration-admin"],
+)
+def update_case(
+    case_id: str,
+    payload: InspirationCaseUpdate,
+    request: Request,
+    session: SessionDependency,
+    admin: AdminDependency,
+) -> InspirationCaseResponse:
     item = _record(case_id, session)
-    for key, value in payload.model_dump(exclude={"assets"}).items(): setattr(item, key, value.strip() if isinstance(value, str) else value)
-    item.updated_by_user_id = admin.user_id; _save_assets(item, payload, session); session.commit(); session.refresh(item)
+    for key, value in payload.model_dump(exclude={"assets"}).items():
+        setattr(item, key, value.strip() if isinstance(value, str) else value)
+    item.updated_by_user_id = admin.user_id
+    _save_assets(item, payload, session)
+    session.commit()
+    session.refresh(item)
     return _response(item, session, request)
 
-@router.post("/admin/inspiration/cases/{case_id}/publish", response_model=InspirationCaseResponse, tags=["inspiration-admin"])
-def publish_case(case_id: str, request: Request, session: SessionDependency, admin: AdminDependency) -> InspirationCaseResponse:
-    item = _record(case_id, session); item.status = "published"; item.published_at = datetime.now(UTC); item.archived_at = None; item.updated_by_user_id = admin.user_id; session.commit(); session.refresh(item); return _response(item, session, request)
 
-@router.post("/admin/inspiration/cases/{case_id}/archive", response_model=InspirationCaseResponse, tags=["inspiration-admin"])
-def archive_case(case_id: str, request: Request, session: SessionDependency, admin: AdminDependency) -> InspirationCaseResponse:
-    item = _record(case_id, session); item.status = "archived"; item.archived_at = datetime.now(UTC); item.is_pinned = False; item.updated_by_user_id = admin.user_id; session.commit(); session.refresh(item); return _response(item, session, request)
+@router.post(
+    "/admin/inspiration/cases/{case_id}/publish",
+    response_model=InspirationCaseResponse,
+    tags=["inspiration-admin"],
+)
+def publish_case(
+    case_id: str, request: Request, session: SessionDependency, admin: AdminDependency
+) -> InspirationCaseResponse:
+    item = _record(case_id, session)
+    item.status = "published"
+    item.published_at = datetime.now(UTC)
+    item.archived_at = None
+    item.updated_by_user_id = admin.user_id
+    session.commit()
+    session.refresh(item)
+    return _response(item, session, request)
+
+
+@router.post(
+    "/admin/inspiration/cases/{case_id}/archive",
+    response_model=InspirationCaseResponse,
+    tags=["inspiration-admin"],
+)
+def archive_case(
+    case_id: str, request: Request, session: SessionDependency, admin: AdminDependency
+) -> InspirationCaseResponse:
+    item = _record(case_id, session)
+    item.status = "archived"
+    item.archived_at = datetime.now(UTC)
+    item.is_pinned = False
+    item.updated_by_user_id = admin.user_id
+    session.commit()
+    session.refresh(item)
+    return _response(item, session, request)

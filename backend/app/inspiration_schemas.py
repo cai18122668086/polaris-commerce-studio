@@ -6,11 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field
 InspirationStatus = Literal["draft", "published", "archived"]
 InspirationAssetRole = Literal["result", "user_upload", "reference"]
 
+
 class InspirationAssetInput(BaseModel):
     asset_id: str = Field(min_length=1, max_length=40)
     role: InspirationAssetRole
     ordinal: int = Field(default=0, ge=0)
     label: str | None = Field(default=None, max_length=40)
+
 
 class InspirationCaseCreate(BaseModel):
     slug: str | None = Field(default=None, max_length=120)
@@ -27,8 +29,10 @@ class InspirationCaseCreate(BaseModel):
     is_pinned: bool = False
     assets: list[InspirationAssetInput] = Field(default_factory=list)
 
+
 class InspirationCaseUpdate(InspirationCaseCreate):
     pass
+
 
 class InspirationAssetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -37,6 +41,7 @@ class InspirationAssetResponse(BaseModel):
     ordinal: int
     label: str | None
     url: str
+
 
 class InspirationCaseResponse(BaseModel):
     id: str
@@ -59,8 +64,10 @@ class InspirationCaseResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
 class InspirationCaseListResponse(BaseModel):
     items: list[InspirationCaseResponse]
+
 
 class InspirationAdminAccessResponse(BaseModel):
     can_manage: bool

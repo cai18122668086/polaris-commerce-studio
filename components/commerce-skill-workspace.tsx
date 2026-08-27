@@ -400,7 +400,7 @@ export function CommerceSkillWorkspace({
 }: {
   featureId: WorkspaceFeatureId;
 }) {
-  const feature = getFeatureById(featureId);
+  const feature = getFeatureById(featureId)!;
   const roleDefinitions = useMemo(() => rolesFor(featureId), [featureId]);
   const { workspace, isPending: workspacePending, error: workspaceError } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
@@ -453,7 +453,11 @@ export function CommerceSkillWorkspace({
         const rawCompose = window.localStorage.getItem("polaris-inspiration-compose");
         if (rawCompose) {
           const compose = JSON.parse(rawCompose) as { instruction?: string };
-          if (compose.instruction) setInstruction((current) => current || compose.instruction!);
+          if (compose.instruction) {
+            // Hydrate the one-time handoff payload into the existing composer.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setInstruction((current) => current || compose.instruction!);
+          }
           window.localStorage.removeItem("polaris-inspiration-compose");
         }
         return;
@@ -580,9 +584,6 @@ export function CommerceSkillWorkspace({
     }
     return `${job.data.succeeded_item_count} / ${job.data.expected_item_count} 项完成`;
   }, [expectedCount, isAmazonReviewInfrastructureFailure, job.data, resultAssets.length]);
-
-  if (!feature) return null;
-
 
   const replaceRoleSelection = (role: RoleKey, ids: string[]) => {
     const requested = [...new Set(ids)].slice(0, AMAZON_SOURCE_ASSET_LIMIT);
@@ -748,8 +749,14 @@ export function CommerceSkillWorkspace({
 
   useEffect(() => {
     if (!autoStart || !canSubmit || jobId) return;
+    // Auto-submit is an intentional one-shot side effect after handoff state
+    // has hydrated; keep the existing workflow ordering intact.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAutoStart(false);
     void submit();
+    // submit is stable for this render and intentionally excluded to avoid a
+    // second auto-submit when unrelated form state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart, canSubmit, jobId]);
 
   const resetTask = () => {

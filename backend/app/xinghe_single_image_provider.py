@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+
 """Fail-closed Xinghe delegate for one durable single-image JobItem.
 
 Only the canonical new_skill_adapter envelope may influence the prompt. Skill
@@ -6,6 +8,8 @@ Model pose transfer supplies both authorized images in one fixed-order edit requ
 Provider payloads, prompts, credentials, and source bytes are never returned as
 diagnostics.
 """
+
+# Prompt text is intentionally preserved verbatim for the provider contract.
 
 from __future__ import annotations
 

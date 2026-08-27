@@ -121,8 +121,13 @@ class CreativeImageProvider(NewImageSkillProvider):
                 if not inspiration_mode
                 else optional_string(settings, "negative_constraints"),
                 "planning_mode": (
-                    "reference" if settings.get("inspiration_reference_planning") is True
-                    else ("creative" if settings.get("inspiration_planning") is True else "")
+                    "reference"
+                    if settings.get("inspiration_reference_planning") is True
+                    else (
+                        "creative"
+                        if settings.get("inspiration_planning") is True
+                        else ""
+                    )
                 ),
             }
         )

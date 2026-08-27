@@ -2391,7 +2391,11 @@ def _reserve_real_provider_job_if_enabled(
         # model. Reserve both calls before dispatching the job.
         estimated_cost = image_cost + settings.tengli_planner_reserve_micros
         provider_requests = (
-            (runnable_item_count if runnable_item_count is not None else job.expected_item_count)
+            (
+                runnable_item_count
+                if runnable_item_count is not None
+                else job.expected_item_count
+            )
             + 1
         )
         group_count = 1

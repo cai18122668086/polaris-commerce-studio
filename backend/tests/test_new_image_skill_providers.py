@@ -593,6 +593,37 @@ def test_inspiration_creative_brief_is_first_class_user_instruction() -> None:
     assert "negative_constraints" not in adapter["prompt_input"]
 
 
+def test_inspiration_creative_allows_dynamic_reference_canvas() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+    request = _request(
+        "creative_image",
+        input_config={
+            "product_asset_ids": ["asset-product"],
+            "competitor_asset_ids": ["asset-reference"],
+        },
+        settings={
+            "image_count": 1,
+            "aspect_ratio": "follow-reference",
+            "inspiration_planning": True,
+            "inspiration_reference_planning": True,
+            "instruction": "Preserve the reference canvas.",
+        },
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert _adapter_request(delegate)["target"] == {
+        "aspect_ratio": "follow-reference",
+        "width": None,
+        "height": None,
+        "quality": "high",
+        "output_format": "png",
+        "fit": "contain",
+    }
+
+
 @pytest.mark.parametrize(
     ("provider_class", "operation", "input_config", "extra_settings"),
     [

@@ -1145,33 +1145,41 @@ class XingheSingleImageProvider:
         envelope: SingleImageEnvelope,
         sources: tuple[SourceImage, ...],
     ) -> SingleImageEnvelope:
-        dynamic_role = {
-            "follow-reference": "style_reference",
-            "follow-source": "model_source",
+        dynamic_roles = {
+            # Reference-remix uses style_reference. Inspiration freeform uses
+            # competitor_reference when present, and product_reference as a
+            # deterministic fallback when the user has not separated roles.
+            "follow-reference": (
+                "style_reference",
+                "competitor_reference",
+                "product_reference",
+            ),
+            "follow-source": ("model_source",),
         }.get(envelope.target.aspect_ratio)
-        if dynamic_role is None:
+        if dynamic_roles is None:
             return envelope
-        for spec, source in zip(envelope.source_assets, sources, strict=True):
-            if spec.role != dynamic_role:
-                continue
-            width, height, _ = _inspect_image(source.payload)
-            _validate_target_dimensions(width, height)
-            divisor = math.gcd(width, height)
-            return replace(
-                envelope,
-                target=TargetSpec(
-                    width=width,
-                    height=height,
-                    aspect_ratio=f"{width // divisor}:{height // divisor}",
-                    quality=envelope.target.quality,
-                    output_format=envelope.target.output_format,
-                    fit="contain",
-                ),
-            )
+        for role in dynamic_roles:
+            for spec, source in zip(envelope.source_assets, sources, strict=True):
+                if spec.role != role:
+                    continue
+                width, height, _ = _inspect_image(source.payload)
+                _validate_target_dimensions(width, height)
+                divisor = math.gcd(width, height)
+                return replace(
+                    envelope,
+                    target=TargetSpec(
+                        width=width,
+                        height=height,
+                        aspect_ratio=f"{width // divisor}:{height // divisor}",
+                        quality=envelope.target.quality,
+                        output_format=envelope.target.output_format,
+                        fit="contain",
+                    ),
+                )
         if envelope.target.aspect_ratio == "follow-reference":
             raise SingleImageProviderError(
                 "FOLLOW_REFERENCE_SOURCE_REQUIRED",
-                "A follow-reference target requires a readable style reference.",
+                "A follow-reference target requires a readable reference or source image.",
             )
         raise SingleImageProviderError(
             "FOLLOW_SOURCE_REQUIRED",

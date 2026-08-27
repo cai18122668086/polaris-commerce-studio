@@ -76,6 +76,13 @@ test("creative and reference workspaces preserve the full count and aspect-ratio
   );
 });
 
+test("inspiration automatic ratio remains dynamic instead of silently becoming square", async () => {
+  const inspiration = await utf8("components/inspiration-gallery-db-v2.tsx");
+  assert.match(inspiration, /if \(value === "自动"\) return "follow-reference"/);
+  assert.match(inspiration, /aspect_ratio: inspirationAspectToApi\(aspectRatio\)/g);
+  assert.doesNotMatch(inspiration, /if \(value === "自动" \|\| value === "1:1"\) return "1:1"/);
+});
+
 test("commerce workspaces do not require a guessed product name", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
   assert.match(workspace, /product_name: productName\.trim\(\)/);

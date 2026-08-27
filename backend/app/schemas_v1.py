@@ -327,11 +327,21 @@ class CreativeImageConfiguration(BaseModel):
     platform_code: str = Field(default="tmall", min_length=1, max_length=32)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
-    aspect_ratio: Literal["1:1", "3:4", "4:3", "4:5", "9:16", "16:9"] = "1:1"
+    aspect_ratio: Literal[
+        "follow-reference", "1:1", "3:4", "4:3", "4:5", "9:16", "16:9"
+    ] = "1:1"
     image_count: int = Field(default=1, ge=1, le=12)
     inspiration_planning: bool = False
     inspiration_reference_planning: bool = False
     instruction: str = Field(default="", max_length=4000)
+
+    @model_validator(mode="after")
+    def dynamic_aspect_requires_inspiration(self) -> "CreativeImageConfiguration":
+        if self.aspect_ratio == "follow-reference" and not self.inspiration_planning:
+            raise ValueError(
+                "follow-reference aspect_ratio is reserved for the Inspiration tab"
+            )
+        return self
 
 
 class DetailPackInput(BaseModel):

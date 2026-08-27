@@ -133,7 +133,7 @@ def test_health_identity_and_empty_collections(client: TestClient) -> None:
     assert ready.json()["checks"]["database"] == "ok"
     assert me.json() == {
         "id": "usr_test",
-        "email": None,
+        "email": "admin@example.com",
         "display_name": "Development User",
         "status": "active",
         "email_verified": True,

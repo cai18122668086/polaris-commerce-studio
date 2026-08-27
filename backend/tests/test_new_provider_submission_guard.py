@@ -101,15 +101,20 @@ def test_enabled_single_image_provider_reserves_expected_provider_requests(
     reservation = quota_calls[0]
     assert reservation["job"] is job
     amazon_suite = job_type == JobType.AMAZON_VISUAL_SUITE.value
+    reference_remix = job_type == JobType.REFERENCE_REMIX.value
     expected_cost = (
         360_000 * 2 + settings.tengli_planner_reserve_micros * 3
         if amazon_suite
+        else 360_000 + settings.tengli_planner_reserve_micros
+        if reference_remix
         else 360_000
     )
     assert reservation["estimated_cost_micros"] == expected_cost
-    assert reservation["provider_request_count"] == (45 if amazon_suite else 4)
+    assert reservation["provider_request_count"] == (
+        45 if amazon_suite else 5 if reference_remix else 4
+    )
     assert reservation["image_budget_micros"] == 360_000
-    assert reservation["group_count"] == int(amazon_suite)
+    assert reservation["group_count"] == int(amazon_suite or reference_remix)
 
 
 @pytest.mark.parametrize(

@@ -182,12 +182,13 @@ class ReferenceVisualReverseRemixProvider(ReferenceRemixProvider):
         return values
 
 
-class ReferenceRemixRouterProvider:
+class ReferenceRemixRouterProvider(ReferenceRemixProvider):
     """Keep legacy workspace jobs intact while routing inspiration jobs explicitly."""
 
     def __init__(self, legacy: Provider, exact: Provider) -> None:
         self.legacy = legacy
         self.exact = exact
+        self.delegate = getattr(legacy, "delegate", legacy)
         self.name = legacy.name
         self.model = legacy.model
         self.pricing_version = legacy.pricing_version

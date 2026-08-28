@@ -989,6 +989,18 @@ class InspirationCaseRecord(TimestampMixin, Base):
             "status IN ('draft', 'published', 'archived')",
             name="ck_inspiration_cases_status",
         ),
+        CheckConstraint(
+            "workflow_type IN ('reference_remix', 'product_prompt', 'local_edit', 'legacy_unclassified')",
+            name="ck_inspiration_cases_workflow_type",
+        ),
+        CheckConstraint(
+            "reference_source IN ('admin_reference', 'result_image', 'none')",
+            name="ck_inspiration_cases_reference_source",
+        ),
+        CheckConstraint(
+            "configuration_status IN ('draft', 'ready', 'incomplete', 'archived')",
+            name="ck_inspiration_cases_configuration_status",
+        ),
         Index(
             "ix_inspiration_cases_public_order",
             "status",
@@ -1009,6 +1021,18 @@ class InspirationCaseRecord(TimestampMixin, Base):
     ratio: Mapped[str] = mapped_column(String(24), nullable=False)
     intent: Mapped[str] = mapped_column(String(300), nullable=False)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_type: Mapped[str] = mapped_column(
+        String(24), default="legacy_unclassified", nullable=False
+    )
+    reference_source: Mapped[str] = mapped_column(
+        String(20), default="none", nullable=False
+    )
+    configuration_status: Mapped[str] = mapped_column(
+        String(16), default="incomplete", nullable=False
+    )
+    button_label: Mapped[str] = mapped_column(
+        String(80), default="一键做同款", nullable=False
+    )
     status: Mapped[str] = mapped_column(String(16), default="draft", nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

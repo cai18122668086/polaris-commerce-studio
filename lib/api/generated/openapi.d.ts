@@ -714,6 +714,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["AmazonVisualSuiteInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit
@@ -996,6 +998,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["CreativeImageInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit
@@ -1068,6 +1072,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["DetailPackInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit
@@ -1154,6 +1160,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["DomesticMainImageInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit
@@ -1254,6 +1262,11 @@ export interface components {
             /** Assets */
             assets?: components["schemas"]["InspirationAssetInput"][];
             /**
+             * Button Label
+             * @default 一键做同款
+             */
+            button_label: string;
+            /**
              * Category
              * @default 其他
              */
@@ -1286,6 +1299,12 @@ export interface components {
              */
             ratio: string;
             /**
+             * Reference Source
+             * @default none
+             * @enum {string}
+             */
+            reference_source: "admin_reference" | "result_image" | "none";
+            /**
              * Role
              * @default
              */
@@ -1304,6 +1323,12 @@ export interface components {
              * @default 万能改图
              */
             type: string;
+            /**
+             * Workflow Type
+             * @default legacy_unclassified
+             * @enum {string}
+             */
+            workflow_type: "reference_remix" | "product_prompt" | "local_edit" | "legacy_unclassified";
         };
         /** InspirationCaseListResponse */
         InspirationCaseListResponse: {
@@ -1312,8 +1337,17 @@ export interface components {
         };
         /** InspirationCaseResponse */
         InspirationCaseResponse: {
+            /** Button Label */
+            button_label: string;
             /** Category */
             category: string;
+            /** Configuration Errors */
+            configuration_errors: string[];
+            /**
+             * Configuration Status
+             * @enum {string}
+             */
+            configuration_status: "draft" | "ready" | "incomplete" | "archived";
             cover_image: components["schemas"]["InspirationAssetResponse"] | null;
             /**
              * Created At
@@ -1338,6 +1372,11 @@ export interface components {
             published_at: string | null;
             /** Ratio */
             ratio: string;
+            /**
+             * Reference Source
+             * @enum {string}
+             */
+            reference_source: "admin_reference" | "result_image" | "none";
             /** Role */
             role: string;
             /** Slug */
@@ -1358,11 +1397,21 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Workflow Type
+             * @enum {string}
+             */
+            workflow_type: "reference_remix" | "product_prompt" | "local_edit" | "legacy_unclassified";
         };
         /** InspirationCaseUpdate */
         InspirationCaseUpdate: {
             /** Assets */
             assets?: components["schemas"]["InspirationAssetInput"][];
+            /**
+             * Button Label
+             * @default 一键做同款
+             */
+            button_label: string;
             /**
              * Category
              * @default 其他
@@ -1396,6 +1445,12 @@ export interface components {
              */
             ratio: string;
             /**
+             * Reference Source
+             * @default none
+             * @enum {string}
+             */
+            reference_source: "admin_reference" | "result_image" | "none";
+            /**
              * Role
              * @default
              */
@@ -1414,6 +1469,12 @@ export interface components {
              * @default 万能改图
              */
             type: string;
+            /**
+             * Workflow Type
+             * @default legacy_unclassified
+             * @enum {string}
+             */
+            workflow_type: "reference_remix" | "product_prompt" | "local_edit" | "legacy_unclassified";
         };
         /** JobAssetResponse */
         JobAssetResponse: {
@@ -1651,6 +1712,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["LocalEditInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit
@@ -1724,6 +1787,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["ModelPoseTransferInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit
@@ -1831,6 +1896,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["ProductImageInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit
@@ -1947,6 +2014,8 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
             input: components["schemas"]["ReferenceRemixInput"];
+            /** Inspiration Case Id */
+            inspiration_case_id?: string | null;
             /**
              * Intent
              * @default submit

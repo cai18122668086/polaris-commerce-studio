@@ -67,6 +67,8 @@ from .models import (
     JobItemRecord,
     JobPlanRecord,
     JobRecord,
+    InspirationCaseAssetRecord,
+    InspirationCaseRecord,
     WorkspaceMemberRecord,
     WorkspaceRecord,
     utc_now,
@@ -1139,6 +1141,85 @@ async def get_signed_asset_content(
     )
 
 
+_INSPIRATION_WORKFLOW_JOB_TYPES = {
+    "reference_remix": JobType.REFERENCE_REMIX.value,
+    "product_prompt": JobType.CREATIVE_IMAGE.value,
+    "local_edit": JobType.LOCAL_EDIT.value,
+}
+
+
+def _validate_inspiration_case_job(
+    session: Session,
+    payload: JobCreate,
+) -> InspirationCaseRecord | None:
+    case_id = payload.inspiration_case_id
+    if not case_id:
+        return None
+    case = session.scalar(
+        select(InspirationCaseRecord).where(InspirationCaseRecord.id == case_id)
+    )
+    if case is None or case.status != "published":
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "INSPIRATION_CASE_NOT_FOUND",
+            "The inspiration case is not available.",
+        )
+    if case.configuration_status != "ready":
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INSPIRATION_CASE_NOT_READY",
+            "This inspiration case is still being configured.",
+            {"configuration_status": case.configuration_status},
+        )
+    expected_type = _INSPIRATION_WORKFLOW_JOB_TYPES.get(case.workflow_type)
+    if expected_type is None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INSPIRATION_CASE_WORKFLOW_UNSUPPORTED",
+            "This inspiration case has no executable workflow.",
+        )
+    if payload.type != expected_type:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INSPIRATION_WORKFLOW_MISMATCH",
+            "The submitted job type does not match the inspiration case workflow.",
+            {"expected_job_type": expected_type, "workflow_type": case.workflow_type},
+        )
+    if case.workflow_type == "product_prompt":
+        if not isinstance(payload, CreativeImageJobCreate):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INSPIRATION_PRODUCT_PROMPT_INVALID",
+                "A product-prompt inspiration case requires a creative image job.",
+            )
+        if payload.input.competitor_asset_ids:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INSPIRATION_REFERENCE_NOT_ALLOWED",
+                "This product-prompt case does not accept a reference image.",
+            )
+        if not payload.configuration.instruction.strip():
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INSPIRATION_PROMPT_REQUIRED",
+                "The inspiration prompt is required.",
+            )
+    elif case.workflow_type == "reference_remix":
+        if not isinstance(payload, ReferenceRemixJobCreate) or not payload.input.reference_asset_ids:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INSPIRATION_REFERENCE_REQUIRED",
+                "This inspiration case requires a reference image.",
+            )
+    elif case.workflow_type == "local_edit" and not isinstance(payload, LocalEditJobCreate):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INSPIRATION_LOCAL_EDIT_INVALID",
+            "This inspiration case requires a local-edit job with a source image and mask.",
+        )
+    return case
+
+
 @router.post(
     "/workspaces/{workspace_id}/jobs",
     response_model=JobDetailResponse,
@@ -1154,6 +1235,7 @@ def create_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
+    inspiration_case = _validate_inspiration_case_job(session, payload)
     payload_data = payload.model_dump(mode="json")
     request_hash = canonical_hash(payload_data)
     idem, replay = claim_idempotency(
@@ -1183,6 +1265,11 @@ def create_job(
         ),
         detail_high_price_micros=(request.app.state.settings.xinghe_high_price_micros),
     )
+    if inspiration_case is not None:
+        job.configuration["inspiration_case_id"] = inspiration_case.id
+        job.configuration["inspiration_workflow"] = inspiration_case.workflow_type
+        job.configuration["inspiration_prompt"] = inspiration_case.prompt
+        job.configuration["inspiration_reference_source"] = inspiration_case.reference_source
     asset_ids = [item[0] for item in asset_roles]
     assets = get_ready_assets(session, workspace.workspace_id, asset_ids)
     if isinstance(payload, LocalEditJobCreate):

@@ -455,6 +455,10 @@ class DomesticMainImageConfiguration(BaseModel):
 class JobCreateBase(BaseModel):
     intent: Literal["draft", "submit"] = "submit"
     display_name: str | None = Field(default=None, max_length=160)
+    # Optional provenance for the inspiration gallery. When present, the
+    # backend resolves the authoritative workflow from the published case and
+    # rejects mismatched or unconfigured job payloads.
+    inspiration_case_id: str | None = Field(default=None, max_length=40)
 
 
 class LocalEditJobCreate(JobCreateBase):

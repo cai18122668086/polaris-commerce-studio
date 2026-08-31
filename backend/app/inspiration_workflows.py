@@ -4,7 +4,8 @@ This module is deliberately data-only.  The browser must pass these prompts
 through unchanged; provider/skill behavior belongs to the provider and skill
 modules, not to the gallery component.
 """
-
+# Canonical prompt and asset digest lines intentionally preserve exact source strings.
+# ruff: noqa: E501
 PRODUCT_PROMPT_CASE_TITLES = (
     "生成AI模特",
     "衣服上身（无中生有）",
@@ -43,7 +44,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "9:16",
         "description": "粉色香水、紫色绒面与珍珠烛光，适合移动端首屏。",
-        "intent": "通过材质与氛围传达浪漫、精致和礼赠感"
+        "intent": "通过材质与氛围传达浪漫、精致和礼赠感",
     },
     "人物与超大产品的接触关系": {
         "role": "人物主视觉",
@@ -52,7 +53,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "跨境",
         "ratio": "4:5",
         "description": "浅蓝棚拍、白衣人物、放大产品和地面倒影形成清晰扫描路径。",
-        "intent": "用人物使用场景与超大产品证明强化高端生活方式联想"
+        "intent": "用人物使用场景与超大产品证明强化高端生活方式联想",
     },
     "冷蓝水感 · 清爽洁护": {
         "role": "洗护清爽卖点图",
@@ -61,7 +62,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "2:3",
         "description": "湿发人物、水花动势与右下产品，适合洗护详情页首屏。",
-        "intent": "用水滴、冷光和湿发场景表达清爽洁护"
+        "intent": "用水滴、冷光和湿发场景表达清爽洁护",
     },
     "场景复刻+指定模特": {
         "role": "场景复刻",
@@ -70,7 +71,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "1:1",
         "description": "用户服装、模特与场景参考组合，生成户外上身画面。",
-        "intent": "验证服装在真实户外场景中的上身效果"
+        "intent": "验证服装在真实户外场景中的上身效果",
     },
     "衣服上身（无中生有）": {
         "role": "服装上身",
@@ -79,7 +80,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "3:4",
         "description": "从服装产品图生成童装商业摄影上身图。",
-        "intent": "展示童装穿着状态与户外使用联想"
+        "intent": "展示童装穿着状态与户外使用联想",
     },
     "改语言语种": {
         "role": "文字改版",
@@ -88,7 +89,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "自动",
         "description": "保留原始画面结构，只将中文信息改为英文。",
-        "intent": "为跨境平台快速准备英文版本"
+        "intent": "为跨境平台快速准备英文版本",
     },
     "场景图（服装）": {
         "role": "人物场景图",
@@ -97,7 +98,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "跨境",
         "ratio": "9:16",
         "description": "两套服装参考合成自然室内生活方式画面。",
-        "intent": "展示服装穿搭关系与室内生活方式氛围"
+        "intent": "展示服装穿搭关系与室内生活方式氛围",
     },
     "模特换衣（让它看细节版）": {
         "role": "睡衣换装",
@@ -106,7 +107,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "3:4",
         "description": "将同一套睡衣的细节参考迁移到模特图。",
-        "intent": "用细节参考提高换装后的服装还原度"
+        "intent": "用细节参考提高换装后的服装还原度",
     },
     "卖点图（多姿势展示）": {
         "role": "多姿势卖点图",
@@ -115,7 +116,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "跨境",
         "ratio": "自动",
         "description": "围绕袖口、版型、正面、背面和弹力设计组织动作。",
-        "intent": "把服装卖点拆成可执行的连续动作"
+        "intent": "把服装卖点拆成可执行的连续动作",
     },
     "场景图（玩偶）": {
         "role": "儿童家居场景",
@@ -124,7 +125,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "1:1",
         "description": "女孩与猫咪玩偶在卧室床铺上的温暖陪伴场景。",
-        "intent": "传递陪伴入眠与安全柔软的情感价值"
+        "intent": "传递陪伴入眠与安全柔软的情感价值",
     },
     "衣服上身（模特无中生有）": {
         "role": "童装上身",
@@ -133,7 +134,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "自动",
         "description": "从童装卫裤生成局部腰部至脚部的商业上身图。",
-        "intent": "突出童装面料与版型细节"
+        "intent": "突出童装面料与版型细节",
     },
     "改造型": {
         "role": "商品局部改图",
@@ -142,7 +143,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "自动",
         "description": "只调整帽子形态，衣服图案、版型与颜色保持不变。",
-        "intent": "在不破坏商品身份的前提下完成局部造型调整"
+        "intent": "在不破坏商品身份的前提下完成局部造型调整",
     },
     "详情页风格模仿": {
         "role": "详情页套图",
@@ -151,7 +152,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "3:4",
         "description": "将产品图放入参考详情页的使用图与细节图结构。",
-        "intent": "用详情页结构回答产品使用与细节问题"
+        "intent": "用详情页结构回答产品使用与细节问题",
     },
     "我发现你们好爱抄": {
         "role": "原创电商海报",
@@ -160,7 +161,7 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "3:4",
         "description": "参考构图与风格关系，重新原创生成电动工具海报。",
-        "intent": "在保留产品身份的同时获得更强的电商视觉表达"
+        "intent": "在保留产品身份的同时获得更强的电商视觉表达",
     },
     "去掉文字": {
         "role": "文字清理",
@@ -169,8 +170,8 @@ CANONICAL_METADATA_BY_TITLE = {
         "platform": "国内",
         "ratio": "自动",
         "description": "移除源头工厂一件代发等画面文字，保持产品与背景。",
-        "intent": "清理供应链文字以获得可直接使用的商品素材"
-    }
+        "intent": "清理供应链文字以获得可直接使用的商品素材",
+    },
 }
 
 # These prompts are the case-specific visual direction.  They are stored as
@@ -273,21 +274,74 @@ Write only original copy or visible user-product facts.
 # assets can share filenames.  The migration only links assets that already
 # exist; the operator import script supplies any missing admin references.
 CANONICAL_ASSETS_BY_TITLE = {
-    "暖金梳妆台 · 花香时刻": (("case-perfume-product.png", "user_upload", 0), ("case-perfume-vanity-reference.jpg", "reference", 0), ("perfume-vanity.png", "result", 0)),
-    "人物与超大产品的接触关系": (("case-perfume-product.png", "user_upload", 0), ("case-perfume-blue-reference.jpg", "reference", 0), ("perfume-blue-studio.png", "result", 0)),
-    "冷蓝水感 · 清爽洁护": (("case-clear-product.png", "user_upload", 0), ("case-clear-reference.jpg", "reference", 0), ("clear-blue-fresh.png", "result", 0)),
-    "场景复刻+指定模特": (("focus-00-input-1.jpg", "user_upload", 0), ("focus-00-input-2.png", "reference", 0), ("focus-00-input-3.png", "reference", 1), ("focus-00-result.png", "result", 0)),
-    "衣服上身（无中生有）": (("focus-01-input.png", "user_upload", 0), ("focus-01-result.png", "result", 0)),
-    "改语言语种": (("focus-02-input.jpg", "user_upload", 0), ("focus-02-result.png", "result", 0)),
-    "场景图（服装）": (("focus-03-input-1.png", "user_upload", 0), ("focus-03-input-2.png", "reference", 0), ("focus-03-result.jpg", "result", 0)),
-    "模特换衣（让它看细节版）": (("focus-04-input-1.png", "user_upload", 0), ("focus-04-input-2.png", "reference", 0), ("focus-04-input-3.png", "reference", 1), ("focus-04-input-4.jpg", "reference", 2), ("focus-04-result.jpg", "result", 0)),
+    "暖金梳妆台 · 花香时刻": (
+        ("case-perfume-product.png", "user_upload", 0),
+        ("case-perfume-vanity-reference.jpg", "reference", 0),
+        ("perfume-vanity.png", "result", 0),
+    ),
+    "人物与超大产品的接触关系": (
+        ("case-perfume-product.png", "user_upload", 0),
+        ("case-perfume-blue-reference.jpg", "reference", 0),
+        ("perfume-blue-studio.png", "result", 0),
+    ),
+    "冷蓝水感 · 清爽洁护": (
+        ("case-clear-product.png", "user_upload", 0),
+        ("case-clear-reference.jpg", "reference", 0),
+        ("clear-blue-fresh.png", "result", 0),
+    ),
+    "场景复刻+指定模特": (
+        ("focus-00-input-1.jpg", "user_upload", 0),
+        ("focus-00-input-2.png", "reference", 0),
+        ("focus-00-input-3.png", "reference", 1),
+        ("focus-00-result.png", "result", 0),
+    ),
+    "衣服上身（无中生有）": (
+        ("focus-01-input.png", "user_upload", 0),
+        ("focus-01-result.png", "result", 0),
+    ),
+    "改语言语种": (
+        ("focus-02-input.jpg", "user_upload", 0),
+        ("focus-02-result.png", "result", 0),
+    ),
+    "场景图（服装）": (
+        ("focus-03-input-1.png", "user_upload", 0),
+        ("focus-03-input-2.png", "reference", 0),
+        ("focus-03-result.jpg", "result", 0),
+    ),
+    "模特换衣（让它看细节版）": (
+        ("focus-04-input-1.png", "user_upload", 0),
+        ("focus-04-input-2.png", "reference", 0),
+        ("focus-04-input-3.png", "reference", 1),
+        ("focus-04-input-4.jpg", "reference", 2),
+        ("focus-04-result.jpg", "result", 0),
+    ),
     "卖点图（多姿势展示）": (("focus-05-result.jpg", "result", 0),),
-    "场景图（玩偶）": (("focus-06-input-1.png", "user_upload", 0), ("focus-06-result.png", "result", 0)),
-    "衣服上身（模特无中生有）": (("focus-07-input.jpg", "user_upload", 0), ("focus-07-result.jpg", "result", 0)),
-    "改造型": (("focus-08-input.jpg", "user_upload", 0), ("focus-08-result.jpg", "result", 0)),
-    "详情页风格模仿": (("focus-09-input-1.jpg", "user_upload", 0), ("focus-09-input-2.jpg", "reference", 0), ("focus-09-result.png", "result", 0)),
-    "我发现你们好爱抄": (("focus-10-input-1.jpg", "user_upload", 0), ("focus-10-input-2.jpg", "reference", 0), ("focus-10-result.png", "result", 0)),
-    "去掉文字": (("focus-11-input.jpg", "user_upload", 0), ("focus-11-result.png", "result", 0)),
+    "场景图（玩偶）": (
+        ("focus-06-input-1.png", "user_upload", 0),
+        ("focus-06-result.png", "result", 0),
+    ),
+    "衣服上身（模特无中生有）": (
+        ("focus-07-input.jpg", "user_upload", 0),
+        ("focus-07-result.jpg", "result", 0),
+    ),
+    "改造型": (
+        ("focus-08-input.jpg", "user_upload", 0),
+        ("focus-08-result.jpg", "result", 0),
+    ),
+    "详情页风格模仿": (
+        ("focus-09-input-1.jpg", "user_upload", 0),
+        ("focus-09-input-2.jpg", "reference", 0),
+        ("focus-09-result.png", "result", 0),
+    ),
+    "我发现你们好爱抄": (
+        ("focus-10-input-1.jpg", "user_upload", 0),
+        ("focus-10-input-2.jpg", "reference", 0),
+        ("focus-10-result.png", "result", 0),
+    ),
+    "去掉文字": (
+        ("focus-11-input.jpg", "user_upload", 0),
+        ("focus-11-result.png", "result", 0),
+    ),
 }
 
 CANONICAL_SHA_BY_FILENAME = {
@@ -339,4 +393,6 @@ CASES_REQUIRING_ASSET_REVIEW = ("生成AI模特",)
 
 assert len(FINAL_INSPIRATION_WORKFLOW_BY_TITLE) == 16
 assert set(CANONICAL_PROMPT_BY_TITLE) == set(FINAL_INSPIRATION_WORKFLOW_BY_TITLE)
-assert set(CANONICAL_ASSETS_BY_TITLE) | set(CASES_REQUIRING_ASSET_REVIEW) == set(FINAL_INSPIRATION_WORKFLOW_BY_TITLE)
+assert set(CANONICAL_ASSETS_BY_TITLE) | set(CASES_REQUIRING_ASSET_REVIEW) == set(
+    FINAL_INSPIRATION_WORKFLOW_BY_TITLE
+)

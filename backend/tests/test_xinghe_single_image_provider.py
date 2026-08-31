@@ -961,8 +961,7 @@ def test_reference_visual_reverse_remix_runs_analysis_before_image_edit(
     ]
     assert "VERIFIED SKILL PROTOCOL" in analysis_request.system_prompt
     assert any(
-        "original" in value.lower()
-        for value in analysis_request.product_information
+        "original" in value.lower() for value in analysis_request.product_information
     )
     prompt = harness.gateway.requests[0].prompt
     assert not prompt.lstrip().startswith("{")
@@ -1011,7 +1010,9 @@ def test_inspiration_planned_remix_can_put_product_before_style_reference(
 
     assert result.outcome == ProviderOutcome.SUCCEEDED
     assert harness.gateway.plan_calls == 1
-    assert [source.source_role for source in harness.gateway.plan_requests[0].sources] == [
+    assert [
+        source.source_role for source in harness.gateway.plan_requests[0].sources
+    ] == [
         "product_reference",
         "style_reference",
     ]

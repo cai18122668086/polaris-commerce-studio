@@ -809,8 +809,14 @@ def test_reference_planner_prompt_follows_attached_source_roles() -> None:
         )
     )
 
-    assert "Image 1 is product_identity_reference and Image 2 is visual_strategy_reference" in product_first
-    assert "Image 1 is visual_strategy_reference and Image 2 is product_identity_reference" in style_first
+    assert (
+        "Image 1 is product_identity_reference and Image 2 is visual_strategy_reference"
+        in product_first
+    )
+    assert (
+        "Image 1 is visual_strategy_reference and Image 2 is product_identity_reference"
+        in style_first
+    )
     assert "The first attached image is visual_strategy_reference" not in product_first
 
 

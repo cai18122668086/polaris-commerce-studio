@@ -990,7 +990,8 @@ class InspirationCaseRecord(TimestampMixin, Base):
             name="ck_inspiration_cases_status",
         ),
         CheckConstraint(
-            "workflow_type IN ('reference_remix', 'product_prompt', 'local_edit', 'legacy_unclassified')",
+            "workflow_type IN ('reference_remix', 'product_prompt', "
+            "'local_edit', 'legacy_unclassified')",
             name="ck_inspiration_cases_workflow_type",
         ),
         CheckConstraint(

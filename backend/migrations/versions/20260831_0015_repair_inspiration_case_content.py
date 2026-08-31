@@ -41,7 +41,7 @@ def _case_ids(bind: sa.Connection) -> dict[str, str]:
 
 def _stable_relation_id(case_id: str, asset_id: str, role: str, ordinal: int) -> str:
     digest = hashlib.sha256(
-        f"{case_id}:{asset_id}:{role}:{ordinal}".encode("utf-8")
+        f"{case_id}:{asset_id}:{role}:{ordinal}".encode()
     ).hexdigest()[:32]
     return f"ica_{digest}"
 
@@ -107,9 +107,11 @@ def _prepare_catalog(bind: sa.Connection) -> None:
                 "intent, prompt, status, sort_order, is_pinned, created_by_user_id, "
                 "updated_by_user_id, published_at, workflow_type, reference_source, "
                 "configuration_status, button_label) VALUES "
-                "(:id, :slug, :title, :description, :role, :type, :category, :platform, "
+                "(:id, :slug, :title, :description, :role, :type, :category, "
+                " :platform, "
                 ":ratio, :intent, :prompt, 'published', :sort_order, 0, :created_by, "
-                ":updated_by, CURRENT_TIMESTAMP, 'product_prompt', 'none', 'incomplete', "
+                ":updated_by, CURRENT_TIMESTAMP, 'product_prompt', "
+                "'none', 'incomplete', "
                 ":button_label)"
             ),
             {

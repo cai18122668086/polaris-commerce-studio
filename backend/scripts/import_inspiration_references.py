@@ -62,7 +62,9 @@ def _request_json(
         raise RuntimeError(f"Cannot reach {api}: {exc.reason}") from exc
 
 
-def _multipart_upload(api: str, workspace_id: str, user_id: str, file_path: Path) -> dict:
+def _multipart_upload(
+    api: str, workspace_id: str, user_id: str, file_path: Path
+) -> dict:
     content = file_path.read_bytes()
     boundary = f"----polaris-{uuid.uuid4().hex}"
     mime = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
@@ -140,7 +142,9 @@ def main() -> int:
     if set(by_title) != expected_titles:
         missing = sorted(expected_titles - set(by_title))
         unexpected = sorted(set(by_title) - expected_titles)
-        raise RuntimeError(f"published case set mismatch: missing={missing}, unexpected={unexpected}")
+        raise RuntimeError(
+            f"published case set mismatch: missing={missing}, unexpected={unexpected}"
+        )
 
     assets = _request_json(
         args.api,
@@ -162,11 +166,14 @@ def main() -> int:
             expected_digest = CANONICAL_SHA_BY_FILENAME[filename]
             if digest != expected_digest:
                 raise RuntimeError(
-                    f"SHA-256 mismatch for {filename}: expected {expected_digest}, got {digest}"
+                    f"SHA-256 mismatch for {filename}: expected {expected_digest}, "
+                    f"got {digest}"
                 )
             asset = by_sha.get(digest)
             if asset is None:
-                asset = _multipart_upload(args.api, args.workspace_id, args.user_id, file_path)
+                asset = _multipart_upload(
+                    args.api, args.workspace_id, args.user_id, file_path
+                )
                 by_sha[digest] = asset
                 print(f"uploaded {filename} -> {asset['id']}")
             else:
@@ -180,7 +187,9 @@ def main() -> int:
         ]
         metadata = CANONICAL_METADATA_BY_TITLE.get(title)
         payload = {
-            key: (metadata[key] if metadata is not None and key in metadata else case[key])
+            key: (
+                metadata[key] if metadata is not None and key in metadata else case[key]
+            )
             for key in (
                 "slug",
                 "title",

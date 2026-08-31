@@ -55,16 +55,33 @@ def _creative(**kwargs):
 
 def test_final_mapping_contains_exactly_the_approved_six_eight_two_split() -> None:
     assert len(FINAL_INSPIRATION_WORKFLOW_BY_TITLE) == 16
-    assert list(FINAL_INSPIRATION_WORKFLOW_BY_TITLE.values()).count("product_prompt") == 6
-    assert list(FINAL_INSPIRATION_WORKFLOW_BY_TITLE.values()).count("reference_remix") == 8
+    assert (
+        list(FINAL_INSPIRATION_WORKFLOW_BY_TITLE.values()).count("product_prompt") == 6
+    )
+    assert (
+        list(FINAL_INSPIRATION_WORKFLOW_BY_TITLE.values()).count("reference_remix") == 8
+    )
     assert list(FINAL_INSPIRATION_WORKFLOW_BY_TITLE.values()).count("local_edit") == 2
     assert "legacy_unclassified" not in FINAL_INSPIRATION_WORKFLOW_BY_TITLE.values()
 
 
 def test_historical_cases_have_canonical_legacy_metadata() -> None:
-    expected_fields = {"role", "type", "category", "platform", "ratio", "description", "intent"}
-    assert set(CANONICAL_METADATA_BY_TITLE) == set(FINAL_INSPIRATION_WORKFLOW_BY_TITLE) - {"生成AI模特"}
-    assert all(set(metadata) == expected_fields for metadata in CANONICAL_METADATA_BY_TITLE.values())
+    expected_fields = {
+        "role",
+        "type",
+        "category",
+        "platform",
+        "ratio",
+        "description",
+        "intent",
+    }
+    assert set(CANONICAL_METADATA_BY_TITLE) == set(
+        FINAL_INSPIRATION_WORKFLOW_BY_TITLE
+    ) - {"生成AI模特"}
+    assert all(
+        set(metadata) == expected_fields
+        for metadata in CANONICAL_METADATA_BY_TITLE.values()
+    )
     assert CANONICAL_METADATA_BY_TITLE["暖金梳妆台 · 花香时刻"]["type"] == "卖点图"
     assert CANONICAL_METADATA_BY_TITLE["场景图（玩偶）"]["category"] == "儿童母婴"
     assert CANONICAL_METADATA_BY_TITLE["我发现你们好爱抄"]["platform"] == "国内"
@@ -84,13 +101,18 @@ def test_canonical_reference_inputs_are_product_then_visual_reference() -> None:
 def test_every_case_has_a_specific_canonical_prompt() -> None:
     assert set(CANONICAL_PROMPT_BY_TITLE) == set(FINAL_INSPIRATION_WORKFLOW_BY_TITLE)
     assert all(len(prompt) > 80 for prompt in CANONICAL_PROMPT_BY_TITLE.values())
-    assert all("保持案例的商业表达" not in prompt for prompt in CANONICAL_PROMPT_BY_TITLE.values())
+    assert all(
+        "保持案例的商业表达" not in prompt
+        for prompt in CANONICAL_PROMPT_BY_TITLE.values()
+    )
 
 
 def test_canonical_asset_roles_never_use_result_as_reference() -> None:
     for title, assets in CANONICAL_ASSETS_BY_TITLE.items():
         assert title in FINAL_INSPIRATION_WORKFLOW_BY_TITLE
-        assert not any(role == "reference" and "result" in filename for filename, role, _ in assets)
+        assert not any(
+            role == "reference" and "result" in filename for filename, role, _ in assets
+        )
         if FINAL_INSPIRATION_WORKFLOW_BY_TITLE[title] == "reference_remix":
             assert any(role == "reference" for _filename, role, _ in assets)
         else:

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 
@@ -18,9 +19,9 @@ from .inspiration_schemas import (
     InspirationCaseResponse,
     InspirationCaseUpdate,
 )
+from .inspiration_workflows import CASES_REQUIRING_ASSET_REVIEW
 from .models import AssetRecord, InspirationCaseAssetRecord, InspirationCaseRecord
 from .services import new_id
-from .inspiration_workflows import CASES_REQUIRING_ASSET_REVIEW
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
@@ -69,7 +70,7 @@ def _asset_response(
 
 def _configuration_errors(
     item: InspirationCaseRecord,
-    rels: list[InspirationCaseAssetRecord],
+    rels: Sequence[InspirationCaseAssetRecord],
 ) -> list[str]:
     errors: list[str] = []
     if item.title in CASES_REQUIRING_ASSET_REVIEW:
@@ -91,7 +92,10 @@ def _configuration_errors(
             rel.role == "result" for rel in rels
         ):
             errors.append("result_reference_asset_required")
-    elif item.workflow_type in {"product_prompt", "local_edit"} and item.reference_source != "none":
+    elif (
+        item.workflow_type in {"product_prompt", "local_edit"}
+        and item.reference_source != "none"
+    ):
         errors.append("reference_source_must_be_none")
     return errors
 
@@ -111,11 +115,13 @@ def _sync_configuration_status(
     item: InspirationCaseRecord,
     session: Session,
 ) -> list[str]:
-    rels = session.scalars(
-        select(InspirationCaseAssetRecord).where(
-            InspirationCaseAssetRecord.case_id == item.id
-        )
-    ).all()
+    rels = list(
+        session.scalars(
+            select(InspirationCaseAssetRecord).where(
+                InspirationCaseAssetRecord.case_id == item.id
+            )
+        ).all()
+    )
     errors = _configuration_errors(item, rels)
     item.configuration_status = _configuration_status(item, errors)
     return errors
@@ -124,11 +130,13 @@ def _sync_configuration_status(
 def _response(
     item: InspirationCaseRecord, session: Session, request: Request
 ) -> InspirationCaseResponse:
-    rels = session.scalars(
-        select(InspirationCaseAssetRecord).where(
-            InspirationCaseAssetRecord.case_id == item.id
-        )
-    ).all()
+    rels = list(
+        session.scalars(
+            select(InspirationCaseAssetRecord).where(
+                InspirationCaseAssetRecord.case_id == item.id
+            )
+        ).all()
+    )
     # Keep the public gallery order aligned with the prompt's semantic input
     # order: product first, visual references second, display-only results last.
     # SQL's lexical role order put ``reference`` before ``user_upload``, which

@@ -5,7 +5,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 InspirationStatus = Literal["draft", "published", "archived"]
 InspirationAssetRole = Literal["result", "user_upload", "reference"]
-InspirationWorkflowType = Literal["reference_remix", "product_prompt", "local_edit", "legacy_unclassified"]
+InspirationWorkflowType = Literal[
+    "reference_remix", "product_prompt", "local_edit", "legacy_unclassified"
+]
 InspirationReferenceSource = Literal["admin_reference", "result_image", "none"]
 InspirationConfigurationStatus = Literal["draft", "ready", "incomplete", "archived"]
 

@@ -63,12 +63,11 @@ from .model_pose_catalog import (
 )
 from .models import (
     AssetRecord,
+    InspirationCaseRecord,
     JobAssetRecord,
     JobItemRecord,
     JobPlanRecord,
     JobRecord,
-    InspirationCaseAssetRecord,
-    InspirationCaseRecord,
     WorkspaceMemberRecord,
     WorkspaceRecord,
     utc_now,
@@ -1205,17 +1204,23 @@ def _validate_inspiration_case_job(
                 "The inspiration prompt is required.",
             )
     elif case.workflow_type == "reference_remix":
-        if not isinstance(payload, ReferenceRemixJobCreate) or not payload.input.reference_asset_ids:
+        if (
+            not isinstance(payload, ReferenceRemixJobCreate)
+            or not payload.input.reference_asset_ids
+        ):
             raise ApiError(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "INSPIRATION_REFERENCE_REQUIRED",
                 "This inspiration case requires a reference image.",
             )
-    elif case.workflow_type == "local_edit" and not isinstance(payload, LocalEditJobCreate):
+    elif case.workflow_type == "local_edit" and not isinstance(
+        payload, LocalEditJobCreate
+    ):
         raise ApiError(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "INSPIRATION_LOCAL_EDIT_INVALID",
-            "This inspiration case requires a local-edit job with a source image and mask.",
+            "This inspiration case requires a local-edit job with a source "
+            "image and mask.",
         )
     return case
 
@@ -1269,7 +1274,9 @@ def create_job(
         job.configuration["inspiration_case_id"] = inspiration_case.id
         job.configuration["inspiration_workflow"] = inspiration_case.workflow_type
         job.configuration["inspiration_prompt"] = inspiration_case.prompt
-        job.configuration["inspiration_reference_source"] = inspiration_case.reference_source
+        job.configuration["inspiration_reference_source"] = (
+            inspiration_case.reference_source
+        )
     asset_ids = [item[0] for item in asset_roles]
     assets = get_ready_assets(session, workspace.workspace_id, asset_ids)
     if isinstance(payload, LocalEditJobCreate):
@@ -1407,11 +1414,17 @@ def list_jobs(
         if include_total
         else None
     )
-    item_rows = session.execute(
-        select(JobItemRecord).where(
-            JobItemRecord.job_id.in_([item.id for item in items])
+    item_rows = (
+        session.execute(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id.in_([item.id for item in items])
+            )
         )
-    ).scalars().all() if items else []
+        .scalars()
+        .all()
+        if items
+        else []
+    )
     item_groups: dict[str, list[JobItemRecord]] = {}
     for job_item in item_rows:
         item_groups.setdefault(job_item.job_id, []).append(job_item)
@@ -2478,13 +2491,10 @@ def _reserve_real_provider_job_if_enabled(
         # model. Reserve both calls before dispatching the job.
         estimated_cost = image_cost + settings.tengli_planner_reserve_micros
         provider_requests = (
-            (
-                runnable_item_count
-                if runnable_item_count is not None
-                else job.expected_item_count
-            )
-            + 1
-        )
+            runnable_item_count
+            if runnable_item_count is not None
+            else job.expected_item_count
+        ) + 1
         group_count = 1
     elif enable_flag is not None:
         estimated_cost = image_cost
@@ -2589,14 +2599,11 @@ def _add_items_and_inputs(
 ) -> None:
     settings = job.configuration.get("settings", {})
     inspiration_workflow = (
-        (
-            job.type == JobType.REFERENCE_REMIX.value
-            and settings.get("reference_skill") == "reference-visual-reverse-remix"
-        )
-        or (
-            job.type == JobType.CREATIVE_IMAGE.value
-            and settings.get("inspiration_planning") is True
-        )
+        job.type == JobType.REFERENCE_REMIX.value
+        and settings.get("reference_skill") == "reference-visual-reverse-remix"
+    ) or (
+        job.type == JobType.CREATIVE_IMAGE.value
+        and settings.get("inspiration_planning") is True
     )
     for ordinal in range(job.expected_item_count):
         session.add(
@@ -2891,8 +2898,7 @@ def _ensure_parallel_aurora_retry_snapshots(
         return
     policy = plan.payload.get("execution_policy")
     if not (
-        isinstance(policy, dict)
-        and policy.get("execution_mode") == "parallel_v20"
+        isinstance(policy, dict) and policy.get("execution_mode") == "parallel_v20"
     ):
         return
     items = session.scalars(

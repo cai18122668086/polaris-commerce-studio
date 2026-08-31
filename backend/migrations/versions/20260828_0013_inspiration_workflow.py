@@ -21,7 +21,7 @@ def upgrade() -> None:
     # SQLite cannot ALTER TABLE ... ADD CONSTRAINT directly.  Batch mode
     # keeps this migration usable for the local-preview SQLite database while
     # remaining a normal ALTER on PostgreSQL.
-    with op.batch_alter_table("inspiration_cases", recreate="always") as batch_op:
+    with op.batch_alter_table("inspiration_cases", recreate="auto") as batch_op:
         batch_op.add_column(
             sa.Column(
                 "workflow_type",
@@ -56,7 +56,8 @@ def upgrade() -> None:
         )
         batch_op.create_check_constraint(
             "ck_inspiration_cases_workflow_type",
-            "workflow_type IN ('reference_remix', 'product_prompt', 'local_edit', 'legacy_unclassified')",
+            "workflow_type IN ('reference_remix', 'product_prompt', "
+            "'local_edit', 'legacy_unclassified')",
         )
         batch_op.create_check_constraint(
             "ck_inspiration_cases_reference_source",
@@ -73,7 +74,8 @@ def upgrade() -> None:
         sa.text(
             "UPDATE inspiration_cases SET workflow_type = 'product_prompt', "
             "reference_source = 'none', "
-            "configuration_status = CASE WHEN trim(prompt) <> '' THEN 'ready' ELSE 'incomplete' END "
+            "configuration_status = CASE WHEN trim(prompt) <> '' THEN 'ready' "
+            "ELSE 'incomplete' END "
             "WHERE title IN ("
             + ", ".join(f"'{title}'" for title in PRODUCT_PROMPT_CASE_TITLES)
             + ")"
@@ -82,16 +84,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("inspiration_cases", recreate="always") as batch_op:
+    with op.batch_alter_table("inspiration_cases", recreate="auto") as batch_op:
         batch_op.drop_constraint(
             "ck_inspiration_cases_configuration_status", type_="check"
         )
-        batch_op.drop_constraint(
-            "ck_inspiration_cases_reference_source", type_="check"
-        )
-        batch_op.drop_constraint(
-            "ck_inspiration_cases_workflow_type", type_="check"
-        )
+        batch_op.drop_constraint("ck_inspiration_cases_reference_source", type_="check")
+        batch_op.drop_constraint("ck_inspiration_cases_workflow_type", type_="check")
         batch_op.drop_column("button_label")
         batch_op.drop_column("configuration_status")
         batch_op.drop_column("reference_source")

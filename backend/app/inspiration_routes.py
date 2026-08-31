@@ -20,6 +20,7 @@ from .inspiration_schemas import (
 )
 from .models import AssetRecord, InspirationCaseAssetRecord, InspirationCaseRecord
 from .services import new_id
+from .inspiration_workflows import CASES_REQUIRING_ASSET_REVIEW
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
@@ -71,6 +72,8 @@ def _configuration_errors(
     rels: list[InspirationCaseAssetRecord],
 ) -> list[str]:
     errors: list[str] = []
+    if item.title in CASES_REQUIRING_ASSET_REVIEW:
+        errors.append("verified_case_assets_required")
     if not item.prompt.strip():
         errors.append("prompt_required")
     if not item.button_label.strip():
@@ -122,10 +125,17 @@ def _response(
     item: InspirationCaseRecord, session: Session, request: Request
 ) -> InspirationCaseResponse:
     rels = session.scalars(
-        select(InspirationCaseAssetRecord)
-        .where(InspirationCaseAssetRecord.case_id == item.id)
-        .order_by(InspirationCaseAssetRecord.role, InspirationCaseAssetRecord.ordinal)
+        select(InspirationCaseAssetRecord).where(
+            InspirationCaseAssetRecord.case_id == item.id
+        )
     ).all()
+    # Keep the public gallery order aligned with the prompt's semantic input
+    # order: product first, visual references second, display-only results last.
+    # SQL's lexical role order put ``reference`` before ``user_upload``, which
+    # made the UI's image numbering contradict prompts such as "图一是商品，
+    # 图二是参考图" even though the stored roles were correct.
+    role_order = {"user_upload": 0, "reference": 1, "result": 2}
+    rels.sort(key=lambda rel: (role_order.get(rel.role, 3), rel.ordinal))
     assets = [_asset_response(rel, request) for rel in rels]
     cover = next((a for a in assets if a.role == "result" and a.ordinal == 0), None)
     return InspirationCaseResponse.model_validate(

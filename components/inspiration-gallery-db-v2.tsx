@@ -13,6 +13,7 @@ type WorkflowType = "reference_remix" | "product_prompt" | "local_edit" | "legac
 type Case = { id: string; title: string; description: string; role: string; type: string; category: string; platform: string; ratio: string; intent?: string; prompt: string; workflow_type: WorkflowType; reference_source: "admin_reference" | "result_image" | "none"; configuration_status: string; configuration_errors: string[]; button_label: string; gallery: Asset[]; cover_image: Asset | null };
 type RemixAspectRatio = "follow-reference" | "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
 type InspirationAspectRatio = "自动" | "16:9" | "4:3" | "4:5" | "3:2" | "1:1" | "2:3" | "3:4" | "5:4" | "9:16" | "21:9";
+
 const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
 const ASPECT_OPTIONS: Array<{ value: InspirationAspectRatio; label: string }> = [
   { value: "16:9", label: "16:9" }, { value: "4:3", label: "4:3" }, { value: "4:5", label: "4:5" },
@@ -44,49 +45,6 @@ function inspirationAspectToApi(value: InspirationAspectRatio): RemixAspectRatio
   if (value === "4:5" || value === "5:4") return "4:5";
   if (value === "2:3" || value === "9:16") return "9:16";
   return value;
-}
-
-// Product-prompt cases keep the case's visual direction but use the uploaded
-// product as the sole identity authority. They do not receive a reference
-// image, so do not add the reference-remix input-role contract here.
-function runtimeProductPrompt(casePrompt: string): string {
-  const identityStart = casePrompt.indexOf("[Product Identity Lock]");
-  const visualStart = casePrompt.indexOf("[Visual Strategy Lock]");
-  if (identityStart >= 0 && visualStart > identityStart) {
-    return `${casePrompt.slice(0, identityStart)}[Product Identity Lock]\nThe uploaded user product image is the only product identity authority. Preserve its visible silhouette, geometry, materials, colors, packaging, logo, printed text, parts and accessories exactly. Do not use the original case product or invent a replacement.\n${casePrompt.slice(visualStart)}`;
-  }
-  return `[Product Identity Lock]\nUse the uploaded user product image as the sole product identity authority. Preserve its visible silhouette, geometry, materials, colors, packaging, logo and printed details exactly.\n${casePrompt}`;
-}
-
-// Case prompts describe the case's original product. They remain useful as
-// visual strategy, but must not remain product identity instructions after a
-// user replaces the product image.
-function runtimeRemixPrompt(casePrompt: string): string {
-  const identityStart = casePrompt.indexOf("[Product Identity Lock]");
-  const visualStart = casePrompt.indexOf("[Visual Strategy Lock]");
-  let prompt = casePrompt;
-  if (identityStart >= 0 && visualStart > identityStart) {
-    prompt = `${casePrompt.slice(0, identityStart)}[Product Identity Lock]\nThe uploaded user product image is the only product identity authority. Preserve its visible silhouette, geometry, materials, colors, packaging, logo, printed text, parts and accessories exactly. Do not use the original case product or invent a replacement.\n${casePrompt.slice(visualStart)}`;
-  }
-  // The provider sends multipart files as Image 1 = style reference and
-  // Image 2 = product reference. Normalize any legacy case wording so the
-  // model sees the same role contract that the gateway actually receives.
-  const roleHeader = `[Input Roles]\nImage 1 is the visual strategy reference only. Image 2 is the uploaded product identity reference and the sole source of product identity. This order matches the multipart image order.`;
-  prompt = /^\[Input Roles\][\s\S]*?(?=\[Product Identity Lock\])/m.test(prompt)
-    ? prompt.replace(/^\[Input Roles\][\s\S]*?(?=\[Product Identity Lock\])/m, `${roleHeader}\n`)
-    : `${roleHeader}\n${prompt}`;
-  const productPresence = `[Product Presence Requirement]\nThe uploaded user product must visibly appear as the primary hero subject in the final image. Use the uploaded product image to preserve its visible silhouette, geometry, materials, colors, packaging, logo and printed details. Do not omit it, replace it with a reference-image product, or invent an alternate product. The reference image may influence composition, lighting, atmosphere, typography zones and prop relationships only.`;
-  if (!prompt.includes("[Product Presence Requirement]")) {
-    prompt = prompt.replace("[Visual Strategy Lock]", `${productPresence}\n[Visual Strategy Lock]`);
-  }
-  return prompt
-    .replace(/perfume bottle/gi, "uploaded user product")
-    .replace(/perfume/gi, "uploaded user product")
-    .replace(/香水瓶/g, "用户上传的商品")
-    .replace(/香水/g, "用户上传的商品")
-    .replace(/护肤品/g, "用户上传的商品")
-    .replace(/清扬产品图/g, "用户上传的商品图")
-    .replace(/电动扳手产品图/g, "用户上传的商品图");
 }
 
 function PersonalRepositoryThumbnail({
@@ -241,7 +199,7 @@ export function InspirationGalleryDb() {
     setComposerAssets([]);
     // Keep the confirmed case prompt visible in the composer. Any text the
     // user edits or appends remains a local override when the job is sent.
-    setInstruction(item.workflow_type === "reference_remix" ? runtimeRemixPrompt(item.prompt) : runtimeProductPrompt(item.prompt));
+    setInstruction(item.prompt);
     const caseRatio = jobAspectRatio(item.ratio);
     setAspectRatio(caseRatio === "follow-reference" ? "自动" : caseRatio);
     setAspectOpen(false);
@@ -249,10 +207,10 @@ export function InspirationGalleryDb() {
     setMaterializingCaseId(item.id);
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     try {
-      const sourceAssets = item.gallery.filter((asset) => {
-        if (item.workflow_type === "product_prompt") return asset.role === "user_upload";
-        return asset.role !== "result" || (item.workflow_type === "reference_remix" && item.reference_source === "result_image");
-      });
+      // The API is the source of truth for case asset roles. Results are
+      // display-only and must never be promoted to a product or reference
+      // input by the client.
+      const sourceAssets = item.gallery.filter((asset) => asset.role !== "result");
       const copied = await Promise.all(sourceAssets.map(async (asset) => {
         const response = await fetch(asset.url);
         if (!response.ok) throw new Error("案例素材暂时无法读取。");
@@ -262,8 +220,7 @@ export function InspirationGalleryDb() {
         const file = new File([blob], `inspiration-${item.id}-${asset.role}-${asset.ordinal}.${extension}`, { type: contentType });
         const uploaded = await upload.mutateAsync({ file, mediaKind: "image", originKind: "imported" });
         const access = await getAssetAccessUrl(workspace.id, uploaded.id);
-        const role = item.workflow_type === "reference_remix" && item.reference_source === "result_image" && asset.role === "result" ? "reference" : asset.role;
-        return { ...asset, role, asset_id: uploaded.id, url: access.url } satisfies Asset;
+        return { ...asset, asset_id: uploaded.id, url: access.url } satisfies Asset;
       }));
       setActiveCase(item);
       setComposerAssets(copied);
@@ -413,9 +370,9 @@ export function InspirationGalleryDb() {
       setComposeError("该案例需要原图与编辑区域 Mask，当前页面暂未开放局部编辑入口。");
       return;
     }
-    const compiledPrompt = remixCase.workflow_type === "product_prompt"
-      ? runtimeProductPrompt(remixCase.prompt)
-      : runtimeRemixPrompt(remixCase.prompt);
+    // Keep the canonical case prompt byte-for-byte unless the user edits or
+    // appends text in the composer. Do not rewrite it according to workflow.
+    const compiledPrompt = remixCase.prompt;
     const normalizedInstruction = instruction.trim();
     // The composer is prefilled with the complete confirmed case prompt. When
     // the user appends a description, only the suffix is the override; sending
@@ -505,11 +462,14 @@ export function InspirationGalleryDb() {
         selling_points: [],
         aspect_ratio: inspirationAspectToApi(aspectRatio),
         image_count: imageCount,
-        // Reuse the proven two-stage workflow: inspect the reference layout,
-        // compile its spatial strategy, then execute with Image 1 = reference
-        // and Image 2 = uploaded product.
-        execution_mode: "direct_prompt" as const,
-        inspiration_product_first: false,
+        // Let the verified reference-visual-reverse-remix Skill inspect the
+        // current product/reference pair and compile the executable prompt.
+        // The published case prompt remains unchanged and is passed as guidance;
+        // it must not be used as a literal prompt for a different product.
+        execution_mode: "planner" as const,
+        // Keep the multipart order aligned with the case prompt: Image 1 is the
+        // user's product and Image 2 is the visual-strategy reference.
+        inspiration_product_first: true,
         quality: "high" as const,
         output_format: "png" as const,
         instruction: finalPrompt,
@@ -532,7 +492,7 @@ export function InspirationGalleryDb() {
 
   const copy = async () => {
     if (!selected) return;
-    await navigator.clipboard?.writeText(displayPrompt(selected.workflow_type === "reference_remix" ? runtimeRemixPrompt(selected.prompt) : runtimeProductPrompt(selected.prompt)));
+    await navigator.clipboard?.writeText(selected.prompt);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   };
@@ -589,7 +549,7 @@ export function InspirationGalleryDb() {
         {composeError && !generating ? <div className={styles.composeError} role="alert">{composeError}</div> : null}
       </div>
     </section>
-    <main className={styles.content}><section className={styles.materialPanel}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>CURATED VISUAL LIBRARY</p><h2>灵感素材</h2></div><span className={styles.count}>{filtered.length} 个方案</span></div><div className={styles.filters}><div className={styles.filterRow}><b>类型:</b><div>{types.map((value) => <button key={value} className={type === value ? styles.active : ""} onClick={() => setType(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>品类:</b><div>{categories.map((value) => <button key={value} className={category === value ? styles.active : ""} onClick={() => setCategory(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>分类:</b><div>{["全部", "国内", "跨境"].map((value) => <button key={value} className={platform === value ? styles.active : ""} onClick={() => setPlatform(value)}>{value}</button>)}</div></div></div>{loading ? <div className={styles.emptyInput}><Loader2 /> 正在加载灵感案例…</div> : error ? <div className={styles.emptyInput}>{error}</div> : <div className={styles.grid}>{filtered.map((item) => <article className={styles.card} key={item.id}><div className={styles.imageWrap}><img src={item.cover_image?.url} alt={item.title} /><span>{item.platform}</span><div className={styles.imageHover}><button onClick={() => setSelected(item)}>查看指令</button></div></div><div className={styles.cardBody}><div className={styles.cardTags}><span>{item.type}</span><span>{item.category}</span></div><h3>{item.title}</h3><p>{item.description}</p><div className={styles.cardFooter}><small>{item.role} · {item.ratio}</small><button onClick={() => selectCase(item)}>{item.button_label || "一键做同款"} <ChevronRight size={15} /></button></div></div></article>)}</div>}</section></main>
+    <main className={styles.content}><section className={styles.materialPanel}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>CURATED VISUAL LIBRARY</p><h2>灵感素材</h2></div><span className={styles.count}>{filtered.length} 个方案</span></div><div className={styles.filters}><div className={styles.filterRow}><b>类型:</b><div>{types.map((value) => <button key={value} className={type === value ? styles.active : ""} onClick={() => setType(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>品类:</b><div>{categories.map((value) => <button key={value} className={category === value ? styles.active : ""} onClick={() => setCategory(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>分类:</b><div>{["全部", "国内", "跨境"].map((value) => <button key={value} className={platform === value ? styles.active : ""} onClick={() => setPlatform(value)}>{value}</button>)}</div></div></div>{loading ? <div className={styles.emptyInput}><Loader2 /> 正在加载灵感案例…</div> : error ? <div className={styles.emptyInput}>{error}</div> : <div className={styles.grid}>{filtered.map((item) => <article className={styles.card} key={item.id}><div className={styles.imageWrap}>{item.cover_image?.url ? <img src={item.cover_image.url} alt={item.title} /> : null}<span>{item.platform}</span><div className={styles.imageHover}><button onClick={() => setSelected(item)}>查看指令</button></div></div><div className={styles.cardBody}><div className={styles.cardTags}><span>{item.type}</span><span>{item.category}</span></div><h3>{item.title}</h3><p>{item.description}</p><div className={styles.cardFooter}><small>{item.role} · {item.ratio}</small><button onClick={() => selectCase(item)}>{item.button_label || "一键做同款"} <ChevronRight size={15} /></button></div></div></article>)}</div>}</section></main>
     {repositoryOpen && <div className={styles.repositoryOverlay} role="dialog" aria-modal="true" aria-labelledby="personal-repository-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setRepositoryOpen(false); }}><section className={styles.repositoryModal} onMouseDown={(event) => event.stopPropagation()}><header className={styles.repositoryHeader}><h2 id="personal-repository-title">个人仓库</h2><button type="button" className={styles.repositoryClose} aria-label="关闭个人仓库" onClick={() => setRepositoryOpen(false)}><X size={21} /></button></header><div className={styles.repositoryBody}>{repositoryQuery.isPending ? <div className={styles.repositoryState}><Loader2 className="spin" size={22} /> 正在加载个人素材…</div> : repositoryQuery.isError ? <div className={styles.repositoryState}>个人素材暂时无法读取，请稍后重试。</div> : repositoryPageAssets.length ? <div className={styles.repositoryGrid}>{repositoryPageAssets.map((asset) => <PersonalRepositoryThumbnail key={asset.id} asset={asset} workspaceId={workspace!.id} selected={repositorySelected.includes(asset.id)} onToggle={() => setRepositorySelected((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} />)}</div> : <div className={styles.repositoryState}>还没有用户上传素材，请先上传图片。</div>}</div><footer className={styles.repositoryFooter}><div className={styles.repositoryPager}><button type="button" aria-label="上一页" disabled={repositoryPage <= 1} onClick={() => setRepositoryPage((page) => Math.max(1, page - 1))}>‹</button>{Array.from({ length: repositoryPageCount }, (_, index) => index + 1).slice(0, 5).map((page) => <button type="button" key={page} className={repositoryPage === page ? styles.repositoryPageSelected : ""} onClick={() => setRepositoryPage(page)}>{page}</button>)}<button type="button" aria-label="下一页" disabled={repositoryPage >= repositoryPageCount} onClick={() => setRepositoryPage((page) => Math.min(repositoryPageCount, page + 1))}>›</button><span>{repositoryAssets.length ? `${repositoryAssets.length} 个上传素材` : "0 个上传素材"}</span></div><div className={styles.repositoryActions}><button type="button" onClick={() => setRepositoryOpen(false)}>取消</button><button type="button" className={styles.repositoryConfirm} onClick={() => void confirmRepository()} disabled={!workspace || repositoryQuery.isPending}>确定</button></div></footer></section></div>}
     {previewAsset && <div className={styles.resultPreviewOverlay} role="dialog" aria-label="生成成品大图" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewAsset(null); }}><button type="button" className={styles.resultPreviewClose} aria-label="关闭大图预览" onClick={() => setPreviewAsset(null)}><X size={22} /></button><img src={previewAsset.url} alt="生成成品大图" /></div>}
     {selected && <div className={styles.overlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}><aside className={styles.focusModal}><button className={styles.close} onClick={() => setSelected(null)}><X size={20} /></button><div className={styles.modalGallery}><div className={styles.inputGrid}>{selected.gallery.filter((asset) => asset.role !== "result").map((asset) => <div className={styles.inputTile} key={asset.asset_id}><span>{asset.role === "user_upload" ? "用户上传" : "参考图"}</span><img src={asset.url} alt="案例输入" /></div>)}</div><div className={styles.resultTile}>{selected.gallery.filter((asset) => asset.role === "result").map((asset) => <img key={asset.asset_id} src={asset.url} alt="案例结果" />)}</div></div><div className={styles.modalInfo}><h2>{selected.title}</h2><h3>创作指令</h3><p>{displayPrompt(selected.prompt)}</p><button className={styles.modalApply} onClick={copy}>{copied ? "已复制" : <><Copy size={15} /> 复制指令</>}</button><button className={styles.modalApply} onClick={() => selectCase(selected)}>{selected.button_label || "一键做同款"}</button></div></aside></div>}

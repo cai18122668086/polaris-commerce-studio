@@ -474,8 +474,12 @@ class XingheSingleImageProvider:
                 product_specs = tuple(spec for spec in envelope.source_assets if spec.role == "product_reference")
                 style_sources = tuple(source for source in sources if source.source_role == "style_reference")
                 product_sources = tuple(source for source in sources if source.source_role == "product_reference")
-                envelope = replace(envelope, source_assets=style_specs + product_specs)
-                sources = style_sources + product_sources
+                if envelope.prompt_input.get("inspiration_product_first") is True:
+                    envelope = replace(envelope, source_assets=product_specs + style_specs)
+                    sources = product_sources + style_sources
+                else:
+                    envelope = replace(envelope, source_assets=style_specs + product_specs)
+                    sources = style_sources + product_sources
             if not direct_prompt and not creative_analysis:
                 prompt = self._compile_prompt(envelope, protocol, reference_analysis=analysis)
         except SingleImageProviderError as exc:
@@ -569,16 +573,29 @@ class XingheSingleImageProvider:
                 "REFERENCE_REMIX_SOURCE_ROLES_INVALID",
                 "Reference remix requires product and visual-strategy source images.",
             )
-        # Match the proven reference-remix workflow: the planner receives the
-        # visual-strategy reference as Image 1 and the user's product as Image 2.
-        # The image model receives the same role order below.  Keeping planner
-        # and execution roles identical prevents the planner from describing the
-        # product image as the layout authority.
+        # Keep the planner and image model on the same semantic input order.
+        # Inspiration cases may explicitly use product-first ordering because
+        # their published prompt says "Image 1 = product, Image 2 = reference".
+        # The Skill still receives explicit roles; only the positional order is
+        # selected here so the prompt and multipart images cannot disagree.
+        product_first = envelope.prompt_input.get("inspiration_product_first") is True
+        ordered_sources = (
+            tuple(product_sources + style_sources)
+            if product_first
+            else tuple(style_sources + product_sources)
+        )
+        image_role_instruction = (
+            "Image 1 is the user's product-identity reference; Image 2 is the "
+            "visual-strategy reference."
+            if product_first
+            else "Image 1 is the visual-strategy reference; Image 2 is the user's "
+            "product-identity reference."
+        )
         planner_request = PlannerRequest(
             workspace_id=request.workspace_id,
             job_id=request.job_id,
             group_key=envelope.item_key,
-            sources=tuple(style_sources + product_sources),
+            sources=ordered_sources,
             page_count=1,
             language=str(envelope.prompt_input.get("language") or "zh-CN"),
             product_name="visible product from the product identity reference",
@@ -596,8 +613,8 @@ class XingheSingleImageProvider:
             idempotency_key=f"{request.idempotency_key}:reference-analysis",
             system_prompt=(
                 "Follow the verified reference-visual-reverse-remix Skill protocol below. "
-                "Image 1 is the visual-strategy reference; Image 2 is the user's "
-                "product-identity reference. This is analysis only; do not generate "
+                + image_role_instruction
+                + " This is analysis only; do not generate "
                 "an image or use any previous generated result.\nVERIFIED SKILL PROTOCOL:\n"
                 + json.dumps(
                     protocol.prompt_payload(),
@@ -1420,14 +1437,24 @@ class XingheSingleImageProvider:
         width = envelope.target.width or 1024
         height = envelope.target.height or 1536
         language = str(envelope.prompt_input.get("language") or "zh-CN")
+        product_first = envelope.prompt_input.get("inspiration_product_first") is True
+        image_role_instruction = (
+            "Image 1 is the product-identity reference and the only authority for "
+            "product appearance. Image 2 is the visual-strategy reference and is "
+            "the authority for composition only."
+            if product_first
+            else "Image 1 is the visual-strategy reference and is the binding authority "
+            "for composition only. Image 2 is the product-identity reference and is "
+            "the only authority for product appearance."
+        )
+        product_identity_replacement = (
+            "Replace only product identity with Image 1."
+            if product_first
+            else "Replace only product identity with Image 2."
+        )
         prompt = "\n\n".join(
             (
-                (
-                    "Create exactly ONE original ecommerce image. "
-                    "Image 1 is the visual-strategy reference and is the binding "
-                    "authority for composition only. Image 2 is the product-identity "
-                    "reference and is the only authority for product appearance."
-                ),
+                "Create exactly ONE original ecommerce image. " + image_role_instruction,
                 (
                     f"OUTPUT CONTRACT\nCanvas: {width}x{height}; aspect ratio: "
                     f"{envelope.target.aspect_ratio}; language: {language}; quality: "
@@ -1457,7 +1484,7 @@ class XingheSingleImageProvider:
                     "new product variants, import the product photo background, or copy "
                     "the reference product/brand/copy. Preserve the analyzed subject "
                     "scale, crop, negative space, prop positions, typography zones and "
-                    "depth order. Replace only product identity with Image 2."
+                    "depth order. " + product_identity_replacement
                 ),
                 (
                     "Compiled from verified Skill "

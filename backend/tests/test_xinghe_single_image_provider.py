@@ -498,7 +498,7 @@ def _reference_follow_request(
             "forbidden_transfer": "no source brand",
         }
         if inspiration_product_first:
-            envelope["prompt_input"]["execution_mode"] = "direct_prompt"
+            envelope["prompt_input"]["execution_mode"] = "planner"
             envelope["prompt_input"]["inspiration_product_first"] = True
     envelope["target"] = {
         "width": None,
@@ -997,7 +997,7 @@ def test_reference_visual_direct_prompt_keeps_reference_first_without_planner(
     assert harness.gateway.requests[0].prompt == "original current case instruction"
 
 
-def test_inspiration_direct_remix_can_put_product_before_style_reference(
+def test_inspiration_planned_remix_can_put_product_before_style_reference(
     harness: Harness,
 ) -> None:
     provider, request = _reference_follow_request(
@@ -1010,10 +1010,18 @@ def test_inspiration_direct_remix_can_put_product_before_style_reference(
     result = asyncio.run(provider.execute(request))
 
     assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.gateway.plan_calls == 1
+    assert [source.source_role for source in harness.gateway.plan_requests[0].sources] == [
+        "product_reference",
+        "style_reference",
+    ]
     assert [source.source_role for source in harness.gateway.requests[0].sources] == [
         "product_reference",
         "style_reference",
     ]
+    prompt = harness.gateway.requests[0].prompt
+    assert "Image 1 is the product-identity reference" in prompt
+    assert "Image 2 is the visual-strategy reference" in prompt
 
 
 def test_reference_follow_target_fails_closed_when_real_canvas_is_unsafe(

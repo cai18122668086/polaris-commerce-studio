@@ -6365,10 +6365,25 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "reference_visual_remix":
+        ordered_roles = tuple(source.source_role for source in request.sources)
+        if ordered_roles and ordered_roles[0] == "product_reference":
+            input_contract = (
+                "The attached images are ordered by semantic role: Image 1 is "
+                "product_identity_reference and Image 2 is "
+                "visual_strategy_reference. The product image is the only authority "
+                "for product identity; the visual-strategy image is composition-only."
+            )
+        else:
+            input_contract = (
+                "The attached images are ordered by semantic role: Image 1 is "
+                "visual_strategy_reference and Image 2 is "
+                "product_identity_reference. The product image is the only authority "
+                "for product identity; the visual-strategy image is composition-only."
+            )
         return (
             "You are the reference-visual-reverse-remix visual analysis stage. "
-            "The first attached image is visual_strategy_reference and the second "
-            "is product_identity_reference. Inspect the actual pixels before writing. "
+            + input_contract
+            + " Inspect the actual pixels before writing. "
             "Return one JSON object with exactly these top-level keys: "
             "product_identity_lock, product_text_inventory, selected_product_subset, "
             "excluded_product_elements, reference_visual_analysis, "

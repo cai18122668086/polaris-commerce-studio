@@ -133,6 +133,13 @@ def _prepare_catalog(bind: sa.Connection) -> None:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    # The canonical catalog is provisioned separately for a fresh database.
+    # Keep the schema migration valid before that provisioning step runs.
+    case_count = bind.execute(
+        sa.text("SELECT COUNT(*) FROM inspiration_cases")
+    ).scalar_one()
+    if case_count == 0:
+        return
     _prepare_catalog(bind)
     cases = _case_ids(bind)
     assets = _asset_ids_by_sha(bind)

@@ -78,7 +78,7 @@ def _prepare_catalog(bind: sa.Connection) -> None:
         sa.text(
             "UPDATE inspiration_cases SET status = 'archived', "
             "archived_at = CURRENT_TIMESTAMP, configuration_status = 'archived', "
-            "is_pinned = 0 WHERE slug IN ('detail', 'white', 'poster')"
+            "is_pinned = FALSE WHERE slug IN ('detail', 'white', 'poster')"
         )
     )
 

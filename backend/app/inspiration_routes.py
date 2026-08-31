@@ -74,7 +74,9 @@ def _configuration_errors(
 ) -> list[str]:
     errors: list[str] = []
     if item.title in CASES_REQUIRING_ASSET_REVIEW:
-        errors.append("verified_case_assets_required")
+        roles = {rel.role for rel in rels}
+        if not {"result", "user_upload"}.issubset(roles):
+            errors.append("verified_case_assets_required")
     if not item.prompt.strip():
         errors.append("prompt_required")
     if not item.button_label.strip():

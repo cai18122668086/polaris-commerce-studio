@@ -127,6 +127,31 @@ def test_generated_ai_model_remains_incomplete_without_verified_case_assets() ->
     assert _configuration_status(case, errors) == "incomplete"
 
 
+def test_generated_ai_model_is_ready_with_result_and_user_upload_assets() -> None:
+    case = _case("product_prompt")
+    case.title = "生成AI模特"
+    assets = [
+        SimpleNamespace(role="result"),
+        SimpleNamespace(role="user_upload"),
+    ]
+    errors = _configuration_errors(case, assets)
+    assert errors == []
+    assert _configuration_status(case, errors) == "ready"
+
+
+def test_generated_ai_model_still_requires_both_display_asset_roles() -> None:
+    case = _case("product_prompt")
+    case.title = "生成AI模特"
+    for assets in (
+        [SimpleNamespace(role="result")],
+        [SimpleNamespace(role="user_upload")],
+        [SimpleNamespace(role="reference"), SimpleNamespace(role="result")],
+    ):
+        errors = _configuration_errors(case, assets)
+        assert errors == ["verified_case_assets_required"]
+        assert _configuration_status(case, errors) == "incomplete"
+
+
 def test_product_prompt_accepts_product_only_without_reference() -> None:
     case = _case("product_prompt")
     result = _validate_inspiration_case_job(_session_for(case), _creative())

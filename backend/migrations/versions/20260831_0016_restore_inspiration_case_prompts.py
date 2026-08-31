@@ -15,6 +15,9 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    # Fresh databases provision the catalog separately from migrations.
+    if bind.execute(sa.text("SELECT 1 FROM inspiration_cases LIMIT 1")).first() is None:
+        return
     for title, prompt in CANONICAL_PROMPT_BY_TITLE.items():
         result = bind.execute(
             sa.text(

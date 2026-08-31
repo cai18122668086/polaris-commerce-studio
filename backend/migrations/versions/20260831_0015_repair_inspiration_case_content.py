@@ -92,11 +92,7 @@ def _prepare_catalog(bind: sa.Connection) -> None:
     ).scalar_one_or_none()
     if existing is None:
         owner = bind.execute(
-            sa.text(
-                "SELECT created_by_user_id, updated_by_user_id "
-                "FROM inspiration_cases WHERE status = 'published' "
-                "ORDER BY sort_order, id LIMIT 1"
-            )
+            sa.text("SELECT id FROM users ORDER BY id LIMIT 1")
         ).first()
         if owner is None:
             raise RuntimeError("Cannot create generated-AI-model case without an owner")
@@ -109,7 +105,7 @@ def _prepare_catalog(bind: sa.Connection) -> None:
                 "configuration_status, button_label) VALUES "
                 "(:id, :slug, :title, :description, :role, :type, :category, "
                 " :platform, "
-                ":ratio, :intent, :prompt, 'published', :sort_order, 0, :created_by, "
+                ":ratio, :intent, :prompt, 'published', :sort_order, FALSE, :created_by, "
                 ":updated_by, CURRENT_TIMESTAMP, 'product_prompt', "
                 "'none', 'incomplete', "
                 ":button_label)"
@@ -127,8 +123,8 @@ def _prepare_catalog(bind: sa.Connection) -> None:
                 "intent": "让商品在自然、真实的模特关系中清晰展示。",
                 "prompt": CANONICAL_PROMPT_BY_TITLE["生成AI模特"],
                 "sort_order": -1,
-                "created_by": owner.created_by_user_id,
-                "updated_by": owner.updated_by_user_id,
+                "created_by": owner.id,
+                "updated_by": owner.id,
                 "button_label": "一键做同款",
             },
         )

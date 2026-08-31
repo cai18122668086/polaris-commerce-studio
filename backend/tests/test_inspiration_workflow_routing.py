@@ -15,9 +15,10 @@ from app.routes_v1 import _validate_inspiration_case_job
 from app.schemas_v1 import CreativeImageJobCreate, ReferenceRemixJobCreate
 
 
-def _session_for(case):
+def _session_for(case, assets=()):
     session = Mock()
     session.scalar.return_value = case
+    session.scalars.return_value.all.return_value = list(assets)
     return session
 
 
@@ -150,6 +151,23 @@ def test_generated_ai_model_still_requires_both_display_asset_roles() -> None:
         errors = _configuration_errors(case, assets)
         assert errors == ["verified_case_assets_required"]
         assert _configuration_status(case, errors) == "incomplete"
+
+
+def test_job_validation_refreshes_stale_case_status_from_assets() -> None:
+    case = _case("product_prompt", configuration_status="incomplete")
+    case.title = "生成AI模特"
+    session = _session_for(
+        case,
+        assets=[
+            SimpleNamespace(role="result"),
+            SimpleNamespace(role="user_upload"),
+        ],
+    )
+
+    result = _validate_inspiration_case_job(session, _creative())
+
+    assert result is case
+    assert case.configuration_status == "ready"
 
 
 def test_product_prompt_accepts_product_only_without_reference() -> None:

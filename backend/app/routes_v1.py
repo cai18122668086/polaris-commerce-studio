@@ -51,6 +51,7 @@ from .domain import (
     RetryScope,
 )
 from .errors import ApiError, UploadValidationError
+from .inspiration_routes import _sync_configuration_status
 from .masked_repair import (
     MaskedRepairError,
     validate_local_edit_asset_records,
@@ -1163,6 +1164,11 @@ def _validate_inspiration_case_job(
             "INSPIRATION_CASE_NOT_FOUND",
             "The inspiration case is not available.",
         )
+    # Asset uploads can predate the workflow-status fix, leaving the persisted
+    # status stale. Recompute executable workflows from the current case assets
+    # before accepting a job; legacy cases keep their unsupported-workflow path.
+    if case.workflow_type in _INSPIRATION_WORKFLOW_JOB_TYPES:
+        _sync_configuration_status(case, session)
     if case.configuration_status != "ready":
         raise ApiError(
             status.HTTP_409_CONFLICT,

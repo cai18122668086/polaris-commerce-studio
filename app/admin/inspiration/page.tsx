@@ -73,7 +73,7 @@ export default function AdminInspirationPage() {
   const edit = (item: Item) => { setSelected(item); setForm({ ...blank, ...item, assets: item.gallery.map(({ asset_id, role, ordinal, url }) => ({ asset_id, role, ordinal, url })) }); setMessage(""); };
   const uploadRole = async (event: ChangeEvent<HTMLInputElement>, role: AssetRole) => {
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
-    try { const asset = await upload.mutateAsync({ file, mediaKind: "image" }); const access = workspace?.id ? await getAssetAccessUrl(workspace.id, asset.id) : null; setForm((current) => ({ ...current, assets: [...current.assets, { asset_id: asset.id, role, ordinal: current.assets.filter((x) => x.role === role).length, url: access?.url }] })); setMessage("图片已上传，保存后关联到案例"); } catch (error) { setMessage(error instanceof Error ? error.message : "上传失败"); }
+    try { const asset = await upload.mutateAsync({ file, mediaKind: "image" }); const access = workspace?.id ? await getAssetAccessUrl(workspace.id, asset.id) : null; setForm((current) => ({ ...current, reference_source: role === "reference" && current.workflow_type === "reference_remix" && current.reference_source === "none" ? "admin_reference" : current.reference_source, assets: [...current.assets, { asset_id: asset.id, role, ordinal: current.assets.filter((x) => x.role === role).length, url: access?.url }] })); setMessage("图片已上传，保存后关联到案例"); } catch (error) { setMessage(error instanceof Error ? error.message : "上传失败"); }
   };
   const save = async (publish = false) => {
     setSaving(true); setMessage("");

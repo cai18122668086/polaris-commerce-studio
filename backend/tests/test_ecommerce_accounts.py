@@ -107,6 +107,67 @@ def test_crawl_task_account_platform_mismatch_is_rejected(client, monkeypatch) -
     assert response.json()["error"]["code"] == "ACCOUNT_PLATFORM_MISMATCH"
 
 
+def test_automatic_account_selection_rotates_ready_accounts(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setattr(crawl_tasks, "_schedule", lambda app, task_id: None)
+    first = _create_account(client, account_key="auto-account-1")
+    second = _create_account(client, account_key="auto-account-2")
+    for account in (first, second):
+        ready = client.patch(
+            f"/api/ecommerce/accounts/{account['id']}",
+            json={"login_state": "ready"},
+        )
+        assert ready.status_code == 200
+
+    payload = {
+        "workspace_id": "ws_test",
+        "url": "https://item.taobao.com/item.htm?id=123456789012",
+        "platform": "taobao",
+    }
+    first_task = client.post("/api/ecommerce/crawl-tasks", json=payload)
+    second_task = client.post("/api/ecommerce/crawl-tasks", json=payload)
+    assert first_task.status_code == 202
+    assert second_task.status_code == 202
+    assert first_task.json()["data"]["account_id"] == first["id"]
+    assert second_task.json()["data"]["account_id"] == second["id"]
+
+
+def test_automatic_account_selection_fails_closed_when_configured_pool_unavailable(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setattr(crawl_tasks, "_schedule", lambda app, task_id: None)
+    account = _create_account(client, account_key="auto-unavailable")
+    # An account configured for the workspace but not yet logged in must not
+    # silently fall back to the legacy shared platform session.
+    response = client.post(
+        "/api/ecommerce/crawl-tasks",
+        json={
+            "workspace_id": "ws_test",
+            "url": "https://item.taobao.com/item.htm?id=123456789012",
+            "platform": "taobao",
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ACCOUNT_NOT_AVAILABLE"
+
+    ready = client.patch(
+        f"/api/ecommerce/accounts/{account['id']}",
+        json={"login_state": "ready"},
+    )
+    assert ready.status_code == 200
+    task = client.post(
+        "/api/ecommerce/crawl-tasks",
+        json={
+            "workspace_id": "ws_test",
+            "url": "https://item.taobao.com/item.htm?id=987654321098",
+            "platform": "taobao",
+        },
+    )
+    assert task.status_code == 202
+    assert task.json()["data"]["account_id"] == account["id"]
+
+
 def test_profile_lease_fencing_rejects_stale_worker(client) -> None:
     account = _create_account(client, account_key="lease-account")
     session_factory = client.app.state.session_factory

@@ -1411,6 +1411,63 @@ def _account_unavailable_error() -> ApiError:
     )
 
 
+def _select_automatic_account(
+    session: Session,
+    *,
+    workspace_id: str,
+    platform: str,
+) -> tuple[EcommerceAccountRecord | None, bool]:
+    """Pick the least-recently used ready account for a platform.
+
+    The selection is deliberately small and deterministic for the first
+    account-pool release: disabled/paused/unlogged accounts are excluded and
+    an active profile lease is treated as busy.  The profile lease acquired by
+    the worker remains the concurrency boundary, so this helper does not try
+    to reserve a browser profile in the request transaction.
+
+    The second tuple member distinguishes "no accounts configured" from
+    "accounts configured but none are currently runnable".  The former keeps
+    the legacy default platform session available; the latter fails closed so
+    an automatic task cannot silently run under an unintended session.
+    """
+
+    accounts = session.scalars(
+        select(EcommerceAccountRecord)
+        .where(
+            EcommerceAccountRecord.workspace_id == workspace_id,
+            EcommerceAccountRecord.platform == platform,
+        )
+        .order_by(
+            EcommerceAccountRecord.last_used_at.asc().nullsfirst(),
+            EcommerceAccountRecord.created_at.asc(),
+            EcommerceAccountRecord.id.asc(),
+        )
+    ).all()
+    if not accounts:
+        return None, False
+
+    now = utc_now()
+    active_profile_ids = {
+        lease.profile_id
+        for lease in session.scalars(
+            select(CrawlProfileLeaseRecord).where(
+                CrawlProfileLeaseRecord.profile_id.in_(
+                    [account.profile_id for account in accounts]
+                ),
+                CrawlProfileLeaseRecord.expires_at > now,
+            )
+        ).all()
+    }
+    for account in accounts:
+        if (
+            account.status == "active"
+            and account.login_state == EcommerceLoginState.READY.value
+            and account.profile_id not in active_profile_ids
+        ):
+            return account, True
+    return None, True
+
+
 @router.post("/crawl-tasks", status_code=status.HTTP_202_ACCEPTED)
 async def create_crawl_task(
     request: Request,
@@ -1504,6 +1561,23 @@ async def create_crawl_task(
                 "data": _task_response(existing),
                 "idempotent": True,
             }
+
+    # With no explicit account, use a ready workspace account when one is
+    # configured.  Keep the historical platform session only for workspaces
+    # that have not configured any account yet; never fall back to it when an
+    # account pool exists but all candidates require attention or are busy.
+    if account is None and payload.account_id is None:
+        account, has_platform_accounts = _select_automatic_account(
+            session,
+            workspace_id=payload.workspace_id,
+            platform=_account_platform_for_policy(policy.adapter_name),
+        )
+        if has_platform_accounts and account is None:
+            raise _account_unavailable_error()
+        if account is not None:
+            # Mark selection time so concurrent queued requests rotate across
+            # ready accounts even before the worker begins the fetch.
+            account.last_used_at = utc_now()
     task = CrawlTaskRecord(
         id=_new_id("crw"),
         workspace_id=payload.workspace_id,

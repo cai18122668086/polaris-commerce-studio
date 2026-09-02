@@ -154,7 +154,10 @@ def service_networks(block: str) -> set[str]:
 def service_queues(block: str) -> set[str]:
     """Return queue names explicitly passed to a Celery service command."""
 
-    return set(re.findall(r"--queues=([a-z0-9_-]+)", block))
+    queues: set[str] = set()
+    for match in re.findall(r"--queues(?:=|\s+)([a-z0-9_,-]+)", block):
+        queues.update(queue for queue in match.split(",") if queue)
+    return queues
 
 
 def validate_queue_topology(

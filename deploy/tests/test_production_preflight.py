@@ -284,7 +284,7 @@ class ProductionPreflightTests(unittest.TestCase):
             compose.replace("--queues=crawl", "--queues=default", 1),
             compose.replace(
                 "--queues=default",
-                "--queues=default\n      - --queues=crawl",
+                "--queues=default,crawl",
                 1,
             ),
         )

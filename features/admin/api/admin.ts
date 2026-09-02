@@ -1,4 +1,5 @@
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
+import { mapApiError } from "@/lib/api/error-mapper";
 
 export type AdminAccess = { can_manage: boolean };
 
@@ -234,25 +235,19 @@ function requestHeaders() {
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    let message: string | null = null;
-    try {
-      const body = await response.json() as { error?: { message?: string } };
-      message = body.error?.message ?? null;
-    } catch {
-      // Keep the stable fallback below for non-JSON error responses.
-    }
-    throw new Error(
-      message
-        ?? (response.status === 401 || response.status === 403
-          ? "暂无管理员工作台权限，请使用公告管理工作台相同的管理员身份登录。"
-          : "管理员工作台暂时无法加载，请稍后重试。"),
-    );
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw mapApiError(undefined, response);
   }
-  const payload = await response.json() as { data: T } | T;
-  return typeof payload === "object" && payload !== null && "data" in payload
-    ? payload.data as T
-    : payload as T;
+  if (!response.ok) {
+    throw mapApiError(payload, response);
+  }
+  const typedPayload = payload as { data: T } | T;
+  return typeof typedPayload === "object" && typedPayload !== null && "data" in typedPayload
+    ? typedPayload.data as T
+    : typedPayload as T;
 }
 
 function listQuery(params: { limit?: number; offset?: number; status?: string; search?: string }) {
@@ -318,6 +313,10 @@ export async function getAdminLogs(
     status?: string;
     created_from?: string;
     created_to?: string;
+    query?: string;
+    job_id?: string;
+    crawl_task_id?: string;
+    account_id?: string;
     limit?: number;
     offset?: number;
   } = {},

@@ -14,6 +14,12 @@ from app.ecommerce_jd import (
     parse_product_html,
 )
 
+
+@pytest.fixture(autouse=True)
+def admin_access(client) -> None:
+    client.app.state.settings.announcement_admin_emails = ["admin@example.com"]
+
+
 FIXTURES = Path(__file__).parent / "fixtures" / "jd"
 URL = "https://item.jd.com/123456789012.html"
 GLOBAL_BUY_URL = (

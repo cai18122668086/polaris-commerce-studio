@@ -18,6 +18,7 @@ from app.main import create_app
 from app.models import (
     AssetRecord,
     CrawlProfileLeaseRecord,
+    CrawlTaskRecord,
     ProductAssetRecord,
     ProductSnapshotRecord,
     utc_now,
@@ -318,17 +319,26 @@ def test_profile_lease_is_exclusive_and_released(
     first = client.post("/api/ecommerce/crawl-tasks", json=payload).json()["data"]
     second = client.post("/api/ecommerce/crawl-tasks", json=payload).json()["data"]
     session_factory = client.app.state.session_factory
+    with session_factory() as session:
+        first_record = session.get(CrawlTaskRecord, first["id"])
+        second_record = session.get(CrawlTaskRecord, second["id"])
+        assert first_record is not None
+        assert second_record is not None
+        first_profile_id = first_record.profile_id
+        second_profile_id = second_record.profile_id
 
+    assert first_profile_id is not None
+    assert second_profile_id == first_profile_id
     assert crawl_tasks._try_acquire_profile_lease(
         session_factory,
-        profile_id=first["profile_id"],
+        profile_id=first_profile_id,
         platform="taobao",
         task_id=first["id"],
         owner_id="worker-one",
     ) is True
     assert crawl_tasks._try_acquire_profile_lease(
         session_factory,
-        profile_id=second["profile_id"],
+        profile_id=second_profile_id,
         platform="taobao",
         task_id=second["id"],
         owner_id="worker-two",
@@ -343,7 +353,7 @@ def test_profile_lease_is_exclusive_and_released(
     # get a chance to run its release path after a process crash.
     assert crawl_tasks._try_acquire_profile_lease(
         session_factory,
-        profile_id=first["profile_id"],
+        profile_id=first_profile_id,
         platform="taobao",
         task_id=first["id"],
         owner_id="worker-one",
@@ -351,27 +361,27 @@ def test_profile_lease_is_exclusive_and_released(
     ) is True
     assert crawl_tasks._try_acquire_profile_lease(
         session_factory,
-        profile_id=second["profile_id"],
+        profile_id=second_profile_id,
         platform="taobao",
         task_id=second["id"],
         owner_id="worker-two",
     ) is True
     crawl_tasks._release_profile_lease(
         session_factory,
-        profile_id=second["profile_id"],
+        profile_id=second_profile_id,
         task_id=second["id"],
         owner_id="worker-two",
     )
     assert crawl_tasks._try_acquire_profile_lease(
         session_factory,
-        profile_id=second["profile_id"],
+        profile_id=second_profile_id,
         platform="taobao",
         task_id=second["id"],
         owner_id="worker-two",
     ) is True
     crawl_tasks._release_profile_lease(
         session_factory,
-        profile_id=second["profile_id"],
+        profile_id=second_profile_id,
         task_id=second["id"],
         owner_id="worker-two",
     )

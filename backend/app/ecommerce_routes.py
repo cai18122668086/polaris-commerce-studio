@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .admin_auth import AdminDependency
 from .auth import Principal, get_principal
 from .database import get_session
 from .domain import (
@@ -1031,6 +1032,7 @@ def ecommerce_session_status(
     request: Request,
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
     platform: str = Query(default="taobao"),
     account_id: str | None = Query(default=None, min_length=1, max_length=40),
 ) -> dict:
@@ -1061,6 +1063,7 @@ def ecommerce_session_open_page(
     payload: SessionStartRequest,
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
 ) -> dict:
     """Open a visible official page for a human-completed challenge."""
 
@@ -1171,6 +1174,7 @@ def ecommerce_session_preview(
     request: Request,
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
     account_id: str = Query(min_length=1, max_length=40),
 ):
     """Return the short-lived, protected QR login preview for one account."""
@@ -1240,6 +1244,7 @@ def ecommerce_session_cancel(
     payload: SessionCancelRequest,
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
 ) -> dict:
     """Cancel the active human-assisted login flow for one account."""
 
@@ -1302,6 +1307,7 @@ def ecommerce_session_start(
     request: Request,
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
     payload: SessionStartRequest | None = None,
 ) -> dict:
     _require_login_enabled(request)

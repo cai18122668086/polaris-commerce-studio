@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { AppShell } from "@/components/app-shell";
+import { AdminShell } from "@/components/admin/admin-shell";
 import {
   getAdminAccounts,
   getAdminLogDetail,
@@ -333,6 +333,12 @@ export default function AdminDashboardPage() {
   const [logKind, setLogKind] = useState<"all" | "generation" | "crawl">("all");
   const [logStatus, setLogStatus] = useState("");
   const [logPlatform, setLogPlatform] = useState("");
+  const [logQuery, setLogQuery] = useState("");
+  const [logJobId, setLogJobId] = useState("");
+  const [logCrawlTaskId, setLogCrawlTaskId] = useState("");
+  const [logAccountId, setLogAccountId] = useState("");
+  const [logOffset, setLogOffset] = useState(0);
+  const [logLimit, setLogLimit] = useState(20);
   const [selectedLog, setSelectedLog] = useState<AdminLogDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -340,7 +346,12 @@ export default function AdminDashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async (refresh = false) => {
+  const load = async (
+    refresh = false,
+    logPage: { offset?: number; limit?: number } = {},
+  ) => {
+    const requestedLogOffset = logPage.offset ?? logOffset;
+    const requestedLogLimit = logPage.limit ?? logLimit;
     setError(null);
     if (refresh) setRefreshing(true);
     else setLoading(true);
@@ -353,7 +364,12 @@ export default function AdminDashboardPage() {
           kind: logKind,
           status: logStatus || undefined,
           platform: logPlatform || undefined,
-          limit: 20,
+          query: logQuery || undefined,
+          job_id: logJobId || undefined,
+          crawl_task_id: logCrawlTaskId || undefined,
+          account_id: logAccountId || undefined,
+          limit: requestedLogLimit,
+          offset: requestedLogOffset,
         }),
         getAdminAccounts({ limit: 20 }),
       ]);
@@ -364,6 +380,8 @@ export default function AdminDashboardPage() {
       setWorkspaceTotal(nextWorkspaces.pagination.total);
       setLogs(nextLogs.items);
       setLogTotal(nextLogs.pagination.total);
+      setLogOffset(nextLogs.pagination.offset);
+      setLogLimit(nextLogs.pagination.limit);
       setOperationalAccounts(nextAccounts.items);
       setAccountTotal(nextAccounts.pagination.total);
     } catch (cause) {
@@ -391,6 +409,21 @@ export default function AdminDashboardPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedLog]);
 
+  const applyLogFilters = () => {
+    void load(true, { offset: 0 });
+  };
+
+  const changeLogPageSize = (value: number) => {
+    setLogLimit(value);
+    void load(true, { limit: value, offset: 0 });
+  };
+
+  const goToLogPage = (offset: number) => {
+    const lastPageOffset = Math.floor(Math.max(0, logTotal - 1) / logLimit) * logLimit;
+    const nextOffset = Math.max(0, Math.min(offset, lastPageOffset));
+    void load(true, { offset: nextOffset });
+  };
+
   const openLog = async (log: AdminLog) => {
     setSelectedLog(null);
     setDetailError(null);
@@ -405,29 +438,22 @@ export default function AdminDashboardPage() {
   };
 
   if (loading) {
-    return <AppShell sidebar={false}><div className={styles.center}><Loader2 className={styles.spin} size={24} /> 正在检查管理员工作台权限…</div></AppShell>;
+    return <AdminShell><div className={styles.center}><Loader2 className={styles.spin} size={24} /> 正在检查管理员工作台权限…</div></AdminShell>;
   }
 
   if (error || !overview) {
-    return <AppShell sidebar={false}><div className={styles.center}><ShieldCheck size={30} /><h1>暂无管理员工作台权限</h1><p>{error ?? "请使用公告管理工作台相同的管理员身份登录。"}</p><div className={styles.centerActions}><button className={styles.primary} type="button" onClick={() => void load(true)} disabled={refreshing}><RefreshCw size={16} /> 重新载入</button><Link className={styles.secondary} href="/admin/announcements">公告管理工作台 <ExternalLink size={15} /></Link></div></div></AppShell>;
+    return <AdminShell><div className={styles.center}><ShieldCheck size={30} /><h1>暂无管理员工作台权限</h1><p>{error ?? "请使用公告管理工作台相同的管理员身份登录。"}</p><div className={styles.centerActions}><button className={styles.primary} type="button" onClick={() => void load(true)} disabled={refreshing}><RefreshCw size={16} /> 重新载入</button><Link className={styles.secondary} href="/admin/announcements">公告管理工作台 <ExternalLink size={15} /></Link></div></div></AdminShell>;
   }
 
   const sessions = Object.entries(overview.crawler_sessions);
   const totalRelogin = sessions.reduce((sum, [, item]) => sum + item.needs_relogin_count, 0);
 
-  return <AppShell sidebar={false}>
+  return <AdminShell>
     <div className={styles.page}>
       <header className={styles.header}>
         <div><span className={styles.eyebrow}><ShieldCheck size={14} /> 运营工具</span><h1>管理员工作台</h1><p>先用只读概览掌握用户使用情况、任务运行状态和电商账号登录状态。</p></div>
         <button className={styles.secondary} type="button" onClick={() => void load(true)} disabled={refreshing}><RefreshCw className={refreshing ? styles.spin : ""} size={16} /> {refreshing ? "刷新中…" : "刷新数据"}</button>
       </header>
-
-      <nav className={styles.adminNav} aria-label="管理中心导航">
-        <Link className={styles.adminNavActive} href="/admin"><ShieldCheck size={15} />工作台</Link>
-        <Link href="/admin/announcements"><ExternalLink size={14} />公告管理</Link>
-        <Link href="/admin/inspiration"><ExternalLink size={14} />灵感案例</Link>
-        <Link href="/commerce-crawler"><Workflow size={15} />真实爬虫</Link>
-      </nav>
 
       <AdministratorManagement />
 
@@ -473,12 +499,22 @@ export default function AdminDashboardPage() {
           <span className={styles.sectionCount}>共 {formatCount(logTotal)} 条</span>
         </div>
         <div className={styles.logFilters}>
-          <label>类型<select value={logKind} onChange={(event) => setLogKind(event.target.value as "all" | "generation" | "crawl")}><option value="all">全部</option><option value="generation">生成</option><option value="crawl">抓取</option></select></label>
-          <label>状态<input value={logStatus} onChange={(event) => setLogStatus(event.target.value)} placeholder="例如 failed" /></label>
-          <label>平台<select value={logPlatform} onChange={(event) => setLogPlatform(event.target.value)}><option value="">全部平台</option><option value="taobao">淘宝</option><option value="1688">1688</option><option value="jd">京东</option><option value="pinduoduo">拼多多</option></select></label>
-          <button className={styles.secondary} type="button" onClick={() => void load(true)} disabled={refreshing}>应用筛选</button>
+          <label className={styles.logSearchWide}>关键词<input value={logQuery} onChange={(event) => { setLogQuery(event.target.value); setLogOffset(0); }} placeholder="任务 ID、账号名称或账号末四位" /></label>
+          <label>任务 ID<input value={logJobId} onChange={(event) => { setLogJobId(event.target.value); setLogOffset(0); }} placeholder="生成任务号" /></label>
+          <label>抓取任务号<input value={logCrawlTaskId} onChange={(event) => { setLogCrawlTaskId(event.target.value); setLogOffset(0); }} placeholder="抓取任务号" /></label>
+          <label>账号 ID<input value={logAccountId} onChange={(event) => { setLogAccountId(event.target.value); setLogOffset(0); }} placeholder="账号 ID" /></label>
+          <label>类型<select value={logKind} onChange={(event) => { setLogKind(event.target.value as "all" | "generation" | "crawl"); setLogOffset(0); }}><option value="all">全部</option><option value="generation">生成</option><option value="crawl">抓取</option></select></label>
+          <label>状态<input value={logStatus} onChange={(event) => { setLogStatus(event.target.value); setLogOffset(0); }} placeholder="例如 failed" /></label>
+          <label>平台<select value={logPlatform} onChange={(event) => { setLogPlatform(event.target.value); setLogOffset(0); }}><option value="">全部平台</option><option value="taobao">淘宝</option><option value="1688">1688</option><option value="jd">京东</option><option value="pinduoduo">拼多多</option></select></label>
+          <button className={styles.secondary} type="button" onClick={applyLogFilters} disabled={refreshing}>应用筛选</button>
         </div>
         <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>任务</th><th>工作区</th><th>状态</th><th>错误 / 时间</th><th>操作</th></tr></thead><tbody>{logs.length === 0 ? <tr><td colSpan={5} className={styles.tableEmpty}>暂无符合条件的任务日志</td></tr> : logs.map((log) => <tr key={`${log.kind}-${log.id}`}><td><strong>{logKindLabel(log)} · {logPlatformLabel(log.platform)}</strong><small>{log.id}</small></td><td><strong>{log.workspace_name ?? "未知工作区"}</strong><small>{log.workspace_id}</small></td><td><span className={log.status === "failed" ? styles.logStatusFailed : styles.logStatus}>{log.status}</span><small>{log.stage ?? "未分阶段"} · {log.progress}% · {log.event_count} 个事件</small></td><td>{log.error_code ? <strong className={styles.warningText}>{log.error_code}</strong> : <strong>无错误</strong>}<small>{log.error_message ?? "—"} · {formatTime(log.finished_at ?? log.created_at)}</small></td><td><button className={styles.detailButton} type="button" onClick={() => void openLog(log)}>查看详情</button></td></tr>)}</tbody></table></div>
+        <div className={styles.logPagination} aria-label="任务日志分页">
+          <span>显示 {logTotal === 0 ? 0 : logOffset + 1}-{Math.min(logOffset + logs.length, logTotal)} 条，共 {formatCount(logTotal)} 条</span>
+          <label>每页<select value={logLimit} onChange={(event) => changeLogPageSize(Number(event.target.value))}><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option></select>条</label>
+          <button className={styles.detailButton} type="button" onClick={() => goToLogPage(logOffset - logLimit)} disabled={refreshing || logOffset === 0}>上一页</button>
+          <button className={styles.detailButton} type="button" onClick={() => goToLogPage(logOffset + logLimit)} disabled={refreshing || logOffset + logLimit >= logTotal}>下一页</button>
+        </div>
       </section>
 
       <section className={styles.section}>
@@ -488,5 +524,5 @@ export default function AdminDashboardPage() {
       <p className={styles.generatedAt}>数据生成于 {formatTime(overview.generated_at)} · 最近 7 天新增用户：{formatCount(overview.users.recent_signups)}</p>
     </div>
     {selectedLog || detailLoading || detailError ? <LogDetailDialog detail={selectedLog} loading={detailLoading} error={detailError} onClose={() => { setSelectedLog(null); setDetailError(null); }} /> : null}
-  </AppShell>;
+  </AdminShell>;
 }

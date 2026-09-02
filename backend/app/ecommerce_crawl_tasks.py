@@ -24,6 +24,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .admin_auth import is_admin
 from .auth import Principal, get_principal
 from .database import get_session
 from .domain import (
@@ -142,7 +143,10 @@ def _ensure_workspace(
 
 
 def _task_response(
-    task: CrawlTaskRecord, *, include_result: bool = False
+    task: CrawlTaskRecord,
+    *,
+    include_result: bool = False,
+    include_internal_account: bool = False,
 ) -> dict[str, Any]:
     data: dict[str, Any] = {
         "id": task.id,
@@ -158,8 +162,8 @@ def _task_response(
         "error_message_safe": task.error_message_safe,
         "attempt_count": task.attempt_count,
         "max_attempts": task.max_attempts,
-        "account_id": task.account_id,
-        "profile_id": task.profile_id,
+        "account_id": task.account_id if include_internal_account else None,
+        "profile_id": task.profile_id if include_internal_account else None,
         "result_snapshot_id": task.result_snapshot_id,
         "queued_at": _iso(task.queued_at),
         "started_at": _iso(task.started_at),
@@ -1513,6 +1517,14 @@ async def create_crawl_task(
             "亚马逊当前仅规划，尚未启用。",
         )
     account: EcommerceAccountRecord | None = None
+    if payload.account_id is not None and not is_admin(
+        principal, session, request.app.state.settings
+    ):
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "ACCOUNT_SELECTION_ADMIN_REQUIRED",
+            "普通用户只能使用系统自动分配的可用账号池。",
+        )
     if payload.account_id is not None:
         account = session.get(EcommerceAccountRecord, payload.account_id)
         if account is None or account.workspace_id != payload.workspace_id:

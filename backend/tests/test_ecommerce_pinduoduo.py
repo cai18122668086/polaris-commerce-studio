@@ -7,6 +7,12 @@ import app.ecommerce_routes as ecommerce_routes
 from app.ecommerce_pinduoduo import PinduoduoAdapter, parse_product_html
 from app.ecommerce_platform import SiteFamily, resolve_site_policy
 
+
+@pytest.fixture(autouse=True)
+def admin_access(client) -> None:
+    client.app.state.settings.announcement_admin_emails = ["admin@example.com"]
+
+
 FIXTURES = Path(__file__).parent / "fixtures" / "pinduoduo"
 URL = "https://mobile.yangkeduo.com/goods.html?goods_id=401084455839"
 

@@ -4,10 +4,16 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import pytest
 from sqlalchemy import select
 
 from app.ecommerce_session import EcommerceSessionManager
 from app.models import AuditEventRecord, EcommerceLoginSessionRecord, utc_now
+
+
+@pytest.fixture(autouse=True)
+def admin_access(client) -> None:
+    client.app.state.settings.announcement_admin_emails = ["admin@example.com"]
 
 
 def _create_account(client, **overrides: Any) -> dict[str, Any]:

@@ -129,8 +129,61 @@ export type AdminLogEvent = {
   occurred_at: string | null;
 };
 
+export type AdminLogItem = {
+  id: string;
+  item_key: string;
+  ordinal: number;
+  status: string;
+  stage: string | null;
+  quality: string | null;
+  result_source: string | null;
+  attempt_count: number;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  provider_stages: Array<{
+    id: string;
+    attempt_no: number;
+    provider: string;
+    operation: string;
+    status: string;
+    error_code: string | null;
+    error_message: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+  }>;
+};
+
+export type AdminLogAsset = {
+  id: string;
+  relation_id: number;
+  job_item_id: string | null;
+  direction: "input" | "intermediate" | "output";
+  role: string;
+  ordinal: number;
+  is_deliverable: boolean;
+  validation: Record<string, unknown>;
+  original_filename: string;
+  content_type: string;
+  byte_size: number;
+  width: number | null;
+  height: number | null;
+  origin_kind: string;
+  lifecycle_status: string;
+  created_at: string | null;
+  access_url: string | null;
+  download_url: string | null;
+  access_expires_at: string | null;
+};
+
 export type AdminLogDetail = AdminLog & {
   events: AdminLogEvent[];
+  items: AdminLogItem[];
+  assets: AdminLogAsset[];
+  input_assets: AdminLogAsset[];
+  output_assets: AdminLogAsset[];
+  intermediate_assets: AdminLogAsset[];
 };
 
 export type AdminWorkspace = {

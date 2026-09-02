@@ -4,11 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 from app.domain import EcommerceLoginState
 from app.models import (
+    AssetRecord,
     AuditEventRecord,
     CrawlEventRecord,
     CrawlProfileLeaseRecord,
     CrawlTaskRecord,
     EcommerceAccountRecord,
+    JobAssetRecord,
+    JobAttemptRecord,
     JobItemRecord,
     JobRecord,
     UserRecord,
@@ -380,6 +383,199 @@ def test_admin_logs_filter_and_redaction_cover_generation_and_crawl(
     assert generation_detail.status_code == 200
     assert generation_detail.json()["data"]["events"]
     assert "private_prompt" not in generation_detail.text
+
+
+def test_admin_generation_detail_includes_items_attempts_and_protected_assets(
+    client, settings
+) -> None:
+    settings.announcement_admin_emails = ["admin@example.com"]
+    now = datetime.now(UTC)
+    session_factory = client.app.state.session_factory
+    with session_factory() as session:
+        session.add(
+            JobRecord(
+                id="job_admin_generation_detail",
+                workspace_id="ws_test",
+                type="domestic_main_image",
+                status="failed",
+                stage="provider",
+                progress=100,
+                expected_item_count=1,
+                failed_item_count=1,
+                error_code="PROVIDER_INTERNAL_SECRET",
+                error_message="private provider stack and prompt must stay hidden",
+                configuration={"prompt": "private prompt"},
+                finished_at=now,
+            )
+        )
+        session.add(
+            JobItemRecord(
+                id="item_admin_generation_detail",
+                workspace_id="ws_test",
+                job_id="job_admin_generation_detail",
+                item_key="PAGE-01",
+                ordinal=0,
+                status="failed",
+                stage="provider",
+                quality="failed",
+                result_source="provider",
+                attempt_count=1,
+                error_code="PROVIDER_INTERNAL_SECRET",
+                error_message="private item error",
+                started_at=now,
+                finished_at=now,
+            )
+        )
+        session.add(
+            JobAttemptRecord(
+                id="attempt_admin_generation_detail",
+                workspace_id="ws_test",
+                job_id="job_admin_generation_detail",
+                job_item_id="item_admin_generation_detail",
+                attempt_no=1,
+                status="failed",
+                lease_token="test-token",
+                leased_by="test-worker",
+                lease_expires_at=now,
+                provider="tengli",
+                operation="generate",
+                provider_idempotency_key="idem-admin-generation-detail",
+                error_code="PROVIDER_INTERNAL_SECRET",
+                error_message="private provider error",
+                started_at=now,
+                finished_at=now,
+            )
+        )
+        session.add_all(
+            [
+                AssetRecord(
+                    id="asset_admin_generation_input",
+                    workspace_id="ws_test",
+                    media_kind="image",
+                    origin_kind="upload",
+                    lifecycle_status="ready",
+                    original_filename="input.png",
+                    content_type="image/png",
+                    byte_size=10,
+                    width=100,
+                    height=100,
+                    sha256="a" * 64,
+                    storage_provider="local",
+                    storage_bucket="local",
+                    object_key="ws_test/private-input.png",
+                ),
+                AssetRecord(
+                    id="asset_admin_generation_output",
+                    workspace_id="ws_test",
+                    media_kind="image",
+                    origin_kind="generated",
+                    lifecycle_status="ready",
+                    original_filename="output.png",
+                    content_type="image/png",
+                    byte_size=20,
+                    width=1200,
+                    height=1200,
+                    sha256="b" * 64,
+                    storage_provider="local",
+                    storage_bucket="local",
+                    object_key="ws_test/private-output.png",
+                ),
+                AssetRecord(
+                    id="asset_admin_generation_pending",
+                    workspace_id="ws_test",
+                    media_kind="image",
+                    origin_kind="generated",
+                    lifecycle_status="pending",
+                    original_filename="pending.png",
+                    content_type="image/png",
+                    byte_size=30,
+                    width=500,
+                    height=500,
+                    sha256="c" * 64,
+                    storage_provider="local",
+                    storage_bucket="local",
+                    object_key="ws_test/private-pending.png",
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                JobAssetRecord(
+                    workspace_id="ws_test",
+                    job_id="job_admin_generation_detail",
+                    job_item_id="item_admin_generation_detail",
+                    asset_id="asset_admin_generation_input",
+                    direction="input",
+                    role="product",
+                    ordinal=0,
+                    is_deliverable=False,
+                    validation={"valid": True},
+                ),
+                JobAssetRecord(
+                    workspace_id="ws_test",
+                    job_id="job_admin_generation_detail",
+                    job_item_id="item_admin_generation_detail",
+                    asset_id="asset_admin_generation_output",
+                    direction="output",
+                    role="domestic_main_image",
+                    ordinal=0,
+                    is_deliverable=True,
+                    validation={"valid": True, "quality": "passed"},
+                ),
+                JobAssetRecord(
+                    workspace_id="ws_test",
+                    job_id="job_admin_generation_detail",
+                    job_item_id="item_admin_generation_detail",
+                    asset_id="asset_admin_generation_pending",
+                    direction="intermediate",
+                    role="provider_preview",
+                    ordinal=0,
+                    is_deliverable=False,
+                    validation={},
+                ),
+            ]
+        )
+        session.commit()
+
+    response = client.get("/api/v1/admin/logs/generation/job_admin_generation_detail")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["id"] == "item_admin_generation_detail"
+    assert item["status"] == "failed"
+    assert item["error_code"] == "PROVIDER_INTERNAL_SECRET"
+    assert item["error_message"] == "任务执行失败，请根据错误码定位。"
+    assert len(item["provider_stages"]) == 1
+    assert item["provider_stages"][0]["provider"] == "tengli"
+    assert (
+        item["provider_stages"][0]["error_message"]
+        == "任务执行失败，请根据错误码定位。"
+    )
+
+    assert len(data["input_assets"]) == 1
+    assert len(data["output_assets"]) == 1
+    assert len(data["intermediate_assets"]) == 1
+    input_asset = data["input_assets"][0]
+    output_asset = data["output_assets"][0]
+    pending_asset = data["intermediate_assets"][0]
+    assert input_asset["access_url"].startswith("http")
+    assert input_asset["download_url"].startswith("http")
+    assert output_asset["access_url"].startswith("http")
+    assert output_asset["download_url"].startswith("http")
+    assert pending_asset["access_url"] is None
+    assert pending_asset["download_url"] is None
+    assert pending_asset["access_expires_at"] is None
+    assert "private-input.png" not in response.text
+    assert "private-output.png" not in response.text
+    for forbidden in (
+        "private provider stack",
+        "private prompt",
+        "test-token",
+        "leased_by",
+    ):
+        assert forbidden not in response.text
 
 
 def test_admin_accounts_are_read_only_and_show_safe_operational_summary(

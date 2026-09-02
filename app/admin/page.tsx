@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CircleCheck,
   Clock3,
+  Download,
   ExternalLink,
   Loader2,
   RefreshCw,
@@ -24,7 +25,9 @@ import {
   getAdminWorkspaces,
   type AdminAccount,
   type AdminLog,
+  type AdminLogAsset,
   type AdminLogDetail,
+  type AdminLogItem,
   type AdminLogEvent,
   type AdminOperationalAccount,
   type AdminOverview,
@@ -101,6 +104,61 @@ function eventTypeLabel(event: AdminLogEvent) {
   return labels[event.event_type] ?? "任务事件";
 }
 
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function assetRoleLabel(asset: AdminLogAsset) {
+  const labels: Record<string, string> = {
+    product: "商品素材",
+    domestic_main_image: "国内主图",
+    provider_preview: "Provider 中间预览",
+  };
+  return labels[asset.role] ?? asset.role;
+}
+
+function assetDirectionLabel(direction: AdminLogAsset["direction"]) {
+  return direction === "input" ? "输入" : direction === "output" ? "输出" : "中间产物";
+}
+
+function itemStatusClass(status: string) {
+  return status === "failed" || status === "cancelled" ? styles.logStatusFailed : styles.logStatus;
+}
+
+function AssetPreview({ asset }: { asset: AdminLogAsset }) {
+  const dimensions = asset.width && asset.height ? `${asset.width} × ${asset.height}` : "尺寸未知";
+  return <article className={styles.assetCard}>
+    <div className={styles.assetThumb}>
+      {asset.access_url ? <img src={asset.access_url} alt={asset.original_filename} loading="lazy" /> : <div className={styles.assetPlaceholder}>素材暂不可用</div>}
+    </div>
+    <div className={styles.assetInfo}>
+      <div className={styles.assetTitle}><strong>{assetRoleLabel(asset)}</strong><span>{assetDirectionLabel(asset.direction)}</span></div>
+      <small title={asset.original_filename}>{asset.original_filename}</small>
+      <small>{dimensions} · {formatBytes(asset.byte_size)}</small>
+      {asset.download_url ? <a className={styles.downloadLink} href={asset.download_url} download><Download size={13} />下载素材</a> : <small className={styles.warningText}>当前生命周期不允许访问</small>}
+    </div>
+  </article>;
+}
+
+function GenerationItemDetail({ item }: { item: AdminLogItem }) {
+  return <article className={styles.jobItem}>
+    <div className={styles.jobItemHeader}>
+      <div><strong>{item.item_key}</strong><small>子任务 #{item.ordinal + 1} · {item.id}</small></div>
+      <span className={itemStatusClass(item.status)}>{item.status}</span>
+    </div>
+    <div className={styles.jobItemMeta}>
+      <span>阶段：{item.stage ?? "未分阶段"}</span>
+      <span>尝试：{formatCount(item.attempt_count)}</span>
+      <span>质量：{item.quality ?? "未记录"}</span>
+      <span>结果来源：{item.result_source ?? "未记录"}</span>
+    </div>
+    {item.error_code ? <p className={styles.jobItemError}><strong>{item.error_code}</strong> · {item.error_message ?? "请根据错误码定位。"}</p> : null}
+    {item.provider_stages.length > 0 ? <div className={styles.providerStages}><small>Provider 阶段</small>{item.provider_stages.map((stage) => <div className={styles.providerStage} key={stage.id}><span>{stage.provider} · {stage.operation} · 尝试 {stage.attempt_no}</span><span className={stage.status === "failed" ? styles.warningText : ""}>{stage.status}</span></div>)}</div> : null}
+  </article>;
+}
+
 function LogDetailDialog({
   detail,
   loading,
@@ -115,10 +173,10 @@ function LogDetailDialog({
   return <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="admin-log-detail-title">
       <div className={styles.dialogHeader}>
-        <div><span className={styles.sectionEyebrow}>READ-ONLY DETAIL</span><h2 id="admin-log-detail-title">任务详情</h2><p>仅显示脱敏状态和事件时间线。</p></div>
+        <div><span className={styles.sectionEyebrow}>READ-ONLY DETAIL</span><h2 id="admin-log-detail-title">任务详情</h2><p>仅显示脱敏状态、素材预览和事件时间线。</p></div>
         <button className={styles.closeButton} type="button" onClick={onClose} aria-label="关闭任务详情">×</button>
       </div>
-      {loading ? <div className={styles.dialogLoading}><Loader2 className={styles.spin} size={20} /> 正在加载任务事件…</div> : error ? <div className={styles.dialogError}>{error}</div> : detail ? <div className={styles.dialogBody}>
+      {loading ? <div className={styles.dialogLoading}><Loader2 className={styles.spin} size={20} /> 正在加载任务详情…</div> : error ? <div className={styles.dialogError}>{error}</div> : detail ? <div className={styles.dialogBody}>
         <div className={styles.detailSummary}>
           <div><small>任务类型</small><strong>{logKindLabel(detail)} · {logPlatformLabel(detail.platform)}</strong></div>
           <div><small>任务 ID</small><strong>{detail.id}</strong></div>
@@ -128,6 +186,24 @@ function LogDetailDialog({
           <div><small>尝试次数</small><strong>{formatCount(detail.attempt_count)}</strong></div>
           {detail.error_code ? <div><small>错误</small><strong className={styles.warningText}>{detail.error_code} · {detail.error_message ?? "请根据错误码定位。"}</strong></div> : null}
         </div>
+        {detail.kind === "generation" ? <>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>输入素材</h3><span>{formatCount(detail.input_assets.length)} 个</span></div>
+            {detail.input_assets.length === 0 ? <p className={styles.empty}>暂无关联输入素材。</p> : <div className={styles.assetGrid}>{detail.input_assets.map((asset) => <AssetPreview asset={asset} key={asset.relation_id} />)}</div>}
+          </div>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>输出图片</h3><span>{formatCount(detail.output_assets.length)} 个</span></div>
+            {detail.output_assets.length === 0 ? <p className={styles.empty}>暂无输出图片。</p> : <div className={styles.assetGrid}>{detail.output_assets.map((asset) => <AssetPreview asset={asset} key={asset.relation_id} />)}</div>}
+          </div>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>中间产物</h3><span>{formatCount(detail.intermediate_assets.length)} 个</span></div>
+            {detail.intermediate_assets.length === 0 ? <p className={styles.empty}>暂无中间产物。</p> : <div className={styles.assetList}>{detail.intermediate_assets.map((asset) => <AssetPreview asset={asset} key={asset.relation_id} />)}</div>}
+          </div>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>分项执行明细</h3><span>{formatCount(detail.items.length)} 个子任务</span></div>
+            {detail.items.length === 0 ? <p className={styles.empty}>暂无子任务记录。</p> : <div className={styles.jobItems}>{detail.items.map((item) => <GenerationItemDetail item={item} key={item.id} />)}</div>}
+          </div>
+        </> : null}
         <div className={styles.timelineHeading}><h3>事件时间线</h3><span>{formatCount(detail.events.length)} 个事件</span></div>
         {detail.events.length === 0 ? <p className={styles.empty}>暂无可展示的事件。</p> : <ol className={styles.timeline}>{detail.events.map((event) => <li key={event.id} className={styles.timelineItem}><span className={styles.timelineDot} /><div><div className={styles.timelineMeta}><strong>{eventTypeLabel(event)}</strong><time>{formatTime(event.occurred_at)}</time></div><p>{event.message}</p>{event.from_status || event.to_status ? <small>{event.from_status ?? "—"} → {event.to_status ?? "—"}</small> : null}</div></li>)}</ol>}
       </div> : null}

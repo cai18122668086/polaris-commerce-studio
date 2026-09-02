@@ -5,6 +5,7 @@ CAPTCHAs, or attempt to bypass platform access controls. The parser is layered
 so a licensed data provider or a normal server-side browser can be added later
 without changing the API contract.
 """
+
 from __future__ import annotations
 
 import html as html_lib
@@ -20,20 +21,45 @@ from urllib.request import Request, urlopen
 HOSTS = ("taobao.com", "tmall.com", "tb.cn")
 ID_RE = re.compile(r"(?<!\d)(\d{10,14})(?!\d)")
 IMAGE_UI_TOKENS = (
-    "favicon", "sprite", "avatar", "qrcode", "qr-code", "loading",
-    "placeholder", "default-icon", "collect-icon", "s.gif",
-    "atmosphere_center_image", "center_image", "qnaigc",
+    "favicon",
+    "sprite",
+    "avatar",
+    "qrcode",
+    "qr-code",
+    "loading",
+    "placeholder",
+    "default-icon",
+    "collect-icon",
+    "s.gif",
+    "atmosphere_center_image",
+    "center_image",
+    "qnaigc",
 )
 SKU_IMAGE_TOKENS = (
-    "sku", "skuimage", "propimg", "property", "specification", "colorprop",
-    "sizeprop", "尺码", "颜色", "规格",
+    "sku",
+    "skuimage",
+    "propimg",
+    "property",
+    "specification",
+    "colorprop",
+    "sizeprop",
+    "尺码",
+    "颜色",
+    "规格",
 )
 SKU_CONTEXT_TOKENS = ("sku", "propimg", "property", "颜色分类", "尺码", "规格")
 DETAIL_URL_TOKENS = ("/bao/uploaded/", "/imgextra/desc", "/imgextra/detail")
 DETAIL_STATE_KEYS = (
-    "descImageUrls", "detailImageUrls", "descImages", "detailImages",
-    "descImgs", "detailImgs", "descriptionImages", "itemDescImages",
-    "descImageList", "detailImageList",
+    "descImageUrls",
+    "detailImageUrls",
+    "descImages",
+    "detailImages",
+    "descImgs",
+    "detailImgs",
+    "descriptionImages",
+    "itemDescImages",
+    "descImageList",
+    "detailImageList",
 )
 BLOCKED_PAGE_MARKERS = (
     "\u8bf7\u767b\u5f55",
@@ -88,7 +114,9 @@ def is_supported_url(url: str) -> bool:
 
 def _clean_url(raw: str, base_url: str) -> str | None:
     value = html_lib.unescape(raw).replace("\\/", "/").strip()
-    value = re.split(r"[);]\\s*(?:background|data:image)", value, maxsplit=1, flags=re.I)[0].rstrip(");, ")
+    value = re.split(
+        r"[);]\\s*(?:background|data:image)", value, maxsplit=1, flags=re.I
+    )[0].rstrip(");, ")
     if not value or value.startswith(("data:", "blob:", "javascript:")):
         return None
     value = urljoin(base_url, value)
@@ -173,7 +201,11 @@ def _looks_like_product_image(
             return False
         if "-tps-" in lowered and (smaller < 300 or larger < 500):
             return False
-    if "-gg_dtc" in lowered or "-2-tps-" in lowered and lowered.endswith((".png", ".gif", ".svg")):
+    if (
+        "-gg_dtc" in lowered
+        or "-2-tps-" in lowered
+        and lowered.endswith((".png", ".gif", ".svg"))
+    ):
         return False
     # Broad state arrays contain promotional banners and other page chrome.
     # Taobao's long-detail assets can also use ``-tps-`` names, so only reject
@@ -184,9 +216,10 @@ def _looks_like_product_image(
         path = urlparse(lowered).path
         if "/imgextra/i2/" in path or "/tbsp/" in path:
             return False
-    if any(token in lowered for token in SKU_IMAGE_TOKENS) or any(token in context_lowered for token in SKU_CONTEXT_TOKENS):
-        return False
-    return True
+    return not (
+        any(token in lowered for token in SKU_IMAGE_TOKENS)
+        or any(token in context_lowered for token in SKU_CONTEXT_TOKENS)
+    )
 
 
 def _first_attr(page_html: str, name: str, value: str) -> str | None:
@@ -203,7 +236,11 @@ def _first_attr(page_html: str, name: str, value: str) -> str | None:
 
 def _json_ld_products(page_html: str) -> list[dict[str, object]]:
     products: list[dict[str, object]] = []
-    for raw in re.findall(r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", page_html, re.I | re.S):
+    for raw in re.findall(
+        r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>",
+        page_html,
+        re.I | re.S,
+    ):
         try:
             parsed = json.loads(html_lib.unescape(raw).strip())
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -211,7 +248,8 @@ def _json_ld_products(page_html: str) -> list[dict[str, object]]:
         values = parsed if isinstance(parsed, list) else [parsed]
         for value in values:
             if isinstance(value, dict) and (
-                value.get("@type") == "Product" or isinstance(value.get("image"), (list, str))
+                value.get("@type") == "Product"
+                or isinstance(value.get("image"), (list, str))
             ):
                 products.append(value)
     return products
@@ -231,7 +269,9 @@ def _state_values(page_html: str, keys: tuple[str, ...]) -> list[str]:
         # Most pages expose a simple URL array. A few rendered versions use
         # arrays of objects (``[{url: ...}]``), so balance the value instead
         # of stopping at the first nested closing bracket.
-        for match in re.finditer(rf'["\']{re.escape(key)}["\']\s*:\s*', page_html, re.I):
+        for match in re.finditer(
+            rf'["\']{re.escape(key)}["\']\s*:\s*', page_html, re.I
+        ):
             start = match.end()
             while start < len(page_html) and page_html[start].isspace():
                 start += 1
@@ -254,7 +294,7 @@ def _state_values(page_html: str, keys: tuple[str, ...]) -> list[str]:
                         elif char == quote:
                             quote = None
                         continue
-                    if char in ("\"", "'"):
+                    if char in ('"', "'"):
                         quote = char
                     elif char == opener:
                         depth += 1
@@ -263,9 +303,11 @@ def _state_values(page_html: str, keys: tuple[str, ...]) -> list[str]:
                         if depth == 0:
                             end = index + 1
                             break
-                add_urls(page_html[start:end] if end else page_html[start:start + 12000])
+                add_urls(
+                    page_html[start:end] if end else page_html[start : start + 12000]
+                )
             else:
-                add_urls(page_html[start:start + 1000])
+                add_urls(page_html[start : start + 1000])
     return values
 
 
@@ -298,23 +340,17 @@ def _image_candidates(
     stats["state_sku_values"] = len(sku_state_values)
 
     main_urls = {
-        cleaned
-        for raw in main_state_values
-        if (cleaned := _clean_url(raw, base_url))
+        cleaned for raw in main_state_values if (cleaned := _clean_url(raw, base_url))
     }
     detail_urls = {
-        cleaned
-        for raw in detail_state_values
-        if (cleaned := _clean_url(raw, base_url))
+        cleaned for raw in detail_state_values if (cleaned := _clean_url(raw, base_url))
     }
     gallery_dom_urls: set[str] = set()
     detail_dom_urls: set[str] = set()
     # SKU URLs can be repeated in the broad detail arrays. Read them first so
     # a later SKU declaration always wins over an earlier detail declaration.
     sku_urls = {
-        cleaned
-        for raw in sku_state_values
-        if (cleaned := _clean_url(raw, base_url))
+        cleaned for raw in sku_state_values if (cleaned := _clean_url(raw, base_url))
     }
     stats["state_main_clean_urls"] = len(main_urls)
     stats["state_detail_clean_urls"] = len(detail_urls)
@@ -359,24 +395,33 @@ def _image_candidates(
         if (
             role == "main"
             and "/bao/uploaded/" in cleaned_lower
-            and not any(token in context.lower() for token in ("gallery", "thumb", "主图", "轮播"))
+            and not any(
+                token in context.lower()
+                for token in ("gallery", "thumb", "主图", "轮播")
+            )
         ):
             bump("rejected_uploaded_main_without_gallery_context")
             # A bare uploaded-CDN image is usually a swatch/recommendation
             # asset. It must not consume one of the six gallery slots merely
             # because a page state object listed it under a broad image key.
             return
-        if source.startswith("state") and "/bao/uploaded/" in cleaned.lower():
-            if role != "detail" and cleaned not in gallery_dom_urls:
-                bump("rejected_uploaded_state_without_gallery_context")
-                return
+        if (
+            source.startswith("state")
+            and "/bao/uploaded/" in cleaned.lower()
+            and role != "detail"
+            and cleaned not in gallery_dom_urls
+        ):
+            bump("rejected_uploaded_state_without_gallery_context")
+            return
         if cleaned in sku_urls:
             role = "sku"
         elif cleaned in main_urls:
             role = "main"
         elif cleaned in detail_urls:
             role = "detail"
-        elif source == "dom" and any(token in cleaned.lower() for token in DETAIL_URL_TOKENS[1:]):
+        elif source == "dom" and any(
+            token in cleaned.lower() for token in DETAIL_URL_TOKENS[1:]
+        ):
             # The rendered detail body commonly uses gw.alicdn.com/bao/uploaded
             # URLs without a useful class/id around the <img> tag.
             role = "detail"
@@ -411,7 +456,9 @@ def _image_candidates(
             return
         seen[cleaned] = len(candidates)
         seen_identity[identity] = len(candidates)
-        candidates.append(Image(cleaned, role, len(candidates), source, width, height, context))
+        candidates.append(
+            Image(cleaned, role, len(candidates), source, width, height, context)
+        )
         bump("accepted_candidates")
 
     # Prefer image elements from the rendered page. They carry enough nearby
@@ -425,26 +472,66 @@ def _image_candidates(
         # frequently contain words such as ``sku`` or ``detail`` even when
         # they are ordinary gallery assets.
         context = (
-            page_html[max(0, match.start() - 700): match.start()]
+            page_html[max(0, match.start() - 700) : match.start()]
             + " "
-            + " ".join(attrs.get(name, "") for name in ("class", "id", "alt", "aria-label"))
+            + " ".join(
+                attrs.get(name, "") for name in ("class", "id", "alt", "aria-label")
+            )
         ).lower()
         # Limit role hints to the nearest open container. A preceding gallery
         # sibling should not classify a later ``<div class="detail">`` image
         # as another main image merely because both fit the 700-character
         # context window.
         role_context = (
-            page_html[max(0, match.start() - 700): match.start()].rsplit("</div>", 1)[-1]
+            page_html[max(0, match.start() - 700) : match.start()].rsplit("</div>", 1)[
+                -1
+            ]
             + " "
-            + " ".join(attrs.get(name, "") for name in ("class", "id", "alt", "aria-label"))
+            + " ".join(
+                attrs.get(name, "") for name in ("class", "id", "alt", "aria-label")
+            )
         ).lower()
         is_sku_context = any(token in role_context for token in SKU_CONTEXT_TOKENS)
-        is_detail_context = any(token in role_context for token in ("desc", "detail", "description", "详情", "图文"))
-        is_gallery_context = any(token in role_context for token in ("gallery", "thumb", "主图", "轮播"))
-        role = "sku" if is_sku_context else "main" if is_gallery_context else "detail" if is_detail_context else "main"
-        width = next((int(attrs[name]) for name in ("width", "data-width", "data-natural-width") if attrs.get(name, "").isdigit()), None)
-        height = next((int(attrs[name]) for name in ("height", "data-height", "data-natural-height") if attrs.get(name, "").isdigit()), None)
-        for attr in ("src", "data-src", "data-original", "data-ks-lazyload", "data-lazy-src", "data-url"):
+        is_detail_context = any(
+            token in role_context
+            for token in ("desc", "detail", "description", "详情", "图文")
+        )
+        is_gallery_context = any(
+            token in role_context for token in ("gallery", "thumb", "主图", "轮播")
+        )
+        role = (
+            "sku"
+            if is_sku_context
+            else "main"
+            if is_gallery_context
+            else "detail"
+            if is_detail_context
+            else "main"
+        )
+        width = next(
+            (
+                int(attrs[name])
+                for name in ("width", "data-width", "data-natural-width")
+                if attrs.get(name, "").isdigit()
+            ),
+            None,
+        )
+        height = next(
+            (
+                int(attrs[name])
+                for name in ("height", "data-height", "data-natural-height")
+                if attrs.get(name, "").isdigit()
+            ),
+            None,
+        )
+        for attr in (
+            "src",
+            "data-src",
+            "data-original",
+            "data-ks-lazyload",
+            "data-lazy-src",
+            "data-url",
+        ):
             if attrs.get(attr):
                 bump("dom_url_values")
                 cleaned = _clean_url(attrs[attr], base_url)
@@ -458,7 +545,12 @@ def _image_candidates(
                         source="dom",
                     ):
                         rejected.add(cleaned)
-                if main_urls and role == "main" and cleaned not in main_urls and not is_gallery_context:
+                if (
+                    main_urls
+                    and role == "main"
+                    and cleaned not in main_urls
+                    and not is_gallery_context
+                ):
                     continue
                 if cleaned:
                     if is_gallery_context:
@@ -482,7 +574,12 @@ def _image_candidates(
                             source="dom",
                         ):
                             rejected.add(cleaned)
-                    if main_urls and role == "main" and cleaned not in main_urls and not is_gallery_context:
+                    if (
+                        main_urls
+                        and role == "main"
+                        and cleaned not in main_urls
+                        and not is_gallery_context
+                    ):
                         continue
                     if cleaned:
                         if is_gallery_context:
@@ -495,11 +592,11 @@ def _image_candidates(
     # as elements in the initial HTML. They are appended after DOM candidates
     # so they cannot displace the actual gallery order.
     for raw in main_state_values:
-            add(raw, "main", "state:main")
+        add(raw, "main", "state:main")
     for raw in detail_state_values:
-            add(raw, "detail", "state:detail")
+        add(raw, "detail", "state:detail")
     for raw in sku_state_values:
-            add(raw, "sku", "state:sku")
+        add(raw, "sku", "state:sku")
 
     # JSON-LD is a safe, structured fallback for pages that omit image tags
     # and broad state arrays. It is intentionally narrower than scanning every
@@ -521,8 +618,7 @@ def _image_candidates(
     explicit_main_urls = main_urls | gallery_dom_urls
     explicit_detail_urls = detail_urls | detail_dom_urls
     has_gallery_evidence = any(
-        image.role == "main" and image.url in explicit_main_urls
-        for image in candidates
+        image.role == "main" and image.url in explicit_main_urls for image in candidates
     )
     has_detail_evidence = any(image.role == "detail" for image in candidates)
 
@@ -593,30 +689,58 @@ def _image_candidates(
 
 
 def parse_product_html(page_html: str, source_url: str, resolved_url: str) -> Product:
-    source_host = (urlparse(resolved_url).hostname or urlparse(source_url).hostname or "").lower()
+    source_host = (
+        urlparse(resolved_url).hostname or urlparse(source_url).hostname or ""
+    ).lower()
     platform = "tmall" if "tmall.com" in source_host else "taobao"
     query = parse_qs(urlparse(resolved_url).query)
-    product_id = next((query[key][0] for key in ("id", "item_id", "itemId") if query.get(key)), None)
+    product_id = next(
+        (query[key][0] for key in ("id", "item_id", "itemId") if query.get(key)), None
+    )
     if not product_id:
         match = ID_RE.search(page_html)
         product_id = match.group(1) if match else None
 
     ld_products = _json_ld_products(page_html)
     ld = ld_products[0] if ld_products else {}
-    title = _first_attr(page_html, "og:title", "og:title") or _first_attr(page_html, "title", "title")
+    title = _first_attr(page_html, "og:title", "og:title") or _first_attr(
+        page_html, "title", "title"
+    )
     title = title or (str(ld.get("name")).strip() if ld.get("name") else None)
     if not title:
         title_match = re.search(r"<title[^>]*>(.*?)</title>", page_html, re.I | re.S)
-        title = re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", title_match.group(1)))).strip() if title_match else None
+        title = (
+            re.sub(
+                r"\s+",
+                " ",
+                html_lib.unescape(re.sub(r"<[^>]+>", " ", title_match.group(1))),
+            ).strip()
+            if title_match
+            else None
+        )
     offers = ld.get("offers") if isinstance(ld, dict) else None
     ld_price = offers.get("price") if isinstance(offers, dict) else None
-    price_match = re.search(r'"(?:price|salePrice|currentPrice)"\s*:\s*["\']?([0-9]+(?:\.[0-9]{1,2})?)', page_html, re.I)
-    price = str(ld_price) if ld_price is not None else price_match.group(1) if price_match else None
+    price_match = re.search(
+        r'"(?:price|salePrice|currentPrice)"\s*:\s*["\']?([0-9]+(?:\.[0-9]{1,2})?)',
+        page_html,
+        re.I,
+    )
+    price = (
+        str(ld_price)
+        if ld_price is not None
+        else price_match.group(1)
+        if price_match
+        else None
+    )
 
     shop_name = _first_attr(page_html, "og:site_name", "og:site_name")
-    shop_match = re.search(r'"(?:shopName|sellerName|nick)"\s*:\s*["\']([^"\']+)', page_html, re.I)
+    shop_match = re.search(
+        r'"(?:shopName|sellerName|nick)"\s*:\s*["\']([^"\']+)', page_html, re.I
+    )
     shop_name = shop_name or (shop_match.group(1).strip() if shop_match else None)
-    sales_match = re.search(r'"(?:sales|soldCount|volume)"\s*:\s*["\']?([^,"\'}]+)', page_html, re.I)
+    sales_match = re.search(
+        r'"(?:sales|soldCount|volume)"\s*:\s*["\']?([^,"\'}]+)', page_html, re.I
+    )
     sales = sales_match.group(1).strip() if sales_match else None
 
     props_text = ""
@@ -624,8 +748,15 @@ def parse_product_html(page_html: str, source_url: str, resolved_url: str) -> Pr
     if props_match:
         props_text = unquote(props_match.group(1)).replace("\\n", "\n")
     sku_prop_groups: list[dict[str, object]] = []
-    for name, values in re.findall(r'"(?:name|propName)"\s*:\s*["\']([^"\']+)["\'][^{}]{0,300}?"values?"\s*:\s*\[([^\]]*)\]', page_html, re.I | re.S):
-        parsed_values = [html_lib.unescape(item) for item in re.findall(r'["\']([^"\']+)["\']', values)]
+    for name, values in re.findall(
+        r'"(?:name|propName)"\s*:\s*["\']([^"\']+)["\'][^{}]{0,300}?"values?"\s*:\s*\[([^\]]*)\]',
+        page_html,
+        re.I | re.S,
+    ):
+        parsed_values = [
+            html_lib.unescape(item)
+            for item in re.findall(r'["\']([^"\']+)["\']', values)
+        ]
         if parsed_values:
             sku_prop_groups.append({"name": name, "values": parsed_values})
 
@@ -634,18 +765,25 @@ def parse_product_html(page_html: str, source_url: str, resolved_url: str) -> Pr
         if service in page_html:
             services.append(service)
     image_diagnostics: dict[str, int] = {}
-    images = _image_candidates(
-        page_html, resolved_url, diagnostics=image_diagnostics
-    )
+    images = _image_candidates(page_html, resolved_url, diagnostics=image_diagnostics)
     warnings: list[str] = []
     # Taobao may return a perfectly valid HTML document for a login or risk
     # control page. Its logo/QR assets must never be presented as product
     # images. Treat the response as blocked and let the route surface a clear
     # retry/provider fallback message instead.
-    page_text = re.sub(r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>|<[^>]+>", " ", page_html, flags=re.I | re.S)
+    page_text = re.sub(
+        r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>|<[^>]+>",
+        " ",
+        page_html,
+        flags=re.I | re.S,
+    )
     page_text = re.sub(r"\s+", " ", html_lib.unescape(page_text)).strip().lower()
     normalized_title = (title or "").strip().lower()
-    blocked = normalized_title in {"\u767b\u5f55", "\u8bf7\u767b\u5f55", "\u9a8c\u8bc1"} or any(marker in page_text for marker in BLOCKED_PAGE_MARKERS)
+    blocked = normalized_title in {
+        "\u767b\u5f55",
+        "\u8bf7\u767b\u5f55",
+        "\u9a8c\u8bc1",
+    } or any(marker in page_text for marker in BLOCKED_PAGE_MARKERS)
     if blocked:
         images = []
         title = None
@@ -682,9 +820,21 @@ def crawl_one(url: str, *_args: object, **_kwargs: object) -> Product:
     source_url = url.strip()
     if not is_supported_url(source_url):
         raise ValueError("只接受淘宝/天猫商品链接。")
-    request = Request(source_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6", "Accept": "text/html,application/xhtml+xml"})
+    request = Request(
+        source_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 Chrome/128 Safari/537.36"
+            ),
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6",
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
     with urlopen(request, timeout=30) as response:  # nosec B310 - host validated above
-        body = response.read().decode(response.headers.get_content_charset() or "utf-8", errors="replace")
+        body = response.read().decode(
+            response.headers.get_content_charset() or "utf-8", errors="replace"
+        )
         resolved_url = response.geturl()
     parsed = parse_product_html(body, source_url, resolved_url)
     cache_key = parsed.product_id or resolved_url
@@ -743,7 +893,9 @@ def _scroll_page_for_lazy_images(page: object, timeout_ms: int) -> None:
         image_count = int(metrics.get("imageCount", 0))
         if y >= max(0, height - viewport) - 4:
             signature = (y, height, image_count)
-            stable_bottoms = stable_bottoms + 1 if signature == previous_signature else 0
+            stable_bottoms = (
+                stable_bottoms + 1 if signature == previous_signature else 0
+            )
             previous_signature = signature
             if stable_bottoms >= 2:
                 break
@@ -783,7 +935,10 @@ def crawl_one_browser(
                 profile_dir,
                 headless=True,
                 locale="zh-CN",
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36",
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 Chrome/128 Safari/537.36"
+                ),
             )
             browser = None
         else:
@@ -794,9 +949,7 @@ def crawl_one_browser(
             page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             page.wait_for_timeout(1_500)
             with suppress(PlaywrightTimeoutError):
-                page.wait_for_load_state(
-                    "load", timeout=min(timeout_ms, 5_000)
-                )
+                page.wait_for_load_state("load", timeout=min(timeout_ms, 5_000))
             # Trigger viewport-based lazy loading in long detail sections.
             # If a page disallows script evaluation, retain the normal parser
             # path rather than failing the entire product fetch.
@@ -810,8 +963,18 @@ def crawl_one_browser(
                     """
                     () => {
                       for (const image of document.images) {
-                        if (image.naturalWidth > 0) image.setAttribute('data-natural-width', String(image.naturalWidth));
-                        if (image.naturalHeight > 0) image.setAttribute('data-natural-height', String(image.naturalHeight));
+                        if (image.naturalWidth > 0) {
+                          image.setAttribute(
+                            'data-natural-width',
+                            String(image.naturalWidth),
+                          );
+                        }
+                        if (image.naturalHeight > 0) {
+                          image.setAttribute(
+                            'data-natural-height',
+                            String(image.naturalHeight),
+                          );
+                        }
                       }
                     }
                     """

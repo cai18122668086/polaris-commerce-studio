@@ -147,14 +147,11 @@ class ProductionPreflightTests(unittest.TestCase):
             re.findall(r"\$\{(POLARIS_[A-Z0-9_]+_PROVIDER_ENABLED)(?=[:}])", compose)
         )
         generated_provider_keys = {
-            key
-            for key in PROVIDER_KEYS
-            if key.endswith("_PROVIDER_ENABLED")
-            and key != "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED"
+            key for key in PROVIDER_KEYS if key.endswith("_PROVIDER_ENABLED")
         }
         self.assertEqual(generated_provider_keys, compose_provider_keys)
         self.assertIn(
-            'POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED: "false"',
+            "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED:-false",
             compose,
         )
 
@@ -256,7 +253,6 @@ class ProductionPreflightTests(unittest.TestCase):
         for key, value in (
             ("POLARIS_S3_AUTO_CREATE_BUCKET", "true"),
             ("POLARIS_ECOMMERCE_PROXY_ENABLED", "true"),
-            ("POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED", "true"),
         ):
             with self.subTest(key=key):
                 env[key] = value

@@ -206,14 +206,13 @@ def build_production_env(
             "POLARIS_STORAGE_BACKEND": "s3",
             "POLARIS_S3_AUTO_CREATE_BUCKET": "false",
             "POLARIS_TASK_DISPATCHER": "celery",
-            # Domestic ecommerce is direct-only for this release. Amazon is
-            # intentionally not part of the domestic commercial rollout.
+            # Domestic ecommerce is direct-only for this release. Preserve
+            # the existing Provider feature switches from the server profile.
             "POLARIS_ECOMMERCE_PROXY_ENABLED": "false",
         }
     )
     for key in PROVIDER_KEYS:
         result[key] = base.get(key, DEFAULT_PROVIDER_VALUES[key])
-    result["POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED"] = "false"
     return result
 
 

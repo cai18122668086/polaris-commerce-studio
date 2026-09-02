@@ -1,6 +1,16 @@
 from enum import StrEnum
 
 
+class AdminRole(StrEnum):
+    SUPER_ADMIN = "super_admin"
+    ADMIN = "admin"
+
+
+class AdminStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
 class UserStatus(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
@@ -120,6 +130,14 @@ class EcommerceLoginState(StrEnum):
     UNKNOWN = "unknown"
     READY = "ready"
     NEEDS_LOGIN = "needs_login"
+
+
+class EcommerceLoginSessionStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
 
 
 class CrawlTaskStatus(StrEnum):

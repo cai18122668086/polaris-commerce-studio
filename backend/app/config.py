@@ -180,6 +180,12 @@ class Settings(BaseSettings):
     # This does not configure a proxy or permit automatic direct fallback.
     ecommerce_proxy_enabled: bool = False
     ecommerce_browser_timeout_ms: int = Field(default=30_000, ge=5_000, le=90_000)
+    # Human-assisted production login is fail-closed and must be explicitly enabled.
+    ecommerce_login_enabled: bool = False
+    ecommerce_login_transport: Literal["local_visible", "headless_qr"] = "local_visible"
+    ecommerce_login_session_timeout_seconds: int = Field(
+        default=600, ge=60, le=1800
+    )
     ecommerce_session_dir: Path = Field(default_factory=default_ecommerce_session_dir)
     ecommerce_1688_session_dir: Path = Field(
         default_factory=default_ecommerce_1688_session_dir
@@ -267,6 +273,14 @@ class Settings(BaseSettings):
             )
         if self.ecommerce_proxy_enabled:
             raise RuntimeError("domestic ecommerce traffic must remain direct-only")
+        if (
+            self.ecommerce_login_enabled
+            and self.ecommerce_login_transport != "headless_qr"
+        ):
+            raise RuntimeError(
+                "production ecommerce login must use the protected "
+                "headless_qr transport"
+            )
         if not self.supertokens_cookie_secure:
             raise RuntimeError("production SuperTokens cookies must use Secure")
         if not self.supertokens_api_domain.startswith("https://"):

@@ -129,8 +129,75 @@ export type AdminLogEvent = {
   occurred_at: string | null;
 };
 
+export type AdminLogItem = {
+  id: string;
+  item_key: string;
+  ordinal: number;
+  status: string;
+  stage: string | null;
+  quality: string | null;
+  result_source: string | null;
+  attempt_count: number;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  provider_stages: Array<{
+    id: string;
+    attempt_no: number;
+    provider: string;
+    operation: string;
+    status: string;
+    error_code: string | null;
+    error_message: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+  }>;
+};
+
+export type AdminLogAsset = {
+  id: string;
+  relation_id: number;
+  job_item_id: string | null;
+  direction: "input" | "intermediate" | "output";
+  role: string;
+  ordinal: number;
+  is_deliverable: boolean;
+  validation: Record<string, unknown>;
+  original_filename: string;
+  content_type: string;
+  byte_size: number;
+  width: number | null;
+  height: number | null;
+  origin_kind: string;
+  lifecycle_status: string;
+  created_at: string | null;
+  access_url: string | null;
+  download_url: string | null;
+  access_expires_at: string | null;
+};
+
 export type AdminLogDetail = AdminLog & {
   events: AdminLogEvent[];
+  items: AdminLogItem[];
+  assets: AdminLogAsset[];
+  input_assets: AdminLogAsset[];
+  output_assets: AdminLogAsset[];
+  intermediate_assets: AdminLogAsset[];
+};
+
+export type AdminAdministrator = {
+  user_id: string;
+  display_name: string;
+  email: string | null;
+  status: "active" | "disabled";
+  role: "admin" | "super_admin";
+  permissions: string[];
+  source: "managed" | "bootstrap";
+  user_status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  last_login_at: string | null;
 };
 
 export type AdminWorkspace = {
@@ -168,10 +235,18 @@ function requestHeaders() {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    let message: string | null = null;
+    try {
+      const body = await response.json() as { error?: { message?: string } };
+      message = body.error?.message ?? null;
+    } catch {
+      // Keep the stable fallback below for non-JSON error responses.
+    }
     throw new Error(
-      response.status === 401 || response.status === 403
-        ? "暂无管理员工作台权限，请使用公告管理工作台相同的管理员身份登录。"
-        : "管理员工作台暂时无法加载，请稍后重试。",
+      message
+        ?? (response.status === 401 || response.status === 403
+          ? "暂无管理员工作台权限，请使用公告管理工作台相同的管理员身份登录。"
+          : "管理员工作台暂时无法加载，请稍后重试。"),
     );
   }
   const payload = await response.json() as { data: T } | T;
@@ -301,4 +376,50 @@ export async function getAdminAccounts(
     signal,
   });
   return parseResponse<AdminListResponse<AdminOperationalAccount>>(response);
+}
+
+
+export async function getAdminAdministrators(
+  params: { role?: string; status?: string; search?: string; limit?: number; offset?: number } = {},
+  signal?: AbortSignal,
+): Promise<AdminListResponse<AdminAdministrator> & { can_manage: boolean }> {
+  const response = await fetch(`/api/v1/admin/administrators${listQuery(params)}`, {
+    credentials: "include",
+    cache: "no-store",
+    headers: requestHeaders(),
+    signal,
+  });
+  const payload = await parseResponse<AdminListResponse<AdminAdministrator> & { can_manage: boolean }>(response);
+  return payload;
+}
+
+export async function createAdminAdministrator(
+  email: string,
+): Promise<AdminAdministrator> {
+  const response = await fetch("/api/v1/admin/administrators", {
+    method: "POST",
+    credentials: "include",
+    headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const payload = await parseResponse<AdminAdministrator>(response);
+  return payload;
+}
+
+export async function updateAdminAdministrator(
+  userId: string,
+  changes: {
+    status?: "active" | "disabled";
+    role?: "admin" | "super_admin";
+    permissions?: string[];
+  },
+): Promise<AdminAdministrator> {
+  const response = await fetch(`/api/v1/admin/administrators/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+  const payload = await parseResponse<AdminAdministrator>(response);
+  return payload;
 }

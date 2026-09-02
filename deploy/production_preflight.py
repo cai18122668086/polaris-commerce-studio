@@ -151,6 +151,36 @@ def service_networks(block: str) -> set[str]:
     return result
 
 
+def service_queues(block: str) -> set[str]:
+    """Return queue names explicitly passed to a Celery service command."""
+
+    queues: set[str] = set()
+    for match in re.findall(r"--queues(?:=|\s+)([a-z0-9_,-]+)", block):
+        queues.update(queue for queue in match.split(",") if queue)
+    return queues
+
+
+def validate_queue_topology(
+    compose: str, *, expected: dict[str, set[str]]
+) -> list[str]:
+    """Fail closed when worker queue assignments drift from the task routes."""
+
+    services = parse_mapping_blocks(compose, "services")
+    errors: list[str] = []
+    for service, expected_queues in expected.items():
+        if service not in services:
+            errors.append(f"{service} service is missing for queue topology validation")
+            continue
+        actual_queues = service_queues(services[service])
+        if actual_queues != expected_queues:
+            expected_text = ", ".join(sorted(expected_queues)) or "none"
+            actual_text = ", ".join(sorted(actual_queues)) or "none"
+            errors.append(
+                f"{service} must listen only to queue(s) {expected_text}; found {actual_text}"
+            )
+    return errors
+
+
 def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> list[str]:
     errors: list[str] = []
     missing = sorted(key for key in REQUIRED_ENV_KEYS if key not in env)
@@ -312,6 +342,12 @@ def validate_compose(compose: str) -> list[str]:
         errors.append(
             "production Compose must require the announcement admin allowlist"
         )
+    errors.extend(
+        validate_queue_topology(
+            compose,
+            expected={"worker": {"default"}, "crawl-worker": {"crawl"}},
+        )
+    )
     volumes = parse_mapping_blocks(compose, "volumes")
     for volume, expected_name in EXPECTED_EXTERNAL_VOLUMES.items():
         block = volumes.get(volume, "")

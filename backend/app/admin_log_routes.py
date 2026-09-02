@@ -1,18 +1,23 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import hashlib
+import hmac
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from sqlalchemy import and_, exists, func, or_, select
 
 from .admin_auth import AdminDependency, SessionDependency
-from .domain import CrawlTaskStatus, JobStatus
+from .domain import AssetLifecycleStatus, CrawlTaskStatus, JobAssetDirection, JobStatus
 from .errors import ApiError
 from .models import (
+    AssetRecord,
     AuditEventRecord,
     CrawlEventRecord,
     CrawlTaskRecord,
+    JobAssetRecord,
+    JobAttemptRecord,
     JobItemRecord,
     JobRecord,
     WorkspaceMemberRecord,
@@ -401,6 +406,145 @@ def _generation_events(session, job: JobRecord) -> list[dict[str, Any]]:
     return events
 
 
+async def _asset_access_url(
+    request: Request, asset: AssetRecord, disposition: Literal["inline", "attachment"]
+) -> tuple[str, str] | None:
+    """Create a protected asset URL without exposing storage implementation details."""
+
+    if (
+        asset.lifecycle_status != AssetLifecycleStatus.READY.value
+        or asset.deleted_at is not None
+        or asset.purged_at is not None
+    ):
+        return None
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=10)
+    if asset.expires_at is not None:
+        asset_expires_at = _utc(asset.expires_at)
+        if asset_expires_at is not None:
+            expires_at = min(expires_at, asset_expires_at)
+    expires_seconds = max(1, int((expires_at - now).total_seconds()))
+    url = None
+    if request.app.state.settings.asset_access_url_mode == "auto":
+        url = await request.app.state.storage.create_access_url(
+            asset.object_key,
+            asset.original_filename,
+            disposition,
+            expires_seconds,
+        )
+    if url is None:
+        expires = int(expires_at.timestamp())
+        message = f"{asset.workspace_id}:{asset.id}:{expires}:{disposition}".encode()
+        signature = hmac.new(
+            request.app.state.settings.access_url_secret.encode(),
+            message,
+            hashlib.sha256,
+        ).hexdigest()
+        url = str(
+            request.url_for(
+                "get_signed_asset_content",
+                workspace_id=asset.workspace_id,
+                asset_id=asset.id,
+            ).include_query_params(
+                expires=expires, disposition=disposition, signature=signature
+            )
+        )
+    return str(url), _iso(expires_at) or ""
+
+
+def _asset_metadata(asset: AssetRecord, relation: JobAssetRecord) -> dict[str, Any]:
+    return {
+        "id": asset.id,
+        "relation_id": relation.id,
+        "job_item_id": relation.job_item_id,
+        "direction": relation.direction,
+        "role": relation.role,
+        "ordinal": relation.ordinal,
+        "is_deliverable": relation.is_deliverable,
+        "validation": relation.validation,
+        "original_filename": asset.original_filename,
+        "content_type": asset.content_type,
+        "byte_size": asset.byte_size,
+        "width": asset.width,
+        "height": asset.height,
+        "origin_kind": asset.origin_kind,
+        "lifecycle_status": asset.lifecycle_status,
+        "created_at": _iso(asset.created_at),
+        "access_url": None,
+        "download_url": None,
+        "access_expires_at": None,
+    }
+
+
+def _provider_stage(attempt: JobAttemptRecord) -> dict[str, Any]:
+    return {
+        "id": attempt.id,
+        "attempt_no": attempt.attempt_no,
+        "provider": attempt.provider,
+        "operation": attempt.operation,
+        "status": attempt.status,
+        "error_code": attempt.error_code,
+        "error_message": _safe_error(attempt.error_code, attempt.error_message),
+        "started_at": _iso(attempt.started_at),
+        "finished_at": _iso(attempt.finished_at),
+    }
+
+
+def _generation_item_detail(
+    item: JobItemRecord, attempts: list[JobAttemptRecord]
+) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "item_key": item.item_key,
+        "ordinal": item.ordinal,
+        "status": item.status,
+        "stage": item.stage,
+        "quality": item.quality,
+        "result_source": item.result_source,
+        "attempt_count": item.attempt_count,
+        "error_code": item.error_code,
+        "error_message": _safe_error(item.error_code, item.error_message),
+        "started_at": _iso(item.started_at),
+        "finished_at": _iso(item.finished_at),
+        "provider_stages": [_provider_stage(attempt) for attempt in attempts],
+    }
+
+
+async def _generation_detail_assets(
+    request: Request, session: Any, job: JobRecord
+) -> list[dict[str, Any]]:
+    rows = session.execute(
+        select(JobAssetRecord, AssetRecord)
+        .join(
+            AssetRecord,
+            and_(
+                AssetRecord.workspace_id == JobAssetRecord.workspace_id,
+                AssetRecord.id == JobAssetRecord.asset_id,
+            ),
+        )
+        .where(
+            JobAssetRecord.workspace_id == job.workspace_id,
+            JobAssetRecord.job_id == job.id,
+        )
+        .order_by(
+            JobAssetRecord.direction,
+            JobAssetRecord.ordinal,
+            JobAssetRecord.id,
+        )
+    ).all()
+    result: list[dict[str, Any]] = []
+    for relation, asset in rows:
+        view = _asset_metadata(asset, relation)
+        inline = await _asset_access_url(request, asset, "inline")
+        download = await _asset_access_url(request, asset, "attachment")
+        if inline is not None:
+            view["access_url"], view["access_expires_at"] = inline
+        if download is not None:
+            view["download_url"] = download[0]
+        result.append(view)
+    return result
+
+
 def _crawl_events(session, task: CrawlTaskRecord) -> list[dict[str, Any]]:
     events = session.scalars(
         select(CrawlEventRecord)
@@ -473,9 +617,10 @@ def _get_detail(session, kind: str, log_id: str) -> tuple[str, Any]:
 
 
 @router.get("/logs/{kind}/{log_id}")
-def get_admin_log_detail(
+async def get_admin_log_detail(
     kind: str,
     log_id: str,
+    request: Request,
     session: SessionDependency,
     _admin: AdminDependency,
 ) -> dict[str, Any]:
@@ -489,9 +634,54 @@ def get_admin_log_detail(
             0,
             attempts.get(record.id, 0),
         )
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(
+                JobItemRecord.workspace_id == record.workspace_id,
+                JobItemRecord.job_id == record.id,
+            )
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        attempt_rows = session.scalars(
+            select(JobAttemptRecord)
+            .where(
+                JobAttemptRecord.workspace_id == record.workspace_id,
+                JobAttemptRecord.job_id == record.id,
+            )
+            .order_by(JobAttemptRecord.job_item_id, JobAttemptRecord.attempt_no)
+        ).all()
+        attempts_by_item: dict[str, list[JobAttemptRecord]] = {}
+        for attempt in attempt_rows:
+            attempts_by_item.setdefault(attempt.job_item_id, []).append(attempt)
+        assets = await _generation_detail_assets(request, session, record)
+        data["items"] = [
+            _generation_item_detail(item, attempts_by_item.get(item.id, []))
+            for item in items
+        ]
+        data["assets"] = assets
+        data["input_assets"] = [
+            asset
+            for asset in assets
+            if asset["direction"] == JobAssetDirection.INPUT.value
+        ]
+        data["output_assets"] = [
+            asset
+            for asset in assets
+            if asset["direction"] == JobAssetDirection.OUTPUT.value
+        ]
+        data["intermediate_assets"] = [
+            asset
+            for asset in assets
+            if asset["direction"] == JobAssetDirection.INTERMEDIATE.value
+        ]
         events = _generation_events(session, record)
     else:
         data = _crawl_item(record, names.get(record.workspace_id), 0)
+        data["items"] = []
+        data["assets"] = []
+        data["input_assets"] = []
+        data["output_assets"] = []
+        data["intermediate_assets"] = []
         events = _crawl_events(session, record)
     data["events"] = events
     data["event_count"] = len(events)
@@ -555,14 +745,20 @@ def list_admin_crawl_tasks(
 
 
 @router.get("/generation-jobs/{job_id}")
-def get_admin_generation_job(
-    job_id: str, session: SessionDependency, _admin: AdminDependency
+async def get_admin_generation_job(
+    job_id: str,
+    request: Request,
+    session: SessionDependency,
+    _admin: AdminDependency,
 ) -> dict[str, Any]:
-    return get_admin_log_detail("generation", job_id, session, _admin)
+    return await get_admin_log_detail("generation", job_id, request, session, _admin)
 
 
 @router.get("/crawl-tasks/{task_id}")
-def get_admin_crawl_task(
-    task_id: str, session: SessionDependency, _admin: AdminDependency
+async def get_admin_crawl_task(
+    task_id: str,
+    request: Request,
+    session: SessionDependency,
+    _admin: AdminDependency,
 ) -> dict[str, Any]:
-    return get_admin_log_detail("crawl", task_id, session, _admin)
+    return await get_admin_log_detail("crawl", task_id, request, session, _admin)

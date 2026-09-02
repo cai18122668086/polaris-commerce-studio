@@ -17,10 +17,10 @@ from urllib.request import ProxyHandler, build_opener
 from urllib.request import Request as UrlRequest
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1411,6 +1411,63 @@ def _account_unavailable_error() -> ApiError:
     )
 
 
+def _select_automatic_account(
+    session: Session,
+    *,
+    workspace_id: str,
+    platform: str,
+) -> tuple[EcommerceAccountRecord | None, bool]:
+    """Pick the least-recently used ready account for a platform.
+
+    The selection is deliberately small and deterministic for the first
+    account-pool release: disabled/paused/unlogged accounts are excluded and
+    an active profile lease is treated as busy.  The profile lease acquired by
+    the worker remains the concurrency boundary, so this helper does not try
+    to reserve a browser profile in the request transaction.
+
+    The second tuple member distinguishes "no accounts configured" from
+    "accounts configured but none are currently runnable".  The former keeps
+    the legacy default platform session available; the latter fails closed so
+    an automatic task cannot silently run under an unintended session.
+    """
+
+    accounts = session.scalars(
+        select(EcommerceAccountRecord)
+        .where(
+            EcommerceAccountRecord.workspace_id == workspace_id,
+            EcommerceAccountRecord.platform == platform,
+        )
+        .order_by(
+            EcommerceAccountRecord.last_used_at.asc().nullsfirst(),
+            EcommerceAccountRecord.created_at.asc(),
+            EcommerceAccountRecord.id.asc(),
+        )
+    ).all()
+    if not accounts:
+        return None, False
+
+    now = utc_now()
+    active_profile_ids = {
+        lease.profile_id
+        for lease in session.scalars(
+            select(CrawlProfileLeaseRecord).where(
+                CrawlProfileLeaseRecord.profile_id.in_(
+                    [account.profile_id for account in accounts]
+                ),
+                CrawlProfileLeaseRecord.expires_at > now,
+            )
+        ).all()
+    }
+    for account in accounts:
+        if (
+            account.status == "active"
+            and account.login_state == EcommerceLoginState.READY.value
+            and account.profile_id not in active_profile_ids
+        ):
+            return account, True
+    return None, True
+
+
 @router.post("/crawl-tasks", status_code=status.HTTP_202_ACCEPTED)
 async def create_crawl_task(
     request: Request,
@@ -1504,6 +1561,23 @@ async def create_crawl_task(
                 "data": _task_response(existing),
                 "idempotent": True,
             }
+
+    # With no explicit account, use a ready workspace account when one is
+    # configured.  Keep the historical platform session only for workspaces
+    # that have not configured any account yet; never fall back to it when an
+    # account pool exists but all candidates require attention or are busy.
+    if account is None and payload.account_id is None:
+        account, has_platform_accounts = _select_automatic_account(
+            session,
+            workspace_id=payload.workspace_id,
+            platform=_account_platform_for_policy(policy.adapter_name),
+        )
+        if has_platform_accounts and account is None:
+            raise _account_unavailable_error()
+        if account is not None:
+            # Mark selection time so concurrent queued requests rotate across
+            # ready accounts even before the worker begins the fetch.
+            account.last_used_at = utc_now()
     task = CrawlTaskRecord(
         id=_new_id("crw"),
         workspace_id=payload.workspace_id,
@@ -1562,6 +1636,58 @@ async def create_crawl_task(
         ) from None
     _schedule(request.app, task.id)
     return {"success": True, "data": _task_response(task), "idempotent": False}
+
+
+@router.get("/crawl-tasks")
+def list_crawl_tasks(
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    workspace_id: str = Query(min_length=1, max_length=40),
+    platform: str | None = Query(default=None, min_length=1, max_length=24),
+    task_status: str | None = Query(default=None, alias="status", max_length=32),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    """Return the authenticated user's durable crawl-task history."""
+
+    _ensure_workspace(session, principal, workspace_id)
+    normalized_platform = platform.strip().casefold() if platform else None
+    normalized_status = task_status.strip().casefold() if task_status else None
+    if normalized_status and normalized_status not in {
+        item.value for item in CrawlTaskStatus
+    }:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_CRAWL_TASK_STATUS",
+            "任务状态筛选条件无效。",
+        )
+    filters = [CrawlTaskRecord.workspace_id == workspace_id]
+    if normalized_platform:
+        filters.append(CrawlTaskRecord.platform == normalized_platform)
+    if normalized_status:
+        filters.append(CrawlTaskRecord.status == normalized_status)
+    total = session.scalar(
+        select(func.count()).select_from(CrawlTaskRecord).where(*filters)
+    ) or 0
+    tasks = session.scalars(
+        select(CrawlTaskRecord)
+        .where(*filters)
+        .order_by(CrawlTaskRecord.created_at.desc(), CrawlTaskRecord.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return {
+        "success": True,
+        "data": {
+            "items": [_task_response(task) for task in tasks],
+            "pagination": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + len(tasks) < total,
+            },
+        },
+    }
 
 
 def _get_task_for_principal(

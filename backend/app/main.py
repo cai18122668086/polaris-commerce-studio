@@ -11,6 +11,7 @@ from sqlalchemy import text
 from .admin_account_routes import router as admin_account_router
 from .admin_dashboard_routes import router as admin_dashboard_router
 from .admin_log_routes import router as admin_log_router
+from .admin_management_routes import router as admin_management_router
 from .admin_usage_routes import router as admin_usage_router
 from .announcement_routes import router as announcement_router
 from .auth import ensure_development_identity
@@ -282,6 +283,7 @@ def create_app(
     application.include_router(admin_account_router)
     application.include_router(admin_usage_router)
     application.include_router(admin_log_router)
+    application.include_router(admin_management_router)
     application.include_router(inspiration_router)
     application.include_router(ecommerce_router)
     application.include_router(ecommerce_account_router)

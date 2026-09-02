@@ -5,10 +5,13 @@ import {
   AlertTriangle,
   CircleCheck,
   Clock3,
+  Download,
   ExternalLink,
   Loader2,
+  Plus,
   RefreshCw,
   ShieldCheck,
+  UserCog,
   Users,
   Workflow,
 } from "lucide-react";
@@ -18,13 +21,19 @@ import { AppShell } from "@/components/app-shell";
 import {
   getAdminAccounts,
   getAdminLogDetail,
+  createAdminAdministrator,
+  getAdminAdministrators,
   getAdminLogs,
   getAdminOverview,
   getAdminUsers,
   getAdminWorkspaces,
+  updateAdminAdministrator,
   type AdminAccount,
+  type AdminAdministrator,
   type AdminLog,
+  type AdminLogAsset,
   type AdminLogDetail,
+  type AdminLogItem,
   type AdminLogEvent,
   type AdminOperationalAccount,
   type AdminOverview,
@@ -101,6 +110,61 @@ function eventTypeLabel(event: AdminLogEvent) {
   return labels[event.event_type] ?? "任务事件";
 }
 
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function assetRoleLabel(asset: AdminLogAsset) {
+  const labels: Record<string, string> = {
+    product: "商品素材",
+    domestic_main_image: "国内主图",
+    provider_preview: "Provider 中间预览",
+  };
+  return labels[asset.role] ?? asset.role;
+}
+
+function assetDirectionLabel(direction: AdminLogAsset["direction"]) {
+  return direction === "input" ? "输入" : direction === "output" ? "输出" : "中间产物";
+}
+
+function itemStatusClass(status: string) {
+  return status === "failed" || status === "cancelled" ? styles.logStatusFailed : styles.logStatus;
+}
+
+function AssetPreview({ asset }: { asset: AdminLogAsset }) {
+  const dimensions = asset.width && asset.height ? `${asset.width} × ${asset.height}` : "尺寸未知";
+  return <article className={styles.assetCard}>
+    <div className={styles.assetThumb}>
+      {asset.access_url ? <img src={asset.access_url} alt={asset.original_filename} loading="lazy" /> : <div className={styles.assetPlaceholder}>素材暂不可用</div>}
+    </div>
+    <div className={styles.assetInfo}>
+      <div className={styles.assetTitle}><strong>{assetRoleLabel(asset)}</strong><span>{assetDirectionLabel(asset.direction)}</span></div>
+      <small title={asset.original_filename}>{asset.original_filename}</small>
+      <small>{dimensions} · {formatBytes(asset.byte_size)}</small>
+      {asset.download_url ? <a className={styles.downloadLink} href={asset.download_url} download><Download size={13} />下载素材</a> : <small className={styles.warningText}>当前生命周期不允许访问</small>}
+    </div>
+  </article>;
+}
+
+function GenerationItemDetail({ item }: { item: AdminLogItem }) {
+  return <article className={styles.jobItem}>
+    <div className={styles.jobItemHeader}>
+      <div><strong>{item.item_key}</strong><small>子任务 #{item.ordinal + 1} · {item.id}</small></div>
+      <span className={itemStatusClass(item.status)}>{item.status}</span>
+    </div>
+    <div className={styles.jobItemMeta}>
+      <span>阶段：{item.stage ?? "未分阶段"}</span>
+      <span>尝试：{formatCount(item.attempt_count)}</span>
+      <span>质量：{item.quality ?? "未记录"}</span>
+      <span>结果来源：{item.result_source ?? "未记录"}</span>
+    </div>
+    {item.error_code ? <p className={styles.jobItemError}><strong>{item.error_code}</strong> · {item.error_message ?? "请根据错误码定位。"}</p> : null}
+    {item.provider_stages.length > 0 ? <div className={styles.providerStages}><small>Provider 阶段</small>{item.provider_stages.map((stage) => <div className={styles.providerStage} key={stage.id}><span>{stage.provider} · {stage.operation} · 尝试 {stage.attempt_no}</span><span className={stage.status === "failed" ? styles.warningText : ""}>{stage.status}</span></div>)}</div> : null}
+  </article>;
+}
+
 function LogDetailDialog({
   detail,
   loading,
@@ -115,10 +179,10 @@ function LogDetailDialog({
   return <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="admin-log-detail-title">
       <div className={styles.dialogHeader}>
-        <div><span className={styles.sectionEyebrow}>READ-ONLY DETAIL</span><h2 id="admin-log-detail-title">任务详情</h2><p>仅显示脱敏状态和事件时间线。</p></div>
+        <div><span className={styles.sectionEyebrow}>READ-ONLY DETAIL</span><h2 id="admin-log-detail-title">任务详情</h2><p>仅显示脱敏状态、素材预览和事件时间线。</p></div>
         <button className={styles.closeButton} type="button" onClick={onClose} aria-label="关闭任务详情">×</button>
       </div>
-      {loading ? <div className={styles.dialogLoading}><Loader2 className={styles.spin} size={20} /> 正在加载任务事件…</div> : error ? <div className={styles.dialogError}>{error}</div> : detail ? <div className={styles.dialogBody}>
+      {loading ? <div className={styles.dialogLoading}><Loader2 className={styles.spin} size={20} /> 正在加载任务详情…</div> : error ? <div className={styles.dialogError}>{error}</div> : detail ? <div className={styles.dialogBody}>
         <div className={styles.detailSummary}>
           <div><small>任务类型</small><strong>{logKindLabel(detail)} · {logPlatformLabel(detail.platform)}</strong></div>
           <div><small>任务 ID</small><strong>{detail.id}</strong></div>
@@ -128,11 +192,132 @@ function LogDetailDialog({
           <div><small>尝试次数</small><strong>{formatCount(detail.attempt_count)}</strong></div>
           {detail.error_code ? <div><small>错误</small><strong className={styles.warningText}>{detail.error_code} · {detail.error_message ?? "请根据错误码定位。"}</strong></div> : null}
         </div>
+        {detail.kind === "generation" ? <>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>输入素材</h3><span>{formatCount(detail.input_assets.length)} 个</span></div>
+            {detail.input_assets.length === 0 ? <p className={styles.empty}>暂无关联输入素材。</p> : <div className={styles.assetGrid}>{detail.input_assets.map((asset) => <AssetPreview asset={asset} key={asset.relation_id} />)}</div>}
+          </div>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>输出图片</h3><span>{formatCount(detail.output_assets.length)} 个</span></div>
+            {detail.output_assets.length === 0 ? <p className={styles.empty}>暂无输出图片。</p> : <div className={styles.assetGrid}>{detail.output_assets.map((asset) => <AssetPreview asset={asset} key={asset.relation_id} />)}</div>}
+          </div>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>中间产物</h3><span>{formatCount(detail.intermediate_assets.length)} 个</span></div>
+            {detail.intermediate_assets.length === 0 ? <p className={styles.empty}>暂无中间产物。</p> : <div className={styles.assetList}>{detail.intermediate_assets.map((asset) => <AssetPreview asset={asset} key={asset.relation_id} />)}</div>}
+          </div>
+          <div className={styles.detailSection}>
+            <div className={styles.timelineHeading}><h3>分项执行明细</h3><span>{formatCount(detail.items.length)} 个子任务</span></div>
+            {detail.items.length === 0 ? <p className={styles.empty}>暂无子任务记录。</p> : <div className={styles.jobItems}>{detail.items.map((item) => <GenerationItemDetail item={item} key={item.id} />)}</div>}
+          </div>
+        </> : null}
         <div className={styles.timelineHeading}><h3>事件时间线</h3><span>{formatCount(detail.events.length)} 个事件</span></div>
         {detail.events.length === 0 ? <p className={styles.empty}>暂无可展示的事件。</p> : <ol className={styles.timeline}>{detail.events.map((event) => <li key={event.id} className={styles.timelineItem}><span className={styles.timelineDot} /><div><div className={styles.timelineMeta}><strong>{eventTypeLabel(event)}</strong><time>{formatTime(event.occurred_at)}</time></div><p>{event.message}</p>{event.from_status || event.to_status ? <small>{event.from_status ?? "—"} → {event.to_status ?? "—"}</small> : null}</div></li>)}</ol>}
       </div> : null}
     </section>
   </div>;
+}
+
+const adminPermissionOptions = [
+  ["users:read", "用户查看"],
+  ["workspaces:read", "工作区查看"],
+  ["accounts:read", "账号运维查看"],
+  ["logs:read", "任务日志查看"],
+  ["admins:manage", "管理员管理"],
+] as const;
+
+function AdministratorManagement() {
+  const [administrators, setAdministrators] = useState<AdminAdministrator[]>([]);
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [permissionDrafts, setPermissionDrafts] = useState<Record<string, string[]>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getAdminAdministrators({ limit: 100 });
+      setAdministrators(result.items);
+      setHidden(!result.can_manage);
+    } catch (cause) {
+      if (cause instanceof Error && cause.message.includes("超级管理员")) {
+        setHidden(true);
+      } else {
+        setError(cause instanceof Error ? cause.message : "管理员列表暂时无法加载。 ");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  async function addAdministrator(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!email.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createAdminAdministrator(email.trim());
+      setEmail("");
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "管理员添加失败，请稍后重试。 ");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function updateAdministrator(
+    administrator: AdminAdministrator,
+    changes: {
+      status?: "active" | "disabled";
+      role?: "admin" | "super_admin";
+      permissions?: string[];
+    },
+  ) {
+    setBusyUserId(administrator.user_id);
+    setError(null);
+    try {
+      await updateAdminAdministrator(administrator.user_id, changes);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "管理员更新失败，请稍后重试。 ");
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function savePermissions(administrator: AdminAdministrator) {
+    const permissions = permissionDrafts[administrator.user_id] ?? administrator.permissions;
+    await updateAdministrator(administrator, { permissions });
+  }
+
+  if (hidden) return null;
+  return <section className={styles.section} aria-label="管理员管理">
+    <div className={styles.sectionHeading}>
+      <div><span className={styles.sectionEyebrow}><UserCog size={14} /> ADMIN ACCESS</span><h2>管理员管理</h2><p>只有超级管理员可以增加、停用或调整管理员权限；变更会写入审计记录。</p></div>
+      <span className={styles.sectionCount}>{formatCount(administrators.length)} 位管理员</span>
+    </div>
+    <form className={styles.adminCreateForm} onSubmit={addAdministrator}>
+      <label><span>添加已注册用户</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="输入用户注册邮箱" required /></label>
+      <button className={styles.primary} type="submit" disabled={submitting}><Plus size={15} />{submitting ? "添加中…" : "添加普通管理员"}</button>
+    </form>
+    {error ? <p className={styles.adminError} role="alert">{error}</p> : null}
+    {loading ? <div className={styles.adminLoading}><Loader2 className={styles.spin} size={17} />正在加载管理员列表…</div> : administrators.length === 0 ? <p className={styles.empty}>当前没有可管理的管理员。</p> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>管理员</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead><tbody>{administrators.map((administrator) => <tr key={administrator.user_id}>
+      <td><strong>{administrator.display_name}</strong><small>{administrator.email ?? "邮箱不可用"} · {administrator.user_id}</small></td>
+      <td><span className={administrator.role === "super_admin" ? styles.superAdminBadge : styles.logStatus}>{administrator.role === "super_admin" ? "超级管理员" : "普通管理员"}</span><small>{administrator.source === "bootstrap" ? "部署配置引导" : "后台持久化"}</small></td>
+      <td><span className={administrator.status === "active" ? styles.readyBadge : styles.warningBadge}>{administrator.status === "active" ? "启用" : "已停用"}</span></td>
+      <td>{formatTime(administrator.last_login_at)}</td>
+      <td><div className={styles.adminActions}><button className={styles.detailButton} type="button" disabled={busyUserId === administrator.user_id} onClick={() => void updateAdministrator(administrator, { status: administrator.status === "active" ? "disabled" : "active" })}>{administrator.status === "active" ? "停用" : "启用"}</button><button className={styles.detailButton} type="button" disabled={busyUserId === administrator.user_id} onClick={() => void updateAdministrator(administrator, { role: administrator.role === "super_admin" ? "admin" : "super_admin" })}>{administrator.role === "super_admin" ? "降为普通" : "提升为超级"}</button><details className={styles.permissionEditor}><summary>编辑权限</summary><div className={styles.permissionOptions}>{adminPermissionOptions.map(([permission, label]) => <label key={permission}><input type="checkbox" checked={(permissionDrafts[administrator.user_id] ?? administrator.permissions).includes(permission)} disabled={administrator.role === "super_admin" || busyUserId === administrator.user_id} onChange={(event) => setPermissionDrafts((current) => ({ ...current, [administrator.user_id]: event.target.checked ? [...(current[administrator.user_id] ?? administrator.permissions), permission] : (current[administrator.user_id] ?? administrator.permissions).filter((item) => item !== permission) }))} />{label}</label>)}<button className={styles.detailButton} type="button" disabled={administrator.role === "super_admin" || busyUserId === administrator.user_id} onClick={() => void savePermissions(administrator)}>保存权限</button></div></details></div></td>
+    </tr>)}</tbody></table></div>}
+  </section>;
 }
 
 export default function AdminDashboardPage() {
@@ -236,6 +421,15 @@ export default function AdminDashboardPage() {
         <div><span className={styles.eyebrow}><ShieldCheck size={14} /> 运营工具</span><h1>管理员工作台</h1><p>先用只读概览掌握用户使用情况、任务运行状态和电商账号登录状态。</p></div>
         <button className={styles.secondary} type="button" onClick={() => void load(true)} disabled={refreshing}><RefreshCw className={refreshing ? styles.spin : ""} size={16} /> {refreshing ? "刷新中…" : "刷新数据"}</button>
       </header>
+
+      <nav className={styles.adminNav} aria-label="管理中心导航">
+        <Link className={styles.adminNavActive} href="/admin"><ShieldCheck size={15} />工作台</Link>
+        <Link href="/admin/announcements"><ExternalLink size={14} />公告管理</Link>
+        <Link href="/admin/inspiration"><ExternalLink size={14} />灵感案例</Link>
+        <Link href="/commerce-crawler"><Workflow size={15} />真实爬虫</Link>
+      </nav>
+
+      <AdministratorManagement />
 
       <section className={styles.metrics} aria-label="网站概况">
         <article className={styles.metricCard}><span className={styles.metricIcon}><Users size={20} /></span><div><small>网站用户</small><strong>{formatCount(overview.users.total)}</strong><p>{formatCount(overview.users.active)} 个活跃用户</p></div></article>

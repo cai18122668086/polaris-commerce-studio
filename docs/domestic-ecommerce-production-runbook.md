@@ -17,7 +17,11 @@ node, or external-auth environment.
 4. Confirm `POLARIS_TASK_DISPATCHER=celery`,
    `POLARIS_AUTO_CREATE_SCHEMA=false`, `POLARIS_STORAGE_BACKEND=s3`,
    `POLARIS_S3_AUTO_CREATE_BUCKET=false`, and
-   `POLARIS_ECOMMERCE_PROXY_ENABLED=false`.
+   `POLARIS_ECOMMERCE_PROXY_ENABLED=false`. Keep
+   `POLARIS_ECOMMERCE_LOGIN_ENABLED=false` until the controlled login
+   workflow has been approved and tested; when enabled, use
+   `POLARIS_ECOMMERCE_LOGIN_TRANSPORT=headless_qr` and keep the session
+   timeout within the documented 60–1800 second range.
 5. Keep Amazon disabled and planned. A production release must not turn on an
    Amazon provider as a side effect of domestic ecommerce deployment.
 
@@ -46,7 +50,7 @@ python -m alembic -c alembic.ini current
 python -m alembic -c alembic.ini heads
 ```
 
-The expected head for this release is `20260901_0015`. For a disposable
+The expected head for this release is `20260902_0021`. For a disposable
 PostgreSQL validation database, run the optional test only after setting both
 `POLARIS_POSTGRES_E2E_URL` and
 `POLARIS_POSTGRES_E2E_ALLOW_MUTATION=true`.
@@ -114,6 +118,32 @@ For each of Taobao/Tmall, 1688, JD/JD Global Purchase, and Pinduoduo:
 
 Do not modify the existing platform parser logic as part of deployment
 verification. Amazon remains `enabled=false`, `status=planned`.
+
+## 7. Controlled login operation
+
+The production login workflow is intentionally disabled by default. When an
+operator has approval to enable it, set the three ecommerce login settings in
+the server-managed environment and restart the API and crawl-worker together.
+The only supported production transport is `headless_qr`:
+
+- The operator starts login for a workspace-owned ecommerce account.
+- The operator views the short-lived, authenticated QR preview in the website
+  and completes login only on the platform's official page.
+- The operator may cancel the flow; an expired, cancelled, failed, or completed
+  flow must not be reused.
+- The preview endpoint is `no-store` and must remain behind normal application
+  authentication and workspace authorization.
+
+This workflow does not auto-fill passwords, read or write cookies, handle
+verification codes, drag sliders, bypass risk controls, expose browser CDP
+endpoints, or provide arbitrary remote browser control. If a platform requests
+additional verification or presents a risk-control page, complete it through
+the official page or stop the flow and retry later.
+
+The audit record should retain only operator identity, account id, transport,
+status, timestamps, and safe error codes. Never retain QR screenshots beyond
+the short-lived operational window, and never record cookies, tokens,
+passwords, browser profile paths, or provider request payloads.
 
 ## 7. Backup, alerting, and rollback
 

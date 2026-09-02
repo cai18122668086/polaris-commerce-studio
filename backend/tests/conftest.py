@@ -35,6 +35,8 @@ def settings(tmp_path) -> Settings:
         ecommerce_pinduoduo_session_dir=(
             tmp_path / "ecommerce-session" / "domestic-pinduoduo"
         ),
+        ecommerce_login_enabled=True,
+        ecommerce_login_transport="local_visible",
         auto_process_jobs=False,
         task_dispatcher="inline",
         mock_job_delay_seconds=0,

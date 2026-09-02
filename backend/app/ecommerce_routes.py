@@ -6,16 +6,24 @@ adapter and never attempts login, CAPTCHA solving, or access-control bypasses.
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .auth import Principal, get_principal
 from .database import get_session
-from .domain import EcommerceAccountStatus, EcommerceLoginState
+from .domain import (
+    EcommerceAccountStatus,
+    EcommerceLoginSessionStatus,
+    EcommerceLoginState,
+)
 from .ecommerce_1688 import (
     Alibaba1688Product,
     crawl_one_1688,
@@ -35,7 +43,7 @@ from .ecommerce_platform import (
     resolve_site_policy,
 )
 from .ecommerce_session import EcommerceSessionManager
-from .models import utc_now
+from .models import AuditEventRecord, EcommerceLoginSessionRecord, utc_now
 
 router = APIRouter(prefix="/api/ecommerce", tags=["ecommerce"])
 logger = logging.getLogger(__name__)
@@ -124,6 +132,103 @@ def _resolve_account_session_target(
     return account, _account_manager(request, account), family
 
 
+def _as_utc(value: datetime) -> datetime:
+    return (
+        value.replace(tzinfo=UTC)
+        if value.tzinfo is None
+        else value.astimezone(UTC)
+    )
+
+
+def _iso(value: datetime | None) -> str | None:
+    return _as_utc(value).isoformat() if value is not None else None
+
+
+def _login_session_response(
+    record: EcommerceLoginSessionRecord | None,
+) -> dict[str, Any] | None:
+    if record is None:
+        return None
+    return {
+        "id": record.id,
+        "status": record.status,
+        "transport": record.transport,
+        "startedAt": _iso(record.started_at),
+        "expiresAt": _iso(record.expires_at),
+        "lastSeenAt": _iso(record.last_seen_at),
+        "completedAt": _iso(record.completed_at),
+        "errorCode": record.error_code,
+    }
+
+
+def _sync_login_session(
+    session: Session,
+    record: EcommerceLoginSessionRecord | None,
+    manager: EcommerceSessionManager,
+) -> EcommerceLoginSessionRecord | None:
+    if record is None:
+        return None
+    now = utc_now()
+    status = manager.status()
+    record.last_seen_at = now
+    if record.status == EcommerceLoginSessionStatus.ACTIVE.value:
+        if _as_utc(record.expires_at) <= now:
+            manager.cancel_login()
+            record.status = EcommerceLoginSessionStatus.EXPIRED.value
+            record.error_code = "LOGIN_SESSION_EXPIRED"
+            record.completed_at = now
+        elif status.get("state") == "ready":
+            record.status = EcommerceLoginSessionStatus.COMPLETED.value
+            record.completed_at = now
+        elif status.get("state") == "error":
+            record.status = EcommerceLoginSessionStatus.FAILED.value
+            record.error_code = "LOGIN_HELPER_FAILED"
+            record.completed_at = now
+    return record
+
+
+def _latest_login_session(
+    session: Session, account_id: str, *, include_terminal: bool = False
+) -> EcommerceLoginSessionRecord | None:
+    records = session.scalars(
+        select(EcommerceLoginSessionRecord)
+        .where(EcommerceLoginSessionRecord.account_id == account_id)
+        .order_by(
+            EcommerceLoginSessionRecord.started_at.desc(),
+            EcommerceLoginSessionRecord.id.desc(),
+        )
+        .limit(10)
+    ).all()
+    now = utc_now()
+    latest: EcommerceLoginSessionRecord | None = None
+    for record in records:
+        if (
+            record.status == EcommerceLoginSessionStatus.ACTIVE.value
+            and _as_utc(record.expires_at) <= now
+        ):
+            record.status = EcommerceLoginSessionStatus.EXPIRED.value
+            record.error_code = "LOGIN_SESSION_EXPIRED"
+            record.completed_at = now
+        if latest is None and (
+            include_terminal
+            or record.status == EcommerceLoginSessionStatus.ACTIVE.value
+        ):
+            latest = record
+    return latest
+
+
+def _require_login_enabled(request: Request) -> None:
+    if not request.app.state.settings.ecommerce_login_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ECOMMERCE_LOGIN_DISABLED",
+                "message": "当前环境未启用受控电商登录。请通过批准的运维流程开启。",
+                "retryable": False,
+            },
+        )
+
+
 def _session_manager_for_family(request: Request, site_family: SiteFamily):
     """Return the manager bound to the resolved site policy.
 
@@ -188,6 +293,10 @@ class SessionStartRequest(BaseModel):
     platform: Literal[
         "auto", "taobao", "tmall", "alibaba1688", "1688", "jd", "pinduoduo"
     ] = "auto"
+
+
+class SessionCancelRequest(BaseModel):
+    account_id: str = Field(min_length=1, max_length=40)
 
 
 def _normalise(result: object, source_url: str, include_desc: bool) -> dict:
@@ -934,9 +1043,15 @@ def ecommerce_session_status(
         write=False,
     )
     session_status = manager.status()
+    login_session = None
     if account is not None:
         _sync_account_login_state(session, account, session_status)
+        login_session = _latest_login_session(
+            session, account.id, include_terminal=True
+        )
+        _sync_login_session(session, login_session, manager)
         session.commit()
+    session_status["loginSession"] = _login_session_response(login_session)
     return {"success": True, "data": session_status}
 
 
@@ -1037,6 +1152,151 @@ def ecommerce_session_open_page(
     return {"success": True, "data": result}
 
 
+@router.get(
+    "/session/preview",
+    response_class=FileResponse,
+    openapi_extra={
+        "responses": {
+            "200": {
+                "content": {
+                    "image/png": {
+                        "schema": {"type": "string", "format": "binary"}
+                    }
+                }
+            }
+        }
+    },
+)
+def ecommerce_session_preview(
+    request: Request,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    account_id: str = Query(min_length=1, max_length=40),
+):
+    """Return the short-lived, protected QR login preview for one account."""
+
+    _require_login_enabled(request)
+    account, manager, _ = _resolve_account_session_target(
+        request,
+        session,
+        principal,
+        account_id=account_id,
+        requested_platform="auto",
+        write=False,
+    )
+    if account is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "LOGIN_ACCOUNT_REQUIRED",
+                "message": "登录预览必须绑定到指定电商账号。",
+                "retryable": False,
+            },
+        )
+    record = _latest_login_session(session, account.id)
+    if record is not None:
+        _sync_login_session(session, record, manager)
+        session.commit()
+    if record is None or record.status != EcommerceLoginSessionStatus.ACTIVE.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "LOGIN_SESSION_NOT_ACTIVE",
+                "message": "当前账号没有进行中的登录流程，请先发起登录。",
+                "retryable": False,
+            },
+        )
+    if record.transport != "headless_qr":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "LOGIN_PREVIEW_UNAVAILABLE",
+                "message": "当前登录流程不提供二维码预览。",
+                "retryable": False,
+            },
+        )
+    status = manager.status()
+    preview_path = manager.preview_path
+    if not status.get("previewAvailable") or not preview_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "LOGIN_PREVIEW_NOT_READY",
+                "message": "登录二维码预览尚未准备好，请稍后刷新。",
+                "retryable": True,
+            },
+        )
+    return FileResponse(
+        preview_path,
+        media_type="image/png",
+        filename="login-preview.png",
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+@router.post("/session/cancel")
+def ecommerce_session_cancel(
+    request: Request,
+    payload: SessionCancelRequest,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+) -> dict:
+    """Cancel the active human-assisted login flow for one account."""
+
+    _require_login_enabled(request)
+    account, manager, _ = _resolve_account_session_target(
+        request,
+        session,
+        principal,
+        account_id=payload.account_id,
+        requested_platform="auto",
+        write=False,
+    )
+    if account is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "LOGIN_ACCOUNT_REQUIRED",
+                "message": "取消登录必须绑定到指定电商账号。",
+                "retryable": False,
+            },
+        )
+    record = _latest_login_session(session, account.id)
+    if record is not None:
+        _sync_login_session(session, record, manager)
+    if record is None or record.status != EcommerceLoginSessionStatus.ACTIVE.value:
+        session.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "LOGIN_SESSION_NOT_ACTIVE",
+                "message": "当前账号没有进行中的登录流程。",
+                "retryable": False,
+            },
+        )
+    result = manager.cancel_login()
+    now = utc_now()
+    record.status = EcommerceLoginSessionStatus.CANCELLED.value
+    record.completed_at = now
+    record.last_seen_at = now
+    record.error_code = None
+    _sync_account_login_state(session, account, result)
+    session.add(
+        AuditEventRecord(
+            workspace_id=account.workspace_id,
+            actor_user_id=principal.user_id,
+            action="ecommerce.login_cancelled",
+            resource_type="ecommerce_account",
+            resource_id=account.id,
+            request_id=request.headers.get("X-Request-Id"),
+            details={"transport": record.transport},
+        )
+    )
+    session.commit()
+    result["loginSession"] = _login_session_response(record)
+    return {"success": True, "data": result}
+
+
 @router.post("/session/start")
 def ecommerce_session_start(
     request: Request,
@@ -1044,13 +1304,19 @@ def ecommerce_session_start(
     principal: PrincipalDependency,
     payload: SessionStartRequest | None = None,
 ) -> dict:
-    if request.app.state.settings.environment == "production":
-        raise HTTPException(
-            status_code=403, detail="生产环境请通过受控运维流程建立授权会话。"
-        )
+    _require_login_enabled(request)
     requested_platform = payload.platform if payload else "auto"
     target_url = payload.url.strip() if payload and payload.url else None
     account_id = payload.account_id if payload else None
+    if request.app.state.settings.environment == "production" and not account_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "ACCOUNT_REQUIRED",
+                "message": "生产环境登录必须绑定到指定电商账号。",
+                "retryable": False,
+            },
+        )
     account, manager, _ = _resolve_account_session_target(
         request,
         session,
@@ -1059,9 +1325,35 @@ def ecommerce_session_start(
         requested_platform=requested_platform,
         write=True,
     )
-    # Start authorization at the official login origin instead of navigating
-    # directly to a product/QR redirect. The product URL remains the fetch
-    # target; it is not needed to establish the human session.
+    transport = request.app.state.settings.ecommerce_login_transport
+    if (
+        request.app.state.settings.environment == "production"
+        and transport != "headless_qr"
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "LOGIN_TRANSPORT_UNAVAILABLE",
+                "message": "生产环境尚未配置受控二维码登录通道。",
+                "retryable": False,
+            },
+        )
+    if account is not None:
+        active_session = _latest_login_session(session, account.id)
+        if active_session is not None:
+            _sync_login_session(session, active_session, manager)
+            if active_session.status == EcommerceLoginSessionStatus.ACTIVE.value:
+                session.commit()
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "LOGIN_SESSION_BUSY",
+                        "message": "该电商账号已有登录流程进行中，请等待完成或取消。",
+                        "retryable": True,
+                    },
+                )
+    # Start authorization at the official login origin for platform-bound
+    # accounts. The product URL is only a crawl target.
     if requested_platform in {"1688", "alibaba1688", "jd", "pinduoduo"}:
         target_url = None
     if account is None and target_url:
@@ -1081,9 +1373,70 @@ def ecommerce_session_start(
                 detail={"code": exc.code, "message": exc.message, "retryable": False},
             ) from exc
         manager = _session_manager_for_family(request, policy.site_family)
-    result = manager.start_login(target_url)
+    manager_status = manager.status()
+    if manager_status.get("state") == "ready":
+        if account is not None:
+            _sync_account_login_state(session, account, manager_status)
+            session.commit()
+        manager_status["loginSession"] = None
+        return {"success": True, "data": manager_status}
+
+    login_session = None
+    if account is not None:
+        now = utc_now()
+        login_session = EcommerceLoginSessionRecord(
+            id=f"login_{uuid4().hex}",
+            account_id=account.id,
+            workspace_id=account.workspace_id,
+            started_by=principal.user_id,
+            status=EcommerceLoginSessionStatus.ACTIVE.value,
+            transport=transport,
+            started_at=now,
+            expires_at=now
+            + timedelta(
+                seconds=request.app.state.settings.ecommerce_login_session_timeout_seconds
+            ),
+            last_seen_at=now,
+        )
+        session.add(login_session)
+        session.add(
+            AuditEventRecord(
+                workspace_id=account.workspace_id,
+                actor_user_id=principal.user_id,
+                action="ecommerce.login_started",
+                resource_type="ecommerce_account",
+                resource_id=account.id,
+                request_id=request.headers.get("X-Request-Id"),
+                details={"transport": transport},
+            )
+        )
+        session.commit()
+    try:
+        result = manager.start_login(
+            target_url,
+            headless=transport == "headless_qr",
+            timeout_seconds=(
+                request.app.state.settings.ecommerce_login_session_timeout_seconds
+            ),
+        )
+    except Exception as exc:
+        if login_session is not None:
+            login_session.status = EcommerceLoginSessionStatus.FAILED.value
+            login_session.error_code = "LOGIN_HELPER_START_FAILED"
+            login_session.completed_at = utc_now()
+            session.commit()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "LOGIN_HELPER_UNAVAILABLE",
+                "message": "受控登录浏览器暂时不可用，请稍后重试。",
+                "retryable": True,
+            },
+        ) from exc
     if account is not None:
         _sync_account_login_state(session, account, result)
+        _sync_login_session(session, login_session, manager)
         session.commit()
+    result["loginSession"] = _login_session_response(login_session)
     return {"success": True, "data": result}
 

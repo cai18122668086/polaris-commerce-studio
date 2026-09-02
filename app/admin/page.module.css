@@ -104,3 +104,84 @@
 .timelineItem p { margin: 5px 0 3px; color: #7c8193; font-size: 12px; line-height: 1.55; }
 .timelineItem small { color: #9b9eac; font-size: 10px; }
 @media (max-width: 520px) { .dialogBackdrop { padding: 10px; } .dialogHeader, .dialogBody { padding-left: 17px; padding-right: 17px; } .detailSummary { grid-template-columns: 1fr; } .timelineMeta { align-items: flex-start; flex-direction: column; gap: 3px; } }
+
+
+.adminNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 18px;
+  padding: 8px;
+  border: 1px solid #e3e8f2;
+  border-radius: 13px;
+  background: #fbfcfe;
+}
+
+.adminNav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.adminNav a:hover {
+  color: #315edb;
+  border-color: #d6e0fa;
+  background: #f4f7ff;
+}
+
+.adminNav .adminNavActive {
+  color: #315edb;
+  border-color: #d6e0fa;
+  background: #eef3ff;
+}
+
+.detailSection { margin-top: 24px; }
+.detailSection .timelineHeading { margin-top: 0; }
+.assetGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.assetList { display: grid; gap: 10px; }
+.assetCard { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 11px; min-width: 0; padding: 9px; border: 1px solid #ececf2; border-radius: 12px; background: #fff; }
+.assetThumb { display: grid; width: 92px; height: 92px; place-items: center; overflow: hidden; border-radius: 9px; background: #f3f3f8; }
+.assetThumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.assetPlaceholder { padding: 8px; color: #9b9eac; font-size: 10px; line-height: 1.4; text-align: center; }
+.assetInfo { display: grid; min-width: 0; align-content: start; gap: 4px; }
+.assetInfo small { overflow: hidden; color: #8b8e9f; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.assetTitle { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.assetTitle strong { overflow: hidden; color: #3f4256; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.assetTitle span { flex: 0 0 auto; padding: 3px 6px; border-radius: 999px; color: #6d5ed0; background: #f1efff; font-size: 9px; font-weight: 700; }
+.downloadLink { display: inline-flex; width: fit-content; gap: 5px; align-items: center; margin-top: 4px; color: #6d5ed0; font-size: 10px; font-weight: 700; text-decoration: none; }
+.downloadLink:hover { color: #4f3db8; text-decoration: underline; }
+.jobItems { display: grid; gap: 10px; }
+.jobItem { padding: 13px; border: 1px solid #ececf2; border-radius: 12px; background: #fafaff; }
+.jobItemHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.jobItemHeader strong { display: block; color: #3f4256; font-size: 12px; }
+.jobItemHeader small { display: block; margin-top: 4px; overflow-wrap: anywhere; color: #9b9eac; font-size: 10px; }
+.jobItemMeta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 11px; color: #7c8193; font-size: 10px; }
+.jobItemError { margin: 10px 0 0; color: #b75331; font-size: 11px; line-height: 1.5; }
+.providerStages { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #ececf2; }
+.providerStages > small { color: #9b9eac; font-size: 10px; font-weight: 700; }
+.providerStage { display: flex; justify-content: space-between; gap: 10px; color: #656a7b; font-size: 10px; }
+.providerStage span:last-child { flex: 0 0 auto; font-weight: 700; }
+@media (max-width: 620px) { .assetGrid { grid-template-columns: 1fr; } .assetCard { grid-template-columns: 76px minmax(0, 1fr); } .assetThumb { width: 76px; height: 76px; } }
+.adminCreateForm { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 14px; padding: 14px; border: 1px solid #e7e9f1; border-radius: 12px; background: #fbfcff; }
+.adminCreateForm label { display: grid; min-width: min(360px, 100%); gap: 6px; color: #62687b; font-size: 11px; font-weight: 700; }
+.adminCreateForm input { min-width: 280px; padding: 9px 11px; border: 1px solid #dfe3ec; border-radius: 8px; color: #3f4256; background: #fff; font: inherit; font-weight: 400; outline: none; }
+.adminCreateForm input:focus { border-color: #7964ef; box-shadow: 0 0 0 3px rgb(121 100 239 / 12%); }
+.adminError { margin: 10px 0; padding: 10px 12px; border-radius: 9px; color: #a94428; background: #fff4ef; font-size: 12px; }
+.adminLoading { display: flex; gap: 7px; align-items: center; padding: 18px 0; color: #8b8e9f; font-size: 12px; }
+.adminActions { display: flex; flex-wrap: wrap; gap: 6px; }
+.superAdminBadge { display: inline-flex; padding: 4px 7px; border-radius: 999px; color: #6855cc; background: #f0edff; font-size: 10px; font-weight: 700; }
+.sectionEyebrow { display: inline-flex; gap: 5px; align-items: center; }
+@media (max-width: 620px) { .adminCreateForm { align-items: stretch; flex-direction: column; } .adminCreateForm input { min-width: 0; width: 100%; } }
+.permissionEditor { position: relative; }
+.permissionEditor summary { cursor: pointer; color: #6d5ed0; font-size: 10px; font-weight: 700; list-style: none; }
+.permissionEditor summary::-webkit-details-marker { display: none; }
+.permissionOptions { position: absolute; z-index: 2; right: 0; display: grid; min-width: 170px; gap: 7px; margin-top: 7px; padding: 10px; border: 1px solid #e1e3ed; border-radius: 9px; background: #fff; box-shadow: 0 12px 30px rgb(61 65 95 / 14%); }
+.permissionOptions label { display: flex; gap: 6px; align-items: center; color: #62687b; font-size: 10px; white-space: nowrap; }
+.permissionOptions button { margin-top: 2px; }

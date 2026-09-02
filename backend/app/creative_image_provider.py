@@ -45,7 +45,7 @@ class CreativeImageProvider(NewImageSkillProvider):
             ("competitor_reference", competitor_asset_ids),
         )
         require_image_count(settings)
-        controlled_target(settings)
+        self.target(settings)
         creative_direction = optional_string(
             settings,
             "creative_direction",
@@ -71,6 +71,15 @@ class CreativeImageProvider(NewImageSkillProvider):
                 "INSPIRATION_REFERENCE_PLANNING_INVALID",
                 "inspiration_reference_planning must be a boolean.",
             )
+
+    def target(self, settings: Mapping[str, Any]) -> dict[str, Any]:
+        # The Inspiration tab's automatic canvas follows the first reference
+        # image and falls back to the first product image. The standalone
+        # creative-image workspace remains fixed-canvas only.
+        return controlled_target(
+            settings,
+            allow_follow_reference=settings.get("inspiration_planning") is True,
+        )
 
     def source_assets(
         self,

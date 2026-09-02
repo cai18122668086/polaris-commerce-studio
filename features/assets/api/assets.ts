@@ -116,11 +116,16 @@ export function useUploadAsset(workspaceId: string | undefined) {
       );
       return unwrapApiResponse(result);
     },
-    onSuccess: async (_, input) => {
-      registry.current!.complete(await signatureFor(input));
-      await queryClient.invalidateQueries({
-        queryKey: assetKeys.lists(workspaceId!),
-      });
+    onSuccess: (_, input) => {
+      void (async () => {
+        registry.current!.complete(await signatureFor(input));
+        // Do not make callers wait for the personal-library refresh. Inspiration
+        // case materialization needs the uploaded asset immediately so it can
+        // resolve its access URL and finish the click flow.
+        void queryClient.invalidateQueries({
+          queryKey: assetKeys.lists(workspaceId!),
+        });
+      })();
     },
   });
   return {

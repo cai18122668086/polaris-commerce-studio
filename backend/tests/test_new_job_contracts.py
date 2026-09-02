@@ -107,6 +107,25 @@ def test_creative_image_defaults_to_one_and_caps_at_twelve() -> None:
         )
 
 
+def test_inspiration_creative_auto_ratio_is_reserved_for_inspiration_mode() -> None:
+    payload = CreativeImageJobCreate(
+        type="creative_image",
+        input={"product_asset_ids": ["product"]},
+        configuration={
+            "aspect_ratio": "follow-reference",
+            "inspiration_planning": True,
+        },
+    )
+    assert payload.configuration.aspect_ratio == "follow-reference"
+
+    with pytest.raises(ValidationError, match="reserved for the Inspiration tab"):
+        CreativeImageJobCreate(
+            type="creative_image",
+            input={"product_asset_ids": ["product"]},
+            configuration={"aspect_ratio": "follow-reference"},
+        )
+
+
 @pytest.mark.parametrize(
     "job_model,input_payload",
     [

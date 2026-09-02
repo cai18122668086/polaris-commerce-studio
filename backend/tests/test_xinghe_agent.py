@@ -62,6 +62,7 @@ from app.xinghe_agent import (
     _fake_amazon_plan,
     _json_pointer,
     _planner_content_payload_with_trace,
+    _planner_prompt,
     _planner_structure_fingerprint,
     _planner_structure_profile,
     build_resume_signature,
@@ -762,6 +763,61 @@ def _canonical_amazon_skill_ids() -> list[str]:
 
 def _amazon_planner_contract_prompt() -> str:
     return _amazon_planner_prompt(_amazon_planner_contract_request())
+
+
+def test_reference_planner_prompt_follows_attached_source_roles() -> None:
+    def source(asset_id: str, role: str) -> SourceImage:
+        return SourceImage(
+            asset_id=asset_id,
+            group_key="case",
+            filename=f"{asset_id}.png",
+            content_type="image/png",
+            sha256="a" * 64,
+            payload=b"image",
+            source_role=role,
+        )
+
+    base = dict(
+        workspace_id="ws-reference-contract",
+        job_id="job-reference-contract",
+        group_key="case",
+        page_count=1,
+        language="zh-CN",
+        product_name="visible product",
+        product_information=(),
+        platform_code="tmall",
+        size="1024x1536",
+        idempotency_key="job-reference-contract:planner",
+        planning_profile="reference_visual_remix",
+    )
+    product_first = _planner_prompt(
+        PlannerRequest(
+            sources=(
+                source("product", "product_reference"),
+                source("style", "style_reference"),
+            ),
+            **base,
+        )
+    )
+    style_first = _planner_prompt(
+        PlannerRequest(
+            sources=(
+                source("style", "style_reference"),
+                source("product", "product_reference"),
+            ),
+            **base,
+        )
+    )
+
+    assert (
+        "Image 1 is product_identity_reference and Image 2 is visual_strategy_reference"
+        in product_first
+    )
+    assert (
+        "Image 1 is visual_strategy_reference and Image 2 is product_identity_reference"
+        in style_first
+    )
+    assert "The first attached image is visual_strategy_reference" not in product_first
 
 
 def test_fake_amazon_plan_matches_original_skill_contract() -> None:

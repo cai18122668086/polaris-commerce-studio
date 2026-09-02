@@ -45,6 +45,7 @@ from app.xinghe_agent import (
     AmazonVisualReviewRequest,
     ImageCallResult,
     ImageEditRequest,
+    SourceImage,
     _artifact_from_bytes,
     normalize_usage,
 )
@@ -497,7 +498,7 @@ def _reference_follow_request(
             "forbidden_transfer": "no source brand",
         }
         if inspiration_product_first:
-            envelope["prompt_input"]["execution_mode"] = "direct_prompt"
+            envelope["prompt_input"]["execution_mode"] = "planner"
             envelope["prompt_input"]["inspiration_product_first"] = True
     envelope["target"] = {
         "width": None,
@@ -850,6 +851,91 @@ def test_reference_follow_target_uses_real_first_style_canvas_for_final_delivery
     assert prompt["target"]["fit"] == "contain"
 
 
+def test_inspiration_follow_target_prefers_competitor_reference_canvas(
+    harness: Harness,
+) -> None:
+    provider = harness.provider(
+        operation="creative_image",
+        skill_id="xinghe-ecommerce-creative-image",
+    )
+    product_payload = _image_bytes((941, 1672))
+    reference_payload = _image_bytes((1280, 1577))
+    envelope = SingleImageEnvelope(
+        skill_id="xinghe-ecommerce-creative-image",
+        skill_content_hash=CONTENT_HASH,
+        operation="creative_image",
+        item_key="image-001",
+        item_ordinal=1,
+        source_assets=(
+            SourceAssetSpec("asset_product", "product_reference", 0),
+            SourceAssetSpec("asset_reference", "competitor_reference", 0),
+        ),
+        target=TargetSpec(None, None, "follow-reference", "high", "png", "contain"),
+        prompt_input={},
+    )
+    sources = (
+        SourceImage(
+            asset_id="asset_product",
+            group_key="product_reference",
+            filename="product.png",
+            content_type="image/png",
+            sha256=hashlib.sha256(product_payload).hexdigest(),
+            payload=product_payload,
+            source_role="product_reference",
+        ),
+        SourceImage(
+            asset_id="asset_reference",
+            group_key="competitor_reference",
+            filename="reference.png",
+            content_type="image/png",
+            sha256=hashlib.sha256(reference_payload).hexdigest(),
+            payload=reference_payload,
+            source_role="competitor_reference",
+        ),
+    )
+
+    resolved = provider._resolve_dynamic_target(envelope, sources)
+
+    assert resolved.target.dimensions == (1280, 1577)
+    assert resolved.target.aspect_ratio == "1280:1577"
+
+
+def test_inspiration_follow_target_falls_back_to_first_product_canvas(
+    harness: Harness,
+) -> None:
+    provider = harness.provider(
+        operation="creative_image",
+        skill_id="xinghe-ecommerce-creative-image",
+    )
+    product_payload = _image_bytes((941, 1672))
+    envelope = SingleImageEnvelope(
+        skill_id="xinghe-ecommerce-creative-image",
+        skill_content_hash=CONTENT_HASH,
+        operation="creative_image",
+        item_key="image-001",
+        item_ordinal=1,
+        source_assets=(SourceAssetSpec("asset_product", "product_reference", 0),),
+        target=TargetSpec(None, None, "follow-reference", "high", "png", "contain"),
+        prompt_input={},
+    )
+    sources = (
+        SourceImage(
+            asset_id="asset_product",
+            group_key="product_reference",
+            filename="product.png",
+            content_type="image/png",
+            sha256=hashlib.sha256(product_payload).hexdigest(),
+            payload=product_payload,
+            source_role="product_reference",
+        ),
+    )
+
+    resolved = provider._resolve_dynamic_target(envelope, sources)
+
+    assert resolved.target.dimensions == (941, 1672)
+    assert resolved.target.aspect_ratio == "941:1672"
+
+
 def test_reference_visual_reverse_remix_runs_analysis_before_image_edit(
     harness: Harness,
 ) -> None:
@@ -875,8 +961,7 @@ def test_reference_visual_reverse_remix_runs_analysis_before_image_edit(
     ]
     assert "VERIFIED SKILL PROTOCOL" in analysis_request.system_prompt
     assert any(
-        "original" in value.lower()
-        for value in analysis_request.product_information
+        "original" in value.lower() for value in analysis_request.product_information
     )
     prompt = harness.gateway.requests[0].prompt
     assert not prompt.lstrip().startswith("{")
@@ -911,7 +996,7 @@ def test_reference_visual_direct_prompt_keeps_reference_first_without_planner(
     assert harness.gateway.requests[0].prompt == "original current case instruction"
 
 
-def test_inspiration_direct_remix_can_put_product_before_style_reference(
+def test_inspiration_planned_remix_can_put_product_before_style_reference(
     harness: Harness,
 ) -> None:
     provider, request = _reference_follow_request(
@@ -924,10 +1009,20 @@ def test_inspiration_direct_remix_can_put_product_before_style_reference(
     result = asyncio.run(provider.execute(request))
 
     assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.gateway.plan_calls == 1
+    assert [
+        source.source_role for source in harness.gateway.plan_requests[0].sources
+    ] == [
+        "product_reference",
+        "style_reference",
+    ]
     assert [source.source_role for source in harness.gateway.requests[0].sources] == [
         "product_reference",
         "style_reference",
     ]
+    prompt = harness.gateway.requests[0].prompt
+    assert "Image 1 is the product-identity reference" in prompt
+    assert "Image 2 is the visual-strategy reference" in prompt
 
 
 def test_reference_follow_target_fails_closed_when_real_canvas_is_unsafe(

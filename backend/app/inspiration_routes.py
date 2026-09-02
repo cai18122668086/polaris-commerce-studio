@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 
@@ -18,6 +19,7 @@ from .inspiration_schemas import (
     InspirationCaseResponse,
     InspirationCaseUpdate,
 )
+from .inspiration_workflows import CASES_REQUIRING_ASSET_REVIEW
 from .models import AssetRecord, InspirationCaseAssetRecord, InspirationCaseRecord
 from .services import new_id
 
@@ -66,14 +68,84 @@ def _asset_response(
     )
 
 
+def _configuration_errors(
+    item: InspirationCaseRecord,
+    rels: Sequence[InspirationCaseAssetRecord],
+) -> list[str]:
+    errors: list[str] = []
+    if item.title in CASES_REQUIRING_ASSET_REVIEW:
+        roles = {rel.role for rel in rels}
+        if not {"result", "user_upload"}.issubset(roles):
+            errors.append("verified_case_assets_required")
+    if not item.prompt.strip():
+        errors.append("prompt_required")
+    if not item.button_label.strip():
+        errors.append("button_label_required")
+    if item.workflow_type == "legacy_unclassified":
+        errors.append("workflow_type_required")
+    elif item.workflow_type == "reference_remix":
+        if item.reference_source == "none":
+            errors.append("reference_source_required")
+        elif item.reference_source == "admin_reference" and not any(
+            rel.role == "reference" for rel in rels
+        ):
+            errors.append("admin_reference_asset_required")
+        elif item.reference_source == "result_image" and not any(
+            rel.role == "result" for rel in rels
+        ):
+            errors.append("result_reference_asset_required")
+    elif (
+        item.workflow_type in {"product_prompt", "local_edit"}
+        and item.reference_source != "none"
+    ):
+        errors.append("reference_source_must_be_none")
+    return errors
+
+
+def _configuration_status(
+    item: InspirationCaseRecord,
+    errors: list[str],
+) -> str:
+    if item.status == "archived":
+        return "archived"
+    if errors:
+        return "incomplete"
+    return "ready" if item.status == "published" else "draft"
+
+
+def _sync_configuration_status(
+    item: InspirationCaseRecord,
+    session: Session,
+) -> list[str]:
+    rels = list(
+        session.scalars(
+            select(InspirationCaseAssetRecord).where(
+                InspirationCaseAssetRecord.case_id == item.id
+            )
+        ).all()
+    )
+    errors = _configuration_errors(item, rels)
+    item.configuration_status = _configuration_status(item, errors)
+    return errors
+
+
 def _response(
     item: InspirationCaseRecord, session: Session, request: Request
 ) -> InspirationCaseResponse:
-    rels = session.scalars(
-        select(InspirationCaseAssetRecord)
-        .where(InspirationCaseAssetRecord.case_id == item.id)
-        .order_by(InspirationCaseAssetRecord.role, InspirationCaseAssetRecord.ordinal)
-    ).all()
+    rels = list(
+        session.scalars(
+            select(InspirationCaseAssetRecord).where(
+                InspirationCaseAssetRecord.case_id == item.id
+            )
+        ).all()
+    )
+    # Keep the public gallery order aligned with the prompt's semantic input
+    # order: product first, visual references second, display-only results last.
+    # SQL's lexical role order put ``reference`` before ``user_upload``, which
+    # made the UI's image numbering contradict prompts such as "图一是商品，
+    # 图二是参考图" even though the stored roles were correct.
+    role_order = {"user_upload": 0, "reference": 1, "result": 2}
+    rels.sort(key=lambda rel: (role_order.get(rel.role, 3), rel.ordinal))
     assets = [_asset_response(rel, request) for rel in rels]
     cover = next((a for a in assets if a.role == "result" and a.ordinal == 0), None)
     return InspirationCaseResponse.model_validate(
@@ -89,6 +161,13 @@ def _response(
             "ratio": item.ratio,
             "intent": item.intent,
             "prompt": item.prompt,
+            "workflow_type": item.workflow_type,
+            "reference_source": item.reference_source,
+            "configuration_status": _configuration_status(
+                item, _configuration_errors(item, rels)
+            ),
+            "configuration_errors": _configuration_errors(item, rels),
+            "button_label": item.button_label,
             "status": item.status,
             "sort_order": item.sort_order,
             "is_pinned": item.is_pinned,
@@ -302,6 +381,7 @@ def create_case(
     session.add(item)
     session.flush()
     _save_assets(item, payload, session)
+    _sync_configuration_status(item, session)
     session.commit()
     session.refresh(item)
     return _response(item, session, request)
@@ -324,6 +404,7 @@ def update_case(
         setattr(item, key, value.strip() if isinstance(value, str) else value)
     item.updated_by_user_id = admin.user_id
     _save_assets(item, payload, session)
+    _sync_configuration_status(item, session)
     session.commit()
     session.refresh(item)
     return _response(item, session, request)
@@ -338,8 +419,17 @@ def publish_case(
     case_id: str, request: Request, session: SessionDependency, admin: AdminDependency
 ) -> InspirationCaseResponse:
     item = _record(case_id, session)
+    errors = _sync_configuration_status(item, session)
+    if errors:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INSPIRATION_CASE_CONFIGURATION_INCOMPLETE",
+            "Inspiration case configuration is incomplete.",
+            {"errors": errors},
+        )
     item.status = "published"
     item.published_at = datetime.now(UTC)
+    item.configuration_status = "ready"
     item.archived_at = None
     item.updated_by_user_id = admin.user_id
     session.commit()
@@ -358,6 +448,7 @@ def archive_case(
     item = _record(case_id, session)
     item.status = "archived"
     item.archived_at = datetime.now(UTC)
+    item.configuration_status = "archived"
     item.is_pinned = False
     item.updated_by_user_id = admin.user_id
     session.commit()

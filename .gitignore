@@ -55,3 +55,13 @@ next-env.d.ts
 /work/
 /.npm-cache/
 *.tsbuildinfo
+
+# Local runtime and recovery artifacts (keep out of release commits)
+/*.log
+/backend/*.log
+/tmp-*.db
+/backend/tmp-*.db
+/.codex-decompyle/
+/.decompiled/
+/.recovered-routes.py
+/polaris.patch

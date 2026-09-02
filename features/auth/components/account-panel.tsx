@@ -10,6 +10,7 @@ import { getSessionUserId, signOut } from "@/features/auth/api/auth";
 import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { AUTH_ROUTES } from "@/lib/auth/routes";
 import { useAnnouncementAdminAccess } from "@/features/announcements/api/announcements";
+import { getAdminAccess } from "@/features/admin/api/admin";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 
@@ -18,6 +19,12 @@ export function AccountPanel() {
   const queryClient = useQueryClient();
   const currentUser = useCurrentAuthUser();
   const announcementAccess = useAnnouncementAdminAccess();
+  const adminAccess = useQuery({
+    queryKey: ["admin", "access"],
+    queryFn: ({ signal }) => getAdminAccess(signal),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
   const inspirationAccess = useQuery({
     queryKey: ["inspiration", "admin-access"],
     queryFn: async ({ signal }) => {
@@ -118,6 +125,11 @@ export function AccountPanel() {
       {error ? <p className="auth-form__error" role="alert">{error}</p> : null}
 
       <div className="account-card__actions">
+        {adminAccess.data?.can_manage ? (
+          <Link className="auth-button auth-button--secondary" href="/admin">
+            管理员工作台
+          </Link>
+        ) : null}
         {announcementAccess.data?.can_manage ? (
           <Link className="auth-button auth-button--secondary" href="/admin/announcements">
             公告管理工作台

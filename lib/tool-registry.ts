@@ -37,6 +37,10 @@ const featureToolGroups: ToolGroup[] = FEATURE_GROUPS.map((group) => ({
 export const toolGroups: ToolGroup[] = [
   ...featureToolGroups,
   {
+    label: "电商复刻",
+    items: [{ title: "商品复刻", description: "淘宝 / 天猫 / 1688 商品图片", href: "/style-replica", icon: Images, tone: "amber", badge: "新" }],
+  },
+  {
     label: "资产管理",
     items: [
       {

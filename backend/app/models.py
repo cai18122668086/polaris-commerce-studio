@@ -26,7 +26,10 @@ from .domain import (
     AssetMediaKind,
     AssetOriginKind,
     AttemptStatus,
+    CrawlTaskStatus,
     CreditReservationStatus,
+    EcommerceAccountStatus,
+    EcommerceLoginState,
     IdempotencyStatus,
     JobItemStatus,
     JobStatus,
@@ -229,6 +232,249 @@ class AssetRecord(Base):
     @property
     def filename(self) -> str:
         return self.original_filename
+
+
+class EcommerceAccountRecord(TimestampMixin, Base):
+    """Workspace-owned ecommerce identity with one isolated browser profile."""
+
+    __tablename__ = "ecommerce_accounts"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "platform",
+            "account_key",
+            name="uq_ecommerce_accounts_workspace_platform_key",
+        ),
+        UniqueConstraint("profile_id", name="uq_ecommerce_accounts_profile"),
+        UniqueConstraint("profile_path", name="uq_ecommerce_accounts_profile_path"),
+        Index("ix_ecommerce_accounts_workspace_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    platform: Mapped[str] = mapped_column(String(24), nullable=False)
+    account_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(120))
+    profile_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    profile_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), default=EcommerceAccountStatus.ACTIVE.value, nullable=False
+    )
+    login_state: Mapped[str] = mapped_column(
+        String(24), default=EcommerceLoginState.UNKNOWN.value, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CrawlTaskRecord(TimestampMixin, Base):
+    __tablename__ = "crawl_tasks"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "idempotency_key", name="uq_crawl_tasks_idempotency"
+        ),
+        Index("ix_crawl_tasks_workspace_created", "workspace_id", "created_at", "id"),
+        Index("ix_crawl_tasks_status_queued", "status", "queued_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    platform: Mapped[str] = mapped_column(String(24), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    canonical_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), default=CrawlTaskStatus.CREATED.value, nullable=False
+    )
+    stage: Mapped[str | None] = mapped_column(String(32))
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message_safe: Mapped[str | None] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("ecommerce_accounts.id", ondelete="SET NULL")
+    )
+    profile_id: Mapped[str | None] = mapped_column(String(128))
+    result_snapshot_id: Mapped[str | None] = mapped_column(String(40))
+    request_payload: Mapped[dict[str, Any]] = mapped_column(
+        MutableDict.as_mutable(json_type()), default=dict, nullable=False
+    )
+    result_payload: Mapped[dict[str, Any] | None] = mapped_column(json_type())
+    state_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+
+class CrawlProfileLeaseRecord(TimestampMixin, Base):
+    """Cross-process mutex for one persistent ecommerce browser profile."""
+
+    __tablename__ = "crawl_profile_leases"
+    __table_args__ = (
+        UniqueConstraint("profile_id", name="uq_crawl_profile_leases_profile"),
+        UniqueConstraint("task_id", name="uq_crawl_profile_leases_task"),
+        Index("ix_crawl_profile_leases_expires", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    profile_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    platform: Mapped[str] = mapped_column(String(24), nullable=False)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("crawl_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    owner_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    fencing_token: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    acquired_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class CrawlAttemptRecord(Base):
+    __tablename__ = "crawl_attempts"
+    __table_args__ = (
+        UniqueConstraint("task_id", "attempt_no", name="uq_crawl_attempt_task_no"),
+        Index("ix_crawl_attempts_task_created", "task_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("crawl_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    worker_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message_safe: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+
+
+class CrawlEventRecord(Base):
+    __tablename__ = "crawl_events"
+    __table_args__ = (
+        Index("ix_crawl_events_task_created", "task_id", "created_at", "id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("crawl_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(32))
+    to_status: Mapped[str | None] = mapped_column(String(32))
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    details: Mapped[dict[str, Any] | None] = mapped_column(json_type())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+
+
+class ProductSnapshotRecord(TimestampMixin, Base):
+    __tablename__ = "product_snapshots"
+    __table_args__ = (
+        UniqueConstraint("task_id", name="uq_product_snapshots_task"),
+        Index("ix_product_snapshots_workspace_created", "workspace_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("crawl_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    schema_version: Mapped[str] = mapped_column(
+        String(24), default="product_snapshot.v1", nullable=False
+    )
+    platform: Mapped[str] = mapped_column(String(24), nullable=False)
+    product_id: Mapped[str | None] = mapped_column(String(128))
+    canonical_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    adapter_version: Mapped[str] = mapped_column(
+        String(64), default="ecommerce-adapter.v1", nullable=False
+    )
+    parser_version: Mapped[str] = mapped_column(
+        String(64), default="ecommerce-normalizer.v1", nullable=False
+    )
+    title: Mapped[str | None] = mapped_column(String(500))
+    price: Mapped[str | None] = mapped_column(String(128))
+    shop_name: Mapped[str | None] = mapped_column(String(300))
+    sales: Mapped[str | None] = mapped_column(String(128))
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        MutableDict.as_mutable(json_type()), default=dict, nullable=False
+    )
+    warnings: Mapped[list[str]] = mapped_column(
+        json_type(), default=list, server_default=text("'[]'"), nullable=False
+    )
+
+
+class ProductAssetRecord(Base):
+    __tablename__ = "product_assets"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id",
+            "role",
+            "ordinal",
+            name="uq_product_assets_snapshot_role_ordinal",
+        ),
+        Index("ix_product_assets_snapshot", "snapshot_id", "role", "ordinal"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("product_snapshots.id", ondelete="CASCADE"), nullable=False
+    )
+    asset_id: Mapped[str] = mapped_column(
+        ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(24), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    source: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
 
 
 class JobRecord(TimestampMixin, Base):

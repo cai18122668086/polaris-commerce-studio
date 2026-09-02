@@ -21,6 +21,20 @@ def settings(tmp_path) -> Settings:
         auto_create_schema=True,
         storage_backend="local",
         storage_dir=tmp_path / "storage",
+        # Never let route tests read, overwrite, or delete the workstation's
+        # human-authorized ecommerce browser profiles.
+        ecommerce_session_dir=(
+            tmp_path / "ecommerce-session" / "domestic-taobao-tmall"
+        ),
+        ecommerce_1688_session_dir=(
+            tmp_path / "ecommerce-session" / "domestic-1688"
+        ),
+        ecommerce_jd_session_dir=(
+            tmp_path / "ecommerce-session" / "domestic-jd"
+        ),
+        ecommerce_pinduoduo_session_dir=(
+            tmp_path / "ecommerce-session" / "domestic-pinduoduo"
+        ),
         auto_process_jobs=False,
         task_dispatcher="inline",
         mock_job_delay_seconds=0,

@@ -23,6 +23,7 @@ def production_settings(**overrides: object) -> Settings:
         "auth_email_from_address": "no-reply@mail.tengliapi.xyz",
         "announcement_admin_emails": ["admin@example.com"],
         "s3_secret_key": "production-s3-secret",
+        "s3_auto_create_bucket": False,
         "access_url_secret": "production-access-url-secret",
     }
     values.update(overrides)
@@ -79,3 +80,22 @@ def test_production_requires_announcement_admin_allowlist() -> None:
 
     with pytest.raises(RuntimeError, match="admin email allowlist is required"):
         settings.validate_runtime_safety()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("task_dispatcher", "inline", "independent worker"),
+        ("auto_create_schema", True, "auto-create"),
+        ("storage_backend", "local", "durable object storage"),
+        ("ecommerce_proxy_enabled", True, "direct-only"),
+    ],
+)
+def test_production_fails_closed_for_ecommerce_runtime_safety(
+    field: str, value: object, message: str
+) -> None:
+    with pytest.raises(RuntimeError, match=message):
+        production_settings(**{field: value}).validate_runtime_safety()
+def test_production_provisions_object_storage_bucket_ahead_of_time() -> None:
+    with pytest.raises(RuntimeError, match="provisioned ahead of time"):
+        production_settings(s3_auto_create_bucket=True).validate_runtime_safety()

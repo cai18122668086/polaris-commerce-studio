@@ -110,6 +110,70 @@ JOB_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
 }
 
 
+class EcommerceAccountStatus(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    DISABLED = "disabled"
+
+
+class EcommerceLoginState(StrEnum):
+    UNKNOWN = "unknown"
+    READY = "ready"
+    NEEDS_LOGIN = "needs_login"
+
+
+class CrawlTaskStatus(StrEnum):
+    CREATED = "created"
+    QUEUED = "queued"
+    RUNNING = "running"
+    WAITING_SESSION = "waiting_session"
+    CANCELLING = "cancelling"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    RETRY_SCHEDULED = "retry_scheduled"
+
+
+CRAWL_TASK_TERMINAL_STATUSES = {
+    CrawlTaskStatus.SUCCEEDED,
+    CrawlTaskStatus.FAILED,
+    CrawlTaskStatus.CANCELLED,
+}
+
+CRAWL_TASK_TRANSITIONS: dict[CrawlTaskStatus, set[CrawlTaskStatus]] = {
+    CrawlTaskStatus.CREATED: {CrawlTaskStatus.QUEUED, CrawlTaskStatus.CANCELLED},
+    CrawlTaskStatus.QUEUED: {
+        CrawlTaskStatus.RUNNING,
+        CrawlTaskStatus.CANCELLING,
+        CrawlTaskStatus.CANCELLED,
+        CrawlTaskStatus.FAILED,
+    },
+    CrawlTaskStatus.RUNNING: {
+        CrawlTaskStatus.WAITING_SESSION,
+        CrawlTaskStatus.CANCELLING,
+        CrawlTaskStatus.SUCCEEDED,
+        CrawlTaskStatus.FAILED,
+        CrawlTaskStatus.CANCELLED,
+    },
+    CrawlTaskStatus.WAITING_SESSION: {
+        CrawlTaskStatus.QUEUED,
+        CrawlTaskStatus.CANCELLING,
+        CrawlTaskStatus.FAILED,
+        CrawlTaskStatus.CANCELLED,
+    },
+    CrawlTaskStatus.CANCELLING: {CrawlTaskStatus.CANCELLED},
+    CrawlTaskStatus.FAILED: {CrawlTaskStatus.RETRY_SCHEDULED},
+    CrawlTaskStatus.CANCELLED: {CrawlTaskStatus.RETRY_SCHEDULED},
+    CrawlTaskStatus.RETRY_SCHEDULED: {CrawlTaskStatus.QUEUED},
+}
+
+
+def can_transition_crawl_task(
+    current: CrawlTaskStatus, target: CrawlTaskStatus
+) -> bool:
+    return target in CRAWL_TASK_TRANSITIONS.get(current, set())
+
+
 class JobItemStatus(StrEnum):
     PENDING = "pending"
     QUEUED = "queued"

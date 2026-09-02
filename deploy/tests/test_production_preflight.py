@@ -4,6 +4,7 @@ import re
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 DEPLOY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEPLOY))
@@ -12,11 +13,14 @@ from generate_production_env import (
     IMAGE_KEYS,
     PROVIDER_KEYS,
     SUPERTOKENS_IMAGE,
+    load_env,
 )
 from production_preflight import (
+    parse_args,
     validate_backend_dockerfile,
     validate_caddy,
     validate_compose,
+    validate_crawl_worker_dockerfile,
     validate_env,
 )
 
@@ -28,6 +32,7 @@ class ProductionPreflightTests(unittest.TestCase):
         env = {
             "POLARIS_RELEASE_SHA": sha,
             "POLARIS_BACKEND_IMAGE": f"polaris/backend:{sha}",
+            "POLARIS_CRAWL_WORKER_IMAGE": f"polaris/crawl-worker:{sha}",
             "POLARIS_FRONTEND_IMAGE": f"polaris/frontend:{sha}",
             "POLARIS_SUPERTOKENS_IMAGE": SUPERTOKENS_IMAGE,
             "POLARIS_POSTGRES_PASSWORD": "p" * 32,
@@ -46,6 +51,11 @@ class ProductionPreflightTests(unittest.TestCase):
             "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS": '["admin@example.com"]',
             "POLARIS_ACME_EMAIL": "ops@tengliapi.xyz",
             "POLARIS_S3_BUCKET": "polaris-production",
+            "POLARIS_AUTO_CREATE_SCHEMA": "false",
+            "POLARIS_STORAGE_BACKEND": "s3",
+            "POLARIS_S3_AUTO_CREATE_BUCKET": "false",
+            "POLARIS_TASK_DISPATCHER": "celery",
+            "POLARIS_ECOMMERCE_PROXY_ENABLED": "false",
         }
         env.update(
             {
@@ -83,14 +93,39 @@ class ProductionPreflightTests(unittest.TestCase):
         env.update(defaults)
         return env
 
+    def test_load_env_accepts_lowercase_proxy_keys(self) -> None:
+        env_path = DEPLOY / "production.env.example"
+        env = load_env(env_path)
+        self.assertEqual(env["http_proxy"], "")
+        self.assertEqual(env["no_proxy"], "*")
+
+    def test_preflight_cli_defaults_to_crawl_worker_dockerfile(self) -> None:
+        with patch.object(sys, "argv", ["production_preflight.py", "--env-file", "env"]):
+            args = parse_args()
+        self.assertEqual(
+            args.crawl_worker_dockerfile,
+            DEPLOY.parent / "backend" / "Dockerfile.crawl-worker",
+        )
+
     def test_repository_production_files_pass_static_checks(self) -> None:
         compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")
         caddy = (DEPLOY / "Caddyfile.production").read_text(encoding="utf-8")
         dockerfile = (DEPLOY / "backend.Dockerfile").read_text(encoding="utf-8")
+        crawl_dockerfile = (DEPLOY.parent / "backend" / "Dockerfile.crawl-worker").read_text(encoding="utf-8")
         self.assertEqual(validate_compose(compose), [])
         self.assertEqual(validate_caddy(caddy), [])
         self.assertEqual(validate_backend_dockerfile(dockerfile), [])
+        self.assertEqual(validate_crawl_worker_dockerfile(crawl_dockerfile), [])
         self.assertEqual(validate_env(self.valid_env()), [])
+        for literal in (
+            'POLARIS_S3_AUTO_CREATE_BUCKET: "false"',
+            'POLARIS_ECOMMERCE_PROXY_ENABLED: "false"',
+            'polaris-production_ecommerce_profiles',
+            'queues=crawl',
+            'HTTP_PROXY: ""',
+            'NO_PROXY: "*"',
+        ):
+            self.assertIn(literal, compose)
 
     def test_repository_compose_files_use_six_way_concurrency(self) -> None:
         compose_files = (
@@ -112,9 +147,16 @@ class ProductionPreflightTests(unittest.TestCase):
             re.findall(r"\$\{(POLARIS_[A-Z0-9_]+_PROVIDER_ENABLED)(?=[:}])", compose)
         )
         generated_provider_keys = {
-            key for key in PROVIDER_KEYS if key.endswith("_PROVIDER_ENABLED")
+            key
+            for key in PROVIDER_KEYS
+            if key.endswith("_PROVIDER_ENABLED")
+            and key != "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED"
         }
         self.assertEqual(generated_provider_keys, compose_provider_keys)
+        self.assertIn(
+            'POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED: "false"',
+            compose,
+        )
 
     def test_shared_data_volume_drift_is_rejected(self) -> None:
         compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")
@@ -207,6 +249,55 @@ class ProductionPreflightTests(unittest.TestCase):
         errors = validate_env(env, base)
         self.assertIn(
             "Provider settings changed during auth cutover: POLARIS_TASK_RUNNER", errors
+        )
+
+    def test_production_storage_and_domestic_policy_are_fail_closed(self) -> None:
+        env = self.valid_env()
+        for key, value in (
+            ("POLARIS_S3_AUTO_CREATE_BUCKET", "true"),
+            ("POLARIS_ECOMMERCE_PROXY_ENABLED", "true"),
+            ("POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED", "true"),
+        ):
+            with self.subTest(key=key):
+                env[key] = value
+                errors = validate_env(env)
+                self.assertTrue(any(key in error for error in errors))
+
+    def test_crawl_worker_dockerfile_rejects_unlocked_runtime(self) -> None:
+        dockerfile = (DEPLOY.parent / "backend" / "Dockerfile.crawl-worker").read_text(encoding="utf-8")
+        self.assertEqual(validate_crawl_worker_dockerfile(dockerfile), [])
+        mutations = (
+            dockerfile.replace("ARG POLARIS_PYTHON_BASE_IMAGE", "FROM python:3.13.14-slim"),
+            dockerfile.replace("python -m pip install --require-hashes", "python -m pip install '.[browser]'"),
+            dockerfile.replace("requirements.browser.lock", "requirements.txt"),
+        )
+        for mutated in mutations:
+            with self.subTest():
+                self.assertTrue(validate_crawl_worker_dockerfile(mutated))
+
+    def test_production_compose_rejects_bucket_autocreation(self) -> None:
+        compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")
+        mutated = compose.replace(
+            'POLARIS_S3_AUTO_CREATE_BUCKET: "false"',
+            'POLARIS_S3_AUTO_CREATE_BUCKET: "true"',
+        )
+        self.assertTrue(validate_compose(mutated))
+
+    def test_ci_builds_all_release_runtime_images(self) -> None:
+        ci = (DEPLOY.parent / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        for dockerfile in (
+            "deploy/backend.Dockerfile",
+            "backend/Dockerfile.crawl-worker",
+            "deploy/frontend.Dockerfile",
+        ):
+            with self.subTest(dockerfile=dockerfile):
+                self.assertIn(dockerfile, ci)
+        self.assertIn("docker/build-push-action@v7", ci)
+        self.assertIn("POLARIS_CRAWL_WORKER_IMAGE: polaris/crawl-worker:ci", ci)
+        self.assertIn(
+            "docker compose -f deploy/compose.production.yml config --quiet", ci
         )
 
     def test_announcement_admin_drift_is_detected_without_values(self) -> None:

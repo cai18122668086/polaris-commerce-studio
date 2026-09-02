@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
+from .admin_auth import is_admin
 from .announcement_schemas import (
     AnnouncementAdminAccessResponse,
     AnnouncementCreate,
@@ -18,16 +19,14 @@ from .announcement_schemas import (
 from .auth import Principal, get_principal
 from .config import Settings
 from .database import get_session
-from .domain import AssetLifecycleStatus, MembershipRole, MembershipStatus
+from .domain import AssetLifecycleStatus
 from .errors import ApiError
-from .models import AnnouncementRecord, AssetRecord, WorkspaceMemberRecord
+from .models import AnnouncementRecord, AssetRecord
 from .services import new_id
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
 PrincipalDependency = Annotated[Principal, Depends(get_principal)]
-
-_ADMIN_ROLES = {MembershipRole.OWNER.value, MembershipRole.ADMIN.value}
 
 
 def _now() -> datetime:
@@ -82,25 +81,9 @@ def _is_announcement_admin(
     session: Session,
     settings: Settings,
 ) -> bool:
-    email = principal.email.strip().casefold() if principal.email else None
-    if (
-        not principal.email_verified
-        or email is None
-        or email not in settings.announcement_admin_emails
-    ):
-        return False
-    return (
-        session.scalar(
-            select(WorkspaceMemberRecord.user_id)
-            .where(
-                WorkspaceMemberRecord.user_id == principal.user_id,
-                WorkspaceMemberRecord.status == MembershipStatus.ACTIVE.value,
-                WorkspaceMemberRecord.role.in_(_ADMIN_ROLES),
-            )
-            .limit(1)
-        )
-        is not None
-    )
+    # Keep this compatibility wrapper for the announcement and inspiration
+    # modules while sharing the global admin authorization policy.
+    return is_admin(principal, session, settings)
 
 
 def require_announcement_admin(

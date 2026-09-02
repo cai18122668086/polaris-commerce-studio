@@ -309,6 +309,52 @@ class EcommerceAccountRecord(TimestampMixin, Base):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class EcommerceLoginSessionRecord(Base):
+    """Durable, workspace-scoped lease for a human-assisted login flow."""
+
+    __tablename__ = "ecommerce_login_sessions"
+    __table_args__ = (
+        Index(
+            "ix_ecommerce_login_sessions_account_status",
+            "account_id",
+            "status",
+            "expires_at",
+        ),
+        Index(
+            "ix_ecommerce_login_sessions_workspace_created",
+            "workspace_id",
+            "started_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("ecommerce_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    started_by: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(24), default="active", server_default=text("'active'"), nullable=False
+    )
+    transport: Mapped[str] = mapped_column(String(24), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+
+
 class CrawlTaskRecord(TimestampMixin, Base):
     __tablename__ = "crawl_tasks"
     __table_args__ = (

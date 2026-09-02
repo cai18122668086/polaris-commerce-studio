@@ -4235,6 +4235,21 @@
         "title": "RuntimeStatusResponse",
         "type": "object"
       },
+      "SessionCancelRequest": {
+        "properties": {
+          "account_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id"
+        ],
+        "title": "SessionCancelRequest",
+        "type": "object"
+      },
       "SessionStartRequest": {
         "properties": {
           "account_id": {
@@ -5083,6 +5098,55 @@
         ]
       }
     },
+    "/api/ecommerce/session/cancel": {
+      "post": {
+        "description": "Cancel the active human-assisted login flow for one account.",
+        "operationId": "ecommerce_session_cancel_api_ecommerce_session_cancel_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ecommerce Session Cancel Api Ecommerce Session Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ecommerce Session Cancel",
+        "tags": [
+          "ecommerce"
+        ]
+      }
+    },
     "/api/ecommerce/session/open-page": {
       "post": {
         "description": "Open a visible official page for a human-completed challenge.",
@@ -5127,6 +5191,57 @@
           }
         ],
         "summary": "Ecommerce Session Open Page",
+        "tags": [
+          "ecommerce"
+        ]
+      }
+    },
+    "/api/ecommerce/session/preview": {
+      "get": {
+        "description": "Return the short-lived, protected QR login preview for one account.",
+        "operationId": "ecommerce_session_preview_api_ecommerce_session_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ecommerce Session Preview",
         "tags": [
           "ecommerce"
         ]

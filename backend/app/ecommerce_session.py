@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
@@ -54,6 +55,7 @@ class EcommerceSessionManager:
         )
         self.state_style = state_style
         self.status_path = self.profile_dir / "session-status.json"
+        self.preview_path = self.profile_dir / "login-preview.png"
         self._lock = RLock()
         self._process: subprocess.Popen[bytes] | None = None
 
@@ -110,6 +112,7 @@ class EcommerceSessionManager:
         value.pop("cookie", None)
         value.pop("cookies", None)
         value["profileReady"] = self.profile_dir.exists()
+        value["previewAvailable"] = self.preview_path.is_file()
         value["sessionProfile"] = self.session_profile
         value["platform"] = self.platform
         return value
@@ -147,7 +150,13 @@ class EcommerceSessionManager:
                 current["message"] = self._message("closed")
             return self._clean_status(current)
 
-    def start_login(self, target_url: str | None = None) -> dict[str, Any]:
+    def start_login(
+        self,
+        target_url: str | None = None,
+        *,
+        headless: bool = False,
+        timeout_seconds: int = 600,
+    ) -> dict[str, Any]:
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 return self.status()
@@ -155,6 +164,7 @@ class EcommerceSessionManager:
             if existing.get("state") == "ready" and self.profile_dir.exists():
                 return self._clean_status(existing)
             self.profile_dir.mkdir(parents=True, exist_ok=True)
+            self.preview_path.unlink(missing_ok=True)
             self.status_path.write_text(
                 json.dumps(
                     {
@@ -196,8 +206,13 @@ class EcommerceSessionManager:
                     str(self.status_path),
                     "--platform",
                     self.platform,
+                    "--timeout-seconds",
+                    str(max(1, timeout_seconds)),
                 ]
             )
+            if headless:
+                command.append("--headless")
+                command.extend(["--screenshot-path", str(self.preview_path)])
             if target_url:
                 command.extend(["--target-url", target_url])
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -213,28 +228,57 @@ class EcommerceSessionManager:
                 env=child_env,
             )
             log_handle.close()
-            focus_command = (
-                "$ErrorActionPreference='SilentlyContinue'; "
-                "$shell=New-Object -ComObject WScript.Shell; "
-                "for($i=0;$i -lt 60;$i++){ "
-                "$w=Get-Process chrome | Where-Object {$_.MainWindowHandle -ne 0} "
-                "| Sort-Object StartTime -Descending | Select-Object -First 1; "
-                "if($w){[void]$shell.AppActivate($w.Id); break}; "
-                "Start-Sleep -Milliseconds 500 }"
-            )
-            subprocess.Popen(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    focus_command,
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            if not headless:
+                focus_command = (
+                    "$ErrorActionPreference='SilentlyContinue'; "
+                    "$shell=New-Object -ComObject WScript.Shell; "
+                    "for($i=0;$i -lt 60;$i++){ "
+                    "$w=Get-Process chrome | Where-Object {$_.MainWindowHandle -ne 0} "
+                    "| Sort-Object StartTime -Descending | Select-Object -First 1; "
+                    "if($w){[void]$shell.AppActivate($w.Id); break}; "
+                    "Start-Sleep -Milliseconds 500 }"
+                )
+                subprocess.Popen(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-Command",
+                        focus_command,
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            return self.status()
+
+    def cancel_login(self) -> dict[str, Any]:
+        """Stop only this account's helper and clear its short-lived preview."""
+
+        with self._lock:
+            process = self._process
+            if process is not None and process.poll() is None:
+                with suppress(Exception):
+                    process.terminate()
+                with suppress(Exception):
+                    process.wait(timeout=5)
+            self._process = None
+            self.preview_path.unlink(missing_ok=True)
+            self.status_path.parent.mkdir(parents=True, exist_ok=True)
+            self.status_path.write_text(
+                json.dumps(
+                    {
+                        "state": "signed_out"
+                        if not self._canonical
+                        else "not_initialized",
+                        "message": "登录流程已取消，请需要时重新发起登录。",
+                        "updatedAt": _utc_now(),
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
             )
             return self.status()
 

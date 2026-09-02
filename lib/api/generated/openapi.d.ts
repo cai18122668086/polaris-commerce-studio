@@ -186,6 +186,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/session/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ecommerce Session Cancel
+         * @description Cancel the active human-assisted login flow for one account.
+         */
+        post: operations["ecommerce_session_cancel_api_ecommerce_session_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecommerce/session/open-page": {
         parameters: {
             query?: never;
@@ -200,6 +220,26 @@ export interface paths {
          * @description Open a visible official page for a human-completed challenge.
          */
         post: operations["ecommerce_session_open_page_api_ecommerce_session_open_page_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/session/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ecommerce Session Preview
+         * @description Return the short-lived, protected QR login preview for one account.
+         */
+        get: operations["ecommerce_session_preview_api_ecommerce_session_preview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2642,6 +2682,11 @@ export interface components {
              */
             task_runner: "mock" | "tengli";
         };
+        /** SessionCancelRequest */
+        SessionCancelRequest: {
+            /** Account Id */
+            account_id: string;
+        };
         /** SessionStartRequest */
         SessionStartRequest: {
             /** Account Id */
@@ -3133,6 +3178,41 @@ export interface operations {
             };
         };
     };
+    ecommerce_session_cancel_api_ecommerce_session_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ecommerce_session_open_page_api_ecommerce_session_open_page_post: {
         parameters: {
             query?: never;
@@ -3155,6 +3235,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ecommerce_session_preview_api_ecommerce_session_preview_get: {
+        parameters: {
+            query: {
+                account_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
                 };
             };
             /** @description Validation Error */

@@ -905,7 +905,9 @@ def test_1688_session_start_selects_independent_manager(
     application = client.app
     calls: list[tuple[str, str | None]] = []
 
-    def fake_start(target_url: str | None = None) -> dict[str, object]:
+    def fake_start(
+        target_url: str | None = None, **_: object
+    ) -> dict[str, object]:
         calls.append(("1688", target_url))
         return {"state": "login_pending", "platform": "alibaba1688"}
 

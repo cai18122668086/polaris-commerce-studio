@@ -234,7 +234,7 @@ def test_account_session_start_syncs_login_state_and_uses_isolated_manager(
     monkeypatch.setattr(
         manager,
         "start_login",
-        lambda target_url=None: {
+        lambda target_url=None, **_: {
             "state": "ready",
             "platform": "taobao",
             "sessionProfile": account["profile_id"],

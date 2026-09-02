@@ -53,6 +53,25 @@ type Account = {
   last_login_at: string | null;
 };
 
+type LoginSession = {
+  id: string;
+  status: "active" | "completed" | "expired" | "cancelled" | "failed";
+  transport: "local_visible" | "headless_qr";
+  startedAt: string | null;
+  expiresAt: string | null;
+  lastSeenAt: string | null;
+  completedAt: string | null;
+  errorCode: string | null;
+};
+
+type LoginStatus = {
+  state: string;
+  message?: string;
+  previewAvailable?: boolean;
+  platform?: string;
+  loginSession?: LoginSession | null;
+};
+
 type CrawlTask = {
   id: string;
   workspace_id: string;
@@ -239,6 +258,9 @@ export function CommerceCrawlerWorkspace() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+  const [loginStatusByAccount, setLoginStatusByAccount] = useState<Record<string, LoginStatus>>({});
+  const [loginPreviewUrls, setLoginPreviewUrls] = useState<Record<string, string>>({});
+  const [loginBusyAccountId, setLoginBusyAccountId] = useState<string>();
 
   const urlHint = useMemo(() => classifyUrl(url), [url]);
   const compatibleAccounts = accounts.filter((account) => {
@@ -266,6 +288,119 @@ export function CommerceCrawlerWorkspace() {
     const timer = window.setTimeout(() => void loadAccounts(), 0);
     return () => window.clearTimeout(timer);
   }, [loadAccounts]);
+
+  const loadLoginPreview = useCallback(async (accountId: string) => {
+    try {
+      const response = await apiClient.GET("/api/ecommerce/session/preview", {
+        params: { query: { account_id: accountId } },
+      });
+      const blob = unwrap<Blob>(response);
+      const nextUrl = URL.createObjectURL(blob);
+      setLoginPreviewUrls((current) => {
+        const previousUrl = current[accountId];
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
+        return { ...current, [accountId]: nextUrl };
+      });
+    } catch {
+      // The preview can legitimately be unavailable for a few polling cycles
+      // while Chromium is loading the official login page.
+    }
+  }, []);
+
+  const loadLoginStatus = useCallback(async (account: Account) => {
+    try {
+      const response = await apiClient.GET("/api/ecommerce/session/status", {
+        params: { query: { account_id: account.id, platform: account.platform } },
+      });
+      const data = unwrap<ApiEnvelope<LoginStatus>>(response).data;
+      setLoginStatusByAccount((current) => ({ ...current, [account.id]: data }));
+      if (data.loginSession?.status === "active" && data.previewAvailable) {
+        void loadLoginPreview(account.id);
+      }
+      if (data.loginSession?.status !== "active") {
+        setLoginPreviewUrls((current) => {
+          const previousUrl = current[account.id];
+          if (previousUrl) URL.revokeObjectURL(previousUrl);
+          if (!(account.id in current)) return current;
+          const next = { ...current };
+          delete next[account.id];
+          return next;
+        });
+      }
+    } catch {
+      // Account list and the task workspace remain usable if a status poll
+      // fails; the next poll will retry without surfacing noisy errors.
+    }
+  }, [loadLoginPreview]);
+
+  useEffect(() => {
+    if (!accounts.length) return;
+    const timer = window.setTimeout(() => {
+      void Promise.all(accounts.map((account) => loadLoginStatus(account)));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [accounts, loadLoginStatus]);
+
+  const hasActiveLogin = Object.values(loginStatusByAccount).some(
+    (status) => status.loginSession?.status === "active",
+  );
+
+  useEffect(() => {
+    if (!hasActiveLogin || !accounts.length) return;
+    const refresh = () => {
+      void Promise.all(
+        accounts
+          .filter((account) => loginStatusByAccount[account.id]?.loginSession?.status === "active")
+          .map((account) => loadLoginStatus(account)),
+      );
+    };
+    const timer = window.setInterval(refresh, 2500);
+    return () => window.clearInterval(timer);
+  }, [accounts, hasActiveLogin, loadLoginStatus, loginStatusByAccount]);
+
+  useEffect(() => () => {
+    Object.values(loginPreviewUrls).forEach((url) => URL.revokeObjectURL(url));
+  }, [loginPreviewUrls]);
+
+  const startLogin = async (account: Account) => {
+    setLoginBusyAccountId(account.id);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const response = await apiClient.POST("/api/ecommerce/session/start", {
+        body: { account_id: account.id, platform: account.platform },
+      });
+      const data = unwrap<ApiEnvelope<LoginStatus>>(response).data;
+      setLoginStatusByAccount((current) => ({ ...current, [account.id]: data }));
+      if (data.state === "ready") {
+        setMessage(`${account.display_name || account.account_key} 已确认登录，可用于抓取。`);
+        await loadAccounts();
+      } else {
+        setMessage("登录流程已启动。请在下方受保护的官方二维码预览中完成登录，系统会自动确认状态。 ");
+      }
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    } finally {
+      setLoginBusyAccountId(undefined);
+    }
+  };
+
+  const cancelLogin = async (account: Account) => {
+    setLoginBusyAccountId(account.id);
+    setError(undefined);
+    try {
+      const response = await apiClient.POST("/api/ecommerce/session/cancel", {
+        body: { account_id: account.id },
+      });
+      const data = unwrap<ApiEnvelope<LoginStatus>>(response).data;
+      setLoginStatusByAccount((current) => ({ ...current, [account.id]: data }));
+      setMessage("已取消该账号的登录流程。需要时可以重新发起登录。");
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    } finally {
+      setLoginBusyAccountId(undefined);
+    }
+  };
 
   const loadTaskHistory = useCallback(async () => {
     if (!workspaceId) return;
@@ -432,7 +567,18 @@ export function CommerceCrawlerWorkspace() {
               </div>
               {accountFormOpen ? <div className={styles.inlineForm}><label>平台<select value={newAccount.platform} onChange={(event) => setNewAccount((current) => ({ ...current, platform: event.target.value as Exclude<Platform, "auto"> }))}>{platformOptions.filter((option) => option.value !== "auto").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>账号标识<input value={newAccount.account_key} onChange={(event) => setNewAccount((current) => ({ ...current, account_key: event.target.value }))} placeholder="手机号、会员名或内部备注" /></label><label>显示名称<input value={newAccount.display_name} onChange={(event) => setNewAccount((current) => ({ ...current, display_name: event.target.value }))} placeholder="例如：淘宝主账号" /></label><button className={styles.primaryButton} type="button" onClick={() => void addAccount()} disabled={accountsBusy}>保存账号</button></div> : null}
               {selectedAccount && <p className={styles.accountHint}><ShieldCheck size={14} />已指定 {selectedAccount.display_name || selectedAccount.account_key}。任务只会使用该账号的独立浏览器 Profile。</p>}
-              {accounts.length ? <div className={styles.accountList}>{accounts.map((account) => <div className={styles.accountItem} key={account.id}><div><strong>{account.display_name || account.account_key}</strong><span>{accountPlatformLabels[account.platform]} · {accountStatusLabels[account.status]} · {loginStateLabels[account.login_state]}{account.profile_busy ? " · Profile 使用中" : ""}</span></div><button type="button" className={styles.accountAction} onClick={() => void toggleAccount(account)} disabled={accountsBusy || account.status === "disabled"}>{account.status === "active" ? "暂停" : "恢复"}</button></div>)}</div> : null}
+              {accounts.length ? <div className={styles.accountList}>{accounts.map((account) => {
+                const loginStatus = loginStatusByAccount[account.id];
+                const loginActive = loginStatus?.loginSession?.status === "active";
+                const loginBusy = loginBusyAccountId === account.id;
+                const previewUrl = loginPreviewUrls[account.id];
+                return <div className={styles.accountItem} key={account.id}>
+                  <div className={styles.accountMain}><strong>{account.display_name || account.account_key}</strong><span>{accountPlatformLabels[account.platform]} · {accountStatusLabels[account.status]} · {loginStateLabels[account.login_state]}{account.profile_busy ? " · Profile 使用中" : ""}</span>{loginStatus?.message ? <small>{loginStatus.message}</small> : null}
+                    {loginActive && previewUrl ? <div className={styles.loginPreview}><img src={previewUrl} alt={`${account.display_name || account.account_key} 官方登录二维码`} /><span>仅用于当前登录流程，请在官方页面完成扫码。</span></div> : null}
+                  </div>
+                  <div className={styles.accountActions}><button type="button" className={styles.accountAction} onClick={() => void (loginActive ? cancelLogin(account) : startLogin(account))} disabled={accountsBusy || loginBusy || account.status !== "active" || account.profile_busy}>{loginBusy ? "处理中…" : loginActive ? "取消登录" : account.login_state === "ready" ? "重新登录" : "登录"}</button><button type="button" className={styles.accountAction} onClick={() => void toggleAccount(account)} disabled={accountsBusy || loginBusy || account.status === "disabled"}>{account.status === "active" ? "暂停" : "恢复"}</button></div>
+                </div>;
+              })}</div> : null}
               <label className={styles.checkbox}><input type="checkbox" checked={includeDescImages} onChange={(event) => setIncludeDescImages(event.target.checked)} /><span>同时抓取详情图和 SKU 图（会增加任务耗时）</span></label>
               <button className={styles.primaryButton} type="submit" disabled={loading || !workspace?.id}>{loading ? <LoaderCircle size={17} className="spin" /> : <Plus size={17} />}{loading ? "正在提交…" : "提交真实抓取任务"}</button>
             </form>

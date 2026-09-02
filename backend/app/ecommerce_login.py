@@ -249,6 +249,26 @@ def _write_closed_status(path: Path, message: str) -> None:
     _write(path, "signed_out", message)
 
 
+def _write_preview(page: object, screenshot_path: Path | None) -> None:
+    """Persist a short-lived browser preview without exposing browser state."""
+
+    if screenshot_path is None:
+        return
+    try:
+        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = screenshot_path.with_suffix(".tmp.png")
+        page.screenshot(  # type: ignore[attr-defined]
+            path=str(temporary_path),
+            type="png",
+            animations="disabled",
+            timeout=5_000,
+        )
+        temporary_path.replace(screenshot_path)
+    except Exception:
+        # Preview delivery is best effort; login state detection must continue.
+        return
+
+
 def _read_page_snapshot(page: object) -> tuple[str, str, str]:
     """Read only URL/title/visible text needed for session state detection."""
 
@@ -352,7 +372,10 @@ def _run_manual_page(args: argparse.Namespace) -> int:
         with (
             sync_playwright() as playwright,
             connect_to_owned_chrome(
-                playwright, profile_dir, network_mode="direct"
+                playwright,
+                profile_dir,
+                network_mode="direct",
+                headless=args.headless,
             ) as (_browser, context),
         ):
             # Use a normal installed Chrome process for the human-facing
@@ -363,7 +386,7 @@ def _run_manual_page(args: argparse.Namespace) -> int:
                 page.goto(
                     args.target_url, wait_until="domcontentloaded", timeout=45_000
                 )
-            for _ in range(600):
+            for _ in range(max(1, args.timeout_seconds)):
                 if not context.pages or page.is_closed():
                     break
                 try:
@@ -405,6 +428,13 @@ def main() -> int:
     parser.add_argument("--status-path", required=True)
     parser.add_argument("--target-url")
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run the authorized login profile without a local display.",
+    )
+    parser.add_argument("--screenshot-path", type=Path)
+    parser.add_argument("--timeout-seconds", type=int, default=600)
+    parser.add_argument(
         "--platform",
         default="taobao",
         choices=("taobao", "tmall", "alibaba1688", "1688", "jd", "pinduoduo"),
@@ -424,7 +454,15 @@ def main() -> int:
     except ImportError:
         _write(status_path, "error", f"{label}登录窗口启动失败：Playwright 未安装。")
         return 1
-    _write(status_path, "login_pending", f"请在弹出的{label}窗口中完成登录。")
+    _write(
+        status_path,
+        "login_pending",
+        (
+            f"请在登录预览中使用官方二维码完成{label}登录。"
+            if args.headless
+            else f"请在弹出的{label}窗口中完成登录。"
+        ),
+    )
     last_valid_page = False
     blocked_seen = False
     authenticated_streak = 0
@@ -510,6 +548,7 @@ def main() -> int:
                     if page.is_closed():
                         break
                     body = ""
+                _write_preview(page, args.screenshot_path)
                 login_page = (
                     any(
                         marker in current_url
@@ -565,9 +604,17 @@ def main() -> int:
                 _write(
                     status_path,
                     "login_pending",
-                    f"登录页面已打开；完成{label}登录后请关闭此窗口。"
-                    if last_valid_page
-                    else f"请在弹出的{label}窗口中完成登录。",
+                    (
+                        f"登录页面已打开；完成{label}登录后等待系统确认。"
+                        if last_valid_page
+                        else f"请在登录预览中完成{label}登录。"
+                    )
+                    if args.headless
+                    else (
+                        f"登录页面已打开；完成{label}登录后请关闭此窗口。"
+                        if last_valid_page
+                        else f"请在弹出的{label}窗口中完成登录。"
+                    ),
                 )
                 time.sleep(1)
             else:

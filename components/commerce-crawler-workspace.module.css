@@ -108,10 +108,15 @@
 @media (max-width:1050px) { .layout { grid-template-columns:1fr; } .detailColumn { order:-1; } .detailCard { min-height:0; } }
 @media (max-width:700px) { .page { padding:22px 15px 50px; } .hero { display:block; } .heroNote { margin-top:18px; } .hero h1 { font-size:30px; } .fieldGrid,.inlineForm { grid-template-columns:1fr; } .urlInput input { padding-right:12px; } .urlInput span { position:static; display:block; margin-top:5px; } .accountRow { align-items:stretch; flex-wrap:wrap; } .accountSelect { flex-basis:100%; } .accountRow .outlineButton { flex:1; } .taskRow { flex-wrap:wrap; } .taskRowMain { flex-basis:calc(100% - 25px); } .taskRow .statusPill { margin-left:17px; } .productSummary { display:block; } .productSummary code { display:inline-block; margin-top:10px; } }
 .accountList { display:grid; gap:6px; padding:10px; border:1px solid #edf0f5; border-radius:11px; background:#fbfcfe; }
-.accountItem { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 1px; }
+.accountItem { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:7px 1px; }
 .accountItem > div { min-width:0; display:grid; gap:3px; }
+.accountMain { flex:1; }
 .accountItem strong { overflow:hidden; color:#53637a; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
-.accountItem span { color:#9aa6b8; font-size:10px; }
+.accountItem span,.accountItem small { color:#9aa6b8; font-size:10px; line-height:1.4; }
+.accountActions { display:flex; align-items:center; gap:5px; flex-shrink:0; }
 .accountAction { padding:5px 8px; border:1px solid #d9e0eb; border-radius:7px; color:#65758d; background:#fff; cursor:pointer; font-size:10px; white-space:nowrap; }
+.loginPreview { display:grid; grid-template-columns:96px 1fr; align-items:center; gap:8px; margin-top:7px; padding:7px; border:1px solid #dce6fb; border-radius:8px; background:#f7f9ff; }
+.loginPreview img { display:block; width:96px; height:96px; object-fit:contain; border-radius:5px; background:#fff; }
+.loginPreview span { color:#5d6d86; font-size:10px; line-height:1.5; }
 .accountAction:hover { color:#315edb; border-color:#b8c9f0; }
 .accountAction:disabled { opacity:.5; cursor:not-allowed; }

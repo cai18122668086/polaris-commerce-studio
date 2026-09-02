@@ -104,6 +104,7 @@ def start_owned_chrome(
     timeout: float = 15.0,
     *,
     network_mode: ChromeNetworkMode = "system",
+    headless: bool = False,
 ) -> tuple[subprocess.Popen[Any], str]:
     """Start a local, visible Chrome process using only the supplied profile.
 
@@ -123,6 +124,11 @@ def start_owned_chrome(
         f"--remote-debugging-port={port}",
         "--no-first-run",
         "--no-default-browser-check",
+        *(
+            ["--headless=new", "--disable-gpu", "--window-size=1440,1100"]
+            if headless
+            else []
+        ),
         *_network_args(network_mode),
     ]
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -179,6 +185,7 @@ def connect_to_owned_chrome(
     profile_dir: str | Path,
     *,
     network_mode: ChromeNetworkMode = "system",
+    headless: bool = False,
 ) -> Iterator[tuple[Any, Any]]:
     """Yield ``(browser, context)`` for a user-visible Chrome process.
 
@@ -188,7 +195,7 @@ def connect_to_owned_chrome(
     """
 
     process, endpoint = start_owned_chrome(
-        profile_dir, network_mode=network_mode
+        profile_dir, network_mode=network_mode, headless=headless
     )
     browser = None
     try:

@@ -132,6 +132,14 @@ class EcommerceLoginState(StrEnum):
     NEEDS_LOGIN = "needs_login"
 
 
+class EcommerceLoginSessionStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
 class CrawlTaskStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"

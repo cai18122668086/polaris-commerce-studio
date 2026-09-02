@@ -226,7 +226,9 @@ def test_jd_session_start_uses_independent_manager(
     application = client.app
     calls: list[str | None] = []
 
-    def fake_start(target_url: str | None = None) -> dict[str, object]:
+    def fake_start(
+        target_url: str | None = None, **_: object
+    ) -> dict[str, object]:
         calls.append(target_url)
         return {"state": "login_pending", "platform": "jd"}
 

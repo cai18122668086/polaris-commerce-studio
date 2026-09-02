@@ -113,7 +113,7 @@ def load_env(path: Path) -> dict[str, str]:
             raise ValueError(f"invalid env syntax at line {line_number}")
         key, value = line.split("=", 1)
         key = key.strip()
-        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", key):
             raise ValueError(f"invalid env key at line {line_number}")
         result[key] = _unquote(value)
     return result
@@ -171,6 +171,7 @@ def build_production_env(
         {
             "POLARIS_RELEASE_SHA": release_sha,
             "POLARIS_BACKEND_IMAGE": f"polaris/backend:{release_sha}",
+            "POLARIS_CRAWL_WORKER_IMAGE": f"polaris/crawl-worker:{release_sha}",
             "POLARIS_FRONTEND_IMAGE": f"polaris/frontend:{release_sha}",
             "POLARIS_SUPERTOKENS_IMAGE": SUPERTOKENS_IMAGE,
         }
@@ -201,10 +202,18 @@ def build_production_env(
             "POLARIS_AUTH_EMAIL_FROM_ADDRESS": "no-reply@mail.tengliapi.xyz",
             "POLARIS_ACME_EMAIL": acme_email,
             "POLARIS_S3_BUCKET": base.get("POLARIS_S3_BUCKET") or "polaris-production",
+            "POLARIS_AUTO_CREATE_SCHEMA": "false",
+            "POLARIS_STORAGE_BACKEND": "s3",
+            "POLARIS_S3_AUTO_CREATE_BUCKET": "false",
+            "POLARIS_TASK_DISPATCHER": "celery",
+            # Domestic ecommerce is direct-only for this release. Amazon is
+            # intentionally not part of the domestic commercial rollout.
+            "POLARIS_ECOMMERCE_PROXY_ENABLED": "false",
         }
     )
     for key in PROVIDER_KEYS:
         result[key] = base.get(key, DEFAULT_PROVIDER_VALUES[key])
+    result["POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED"] = "false"
     return result
 
 
@@ -223,6 +232,7 @@ def render_env(values: dict[str, str]) -> str:
             (
                 "POLARIS_RELEASE_SHA",
                 "POLARIS_BACKEND_IMAGE",
+                "POLARIS_CRAWL_WORKER_IMAGE",
                 "POLARIS_FRONTEND_IMAGE",
                 *IMAGE_KEYS,
                 "POLARIS_SUPERTOKENS_IMAGE",
@@ -245,7 +255,15 @@ def render_env(values: dict[str, str]) -> str:
         ),
         (
             "Storage and preserved Provider configuration",
-            ("POLARIS_S3_BUCKET", *PROVIDER_KEYS),
+            (
+                "POLARIS_S3_BUCKET",
+                "POLARIS_AUTO_CREATE_SCHEMA",
+                "POLARIS_STORAGE_BACKEND",
+                "POLARIS_S3_AUTO_CREATE_BUCKET",
+                "POLARIS_TASK_DISPATCHER",
+                "POLARIS_ECOMMERCE_PROXY_ENABLED",
+                *PROVIDER_KEYS,
+            ),
         ),
     )
     lines = [

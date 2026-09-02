@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from .admin_auth import (
     DEFAULT_ADMIN_PERMISSIONS,
@@ -35,7 +37,7 @@ class AdminUpdateRequest(BaseModel):
     permissions: list[str] | None = Field(default=None, max_length=20)
 
 
-def _iso(value) -> str | None:
+def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
 
@@ -98,7 +100,7 @@ def _admin_item(
     }
 
 
-def _eligible_bootstrap_users(session, settings: object) -> list[UserRecord]:
+def _eligible_bootstrap_users(session: Session, settings: object) -> list[UserRecord]:
     allowlist = {
         str(value).strip().casefold()
         for value in (getattr(settings, "announcement_admin_emails", ()) or ())
@@ -130,7 +132,7 @@ def _eligible_bootstrap_users(session, settings: object) -> list[UserRecord]:
 
 
 def _record_audit(
-    session,
+    session: Session,
     request: Request,
     actor_user_id: str,
     action: str,
@@ -163,7 +165,7 @@ def _validate_permissions(permissions: list[str]) -> list[str]:
 
 
 def _materialize_if_needed(
-    session,
+    session: Session,
     request: Request,
     principal: SuperAdminDependency,
 ) -> None:

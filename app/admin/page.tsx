@@ -237,6 +237,13 @@ export default function AdminDashboardPage() {
         <button className={styles.secondary} type="button" onClick={() => void load(true)} disabled={refreshing}><RefreshCw className={refreshing ? styles.spin : ""} size={16} /> {refreshing ? "刷新中…" : "刷新数据"}</button>
       </header>
 
+      <nav className={styles.adminNav} aria-label="管理中心导航">
+        <Link className={styles.adminNavActive} href="/admin"><ShieldCheck size={15} />工作台</Link>
+        <Link href="/admin/announcements"><ExternalLink size={14} />公告管理</Link>
+        <Link href="/admin/inspiration"><ExternalLink size={14} />灵感案例</Link>
+        <Link href="/commerce-crawler"><Workflow size={15} />真实爬虫</Link>
+      </nav>
+
       <section className={styles.metrics} aria-label="网站概况">
         <article className={styles.metricCard}><span className={styles.metricIcon}><Users size={20} /></span><div><small>网站用户</small><strong>{formatCount(overview.users.total)}</strong><p>{formatCount(overview.users.active)} 个活跃用户</p></div></article>
         <article className={styles.metricCard}><span className={styles.metricIcon}><Workflow size={20} /></span><div><small>工作区</small><strong>{formatCount(overview.workspaces.total)}</strong><p>{formatCount(overview.workspaces.active)} 个活跃工作区</p></div></article>

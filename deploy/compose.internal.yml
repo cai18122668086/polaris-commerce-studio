@@ -244,6 +244,7 @@ services:
       - --loglevel=INFO
       - --concurrency=6
       - --prefetch-multiplier=1
+      - --queues=default
     depends_on:
       migrate:
         condition: service_completed_successfully

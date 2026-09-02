@@ -122,6 +122,7 @@ class ProductionPreflightTests(unittest.TestCase):
             'POLARIS_ECOMMERCE_PROXY_ENABLED: "false"',
             'polaris-production_ecommerce_profiles',
             'queues=crawl',
+            '--queues=default',
             'HTTP_PROXY: ""',
             'NO_PROXY: "*"',
         ):

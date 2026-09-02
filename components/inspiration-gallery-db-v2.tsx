@@ -99,8 +99,6 @@ function PersonalRepositoryThumbnail({
   );
 }
 
-const HANDOFF_KEY = "polaris-inspiration-strategy";
-
 export function InspirationGalleryDb() {
   const [items, setItems] = useState<Case[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +123,7 @@ export function InspirationGalleryDb() {
   const [imageCountOpen, setImageCountOpen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<InspirationAspectRatio>("自动");
   const [aspectOpen, setAspectOpen] = useState(false);
+  const [materializingCaseId, setMaterializingCaseId] = useState<string | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const { workspace, workspaceState } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
@@ -199,6 +198,10 @@ export function InspirationGalleryDb() {
   }, [job.data?.status, job.data?.error_message, job.data?.primary_output_asset_id, jobId, workspace?.id]);
 
   useEffect(() => {
+    // Older builds persisted a second auto-submit handoff for the remix
+    // workspace. Inspiration now submits directly with workspace-local copies,
+    // so discard any stale handoff left by a previous failed attempt.
+    window.localStorage.removeItem("polaris-inspiration-strategy");
     fetch("/api/v1/inspiration/cases")
       .then(async (response) => { if (!response.ok) throw new Error("灵感案例加载失败，请稍后重试。"); return response.json(); })
       .then((value) => setItems(value.items ?? []))
@@ -210,25 +213,47 @@ export function InspirationGalleryDb() {
   const categories = useMemo(() => ["全部", ...new Set(items.map((item) => item.category))], [items]);
   const filtered = items.filter((item) => (type === "全部" || item.type === type) && (category === "全部" || item.category === category) && (platform === "全部" || item.platform === platform));
 
-  const selectCase = (item: Case) => {
-    setActiveCase(item);
+  const selectCase = async (item: Case) => {
+    if (!workspace?.id) {
+      setComposeError(workspaceState === "loading" ? "工作区正在准备，请稍后再试。" : "工作区不可用，请稍后再试。");
+      return;
+    }
+    if (materializingCaseId) return;
     setSelected(null);
-    setComposerAssets(item.gallery.filter((asset) => asset.role !== "result"));
+    setActiveCase(null);
+    setComposerAssets([]);
     // Keep the confirmed case prompt visible in the composer. Any text the
     // user edits or appends remains a local override when the job is sent.
     setInstruction(runtimeRemixPrompt(item.prompt));
     const caseRatio = jobAspectRatio(item.ratio);
     setAspectRatio(caseRatio === "follow-reference" ? "自动" : caseRatio);
+    setAspectOpen(false);
+    setComposeError(undefined);
+    setMaterializingCaseId(item.id);
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
-
-  useEffect(() => {
-    if (activeCase) {
-      // Reset the composer inputs when the user selects a different case.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setComposerAssets(activeCase.gallery.filter((asset) => asset.role !== "result"));
+    try {
+      const sourceAssets = item.gallery.filter((asset) => asset.role !== "result");
+      const copied = await Promise.all(sourceAssets.map(async (asset) => {
+        const response = await fetch(asset.url);
+        if (!response.ok) throw new Error("案例素材暂时无法读取。");
+        const blob = await response.blob();
+        const contentType = blob.type || "image/png";
+        const extension = contentType === "image/jpeg" ? "jpg" : contentType === "image/webp" ? "webp" : "png";
+        const file = new File([blob], `inspiration-${item.id}-${asset.role}-${asset.ordinal}.${extension}`, { type: contentType });
+        const uploaded = await upload.mutateAsync({ file, mediaKind: "image", originKind: "imported" });
+        const access = await getAssetAccessUrl(workspace.id, uploaded.id);
+        return { ...asset, asset_id: uploaded.id, url: access.url } satisfies Asset;
+      }));
+      setActiveCase(item);
+      setComposerAssets(copied);
+    } catch (reason) {
+      setActiveCase(null);
+      setComposerAssets([]);
+      setComposeError(reason instanceof Error ? reason.message : "案例素材准备失败，请稍后重试。");
+    } finally {
+      setMaterializingCaseId(null);
     }
-  }, [activeCase]);
+  };
 
   const replaceComposerAsset = async (asset: Asset, file: File) => {
     if (!workspace?.id) return;
@@ -374,24 +399,6 @@ export function InspirationGalleryDb() {
     const finalPrompt = hasCanonicalPrefix
       ? casePromptWithOverride(compiledPrompt, userOverride)
       : normalizedInstruction;
-    const handoff = {
-      source: "inspiration",
-      id: remixCase.id,
-      title: remixCase.title,
-      visualStrategyLock: compiledPrompt,
-      originalRemixPrompt: finalPrompt,
-      forbiddenTransfer: "不得迁移参考图中的品牌、logo、水印、原文案与不受支持的产品声明。",
-      imageRole: remixCase.role,
-      ratio: remixCase.ratio,
-      productAssetIds: composerAssets.filter((asset) => asset.role === "user_upload").map((asset) => asset.asset_id),
-      referenceAssetIds: composerAssets.filter((asset) => asset.role === "reference").map((asset) => asset.asset_id),
-      intent: finalPrompt,
-      userInstruction: userOverride,
-      autoStart: true,
-      plannerModel: "gpt-5.6-terra",
-      imageModel: "gpt-image-2",
-    };
-    localStorage.setItem(HANDOFF_KEY, JSON.stringify(handoff));
     const productAssetIds = composerAssets.filter((asset) => asset.role === "user_upload").map((asset) => asset.asset_id);
     const referenceAssetIds = composerAssets.filter((asset) => asset.role === "reference").map((asset) => asset.asset_id);
     if (!workspace?.id) {
@@ -429,7 +436,7 @@ export function InspirationGalleryDb() {
         platform_code: "tmall",
         language: "zh-CN",
         selling_points: [],
-        aspect_ratio: jobAspectRatio(remixCase.ratio),
+        aspect_ratio: aspectRatio === "自动" ? "follow-reference" : inspirationAspectToApi(aspectRatio),
         image_count: imageCount,
         // Reuse the proven two-stage workflow: inspect the reference layout,
         // compile its spatial strategy, then execute with Image 1 = reference
@@ -485,7 +492,7 @@ export function InspirationGalleryDb() {
                 <label className={styles.assetReplaceButton}>替换<input type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={uploadingAssetId !== null} onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void replaceComposerAsset(asset, file); }} /></label>
                 <button type="button" className={styles.assetRemoveButton} aria-label="删除上传图片" onClick={() => removeComposerAsset(asset)}><X size={13} /></button>
               </div>
-            )) : generating ? <Loader2 className="spin" size={24} /> : null}
+            )) : materializingCaseId || generating ? <Loader2 className="spin" size={24} /> : null}
             <label className={styles.composerAddTile} aria-label="添加商品图">
               <ImagePlus size={22} />
               <span>添加商品图</span>
@@ -496,19 +503,19 @@ export function InspirationGalleryDb() {
           <div className={styles.commandBar}>
             <button type="button" onClick={openRepository}><Layers3 size={15} /> 个人仓库</button>
             <div className={styles.aspectControl}>
-              <button type="button" className={styles.aspectTrigger} aria-label="选择生成图片比例" aria-expanded={aspectOpen} disabled={Boolean(activeCase)} onClick={() => setAspectOpen((open) => !open)}>▣ 比例: {activeCase ? (activeCase.ratio || "自动") : aspectRatio} <ChevronDown size={13} /></button>
-              {aspectOpen && !activeCase && <div className={styles.aspectMenu} role="menu"><strong>生成比例</strong><div className={styles.aspectGrid}>{ASPECT_OPTIONS.map((option) => <button type="button" role="menuitem" key={option.value} className={aspectRatio === option.value ? styles.aspectSelected : ""} onClick={() => { setAspectRatio(option.value); setAspectOpen(false); }}>{option.label}</button>)}</div></div>}
+              <button type="button" className={styles.aspectTrigger} aria-label="选择生成图片比例" aria-expanded={aspectOpen} disabled={Boolean(materializingCaseId)} onClick={() => setAspectOpen((open) => !open)}>▣ 比例: {aspectRatio} <ChevronDown size={13} /></button>
+              {aspectOpen && <div className={styles.aspectMenu} role="menu"><strong>生成比例</strong><div className={styles.aspectGrid}>{ASPECT_OPTIONS.map((option) => <button type="button" role="menuitem" key={option.value} className={aspectRatio === option.value ? styles.aspectSelected : ""} onClick={() => { setAspectRatio(option.value); setAspectOpen(false); }}>{option.label}</button>)}</div></div>}
             </div>
             <div className={styles.countControl}>
               <button type="button" className={styles.countButton} aria-label="选择生成张数" aria-expanded={imageCountOpen} onClick={() => setImageCountOpen((open) => !open)}>{imageCount} 张 <ChevronDown size={13} /></button>
               {imageCountOpen && <div className={styles.countMenu} role="menu" aria-label="生成张数">{IMAGE_COUNT_OPTIONS.map((count) => <button type="button" role="menuitem" key={count} className={imageCount === count ? styles.countSelected : ""} onClick={() => { setImageCount(count); setImageCountOpen(false); }}>{count} 张</button>)}</div>}
             </div>
             <small>消耗 {imageCount} 次</small>
-            <button className={styles.commandSubmit} aria-label={activeCase ? "开始生成" : "开始创作"} onClick={launchRemix} disabled={generating || createJob.isPending || !workspace?.id || (activeCase ? composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id) : !instruction.trim())} style={{ opacity: generating || activeCase || instruction.trim() ? 1 : .42 }}>{generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
+            <button className={styles.commandSubmit} aria-label={activeCase ? "开始生成" : "开始创作"} onClick={launchRemix} disabled={Boolean(materializingCaseId) || generating || createJob.isPending || !workspace?.id || (activeCase ? composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
           </div>
         </div>
         {resultAsset && <div className={styles.resultShowcase}><div className={styles.resultShowcaseMeta}><strong>本次生成结果 · {resultAssets.length} 张</strong><span>点击图片查看大图</span></div><div className={styles.resultShowcaseGrid}>{resultAssets.map((asset) => <button type="button" key={asset.asset_id} aria-label={`查看第 ${asset.ordinal + 1} 张生成结果`} onClick={() => setPreviewAsset(asset)}><img src={asset.url} alt={`生成结果 ${asset.ordinal + 1}`} /></button>)}</div></div>}
-        {generating ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>{job.data?.status === "completed" ? "生成完成，正在加载结果" : job.data?.stage ? `正在${job.data.stage}` : "正在准备生成"}</span><b>{job.data ? `${Math.round(job.data.progress)}%` : "排队中"}</b></div> : null}
+        {materializingCaseId ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>正在准备案例素材</span><b>上传中</b></div> : generating ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>{job.data?.status === "completed" ? "生成完成，正在加载结果" : job.data?.stage ? `正在${job.data.stage}` : "正在准备生成"}</span><b>{job.data ? `${Math.round(job.data.progress)}%` : "排队中"}</b></div> : null}
         {composeError && !generating ? <div className={styles.composeError} role="alert">{composeError}</div> : null}
       </div>
     </section>

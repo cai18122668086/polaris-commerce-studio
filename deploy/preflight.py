@@ -212,6 +212,33 @@ def resource_totals(services: dict[str, str]) -> tuple[int, float]:
     return total_memory, total_cpus
 
 
+def service_queues(block: str) -> set[str]:
+    """Return queue names explicitly passed to a Celery service command."""
+
+    return set(re.findall(r"--queues=([a-z0-9_-]+)", block))
+
+
+def validate_queue_topology(
+    compose: str, *, expected: dict[str, set[str]]
+) -> list[str]:
+    """Fail closed when worker queue assignments drift from the task routes."""
+
+    services = parse_services(compose)
+    errors: list[str] = []
+    for service, expected_queues in expected.items():
+        if service not in services:
+            errors.append(f"{service} service is missing for queue topology validation")
+            continue
+        actual_queues = service_queues(services[service])
+        if actual_queues != expected_queues:
+            expected_text = ", ".join(sorted(expected_queues)) or "none"
+            actual_text = ", ".join(sorted(actual_queues)) or "none"
+            errors.append(
+                f"{service} must listen only to queue(s) {expected_text}; found {actual_text}"
+            )
+    return errors
+
+
 def validate_resource_documentation(
     readme: str,
     services: dict[str, str],
@@ -415,6 +442,19 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
     for name in MOCK_SERVICES:
         if "POLARIS_TASK_RUNNER: mock" not in services.get(name, ""):
             errors.append(f"{name} is not explicitly pinned to the mock runner")
+    errors.extend(
+        validate_queue_topology(
+            compose,
+            expected={"worker": {"default"}},
+        )
+    )
+    if "crawl-worker" in services:
+        errors.extend(
+            validate_queue_topology(
+                compose,
+                expected={"crawl-worker": {"crawl"}},
+            )
+        )
     for name in EXPECTED_SERVICES - PROVIDER_SERVICES:
         if "*provider-environment" in services.get(name, ""):
             errors.append(f"{name} must not receive Provider credentials")

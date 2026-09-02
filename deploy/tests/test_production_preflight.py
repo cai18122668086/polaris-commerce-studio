@@ -22,6 +22,7 @@ from production_preflight import (
     validate_compose,
     validate_crawl_worker_dockerfile,
     validate_env,
+    validate_queue_topology,
 )
 
 
@@ -271,6 +272,28 @@ class ProductionPreflightTests(unittest.TestCase):
         for mutated in mutations:
             with self.subTest():
                 self.assertTrue(validate_crawl_worker_dockerfile(mutated))
+
+    def test_production_compose_requires_separate_worker_queues(self) -> None:
+        compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")
+        self.assertEqual(validate_queue_topology(
+            compose, expected={"worker": {"default"}, "crawl-worker": {"crawl"}}
+        ), [])
+
+        mutations = (
+            compose.replace("--queues=default", "--queues=crawl", 1),
+            compose.replace("--queues=crawl", "--queues=default", 1),
+            compose.replace(
+                "--queues=default",
+                "--queues=default\n      - --queues=crawl",
+                1,
+            ),
+        )
+        for mutated in mutations:
+            with self.subTest():
+                errors = validate_queue_topology(
+                    mutated, expected={"worker": {"default"}, "crawl-worker": {"crawl"}}
+                )
+                self.assertTrue(any("queue(s)" in error for error in errors))
 
     def test_production_compose_rejects_bucket_autocreation(self) -> None:
         compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")

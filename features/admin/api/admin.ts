@@ -186,6 +186,20 @@ export type AdminLogDetail = AdminLog & {
   intermediate_assets: AdminLogAsset[];
 };
 
+export type AdminAdministrator = {
+  user_id: string;
+  display_name: string;
+  email: string | null;
+  status: "active" | "disabled";
+  role: "admin" | "super_admin";
+  permissions: string[];
+  source: "managed" | "bootstrap";
+  user_status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  last_login_at: string | null;
+};
+
 export type AdminWorkspace = {
   id: string;
   name: string;
@@ -221,10 +235,18 @@ function requestHeaders() {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    let message: string | null = null;
+    try {
+      const body = await response.json() as { error?: { message?: string } };
+      message = body.error?.message ?? null;
+    } catch {
+      // Keep the stable fallback below for non-JSON error responses.
+    }
     throw new Error(
-      response.status === 401 || response.status === 403
-        ? "暂无管理员工作台权限，请使用公告管理工作台相同的管理员身份登录。"
-        : "管理员工作台暂时无法加载，请稍后重试。",
+      message
+        ?? (response.status === 401 || response.status === 403
+          ? "暂无管理员工作台权限，请使用公告管理工作台相同的管理员身份登录。"
+          : "管理员工作台暂时无法加载，请稍后重试。"),
     );
   }
   const payload = await response.json() as { data: T } | T;
@@ -354,4 +376,50 @@ export async function getAdminAccounts(
     signal,
   });
   return parseResponse<AdminListResponse<AdminOperationalAccount>>(response);
+}
+
+
+export async function getAdminAdministrators(
+  params: { role?: string; status?: string; search?: string; limit?: number; offset?: number } = {},
+  signal?: AbortSignal,
+): Promise<AdminListResponse<AdminAdministrator> & { can_manage: boolean }> {
+  const response = await fetch(`/api/v1/admin/administrators${listQuery(params)}`, {
+    credentials: "include",
+    cache: "no-store",
+    headers: requestHeaders(),
+    signal,
+  });
+  const payload = await parseResponse<AdminListResponse<AdminAdministrator> & { can_manage: boolean }>(response);
+  return payload;
+}
+
+export async function createAdminAdministrator(
+  email: string,
+): Promise<AdminAdministrator> {
+  const response = await fetch("/api/v1/admin/administrators", {
+    method: "POST",
+    credentials: "include",
+    headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const payload = await parseResponse<AdminAdministrator>(response);
+  return payload;
+}
+
+export async function updateAdminAdministrator(
+  userId: string,
+  changes: {
+    status?: "active" | "disabled";
+    role?: "admin" | "super_admin";
+    permissions?: string[];
+  },
+): Promise<AdminAdministrator> {
+  const response = await fetch(`/api/v1/admin/administrators/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+  const payload = await parseResponse<AdminAdministrator>(response);
+  return payload;
 }

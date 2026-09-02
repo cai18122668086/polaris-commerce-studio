@@ -257,6 +257,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/administrators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Administrators */
+        get: operations["list_administrators_api_v1_admin_administrators_get"];
+        put?: never;
+        /** Create Administrator */
+        post: operations["create_administrator_api_v1_admin_administrators_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/administrators/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Administrator */
+        patch: operations["update_administrator_api_v1_admin_administrators__user_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/announcements": {
         parameters: {
             query?: never;
@@ -1070,6 +1105,20 @@ export interface components {
             expires_at: string;
             /** Url */
             url: string;
+        };
+        /** AdminCreateRequest */
+        AdminCreateRequest: {
+            /** Email */
+            email: string;
+        };
+        /** AdminUpdateRequest */
+        AdminUpdateRequest: {
+            /** Permissions */
+            permissions?: string[] | null;
+            /** Role */
+            role?: ("admin" | "super_admin") | null;
+            /** Status */
+            status?: ("active" | "disabled") | null;
         };
         /** AmazonVisualSuiteConfiguration */
         AmazonVisualSuiteConfiguration: {
@@ -3204,6 +3253,115 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_administrators_api_v1_admin_administrators_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                role?: string | null;
+                status?: string | null;
+                search?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_administrator_api_v1_admin_administrators_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_administrator_api_v1_admin_administrators__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

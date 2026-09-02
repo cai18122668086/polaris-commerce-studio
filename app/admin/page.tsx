@@ -8,8 +8,10 @@ import {
   Download,
   ExternalLink,
   Loader2,
+  Plus,
   RefreshCw,
   ShieldCheck,
+  UserCog,
   Users,
   Workflow,
 } from "lucide-react";
@@ -19,11 +21,15 @@ import { AppShell } from "@/components/app-shell";
 import {
   getAdminAccounts,
   getAdminLogDetail,
+  createAdminAdministrator,
+  getAdminAdministrators,
   getAdminLogs,
   getAdminOverview,
   getAdminUsers,
   getAdminWorkspaces,
+  updateAdminAdministrator,
   type AdminAccount,
+  type AdminAdministrator,
   type AdminLog,
   type AdminLogAsset,
   type AdminLogDetail,
@@ -211,6 +217,109 @@ function LogDetailDialog({
   </div>;
 }
 
+const adminPermissionOptions = [
+  ["users:read", "用户查看"],
+  ["workspaces:read", "工作区查看"],
+  ["accounts:read", "账号运维查看"],
+  ["logs:read", "任务日志查看"],
+  ["admins:manage", "管理员管理"],
+] as const;
+
+function AdministratorManagement() {
+  const [administrators, setAdministrators] = useState<AdminAdministrator[]>([]);
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [permissionDrafts, setPermissionDrafts] = useState<Record<string, string[]>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getAdminAdministrators({ limit: 100 });
+      setAdministrators(result.items);
+      setHidden(!result.can_manage);
+    } catch (cause) {
+      if (cause instanceof Error && cause.message.includes("超级管理员")) {
+        setHidden(true);
+      } else {
+        setError(cause instanceof Error ? cause.message : "管理员列表暂时无法加载。 ");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  async function addAdministrator(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!email.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createAdminAdministrator(email.trim());
+      setEmail("");
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "管理员添加失败，请稍后重试。 ");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function updateAdministrator(
+    administrator: AdminAdministrator,
+    changes: {
+      status?: "active" | "disabled";
+      role?: "admin" | "super_admin";
+      permissions?: string[];
+    },
+  ) {
+    setBusyUserId(administrator.user_id);
+    setError(null);
+    try {
+      await updateAdminAdministrator(administrator.user_id, changes);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "管理员更新失败，请稍后重试。 ");
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function savePermissions(administrator: AdminAdministrator) {
+    const permissions = permissionDrafts[administrator.user_id] ?? administrator.permissions;
+    await updateAdministrator(administrator, { permissions });
+  }
+
+  if (hidden) return null;
+  return <section className={styles.section} aria-label="管理员管理">
+    <div className={styles.sectionHeading}>
+      <div><span className={styles.sectionEyebrow}><UserCog size={14} /> ADMIN ACCESS</span><h2>管理员管理</h2><p>只有超级管理员可以增加、停用或调整管理员权限；变更会写入审计记录。</p></div>
+      <span className={styles.sectionCount}>{formatCount(administrators.length)} 位管理员</span>
+    </div>
+    <form className={styles.adminCreateForm} onSubmit={addAdministrator}>
+      <label><span>添加已注册用户</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="输入用户注册邮箱" required /></label>
+      <button className={styles.primary} type="submit" disabled={submitting}><Plus size={15} />{submitting ? "添加中…" : "添加普通管理员"}</button>
+    </form>
+    {error ? <p className={styles.adminError} role="alert">{error}</p> : null}
+    {loading ? <div className={styles.adminLoading}><Loader2 className={styles.spin} size={17} />正在加载管理员列表…</div> : administrators.length === 0 ? <p className={styles.empty}>当前没有可管理的管理员。</p> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>管理员</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead><tbody>{administrators.map((administrator) => <tr key={administrator.user_id}>
+      <td><strong>{administrator.display_name}</strong><small>{administrator.email ?? "邮箱不可用"} · {administrator.user_id}</small></td>
+      <td><span className={administrator.role === "super_admin" ? styles.superAdminBadge : styles.logStatus}>{administrator.role === "super_admin" ? "超级管理员" : "普通管理员"}</span><small>{administrator.source === "bootstrap" ? "部署配置引导" : "后台持久化"}</small></td>
+      <td><span className={administrator.status === "active" ? styles.readyBadge : styles.warningBadge}>{administrator.status === "active" ? "启用" : "已停用"}</span></td>
+      <td>{formatTime(administrator.last_login_at)}</td>
+      <td><div className={styles.adminActions}><button className={styles.detailButton} type="button" disabled={busyUserId === administrator.user_id} onClick={() => void updateAdministrator(administrator, { status: administrator.status === "active" ? "disabled" : "active" })}>{administrator.status === "active" ? "停用" : "启用"}</button><button className={styles.detailButton} type="button" disabled={busyUserId === administrator.user_id} onClick={() => void updateAdministrator(administrator, { role: administrator.role === "super_admin" ? "admin" : "super_admin" })}>{administrator.role === "super_admin" ? "降为普通" : "提升为超级"}</button><details className={styles.permissionEditor}><summary>编辑权限</summary><div className={styles.permissionOptions}>{adminPermissionOptions.map(([permission, label]) => <label key={permission}><input type="checkbox" checked={(permissionDrafts[administrator.user_id] ?? administrator.permissions).includes(permission)} disabled={administrator.role === "super_admin" || busyUserId === administrator.user_id} onChange={(event) => setPermissionDrafts((current) => ({ ...current, [administrator.user_id]: event.target.checked ? [...(current[administrator.user_id] ?? administrator.permissions), permission] : (current[administrator.user_id] ?? administrator.permissions).filter((item) => item !== permission) }))} />{label}</label>)}<button className={styles.detailButton} type="button" disabled={administrator.role === "super_admin" || busyUserId === administrator.user_id} onClick={() => void savePermissions(administrator)}>保存权限</button></div></details></div></td>
+    </tr>)}</tbody></table></div>}
+  </section>;
+}
+
 export default function AdminDashboardPage() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -319,6 +428,8 @@ export default function AdminDashboardPage() {
         <Link href="/admin/inspiration"><ExternalLink size={14} />灵感案例</Link>
         <Link href="/commerce-crawler"><Workflow size={15} />真实爬虫</Link>
       </nav>
+
+      <AdministratorManagement />
 
       <section className={styles.metrics} aria-label="网站概况">
         <article className={styles.metricCard}><span className={styles.metricIcon}><Users size={20} /></span><div><small>网站用户</small><strong>{formatCount(overview.users.total)}</strong><p>{formatCount(overview.users.active)} 个活跃用户</p></div></article>

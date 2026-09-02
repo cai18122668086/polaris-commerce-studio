@@ -1,6 +1,16 @@
 from enum import StrEnum
 
 
+class AdminRole(StrEnum):
+    SUPER_ADMIN = "super_admin"
+    ADMIN = "admin"
+
+
+class AdminStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
 class UserStatus(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"

@@ -17,10 +17,10 @@ from urllib.request import ProxyHandler, build_opener
 from urllib.request import Request as UrlRequest
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1636,6 +1636,58 @@ async def create_crawl_task(
         ) from None
     _schedule(request.app, task.id)
     return {"success": True, "data": _task_response(task), "idempotent": False}
+
+
+@router.get("/crawl-tasks")
+def list_crawl_tasks(
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    workspace_id: str = Query(min_length=1, max_length=40),
+    platform: str | None = Query(default=None, min_length=1, max_length=24),
+    task_status: str | None = Query(default=None, alias="status", max_length=32),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    """Return the authenticated user's durable crawl-task history."""
+
+    _ensure_workspace(session, principal, workspace_id)
+    normalized_platform = platform.strip().casefold() if platform else None
+    normalized_status = task_status.strip().casefold() if task_status else None
+    if normalized_status and normalized_status not in {
+        item.value for item in CrawlTaskStatus
+    }:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_CRAWL_TASK_STATUS",
+            "任务状态筛选条件无效。",
+        )
+    filters = [CrawlTaskRecord.workspace_id == workspace_id]
+    if normalized_platform:
+        filters.append(CrawlTaskRecord.platform == normalized_platform)
+    if normalized_status:
+        filters.append(CrawlTaskRecord.status == normalized_status)
+    total = session.scalar(
+        select(func.count()).select_from(CrawlTaskRecord).where(*filters)
+    ) or 0
+    tasks = session.scalars(
+        select(CrawlTaskRecord)
+        .where(*filters)
+        .order_by(CrawlTaskRecord.created_at.desc(), CrawlTaskRecord.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return {
+        "success": True,
+        "data": {
+            "items": [_task_response(task) for task in tasks],
+            "pagination": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + len(tasks) < total,
+            },
+        },
+    }
 
 
 def _get_task_for_principal(

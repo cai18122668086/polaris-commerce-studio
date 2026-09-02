@@ -117,6 +117,56 @@ def test_crawl_task_idempotency_reuses_task_and_rejects_payload_change(
     assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
 
 
+def test_crawl_task_history_is_paginated_and_filterable(client, monkeypatch) -> None:
+    monkeypatch.setattr(crawl_tasks, "_schedule", lambda app, task_id: None)
+    urls = [
+        "https://item.taobao.com/item.htm?id=123456789012",
+        "https://item.taobao.com/item.htm?id=987654321098",
+    ]
+    for url in urls:
+        response = client.post(
+            "/api/ecommerce/crawl-tasks",
+            json={
+                "workspace_id": "ws_test",
+                "url": url,
+                "platform": "taobao",
+            },
+        )
+        assert response.status_code == 202
+
+    listed = client.get(
+        "/api/ecommerce/crawl-tasks",
+        params={"workspace_id": "ws_test", "limit": 1, "offset": 0},
+    )
+    assert listed.status_code == 200
+    data = listed.json()["data"]
+    assert data["pagination"] == {
+        "total": 2,
+        "limit": 1,
+        "offset": 0,
+        "has_more": True,
+    }
+    assert len(data["items"]) == 1
+
+    filtered = client.get(
+        "/api/ecommerce/crawl-tasks",
+        params={
+            "workspace_id": "ws_test",
+            "platform": "taobao",
+            "status": "queued",
+        },
+    )
+    assert filtered.status_code == 200
+    assert filtered.json()["data"]["pagination"]["total"] == 2
+
+    invalid = client.get(
+        "/api/ecommerce/crawl-tasks",
+        params={"workspace_id": "ws_test", "status": "not-a-status"},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "INVALID_CRAWL_TASK_STATUS"
+
+
 def test_crawl_task_cancel_and_manual_retry(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr(crawl_tasks, "_schedule", lambda app, task_id: None)
     payload = {

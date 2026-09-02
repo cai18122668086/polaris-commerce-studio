@@ -70,7 +70,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Crawl Tasks
+         * @description Return the authenticated user's durable crawl-task history.
+         */
+        get: operations["list_crawl_tasks_api_ecommerce_crawl_tasks_get"];
         put?: never;
         /** Create Crawl Task */
         post: operations["create_crawl_task_api_ecommerce_crawl_tasks_post"];
@@ -2798,6 +2802,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_crawl_tasks_api_ecommerce_crawl_tasks_get: {
+        parameters: {
+            query: {
+                workspace_id: string;
+                platform?: string | null;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -101,6 +101,10 @@ type CrawlResult = {
 };
 
 type ApiEnvelope<T> = { success?: boolean; data: T };
+type CrawlTaskHistory = {
+  items: CrawlTask[];
+  pagination: { total: number; limit: number; offset: number; has_more: boolean };
+};
 
 const platformOptions: Array<{ value: Platform; label: string }> = [
   { value: "auto", label: "自动识别" },
@@ -263,6 +267,29 @@ export function CommerceCrawlerWorkspace() {
     return () => window.clearTimeout(timer);
   }, [loadAccounts]);
 
+  const loadTaskHistory = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const response = await apiClient.GET("/api/ecommerce/crawl-tasks", {
+        params: { query: { workspace_id: workspaceId, limit: 8, offset: 0 } },
+      });
+      const history = unwrap<ApiEnvelope<CrawlTaskHistory>>(response).data;
+      const nextTasks = history.items ?? [];
+      setTasks(nextTasks);
+      setSelectedTaskId(nextTasks[0]?.id);
+      setTask(undefined);
+      setEvents([]);
+      setResult(undefined);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadTaskHistory(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadTaskHistory]);
+
   const loadTaskDetail = useCallback(async (taskId: string, quiet = false) => {
     if (!quiet) setDetailLoading(true);
     try {
@@ -414,7 +441,7 @@ export function CommerceCrawlerWorkspace() {
           </section>
 
           <section className={styles.card}>
-            <div className={styles.cardHeading}><div><span className={styles.step}>02</span><div><h2>最近任务</h2><p>当前浏览器会话内保留最近提交的任务；任务列表接口将在后续阶段补齐。</p></div></div><Clock3 size={19} className={styles.headingIcon} /></div>
+            <div className={styles.cardHeading}><div><span className={styles.step}>02</span><div><h2>任务历史</h2><p>显示当前工作区最近的真实爬虫任务，刷新页面后仍可继续查看状态和结果。</p></div></div><Clock3 size={19} className={styles.headingIcon} /></div>
             {tasks.length ? <div className={styles.taskList}>{tasks.map((item) => <button type="button" key={item.id} className={`${styles.taskRow} ${selectedTaskId === item.id ? styles.taskRowActive : ""}`} onClick={() => setSelectedTaskId(item.id)}><span className={`${styles.statusDot} ${styles[`tone-${statusTone[item.status]}`]}`} /><span className={styles.taskRowMain}><strong>{item.source_url}</strong><small>{formatPlatform(item.platform)} · {formatTime(item.created_at)}</small></span><span className={`${styles.statusPill} ${styles[`tone-${statusTone[item.status]}`]}`}>{statusLabels[item.status]}</span><ChevronDown size={16} className={styles.rowChevron} /></button>)}</div> : <div className={styles.empty}><Clock3 size={24} /><strong>还没有抓取任务</strong><span>提交第一个真实商品链接后，任务会出现在这里。</span></div>}
           </section>
         </main>

@@ -225,7 +225,6 @@ def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> lis
         ("POLARIS_S3_AUTO_CREATE_BUCKET", "false"),
         ("POLARIS_TASK_DISPATCHER", "celery"),
         ("POLARIS_ECOMMERCE_PROXY_ENABLED", "false"),
-        ("POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED", "false"),
     ):
         if env.get(key) != expected:
             errors.append(f"{key} must be exactly {expected} for this release")
@@ -294,7 +293,6 @@ def validate_compose(compose: str) -> list[str]:
         'POLARIS_S3_AUTO_CREATE_BUCKET: "false"',
         'POLARIS_TASK_DISPATCHER: celery',
         'POLARIS_ECOMMERCE_PROXY_ENABLED: "false"',
-        'POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED: "false"',
         'HTTP_PROXY: ""',
         'HTTPS_PROXY: ""',
         'ALL_PROXY: ""',

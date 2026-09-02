@@ -3,7 +3,25 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+import pytest
+from sqlalchemy import select
+
 import app.ecommerce_crawl_tasks as crawl_tasks
+from app.models import CrawlTaskRecord
+
+
+@pytest.fixture(autouse=True)
+def admin_access(client) -> None:
+    client.app.state.settings.announcement_admin_emails = ["admin@example.com"]
+
+
+def _stored_task(client, task_id: str) -> CrawlTaskRecord:
+    with client.app.state.session_factory() as session:
+        task = session.scalar(
+            select(CrawlTaskRecord).where(CrawlTaskRecord.id == task_id)
+        )
+        assert task is not None
+        return task
 
 
 def _create_account(client, **overrides: Any) -> dict[str, Any]:
@@ -70,8 +88,11 @@ def test_crawl_task_uses_account_profile_and_rejects_unavailable_account(
     )
     assert response.status_code == 202
     task = response.json()["data"]
-    assert task["account_id"] == account["id"]
-    assert task["profile_id"] == account["profile_id"]
+    assert task["account_id"] is None
+    assert task["profile_id"] is None
+    stored = _stored_task(client, task["id"])
+    assert stored.account_id == account["id"]
+    assert stored.profile_id == account["profile_id"]
 
     paused = client.patch(
         f"/api/ecommerce/accounts/{account['id']}",
@@ -89,6 +110,39 @@ def test_crawl_task_uses_account_profile_and_rejects_unavailable_account(
     )
     assert rejected.status_code == 409
     assert rejected.json()["error"]["code"] == "ACCOUNT_NOT_AVAILABLE"
+
+
+def test_regular_user_cannot_select_or_operate_ecommerce_accounts(
+    client, monkeypatch
+) -> None:
+    account = _create_account(client, account_key="admin-only-account")
+    client.app.state.settings.announcement_admin_emails = []
+
+    selected = client.post(
+        "/api/ecommerce/crawl-tasks",
+        json={
+            "workspace_id": "ws_test",
+            "url": "https://item.taobao.com/item.htm?id=123456789012",
+            "platform": "taobao",
+            "account_id": account["id"],
+        },
+    )
+    assert selected.status_code == 403
+    assert selected.json()["error"]["code"] == "ACCOUNT_SELECTION_ADMIN_REQUIRED"
+
+    assert client.get("/api/ecommerce/accounts").status_code == 403
+    assert client.post(
+        "/api/ecommerce/accounts",
+        json={
+            "workspace_id": "ws_test",
+            "platform": "taobao",
+            "account_key": "ordinary-user-must-not-create",
+        },
+    ).status_code == 403
+    assert client.get("/api/ecommerce/session/status").status_code == 403
+    assert client.post(
+        "/api/ecommerce/session/cancel", json={"account_id": account["id"]}
+    ).status_code == 403
 
 
 def test_crawl_task_account_platform_mismatch_is_rejected(client, monkeypatch) -> None:
@@ -129,8 +183,12 @@ def test_automatic_account_selection_rotates_ready_accounts(
     second_task = client.post("/api/ecommerce/crawl-tasks", json=payload)
     assert first_task.status_code == 202
     assert second_task.status_code == 202
-    assert first_task.json()["data"]["account_id"] == first["id"]
-    assert second_task.json()["data"]["account_id"] == second["id"]
+    first_data = first_task.json()["data"]
+    second_data = second_task.json()["data"]
+    assert first_data["account_id"] is None
+    assert second_data["account_id"] is None
+    assert _stored_task(client, first_data["id"]).account_id == first["id"]
+    assert _stored_task(client, second_data["id"]).account_id == second["id"]
 
 
 def test_automatic_account_selection_fails_closed_when_configured_pool_unavailable(
@@ -165,7 +223,9 @@ def test_automatic_account_selection_fails_closed_when_configured_pool_unavailab
         },
     )
     assert task.status_code == 202
-    assert task.json()["data"]["account_id"] == account["id"]
+    data = task.json()["data"]
+    assert data["account_id"] is None
+    assert _stored_task(client, data["id"]).account_id == account["id"]
 
 
 def test_profile_lease_fencing_rejects_stale_worker(client) -> None:

@@ -287,6 +287,20 @@ def test_admin_logs_filter_and_redaction_cover_generation_and_crawl(
             )
         )
         session.add(
+            EcommerceAccountRecord(
+                id="eac_admin_log_search",
+                workspace_id="ws_test",
+                created_by="usr_test",
+                platform="taobao",
+                account_key="owner-search@example.com",
+                display_name="淘宝搜索账号",
+                profile_id="profile_admin_log_search",
+                profile_path="/private/profile/admin-log-search",
+                status="active",
+                login_state="ready",
+            )
+        )
+        session.add(
             CrawlTaskRecord(
                 id="crw_admin_log_failed",
                 workspace_id="ws_test",
@@ -301,6 +315,7 @@ def test_admin_logs_filter_and_redaction_cover_generation_and_crawl(
                 error_code="PARSE_FAILED",
                 error_message_safe="解析详情失败",
                 request_payload={"url": "https://private.example.invalid"},
+                account_id="eac_admin_log_search",
                 attempt_count=1,
                 max_attempts=2,
                 finished_at=now,
@@ -363,6 +378,43 @@ def test_admin_logs_filter_and_redaction_cover_generation_and_crawl(
         "raw_html",
     ):
         assert forbidden not in response.text
+
+    page_one = client.get(
+        "/api/v1/admin/logs",
+        params={"limit": 1, "offset": 0},
+    )
+    assert page_one.status_code == 200
+    assert page_one.json()["data"]["pagination"] == {
+        "total": 2,
+        "limit": 1,
+        "offset": 0,
+        "has_more": True,
+    }
+    page_two = client.get(
+        "/api/v1/admin/logs",
+        params={"limit": 1, "offset": 1},
+    )
+    assert page_two.status_code == 200
+    assert page_two.json()["data"]["pagination"]["has_more"] is False
+    assert (
+        page_one.json()["data"]["items"][0]["id"]
+        != page_two.json()["data"]["items"][0]["id"]
+    )
+
+    for params, expected_kind, expected_id in (
+        ({"job_id": "job_admin_log_failed"}, "generation", "job_admin_log_failed"),
+        ({"crawl_task_id": "crw_admin_log_failed"}, "crawl", "crw_admin_log_failed"),
+        ({"account_id": "eac_admin_log_search"}, "crawl", "crw_admin_log_failed"),
+        ({"query": "淘宝搜索账号"}, "crawl", "crw_admin_log_failed"),
+        ({"query": ".COM"}, "crawl", "crw_admin_log_failed"),
+    ):
+        search_response = client.get("/api/v1/admin/logs", params=params)
+        assert search_response.status_code == 200, params
+        search_data = search_response.json()["data"]
+        assert search_data["pagination"]["total"] == 1, params
+        assert search_data["items"][0]["kind"] == expected_kind, params
+        assert search_data["items"][0]["id"] == expected_id, params
+        assert "owner-search@example.com" not in search_response.text
 
     platform_response = client.get(
         "/api/v1/admin/logs",

@@ -13,6 +13,12 @@ from app.ecommerce_1688 import (
 from app.ecommerce_platform import PlatformPolicyError
 from app.ecommerce_session import EcommerceSessionManager
 
+
+@pytest.fixture(autouse=True)
+def admin_access(client) -> None:
+    client.app.state.settings.announcement_admin_emails = ["admin@example.com"]
+
+
 FIXTURES = Path(__file__).parent / "fixtures" / "1688"
 URL = "https://detail.1688.com/offer/123456789012.html"
 

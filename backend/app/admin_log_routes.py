@@ -16,6 +16,7 @@ from .models import (
     AuditEventRecord,
     CrawlEventRecord,
     CrawlTaskRecord,
+    EcommerceAccountRecord,
     JobAssetRecord,
     JobAttemptRecord,
     JobItemRecord,
@@ -116,6 +117,20 @@ def _normalize_status(
     return normalized
 
 
+def _normalize_search(value: str | None, *, max_length: int = 80) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.split()).casefold()
+    return normalized[:max_length] or None
+
+
+def _like_pattern(value: str) -> str:
+    # Escape wildcard characters so an admin search cannot accidentally become
+    # an unbounded SQL LIKE query.
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def _validate_range(created_from: datetime | None, created_to: datetime | None) -> None:
     if (
         created_from is not None
@@ -183,6 +198,37 @@ def _base_filters(
             )
         )
     return filters
+
+
+def _task_id_filter(model: Any, value: str | None) -> Any | None:
+    return model.id == value if value else None
+
+
+def _account_filter(value: str | None) -> Any | None:
+    return CrawlTaskRecord.account_id == value if value else None
+
+
+def _search_filter(model: Any, query: str | None) -> Any | None:
+    if not query:
+        return None
+    pattern = _like_pattern(query)
+    task_id_match = model.id.ilike(pattern, escape="\\")
+    if model is not CrawlTaskRecord:
+        return task_id_match
+    # Account identifiers are never returned by this endpoint. Search only
+    # the admin-visible display name or the masked suffix of account_key; the
+    # raw account key is deliberately not exposed as a searchable field.
+    account_match = exists(
+        select(EcommerceAccountRecord.id).where(
+            EcommerceAccountRecord.id == CrawlTaskRecord.account_id,
+            or_(
+                EcommerceAccountRecord.display_name.ilike(pattern, escape="\\"),
+                func.lower(func.substr(EcommerceAccountRecord.account_key, -4))
+                == query,
+            ),
+        )
+    )
+    return or_(task_id_match, account_match)
 
 
 def _job_item(
@@ -282,6 +328,10 @@ def _list_rows(
     workspace_id: str | None,
     platform: str | None,
     status: str | None,
+    query: str | None,
+    job_id: str | None,
+    crawl_task_id: str | None,
+    account_id: str | None,
     created_from: datetime | None,
     created_to: datetime | None,
     limit: int,
@@ -290,7 +340,14 @@ def _list_rows(
     rows: list[dict[str, Any]] = []
     total = 0
     window = limit + offset
-    if kind in {"all", "generation"} and not platform:
+    include_generation = (
+        kind in {"all", "generation"}
+        and not platform
+        and not crawl_task_id
+        and not account_id
+    )
+    include_crawl = kind in {"all", "crawl"} and not job_id
+    if include_generation:
         filters = _base_filters(
             JobRecord,
             user_id=user_id,
@@ -300,6 +357,12 @@ def _list_rows(
             created_to=created_to,
         )
         filters.append(JobRecord.history_deleted_at.is_(None))
+        for extra_filter in (
+            _task_id_filter(JobRecord, job_id),
+            _search_filter(JobRecord, query),
+        ):
+            if extra_filter is not None:
+                filters.append(extra_filter)
         total += int(
             session.scalar(select(func.count()).select_from(JobRecord).where(*filters))
             or 0
@@ -322,7 +385,7 @@ def _list_rows(
             )
             for job in jobs
         )
-    if kind in {"all", "crawl"}:
+    if include_crawl:
         normalized_platform = _normalize_platform(platform)
         filters = _base_filters(
             CrawlTaskRecord,
@@ -334,6 +397,13 @@ def _list_rows(
         )
         if normalized_platform:
             filters.append(CrawlTaskRecord.platform == normalized_platform)
+        for extra_filter in (
+            _task_id_filter(CrawlTaskRecord, crawl_task_id),
+            _account_filter(account_id),
+            _search_filter(CrawlTaskRecord, query),
+        ):
+            if extra_filter is not None:
+                filters.append(extra_filter)
         total += int(
             session.scalar(
                 select(func.count()).select_from(CrawlTaskRecord).where(*filters)
@@ -573,6 +643,10 @@ def list_admin_logs(
     workspace_id: str | None = Query(None, max_length=40),
     platform: str | None = Query(None, max_length=24),
     status: str | None = Query(None, max_length=32),
+    query: str | None = Query(None, max_length=80),
+    job_id: str | None = Query(None, max_length=40),
+    crawl_task_id: str | None = Query(None, max_length=40),
+    account_id: str | None = Query(None, max_length=40),
     created_from: datetime | None = Query(None),  # noqa: B008
     created_to: datetime | None = Query(None),  # noqa: B008
     limit: int = Query(_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
@@ -583,6 +657,14 @@ def list_admin_logs(
     bounded = _bounded_limit(limit)
     normalized_platform = _normalize_platform(platform)
     normalized_status = _normalize_status(status, normalized_kind)
+    normalized_query = _normalize_search(query)
+    normalized_job_id = job_id.strip() if job_id and job_id.strip() else None
+    normalized_crawl_task_id = (
+        crawl_task_id.strip() if crawl_task_id and crawl_task_id.strip() else None
+    )
+    normalized_account_id = (
+        account_id.strip() if account_id and account_id.strip() else None
+    )
     items, total = _list_rows(
         session,
         kind=normalized_kind,
@@ -590,6 +672,10 @@ def list_admin_logs(
         workspace_id=workspace_id.strip() if workspace_id else None,
         platform=normalized_platform,
         status=normalized_status,
+        query=normalized_query,
+        job_id=normalized_job_id,
+        crawl_task_id=normalized_crawl_task_id,
+        account_id=normalized_account_id,
         created_from=created_from,
         created_to=created_to,
         limit=bounded,
@@ -697,6 +783,10 @@ def list_admin_generation_jobs(
     user_id: str | None = Query(None, max_length=40),
     workspace_id: str | None = Query(None, max_length=40),
     status: str | None = Query(None, max_length=32),
+    query: str | None = Query(None, max_length=80),
+    job_id: str | None = Query(None, max_length=40),
+    crawl_task_id: str | None = Query(None, max_length=40),
+    account_id: str | None = Query(None, max_length=40),
     created_from: datetime | None = Query(None),  # noqa: B008
     created_to: datetime | None = Query(None),  # noqa: B008
     limit: int = Query(_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
@@ -709,6 +799,10 @@ def list_admin_generation_jobs(
         user_id=user_id,
         workspace_id=workspace_id,
         status=status,
+        query=query,
+        job_id=job_id,
+        crawl_task_id=crawl_task_id,
+        account_id=account_id,
         created_from=created_from,
         created_to=created_to,
         limit=limit,
@@ -724,6 +818,10 @@ def list_admin_crawl_tasks(
     workspace_id: str | None = Query(None, max_length=40),
     platform: str | None = Query(None, max_length=24),
     status: str | None = Query(None, max_length=32),
+    query: str | None = Query(None, max_length=80),
+    job_id: str | None = Query(None, max_length=40),
+    crawl_task_id: str | None = Query(None, max_length=40),
+    account_id: str | None = Query(None, max_length=40),
     created_from: datetime | None = Query(None),  # noqa: B008
     created_to: datetime | None = Query(None),  # noqa: B008
     limit: int = Query(_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
@@ -737,6 +835,10 @@ def list_admin_crawl_tasks(
         workspace_id=workspace_id,
         platform=platform,
         status=status,
+        query=query,
+        job_id=job_id,
+        crawl_task_id=crawl_task_id,
+        account_id=account_id,
         created_from=created_from,
         created_to=created_to,
         limit=limit,

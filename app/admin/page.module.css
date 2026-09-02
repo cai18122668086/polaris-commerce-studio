@@ -73,6 +73,11 @@
 .logFilters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 18px; padding: 12px; border: 1px solid #ececf2; border-radius: 13px; background: #fafaff; }
 .logFilters label { display: grid; gap: 5px; color: #85899a; font-size: 11px; font-weight: 700; }
 .logFilters input, .logFilters select { min-width: 116px; height: 34px; padding: 0 9px; border: 1px solid #e2e3eb; border-radius: 8px; background: #fff; color: #4b4f65; font: inherit; font-size: 12px; }
+.logSearchWide { flex: 1 1 240px; }
+.logSearchWide input { width: 100%; }
+.logPagination { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 14px; color: #85899a; font-size: 11px; }
+.logPagination label { display: inline-flex; gap: 5px; align-items: center; }
+.logPagination select { height: 30px; padding: 0 7px; border: 1px solid #e2e3eb; border-radius: 7px; background: #fff; color: #4b4f65; font: inherit; }
 .logStatus, .logStatusFailed { display: inline-flex !important; width: fit-content; margin: 0 !important; padding: 3px 7px; border-radius: 999px; color: #3c8d67 !important; background: #edf9f0; font-size: 10px !important; font-weight: 700; }
 .logStatusFailed { color: #b75331 !important; background: #fff0e8; }
 

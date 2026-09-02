@@ -3684,6 +3684,10 @@ export interface operations {
                 workspace_id?: string | null;
                 platform?: string | null;
                 status?: string | null;
+                query?: string | null;
+                job_id?: string | null;
+                crawl_task_id?: string | null;
+                account_id?: string | null;
                 created_from?: string | null;
                 created_to?: string | null;
                 limit?: number;
@@ -3756,6 +3760,10 @@ export interface operations {
                 user_id?: string | null;
                 workspace_id?: string | null;
                 status?: string | null;
+                query?: string | null;
+                job_id?: string | null;
+                crawl_task_id?: string | null;
+                account_id?: string | null;
                 created_from?: string | null;
                 created_to?: string | null;
                 limit?: number;
@@ -4011,6 +4019,10 @@ export interface operations {
                 workspace_id?: string | null;
                 platform?: string | null;
                 status?: string | null;
+                query?: string | null;
+                job_id?: string | null;
+                crawl_task_id?: string | null;
+                account_id?: string | null;
                 created_from?: string | null;
                 created_to?: string | null;
                 limit?: number;

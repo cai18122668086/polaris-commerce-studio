@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .admin_auth import AdminDependency
 from .auth import Principal, get_principal
 from .database import get_session
 from .domain import (
@@ -173,6 +174,7 @@ def create_ecommerce_account(
     payload: EcommerceAccountCreateRequest,
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
 ) -> dict[str, Any]:
     _ensure_workspace(session, principal, payload.workspace_id, write=True)
     platform = _canonical_platform(payload.platform)
@@ -220,6 +222,7 @@ def create_ecommerce_account(
 def list_ecommerce_accounts(
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
     workspace_id: str = Query(min_length=1, max_length=40),
 ) -> dict[str, Any]:
     _ensure_workspace(session, principal, workspace_id)
@@ -247,7 +250,10 @@ def list_ecommerce_accounts(
 
 @router.get("/accounts/{account_id}")
 def get_ecommerce_account(
-    account_id: str, session: SessionDependency, principal: PrincipalDependency
+    account_id: str,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    _admin: AdminDependency,
 ) -> dict[str, Any]:
     account = _get_account(session, principal, account_id)
     lease = session.scalar(
@@ -264,6 +270,7 @@ def update_ecommerce_account(
     payload: EcommerceAccountUpdateRequest,
     session: SessionDependency,
     principal: PrincipalDependency,
+    _admin: AdminDependency,
 ) -> dict[str, Any]:
     account = _get_account(session, principal, account_id, write=True)
     if payload.display_name is not None:

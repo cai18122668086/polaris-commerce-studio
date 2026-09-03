@@ -12,10 +12,50 @@ from fastapi.testclient import TestClient
 import app.ecommerce_routes as ecommerce_routes
 from app.ecommerce_fetcher import Image, Product, parse_product_html
 from app.ecommerce_login import (
+    _drain_input_actions,
     looks_like_authenticated_page,
     looks_like_risk_control_page,
 )
 from app.ecommerce_session import EcommerceSessionManager
+
+
+def test_login_input_actions_are_applied_and_consumed(tmp_path: Path) -> None:
+    class Mouse:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, object]] = []
+
+        def click(self, *args: object, **kwargs: object) -> None:
+            self.calls.append(("click", (args, kwargs)))
+
+        def wheel(self, *args: object) -> None:
+            self.calls.append(("wheel", args))
+
+    class Keyboard:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        def press(self, key: str) -> None:
+            self.calls.append(("press", key))
+
+        def insert_text(self, text: str) -> None:
+            self.calls.append(("text", text))
+
+    class Page:
+        def __init__(self) -> None:
+            self.mouse = Mouse()
+            self.keyboard = Keyboard()
+
+    actions = tmp_path / "actions"
+    actions.mkdir()
+    (actions / "1.json").write_text('{"type":"click","x":12,"y":34}')
+    (actions / "2.json").write_text('{"type":"text","text":"abc"}')
+    page = Page()
+
+    _drain_input_actions(page, actions)
+
+    assert len(page.mouse.calls) == 1
+    assert page.keyboard.calls == [("text", "abc")]
+    assert list(actions.glob("*.json")) == []
 
 
 def test_login_helper_passes_headless_mode_to_chrome(

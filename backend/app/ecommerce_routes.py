@@ -300,6 +300,22 @@ class SessionCancelRequest(BaseModel):
     account_id: str = Field(min_length=1, max_length=40)
 
 
+class SessionInputRequest(BaseModel):
+    account_id: str = Field(min_length=1, max_length=40)
+    type: Literal["click", "drag", "wheel", "key", "text"]
+    x: float | None = Field(default=None, ge=0, le=10000)
+    y: float | None = Field(default=None, ge=0, le=10000)
+    fromX: float | None = Field(default=None, ge=0, le=10000)
+    fromY: float | None = Field(default=None, ge=0, le=10000)
+    toX: float | None = Field(default=None, ge=0, le=10000)
+    toY: float | None = Field(default=None, ge=0, le=10000)
+    deltaX: float | None = Field(default=None, ge=-10000, le=10000)
+    deltaY: float | None = Field(default=None, ge=-10000, le=10000)
+    key: str | None = Field(default=None, min_length=1, max_length=80)
+    text: str | None = Field(default=None, max_length=200)
+    button: Literal["left", "middle", "right"] = "left"
+
+
 def _normalise(result: object, source_url: str, include_desc: bool) -> dict:
     raw = getattr(result, "__dict__", {})
 
@@ -1238,6 +1254,52 @@ def ecommerce_session_preview(
     )
 
 
+@router.post("/session/input")
+def ecommerce_session_input(
+    request: Request,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    _admin: AdminDependency,
+    payload: SessionInputRequest,
+) -> dict[str, Any]:
+    """Relay one user input event to the isolated login browser."""
+
+    _require_login_enabled(request)
+    account, manager, _ = _resolve_account_session_target(
+        request,
+        session,
+        principal,
+        account_id=payload.account_id,
+        requested_platform="auto",
+        write=False,
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="登录会话必须绑定到指定电商账号。")
+    if payload.type == "click" and (payload.x is None or payload.y is None):
+        raise HTTPException(status_code=422, detail="点击事件缺少坐标。")
+    if payload.type == "drag" and any(
+        value is None
+        for value in (payload.fromX, payload.fromY, payload.toX, payload.toY)
+    ):
+        raise HTTPException(status_code=422, detail="拖动事件缺少坐标。")
+    if payload.type == "key" and payload.key is None:
+        raise HTTPException(status_code=422, detail="键盘事件缺少按键。")
+    if payload.type == "text" and payload.text is None:
+        raise HTTPException(status_code=422, detail="文本事件缺少内容。")
+    status = manager.status()
+    login_session = _latest_login_session(session, account.id)
+    if (
+        login_session is None
+        or login_session.status != EcommerceLoginSessionStatus.ACTIVE.value
+        or status.get("state") not in {"login_pending", "risk_controlled"}
+    ):
+        raise HTTPException(status_code=409, detail="当前没有可操作的登录浏览器会话。")
+    action = payload.model_dump(exclude_none=True)
+    action.pop("account_id", None)
+    manager.enqueue_input(action)
+    return {"success": True}
+
+
 @router.post("/session/cancel")
 def ecommerce_session_cancel(
     request: Request,
@@ -1445,4 +1507,3 @@ def ecommerce_session_start(
         session.commit()
     result["loginSession"] = _login_session_response(login_session)
     return {"success": True, "data": result}
-

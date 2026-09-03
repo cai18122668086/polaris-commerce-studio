@@ -40,6 +40,7 @@ export default function AdminAccountsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeLoginIds, setActiveLoginIds] = useState<Set<string>>(() => new Set());
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -117,16 +118,85 @@ export default function AdminAccountsPage() {
   }
 
   function updateLoginActivity(accountId: string, data: LoginStatusResponse) {
+    const isActive = data.loginSession?.status === "active";
     setActiveLoginIds((current) => {
       const next = new Set(current);
-      if (data.loginSession?.status === "active") {
+      if (isActive) {
         next.add(accountId);
       } else {
         next.delete(accountId);
       }
       return next;
     });
+    if (!isActive) {
+      setPreviewUrls((currentPreview) => {
+        const previewUrl = currentPreview[accountId];
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        if (!previewUrl) return currentPreview;
+        const nextPreview = { ...currentPreview };
+        delete nextPreview[accountId];
+        return nextPreview;
+      });
+    }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshPreviews() {
+      await Promise.all(Array.from(activeLoginIds).map(async (accountId) => {
+        try {
+          const response = await fetch(`/api/ecommerce/session/preview?account_id=${encodeURIComponent(accountId)}`, {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!response.ok || cancelled) return;
+          const nextUrl = URL.createObjectURL(await response.blob());
+          if (cancelled) {
+            URL.revokeObjectURL(nextUrl);
+            return;
+          }
+          setPreviewUrls((currentPreview) => {
+            const previousUrl = currentPreview[accountId];
+            if (previousUrl) URL.revokeObjectURL(previousUrl);
+            return { ...currentPreview, [accountId]: nextUrl };
+          });
+        } catch {
+          // The preview is intentionally best-effort while Chrome is starting.
+        }
+      }));
+    }
+    if (activeLoginIds.size > 0) {
+      void refreshPreviews();
+      const timer = window.setInterval(() => void refreshPreviews(), 2000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+      };
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLoginIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function restoreActiveSessions() {
+      await Promise.all(accounts.map(async (account) => {
+        try {
+          const response = await apiClient.GET("/api/ecommerce/session/status", {
+            params: { query: { account_id: account.id, platform: account.platform } },
+          });
+          if (!cancelled) updateLoginActivity(account.id, readLoginStatus(response));
+        } catch {
+          // A status refresh is best-effort; the account list remains usable.
+        }
+      }));
+    }
+    if (accounts.length > 0) void restoreActiveSessions();
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts]);
 
   function readLoginStatus(response: ApiResult<unknown>): LoginStatusResponse {
     const envelope = unwrapApiResponse(response) as LoginApiEnvelope;
@@ -214,7 +284,7 @@ export default function AdminAccountsPage() {
           <label>显示名称<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="例如：淘宝主账号" /></label>
           <button className={styles.primary} type="button" onClick={() => void createAccount()} disabled={busyId === "new"}>{busyId === "new" ? "保存中…" : "保存账号"}</button>
         </div> : null}
-        <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td><div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>
+        <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td>{previewUrls[account.id] ? <div style={{ marginBottom: 8 }}><img src={previewUrls[account.id]} alt={`${account.label}登录二维码预览`} style={{ display: "block", width: 180, height: 180, objectFit: "contain", borderRadius: 8, background: "#fff" }} /><small>请使用官方页面扫码或完成验证</small></div> : null}<div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>
       </section>
     </main>
   </AdminShell>;

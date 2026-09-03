@@ -452,7 +452,8 @@ def main() -> int:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
         from playwright.sync_api import sync_playwright
     except ImportError:
-        _write(status_path, "error", f"{label}登录窗口启动失败：Playwright 未安装。")
+        surface = "登录预览" if args.headless else "登录窗口"
+        _write(status_path, "error", f"{label}{surface}启动失败：Playwright 未安装。")
         return 1
     _write(
         status_path,
@@ -473,7 +474,10 @@ def main() -> int:
         with (
             sync_playwright() as playwright,
             connect_to_owned_chrome(
-                playwright, profile_dir, network_mode="direct"
+                playwright,
+                profile_dir,
+                network_mode="direct",
+                headless=args.headless,
             ) as (_browser, context),
         ):
             # Use a normal installed Chrome process for the human-facing
@@ -629,7 +633,12 @@ def main() -> int:
                     f"{label}登录触发安全验证或风控，请稍后通过官方页面完成验证。",
                 )
             else:
-                _write_closed_status(status_path, "登录窗口已关闭，请重新发起登录。")
+                _write_closed_status(
+                    status_path,
+                    "登录预览已关闭，请重新发起登录。"
+                    if args.headless
+                    else "登录窗口已关闭，请重新发起登录。",
+                )
             with suppress(PlaywrightError):
                 context.close()
     except PlaywrightError as exc:  # pragma: no cover - local browser runtime
@@ -641,12 +650,19 @@ def main() -> int:
                     f"{label}登录触发安全验证或风控，请稍后通过官方页面完成验证。",
                 )
             else:
-                _write_closed_status(status_path, "登录窗口已关闭，请重新发起登录。")
+                _write_closed_status(
+                    status_path,
+                    "登录预览已关闭，请重新发起登录。"
+                    if args.headless
+                    else "登录窗口已关闭，请重新发起登录。",
+                )
             return 0
-        _write(status_path, "error", f"{label}登录窗口启动失败：{type(exc).__name__}")
+        surface = "登录预览" if args.headless else "登录窗口"
+        _write(status_path, "error", f"{label}{surface}启动失败：{type(exc).__name__}")
         return 1
     except Exception as exc:  # pragma: no cover - depends on local browser runtime
-        _write(status_path, "error", f"{label}登录窗口启动失败：{type(exc).__name__}")
+        surface = "登录预览" if args.headless else "登录窗口"
+        _write(status_path, "error", f"{label}{surface}启动失败：{type(exc).__name__}")
         return 1
     return 0
 

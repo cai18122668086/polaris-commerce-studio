@@ -68,6 +68,15 @@ def test_login_start_is_disabled_by_default(client) -> None:
     assert response.json()["detail"]["code"] == "ECOMMERCE_LOGIN_DISABLED"
 
 
+def test_headless_login_status_message_describes_qr_preview(tmp_path: Path) -> None:
+    manager = EcommerceSessionManager(tmp_path / "profile", platform="taobao")
+    manager._login_headless = True
+
+    assert "二维码" in manager._message("pending")
+    assert "弹出" not in manager._message("pending")
+    assert "预览已关闭" in manager._message("closed")
+
+
 def test_production_login_requires_account_and_headless_transport(client) -> None:
     settings = client.app.state.settings
     settings.environment = "production"

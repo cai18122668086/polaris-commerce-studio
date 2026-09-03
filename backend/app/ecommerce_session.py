@@ -58,6 +58,7 @@ class EcommerceSessionManager:
         self.preview_path = self.profile_dir / "login-preview.png"
         self._lock = RLock()
         self._process: subprocess.Popen[bytes] | None = None
+        self._login_headless = False
 
     @property
     def platform_label(self) -> str:
@@ -78,14 +79,27 @@ class EcommerceSessionManager:
             "message": f"尚未登录{self.platform_label}账号。",
         }
 
-    def _message(self, kind: str) -> str:
+    def _message(self, kind: str, *, headless: bool | None = None) -> str:
         label = self.platform_label
+        use_headless = self._login_headless if headless is None else headless
         if kind == "pending":
-            return f"请在弹出的{label}窗口中完成登录，完成后关闭窗口。"
+            return (
+                f"请在登录预览中使用官方二维码完成{label}登录。"
+                if use_headless
+                else f"请在弹出的{label}窗口中完成登录，完成后关闭窗口。"
+            )
         if kind == "pending_short":
-            return f"请在弹出的{label}窗口中完成登录。"
+            return (
+                f"请在登录预览中完成{label}登录。"
+                if use_headless
+                else f"请在弹出的{label}窗口中完成登录。"
+            )
         if kind == "closed":
-            return "登录窗口已关闭，请重新发起登录。"
+            return (
+                "登录预览已关闭，请重新发起登录。"
+                if use_headless
+                else "登录窗口已关闭，请重新发起登录。"
+            )
         if kind == "relogin":
             return f"{label}会话已失效，请在当前网络环境下重新登录。"
         if kind == "ready":
@@ -164,6 +178,7 @@ class EcommerceSessionManager:
             if existing.get("state") == "ready" and self.profile_dir.exists():
                 return self._clean_status(existing)
             self.profile_dir.mkdir(parents=True, exist_ok=True)
+            self._login_headless = headless
             self.preview_path.unlink(missing_ok=True)
             self.status_path.write_text(
                 json.dumps(

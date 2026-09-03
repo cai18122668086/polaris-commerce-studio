@@ -638,6 +638,46 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
     )
 
 
+def run_local_login(
+    profile_root: str | Path,
+    account_id: str,
+    platform: str,
+    *,
+    target_url: str | None = None,
+    timeout_seconds: int = 600,
+) -> dict[str, Any]:
+    """Open a visible local login browser for one account profile."""
+
+    from .ecommerce_session import EcommerceSessionManager
+
+    if timeout_seconds <= 0:
+        raise LocalWorkerError("LOGIN_TIMEOUT_INVALID")
+    normalized_platform = platform.strip().casefold()
+    platform_map = {"tmall": "taobao", "alibaba1688": "1688"}
+    normalized_platform = platform_map.get(normalized_platform, normalized_platform)
+    if normalized_platform not in {"taobao", "1688", "jd", "pinduoduo"}:
+        raise LocalWorkerError("LOGIN_PLATFORM_INVALID")
+    profile_path = LocalProfileStore(profile_root).profile_path(account_id)
+    manager = EcommerceSessionManager(
+        profile_path,
+        platform="alibaba1688"
+        if normalized_platform == "1688"
+        else normalized_platform,
+        session_profile=f"domestic-{normalized_platform}",
+        state_style="legacy" if normalized_platform == "taobao" else "canonical",
+    )
+    manager.start_login(target_url, headless=False, timeout_seconds=timeout_seconds)
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        status = manager.status()
+        if status.get("state") not in {"login_pending", "risk_controlled"}:
+            return status
+        time.sleep(0.5)
+    with suppress(Exception):
+        manager.cancel_login()
+    raise LocalWorkerError("LOGIN_TIMEOUT")
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point; secrets are accepted only through environment vars."""
 
@@ -649,8 +689,31 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="validate environment configuration without connecting to the API",
     )
+    parser.add_argument(
+        "--login-account-id",
+        help="open a visible local login browser for one account ID",
+    )
+    parser.add_argument(
+        "--login-platform",
+        choices=("taobao", "tmall", "1688", "jd", "pinduoduo"),
+        default="taobao",
+    )
+    parser.add_argument("--login-url", help="optional official platform URL to open")
+    parser.add_argument("--login-timeout", type=int, default=600)
     args = parser.parse_args(argv)
     try:
+        if args.login_account_id:
+            profile_root = os.environ.get("POLARIS_WORKER_PROFILE_ROOT", "").strip()
+            if not profile_root:
+                raise LocalWorkerError("WORKER_PROFILE_ROOT_REQUIRED")
+            run_local_login(
+                profile_root,
+                args.login_account_id,
+                args.login_platform,
+                target_url=args.login_url,
+                timeout_seconds=args.login_timeout,
+            )
+            return 0
         config = LocalWorkerConfig.from_env()
         if args.check_config:
             return 0

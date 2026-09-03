@@ -29,6 +29,19 @@ python -m app.ecommerce_local_worker
 
 代理会周期发送心跳、领取任务并续租；按 `Ctrl+C` 或系统终止信号退出时，会停止领取并回报离线状态。首次灰度建议只配置一个淘宝/天猫能力和一个账号 profile。
 
+## 在本机完成账号登录
+
+当前灰度阶段可以先在本机直接打开可见官方登录窗口，账号 profile 会写入 `POLARIS_WORKER_PROFILE_ROOT\accounts\<account_id>`：
+
+```powershell
+python -m app.ecommerce_local_worker `
+  --login-account-id eac_xxx `
+  --login-platform taobao `
+  --login-url "https://login.taobao.com/"
+```
+
+完成扫码或人工验证后关闭窗口，确认命令返回成功，再启动 worker。后台账号记录的 `account_id` 必须与命令参数一致。此方式用于灰度验证本机 profile 抓取链路；远程登录画面桥接仍需后续接入。
+
 ## 安全边界
 
 - 远程控制面地址必须使用 HTTPS；仅允许 `localhost`/`127.0.0.1` 使用 HTTP 做本地测试。

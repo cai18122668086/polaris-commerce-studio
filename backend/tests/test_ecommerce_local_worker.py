@@ -244,3 +244,34 @@ def test_local_worker_config_requires_env_and_never_requires_cli_secret(monkeypa
     ):
         monkeypatch.delenv(name, raising=False)
     assert local_worker.main(["--check-config"]) == 2
+
+
+def test_local_login_uses_account_scoped_profile_without_api_credentials(
+    monkeypatch, tmp_path: Path
+):
+    observed: dict[str, object] = {}
+
+    class _Manager:
+        def __init__(self, profile_path, **kwargs):
+            observed["profile_path"] = profile_path
+            observed["kwargs"] = kwargs
+
+        def start_login(self, target_url, **kwargs):
+            observed["target_url"] = target_url
+            observed["start"] = kwargs
+
+        def status(self):
+            return {"state": "ready", "profileReady": True}
+
+    monkeypatch.setattr("app.ecommerce_session.EcommerceSessionManager", _Manager)
+    status = local_worker.run_local_login(
+        tmp_path,
+        "account_1",
+        "tmall",
+        target_url="https://login.taobao.com",
+        timeout_seconds=5,
+    )
+    assert status["state"] == "ready"
+    assert str(observed["profile_path"]).endswith("accounts\\account_1")
+    assert observed["kwargs"]["platform"] == "taobao"
+    assert observed["start"]["headless"] is False

@@ -196,6 +196,16 @@ class Settings(BaseSettings):
     ecommerce_pinduoduo_session_dir: Path = Field(
         default_factory=default_ecommerce_pinduoduo_session_dir
     )
+    # Local browser workers use short-lived, scope-bound enrollment/session
+    # tokens.  These values are deliberately bounded to keep credentials
+    # useful only for a narrow handoff window.
+    ecommerce_worker_enrollment_ttl_seconds: int = Field(
+        default=600, ge=60, le=1800
+    )
+    ecommerce_worker_token_ttl_seconds: int = Field(default=900, ge=60, le=3600)
+    ecommerce_worker_heartbeat_timeout_seconds: int = Field(
+        default=90, ge=30, le=600
+    )
     retention_enabled: bool = False
     retention_days: int = Field(default=30, ge=30, le=30)
     retention_interval_seconds: int = Field(default=3600, ge=60, le=86400)

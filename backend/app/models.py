@@ -17,7 +17,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -355,6 +355,71 @@ class EcommerceLoginSessionRecord(Base):
     error_code: Mapped[str | None] = mapped_column(String(64))
 
 
+class EcommerceWorkerRecord(TimestampMixin, Base):
+    """A registered outbound-only local browser execution agent."""
+
+    __tablename__ = "ecommerce_workers"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "workspace_id",
+            "device_id",
+            name="uq_ecommerce_workers_user_workspace_device",
+        ),
+        Index("ix_ecommerce_workers_workspace_status", "workspace_id", "status"),
+        Index("ix_ecommerce_workers_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    protocol_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    agent_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    capabilities: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(json_type()), default=list, nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), default="offline", server_default=text("'offline'"), nullable=False
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    session_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    session_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class EcommerceWorkerEnrollmentRecord(Base):
+    """One-time user-scoped token used to register a local worker."""
+
+    __tablename__ = "ecommerce_worker_enrollments"
+    __table_args__ = (Index("ix_ecommerce_worker_enrollments_expires", "expires_at"),)
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+
+
 class CrawlTaskRecord(TimestampMixin, Base):
     __tablename__ = "crawl_tasks"
     __table_args__ = (
@@ -403,7 +468,6 @@ class CrawlTaskRecord(TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
 
 
 class CrawlProfileLeaseRecord(TimestampMixin, Base):

@@ -32,6 +32,7 @@ from .ecommerce_health import (
 )
 from .ecommerce_routes import router as ecommerce_router
 from .ecommerce_session import EcommerceSessionManager
+from .ecommerce_worker_routes import router as ecommerce_worker_router
 from .errors import ApiError
 from .inspiration_routes import router as inspiration_router
 from .models import WorkspaceLimitRecord
@@ -289,6 +290,7 @@ def create_app(
     application.include_router(ecommerce_router)
     application.include_router(ecommerce_account_router)
     application.include_router(ecommerce_crawl_tasks_router)
+    application.include_router(ecommerce_worker_router)
     return application
 
 

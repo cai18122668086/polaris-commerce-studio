@@ -3,11 +3,12 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Annotated, Any
 
-from fastapi import Depends, Request, Security, status
+from fastapi import Depends, Security, status
 from fastapi.security import APIKeyCookie
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.requests import HTTPConnection
 
 from .database import get_session
 from .domain import (
@@ -185,7 +186,7 @@ def _principal_from_user(user: UserRecord, *, email_verified: bool) -> Principal
 
 
 async def get_principal(
-    request: Request,
+    request: HTTPConnection,
     session: SessionDependency,
     _session_cookie: Annotated[
         str | None, Security(_SESSION_COOKIE)

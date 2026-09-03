@@ -41,11 +41,19 @@ export default function AdminAccountsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeLoginIds, setActiveLoginIds] = useState<Set<string>>(() => new Set());
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const [streamStates, setStreamStates] = useState<Record<string, "connecting" | "connected" | "fallback">>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const pointerStart = useRef<{ accountId: string; x: number; y: number } | null>(null);
+  const streams = useRef<Record<string, WebSocket>>({});
+  const streamSeq = useRef(0);
 
   function sendBrowserInput(accountId: string, action: Record<string, unknown>) {
+    const stream = streams.current[accountId];
+    if (stream?.readyState === WebSocket.OPEN) {
+      stream.send(JSON.stringify({ type: "input", seq: ++streamSeq.current, action }));
+      return;
+    }
     void fetch("/api/ecommerce/session/input", {
       method: "POST",
       credentials: "include",
@@ -90,7 +98,7 @@ export default function AdminAccountsPage() {
     sendBrowserInput(accountId, { type: "wheel", deltaX: event.deltaX, deltaY: event.deltaY });
   }
 
-  async function load() {
+  async function load(): Promise<boolean> {
     setLoading(true);
     setError("");
     try {
@@ -103,9 +111,11 @@ export default function AdminAccountsPage() {
       setAccounts(accountResult.items);
       setWorkspaces(workspaceResult.items);
       setWorkspaceId((current) => current || workspaceResult.items[0]?.id || "");
+      return true;
     } catch (cause) {
-      setAllowed(false);
+      if (allowed === null) setAllowed(false);
       setError(errorDiagnostic(cause));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -125,7 +135,7 @@ export default function AdminAccountsPage() {
     setError("");
     setMessage("");
     try {
-      await apiClient.POST("/api/ecommerce/accounts", {
+      const result = await apiClient.POST("/api/ecommerce/accounts", {
         body: {
           workspace_id: workspaceId,
           platform,
@@ -133,11 +143,16 @@ export default function AdminAccountsPage() {
           display_name: displayName.trim() || null,
         },
       });
+      unwrapApiResponse(result);
       setAccountKey("");
       setDisplayName("");
       setShowForm(false);
-      setMessage("账号已添加。请在账号列表中按需启动受控登录。");
-      await load();
+      const refreshed = await load();
+      setMessage(
+        refreshed
+          ? "账号已添加。请在账号列表中按需启动受控登录。"
+          : "账号可能已创建，但列表刷新失败，请稍后手动刷新。",
+      );
     } catch (cause) {
       setError(errorDiagnostic(cause));
     } finally {
@@ -150,12 +165,19 @@ export default function AdminAccountsPage() {
     setBusyId(account.id);
     setError("");
     try {
-      await apiClient.PATCH("/api/ecommerce/accounts/{account_id}", {
+      const result = await apiClient.PATCH("/api/ecommerce/accounts/{account_id}", {
         params: { path: { account_id: account.id } },
         body: { status: nextStatus },
       });
-      setMessage(nextStatus === "active" ? "账号已恢复。" : "账号已暂停，不会被新任务选中。");
-      await load();
+      unwrapApiResponse(result);
+      const refreshed = await load();
+      setMessage(
+        refreshed
+          ? nextStatus === "active"
+            ? "账号已恢复。"
+            : "账号已暂停，不会被新任务选中。"
+          : "状态可能已更新，但列表刷新失败，请稍后手动刷新。",
+      );
     } catch (cause) {
       setError(errorDiagnostic(cause));
     } finally {
@@ -221,6 +243,53 @@ export default function AdminAccountsPage() {
     }
     return () => {
       cancelled = true;
+    };
+  }, [activeLoginIds]);
+
+  useEffect(() => {
+    const sockets = streams.current;
+    for (const accountId of activeLoginIds) {
+      if (sockets[accountId]) continue;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}`);
+      sockets[accountId] = socket;
+      setStreamStates((current) => ({ ...current, [accountId]: "connecting" }));
+      socket.onopen = () => setStreamStates((current) => ({ ...current, [accountId]: "connected" }));
+      socket.onmessage = (event) => {
+        try {
+          const frame = JSON.parse(event.data) as { type?: string; data?: string; format?: string };
+          if (frame.type !== "frame" || !frame.data) return;
+          const bytes = Uint8Array.from(atob(frame.data), (value) => value.charCodeAt(0));
+          const url = URL.createObjectURL(new Blob([bytes], { type: frame.format === "png" ? "image/png" : "image/jpeg" }));
+          setPreviewUrls((current) => {
+            const previous = current[accountId];
+            if (previous) URL.revokeObjectURL(previous);
+            return { ...current, [accountId]: url };
+          });
+        } catch {
+          // Keep the last valid preview when a frame is malformed.
+        }
+      };
+      socket.onerror = () => setStreamStates((current) => ({ ...current, [accountId]: "fallback" }));
+      socket.onclose = () => {
+        delete sockets[accountId];
+        setStreamStates((current) => ({ ...current, [accountId]: "fallback" }));
+        window.setTimeout(() => {
+          if (activeLoginIds.has(accountId)) {
+            setActiveLoginIds((current) => new Set(current));
+          }
+        }, 1000);
+      };
+    }
+    for (const accountId of Object.keys(sockets)) {
+      if (!activeLoginIds.has(accountId)) {
+        sockets[accountId].close();
+        delete sockets[accountId];
+      }
+    }
+    return () => {
+      for (const socket of Object.values(sockets)) socket.close();
+      for (const accountId of Object.keys(sockets)) delete sockets[accountId];
     };
   }, [activeLoginIds]);
 
@@ -322,7 +391,7 @@ export default function AdminAccountsPage() {
       {message ? <p className={styles.success} role="status">{message}</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
       <section className={styles.card}>
-        <div className={styles.sectionHeader}><div><h2>账号列表</h2><p>{accounts.length} 个账号 · 不在前台展示账号标识、Profile 或租约路径。</p></div><button className={styles.primary} type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} />添加账号</button></div>
+        <div className={styles.sectionHeader}><div><h2>账号列表</h2><p>{accounts.length} 个账号 · 不在前台展示账号标识、Profile 或租约路径。</p><small aria-live="polite">实时登录通道：{Object.values(streamStates).some((state) => state === "connected") ? "已连接" : "降级轮询"}</small></div><button className={styles.primary} type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} />添加账号</button></div>
         {showForm ? <div className={styles.form}>
           <label>工作区<select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}><option value="">请选择工作区</option>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select></label>
           <label>平台<select value={platform} onChange={(event) => setPlatform(event.target.value as Platform)}>{platforms.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>

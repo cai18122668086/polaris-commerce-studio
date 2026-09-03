@@ -5,19 +5,30 @@ adapter and never attempts login, CAPTCHA solving, or access-control bypasses.
 """
 
 import asyncio
+import base64
+import json
 import logging
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .admin_auth import AdminDependency
+from .admin_auth import AdminDependency, require_admin
 from .auth import Principal, get_principal
 from .database import get_session
 from .domain import (
@@ -1305,6 +1316,194 @@ def ecommerce_session_input(
             status_code=409, detail="当前登录浏览器会话已结束。"
         ) from exc
     return {"success": True}
+
+
+@router.websocket("/session/stream")
+async def ecommerce_session_stream(
+    websocket: WebSocket,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    _admin: Annotated[Principal, Depends(require_admin)],
+    account_id: str = Query(min_length=1, max_length=40),
+) -> None:
+    """Stream the isolated login browser and relay authenticated input.
+
+    Frames are published by the helper through a loopback file handoff. The
+    endpoint never exposes the profile directory, cookies, or CDP endpoint.
+    """
+
+    _require_login_enabled(websocket)  # type: ignore[arg-type]
+    account, manager, _ = _resolve_account_session_target(  # type: ignore[arg-type]
+        websocket,
+        session,
+        principal,
+        account_id=account_id,
+        requested_platform="auto",
+        write=False,
+    )
+    if account is None:
+        await websocket.close(code=4404, reason="登录会话必须绑定到指定电商账号。")
+        return
+    record = _latest_login_session(session, account.id)
+    if record is not None:
+        _sync_login_session(session, record, manager)
+        session.commit()
+    if record is None or record.status != EcommerceLoginSessionStatus.ACTIVE.value:
+        await websocket.close(code=4409, reason="当前没有进行中的登录流程。")
+        return
+    if record.transport != "headless_qr":
+        await websocket.close(code=4409, reason="当前登录流程不提供实时预览。")
+        return
+
+    stream_accounts = websocket.app.state.ecommerce_stream_accounts
+    if account.id in stream_accounts:
+        await websocket.close(code=4409, reason="该账号已有实时登录控制连接。")
+        return
+    stream_accounts.add(account.id)
+
+    await websocket.accept()
+    send_lock = asyncio.Lock()
+    sequence = 0
+    last_mtime_ns = 0
+    connected_at = asyncio.get_running_loop().time()
+    last_input_at = 0.0
+    try:
+        async def send_frame() -> None:
+            nonlocal sequence, last_mtime_ns
+            frame_path = (
+                manager.stream_path
+                if manager.stream_path.is_file()
+                else manager.preview_path
+            )
+            if not frame_path.is_file():
+                return
+            try:
+                stat = frame_path.stat()
+                if stat.st_mtime_ns == last_mtime_ns:
+                    return
+                payload = base64.b64encode(frame_path.read_bytes()).decode("ascii")
+            except OSError:
+                return
+            last_mtime_ns = stat.st_mtime_ns
+            sequence += 1
+            async with send_lock:
+                await websocket.send_json({
+                    "type": "frame",
+                    "seq": sequence,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "format": "jpeg" if frame_path == manager.stream_path else "png",
+                    "width": 0,
+                    "height": 0,
+                    "data": payload,
+                })
+
+        async def frame_pump() -> None:
+            while True:
+                status = manager.status()
+                if status.get("state") not in {"login_pending", "risk_controlled"}:
+                    with suppress(Exception):
+                        await websocket.close(
+                            code=4409, reason="登录会话已结束。"
+                        )
+                    return
+                await send_frame()
+                await asyncio.sleep(0.1)
+
+        pump = asyncio.create_task(frame_pump())
+        try:
+            while True:
+                message = await websocket.receive_text()
+                if asyncio.get_running_loop().time() - connected_at > 30 * 60:
+                    await websocket.close(
+                        code=4408, reason="实时登录连接已达到时长上限。"
+                    )
+                    return
+                if len(message) > 64 * 1024:
+                    await websocket.close(code=4400, reason="输入消息过大。")
+                    return
+                try:
+                    payload = json.loads(message)
+                except json.JSONDecodeError:
+                    await websocket.send_json(
+                        {
+                            "type": "ack",
+                            "accepted": False,
+                            "reason": "输入消息格式无效。",
+                        }
+                    )
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                action = (
+                    payload.get("action")
+                    if payload.get("type") == "input"
+                    else payload
+                )
+                if not isinstance(action, dict) or action.get("type") not in {
+                    "click",
+                    "drag",
+                    "wheel",
+                    "key",
+                    "text",
+                }:
+                    await websocket.send_json(
+                        {
+                            "type": "ack",
+                            "seq": payload.get("seq"),
+                            "accepted": False,
+                            "reason": "不支持的输入事件。",
+                        }
+                    )
+                    continue
+                status = manager.status()
+                if status.get("state") not in {"login_pending", "risk_controlled"}:
+                    await websocket.send_json(
+                        {
+                            "type": "ack",
+                            "seq": payload.get("seq"),
+                            "accepted": False,
+                            "reason": "登录会话已结束。",
+                        }
+                    )
+                    continue
+                now = asyncio.get_running_loop().time()
+                if now - last_input_at < 0.02:
+                    await websocket.send_json(
+                        {
+                            "type": "ack",
+                            "seq": payload.get("seq"),
+                            "accepted": False,
+                            "reason": "输入事件过于频繁。",
+                        }
+                    )
+                    continue
+                last_input_at = now
+                try:
+                    manager.enqueue_input(action)
+                    await websocket.send_json(
+                        {
+                            "type": "ack",
+                            "seq": payload.get("seq"),
+                            "accepted": True,
+                        }
+                    )
+                except RuntimeError:
+                    await websocket.send_json(
+                        {
+                            "type": "ack",
+                            "seq": payload.get("seq"),
+                            "accepted": False,
+                            "reason": "登录会话已结束。",
+                        }
+                    )
+        finally:
+            pump.cancel()
+            with suppress(asyncio.CancelledError):
+                await pump
+    except WebSocketDisconnect:
+        return
+    finally:
+        stream_accounts.discard(account.id)
 
 
 @router.post("/session/cancel")

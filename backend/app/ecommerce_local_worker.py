@@ -12,6 +12,7 @@ import errno
 import json
 import os
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
@@ -155,9 +156,13 @@ class WorkerApiClient:
         self.session_token = session_token
         self.timeout = timeout
 
-    def _post(self, path: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        _assert_no_sensitive_fields(payload)
-        body = json.dumps(dict(payload), ensure_ascii=False).encode("utf-8")
+    def _request(
+        self, method: str, path: str, payload: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        body = None
+        if payload is not None:
+            _assert_no_sensitive_fields(payload)
+            body = json.dumps(dict(payload), ensure_ascii=False).encode("utf-8")
         request = Request(
             urljoin(self.base_url, path.lstrip("/")),
             data=body,
@@ -166,7 +171,7 @@ class WorkerApiClient:
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
-            method="POST",
+            method=method,
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:
@@ -178,6 +183,12 @@ class WorkerApiClient:
         if not isinstance(parsed, dict):
             raise LocalWorkerError("WORKER_API_INVALID_RESPONSE")
         return parsed
+
+    def _post(self, path: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return self._request("POST", path, payload)
+
+    def _get(self, path: str) -> dict[str, Any]:
+        return self._request("GET", path)
 
     def heartbeat(self, worker_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         return self._post(
@@ -221,6 +232,11 @@ class WorkerApiClient:
         return self._post(
             f"/api/ecommerce/workers/{worker}/tasks/{task}/result", payload
         )
+
+    def control(self, worker_id: str, task_id: str) -> dict[str, Any]:
+        worker = _validate_id(worker_id, "worker_id")
+        task = _validate_id(task_id, "task_id")
+        return self._get(f"/api/ecommerce/workers/{worker}/tasks/{task}/control")
 
 
 class LocalWorkerRuntime:
@@ -274,3 +290,118 @@ class LocalWorkerRuntime:
                     },
                 )
             raise LocalWorkerError("WORKER_BROWSER_CRASH") from exc
+
+
+class LocalWorkerLoop:
+    """Poll the control plane while keeping task leases alive."""
+
+    def __init__(
+        self,
+        api: WorkerApiClient,
+        runtime: LocalWorkerRuntime,
+        *,
+        protocol_version: str = "worker.v1",
+        agent_version: str = "local-runtime.v1",
+        capabilities: list[str] | None = None,
+        heartbeat_interval_seconds: float = 20.0,
+        poll_interval_seconds: float = 2.0,
+        lease_renew_interval_seconds: float = 30.0,
+    ) -> None:
+        if heartbeat_interval_seconds <= 0 or poll_interval_seconds <= 0:
+            raise LocalWorkerError("WORKER_INTERVAL_INVALID")
+        if lease_renew_interval_seconds <= 0:
+            raise LocalWorkerError("WORKER_LEASE_INTERVAL_INVALID")
+        self.api = api
+        self.runtime = runtime
+        self.protocol_version = protocol_version
+        self.agent_version = agent_version
+        self.capabilities = list(capabilities or [])
+        self.heartbeat_interval_seconds = heartbeat_interval_seconds
+        self.poll_interval_seconds = poll_interval_seconds
+        self.lease_renew_interval_seconds = lease_renew_interval_seconds
+
+    def _heartbeat(self, ready: bool) -> dict[str, Any]:
+        return self.api.heartbeat(
+            self.runtime.worker_id,
+            {
+                "protocol_version": self.protocol_version,
+                "agent_version": self.agent_version,
+                "capabilities": self.capabilities,
+                "ready": ready,
+            },
+        )
+
+    def run_once(
+        self, crawl: Callable[[Path, Mapping[str, Any]], Mapping[str, Any]]
+    ) -> bool:
+        """Claim and execute at most one task; return whether work was done."""
+
+        response = self.api.claim(self.runtime.worker_id, self._platforms())
+        task = response.get("data")
+        if task is None:
+            return False
+        if not isinstance(task, Mapping):
+            raise LocalWorkerError("WORKER_TASK_INVALID")
+        task_id = _validate_id(str(task.get("id", "")), "task_id")
+        lease = task.get("lease")
+        if not isinstance(lease, Mapping) or not isinstance(
+            lease.get("fencing_token"), int
+        ):
+            raise LocalWorkerError("TASK_LEASE_REQUIRED")
+        fencing_token = int(lease["fencing_token"])
+        stop_renew = threading.Event()
+
+        def renew() -> None:
+            while not stop_renew.wait(self.lease_renew_interval_seconds):
+                try:
+                    self.api.renew_lease(self.runtime.worker_id, task_id, fencing_token)
+                except LocalWorkerError:
+                    return
+
+        renewer = threading.Thread(
+            target=renew, name="polaris-lease-renew", daemon=True
+        )
+        renewer.start()
+        try:
+            self.runtime.execute_claimed(task, crawl)
+        finally:
+            stop_renew.set()
+            renewer.join(timeout=max(1.0, self.lease_renew_interval_seconds))
+        return True
+
+    def run(
+        self,
+        crawl: Callable[[Path, Mapping[str, Any]], Mapping[str, Any]],
+        stop_event: threading.Event | None = None,
+    ) -> None:
+        """Run until ``stop_event`` is set, tolerating transient API outages."""
+
+        stop = stop_event or threading.Event()
+        last_heartbeat = 0.0
+        try:
+            while not stop.is_set():
+                now = time.monotonic()
+                if now - last_heartbeat >= self.heartbeat_interval_seconds:
+                    try:
+                        self._heartbeat(True)
+                        last_heartbeat = now
+                    except LocalWorkerError:
+                        stop.wait(self.poll_interval_seconds)
+                        continue
+                try:
+                    did_work = self.run_once(crawl)
+                except LocalWorkerError:
+                    did_work = False
+                if not did_work:
+                    stop.wait(self.poll_interval_seconds)
+        finally:
+            with suppress(LocalWorkerError):
+                self._heartbeat(False)
+
+    def _platforms(self) -> list[str] | None:
+        platforms = [
+            value.rsplit(".", 1)[-1]
+            for value in self.capabilities
+            if value.startswith("browser.")
+        ]
+        return list(dict.fromkeys(platforms)) or None

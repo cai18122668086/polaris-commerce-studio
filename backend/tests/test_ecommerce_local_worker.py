@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -74,6 +75,9 @@ class _FakeApi:
     def __init__(self):
         self.uploads: list[tuple[str, str, dict]] = []
         self.completions: list[tuple[str, str, dict]] = []
+        self.heartbeats: list[dict] = []
+        self.claims = 0
+        self.renewals = 0
 
     def upload_result(self, worker_id: str, task_id: str, payload: dict) -> dict:
         self.uploads.append((worker_id, task_id, payload))
@@ -81,6 +85,18 @@ class _FakeApi:
 
     def complete(self, worker_id: str, task_id: str, payload: dict) -> dict:
         self.completions.append((worker_id, task_id, payload))
+        return {"accepted": True}
+
+    def heartbeat(self, _worker_id: str, payload: dict) -> dict:
+        self.heartbeats.append(payload)
+        return {"accepted": True}
+
+    def claim(self, _worker_id: str, _platforms: list[str] | None = None) -> dict:
+        self.claims += 1
+        return {"data": _task()} if self.claims == 1 else {"data": None}
+
+    def renew_lease(self, _worker_id: str, _task_id: str, _fencing_token: int) -> dict:
+        self.renewals += 1
         return {"accepted": True}
 
 
@@ -133,3 +149,27 @@ def test_runtime_reports_browser_crash_without_exposing_exception(tmp_path: Path
         "error_code": "WORKER_BROWSER_CRASH",
         "error_message_safe": "本机浏览器执行失败。",
     }
+
+
+def test_worker_loop_claims_renews_and_stops_cleanly(tmp_path: Path):
+    api = _FakeApi()
+    runtime = LocalWorkerRuntime(api, "worker_1", LocalProfileStore(tmp_path))
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        capabilities=["browser.taobao"],
+        lease_renew_interval_seconds=0.01,
+    )
+
+    def crawl(_profile_path: Path, _task: dict) -> dict:
+        time.sleep(0.03)
+        return {"platform": "taobao", "title": "结果"}
+
+    assert loop.run_once(crawl) is True
+    assert api.claims == 1
+    assert api.renewals >= 1
+
+    stop = threading.Event()
+    stop.set()
+    loop.run(crawl, stop)
+    assert api.heartbeats[-1]["ready"] is False

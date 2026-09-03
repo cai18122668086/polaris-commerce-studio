@@ -1296,7 +1296,14 @@ def ecommerce_session_input(
         raise HTTPException(status_code=409, detail="当前没有可操作的登录浏览器会话。")
     action = payload.model_dump(exclude_none=True)
     action.pop("account_id", None)
-    manager.enqueue_input(action)
+    try:
+        manager.enqueue_input(action)
+    except RuntimeError as exc:
+        # The browser may exit between the status check and the enqueue. Treat
+        # that race as a stale session instead of surfacing a generic 500.
+        raise HTTPException(
+            status_code=409, detail="当前登录浏览器会话已结束。"
+        ) from exc
     return {"success": True}
 
 

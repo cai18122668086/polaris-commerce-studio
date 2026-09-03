@@ -356,7 +356,7 @@ def _read_page_snapshot(page: object) -> tuple[str, str, str]:
     current_url = page.url  # type: ignore[attr-defined]
     title = page.title() or ""  # type: ignore[attr-defined]
     body = " ".join(
-        page.locator("body").inner_text(timeout=5_000).split()  # type: ignore[attr-defined]
+        page.locator("body").inner_text(timeout=1_500).split()  # type: ignore[attr-defined]
     )
     return current_url, title, body
 
@@ -615,7 +615,11 @@ def main() -> int:
                 return 0
 
             with suppress(PlaywrightTimeoutError):
-                page.goto(target_url, wait_until="domcontentloaded", timeout=45_000)
+                page.goto(
+                    target_url,
+                    wait_until="commit" if args.headless else "domcontentloaded",
+                    timeout=15_000 if args.headless else 45_000,
+                )
             if args.platform == "jd":
                 # The page is now the only login surface. Wait for a real
                 # post-login navigation before checking the order center again;
@@ -624,20 +628,23 @@ def main() -> int:
                 jd_login_page_seen = True
                 jd_probe_attempted_since_login = False
             for _ in range(600):
+                _drain_input_actions(page, args.actions_dir)
                 try:
                     if not context.pages or page.is_closed():
                         break
                     current_url = page.url.lower()
                     title = (page.title() or "").lower()
                     body = " ".join(
-                        page.locator("body").inner_text(timeout=5_000).split()
+                        page.locator("body").inner_text(timeout=1_500).split()
                     ).lower()
                 except (PlaywrightTimeoutError, PlaywrightError):
                     if page.is_closed():
                         break
                     body = ""
-                _write_preview(page, args.screenshot_path)
-                _drain_input_actions(page, args.actions_dir)
+                # CDP screencast frames are the primary transport. Keep the
+                # PNG snapshot as a low-rate fallback for older clients.
+                if args.screenshot_path is not None and (_ % 10 == 0):
+                    _write_preview(page, args.screenshot_path)
                 login_page = (
                     any(
                         marker in current_url
@@ -705,7 +712,7 @@ def main() -> int:
                         else f"请在弹出的{label}窗口中完成登录。"
                     ),
                 )
-                time.sleep(1)
+                time.sleep(0.2)
             else:
                 _write(
                     status_path, "signed_out", f"{label}登录等待超时，请重新发起登录。"

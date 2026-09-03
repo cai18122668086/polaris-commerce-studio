@@ -70,6 +70,13 @@ BLOCKED_PAGE_MARKERS = (
     "\u8bf7\u6c42\u5f02\u5e38",
     "\u7cfb\u7edf\u7e41\u5fd9",
 )
+LOGIN_PAGE_MARKERS = ("login_jump",)
+CAPTCHA_PAGE_MARKERS = ("\u6ed1\u5757\u9a8c\u8bc1", "\u9a8c\u8bc1\u7801", "nc_1_n1")
+RISK_PAGE_MARKERS = (
+    "x5secdata",
+    "\u8bbf\u95ee\u53d7\u9650",
+    "\u8bf7\u6c42\u5f02\u5e38",
+)
 _CACHE_TTL_SECONDS = 300
 _CACHE: dict[str, tuple[float, Product]] = {}
 _CACHE_LOCK = RLock()
@@ -102,6 +109,9 @@ class Product:
     services: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     image_diagnostics: dict[str, int] = field(default_factory=dict)
+    # Explicit page-level access state used to distinguish an upstream login,
+    # CAPTCHA, or risk-control shell from a genuinely empty product page.
+    access_state: str | None = None
 
 
 def is_supported_url(url: str) -> bool:
@@ -779,11 +789,32 @@ def parse_product_html(page_html: str, source_url: str, resolved_url: str) -> Pr
     )
     page_text = re.sub(r"\s+", " ", html_lib.unescape(page_text)).strip().lower()
     normalized_title = (title or "").strip().lower()
+    normalized_html = page_html.lower()
     blocked = normalized_title in {
         "\u767b\u5f55",
         "\u8bf7\u767b\u5f55",
         "\u9a8c\u8bc1",
-    } or any(marker in page_text for marker in BLOCKED_PAGE_MARKERS)
+    } or any(marker in page_text for marker in BLOCKED_PAGE_MARKERS) or any(
+        marker in normalized_html
+        for marker in (*LOGIN_PAGE_MARKERS, *CAPTCHA_PAGE_MARKERS, *RISK_PAGE_MARKERS)
+    )
+    access_state: str | None = None
+    if blocked:
+        # Prefer the most actionable diagnosis when a platform combines
+        # multiple prompts on one interstitial (for example, "请登录后完成
+        # 验证码").  No page content is returned to callers or logs.
+        if any(
+            marker in page_text or marker in normalized_html
+            for marker in CAPTCHA_PAGE_MARKERS
+        ):
+            access_state = "captcha_required"
+        elif normalized_title in {"登录", "请登录"} or any(
+            marker in page_text or marker in normalized_html
+            for marker in ("请登录", "登录后查看", *LOGIN_PAGE_MARKERS)
+        ):
+            access_state = "login_required"
+        else:
+            access_state = "risk_controlled"
     if blocked:
         images = []
         title = None
@@ -813,6 +844,7 @@ def parse_product_html(page_html: str, source_url: str, resolved_url: str) -> Pr
         services,
         warnings,
         image_diagnostics,
+        access_state,
     )
 
 

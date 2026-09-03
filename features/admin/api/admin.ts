@@ -221,6 +221,12 @@ export type AdminWorkspace = {
   needs_relogin_count: number;
 };
 
+export type UserWorkspace = {
+  id: string;
+  name: string;
+  role: "owner" | "admin" | "member" | "viewer" | string;
+};
+
 type AdminListResponse<T> = {
   items: T[];
   pagination: AdminPagination;
@@ -303,6 +309,17 @@ export async function getAdminWorkspaces(
     signal,
   });
   return parseResponse<AdminListResponse<AdminWorkspace>>(response);
+}
+
+/** Workspaces visible to the signed-in user (already membership-filtered). */
+export async function getUserWorkspaces(signal?: AbortSignal): Promise<UserWorkspace[]> {
+  const response = await fetch("/api/v1/workspaces", {
+    credentials: "include",
+    cache: "no-store",
+    headers: requestHeaders(),
+    signal,
+  });
+  return parseResponse<UserWorkspace[]>(response);
 }
 export async function getAdminLogs(
   params: {

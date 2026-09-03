@@ -35,7 +35,25 @@ from .supertokens_auth import (
 
 _EXTERNAL_AUTH_PROVIDER = "supertokens"
 _MAX_JIT_ATTEMPTS = 3
-_SESSION_COOKIE = APIKeyCookie(
+
+
+class _HTTPConnectionAPIKeyCookie(APIKeyCookie):
+    """Cookie security scheme compatible with HTTP and WebSocket scopes.
+
+    FastAPI's built-in ``APIKeyCookie`` annotates its dependency with
+    ``Request``.  A WebSocket handshake exposes a Starlette ``WebSocket``
+    (an ``HTTPConnection``), so the generated dependency can raise a 500
+    before our authentication adapter gets a chance to inspect the session.
+    Keep the OpenAPI security scheme while accepting the common connection
+    interface at runtime.
+    """
+
+    async def __call__(self, request: HTTPConnection) -> str | None:
+        api_key = request.cookies.get(self.model.name)
+        return self.check_api_key(api_key)
+
+
+_SESSION_COOKIE = _HTTPConnectionAPIKeyCookie(
     name="sAccessToken",
     scheme_name="SuperTokensSession",
     description=(

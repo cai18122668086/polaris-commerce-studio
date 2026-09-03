@@ -4250,6 +4250,172 @@
         "title": "SessionCancelRequest",
         "type": "object"
       },
+      "SessionInputRequest": {
+        "properties": {
+          "account_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          },
+          "button": {
+            "default": "left",
+            "enum": [
+              "left",
+              "middle",
+              "right"
+            ],
+            "title": "Button",
+            "type": "string"
+          },
+          "deltaX": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": -10000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deltax"
+          },
+          "deltaY": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": -10000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deltay"
+          },
+          "fromX": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fromx"
+          },
+          "fromY": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fromy"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "toX": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tox"
+          },
+          "toY": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toy"
+          },
+          "type": {
+            "enum": [
+              "click",
+              "drag",
+              "wheel",
+              "key",
+              "text"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "x": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X"
+          },
+          "y": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y"
+          }
+        },
+        "required": [
+          "account_id",
+          "type"
+        ],
+        "title": "SessionInputRequest",
+        "type": "object"
+      },
       "SessionStartRequest": {
         "properties": {
           "account_id": {
@@ -5142,6 +5308,55 @@
           }
         ],
         "summary": "Ecommerce Session Cancel",
+        "tags": [
+          "ecommerce"
+        ]
+      }
+    },
+    "/api/ecommerce/session/input": {
+      "post": {
+        "description": "Relay one user input event to the isolated login browser.",
+        "operationId": "ecommerce_session_input_api_ecommerce_session_input_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionInputRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ecommerce Session Input Api Ecommerce Session Input Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ecommerce Session Input",
         "tags": [
           "ecommerce"
         ]

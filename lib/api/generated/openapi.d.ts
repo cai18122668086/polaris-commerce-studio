@@ -206,6 +206,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/session/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ecommerce Session Input
+         * @description Relay one user input event to the isolated login browser.
+         */
+        post: operations["ecommerce_session_input_api_ecommerce_session_input_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecommerce/session/open-page": {
         parameters: {
             query?: never;
@@ -2687,6 +2707,42 @@ export interface components {
             /** Account Id */
             account_id: string;
         };
+        /** SessionInputRequest */
+        SessionInputRequest: {
+            /** Account Id */
+            account_id: string;
+            /**
+             * Button
+             * @default left
+             * @enum {string}
+             */
+            button: "left" | "middle" | "right";
+            /** Deltax */
+            deltaX?: number | null;
+            /** Deltay */
+            deltaY?: number | null;
+            /** Fromx */
+            fromX?: number | null;
+            /** Fromy */
+            fromY?: number | null;
+            /** Key */
+            key?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Tox */
+            toX?: number | null;
+            /** Toy */
+            toY?: number | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "click" | "drag" | "wheel" | "key" | "text";
+            /** X */
+            x?: number | null;
+            /** Y */
+            y?: number | null;
+        };
         /** SessionStartRequest */
         SessionStartRequest: {
             /** Account Id */
@@ -3188,6 +3244,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SessionCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ecommerce_session_input_api_ecommerce_session_input_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionInputRequest"];
             };
         };
         responses: {

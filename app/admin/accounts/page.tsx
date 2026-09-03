@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type WheelEvent } from "react";
 import { Loader2, LogIn, Pause, Play, Plus, RefreshCw, ShieldCheck, Square } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
@@ -43,6 +43,52 @@ export default function AdminAccountsPage() {
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const pointerStart = useRef<{ accountId: string; x: number; y: number } | null>(null);
+
+  function sendBrowserInput(accountId: string, action: Record<string, unknown>) {
+    void fetch("/api/ecommerce/session/input", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_id: accountId, ...action }),
+    }).catch(() => undefined);
+  }
+
+  function imagePoint(event: PointerEvent<HTMLImageElement>) {
+    const image = event.currentTarget;
+    const rect = image.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.round((event.clientX - rect.left) * (image.naturalWidth / rect.width))),
+      y: Math.max(0, Math.round((event.clientY - rect.top) * (image.naturalHeight / rect.height))),
+    };
+  }
+
+  function onPreviewPointerDown(accountId: string, event: PointerEvent<HTMLImageElement>) {
+    const point = imagePoint(event);
+    pointerStart.current = { accountId, ...point };
+    event.currentTarget.parentElement?.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onPreviewPointerUp(accountId: string, event: PointerEvent<HTMLImageElement>) {
+    const start = pointerStart.current;
+    pointerStart.current = null;
+    if (!start || start.accountId !== accountId) return;
+    const point = imagePoint(event);
+    const moved = Math.hypot(point.x - start.x, point.y - start.y) > 6;
+    sendBrowserInput(accountId, moved ? { type: "drag", fromX: start.x, fromY: start.y, toX: point.x, toY: point.y } : { type: "click", ...point });
+  }
+
+  function onPreviewKeyDown(accountId: string, event: KeyboardEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (event.key.length === 1) sendBrowserInput(accountId, { type: "text", text: event.key });
+    else sendBrowserInput(accountId, { type: "key", key: event.key });
+  }
+
+  function onPreviewWheel(accountId: string, event: WheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    sendBrowserInput(accountId, { type: "wheel", deltaX: event.deltaX, deltaY: event.deltaY });
+  }
 
   async function load() {
     setLoading(true);
@@ -284,7 +330,7 @@ export default function AdminAccountsPage() {
           <label>显示名称<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="例如：淘宝主账号" /></label>
           <button className={styles.primary} type="button" onClick={() => void createAccount()} disabled={busyId === "new"}>{busyId === "new" ? "保存中…" : "保存账号"}</button>
         </div> : null}
-        <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td>{previewUrls[account.id] ? <div style={{ marginBottom: 8 }}><img src={previewUrls[account.id]} alt={`${account.label}登录二维码预览`} style={{ display: "block", width: 180, height: 180, objectFit: "contain", borderRadius: 8, background: "#fff" }} /><small>请使用官方页面扫码或完成验证</small></div> : null}<div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>
+        <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td>{previewUrls[account.id] ? <div style={{ marginBottom: 8 }}><div tabIndex={0} role="application" aria-label={`${account.label}可操作登录浏览器`} onKeyDown={(event) => onPreviewKeyDown(account.id, event)} onWheel={(event) => onPreviewWheel(account.id, event)} style={{ width: "min(960px, 70vw)", maxHeight: "720px", overflow: "auto", border: "1px solid #d9d9e8", borderRadius: 8, background: "#fff", cursor: "crosshair", outline: "none" }}><img src={previewUrls[account.id]} alt={`${account.label}登录浏览器`} draggable={false} onPointerDown={(event) => onPreviewPointerDown(account.id, event)} onPointerUp={(event) => onPreviewPointerUp(account.id, event)} style={{ display: "block", width: "100%", height: "auto", userSelect: "none" }} /></div><small>可点击、拖动、滚动或先点击界面后输入；操作会发送到该账号的隔离登录浏览器</small></div> : null}<div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>
       </section>
     </main>
   </AdminShell>;

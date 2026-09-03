@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
 from typing import Any
+from uuid import uuid4
 
 
 def _utc_now() -> str:
@@ -56,6 +57,7 @@ class EcommerceSessionManager:
         self.state_style = state_style
         self.status_path = self.profile_dir / "session-status.json"
         self.preview_path = self.profile_dir / "login-preview.png"
+        self.actions_dir = self.profile_dir / "login-actions"
         self._lock = RLock()
         self._process: subprocess.Popen[bytes] | None = None
         self._login_headless = False
@@ -180,6 +182,9 @@ class EcommerceSessionManager:
             self.profile_dir.mkdir(parents=True, exist_ok=True)
             self._login_headless = headless
             self.preview_path.unlink(missing_ok=True)
+            self.actions_dir.mkdir(parents=True, exist_ok=True)
+            for action_path in self.actions_dir.glob("*.json"):
+                action_path.unlink(missing_ok=True)
             self.status_path.write_text(
                 json.dumps(
                     {
@@ -228,6 +233,7 @@ class EcommerceSessionManager:
             if headless:
                 command.append("--headless")
                 command.extend(["--screenshot-path", str(self.preview_path)])
+                command.extend(["--actions-dir", str(self.actions_dir)])
             if target_url:
                 command.extend(["--target-url", target_url])
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -269,6 +275,20 @@ class EcommerceSessionManager:
                 )
             return self.status()
 
+    def enqueue_input(self, action: dict[str, Any]) -> None:
+        """Queue one user-originated browser input for the login helper."""
+
+        with self._lock:
+            if self._process is None or self._process.poll() is not None:
+                raise RuntimeError("LOGIN_SESSION_NOT_ACTIVE")
+            self.actions_dir.mkdir(parents=True, exist_ok=True)
+            action_path = self.actions_dir / f"{uuid4().hex}.json"
+            temporary_path = action_path.with_suffix(".tmp")
+            temporary_path.write_text(
+                json.dumps(action, ensure_ascii=False), encoding="utf-8"
+            )
+            temporary_path.replace(action_path)
+
     def cancel_login(self) -> dict[str, Any]:
         """Stop only this account's helper and clear its short-lived preview."""
 
@@ -281,6 +301,8 @@ class EcommerceSessionManager:
                     process.wait(timeout=5)
             self._process = None
             self.preview_path.unlink(missing_ok=True)
+            for action_path in self.actions_dir.glob("*.json"):
+                action_path.unlink(missing_ok=True)
             self.status_path.parent.mkdir(parents=True, exist_ok=True)
             self.status_path.write_text(
                 json.dumps(

@@ -222,6 +222,30 @@ def test_login_preview_is_protected_and_not_ready_is_safe_error(client) -> None:
     assert "profile_path" not in preview.text.lower()
 
 
+def test_login_input_is_relayed_only_to_active_session(client) -> None:
+    account = _create_account(client, account_key="interactive-login")
+    manager = _pending_manager(client, account)
+    queued: list[dict[str, Any]] = []
+    manager.enqueue_input = lambda action: queued.append(action)  # type: ignore[method-assign]
+    started = client.post(
+        "/api/ecommerce/session/start",
+        json={"account_id": account["id"], "platform": "taobao"},
+    )
+    assert started.status_code == 200
+
+    response = client.post(
+        "/api/ecommerce/session/input",
+        json={
+            "account_id": account["id"],
+            "type": "click",
+            "x": 420,
+            "y": 260,
+        },
+    )
+    assert response.status_code == 200
+    assert queued == [{"type": "click", "x": 420.0, "y": 260.0, "button": "left"}]
+
+
 def test_login_cancel_updates_session_and_audit(client) -> None:
     account = _create_account(client, account_key="cancel-login")
     manager = _pending_manager(client, account)

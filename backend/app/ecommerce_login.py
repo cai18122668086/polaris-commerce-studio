@@ -269,6 +269,40 @@ def _write_preview(page: object, screenshot_path: Path | None) -> None:
         return
 
 
+def _drain_input_actions(page: object, actions_dir: Path | None) -> None:
+    """Apply user-originated input events from the protected action queue."""
+
+    if actions_dir is None or not actions_dir.is_dir():
+        return
+    for action_path in sorted(actions_dir.glob("*.json")):
+        try:
+            action = json.loads(action_path.read_text(encoding="utf-8"))
+            action_path.unlink(missing_ok=True)
+            if not isinstance(action, dict):
+                continue
+            kind = action.get("type")
+            if kind == "click":
+                page.mouse.click(
+                    float(action["x"]),
+                    float(action["y"]),
+                    button=action.get("button", "left"),
+                )
+            elif kind == "drag":
+                page.mouse.move(float(action["fromX"]), float(action["fromY"]))
+                page.mouse.down()
+                page.mouse.move(float(action["toX"]), float(action["toY"]))
+                page.mouse.up()
+            elif kind == "wheel":
+                page.mouse.wheel(
+                    float(action.get("deltaX", 0)), float(action.get("deltaY", 0))
+                )
+            elif kind == "key":
+                page.keyboard.press(str(action["key"]))
+            elif kind == "text":
+                page.keyboard.insert_text(str(action["text"]))
+        except Exception:
+            with suppress(Exception):
+                action_path.unlink(missing_ok=True)
 def _read_page_snapshot(page: object) -> tuple[str, str, str]:
     """Read only URL/title/visible text needed for session state detection."""
 
@@ -433,6 +467,7 @@ def main() -> int:
         help="Run the authorized login profile without a local display.",
     )
     parser.add_argument("--screenshot-path", type=Path)
+    parser.add_argument("--actions-dir", type=Path)
     parser.add_argument("--timeout-seconds", type=int, default=600)
     parser.add_argument(
         "--platform",
@@ -553,6 +588,7 @@ def main() -> int:
                         break
                     body = ""
                 _write_preview(page, args.screenshot_path)
+                _drain_input_actions(page, args.actions_dir)
                 login_page = (
                     any(
                         marker in current_url

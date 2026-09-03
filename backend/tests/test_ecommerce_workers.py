@@ -218,6 +218,16 @@ def test_worker_result_upload_persists_snapshot_and_rejects_sensitive_fields(cli
     )
     assert result.status_code == 200, result.text
     assert result.json()["data"]["status"] == "succeeded"
+    replay = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/{task_id}/result",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={
+            "fencing_token": lease,
+            "result": {"platform": "taobao", "title": "重复提交应幂等"},
+        },
+    )
+    assert replay.status_code == 200
+    assert replay.json()["data"]["idempotent"] is True
     stored = client.get(f"/api/ecommerce/crawl-tasks/{task_id}/result")
     assert stored.status_code == 200
     assert stored.json()["data"]["result"]["title"] == "本机代理商品结果"

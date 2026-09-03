@@ -871,12 +871,34 @@ async def upload_worker_task_result(
             "CRAWL_TASK_NOT_FOUND",
             "未找到指定抓取任务。",
         )
+    # A lost HTTP response must be safe to retry after the lease has already
+    # been released.  Return the durable snapshot identity without accepting
+    # a second result write.
+    if (
+        task.status == CrawlTaskStatus.SUCCEEDED.value
+        and task.result_snapshot_id is not None
+    ):
+        return {
+            "success": True,
+            "data": {
+                "task_id": task_id,
+                "status": task.status,
+                "snapshot_id": task.result_snapshot_id,
+                "idempotent": True,
+            },
+        }
     lease = _lease_for_worker_task(session, worker, task_id, payload.fencing_token)
     if task.status != CrawlTaskStatus.RUNNING.value:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "TASK_NOT_RUNNING",
             "当前任务不在执行状态，不能提交结果。",
+        )
+    if task.result_snapshot_id is not None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "RESULT_ALREADY_PERSISTED",
+            "该任务结果已保存，请勿重复提交。",
         )
     result_data = payload.result.model_dump(by_alias=True, exclude_none=True)
     if str(result_data.get("platform") or "").casefold() != task.platform.casefold():
@@ -910,6 +932,7 @@ async def upload_worker_task_result(
             owner_id=worker.id,
             fencing_token=payload.fencing_token,
         )
+
     try:
         snapshot_id, enriched = await _persist_product_snapshot(
             request.app,

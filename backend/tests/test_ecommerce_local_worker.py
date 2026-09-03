@@ -4,6 +4,7 @@ import os
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -173,3 +174,46 @@ def test_worker_loop_claims_renews_and_stops_cleanly(tmp_path: Path):
     stop.set()
     loop.run(crawl, stop)
     assert api.heartbeats[-1]["ready"] is False
+
+
+def test_local_product_crawler_uses_only_claimed_profile(monkeypatch, tmp_path: Path):
+    fake_product = SimpleNamespace(
+        platform="taobao",
+        product_id="123",
+        title="本机商品",
+        price="19.9",
+        shop_name="店铺",
+        sales=None,
+        images=[SimpleNamespace(url="https://img.example/1.jpg", role="main")],
+        sku_prop_groups=[],
+        skus=[],
+        props_text="",
+        services=[],
+        image_diagnostics={},
+        warnings=[],
+        access_state=None,
+    )
+    observed: dict[str, object] = {}
+
+    def fake_browser(url: str, timeout_ms: int, profile_dir: str):
+        observed.update(url=url, timeout_ms=timeout_ms, profile_dir=profile_dir)
+        return fake_product
+
+    monkeypatch.setattr("app.ecommerce_fetcher.crawl_one_browser", fake_browser)
+    callback = local_worker.build_local_product_crawler(timeout_ms=1234)
+    result = callback(
+        tmp_path / "accounts" / "account_1",
+        {
+            "platform": "taobao",
+            "canonical_url": "https://item.taobao.com/item.htm?id=123",
+            "request_payload": {"includeDescImages": False},
+        },
+    )
+    assert result["platform"] == "taobao"
+    assert result["title"] == "本机商品"
+    assert result["descImageUrls"] == []
+    assert observed == {
+        "url": "https://item.taobao.com/item.htm?id=123",
+        "timeout_ms": 1234,
+        "profile_dir": str(tmp_path / "accounts" / "account_1"),
+    }

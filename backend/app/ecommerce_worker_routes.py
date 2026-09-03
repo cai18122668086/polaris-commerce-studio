@@ -60,6 +60,10 @@ PrincipalDependency = Annotated[Principal, Depends(get_principal)]
 _ALLOWED_PROTOCOL = {"worker.v1"}
 _MAX_CAPABILITIES = 32
 _RETRYABLE_WORKER_ERRORS = {
+    "CAPTCHA_REQUIRED",
+    "LOGIN_REQUIRED",
+    "RESULT_INCOMPLETE",
+    "RISK_CONTROL_PAGE",
     "WORKER_TIMEOUT",
     "WORKER_BROWSER_CRASH",
     "WORKER_UNAVAILABLE",

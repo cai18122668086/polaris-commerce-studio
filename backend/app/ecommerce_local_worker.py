@@ -38,6 +38,15 @@ class LocalWorkerError(RuntimeError):
     """A safe, non-secret local worker error."""
 
 
+class LocalWorkerTaskError(LocalWorkerError):
+    """A safe task outcome that can be reported to the control plane."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(code)
+
+
 def _validate_id(value: str, label: str) -> str:
     normalized = value.strip()
     if not _SAFE_ID.fullmatch(normalized):
@@ -275,6 +284,19 @@ class LocalWorkerRuntime:
                     task_id,
                     {"fencing_token": fencing_token, "result": dict(result)},
                 )
+        except LocalWorkerTaskError as exc:
+            with suppress(Exception):
+                self.api.complete(
+                    self.worker_id,
+                    task_id,
+                    {
+                        "fencing_token": fencing_token,
+                        "outcome": "failed",
+                        "error_code": exc.code,
+                        "error_message_safe": exc.message,
+                    },
+                )
+            raise
         except LocalWorkerError:
             raise
         except Exception as exc:
@@ -290,6 +312,90 @@ class LocalWorkerRuntime:
                     },
                 )
             raise LocalWorkerError("WORKER_BROWSER_CRASH") from exc
+
+
+def build_local_product_crawler(
+    *, timeout_ms: int = 30_000
+) -> Callable[[Path, Mapping[str, Any]], Mapping[str, Any]]:
+    """Build a profile-backed browser crawler for claimed domestic tasks.
+
+    The returned callback accepts only the local profile path and server task
+    metadata. It never reads or serializes profile files itself; the platform
+    adapters use the path to launch their isolated browser session.
+    """
+
+    if timeout_ms <= 0:
+        raise LocalWorkerError("BROWSER_TIMEOUT_INVALID")
+
+    def crawl(profile_path: Path, task: Mapping[str, Any]) -> Mapping[str, Any]:
+        from .ecommerce_1688 import crawl_one_1688_browser
+        from .ecommerce_fetcher import crawl_one_browser
+        from .ecommerce_jd import crawl_one_jd_browser
+        from .ecommerce_pinduoduo import crawl_one_pinduoduo_browser
+        from .ecommerce_routes import _normalise
+
+        url = task.get("canonical_url") or task.get("source_url")
+        if not isinstance(url, str) or not url.strip():
+            raise LocalWorkerTaskError("TASK_URL_REQUIRED", "任务缺少商品链接。")
+        task_platform = task.get("platform")
+        if not isinstance(task_platform, str):
+            raise LocalWorkerTaskError("TASK_PLATFORM_REQUIRED", "任务缺少平台标识。")
+        request_payload = task.get("request_payload")
+        include_desc = True
+        if isinstance(request_payload, Mapping):
+            include_desc = bool(request_payload.get("includeDescImages", True))
+        platform = task_platform.casefold()
+        result: Any
+        try:
+            if platform in {"taobao", "tmall"}:
+                result = crawl_one_browser(url, timeout_ms, str(profile_path))
+            elif platform == "1688":
+                result = crawl_one_1688_browser(url, timeout_ms, str(profile_path))
+            elif platform == "jd":
+                result = crawl_one_jd_browser(url, timeout_ms, str(profile_path))
+            elif platform == "pinduoduo":
+                result = crawl_one_pinduoduo_browser(url, timeout_ms, str(profile_path))
+            else:
+                raise LocalWorkerTaskError(
+                    "PLATFORM_NOT_SUPPORTED", "本机代理暂不支持该平台。"
+                )
+        except LocalWorkerTaskError:
+            raise
+        except TimeoutError as exc:
+            raise LocalWorkerTaskError(
+                "WORKER_TIMEOUT", "本机浏览器执行超时，请稍后重试。"
+            ) from exc
+        except Exception as exc:
+            raise LocalWorkerTaskError(
+                "WORKER_BROWSER_CRASH", "本机浏览器执行失败，请稍后重试。"
+            ) from exc
+
+        access_state = getattr(result, "access_state", None)
+        status_value = getattr(result, "status", None)
+        if access_state in {"login_required", "risk_controlled", "captcha_required"}:
+            messages = {
+                "login_required": "本机账号需要重新登录。",
+                "risk_controlled": "商品页面触发安全验证，请人工处理后重试。",
+                "captcha_required": "商品页面需要人工完成验证码验证。",
+            }
+            raise LocalWorkerTaskError(access_state.upper(), messages[access_state])
+        if status_value is not None and status_value != "product":
+            status_code = {
+                "login_required": "LOGIN_REQUIRED",
+                "risk_controlled": "RISK_CONTROL_PAGE",
+                "captcha_required": "CAPTCHA_REQUIRED",
+                "product_not_found": "PRODUCT_NOT_FOUND",
+            }.get(str(status_value), "WORKER_FAILED")
+            raise LocalWorkerTaskError(status_code, "本机商品页面未返回可用商品结果。")
+        normalized = _normalise(result, url.strip(), include_desc)
+        normalized["platform"] = platform
+        if not normalized.get("title") and not normalized.get("numIid"):
+            raise LocalWorkerTaskError(
+                "RESULT_INCOMPLETE", "本机未读取到完整商品字段。"
+            )
+        return normalized
+
+    return crawl
 
 
 class LocalWorkerLoop:

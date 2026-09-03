@@ -8,14 +8,18 @@ storage, or CDP endpoint are ever serialized by this module.
 
 from __future__ import annotations
 
+import argparse
 import errno
 import json
 import os
 import re
+import signal
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -32,6 +36,13 @@ _SENSITIVE_KEYS = {
     "cdp",
     "debuggingport",
 }
+_DEFAULT_CAPABILITIES = (
+    "browser.taobao",
+    "browser.tmall",
+    "browser.1688",
+    "browser.jd",
+    "browser.pinduoduo",
+)
 
 
 class LocalWorkerError(RuntimeError):
@@ -45,6 +56,87 @@ class LocalWorkerTaskError(LocalWorkerError):
         self.code = code
         self.message = message
         super().__init__(code)
+
+
+@dataclass(frozen=True)
+class LocalWorkerConfig:
+    """Non-secret runtime configuration loaded from the local environment."""
+
+    api_url: str
+    session_token: str
+    worker_id: str
+    profile_root: Path
+    capabilities: tuple[str, ...] = _DEFAULT_CAPABILITIES
+    request_timeout_seconds: float = 20.0
+    heartbeat_interval_seconds: float = 20.0
+    poll_interval_seconds: float = 2.0
+    lease_renew_interval_seconds: float = 30.0
+    browser_timeout_ms: int = 30_000
+
+    @classmethod
+    def from_env(cls, environ: Mapping[str, str] | None = None) -> LocalWorkerConfig:
+        values = os.environ if environ is None else environ
+        api_url = values.get("POLARIS_WORKER_API_URL", "").strip()
+        session_token = values.get("POLARIS_WORKER_SESSION_TOKEN", "").strip()
+        worker_id = values.get("POLARIS_WORKER_ID", "").strip()
+        profile_root = values.get("POLARIS_WORKER_PROFILE_ROOT", "").strip()
+        if not api_url or not session_token or not worker_id or not profile_root:
+            raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
+        raw_capabilities = values.get("POLARIS_WORKER_CAPABILITIES", "")
+        capabilities = (
+            tuple(
+                item.strip().casefold()
+                for item in raw_capabilities.split(",")
+                if item.strip()
+            )
+            or _DEFAULT_CAPABILITIES
+        )
+        if any(
+            len(item) > 64 or any(char.isspace() for char in item)
+            for item in capabilities
+        ):
+            raise LocalWorkerError("WORKER_CAPABILITIES_INVALID")
+        try:
+            request_timeout_seconds = float(
+                values.get("POLARIS_WORKER_REQUEST_TIMEOUT", "20")
+            )
+            heartbeat_interval_seconds = float(
+                values.get("POLARIS_WORKER_HEARTBEAT_INTERVAL", "20")
+            )
+            poll_interval_seconds = float(
+                values.get("POLARIS_WORKER_POLL_INTERVAL", "2")
+            )
+            lease_renew_interval_seconds = float(
+                values.get("POLARIS_WORKER_LEASE_INTERVAL", "30")
+            )
+            browser_timeout_ms = int(
+                values.get("POLARIS_WORKER_BROWSER_TIMEOUT_MS", "30000")
+            )
+        except ValueError as exc:
+            raise LocalWorkerError("WORKER_CONFIG_INVALID") from exc
+        if any(
+            value <= 0
+            for value in (
+                request_timeout_seconds,
+                heartbeat_interval_seconds,
+                poll_interval_seconds,
+                lease_renew_interval_seconds,
+                browser_timeout_ms,
+            )
+        ):
+            raise LocalWorkerError("WORKER_CONFIG_INVALID")
+        return cls(
+            api_url=api_url,
+            session_token=session_token,
+            worker_id=worker_id,
+            profile_root=Path(profile_root).expanduser(),
+            capabilities=capabilities,
+            request_timeout_seconds=request_timeout_seconds,
+            heartbeat_interval_seconds=heartbeat_interval_seconds,
+            poll_interval_seconds=poll_interval_seconds,
+            lease_renew_interval_seconds=lease_renew_interval_seconds,
+            browser_timeout_ms=browser_timeout_ms,
+        )
 
 
 def _validate_id(value: str, label: str) -> str:
@@ -511,3 +603,63 @@ class LocalWorkerLoop:
             if value.startswith("browser.")
         ]
         return list(dict.fromkeys(platforms)) or None
+
+
+def run_local_worker(config: LocalWorkerConfig) -> None:
+    """Start the local loop from already validated, non-secret config."""
+
+    api = WorkerApiClient(
+        config.api_url,
+        config.session_token,
+        timeout=config.request_timeout_seconds,
+    )
+    profiles = LocalProfileStore(config.profile_root)
+    runtime = LocalWorkerRuntime(api, config.worker_id, profiles)
+    loop = LocalWorkerLoop(
+        api,
+        runtime,
+        capabilities=list(config.capabilities),
+        heartbeat_interval_seconds=config.heartbeat_interval_seconds,
+        poll_interval_seconds=config.poll_interval_seconds,
+        lease_renew_interval_seconds=config.lease_renew_interval_seconds,
+    )
+    stop_event = threading.Event()
+
+    def request_stop(_signum: int, _frame: Any) -> None:
+        stop_event.set()
+
+    for signal_name in ("SIGINT", "SIGTERM"):
+        signal_value = getattr(signal, signal_name, None)
+        if signal_value is not None:
+            with suppress(ValueError):
+                signal.signal(signal_value, request_stop)
+    loop.run(
+        build_local_product_crawler(timeout_ms=config.browser_timeout_ms), stop_event
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point; secrets are accepted only through environment vars."""
+
+    parser = argparse.ArgumentParser(
+        description="Run the outbound-only Polaris local ecommerce worker."
+    )
+    parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="validate environment configuration without connecting to the API",
+    )
+    args = parser.parse_args(argv)
+    try:
+        config = LocalWorkerConfig.from_env()
+        if args.check_config:
+            return 0
+        run_local_worker(config)
+    except LocalWorkerError as exc:
+        print(f"local worker stopped: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised by deployment tooling
+    raise SystemExit(main())

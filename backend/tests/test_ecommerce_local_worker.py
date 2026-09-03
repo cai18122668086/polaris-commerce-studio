@@ -217,3 +217,30 @@ def test_local_product_crawler_uses_only_claimed_profile(monkeypatch, tmp_path: 
         "timeout_ms": 1234,
         "profile_dir": str(tmp_path / "accounts" / "account_1"),
     }
+
+
+def test_local_worker_config_requires_env_and_never_requires_cli_secret(monkeypatch):
+    with pytest.raises(LocalWorkerError, match="WORKER_CONFIG_REQUIRED"):
+        local_worker.LocalWorkerConfig.from_env({})
+
+    config = local_worker.LocalWorkerConfig.from_env(
+        {
+            "POLARIS_WORKER_API_URL": "https://api.example.test",
+            "POLARIS_WORKER_SESSION_TOKEN": "session-secret",
+            "POLARIS_WORKER_ID": "worker_1",
+            "POLARIS_WORKER_PROFILE_ROOT": "C:/Polaris/profiles",
+            "POLARIS_WORKER_CAPABILITIES": "browser.taobao, browser.jd",
+            "POLARIS_WORKER_BROWSER_TIMEOUT_MS": "15000",
+        }
+    )
+    assert config.worker_id == "worker_1"
+    assert config.capabilities == ("browser.taobao", "browser.jd")
+    assert config.browser_timeout_ms == 15000
+    for name in (
+        "POLARIS_WORKER_API_URL",
+        "POLARIS_WORKER_SESSION_TOKEN",
+        "POLARIS_WORKER_ID",
+        "POLARIS_WORKER_PROFILE_ROOT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    assert local_worker.main(["--check-config"]) == 2

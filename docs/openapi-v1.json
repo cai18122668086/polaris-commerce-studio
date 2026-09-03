@@ -4630,6 +4630,88 @@
         "title": "WorkerRegisterRequest",
         "type": "object"
       },
+      "WorkerTaskClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "platforms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 8,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platforms"
+          }
+        },
+        "title": "WorkerTaskClaimRequest",
+        "type": "object"
+      },
+      "WorkerTaskCompletionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message_safe": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message Safe"
+          },
+          "fencing_token": {
+            "minimum": 1.0,
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "outcome": {
+            "pattern": "^(cancelled|failed|timed_out)$",
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fencing_token",
+          "outcome"
+        ],
+        "title": "WorkerTaskCompletionRequest",
+        "type": "object"
+      },
+      "WorkerTaskLeaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fencing_token": {
+            "minimum": 1.0,
+            "title": "Fencing Token",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fencing_token"
+        ],
+        "title": "WorkerTaskLeaseRequest",
+        "type": "object"
+      },
       "WorkspaceResponse": {
         "properties": {
           "id": {
@@ -5904,6 +5986,303 @@
           }
         },
         "summary": "Worker Heartbeat",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/claim": {
+      "post": {
+        "operationId": "claim_worker_task_api_ecommerce_workers__worker_id__tasks_claim_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerTaskClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Claim Worker Task Api Ecommerce Workers  Worker Id  Tasks Claim Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Worker Task",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/complete": {
+      "post": {
+        "operationId": "complete_worker_task_api_ecommerce_workers__worker_id__tasks__task_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerTaskCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Worker Task Api Ecommerce Workers  Worker Id  Tasks  Task Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Worker Task",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/control": {
+      "get": {
+        "operationId": "worker_task_control_api_ecommerce_workers__worker_id__tasks__task_id__control_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Worker Task Control Api Ecommerce Workers  Worker Id  Tasks  Task Id  Control Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Worker Task Control",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/lease": {
+      "post": {
+        "operationId": "renew_worker_task_lease_api_ecommerce_workers__worker_id__tasks__task_id__lease_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerTaskLeaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Renew Worker Task Lease Api Ecommerce Workers  Worker Id  Tasks  Task Id  Lease Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Renew Worker Task Lease",
         "tags": [
           "ecommerce-workers"
         ]

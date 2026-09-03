@@ -206,6 +206,7 @@ class Settings(BaseSettings):
     ecommerce_worker_heartbeat_timeout_seconds: int = Field(
         default=90, ge=30, le=600
     )
+    ecommerce_worker_task_lease_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     retention_enabled: bool = False
     retention_days: int = Field(default=30, ge=30, le=30)
     retention_interval_seconds: int = Field(default=3600, ge=60, le=86400)

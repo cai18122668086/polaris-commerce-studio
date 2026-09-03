@@ -22,9 +22,25 @@ from sqlalchemy.orm import Session
 
 from .auth import Principal, get_principal
 from .database import get_session
-from .domain import MembershipRole, MembershipStatus, WorkspaceStatus
+from .domain import (
+    CRAWL_TASK_TERMINAL_STATUSES,
+    CrawlTaskStatus,
+    MembershipRole,
+    MembershipStatus,
+    WorkspaceStatus,
+)
+from .ecommerce_crawl_tasks import (
+    _acquire_profile_lease,
+    _heartbeat_profile_lease,
+    _release_profile_lease,
+    _set_status,
+)
 from .errors import ApiError
 from .models import (
+    CrawlAttemptRecord,
+    CrawlProfileLeaseRecord,
+    CrawlTaskRecord,
+    EcommerceAccountRecord,
     EcommerceWorkerEnrollmentRecord,
     EcommerceWorkerRecord,
     UserRecord,
@@ -39,6 +55,11 @@ PrincipalDependency = Annotated[Principal, Depends(get_principal)]
 
 _ALLOWED_PROTOCOL = {"worker.v1"}
 _MAX_CAPABILITIES = 32
+_RETRYABLE_WORKER_ERRORS = {
+    "WORKER_TIMEOUT",
+    "WORKER_BROWSER_CRASH",
+    "WORKER_UNAVAILABLE",
+}
 
 
 class _StrictModel(BaseModel):
@@ -82,6 +103,33 @@ class WorkerHeartbeatRequest(_StrictModel):
         if values is None:
             return None
         return WorkerRegisterRequest.validate_capabilities(values)
+
+
+class WorkerTaskClaimRequest(_StrictModel):
+    platforms: list[str] | None = Field(default=None, max_length=8)
+
+    @field_validator("platforms")
+    @classmethod
+    def validate_platforms(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        normalized = [value.strip().casefold() for value in values]
+        if any(
+            not value or len(value) > 24 or any(ch.isspace() for ch in value)
+            for value in normalized
+        ):
+            raise ValueError("platforms must be short non-whitespace names")
+        return list(dict.fromkeys(normalized))
+
+
+class WorkerTaskLeaseRequest(_StrictModel):
+    fencing_token: int = Field(ge=1)
+
+
+class WorkerTaskCompletionRequest(WorkerTaskLeaseRequest):
+    outcome: str = Field(pattern="^(cancelled|failed|timed_out)$")
+    error_code: str | None = Field(default=None, max_length=64)
+    error_message_safe: str | None = Field(default=None, max_length=500)
 
 
 def _new_id(prefix: str) -> str:
@@ -158,6 +206,31 @@ def _worker_response(
         "last_seen_at": _iso(worker.last_seen_at),
         "registered_at": _iso(worker.created_at),
         "session_token_expires_at": _iso(worker.session_token_expires_at),
+    }
+
+
+def _worker_task_response(
+    task: CrawlTaskRecord, lease: CrawlProfileLeaseRecord
+) -> dict[str, Any]:
+    return {
+        "id": task.id,
+        "workspace_id": task.workspace_id,
+        "platform": task.platform,
+        "source_url": task.source_url,
+        "canonical_url": task.canonical_url,
+        "account_id": task.account_id,
+        "profile_id": task.profile_id,
+        "request_payload": dict(task.request_payload or {}),
+        "status": task.status,
+        "stage": task.stage,
+        "attempt_count": task.attempt_count,
+        "max_attempts": task.max_attempts,
+        "lease": {
+            "fencing_token": lease.fencing_token,
+            "acquired_at": _iso(lease.acquired_at),
+            "heartbeat_at": _iso(lease.heartbeat_at),
+            "expires_at": _iso(lease.expires_at),
+        },
     }
 
 
@@ -376,3 +449,331 @@ def list_workers(
         "success": True,
         "data": [_worker_response(worker, timeout) for worker in workers],
     }
+
+
+def _require_worker_online(request: Request, worker: EcommerceWorkerRecord) -> None:
+    timeout = request.app.state.settings.ecommerce_worker_heartbeat_timeout_seconds
+    if _worker_state(worker, timeout) != "online":
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "WORKER_OFFLINE",
+            "本机代理已离线，不能领取或续期任务。",
+        )
+
+
+def _lease_for_worker_task(
+    session: Session,
+    worker: EcommerceWorkerRecord,
+    task_id: str,
+    fencing_token: int,
+) -> CrawlProfileLeaseRecord:
+    lease = session.scalar(
+        select(CrawlProfileLeaseRecord).where(
+            CrawlProfileLeaseRecord.task_id == task_id,
+            CrawlProfileLeaseRecord.owner_id == worker.id,
+            CrawlProfileLeaseRecord.fencing_token == fencing_token,
+        )
+    )
+    if lease is None or not _as_utc(lease.expires_at) > utc_now():
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "TASK_LEASE_LOST",
+            "任务租约已失效，请停止本次执行。",
+        )
+    return lease
+
+
+@router.post("/{worker_id}/tasks/claim")
+def claim_worker_task(
+    worker_id: str,
+    payload: WorkerTaskClaimRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    worker = _authorized_worker(session, worker_id, authorization)
+    _require_worker_online(request, worker)
+    query = (
+        select(CrawlTaskRecord)
+        .where(
+            CrawlTaskRecord.workspace_id == worker.workspace_id,
+            CrawlTaskRecord.status == CrawlTaskStatus.QUEUED.value,
+        )
+        .order_by(
+            CrawlTaskRecord.queued_at, CrawlTaskRecord.created_at, CrawlTaskRecord.id
+        )
+        .limit(20)
+    )
+    if payload.platforms:
+        query = query.where(CrawlTaskRecord.platform.in_(payload.platforms))
+    tasks = session.scalars(query).all()
+    capabilities = set(worker.capabilities or [])
+    allowed_platforms = {
+        value.rsplit(".", 1)[-1]
+        for value in capabilities
+        if value.startswith("browser.")
+    }
+    for task in tasks:
+        if task.platform not in allowed_platforms:
+            continue
+        if task.cancel_requested_at is not None:
+            _set_status(
+                session,
+                task,
+                CrawlTaskStatus.CANCELLED,
+                stage="cancelled",
+                progress=100,
+                message="任务在领取前被取消。",
+                event_type="cancelled",
+            )
+            continue
+        if task.account_id:
+            account = session.get(EcommerceAccountRecord, task.account_id)
+            if (
+                account is None
+                or account.workspace_id != worker.workspace_id
+                or account.status != "active"
+            ):
+                continue
+        profile_id = task.profile_id or f"domestic-{task.platform}"
+        fencing_token = _acquire_profile_lease(
+            request.app.state.session_factory,
+            profile_id=profile_id,
+            platform=task.platform,
+            task_id=task.id,
+            owner_id=worker.id,
+            ttl_seconds=request.app.state.settings.ecommerce_worker_task_lease_ttl_seconds,
+        )
+        if fencing_token is None:
+            continue
+        current = session.get(CrawlTaskRecord, task.id)
+        if (
+            current is None
+            or current.status != CrawlTaskStatus.QUEUED.value
+            or current.cancel_requested_at is not None
+        ):
+            _release_profile_lease(
+                request.app.state.session_factory,
+                profile_id=profile_id,
+                task_id=task.id,
+                owner_id=worker.id,
+                fencing_token=fencing_token,
+            )
+            continue
+        _set_status(
+            session,
+            current,
+            CrawlTaskStatus.RUNNING,
+            stage="fetching",
+            progress=5,
+            message="本机代理已领取任务。",
+            event_type="worker_claimed",
+        )
+        current.attempt_count += 1
+        attempt = CrawlAttemptRecord(
+            id=_new_id("cat"),
+            task_id=current.id,
+            attempt_no=current.attempt_count,
+            status="running",
+            worker_id=worker.id,
+            started_at=utc_now(),
+        )
+        session.add(attempt)
+        session.commit()
+        lease = session.scalar(
+            select(CrawlProfileLeaseRecord).where(
+                CrawlProfileLeaseRecord.task_id == current.id,
+                CrawlProfileLeaseRecord.owner_id == worker.id,
+                CrawlProfileLeaseRecord.fencing_token == fencing_token,
+            )
+        )
+        if lease is None:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "TASK_LEASE_LOST",
+                "任务租约已失效，请停止本次执行。",
+            )
+        return {"success": True, "data": _worker_task_response(current, lease)}
+    session.commit()
+    return {"success": True, "data": None}
+
+
+@router.post("/{worker_id}/tasks/{task_id}/lease")
+def renew_worker_task_lease(
+    worker_id: str,
+    task_id: str,
+    payload: WorkerTaskLeaseRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    worker = _authorized_worker(session, worker_id, authorization)
+    _require_worker_online(request, worker)
+    task = session.get(CrawlTaskRecord, task_id)
+    if task is None or task.workspace_id != worker.workspace_id:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "CRAWL_TASK_NOT_FOUND", "未找到指定抓取任务。"
+        )
+    lease = _lease_for_worker_task(session, worker, task_id, payload.fencing_token)
+    ok = _heartbeat_profile_lease(
+        request.app.state.session_factory,
+        profile_id=lease.profile_id,
+        task_id=task_id,
+        owner_id=worker.id,
+        fencing_token=payload.fencing_token,
+        ttl_seconds=request.app.state.settings.ecommerce_worker_task_lease_ttl_seconds,
+    )
+    if not ok:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "TASK_LEASE_LOST",
+            "任务租约已失效，请停止本次执行。",
+        )
+    refreshed = session.scalar(
+        select(CrawlProfileLeaseRecord).where(
+            CrawlProfileLeaseRecord.task_id == task_id,
+            CrawlProfileLeaseRecord.owner_id == worker.id,
+            CrawlProfileLeaseRecord.fencing_token == payload.fencing_token,
+        )
+    )
+    assert refreshed is not None
+    return {"success": True, "data": _worker_task_response(task, refreshed)}
+
+
+@router.get("/{worker_id}/tasks/{task_id}/control")
+def worker_task_control(
+    worker_id: str,
+    task_id: str,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    worker = _authorized_worker(session, worker_id, authorization)
+    task = session.get(CrawlTaskRecord, task_id)
+    if task is None or task.workspace_id != worker.workspace_id:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "CRAWL_TASK_NOT_FOUND", "未找到指定抓取任务。"
+        )
+    lease = session.scalar(
+        select(CrawlProfileLeaseRecord).where(
+            CrawlProfileLeaseRecord.task_id == task_id,
+            CrawlProfileLeaseRecord.owner_id == worker.id,
+        )
+    )
+    if lease is None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "TASK_LEASE_REQUIRED",
+            "本机代理未持有该任务租约。",
+        )
+    return {
+        "success": True,
+        "data": {
+            "task_id": task.id,
+            "status": task.status,
+            "cancel_requested": task.cancel_requested_at is not None
+            or task.status == CrawlTaskStatus.CANCELLING.value,
+        },
+    }
+
+
+@router.post("/{worker_id}/tasks/{task_id}/complete")
+def complete_worker_task(
+    worker_id: str,
+    task_id: str,
+    payload: WorkerTaskCompletionRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    worker = _authorized_worker(session, worker_id, authorization)
+    task = session.get(CrawlTaskRecord, task_id)
+    if task is None or task.workspace_id != worker.workspace_id:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "CRAWL_TASK_NOT_FOUND", "未找到指定抓取任务。"
+        )
+    lease = _lease_for_worker_task(session, worker, task_id, payload.fencing_token)
+    if task.status in {item.value for item in CRAWL_TASK_TERMINAL_STATUSES}:
+        raise ApiError(
+            status.HTTP_409_CONFLICT, "TASK_ALREADY_TERMINAL", "任务已经结束。"
+        )
+    attempt = session.scalar(
+        select(CrawlAttemptRecord).where(
+            CrawlAttemptRecord.task_id == task_id,
+            CrawlAttemptRecord.attempt_no == task.attempt_count,
+        )
+    )
+    now = utc_now()
+    if attempt is not None:
+        attempt.finished_at = now
+        attempt.status = "cancelled" if payload.outcome == "cancelled" else "failed"
+        attempt.error_code = payload.error_code or (
+            "WORKER_TIMEOUT" if payload.outcome == "timed_out" else None
+        )
+        attempt.error_message_safe = payload.error_message_safe
+    if (
+        payload.outcome == "cancelled"
+        or task.cancel_requested_at is not None
+        or task.status == CrawlTaskStatus.CANCELLING.value
+    ):
+        task.error_code = "TASK_CANCELLED"
+        task.error_message_safe = "任务已取消。"
+        _set_status(
+            session,
+            task,
+            CrawlTaskStatus.CANCELLED,
+            stage="cancelled",
+            progress=100,
+            message="任务已取消。",
+            event_type="worker_cancelled",
+        )
+    else:
+        task.error_code = (
+            payload.error_code
+            if payload.error_code in _RETRYABLE_WORKER_ERRORS
+            else (
+                "WORKER_TIMEOUT" if payload.outcome == "timed_out" else "WORKER_FAILED"
+            )
+        )
+        task.error_message_safe = payload.error_message_safe or "本机代理执行失败。"
+        retryable = (
+            task.attempt_count < task.max_attempts
+            and task.error_code in _RETRYABLE_WORKER_ERRORS
+        )
+        _set_status(
+            session,
+            task,
+            CrawlTaskStatus.FAILED,
+            stage="failed",
+            progress=100,
+            message=task.error_message_safe,
+            event_type="worker_failed",
+        )
+        if retryable:
+            _set_status(
+                session,
+                task,
+                CrawlTaskStatus.RETRY_SCHEDULED,
+                stage="retry_scheduled",
+                progress=0,
+                message="本机代理执行失败，任务已安排重试。",
+                event_type="retry_scheduled",
+            )
+            _set_status(
+                session,
+                task,
+                CrawlTaskStatus.QUEUED,
+                stage="queued",
+                progress=0,
+                message="任务已重新进入队列。",
+            )
+        else:
+            task.progress = 100
+    session.commit()
+    _release_profile_lease(
+        request.app.state.session_factory,
+        profile_id=lease.profile_id,
+        task_id=task_id,
+        owner_id=worker.id,
+        fencing_token=payload.fencing_token,
+    )
+    return {"success": True, "data": {"task_id": task.id, "status": task.status}}

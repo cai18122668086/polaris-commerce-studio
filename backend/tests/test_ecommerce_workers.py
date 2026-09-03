@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models import EcommerceWorkerRecord
+from app.models import CrawlTaskRecord, EcommerceWorkerRecord, utc_now
 
 
 def _enroll(client, device_id="device-test"):
@@ -12,6 +12,44 @@ def _enroll(client, device_id="device-test"):
     )
     assert response.status_code == 201, response.text
     return response.json()["data"]
+
+
+def _register(client, device_id="device-test", capabilities=None):
+    enrollment = _enroll(client, device_id)
+    response = client.post(
+        "/api/ecommerce/workers/register",
+        json={
+            "enrollment_token": enrollment["enrollment_token"],
+            "device_id": device_id,
+            "protocol_version": "worker.v1",
+            "agent_version": "0.1.0",
+            "capabilities": capabilities or ["browser.taobao"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
+
+
+def _queued_task(client, task_id="crw_worker_test", max_attempts=1):
+    with client.app.state.session_factory() as session:
+        session.add(
+            CrawlTaskRecord(
+                id=task_id,
+                workspace_id="ws_test",
+                created_by="usr_test",
+                platform="taobao",
+                source_url="https://item.taobao.com/item.htm?id=123456789012",
+                canonical_url="https://item.taobao.com/item.htm?id=123456789012",
+                request_hash="a" * 64,
+                status="queued",
+                stage="queued",
+                max_attempts=max_attempts,
+                profile_id="domestic-taobao",
+                request_payload={"platform": "taobao", "includeDescImages": True},
+                queued_at=utc_now(),
+            )
+        )
+        session.commit()
 
 
 def test_worker_registration_is_scope_bound_and_one_time(client):
@@ -88,3 +126,65 @@ def test_worker_heartbeat_and_expiry_are_explicit(client):
     assert listed.status_code == 200
     assert listed.json()["data"][0]["status"] == "offline"
     assert listed.json()["data"][0]["error_code"] == "WORKER_OFFLINE"
+
+
+def test_worker_claim_renews_lease_and_acknowledges_cancel(client):
+    worker = _register(client, "device-claim")
+    task_id = "crw_worker_claim"
+    _queued_task(client, task_id)
+    claimed = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/claim",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={},
+    )
+    assert claimed.status_code == 200, claimed.text
+    task = claimed.json()["data"]
+    assert task["id"] == task_id
+    assert task["status"] == "running"
+    fencing_token = task["lease"]["fencing_token"]
+
+    renewed = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/{task_id}/lease",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={"fencing_token": fencing_token},
+    )
+    assert renewed.status_code == 200
+
+    cancelled = client.post(f"/api/ecommerce/crawl-tasks/{task_id}/cancel")
+    assert cancelled.status_code == 200
+    control = client.get(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/{task_id}/control",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+    )
+    assert control.status_code == 200
+    assert control.json()["data"]["cancel_requested"] is True
+
+    done = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/{task_id}/complete",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={"fencing_token": fencing_token, "outcome": "cancelled"},
+    )
+    assert done.status_code == 200
+    assert done.json()["data"]["status"] == "cancelled"
+
+
+def test_worker_timeout_requeues_only_when_attempts_remain(client):
+    worker = _register(client, "device-timeout")
+    task_id = "crw_worker_timeout"
+    _queued_task(client, task_id, max_attempts=2)
+    claimed = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/claim",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={"platforms": ["taobao"]},
+    )
+    task = claimed.json()["data"]
+    timed_out = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/{task_id}/complete",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={
+            "fencing_token": task["lease"]["fencing_token"],
+            "outcome": "timed_out",
+        },
+    )
+    assert timed_out.status_code == 200
+    assert timed_out.json()["data"]["status"] == "queued"

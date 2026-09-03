@@ -61,6 +61,22 @@ def find_chrome_executable() -> Path:
     raise RuntimeError("BRANDED_CHROME_UNAVAILABLE")
 
 
+def _find_headless_shell_executable() -> Path | None:
+    """Return Playwright's headless shell when running without a display.
+
+    Chrome for Testing exits during startup in the production container while
+    initializing Crashpad; Playwright's companion headless shell is shipped
+    with the same browser bundle and supports the CDP attach flow we need.
+    """
+
+    for candidate in Path("/ms-playwright").glob(
+        "chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"
+    ):
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
 def _free_local_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -122,6 +138,8 @@ def start_owned_chrome(
     profile = Path(profile_dir).expanduser().resolve()
     profile.mkdir(parents=True, exist_ok=True)
     executable = find_chrome_executable()
+    if headless:
+        executable = _find_headless_shell_executable() or executable
     port = _free_local_port()
     command = [
         str(executable),

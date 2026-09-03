@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,6 +16,81 @@ from app.ecommerce_login import (
     looks_like_risk_control_page,
 )
 from app.ecommerce_session import EcommerceSessionManager
+
+
+def test_login_helper_passes_headless_mode_to_chrome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The production QR transport must start Chrome without a display."""
+
+    import app.ecommerce_login as ecommerce_login
+
+    captured: dict[str, object] = {}
+
+    class FakePlaywrightContext:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    class FakeContext:
+        def __init__(self) -> None:
+            self.page = FakePage()
+
+        @property
+        def pages(self) -> list[object]:
+            return [self.page]
+
+        def new_page(self) -> object:
+            return self.page
+
+    class FakePage:
+        closed = False
+
+        def goto(self, *_args: object, **_kwargs: object) -> None:
+            self.closed = True
+
+        def is_closed(self) -> bool:
+            return self.closed
+
+    class FakeChromeConnection:
+        def __enter__(self) -> tuple[object, FakeContext]:
+            return object(), FakeContext()
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def fake_connect(*_args: object, **kwargs: object) -> FakeChromeConnection:
+        captured.update(kwargs)
+        return FakeChromeConnection()
+
+    sync_api = types.ModuleType("playwright.sync_api")
+    sync_api.Error = Exception
+    sync_api.TimeoutError = TimeoutError
+    sync_api.sync_playwright = lambda: FakePlaywrightContext()
+    playwright_package = types.ModuleType("playwright")
+    playwright_package.__path__ = []  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", playwright_package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    monkeypatch.setattr(ecommerce_login, "connect_to_owned_chrome", fake_connect)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ecommerce_login",
+            "--profile-dir",
+            str(tmp_path / "profile"),
+            "--status-path",
+            str(tmp_path / "status.json"),
+            "--headless",
+            "--timeout-seconds",
+            "1",
+        ],
+    )
+
+    assert ecommerce_login.main() == 0
+    assert captured["headless"] is True
 
 
 def test_existing_authenticated_page_is_detected_without_credentials() -> None:

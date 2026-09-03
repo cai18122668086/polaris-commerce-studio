@@ -149,7 +149,13 @@ def start_owned_chrome(
         "--no-first-run",
         "--no-default-browser-check",
         *(
-            ["--headless=new", "--disable-gpu", "--window-size=1440,1100"]
+            [
+                "--headless=new",
+                "--disable-gpu",
+                "--window-size=1440,1100",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ]
             if headless
             else []
         ),

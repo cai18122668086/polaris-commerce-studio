@@ -188,3 +188,58 @@ def test_worker_timeout_requeues_only_when_attempts_remain(client):
     )
     assert timed_out.status_code == 200
     assert timed_out.json()["data"]["status"] == "queued"
+
+
+def test_worker_result_upload_persists_snapshot_and_rejects_sensitive_fields(client):
+    worker = _register(client, "device-result")
+    task_id = "crw_worker_result"
+    _queued_task(client, task_id)
+    claimed = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/claim",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={},
+    )
+    lease = claimed.json()["data"]["lease"]["fencing_token"]
+    result = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/tasks/{task_id}/result",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={
+            "fencing_token": lease,
+            "result": {
+                "platform": "taobao",
+                "numIid": "123456789012",
+                "title": "本机代理商品结果",
+                "price": "39.90",
+                "imageUrls": [],
+                "descImageUrls": [],
+                "skuImageUrls": [],
+            },
+        },
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["data"]["status"] == "succeeded"
+    stored = client.get(f"/api/ecommerce/crawl-tasks/{task_id}/result")
+    assert stored.status_code == 200
+    assert stored.json()["data"]["result"]["title"] == "本机代理商品结果"
+
+    second_worker = _register(client, "device-result-2")
+    second_task_id = "crw_worker_result_sensitive"
+    _queued_task(client, second_task_id)
+    second_claim = client.post(
+        f"/api/ecommerce/workers/{second_worker['worker']['id']}/tasks/claim",
+        headers={"Authorization": f"Bearer {second_worker['session_token']}"},
+        json={},
+    )
+    sensitive = client.post(
+        f"/api/ecommerce/workers/{second_worker['worker']['id']}/tasks/{second_task_id}/result",
+        headers={"Authorization": f"Bearer {second_worker['session_token']}"},
+        json={
+            "fencing_token": second_claim.json()["data"]["lease"]["fencing_token"],
+            "result": {
+                "platform": "taobao",
+                "title": "不应接受",
+                "platformData": {"cookies": "forbidden"},
+            },
+        },
+    )
+    assert sensitive.status_code == 422

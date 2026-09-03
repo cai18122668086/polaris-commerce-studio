@@ -4585,6 +4585,197 @@
         "title": "WorkerHeartbeatRequest",
         "type": "object"
       },
+      "WorkerProductResult": {
+        "additionalProperties": false,
+        "properties": {
+          "accessState": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessstate"
+          },
+          "descImageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Descimageurls",
+            "type": "array"
+          },
+          "imageDiagnostics": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 100,
+            "title": "Imagediagnostics",
+            "type": "object"
+          },
+          "imageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Imageurls",
+            "type": "array"
+          },
+          "numIid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numiid"
+          },
+          "platform": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Platform",
+            "type": "string"
+          },
+          "platformData": {
+            "additionalProperties": true,
+            "maxProperties": 100,
+            "title": "Platformdata",
+            "type": "object"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "propsText": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Propstext",
+            "type": "string"
+          },
+          "sales": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sales"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Services",
+            "type": "array"
+          },
+          "shopName": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shopname"
+          },
+          "skuImageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Skuimageurls",
+            "type": "array"
+          },
+          "skuPropGroups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 100,
+            "title": "Skupropgroups",
+            "type": "array"
+          },
+          "skus": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 500,
+            "title": "Skus",
+            "type": "array"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "tmall": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmall"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "platform"
+        ],
+        "title": "WorkerProductResult",
+        "type": "object"
+      },
       "WorkerRegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4628,6 +4819,25 @@
           "agent_version"
         ],
         "title": "WorkerRegisterRequest",
+        "type": "object"
+      },
+      "WorkerResultUploadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fencing_token": {
+            "minimum": 1.0,
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "result": {
+            "$ref": "#/components/schemas/WorkerProductResult"
+          }
+        },
+        "required": [
+          "fencing_token",
+          "result"
+        ],
+        "title": "WorkerResultUploadRequest",
         "type": "object"
       },
       "WorkerTaskClaimRequest": {
@@ -6283,6 +6493,86 @@
           }
         },
         "summary": "Renew Worker Task Lease",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/result": {
+      "post": {
+        "description": "Persist one structured product result while the worker lease is held.",
+        "operationId": "upload_worker_task_result_api_ecommerce_workers__worker_id__tasks__task_id__result_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerResultUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Worker Task Result Api Ecommerce Workers  Worker Id  Tasks  Task Id  Result Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Worker Task Result",
         "tags": [
           "ecommerce-workers"
         ]

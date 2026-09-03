@@ -11,12 +11,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,9 @@ from .domain import (
 from .ecommerce_crawl_tasks import (
     _acquire_profile_lease,
     _heartbeat_profile_lease,
+    _persist_product_snapshot,
+    _profile_lease_is_owned,
+    _ProfileLeaseLost,
     _release_profile_lease,
     _set_status,
 )
@@ -59,6 +63,19 @@ _RETRYABLE_WORKER_ERRORS = {
     "WORKER_TIMEOUT",
     "WORKER_BROWSER_CRASH",
     "WORKER_UNAVAILABLE",
+}
+_FORBIDDEN_RESULT_KEYS = {
+    "cookie",
+    "cookies",
+    "localstorage",
+    "profile",
+    "profilepath",
+    "cdp",
+    "debuggingport",
+    "password",
+    "token",
+    "captcha",
+    "qrcode",
 }
 
 
@@ -130,6 +147,62 @@ class WorkerTaskCompletionRequest(WorkerTaskLeaseRequest):
     outcome: str = Field(pattern="^(cancelled|failed|timed_out)$")
     error_code: str | None = Field(default=None, max_length=64)
     error_message_safe: str | None = Field(default=None, max_length=500)
+
+
+class WorkerProductResult(_StrictModel):
+    platform: str = Field(min_length=1, max_length=24)
+    num_iid: str | int | None = Field(default=None, alias="numIid")
+    tmall: bool | None = None
+    title: str | None = Field(default=None, max_length=500)
+    price: str | None = Field(default=None, max_length=128)
+    shop_name: str | None = Field(default=None, alias="shopName", max_length=300)
+    sales: str | None = Field(default=None, max_length=128)
+    image_urls: list[str] = Field(
+        default_factory=list, alias="imageUrls", max_length=100
+    )
+    desc_image_urls: list[str] = Field(
+        default_factory=list, alias="descImageUrls", max_length=200
+    )
+    sku_image_urls: list[str] = Field(
+        default_factory=list, alias="skuImageUrls", max_length=100
+    )
+    sku_prop_groups: list[dict[str, Any]] = Field(
+        default_factory=list, alias="skuPropGroups", max_length=100
+    )
+    skus: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    props_text: str = Field(default="", alias="propsText", max_length=20_000)
+    services: list[str] = Field(default_factory=list, max_length=100)
+    platform_data: dict[str, Any] = Field(
+        default_factory=dict, alias="platformData", max_length=100
+    )
+    image_diagnostics: dict[str, int] = Field(
+        default_factory=dict, alias="imageDiagnostics", max_length=100
+    )
+    access_state: str | None = Field(default=None, alias="accessState", max_length=40)
+    source_url: str | None = Field(default=None, alias="sourceUrl", max_length=2048)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    @model_validator(mode="after")
+    def reject_sensitive_nested_keys(self) -> WorkerProductResult:
+        def walk(value: object) -> None:
+            if isinstance(value, Mapping):
+                for key, item in value.items():
+                    normalized = str(key).replace("_", "").casefold()
+                    if normalized in _FORBIDDEN_RESULT_KEYS:
+                        raise ValueError("result contains a forbidden sensitive field")
+                    walk(item)
+            elif isinstance(value, list):
+                for item in value:
+                    walk(item)
+
+        walk(self.model_dump(by_alias=True))
+        return self
+
+
+class WorkerResultUploadRequest(WorkerTaskLeaseRequest):
+    result: WorkerProductResult
 
 
 def _new_id(prefix: str) -> str:
@@ -777,3 +850,126 @@ def complete_worker_task(
         fencing_token=payload.fencing_token,
     )
     return {"success": True, "data": {"task_id": task.id, "status": task.status}}
+
+
+@router.post("/{worker_id}/tasks/{task_id}/result")
+async def upload_worker_task_result(
+    worker_id: str,
+    task_id: str,
+    payload: WorkerResultUploadRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Persist one structured product result while the worker lease is held."""
+
+    worker = _authorized_worker(session, worker_id, authorization)
+    task = session.get(CrawlTaskRecord, task_id)
+    if task is None or task.workspace_id != worker.workspace_id:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "CRAWL_TASK_NOT_FOUND",
+            "未找到指定抓取任务。",
+        )
+    lease = _lease_for_worker_task(session, worker, task_id, payload.fencing_token)
+    if task.status != CrawlTaskStatus.RUNNING.value:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "TASK_NOT_RUNNING",
+            "当前任务不在执行状态，不能提交结果。",
+        )
+    result_data = payload.result.model_dump(by_alias=True, exclude_none=True)
+    if str(result_data.get("platform") or "").casefold() != task.platform.casefold():
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "RESULT_PLATFORM_MISMATCH",
+            "商品结果平台与任务不一致。",
+        )
+    if result_data.get("accessState") in {
+        "login_required",
+        "risk_controlled",
+        "captcha_required",
+    }:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "RESULT_NOT_PRODUCT",
+            "本机代理回传的是登录、风控或验证码状态，不是商品结果。",
+        )
+    if not result_data.get("title") and not result_data.get("numIid"):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "RESULT_INCOMPLETE",
+            "商品结果至少需要标题或商品编号。",
+        )
+
+    def lease_guard() -> bool:
+        return _profile_lease_is_owned(
+            request.app.state.session_factory,
+            profile_id=lease.profile_id,
+            task_id=task_id,
+            owner_id=worker.id,
+            fencing_token=payload.fencing_token,
+        )
+    try:
+        snapshot_id, enriched = await _persist_product_snapshot(
+            request.app,
+            task_id,
+            result_data,
+            lease_guard=lease_guard,
+        )
+    except _ProfileLeaseLost as exc:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "TASK_LEASE_LOST",
+            "任务租约已失效，请停止本次执行。",
+        ) from exc
+    except Exception as exc:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "RESULT_PERSIST_FAILED",
+            "商品结果暂时无法保存，请稍后重试。",
+        ) from exc
+
+    with request.app.state.session_factory() as commit_session:
+        stored_task = commit_session.get(CrawlTaskRecord, task_id)
+        if stored_task is None:
+            raise ApiError(
+                status.HTTP_404_NOT_FOUND,
+                "CRAWL_TASK_NOT_FOUND",
+                "未找到指定抓取任务。",
+            )
+        if not lease_guard():
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "TASK_LEASE_LOST",
+                "任务租约已失效，请停止本次执行。",
+            )
+        stored_task.result_payload = enriched
+        stored_task.result_snapshot_id = snapshot_id
+        stored_task.error_code = None
+        stored_task.error_message_safe = None
+        _set_status(
+            commit_session,
+            stored_task,
+            CrawlTaskStatus.SUCCEEDED,
+            stage="completed",
+            progress=100,
+            message="商品抓取完成。",
+            event_type="worker_completed",
+        )
+        commit_session.commit()
+    _release_profile_lease(
+        request.app.state.session_factory,
+        profile_id=lease.profile_id,
+        task_id=task_id,
+        owner_id=worker.id,
+        fencing_token=payload.fencing_token,
+    )
+    return {
+        "success": True,
+        "data": {
+            "task_id": task_id,
+            "status": CrawlTaskStatus.SUCCEEDED.value,
+            "snapshot_id": snapshot_id,
+        },
+    }

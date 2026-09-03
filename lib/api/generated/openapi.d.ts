@@ -439,6 +439,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Worker Task Result
+         * @description Persist one structured product result while the worker lease is held.
+         */
+        post: operations["upload_worker_task_result_api_ecommerce_workers__worker_id__tasks__task_id__result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/accounts": {
         parameters: {
             query?: never;
@@ -2939,6 +2959,58 @@ export interface components {
              */
             ready: boolean;
         };
+        /** WorkerProductResult */
+        WorkerProductResult: {
+            /** Accessstate */
+            accessState?: string | null;
+            /** Descimageurls */
+            descImageUrls?: string[];
+            /** Imagediagnostics */
+            imageDiagnostics?: {
+                [key: string]: number;
+            };
+            /** Imageurls */
+            imageUrls?: string[];
+            /** Numiid */
+            numIid?: string | number | null;
+            /** Platform */
+            platform: string;
+            /** Platformdata */
+            platformData?: {
+                [key: string]: unknown;
+            };
+            /** Price */
+            price?: string | null;
+            /**
+             * Propstext
+             * @default
+             */
+            propsText: string;
+            /** Sales */
+            sales?: string | null;
+            /** Services */
+            services?: string[];
+            /** Shopname */
+            shopName?: string | null;
+            /** Skuimageurls */
+            skuImageUrls?: string[];
+            /** Skupropgroups */
+            skuPropGroups?: {
+                [key: string]: unknown;
+            }[];
+            /** Skus */
+            skus?: {
+                [key: string]: unknown;
+            }[];
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Tmall */
+            tmall?: boolean | null;
+            /** Warnings */
+            warnings?: string[];
+        };
         /** WorkerRegisterRequest */
         WorkerRegisterRequest: {
             /** Agent Version */
@@ -2951,6 +3023,12 @@ export interface components {
             enrollment_token: string;
             /** Protocol Version */
             protocol_version: string;
+        };
+        /** WorkerResultUploadRequest */
+        WorkerResultUploadRequest: {
+            /** Fencing Token */
+            fencing_token: number;
+            result: components["schemas"]["WorkerProductResult"];
         };
         /** WorkerTaskClaimRequest */
         WorkerTaskClaimRequest: {
@@ -3905,6 +3983,46 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["WorkerTaskLeaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_worker_task_result_api_ecommerce_workers__worker_id__tasks__task_id__result_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerResultUploadRequest"];
             };
         };
         responses: {

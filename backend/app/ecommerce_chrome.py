@@ -34,6 +34,12 @@ def _chrome_candidates() -> list[Path]:
         root = os.environ.get(name)
         if root:
             candidates.append(Path(root) / "Google/Chrome/Application/chrome.exe")
+    # The browser-enabled production image ships Playwright's pinned Chrome
+    # for Testing under /ms-playwright rather than exposing a `chrome` PATH
+    # entry. Prefer that bundled binary when no system Chrome is installed.
+    candidates.extend(
+        Path("/ms-playwright").glob("chromium-*/chrome-linux64/chrome")
+    )
     unique: list[Path] = []
     seen: set[str] = set()
     for candidate in candidates:

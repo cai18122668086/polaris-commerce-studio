@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Request, status
+from fastapi import Depends, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from starlette.requests import HTTPConnection
 
 from .auth import Principal, get_principal
 from .database import get_session
@@ -151,7 +152,7 @@ def bootstrap_legacy_admins(
 
 
 def require_admin(
-    request: Request,
+    request: HTTPConnection,
     principal: PrincipalDependency,
     session: SessionDependency,
 ) -> Principal:
@@ -165,7 +166,7 @@ def require_admin(
 
 
 def require_super_admin(
-    request: Request,
+    request: HTTPConnection,
     principal: PrincipalDependency,
     session: SessionDependency,
 ) -> Principal:

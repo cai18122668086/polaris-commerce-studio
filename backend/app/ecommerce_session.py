@@ -57,6 +57,7 @@ class EcommerceSessionManager:
         self.state_style = state_style
         self.status_path = self.profile_dir / "session-status.json"
         self.preview_path = self.profile_dir / "login-preview.png"
+        self.stream_path = self.profile_dir / "login-stream.jpg"
         self.actions_dir = self.profile_dir / "login-actions"
         self._lock = RLock()
         self._process: subprocess.Popen[bytes] | None = None
@@ -129,6 +130,7 @@ class EcommerceSessionManager:
         value.pop("cookies", None)
         value["profileReady"] = self.profile_dir.exists()
         value["previewAvailable"] = self.preview_path.is_file()
+        value["streamAvailable"] = self.stream_path.is_file()
         value["sessionProfile"] = self.session_profile
         value["platform"] = self.platform
         return value
@@ -182,6 +184,7 @@ class EcommerceSessionManager:
             self.profile_dir.mkdir(parents=True, exist_ok=True)
             self._login_headless = headless
             self.preview_path.unlink(missing_ok=True)
+            self.stream_path.unlink(missing_ok=True)
             self.actions_dir.mkdir(parents=True, exist_ok=True)
             for action_path in self.actions_dir.glob("*.json"):
                 action_path.unlink(missing_ok=True)
@@ -234,6 +237,7 @@ class EcommerceSessionManager:
                 command.append("--headless")
                 command.extend(["--screenshot-path", str(self.preview_path)])
                 command.extend(["--actions-dir", str(self.actions_dir)])
+                command.extend(["--screencast-path", str(self.stream_path)])
             if target_url:
                 command.extend(["--target-url", target_url])
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -301,6 +305,7 @@ class EcommerceSessionManager:
                     process.wait(timeout=5)
             self._process = None
             self.preview_path.unlink(missing_ok=True)
+            self.stream_path.unlink(missing_ok=True)
             for action_path in self.actions_dir.glob("*.json"):
                 action_path.unlink(missing_ok=True)
             self.status_path.parent.mkdir(parents=True, exist_ok=True)

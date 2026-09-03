@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import re
 import time
@@ -269,6 +270,52 @@ def _write_preview(page: object, screenshot_path: Path | None) -> None:
         return
 
 
+def _start_screencast(page: object, screencast_path: Path | None) -> object | None:
+    """Start a CDP JPEG screencast and atomically publish the newest frame.
+
+    The file is only a loopback IPC handoff between the isolated helper and
+    the authenticated API process; it never contains browser state beyond
+    the pixels already visible in the login preview.
+    """
+
+    if screencast_path is None:
+        return None
+    try:
+        context = page.context  # type: ignore[attr-defined]
+        cdp = context.new_cdp_session(page)
+        screencast_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def on_frame(params: dict[str, object]) -> None:
+            try:
+                data = base64.b64decode(str(params.get("data", "")), validate=True)
+                if not data:
+                    return
+                temporary = screencast_path.with_suffix(".tmp.jpg")
+                temporary.write_bytes(data)
+                temporary.replace(screencast_path)
+                sequence = params.get("sessionId")
+                if sequence is not None:
+                    cdp.send("Page.screencastFrameAck", {"sessionId": sequence})
+            except Exception:
+                return
+
+        cdp.on("Page.screencastFrame", on_frame)
+        cdp.send(
+            "Page.startScreencast",
+            {"format": "jpeg", "quality": 82, "maxWidth": 1600, "maxHeight": 1200},
+        )
+        return cdp
+    except Exception:
+        return None
+
+
+def _stop_screencast(cdp: object | None) -> None:
+    if cdp is None:
+        return
+    with suppress(Exception):
+        cdp.send("Page.stopScreencast")  # type: ignore[attr-defined]
+
+
 def _drain_input_actions(page: object, actions_dir: Path | None) -> None:
     """Apply user-originated input events from the protected action queue."""
 
@@ -467,6 +514,7 @@ def main() -> int:
         help="Run the authorized login profile without a local display.",
     )
     parser.add_argument("--screenshot-path", type=Path)
+    parser.add_argument("--screencast-path", type=Path)
     parser.add_argument("--actions-dir", type=Path)
     parser.add_argument("--timeout-seconds", type=int, default=600)
     parser.add_argument(
@@ -520,6 +568,7 @@ def main() -> int:
             # loopback CDP; it does not solve or bypass the challenge.
             page = context.pages[0] if context.pages else context.new_page()
             _close_extra_pages(context, page)
+            screencast = _start_screencast(page, args.screencast_path)
 
             # A persistent profile can already contain the user's logged-in
             # account page. Inspect it before navigating to the login origin;
@@ -675,6 +724,7 @@ def main() -> int:
                     if args.headless
                     else "登录窗口已关闭，请重新发起登录。",
                 )
+            _stop_screencast(screencast)
             with suppress(PlaywrightError):
                 context.close()
     except PlaywrightError as exc:  # pragma: no cover - local browser runtime

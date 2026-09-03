@@ -112,6 +112,7 @@ def create_app(
     # Lazily created account-specific managers are keyed by account id and
     # use the durable profile path owned by that account.
     application.state.ecommerce_account_sessions = {}
+    application.state.ecommerce_stream_accounts = set()
     # Keep the historical Taobao manager alias for existing callers, while
     # registering an independent 1688 manager and profile. Never share a
     # persistent browser profile across platform policies.

@@ -501,6 +501,67 @@ def _authorized_worker(
     return worker
 
 
+@router.post("/{worker_id}/token/refresh")
+def refresh_worker_token(
+    worker_id: str,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Rotate a still-valid worker session token.
+
+    Rotation is authenticated with the current Bearer token and invalidates it
+    immediately.  The plaintext replacement is returned exactly once; only
+    its hash and expiry are persisted by the control plane.
+    """
+
+    # Validate scope, membership and expiry before issuing a replacement.  The
+    # short transaction below then locks the row to avoid concurrent rotations
+    # returning two apparently valid tokens.
+    _authorized_worker(session, worker_id, authorization)
+    worker = session.scalar(
+        select(EcommerceWorkerRecord)
+        .where(EcommerceWorkerRecord.id == worker_id)
+        .with_for_update()
+    )
+    if worker is None:
+        raise ApiError(
+            status.HTTP_401_UNAUTHORIZED,
+            "WORKER_AUTH_INVALID",
+            "本机代理令牌无效。",
+        )
+    scheme, _, token = (authorization or "").partition(" ")
+    if (
+        scheme.casefold() != "bearer"
+        or not token
+        or not hmac.compare_digest(worker.session_token_hash or "", _hash_token(token))
+    ):
+        raise ApiError(
+            status.HTTP_401_UNAUTHORIZED,
+            "WORKER_TOKEN_ROTATED",
+            "本机代理令牌已被轮换，请使用最新令牌。",
+        )
+    now = utc_now()
+    replacement = secrets.token_urlsafe(32)
+    worker.session_token_hash = _hash_token(replacement)
+    worker.session_token_expires_at = now + timedelta(
+        seconds=request.app.state.settings.ecommerce_worker_token_ttl_seconds
+    )
+    worker.last_seen_at = now
+    worker.status = "online"
+    session.commit()
+    return {
+        "success": True,
+        "data": {
+            "worker": _worker_response(
+                worker,
+                request.app.state.settings.ecommerce_worker_heartbeat_timeout_seconds,
+            ),
+            "session_token": replacement,
+        },
+    }
+
+
 @router.post("/{worker_id}/heartbeat")
 def worker_heartbeat(
     worker_id: str,

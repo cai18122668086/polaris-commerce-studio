@@ -9,6 +9,7 @@
 ```powershell
 $env:POLARIS_WORKER_API_URL = "https://your-control-plane.example"
 $env:POLARIS_WORKER_SESSION_TOKEN = "<short-lived-token>"
+$env:POLARIS_WORKER_SESSION_TOKEN_FILE = "D:\Polaris\local-worker\worker.session-token"
 $env:POLARIS_WORKER_ID = "wrk_xxx"
 $env:POLARIS_WORKER_PROFILE_ROOT = "D:\Polaris\ecommerce-profiles"
 $env:POLARIS_WORKER_CAPABILITIES = "browser.taobao,browser.tmall"
@@ -45,6 +46,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 `worker.env.ps1` 只存放在本机，不要提交仓库；建议只授予 `SYSTEM`、本机管理员和实际维护账号访问权限。查看状态：
+
+Worker session token 是短期令牌。supervisor 启动的 Worker 会定时轮换，并把新令牌原子写入 `POLARIS_WORKER_SESSION_TOKEN_FILE` 指定的文件；重启或开机后优先读取该文件，因此不需要人工定期改配置。若控制面连续不可达超过令牌有效期，仍需重新注册一次 Worker。
 
 ```powershell
 Get-ScheduledTask -TaskName PolarisCommerceLocalWorker

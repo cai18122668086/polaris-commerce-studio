@@ -263,6 +263,25 @@ def test_local_worker_config_requires_env_and_never_requires_cli_secret(monkeypa
     assert local_worker.main(["--check-config"]) == 2
 
 
+def test_local_worker_config_loads_and_persists_token_file(tmp_path: Path):
+    token_file = tmp_path / "worker-token"
+    token_file.write_text("file-token\n", encoding="utf-8")
+    config = local_worker.LocalWorkerConfig.from_env(
+        {
+            "POLARIS_WORKER_API_URL": "https://api.example.test",
+            "POLARIS_WORKER_SESSION_TOKEN": "bootstrap-token",
+            "POLARIS_WORKER_ID": "worker_1",
+            "POLARIS_WORKER_PROFILE_ROOT": str(tmp_path / "profiles"),
+            "POLARIS_WORKER_SESSION_TOKEN_FILE": str(token_file),
+            "POLARIS_WORKER_TOKEN_REFRESH_INTERVAL": "60",
+        }
+    )
+    assert config.session_token == "file-token"
+    assert config.token_refresh_interval_seconds == 60
+    config.persist_session_token("rotated-token")
+    assert token_file.read_text(encoding="utf-8").strip() == "rotated-token"
+
+
 def test_local_login_uses_account_scoped_profile_without_api_credentials(
     monkeypatch, tmp_path: Path
 ):

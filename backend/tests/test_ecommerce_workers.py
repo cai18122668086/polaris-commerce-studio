@@ -88,6 +88,42 @@ def test_worker_protocol_rejects_sensitive_or_unknown_fields(client):
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_worker_token_refresh_rotates_and_invalidates_previous_token(client):
+    data = _register(client, "device-token-refresh")
+    worker_id = data["worker"]["id"]
+    old_token = data["session_token"]
+    refreshed = client.post(
+        f"/api/ecommerce/workers/{worker_id}/token/refresh",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    new_token = refreshed.json()["data"]["session_token"]
+    assert new_token and new_token != old_token
+
+    old_heartbeat = client.post(
+        f"/api/ecommerce/workers/{worker_id}/heartbeat",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json={
+            "protocol_version": "worker.v1",
+            "agent_version": "0.1.0",
+            "ready": True,
+        },
+    )
+    assert old_heartbeat.status_code == 401
+    assert old_heartbeat.json()["error"]["code"] == "WORKER_AUTH_INVALID"
+
+    current_heartbeat = client.post(
+        f"/api/ecommerce/workers/{worker_id}/heartbeat",
+        headers={"Authorization": f"Bearer {new_token}"},
+        json={
+            "protocol_version": "worker.v1",
+            "agent_version": "0.1.0",
+            "ready": True,
+        },
+    )
+    assert current_heartbeat.status_code == 200
+
+
 def test_worker_heartbeat_and_expiry_are_explicit(client):
     enrollment = _enroll(client, "device-heartbeat")
     registered = client.post(

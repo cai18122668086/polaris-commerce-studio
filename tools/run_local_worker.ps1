@@ -30,7 +30,6 @@ if (-not (Test-Path -LiteralPath $EnvFile)) {
 . $EnvFile
 $required = @(
     "POLARIS_WORKER_API_URL",
-    "POLARIS_WORKER_SESSION_TOKEN",
     "POLARIS_WORKER_ID",
     "POLARIS_WORKER_PROFILE_ROOT",
     "POLARIS_WORKER_CAPABILITIES"
@@ -42,6 +41,13 @@ $missing = @(
 )
 if ($missing.Count -gt 0) {
     Write-SupervisorLog ("worker env missing required keys: " + ($missing -join ","))
+    exit 2
+}
+$tokenFile = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_SESSION_TOKEN_FILE")
+$token = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_SESSION_TOKEN")
+if ([string]::IsNullOrWhiteSpace($token) -and
+    ([string]::IsNullOrWhiteSpace($tokenFile) -or -not (Test-Path -LiteralPath $tokenFile))) {
+    Write-SupervisorLog "worker session token and token file are both missing"
     exit 2
 }
 

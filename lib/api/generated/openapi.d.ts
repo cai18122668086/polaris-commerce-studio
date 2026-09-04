@@ -681,6 +681,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/workers/{worker_id}/token/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Worker Token
+         * @description Rotate a still-valid worker session token.
+         *
+         *     Rotation is authenticated with the current Bearer token and invalidates it
+         *     immediately.  The plaintext replacement is returned exactly once; only
+         *     its hash and expiry are persisted by the control plane.
+         */
+        post: operations["refresh_worker_token_api_ecommerce_workers__worker_id__token_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/accounts": {
         parameters: {
             query?: never;
@@ -4769,6 +4793,41 @@ export interface operations {
                 "application/json": components["schemas"]["WorkerResultUploadRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_worker_token_api_ecommerce_workers__worker_id__token_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

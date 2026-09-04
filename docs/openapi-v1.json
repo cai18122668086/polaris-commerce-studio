@@ -7599,6 +7599,67 @@
         ]
       }
     },
+    "/api/ecommerce/workers/{worker_id}/token/refresh": {
+      "post": {
+        "description": "Rotate a still-valid worker session token.\n\nRotation is authenticated with the current Bearer token and invalidates it\nimmediately.  The plaintext replacement is returned exactly once; only\nits hash and expiry are persisted by the control plane.",
+        "operationId": "refresh_worker_token_api_ecommerce_workers__worker_id__token_refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Refresh Worker Token Api Ecommerce Workers  Worker Id  Token Refresh Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Worker Token",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
     "/api/v1/admin/accounts": {
       "get": {
         "operationId": "list_admin_accounts_api_v1_admin_accounts_get",

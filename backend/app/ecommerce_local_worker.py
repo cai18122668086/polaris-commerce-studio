@@ -65,6 +65,7 @@ class LocalWorkerConfig:
 
     api_url: str
     session_token: str
+    session_token_file: Path
     worker_id: str
     profile_root: Path
     capabilities: tuple[str, ...] = _DEFAULT_CAPABILITIES
@@ -73,6 +74,7 @@ class LocalWorkerConfig:
     poll_interval_seconds: float = 2.0
     lease_renew_interval_seconds: float = 30.0
     browser_timeout_ms: int = 30_000
+    token_refresh_interval_seconds: float = 300.0
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> LocalWorkerConfig:
@@ -81,7 +83,25 @@ class LocalWorkerConfig:
         session_token = values.get("POLARIS_WORKER_SESSION_TOKEN", "").strip()
         worker_id = values.get("POLARIS_WORKER_ID", "").strip()
         profile_root = values.get("POLARIS_WORKER_PROFILE_ROOT", "").strip()
-        if not api_url or not session_token or not worker_id or not profile_root:
+        if not api_url or not worker_id or not profile_root:
+            raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
+        token_file_value = values.get("POLARIS_WORKER_SESSION_TOKEN_FILE", "").strip()
+        token_file = (
+            Path(token_file_value).expanduser()
+            if token_file_value
+            else Path(profile_root).expanduser() / ".worker-session-token"
+        )
+        # Once a refresh has been persisted, the file is authoritative over
+        # the bootstrap value in the env script. This lets a reboot continue
+        # with the rotated token instead of replaying an expired token.
+        if token_file.is_file():
+            try:
+                persisted_token = token_file.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise LocalWorkerError("WORKER_TOKEN_FILE_UNREADABLE") from exc
+            if persisted_token:
+                session_token = persisted_token
+        if not session_token:
             raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
         raw_capabilities = values.get("POLARIS_WORKER_CAPABILITIES", "")
         capabilities = (
@@ -113,6 +133,9 @@ class LocalWorkerConfig:
             browser_timeout_ms = int(
                 values.get("POLARIS_WORKER_BROWSER_TIMEOUT_MS", "30000")
             )
+            token_refresh_interval_seconds = float(
+                values.get("POLARIS_WORKER_TOKEN_REFRESH_INTERVAL", "300")
+            )
         except ValueError as exc:
             raise LocalWorkerError("WORKER_CONFIG_INVALID") from exc
         if any(
@@ -123,12 +146,14 @@ class LocalWorkerConfig:
                 poll_interval_seconds,
                 lease_renew_interval_seconds,
                 browser_timeout_ms,
+                token_refresh_interval_seconds,
             )
         ):
             raise LocalWorkerError("WORKER_CONFIG_INVALID")
         return cls(
             api_url=api_url,
             session_token=session_token,
+            session_token_file=token_file.resolve(),
             worker_id=worker_id,
             profile_root=Path(profile_root).expanduser(),
             capabilities=capabilities,
@@ -137,7 +162,29 @@ class LocalWorkerConfig:
             poll_interval_seconds=poll_interval_seconds,
             lease_renew_interval_seconds=lease_renew_interval_seconds,
             browser_timeout_ms=browser_timeout_ms,
+            token_refresh_interval_seconds=token_refresh_interval_seconds,
         )
+
+    def persist_session_token(self, token: str) -> None:
+        """Persist a rotated token atomically, best-effort with restrictive mode."""
+
+        token = token.strip()
+        if not token:
+            raise LocalWorkerError("WORKER_TOKEN_REQUIRED")
+        path = self.session_token_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            temporary.write_text(token + "\n", encoding="utf-8")
+            with suppress(OSError):
+                os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+            with suppress(OSError):
+                os.chmod(path, 0o600)
+        except OSError as exc:
+            with suppress(OSError):
+                temporary.unlink()
+            raise LocalWorkerError("WORKER_TOKEN_FILE_UNWRITABLE") from exc
 
 
 def _validate_id(value: str, label: str) -> str:
@@ -297,6 +344,20 @@ class WorkerApiClient:
             f"/api/ecommerce/workers/{_validate_id(worker_id, 'worker_id')}/heartbeat",
             payload,
         )
+
+    def refresh_token(self, worker_id: str) -> dict[str, Any]:
+        """Rotate the current session token and update this client in-place."""
+
+        worker = _validate_id(worker_id, "worker_id")
+        response = self._post(f"/api/ecommerce/workers/{worker}/token/refresh", {})
+        data = response.get("data")
+        if not isinstance(data, Mapping):
+            raise LocalWorkerError("WORKER_API_INVALID_RESPONSE")
+        replacement = data.get("session_token")
+        if not isinstance(replacement, str) or not replacement.strip():
+            raise LocalWorkerError("WORKER_API_INVALID_RESPONSE")
+        self.session_token = replacement.strip()
+        return response
 
     def update_account_session(
         self, worker_id: str, account_id: str, login_state: str
@@ -569,11 +630,15 @@ class LocalWorkerLoop:
         heartbeat_interval_seconds: float = 20.0,
         poll_interval_seconds: float = 2.0,
         lease_renew_interval_seconds: float = 30.0,
+        token_refresh_interval_seconds: float = 300.0,
+        on_token_refreshed: Callable[[str], None] | None = None,
     ) -> None:
         if heartbeat_interval_seconds <= 0 or poll_interval_seconds <= 0:
             raise LocalWorkerError("WORKER_INTERVAL_INVALID")
         if lease_renew_interval_seconds <= 0:
             raise LocalWorkerError("WORKER_LEASE_INTERVAL_INVALID")
+        if token_refresh_interval_seconds <= 0:
+            raise LocalWorkerError("WORKER_TOKEN_REFRESH_INTERVAL_INVALID")
         self.api = api
         self.runtime = runtime
         self.protocol_version = protocol_version
@@ -582,6 +647,8 @@ class LocalWorkerLoop:
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
         self.poll_interval_seconds = poll_interval_seconds
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
+        self.token_refresh_interval_seconds = token_refresh_interval_seconds
+        self.on_token_refreshed = on_token_refreshed
 
     def _heartbeat(self, ready: bool) -> dict[str, Any]:
         return self.api.heartbeat(
@@ -656,6 +723,34 @@ class LocalWorkerLoop:
 
         stop = stop_event or threading.Event()
         last_heartbeat = 0.0
+        refresh_stop = threading.Event()
+
+        def refresh_token_loop() -> None:
+            # Keep the token alive independently of crawl/login work.  A
+            # transient outage is harmless; the next interval retries.  If the
+            # server rejects an expired token, normal heartbeat handling will
+            # continue and the process can be re-enrolled explicitly.
+            while not refresh_stop.wait(self.token_refresh_interval_seconds):
+                refresh = getattr(self.api, "refresh_token", None)
+                if not callable(refresh):
+                    return
+                try:
+                    response = refresh(self.runtime.worker_id)
+                    data = (
+                        response.get("data") if isinstance(response, Mapping) else None
+                    )
+                    token = (
+                        data.get("session_token") if isinstance(data, Mapping) else None
+                    )
+                    if isinstance(token, str) and self.on_token_refreshed is not None:
+                        self.on_token_refreshed(token)
+                except Exception:
+                    continue
+
+        refresher = threading.Thread(
+            target=refresh_token_loop, name="polaris-token-refresh", daemon=True
+        )
+        refresher.start()
         try:
             while not stop.is_set():
                 now = time.monotonic()
@@ -673,6 +768,8 @@ class LocalWorkerLoop:
                 if not did_work:
                     stop.wait(self.poll_interval_seconds)
         finally:
+            refresh_stop.set()
+            refresher.join(timeout=max(1.0, self.token_refresh_interval_seconds))
             with suppress(LocalWorkerError):
                 self._heartbeat(False)
 
@@ -702,6 +799,8 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
         heartbeat_interval_seconds=config.heartbeat_interval_seconds,
         poll_interval_seconds=config.poll_interval_seconds,
         lease_renew_interval_seconds=config.lease_renew_interval_seconds,
+        token_refresh_interval_seconds=config.token_refresh_interval_seconds,
+        on_token_refreshed=config.persist_session_token,
     )
     stop_event = threading.Event()
 

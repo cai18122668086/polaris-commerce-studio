@@ -50,6 +50,7 @@ from .models import (
     CrawlProfileLeaseRecord,
     CrawlTaskRecord,
     EcommerceAccountRecord,
+    EcommerceWorkerRecord,
     ProductAssetRecord,
     ProductSnapshotRecord,
     WorkspaceMemberRecord,
@@ -761,6 +762,12 @@ def _schedule(
     """Dispatch one crawl task inline or to the independent worker queue."""
 
     if app.state.settings.task_dispatcher == "celery":
+        # A live local browser worker is the execution authority for domestic
+        # ecommerce tasks.  Celery remains available as a compatibility
+        # fallback when no local worker is connected, but must not race a
+        # connected browser worker and execute the task in the server runtime.
+        if _has_online_local_worker(app, task_id):
+            return
         from .ecommerce_worker import enqueue_crawl_task
 
         enqueue_crawl_task(task_id, countdown=max(0, round(delay_seconds)))
@@ -785,6 +792,50 @@ def _schedule(
     handle = asyncio.create_task(_run_task(app, task_id), name=f"crawl-task:{task_id}")
     handles.add(handle)
     handle.add_done_callback(handles.discard)
+
+
+def _has_online_local_worker(app: Any, task_id: str) -> bool:
+    """Return whether a capable local worker is currently connected.
+
+    This check is intentionally best-effort: a missing session factory or a
+    malformed task must not prevent the legacy Celery fallback from running.
+    The worker claim endpoint still performs the authoritative lease and
+    capability checks, so this only prevents the server worker from winning a
+    race against a connected local browser.
+    """
+
+    session_factory = getattr(app.state, "session_factory", None)
+    if session_factory is None:
+        return False
+    timeout_seconds = int(
+        getattr(app.state.settings, "ecommerce_worker_heartbeat_timeout_seconds", 90)
+    )
+    try:
+        with session_factory() as session:
+            task = session.get(CrawlTaskRecord, task_id)
+            if task is None or task.status != CrawlTaskStatus.QUEUED.value:
+                return False
+            workers = session.scalars(
+                select(EcommerceWorkerRecord).where(
+                    EcommerceWorkerRecord.workspace_id == task.workspace_id,
+                    EcommerceWorkerRecord.status == "online",
+                )
+            ).all()
+            now = utc_now()
+            required_capability = f"browser.{task.platform}"
+            for worker in workers:
+                if worker.last_seen_at is None:
+                    continue
+                last_seen = worker.last_seen_at
+                if last_seen.tzinfo is None:
+                    last_seen = last_seen.replace(tzinfo=UTC)
+                if now - last_seen > timedelta(seconds=timeout_seconds):
+                    continue
+                if required_capability in set(worker.capabilities or []):
+                    return True
+    except Exception:
+        logger.debug("local worker availability probe failed", exc_info=True)
+    return False
 
 
 async def _lease_heartbeat_loop(
@@ -825,6 +876,13 @@ async def _run_task(
     with session_factory() as session:
         task = session.get(CrawlTaskRecord, task_id)
         if task is None or task.status != CrawlTaskStatus.QUEUED.value:
+            return
+        # A queued Celery message can outlive the worker-availability check in
+        # ``_schedule``.  Re-check here so a server crawl worker cannot take
+        # over after a local browser has connected in the meantime.
+        if worker_id.startswith("crawl-worker-") and _has_online_local_worker(
+            app, task_id
+        ):
             return
         if task.cancel_requested_at is not None:
             _set_status(

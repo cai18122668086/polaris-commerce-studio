@@ -297,6 +297,18 @@ class WorkerApiClient:
             payload,
         )
 
+    def update_account_session(
+        self, worker_id: str, account_id: str, login_state: str
+    ) -> dict[str, Any]:
+        worker = _validate_id(worker_id, "worker_id")
+        account = _validate_id(account_id, "account_id")
+        if login_state not in {"ready", "needs_login"}:
+            raise LocalWorkerError("LOGIN_STATE_INVALID")
+        return self._post(
+            f"/api/ecommerce/workers/{worker}/accounts/{account}/session",
+            {"login_state": login_state},
+        )
+
     def claim(
         self, worker_id: str, platforms: list[str] | None = None
     ) -> dict[str, Any]:
@@ -706,13 +718,36 @@ def main(argv: list[str] | None = None) -> int:
             profile_root = os.environ.get("POLARIS_WORKER_PROFILE_ROOT", "").strip()
             if not profile_root:
                 raise LocalWorkerError("WORKER_PROFILE_ROOT_REQUIRED")
-            run_local_login(
+            login_status = run_local_login(
                 profile_root,
                 args.login_account_id,
                 args.login_platform,
                 target_url=args.login_url,
                 timeout_seconds=args.login_timeout,
             )
+            # When the worker credentials are present, publish only the
+            # coarse login state.  Cookies, profile paths and browser data
+            # never leave the local machine.  Keep login usable in standalone
+            # mode when the worker has not yet been registered.
+            login_state = (
+                login_status.get("state") if isinstance(login_status, dict) else None
+            )
+            if login_state in {"ready", "needs_login"}:
+                try:
+                    config = LocalWorkerConfig.from_env()
+                    WorkerApiClient(
+                        config.api_url,
+                        config.session_token,
+                        timeout=config.request_timeout_seconds,
+                    ).update_account_session(
+                        config.worker_id,
+                        args.login_account_id,
+                        login_state,
+                    )
+                except LocalWorkerError:
+                    # The browser login itself succeeded; status sync can be
+                    # retried by the worker after registration.
+                    pass
             return 0
         config = LocalWorkerConfig.from_env()
         if args.check_config:

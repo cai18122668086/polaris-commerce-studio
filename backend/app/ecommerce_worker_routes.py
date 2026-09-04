@@ -26,6 +26,7 @@ from .database import get_session
 from .domain import (
     CRAWL_TASK_TERMINAL_STATUSES,
     CrawlTaskStatus,
+    EcommerceLoginState,
     MembershipRole,
     MembershipStatus,
     WorkspaceStatus,
@@ -124,6 +125,10 @@ class WorkerHeartbeatRequest(_StrictModel):
         if values is None:
             return None
         return WorkerRegisterRequest.validate_capabilities(values)
+
+
+class WorkerAccountSessionRequest(_StrictModel):
+    login_state: EcommerceLoginState
 
 
 class WorkerTaskClaimRequest(_StrictModel):
@@ -525,6 +530,34 @@ def list_workers(
     return {
         "success": True,
         "data": [_worker_response(worker, timeout) for worker in workers],
+    }
+
+
+@router.post("/{worker_id}/accounts/{account_id}/session")
+def update_worker_account_session(
+    worker_id: str,
+    account_id: str,
+    payload: WorkerAccountSessionRequest,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Synchronize a local login result without exposing browser material."""
+
+    worker = _authorized_worker(session, worker_id, authorization)
+    account = session.get(EcommerceAccountRecord, account_id)
+    if account is None or account.workspace_id != worker.workspace_id:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "ECOMMERCE_ACCOUNT_NOT_FOUND",
+            "未找到当前工作区中的电商账号。",
+        )
+    account.login_state = payload.login_state.value
+    if payload.login_state is EcommerceLoginState.READY:
+        account.last_login_at = utc_now()
+    session.commit()
+    return {
+        "success": True,
+        "data": {"account_id": account.id, "login_state": account.login_state},
     }
 
 

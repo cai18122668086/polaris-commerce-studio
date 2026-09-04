@@ -110,6 +110,23 @@ def _task() -> dict:
     }
 
 
+def test_runtime_uses_platform_profile_when_task_has_no_account(tmp_path: Path):
+    api = _FakeApi()
+    runtime = LocalWorkerRuntime(api, "worker_1", LocalProfileStore(tmp_path))
+
+    def crawl(profile_path: Path, _task: dict) -> dict:
+        assert profile_path.name == "domestic-taobao-tmall"
+        return {"platform": "taobao", "title": "公开商品"}
+
+    task = {
+        "id": "task_public",
+        "account_id": None,
+        "profile_id": "domestic-taobao-tmall",
+        "lease": {"fencing_token": 3},
+    }
+    assert runtime.execute_claimed(task, crawl) == {"accepted": True}
+
+
 def test_runtime_keeps_profile_local_and_uploads_structured_result(tmp_path: Path):
     api = _FakeApi()
     runtime = LocalWorkerRuntime(api, "worker_1", LocalProfileStore(tmp_path))

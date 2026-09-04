@@ -357,9 +357,9 @@ class LocalWorkerRuntime:
     ) -> dict[str, Any]:
         _assert_no_sensitive_fields(task)
         task_id = _validate_id(str(task.get("id", "")), "task_id")
-        account_id = task.get("account_id")
+        account_id = task.get("account_id") or task.get("profile_id")
         if not isinstance(account_id, str):
-            raise LocalWorkerError("TASK_ACCOUNT_REQUIRED")
+            raise LocalWorkerError("TASK_PROFILE_REQUIRED")
         lease = task.get("lease")
         if not isinstance(lease, Mapping) or not isinstance(
             lease.get("fencing_token"), int

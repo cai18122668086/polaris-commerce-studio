@@ -14,6 +14,7 @@ export type AdminAccount = {
   profile_busy: boolean;
   active_lease_task_id: string | null;
   needs_relogin: boolean;
+  worker_id?: string | null;
 };
 
 export type AdminOperationalAccount = AdminAccount & {

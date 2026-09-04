@@ -159,6 +159,7 @@ def _account_item(
         "workspace_id": account.workspace_id,
         "workspace_name": workspace_name,
         "platform": account.platform,
+        "worker_id": account.worker_id,
         "label": _account_label(account),
         "status": account.status,
         "login_state": account.login_state,

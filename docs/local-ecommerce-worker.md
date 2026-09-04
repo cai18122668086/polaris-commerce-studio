@@ -12,19 +12,22 @@ $env:POLARIS_WORKER_SESSION_TOKEN = "<short-lived-token>"
 $env:POLARIS_WORKER_ID = "wrk_xxx"
 $env:POLARIS_WORKER_PROFILE_ROOT = "D:\Polaris\ecommerce-profiles"
 $env:POLARIS_WORKER_CAPABILITIES = "browser.taobao,browser.tmall"
+$env:PLAYWRIGHT_BROWSERS_PATH = "D:\Tools\ms-playwright"
 ```
+
+本机 Worker 使用仓库自带的 D 盘虚拟环境；每次启动前都要保留上述浏览器路径变量：
 
 先执行配置自检：
 
 ```powershell
 Set-Location backend
-python -m app.ecommerce_local_worker --check-config
+.\.venv\Scripts\python.exe -m app.ecommerce_local_worker --check-config
 ```
 
 自检通过后启动：
 
 ```powershell
-python -m app.ecommerce_local_worker
+.\.venv\Scripts\python.exe -m app.ecommerce_local_worker
 ```
 
 代理会周期发送心跳、领取任务并续租；按 `Ctrl+C` 或系统终止信号退出时，会停止领取并回报离线状态。首次灰度建议只配置一个淘宝/天猫能力和一个账号 profile。
@@ -34,13 +37,13 @@ python -m app.ecommerce_local_worker
 当前灰度阶段可以先在本机直接打开可见官方登录窗口，账号 profile 会写入 `POLARIS_WORKER_PROFILE_ROOT\accounts\<account_id>`：
 
 ```powershell
-python -m app.ecommerce_local_worker `
+.\.venv\Scripts\python.exe -m app.ecommerce_local_worker `
   --login-account-id eac_xxx `
   --login-platform taobao `
   --login-url "https://login.taobao.com/"
 ```
 
-完成扫码或人工验证后关闭窗口，确认命令返回成功，再启动 worker。后台账号记录的 `account_id` 必须与命令参数一致。此方式用于灰度验证本机 profile 抓取链路；远程登录画面桥接仍需后续接入。
+后台账号可绑定已注册的 Worker 后，从任意电脑调用 `POST /api/ecommerce/login-jobs` 创建远程登录任务。Worker 会通过 `.../login-jobs/claim` 领取任务，在本机 Profile 中打开官方登录页，并通过 `.../frames` 上传短期二维码帧；网站使用 `GET /api/ecommerce/login-jobs/{id}` 或 `/api/ecommerce/session/preview?session_id=...` 展示状态和临时帧。扫码完成后 Worker 只回传 `ready` 状态，Cookie、密码、OTP、Profile 和 CDP 凭证始终留在本机。目标 Worker 离线时 API 返回 `LOCAL_WORKER_OFFLINE`，不会回退到服务器浏览器。
 
 ## 安全边界
 

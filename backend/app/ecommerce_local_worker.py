@@ -9,6 +9,7 @@ storage, or CDP endpoint are ever serialized by this module.
 from __future__ import annotations
 
 import argparse
+import base64
 import errno
 import json
 import os
@@ -309,6 +310,58 @@ class WorkerApiClient:
             {"login_state": login_state},
         )
 
+    def claim_login(
+        self, worker_id: str, platforms: list[str] | None = None
+    ) -> dict[str, Any]:
+        worker = _validate_id(worker_id, "worker_id")
+        payload: dict[str, Any] = {}
+        if platforms is not None:
+            payload["platforms"] = platforms
+        return self._post(f"/api/ecommerce/workers/{worker}/login-jobs/claim", payload)
+
+    def update_login(
+        self, worker_id: str, session_id: str, state: str, message: str = ""
+    ) -> dict[str, Any]:
+        worker = _validate_id(worker_id, "worker_id")
+        session = _validate_id(session_id, "login_session_id")
+        return self._post(
+            f"/api/ecommerce/workers/{worker}/login-jobs/{session}/state",
+            {"state": state, "message": message},
+        )
+
+    def login_control(self, worker_id: str, session_id: str) -> dict[str, Any]:
+        worker = _validate_id(worker_id, "worker_id")
+        session = _validate_id(session_id, "login_session_id")
+        return self._get(
+            f"/api/ecommerce/workers/{worker}/login-jobs/{session}/control"
+        )
+
+    def upload_login_frame(
+        self,
+        worker_id: str,
+        session_id: str,
+        data: bytes,
+        *,
+        content_type: str = "image/jpeg",
+        width: int = 0,
+        height: int = 0,
+        sequence: int = 0,
+    ) -> dict[str, Any]:
+        worker = _validate_id(worker_id, "worker_id")
+        session = _validate_id(session_id, "login_session_id")
+        if len(data) > 512 * 1024:
+            raise LocalWorkerError("LOGIN_FRAME_TOO_LARGE")
+        return self._post(
+            f"/api/ecommerce/workers/{worker}/login-jobs/{session}/frames",
+            {
+                "data": base64.b64encode(data).decode("ascii"),
+                "content_type": content_type,
+                "width": width,
+                "height": height,
+                "sequence": sequence,
+            },
+        )
+
     def claim(
         self, worker_id: str, platforms: list[str] | None = None
     ) -> dict[str, Any]:
@@ -546,6 +599,21 @@ class LocalWorkerLoop:
     ) -> bool:
         """Claim and execute at most one task; return whether work was done."""
 
+        claim_login = getattr(self.api, "claim_login", None)
+        if callable(claim_login):
+            login_response = claim_login(self.runtime.worker_id, self._platforms())
+            login_job = login_response.get("data")
+            if login_job is not None:
+                if not isinstance(login_job, Mapping):
+                    raise LocalWorkerError("WORKER_LOGIN_INVALID")
+                run_remote_login(
+                    self.api,
+                    self.runtime.worker_id,
+                    self.runtime.profiles,
+                    login_job,
+                )
+                return True
+
         response = self.api.claim(self.runtime.worker_id, self._platforms())
         task = response.get("data")
         if task is None:
@@ -687,6 +755,98 @@ def run_local_login(
         time.sleep(0.5)
     with suppress(Exception):
         manager.cancel_login()
+    raise LocalWorkerError("LOGIN_TIMEOUT")
+
+
+def run_remote_login(
+    api: WorkerApiClient,
+    worker_id: str,
+    profiles: LocalProfileStore,
+    job: Mapping[str, Any],
+    *,
+    timeout_seconds: int = 600,
+) -> dict[str, Any]:
+    """Execute a queued login job locally and publish only transient frames."""
+
+    account_id = _validate_id(str(job.get("account_id", "")), "account_id")
+    session_id = _validate_id(str(job.get("id", "")), "login_session_id")
+    platform = str(job.get("platform") or "taobao").casefold()
+    url = str(job.get("login_url") or "").strip() or None
+    profile_path = profiles.profile_path(account_id)
+    from .ecommerce_session import EcommerceSessionManager
+
+    manager = EcommerceSessionManager(
+        profile_path,
+        platform="alibaba1688" if platform == "1688" else platform,
+        session_profile=f"domestic-{platform}",
+        state_style="legacy" if platform == "taobao" else "canonical",
+    )
+    manager.start_login(url, headless=True, timeout_seconds=timeout_seconds)
+    api.update_login(worker_id, session_id, "waiting_qr", "目标本机登录页已打开。")
+    deadline = time.monotonic() + timeout_seconds
+    sequence = 0
+    last_mtime_ns = 0
+    while time.monotonic() < deadline:
+        try:
+            control = api.login_control(worker_id, session_id).get("data") or {}
+            if control.get("cancel_requested") or control.get("expired"):
+                with suppress(Exception):
+                    manager.cancel_login()
+                api.update_login(
+                    worker_id,
+                    session_id,
+                    "cancelled" if control.get("cancel_requested") else "expired",
+                )
+                return {
+                    "state": "cancelled"
+                    if control.get("cancel_requested")
+                    else "expired"
+                }
+        except LocalWorkerError:
+            pass
+        current = manager.status()
+        state = str(current.get("state") or "waiting_user")
+        mapped = {
+            "login_pending": "waiting_user",
+            "risk_controlled": "risk_controlled",
+            "ready": "ready",
+            "error": "failed",
+            "needs_relogin": "needs_login",
+        }.get(state, "waiting_user")
+        frame_path = (
+            manager.stream_path
+            if manager.stream_path.is_file()
+            else manager.preview_path
+        )
+        if frame_path.is_file():
+            try:
+                stat = frame_path.stat()
+                if stat.st_mtime_ns != last_mtime_ns:
+                    frame = frame_path.read_bytes()
+                    if len(frame) <= 512 * 1024:
+                        sequence += 1
+                        api.upload_login_frame(
+                            worker_id,
+                            session_id,
+                            frame,
+                            content_type="image/jpeg"
+                            if frame_path == manager.stream_path
+                            else "image/png",
+                            sequence=sequence,
+                        )
+                        last_mtime_ns = stat.st_mtime_ns
+            except OSError:
+                pass
+        if mapped in {"ready", "needs_login", "risk_controlled", "failed"}:
+            api.update_login(
+                worker_id, session_id, mapped, str(current.get("message") or "")
+            )
+            return current
+        api.update_login(worker_id, session_id, mapped)
+        time.sleep(0.5)
+    with suppress(Exception):
+        manager.cancel_login()
+    api.update_login(worker_id, session_id, "expired", "本机登录任务已超时。")
     raise LocalWorkerError("LOGIN_TIMEOUT")
 
 

@@ -1862,6 +1862,18 @@
             "title": "Platform",
             "type": "string"
           },
+          "worker_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          },
           "workspace_id": {
             "maxLength": 40,
             "minLength": 1,
@@ -1919,6 +1931,18 @@
                 "type": "null"
               }
             ]
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
           }
         },
         "title": "EcommerceAccountUpdateRequest",
@@ -3441,6 +3465,47 @@
         "title": "LocalEditJobCreate",
         "type": "object"
       },
+      "LoginJobCreateRequest": {
+        "properties": {
+          "account_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          },
+          "expires_in": {
+            "default": 600,
+            "maximum": 1800.0,
+            "minimum": 60.0,
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "platform": {
+            "default": "auto",
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Platform",
+            "type": "string"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          }
+        },
+        "required": [
+          "account_id"
+        ],
+        "title": "LoginJobCreateRequest",
+        "type": "object"
+      },
       "MembershipRole": {
         "enum": [
           "owner",
@@ -4598,6 +4663,99 @@
         "title": "WorkerHeartbeatRequest",
         "type": "object"
       },
+      "WorkerLoginClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "platforms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 8,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platforms"
+          }
+        },
+        "title": "WorkerLoginClaimRequest",
+        "type": "object"
+      },
+      "WorkerLoginFrameRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "default": "image/jpeg",
+            "pattern": "^image/(jpeg|png)$",
+            "title": "Content Type",
+            "type": "string"
+          },
+          "data": {
+            "maxLength": 800000,
+            "minLength": 1,
+            "title": "Data",
+            "type": "string"
+          },
+          "height": {
+            "default": 0,
+            "maximum": 4000.0,
+            "minimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "sequence": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "ttl_seconds": {
+            "default": 15,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Ttl Seconds",
+            "type": "integer"
+          },
+          "width": {
+            "default": 0,
+            "maximum": 4000.0,
+            "minimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "WorkerLoginFrameRequest",
+        "type": "object"
+      },
+      "WorkerLoginStateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Message",
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "WorkerLoginStateRequest",
+        "type": "object"
+      },
       "WorkerProductResult": {
         "additionalProperties": false,
         "properties": {
@@ -5680,6 +5838,153 @@
         ]
       }
     },
+    "/api/ecommerce/login-jobs": {
+      "post": {
+        "description": "Create the worker-bound login job contract used by remote consoles.",
+        "operationId": "create_login_job_api_ecommerce_login_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Login Job Api Ecommerce Login Jobs Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Login Job",
+        "tags": [
+          "ecommerce"
+        ]
+      }
+    },
+    "/api/ecommerce/login-jobs/{login_job_id}": {
+      "get": {
+        "operationId": "get_login_job_api_ecommerce_login_jobs__login_job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "login_job_id",
+            "required": true,
+            "schema": {
+              "title": "Login Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Login Job Api Ecommerce Login Jobs  Login Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Login Job",
+        "tags": [
+          "ecommerce"
+        ]
+      }
+    },
+    "/api/ecommerce/login-jobs/{login_job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_login_job_api_ecommerce_login_jobs__login_job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "login_job_id",
+            "required": true,
+            "schema": {
+              "title": "Login Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Login Job Api Ecommerce Login Jobs  Login Job Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Cancel Login Job",
+        "tags": [
+          "ecommerce"
+        ]
+      }
+    },
     "/api/ecommerce/session/cancel": {
       "post": {
         "description": "Cancel the active human-assisted login flow for one account.",
@@ -5835,12 +6140,37 @@
           {
             "in": "query",
             "name": "account_id",
-            "required": true,
+            "required": false,
             "schema": {
-              "maxLength": 40,
-              "minLength": 1,
-              "title": "Account Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
             }
           }
         ],
@@ -6289,6 +6619,604 @@
           }
         },
         "summary": "Worker Heartbeat",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-jobs/claim": {
+      "post": {
+        "description": "Claim one queued remote login job for this workstation.",
+        "operationId": "claim_worker_login_session_api_ecommerce_workers__worker_id__login_jobs_claim_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerLoginClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Claim Worker Login Session Api Ecommerce Workers  Worker Id  Login Jobs Claim Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Worker Login Session",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-jobs/{session_id}/control": {
+      "get": {
+        "operationId": "worker_login_control_api_ecommerce_workers__worker_id__login_jobs__session_id__control_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Worker Login Control Api Ecommerce Workers  Worker Id  Login Jobs  Session Id  Control Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Worker Login Control",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-jobs/{session_id}/frames": {
+      "post": {
+        "description": "Accept one short-lived preview frame; never persist it to object storage.",
+        "operationId": "upload_worker_login_frame_api_ecommerce_workers__worker_id__login_jobs__session_id__frames_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerLoginFrameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Worker Login Frame Api Ecommerce Workers  Worker Id  Login Jobs  Session Id  Frames Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Worker Login Frame",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-jobs/{session_id}/state": {
+      "post": {
+        "operationId": "update_worker_login_state_api_ecommerce_workers__worker_id__login_jobs__session_id__state_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerLoginStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Worker Login State Api Ecommerce Workers  Worker Id  Login Jobs  Session Id  State Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Worker Login State",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-sessions/claim": {
+      "post": {
+        "description": "Claim one queued remote login job for this workstation.",
+        "operationId": "claim_worker_login_session_api_ecommerce_workers__worker_id__login_sessions_claim_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerLoginClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Claim Worker Login Session Api Ecommerce Workers  Worker Id  Login Sessions Claim Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Worker Login Session",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-sessions/{session_id}/control": {
+      "get": {
+        "operationId": "worker_login_control_api_ecommerce_workers__worker_id__login_sessions__session_id__control_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Worker Login Control Api Ecommerce Workers  Worker Id  Login Sessions  Session Id  Control Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Worker Login Control",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-sessions/{session_id}/frames": {
+      "post": {
+        "description": "Accept one short-lived preview frame; never persist it to object storage.",
+        "operationId": "upload_worker_login_frame_api_ecommerce_workers__worker_id__login_sessions__session_id__frames_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerLoginFrameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Worker Login Frame Api Ecommerce Workers  Worker Id  Login Sessions  Session Id  Frames Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Worker Login Frame",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/login-sessions/{session_id}/state": {
+      "post": {
+        "operationId": "update_worker_login_state_api_ecommerce_workers__worker_id__login_sessions__session_id__state_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerLoginStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Worker Login State Api Ecommerce Workers  Worker Id  Login Sessions  Session Id  State Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Worker Login State",
         "tags": [
           "ecommerce-workers"
         ]

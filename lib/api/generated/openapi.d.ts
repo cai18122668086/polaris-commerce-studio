@@ -186,6 +186,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/login-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Login Job
+         * @description Create the worker-bound login job contract used by remote consoles.
+         */
+        post: operations["create_login_job_api_ecommerce_login_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/login-jobs/{login_job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Login Job */
+        get: operations["get_login_job_api_ecommerce_login_jobs__login_job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/login-jobs/{login_job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Login Job */
+        post: operations["cancel_login_job_api_ecommerce_login_jobs__login_job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecommerce/session/cancel": {
         parameters: {
             query?: never;
@@ -385,6 +439,154 @@ export interface paths {
         put?: never;
         /** Worker Heartbeat */
         post: operations["worker_heartbeat_api_ecommerce_workers__worker_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-jobs/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Worker Login Session
+         * @description Claim one queued remote login job for this workstation.
+         */
+        post: operations["claim_worker_login_session_api_ecommerce_workers__worker_id__login_jobs_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-jobs/{session_id}/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Worker Login Control */
+        get: operations["worker_login_control_api_ecommerce_workers__worker_id__login_jobs__session_id__control_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-jobs/{session_id}/frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Worker Login Frame
+         * @description Accept one short-lived preview frame; never persist it to object storage.
+         */
+        post: operations["upload_worker_login_frame_api_ecommerce_workers__worker_id__login_jobs__session_id__frames_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-jobs/{session_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Worker Login State */
+        post: operations["update_worker_login_state_api_ecommerce_workers__worker_id__login_jobs__session_id__state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-sessions/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Worker Login Session
+         * @description Claim one queued remote login job for this workstation.
+         */
+        post: operations["claim_worker_login_session_api_ecommerce_workers__worker_id__login_sessions_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-sessions/{session_id}/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Worker Login Control */
+        get: operations["worker_login_control_api_ecommerce_workers__worker_id__login_sessions__session_id__control_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-sessions/{session_id}/frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Worker Login Frame
+         * @description Accept one short-lived preview frame; never persist it to object storage.
+         */
+        post: operations["upload_worker_login_frame_api_ecommerce_workers__worker_id__login_sessions__session_id__frames_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/login-sessions/{session_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Worker Login State */
+        post: operations["update_worker_login_state_api_ecommerce_workers__worker_id__login_sessions__session_id__state_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1951,6 +2153,8 @@ export interface components {
             display_name?: string | null;
             /** Platform */
             platform: string;
+            /** Worker Id */
+            worker_id?: string | null;
             /** Workspace Id */
             workspace_id: string;
         };
@@ -1965,6 +2169,8 @@ export interface components {
             display_name?: string | null;
             login_state?: components["schemas"]["EcommerceLoginState"] | null;
             status?: components["schemas"]["EcommerceAccountStatus"] | null;
+            /** Worker Id */
+            worker_id?: string | null;
         };
         /**
          * EcommerceLoginState
@@ -2530,6 +2736,23 @@ export interface components {
              */
             type: "local_edit";
         };
+        /** LoginJobCreateRequest */
+        LoginJobCreateRequest: {
+            /** Account Id */
+            account_id: string;
+            /**
+             * Expires In
+             * @default 600
+             */
+            expires_in: number;
+            /**
+             * Platform
+             * @default auto
+             */
+            platform: string;
+            /** Worker Id */
+            worker_id?: string | null;
+        };
         /**
          * MembershipRole
          * @enum {string}
@@ -2982,6 +3205,51 @@ export interface components {
              * @default true
              */
             ready: boolean;
+        };
+        /** WorkerLoginClaimRequest */
+        WorkerLoginClaimRequest: {
+            /** Platforms */
+            platforms?: string[] | null;
+        };
+        /** WorkerLoginFrameRequest */
+        WorkerLoginFrameRequest: {
+            /**
+             * Content Type
+             * @default image/jpeg
+             */
+            content_type: string;
+            /** Data */
+            data: string;
+            /**
+             * Height
+             * @default 0
+             */
+            height: number;
+            /**
+             * Sequence
+             * @default 0
+             */
+            sequence: number;
+            /**
+             * Ttl Seconds
+             * @default 15
+             */
+            ttl_seconds: number;
+            /**
+             * Width
+             * @default 0
+             */
+            width: number;
+        };
+        /** WorkerLoginStateRequest */
+        WorkerLoginStateRequest: {
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** State */
+            state: string;
         };
         /** WorkerProductResult */
         WorkerProductResult: {
@@ -3530,6 +3798,107 @@ export interface operations {
             };
         };
     };
+    create_login_job_api_ecommerce_login_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginJobCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_login_job_api_ecommerce_login_jobs__login_job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                login_job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_login_job_api_ecommerce_login_jobs__login_job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                login_job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ecommerce_session_cancel_api_ecommerce_session_cancel_post: {
         parameters: {
             query?: never;
@@ -3637,8 +4006,9 @@ export interface operations {
     };
     ecommerce_session_preview_api_ecommerce_session_preview_get: {
         parameters: {
-            query: {
-                account_id: string;
+            query?: {
+                account_id?: string | null;
+                session_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -3892,6 +4262,316 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["WorkerHeartbeatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_worker_login_session_api_ecommerce_workers__worker_id__login_jobs_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerLoginClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_login_control_api_ecommerce_workers__worker_id__login_jobs__session_id__control_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_worker_login_frame_api_ecommerce_workers__worker_id__login_jobs__session_id__frames_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerLoginFrameRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_worker_login_state_api_ecommerce_workers__worker_id__login_jobs__session_id__state_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerLoginStateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_worker_login_session_api_ecommerce_workers__worker_id__login_sessions_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerLoginClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_login_control_api_ecommerce_workers__worker_id__login_sessions__session_id__control_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_worker_login_frame_api_ecommerce_workers__worker_id__login_sessions__session_id__frames_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerLoginFrameRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_worker_login_state_api_ecommerce_workers__worker_id__login_sessions__session_id__state_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerLoginStateRequest"];
             };
         };
         responses: {

@@ -13,6 +13,7 @@ type Platform = "taobao" | "1688" | "jd" | "pinduoduo";
 type LoginSessionInfo = { status?: string } | null;
 type LoginStatusResponse = { state?: string; message?: string; loginSession?: LoginSessionInfo };
 type LoginApiEnvelope = { data?: LoginStatusResponse } & LoginStatusResponse;
+type LocalWorker = { id: string; device_id: string; status: string; agent_version: string; capabilities: string[] };
 
 const platforms: Array<{ value: Platform; label: string }> = [
   { value: "taobao", label: "淘宝 / 天猫" },
@@ -36,6 +37,8 @@ export default function AdminAccountsPage() {
   const [platform, setPlatform] = useState<Platform>("taobao");
   const [accountKey, setAccountKey] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [workerId, setWorkerId] = useState("");
+  const [workers, setWorkers] = useState<LocalWorker[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -135,6 +138,21 @@ export default function AdminAccountsPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+    void fetch(`/api/ecommerce/workers?workspace_id=${encodeURIComponent(workspaceId)}`, { credentials: "include" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (cancelled) return;
+        const next = Array.isArray(payload?.data) ? payload.data as LocalWorker[] : [];
+        setWorkers(next);
+        setWorkerId((current) => current && next.some((worker) => worker.id === current) ? current : next.find((worker) => worker.status === "online")?.id || "");
+      })
+      .catch(() => { if (!cancelled) setWorkers([]); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
   async function createAccount() {
     if (!workspaceId || !accountKey.trim()) {
       setError("请选择工作区并输入账号标识。");
@@ -150,11 +168,13 @@ export default function AdminAccountsPage() {
           platform,
           account_key: accountKey.trim(),
           display_name: displayName.trim() || null,
+          worker_id: workerId || null,
         },
       });
       unwrapApiResponse(result);
       setAccountKey("");
       setDisplayName("");
+      setWorkerId("");
       setShowForm(false);
       const refreshed = await load();
       setMessage(
@@ -258,6 +278,10 @@ export default function AdminAccountsPage() {
   useEffect(() => {
     const sockets = streams.current;
     for (const accountId of activeLoginIds) {
+      const account = accounts.find((item) => item.id === accountId);
+      if (account?.worker_id) {
+        continue;
+      }
       if (sockets[accountId]) continue;
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}`);
@@ -300,7 +324,7 @@ export default function AdminAccountsPage() {
       for (const socket of Object.values(sockets)) socket.close();
       for (const accountId of Object.keys(sockets)) delete sockets[accountId];
     };
-  }, [activeLoginIds]);
+  }, [activeLoginIds, accounts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -406,6 +430,7 @@ export default function AdminAccountsPage() {
           <label>平台<select value={platform} onChange={(event) => setPlatform(event.target.value as Platform)}>{platforms.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label>账号标识<input value={accountKey} onChange={(event) => setAccountKey(event.target.value)} placeholder="手机号、会员名或内部备注" /></label>
           <label>显示名称<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="例如：淘宝主账号" /></label>
+          <label>本机执行设备<select value={workerId} onChange={(event) => setWorkerId(event.target.value)}><option value="">不绑定（仅限服务器/旧流程）</option>{workers.map((worker) => <option key={worker.id} value={worker.id}>{worker.device_id} · {worker.status} · {worker.agent_version}</option>)}</select></label>
           <button className={styles.primary} type="button" onClick={() => void createAccount()} disabled={busyId === "new"}>{busyId === "new" ? "保存中…" : "保存账号"}</button>
         </div> : null}
         <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td>{previewUrls[account.id] ? <div style={{ marginBottom: 8 }}><div tabIndex={0} role="application" aria-label={`${account.label}可操作登录浏览器`} onKeyDown={(event) => onPreviewKeyDown(account.id, event)} onWheel={(event) => onPreviewWheel(account.id, event)} style={{ width: "min(960px, 70vw)", maxHeight: "720px", overflow: "auto", border: "1px solid #d9d9e8", borderRadius: 8, background: "#fff", cursor: "crosshair", outline: "none" }}><img src={previewUrls[account.id]} alt={`${account.label}登录浏览器`} draggable={false} onPointerDown={(event) => onPreviewPointerDown(account.id, event)} onPointerUp={(event) => onPreviewPointerUp(account.id, event)} style={{ display: "block", width: "100%", height: "auto", userSelect: "none" }} /></div><small>可点击、拖动、滚动或先点击界面后输入；操作会发送到该账号的隔离登录浏览器</small></div> : null}<div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>

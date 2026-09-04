@@ -23,7 +23,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -55,7 +55,13 @@ from .ecommerce_platform import (
     resolve_site_policy,
 )
 from .ecommerce_session import EcommerceSessionManager
-from .models import AuditEventRecord, EcommerceLoginSessionRecord, utc_now
+from .errors import ApiError
+from .models import (
+    AuditEventRecord,
+    EcommerceLoginSessionRecord,
+    EcommerceWorkerRecord,
+    utc_now,
+)
 
 router = APIRouter(prefix="/api/ecommerce", tags=["ecommerce"])
 logger = logging.getLogger(__name__)
@@ -145,11 +151,7 @@ def _resolve_account_session_target(
 
 
 def _as_utc(value: datetime) -> datetime:
-    return (
-        value.replace(tzinfo=UTC)
-        if value.tzinfo is None
-        else value.astimezone(UTC)
-    )
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -170,6 +172,15 @@ def _login_session_response(
         "lastSeenAt": _iso(record.last_seen_at),
         "completedAt": _iso(record.completed_at),
         "errorCode": record.error_code,
+        "state": getattr(record, "state", "queued"),
+        "workerId": getattr(record, "worker_id", None),
+        "claimedAt": _iso(getattr(record, "claimed_at", None)),
+        "lastFrameAt": _iso(getattr(record, "last_frame_at", None)),
+        "previewUrl": (
+            f"/api/ecommerce/session/preview?session_id={record.id}"
+            if record.transport == "remote_worker"
+            else None
+        ),
     }
 
 
@@ -181,6 +192,17 @@ def _sync_login_session(
     if record is None:
         return None
     now = utc_now()
+    if record.transport == "remote_worker":
+        record.last_seen_at = now
+        if (
+            record.status == EcommerceLoginSessionStatus.ACTIVE.value
+            and _as_utc(record.expires_at) <= now
+        ):
+            record.status = EcommerceLoginSessionStatus.EXPIRED.value
+            record.state = "expired"
+            record.error_code = "LOGIN_SESSION_EXPIRED"
+            record.completed_at = now
+        return record
     status = manager.status()
     record.last_seen_at = now
     if record.status == EcommerceLoginSessionStatus.ACTIVE.value:
@@ -309,6 +331,13 @@ class SessionStartRequest(BaseModel):
 
 class SessionCancelRequest(BaseModel):
     account_id: str = Field(min_length=1, max_length=40)
+
+
+class LoginJobCreateRequest(BaseModel):
+    account_id: str = Field(min_length=1, max_length=40)
+    worker_id: str | None = Field(default=None, max_length=40)
+    platform: str = Field(default="auto", min_length=1, max_length=24)
+    expires_in: int = Field(default=600, ge=60, le=1800)
 
 
 class SessionInputRequest(BaseModel):
@@ -1111,17 +1140,183 @@ def ecommerce_session_status(
         requested_platform=platform,
         write=False,
     )
-    session_status = manager.status()
+    session_status = (
+        manager.status()
+        if account is None or not account.worker_id
+        else {"state": account.login_state, "message": ""}
+    )
     login_session = None
     if account is not None:
-        _sync_account_login_state(session, account, session_status)
         login_session = _latest_login_session(
             session, account.id, include_terminal=True
         )
-        _sync_login_session(session, login_session, manager)
+        if login_session is not None and login_session.transport == "remote_worker":
+            _sync_login_session(session, login_session, manager)
+            session_status = {
+                "state": login_session.state,
+                "message": login_session.error_code or "",
+                "previewAvailable": bool(
+                    login_session.id in request.app.state.ecommerce_remote_login_frames
+                ),
+            }
+            if login_session.state == "ready":
+                account.login_state = EcommerceLoginState.READY.value
+            elif login_session.state in {
+                "needs_login",
+                "risk_controlled",
+                "captcha_required",
+            }:
+                account.login_state = EcommerceLoginState.NEEDS_LOGIN.value
+        else:
+            _sync_account_login_state(session, account, session_status)
+            _sync_login_session(session, login_session, manager)
         session.commit()
     session_status["loginSession"] = _login_session_response(login_session)
     return {"success": True, "data": session_status}
+
+
+@router.post("/login-jobs", status_code=201)
+def create_login_job(
+    request: Request,
+    payload: LoginJobCreateRequest,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    _admin: AdminDependency,
+) -> dict[str, Any]:
+    """Create the worker-bound login job contract used by remote consoles."""
+
+    account = get_ecommerce_account_for_principal(
+        session, principal, payload.account_id, write=True
+    )
+    if payload.worker_id:
+        worker = session.get(EcommerceWorkerRecord, payload.worker_id)
+        if (
+            worker is None
+            or worker.workspace_id != account.workspace_id
+            or worker.user_id != principal.user_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "WORKER_NOT_AVAILABLE",
+                    "message": "目标执行设备不可用。",
+                },
+            )
+        account.worker_id = worker.id
+        session.commit()
+    if not account.worker_id:
+        raise ApiError(
+            409,
+            "WORKER_REQUIRED",
+            "远程登录任务必须绑定目标本机执行设备。",
+        )
+    start_payload = SessionStartRequest(
+        account_id=account.id,
+        platform=account.platform,  # type: ignore[arg-type]
+    )
+    result = ecommerce_session_start(request, session, principal, _admin, start_payload)
+    data = result.get("data", {})
+    login_session = data.get("loginSession")
+    if (
+        login_session
+        and payload.expires_in
+        != request.app.state.settings.ecommerce_login_session_timeout_seconds
+    ):
+        record = session.get(EcommerceLoginSessionRecord, login_session.get("id"))
+        if (
+            record is not None
+            and record.status == EcommerceLoginSessionStatus.ACTIVE.value
+        ):
+            record.expires_at = utc_now() + timedelta(seconds=payload.expires_in)
+            session.commit()
+            login_session = _login_session_response(record)
+            data["loginSession"] = login_session
+    return {"success": True, "data": {"login_job": login_session, **data}}
+
+
+@router.get("/login-jobs/{login_job_id}")
+def get_login_job(
+    login_job_id: str,
+    request: Request,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    _admin: AdminDependency,
+) -> dict[str, Any]:
+    record = session.get(EcommerceLoginSessionRecord, login_job_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "LOGIN_SESSION_NOT_FOUND", "message": "未找到登录任务。"},
+        )
+    account = get_ecommerce_account_for_principal(session, principal, record.account_id)
+    if record.transport != "remote_worker":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "LOGIN_JOB_NOT_REMOTE",
+                "message": "该登录任务不是本机执行任务。",
+            },
+        )
+    _sync_login_session(session, record, _account_manager(request, account))
+    session.commit()
+    frame = request.app.state.ecommerce_remote_login_frames.get(record.id)
+    preview_url = (
+        f"/api/ecommerce/session/preview?session_id={record.id}"
+        if frame and frame.get("expires_at", utc_now()) > utc_now()
+        else None
+    )
+    return {
+        "success": True,
+        "data": {**(_login_session_response(record) or {}), "preview_url": preview_url},
+    }
+
+
+@router.post("/login-jobs/{login_job_id}/cancel")
+def cancel_login_job(
+    login_job_id: str,
+    request: Request,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    _admin: AdminDependency,
+) -> dict[str, Any]:
+    record = session.get(EcommerceLoginSessionRecord, login_job_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "LOGIN_SESSION_NOT_FOUND", "message": "未找到登录任务。"},
+        )
+    account = get_ecommerce_account_for_principal(
+        session, principal, record.account_id, write=True
+    )
+    if (
+        record.transport != "remote_worker"
+        or record.status != EcommerceLoginSessionStatus.ACTIVE.value
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "LOGIN_SESSION_NOT_ACTIVE",
+                "message": "当前登录任务不可取消。",
+            },
+        )
+    now = utc_now()
+    record.status = EcommerceLoginSessionStatus.CANCELLED.value
+    record.state = "cancelled"
+    record.completed_at = now
+    record.last_seen_at = now
+    request.app.state.ecommerce_remote_login_frames.pop(record.id, None)
+    session.add(
+        AuditEventRecord(
+            workspace_id=account.workspace_id,
+            actor_user_id=principal.user_id,
+            action="ecommerce.remote_login_cancelled",
+            resource_type="ecommerce_account",
+            resource_id=account.id,
+            details={"worker_id": record.worker_id},
+        )
+    )
+    session.commit()
+    return {"success": True, "data": _login_session_response(record)}
 
 
 @router.post("/session/open-page")
@@ -1229,9 +1424,7 @@ def ecommerce_session_open_page(
         "responses": {
             "200": {
                 "content": {
-                    "image/png": {
-                        "schema": {"type": "string", "format": "binary"}
-                    }
+                    "image/png": {"schema": {"type": "string", "format": "binary"}}
                 }
             }
         }
@@ -1242,11 +1435,23 @@ def ecommerce_session_preview(
     session: SessionDependency,
     principal: PrincipalDependency,
     _admin: AdminDependency,
-    account_id: str = Query(min_length=1, max_length=40),
+    account_id: str | None = Query(default=None, min_length=1, max_length=40),
+    session_id: str | None = Query(default=None, min_length=1, max_length=40),
 ):
     """Return the short-lived, protected QR login preview for one account."""
 
     _require_login_enabled(request)
+    if session_id and not account_id:
+        remote_record = session.get(EcommerceLoginSessionRecord, session_id)
+        if remote_record is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "LOGIN_SESSION_NOT_FOUND",
+                    "message": "未找到登录任务。",
+                },
+            )
+        account_id = remote_record.account_id
     account, manager, _ = _resolve_account_session_target(
         request,
         session,
@@ -1265,6 +1470,11 @@ def ecommerce_session_preview(
             },
         )
     record = _latest_login_session(session, account.id)
+    if session_id and (record is None or record.id != session_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "LOGIN_SESSION_NOT_FOUND", "message": "未找到登录任务。"},
+        )
     if record is not None:
         _sync_login_session(session, record, manager)
         session.commit()
@@ -1276,6 +1486,27 @@ def ecommerce_session_preview(
                 "message": "当前账号没有进行中的登录流程，请先发起登录。",
                 "retryable": False,
             },
+        )
+    if record.transport == "remote_worker":
+        frame = request.app.state.ecommerce_remote_login_frames.get(record.id)
+        if (
+            frame is None
+            or frame.get("expires_at") is None
+            or frame["expires_at"] <= utc_now()
+        ):
+            request.app.state.ecommerce_remote_login_frames.pop(record.id, None)
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "LOGIN_PREVIEW_NOT_READY",
+                    "message": "目标本机登录二维码尚未准备好，请稍后刷新。",
+                    "retryable": True,
+                },
+            )
+        return Response(
+            content=frame["data"],
+            media_type=frame.get("content_type", "image/jpeg"),
+            headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
         )
     if record.transport != "headless_qr":
         raise HTTPException(
@@ -1326,6 +1557,16 @@ def ecommerce_session_input(
     )
     if account is None:
         raise HTTPException(status_code=404, detail="登录会话必须绑定到指定电商账号。")
+    active_record = _latest_login_session(session, account.id, include_terminal=False)
+    if active_record is not None and active_record.transport == "remote_worker":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "REMOTE_LOGIN_INPUT_DISABLED",
+                "message": "远程登录仅展示目标本机二维码和状态，不开放浏览器控制。",
+                "retryable": False,
+            },
+        )
     if payload.type == "click" and (payload.x is None or payload.y is None):
         raise HTTPException(status_code=422, detail="点击事件缺少坐标。")
     if payload.type == "drag" and any(
@@ -1384,6 +1625,10 @@ async def ecommerce_session_stream(
     if account is None:
         await websocket.close(code=4404, reason="登录会话必须绑定到指定电商账号。")
         return
+    active_record = _latest_login_session(session, account.id, include_terminal=False)
+    if active_record is not None and active_record.transport == "remote_worker":
+        await websocket.close(code=4409, reason="远程登录不开放浏览器控制。")
+        return
     record = _latest_login_session(session, account.id)
     if record is not None:
         _sync_login_session(session, record, manager)
@@ -1408,6 +1653,7 @@ async def ecommerce_session_stream(
     connected_at = asyncio.get_running_loop().time()
     last_input_at = 0.0
     try:
+
         async def send_frame() -> None:
             nonlocal sequence, last_mtime_ns
             frame_path = (
@@ -1427,24 +1673,26 @@ async def ecommerce_session_stream(
             last_mtime_ns = stat.st_mtime_ns
             sequence += 1
             async with send_lock:
-                await websocket.send_json({
-                    "type": "frame",
-                    "seq": sequence,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "format": "jpeg" if frame_path == manager.stream_path else "png",
-                    "width": 0,
-                    "height": 0,
-                    "data": payload,
-                })
+                await websocket.send_json(
+                    {
+                        "type": "frame",
+                        "seq": sequence,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "format": "jpeg"
+                        if frame_path == manager.stream_path
+                        else "png",
+                        "width": 0,
+                        "height": 0,
+                        "data": payload,
+                    }
+                )
 
         async def frame_pump() -> None:
             while True:
                 status = manager.status()
                 if status.get("state") not in {"login_pending", "risk_controlled"}:
                     with suppress(Exception):
-                        await websocket.close(
-                            code=4409, reason="登录会话已结束。"
-                        )
+                        await websocket.close(code=4409, reason="登录会话已结束。")
                     return
                 await send_frame()
                 await asyncio.sleep(0.1)
@@ -1475,9 +1723,7 @@ async def ecommerce_session_stream(
                 if not isinstance(payload, dict):
                     continue
                 action = (
-                    payload.get("action")
-                    if payload.get("type") == "input"
-                    else payload
+                    payload.get("action") if payload.get("type") == "input" else payload
                 )
                 if not isinstance(action, dict) or action.get("type") not in {
                     "click",
@@ -1587,12 +1833,20 @@ def ecommerce_session_cancel(
                 "retryable": False,
             },
         )
-    result = manager.cancel_login()
+    if record.transport == "remote_worker":
+        result = {
+            "state": "cancelled",
+            "message": "已取消目标本机登录任务。",
+        }
+        request.app.state.ecommerce_remote_login_frames.pop(record.id, None)
+    else:
+        result = manager.cancel_login()
     now = utc_now()
     record.status = EcommerceLoginSessionStatus.CANCELLED.value
     record.completed_at = now
     record.last_seen_at = now
     record.error_code = None
+    record.state = "cancelled"
     _sync_account_login_state(session, account, result)
     session.add(
         AuditEventRecord(
@@ -1639,6 +1893,95 @@ def ecommerce_session_start(
         requested_platform=requested_platform,
         write=True,
     )
+    # A bound account is always logged in by its designated workstation
+    # Worker. The API creates a durable queued job and never opens a server
+    # browser or accepts browser-session material.
+    if account is not None and account.worker_id:
+        from .ecommerce_worker_routes import _worker_state
+
+        existing_remote = session.scalar(
+            select(EcommerceLoginSessionRecord)
+            .where(
+                EcommerceLoginSessionRecord.account_id == account.id,
+                EcommerceLoginSessionRecord.status
+                == EcommerceLoginSessionStatus.ACTIVE.value,
+            )
+            .order_by(EcommerceLoginSessionRecord.started_at.desc())
+            .with_for_update()
+            .limit(1)
+        )
+        if (
+            existing_remote is not None
+            and _as_utc(existing_remote.expires_at) > utc_now()
+        ):
+            raise ApiError(
+                409,
+                "LOGIN_SESSION_BUSY",
+                "该电商账号已有登录流程进行中，请等待完成或取消。",
+            )
+
+        worker = session.get(EcommerceWorkerRecord, account.worker_id)
+        timeout = request.app.state.settings.ecommerce_worker_heartbeat_timeout_seconds
+        if (
+            worker is None
+            or worker.workspace_id != account.workspace_id
+            or worker.user_id != principal.user_id
+            or _worker_state(worker, timeout) != "online"
+        ):
+            raise ApiError(
+                409,
+                "LOCAL_WORKER_OFFLINE",
+                "绑定的本机执行设备离线或令牌已失效。",
+            )
+        capability = f"login.{account.platform}"
+        if capability not in set(worker.capabilities or []):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "LOCAL_WORKER_CAPABILITY_MISSING",
+                    "message": "绑定的本机执行设备不支持该平台登录。",
+                    "retryable": False,
+                },
+            )
+        now = utc_now()
+        login_session = EcommerceLoginSessionRecord(
+            id=f"login_{uuid4().hex}",
+            account_id=account.id,
+            workspace_id=account.workspace_id,
+            started_by=principal.user_id,
+            status=EcommerceLoginSessionStatus.ACTIVE.value,
+            transport="remote_worker",
+            started_at=now,
+            expires_at=now
+            + timedelta(
+                seconds=request.app.state.settings.ecommerce_login_session_timeout_seconds
+            ),
+            last_seen_at=now,
+            worker_id=worker.id,
+            state="queued",
+        )
+        session.add(login_session)
+        session.add(
+            AuditEventRecord(
+                workspace_id=account.workspace_id,
+                actor_user_id=principal.user_id,
+                action="ecommerce.remote_login_started",
+                resource_type="ecommerce_account",
+                resource_id=account.id,
+                request_id=request.headers.get("X-Request-Id"),
+                details={"worker_id": worker.id, "transport": "remote_worker"},
+            )
+        )
+        session.commit()
+        return {
+            "success": True,
+            "data": {
+                "state": "queued",
+                "message": "登录任务已发送到目标本机执行设备，等待二维码。",
+                "previewAvailable": False,
+                "loginSession": _login_session_response(login_session),
+            },
+        }
     transport = request.app.state.settings.ecommerce_login_transport
     if (
         request.app.state.settings.environment == "production"

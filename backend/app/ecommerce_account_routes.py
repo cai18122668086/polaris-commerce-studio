@@ -23,6 +23,7 @@ from .errors import ApiError
 from .models import (
     CrawlProfileLeaseRecord,
     EcommerceAccountRecord,
+    EcommerceWorkerRecord,
     WorkspaceMemberRecord,
     WorkspaceRecord,
     utc_now,
@@ -108,6 +109,7 @@ def _account_response(
         "account_key": account.account_key,
         "display_name": account.display_name,
         "profile_id": account.profile_id,
+        "worker_id": account.worker_id,
         "status": account.status,
         "login_state": account.login_state,
         "profile_busy": lease_active,
@@ -134,12 +136,14 @@ class EcommerceAccountCreateRequest(BaseModel):
     platform: str = Field(min_length=1, max_length=24)
     account_key: str = Field(min_length=1, max_length=128)
     display_name: str | None = Field(default=None, max_length=120)
+    worker_id: str | None = Field(default=None, max_length=40)
 
 
 class EcommerceAccountUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=120)
     status: EcommerceAccountStatus | None = None
     login_state: EcommerceLoginState | None = None
+    worker_id: str | None = Field(default=None, max_length=40)
 
 
 def _get_account(
@@ -177,6 +181,18 @@ def create_ecommerce_account(
     _admin: AdminDependency,
 ) -> dict[str, Any]:
     _ensure_workspace(session, principal, payload.workspace_id, write=True)
+    if payload.worker_id:
+        worker = session.get(EcommerceWorkerRecord, payload.worker_id)
+        if (
+            worker is None
+            or worker.workspace_id != payload.workspace_id
+            or worker.user_id != principal.user_id
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "WORKER_NOT_AVAILABLE",
+                "目标本机执行设备不可用或不属于当前工作区。",
+            )
     platform = _canonical_platform(payload.platform)
     account_key = payload.account_key.strip()
     if not account_key:
@@ -210,6 +226,7 @@ def create_ecommerce_account(
         display_name=payload.display_name.strip() if payload.display_name else None,
         profile_id=profile_id,
         profile_path=str(profile_path),
+        worker_id=payload.worker_id,
         status=EcommerceAccountStatus.ACTIVE.value,
         login_state=EcommerceLoginState.UNKNOWN.value,
     )
@@ -273,6 +290,22 @@ def update_ecommerce_account(
     _admin: AdminDependency,
 ) -> dict[str, Any]:
     account = _get_account(session, principal, account_id, write=True)
+    if "worker_id" in payload.model_fields_set:
+        if payload.worker_id is None:
+            account.worker_id = None
+        else:
+            worker = session.get(EcommerceWorkerRecord, payload.worker_id)
+            if (
+                worker is None
+                or worker.workspace_id != account.workspace_id
+                or worker.user_id != principal.user_id
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "WORKER_NOT_AVAILABLE",
+                    "目标本机执行设备不可用或不属于当前工作区。",
+                )
+            account.worker_id = payload.worker_id
     if payload.display_name is not None:
         account.display_name = payload.display_name.strip() or None
     if payload.status is not None:

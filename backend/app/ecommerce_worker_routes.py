@@ -8,15 +8,18 @@ localStorage, browser profiles, and CDP endpoints cannot enter this protocol.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -46,6 +49,7 @@ from .models import (
     CrawlProfileLeaseRecord,
     CrawlTaskRecord,
     EcommerceAccountRecord,
+    EcommerceLoginSessionRecord,
     EcommerceWorkerEnrollmentRecord,
     EcommerceWorkerRecord,
     UserRecord,
@@ -212,6 +216,24 @@ class WorkerProductResult(_StrictModel):
 
 class WorkerResultUploadRequest(WorkerTaskLeaseRequest):
     result: WorkerProductResult
+
+
+class WorkerLoginClaimRequest(_StrictModel):
+    platforms: list[str] | None = Field(default=None, max_length=8)
+
+
+class WorkerLoginStateRequest(_StrictModel):
+    state: str = Field(min_length=1, max_length=32)
+    message: str = Field(default="", max_length=500)
+
+
+class WorkerLoginFrameRequest(_StrictModel):
+    data: str = Field(min_length=1, max_length=800_000)
+    content_type: str = Field(default="image/jpeg", pattern="^image/(jpeg|png)$")
+    width: int = Field(default=0, ge=0, le=4000)
+    height: int = Field(default=0, ge=0, le=4000)
+    sequence: int = Field(default=0, ge=0)
+    ttl_seconds: int = Field(default=15, ge=1, le=60)
 
 
 def _new_id(prefix: str) -> str:
@@ -561,6 +583,404 @@ def update_worker_account_session(
     }
 
 
+_REMOTE_LOGIN_STATES = {
+    "queued",
+    "claimed",
+    "waiting_qr",
+    "waiting_user",
+    "ready",
+    "needs_login",
+    "risk_controlled",
+    "captcha_required",
+    "expired",
+    "cancelled",
+    "failed",
+}
+_REMOTE_LOGIN_TRANSITIONS: dict[str, set[str]] = {
+    "queued": {"claimed", "expired", "cancelled", "failed"},
+    "claimed": {
+        "waiting_qr",
+        "waiting_user",
+        "ready",
+        "needs_login",
+        "risk_controlled",
+        "captcha_required",
+        "expired",
+        "cancelled",
+        "failed",
+    },
+    "waiting_qr": {
+        "waiting_user",
+        "ready",
+        "needs_login",
+        "risk_controlled",
+        "captcha_required",
+        "expired",
+        "cancelled",
+        "failed",
+    },
+    "waiting_user": {
+        "waiting_qr",
+        "ready",
+        "needs_login",
+        "risk_controlled",
+        "captcha_required",
+        "expired",
+        "cancelled",
+        "failed",
+    },
+    "risk_controlled": {
+        "waiting_user",
+        "ready",
+        "needs_login",
+        "captcha_required",
+        "expired",
+        "cancelled",
+        "failed",
+    },
+}
+
+
+def _remote_login_response(record: EcommerceLoginSessionRecord) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "account_id": record.account_id,
+        "worker_id": record.worker_id,
+        "state": record.state,
+        "status": record.status,
+        "expires_at": _iso(record.expires_at),
+        "claimed_at": _iso(record.claimed_at),
+        "last_frame_at": _iso(record.last_frame_at),
+        "error_code": record.error_code,
+    }
+
+
+@router.post("/{worker_id}/login-sessions/claim")
+@router.post("/{worker_id}/login-jobs/claim")
+def claim_worker_login_session(
+    worker_id: str,
+    payload: WorkerLoginClaimRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Claim one queued remote login job for this workstation."""
+
+    worker = _authorized_worker(session, worker_id, authorization)
+    _require_worker_online(request, worker)
+    query = (
+        select(EcommerceLoginSessionRecord)
+        .join(
+            EcommerceAccountRecord,
+            EcommerceAccountRecord.id == EcommerceLoginSessionRecord.account_id,
+        )
+        .where(
+            EcommerceLoginSessionRecord.worker_id == worker.id,
+            EcommerceLoginSessionRecord.transport == "remote_worker",
+            EcommerceLoginSessionRecord.status == "active",
+            EcommerceLoginSessionRecord.state == "queued",
+        )
+        .order_by(
+            EcommerceLoginSessionRecord.started_at,
+            EcommerceLoginSessionRecord.id,
+        )
+        .with_for_update()
+        .limit(1)
+    )
+    if payload.platforms:
+        normalized = {value.strip().casefold() for value in payload.platforms}
+        query = query.where(EcommerceAccountRecord.platform.in_(normalized))
+    record = session.scalar(query)
+    if record is None:
+        expired = session.scalars(
+            select(EcommerceLoginSessionRecord).where(
+                EcommerceLoginSessionRecord.worker_id == worker.id,
+                EcommerceLoginSessionRecord.transport == "remote_worker",
+                EcommerceLoginSessionRecord.status == "active",
+                EcommerceLoginSessionRecord.state == "queued",
+                EcommerceLoginSessionRecord.expires_at <= utc_now(),
+            )
+        ).all()
+        for stale in expired:
+            stale.status = "expired"
+            stale.state = "expired"
+            stale.error_code = "LOGIN_SESSION_EXPIRED"
+            stale.completed_at = utc_now()
+        if expired:
+            session.commit()
+        return {"success": True, "data": None}
+    now = utc_now()
+    if _as_utc(record.expires_at) <= now:
+        record.status = "expired"
+        record.state = "expired"
+        record.error_code = "LOGIN_SESSION_EXPIRED"
+        record.completed_at = now
+        session.commit()
+        return {"success": True, "data": None}
+    account = session.get(EcommerceAccountRecord, record.account_id)
+    if (
+        account is None
+        or account.workspace_id != worker.workspace_id
+        or account.worker_id != worker.id
+    ):
+        record.status = "failed"
+        record.state = "failed"
+        record.error_code = "WORKER_ACCOUNT_MISMATCH"
+        record.completed_at = now
+        session.commit()
+        return {"success": True, "data": None}
+    if f"login.{account.platform}" not in set(worker.capabilities or []):
+        record.status = "failed"
+        record.state = "failed"
+        record.error_code = "WORKER_CAPABILITY_MISSING"
+        record.completed_at = now
+        session.commit()
+        return {"success": True, "data": None}
+    record.state = "claimed"
+    record.claimed_at = now
+    record.last_seen_at = now
+    session.commit()
+    platform_url = {
+        "taobao": "https://login.taobao.com/",
+        "1688": "https://login.1688.com/",
+        "jd": "https://passport.jd.com/new/login.aspx",
+        "pinduoduo": "https://mms.pinduoduo.com/",
+    }.get(account.platform, "https://login.taobao.com/")
+    return {
+        "success": True,
+        "data": {
+            **_remote_login_response(record),
+            "platform": account.platform,
+            "display_name": account.display_name,
+            "login_url": platform_url,
+            "profile_id": account.profile_id,
+        },
+    }
+
+
+@router.post("/{worker_id}/login-sessions/{session_id}/state")
+@router.post("/{worker_id}/login-jobs/{session_id}/state")
+def update_worker_login_state(
+    worker_id: str,
+    session_id: str,
+    payload: WorkerLoginStateRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    worker = _authorized_worker(session, worker_id, authorization)
+    _require_worker_online(request, worker)
+    record = session.get(EcommerceLoginSessionRecord, session_id)
+    if (
+        record is None
+        or record.worker_id != worker.id
+        or record.transport != "remote_worker"
+    ):
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "LOGIN_SESSION_NOT_FOUND", "未找到本机登录任务。"
+        )
+    if payload.state not in _REMOTE_LOGIN_STATES:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "LOGIN_STATE_INVALID",
+            "本机登录状态无效。",
+        )
+    now = utc_now()
+    if record.status == "active" and _as_utc(record.expires_at) <= now:
+        record.status = "expired"
+        record.state = "expired"
+        record.error_code = "LOGIN_SESSION_EXPIRED"
+        record.completed_at = now
+        session.commit()
+        raise ApiError(
+            status.HTTP_409_CONFLICT, "LOGIN_SESSION_EXPIRED", "登录任务已过期。"
+        )
+    if (
+        payload.state != record.state
+        and payload.state not in _REMOTE_LOGIN_TRANSITIONS.get(record.state, set())
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "LOGIN_STATE_TRANSITION_INVALID",
+            "本机登录状态流转无效。",
+        )
+    if record.status != "active" and payload.state not in {"ready", "failed"}:
+        raise ApiError(
+            status.HTTP_409_CONFLICT, "LOGIN_SESSION_TERMINAL", "登录任务已结束。"
+        )
+    record.state = payload.state
+    record.last_seen_at = now
+    if payload.state == "ready":
+        record.status = "completed"
+        record.completed_at = now
+        record.error_code = None
+    elif payload.state in {"failed", "expired", "cancelled"}:
+        record.status = payload.state
+        record.completed_at = now
+        record.error_code = "LOGIN_AGENT_FAILED" if payload.state == "failed" else None
+    account = session.get(EcommerceAccountRecord, record.account_id)
+    if account is not None and account.worker_id == worker.id:
+        if payload.state == "ready":
+            account.login_state = EcommerceLoginState.READY.value
+            account.last_login_at = now
+        elif payload.state in {
+            "needs_login",
+            "risk_controlled",
+            "captcha_required",
+            "failed",
+        }:
+            account.login_state = EcommerceLoginState.NEEDS_LOGIN.value
+    session.commit()
+    return {"success": True, "data": _remote_login_response(record)}
+
+
+@router.post("/{worker_id}/login-sessions/{session_id}/frames")
+@router.post("/{worker_id}/login-jobs/{session_id}/frames")
+def upload_worker_login_frame(
+    worker_id: str,
+    session_id: str,
+    payload: WorkerLoginFrameRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Accept one short-lived preview frame; never persist it to object storage."""
+
+    worker = _authorized_worker(session, worker_id, authorization)
+    _require_worker_online(request, worker)
+    record = session.get(EcommerceLoginSessionRecord, session_id)
+    if (
+        record is None
+        or record.worker_id != worker.id
+        or record.transport != "remote_worker"
+    ):
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "LOGIN_SESSION_NOT_FOUND", "未找到本机登录任务。"
+        )
+    if record.status != "active" or record.state not in {
+        "claimed",
+        "waiting_qr",
+        "waiting_user",
+        "risk_controlled",
+    }:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "LOGIN_SESSION_NOT_ACTIVE",
+            "当前登录任务不接受预览帧。",
+        )
+    try:
+        frame = base64.b64decode(payload.data.encode("ascii"), validate=True)
+    except (ValueError, UnicodeEncodeError) as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "LOGIN_FRAME_INVALID",
+            "预览帧编码无效。",
+        ) from exc
+    if not frame or len(frame) > 512 * 1024:
+        raise ApiError(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "LOGIN_FRAME_TOO_LARGE",
+            "预览帧超出大小限制。",
+        )
+    if (
+        payload.content_type == "image/jpeg" and not frame.startswith(b"\xff\xd8\xff")
+    ) or (
+        payload.content_type == "image/png"
+        and not frame.startswith(b"\x89PNG\r\n\x1a\n")
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "LOGIN_FRAME_INVALID",
+            "预览帧内容类型与数据不匹配。",
+        )
+    try:
+        with Image.open(BytesIO(frame)) as image:
+            actual_width, actual_height = image.size
+            image.verify()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "LOGIN_FRAME_INVALID",
+            "预览帧不是有效图片。",
+        ) from exc
+    if actual_width > 4000 or actual_height > 4000:
+        raise ApiError(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "LOGIN_FRAME_TOO_LARGE",
+            "预览帧尺寸超出限制。",
+        )
+    now = utc_now()
+    existing = request.app.state.ecommerce_remote_login_frames.get(session_id)
+    if existing is not None:
+        if payload.sequence <= int(existing.get("sequence", -1)):
+            return {
+                "success": True,
+                "data": {
+                    "session_id": session_id,
+                    "state": record.state,
+                    "sequence": existing.get("sequence"),
+                },
+            }
+        previous_at = existing.get("received_at")
+        if previous_at is not None and (now - previous_at).total_seconds() < 0.05:
+            raise ApiError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "LOGIN_FRAME_RATE_LIMITED",
+                "预览帧上传过于频繁。",
+            )
+    request.app.state.ecommerce_remote_login_frames[session_id] = {
+        "data": frame,
+        "content_type": payload.content_type,
+        "width": payload.width,
+        "height": payload.height,
+        "sequence": payload.sequence,
+        "expires_at": now + timedelta(seconds=payload.ttl_seconds),
+        "received_at": now,
+    }
+    record.last_frame_at = now
+    record.last_seen_at = now
+    if record.state == "claimed":
+        record.state = "waiting_qr"
+    session.commit()
+    return {
+        "success": True,
+        "data": {
+            "session_id": session_id,
+            "state": record.state,
+            "sequence": payload.sequence,
+        },
+    }
+
+
+@router.get("/{worker_id}/login-sessions/{session_id}/control")
+@router.get("/{worker_id}/login-jobs/{session_id}/control")
+def worker_login_control(
+    worker_id: str,
+    session_id: str,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    worker = _authorized_worker(session, worker_id, authorization)
+    record = session.get(EcommerceLoginSessionRecord, session_id)
+    if (
+        record is None
+        or record.worker_id != worker.id
+        or record.transport != "remote_worker"
+    ):
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "LOGIN_SESSION_NOT_FOUND", "未找到本机登录任务。"
+        )
+    return {
+        "success": True,
+        "data": {
+            "session_id": record.id,
+            "state": record.state,
+            "cancel_requested": record.status == "cancelled",
+            "expired": _as_utc(record.expires_at) <= utc_now(),
+        },
+    }
+
+
 def _require_worker_online(request: Request, worker: EcommerceWorkerRecord) -> None:
     timeout = request.app.state.settings.ecommerce_worker_heartbeat_timeout_seconds
     if _worker_state(worker, timeout) != "online":
@@ -644,6 +1064,8 @@ def claim_worker_task(
                 or account.workspace_id != worker.workspace_id
                 or account.status != "active"
             ):
+                continue
+            if account.worker_id and account.worker_id != worker.id:
                 continue
         profile_id = task.profile_id or f"domestic-{task.platform}"
         fencing_token = _acquire_profile_lease(

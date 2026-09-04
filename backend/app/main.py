@@ -114,6 +114,9 @@ def create_app(
     # use the durable profile path owned by that account.
     application.state.ecommerce_account_sessions = {}
     application.state.ecommerce_stream_accounts = set()
+    # Ephemeral remote-worker login frames. Entries are byte payloads with an
+    # expiry timestamp and are never written to object storage or logs.
+    application.state.ecommerce_remote_login_frames = {}
     # Keep the historical Taobao manager alias for existing callers, while
     # registering an independent 1688 manager and profile. Never share a
     # persistent browser profile across platform policies.

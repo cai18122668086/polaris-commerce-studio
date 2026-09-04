@@ -346,9 +346,7 @@ async def _persist_product_snapshot(
             continue
         for ordinal, value in enumerate(values):
             if lease_guard is not None and not lease_guard():
-                raise _ProfileLeaseLost(
-                    "profile lease lost during asset persistence"
-                )
+                raise _ProfileLeaseLost("profile lease lost during asset persistence")
             url = str(value).strip() if value is not None else ""
             if not url:
                 continue
@@ -519,11 +517,14 @@ async def cleanup_orphaned_crawl_assets(
             asset = session.get(AssetRecord, candidate.id)
             if asset is None or asset.deleted_at is not None:
                 continue
-            if session.scalar(
-                select(ProductAssetRecord.id)
-                .where(ProductAssetRecord.asset_id == asset.id)
-                .limit(1)
-            ) is not None:
+            if (
+                session.scalar(
+                    select(ProductAssetRecord.id)
+                    .where(ProductAssetRecord.asset_id == asset.id)
+                    .limit(1)
+                )
+                is not None
+            ):
                 continue
             object_key = asset.object_key
             object_version = asset.object_version
@@ -534,9 +535,7 @@ async def cleanup_orphaned_crawl_assets(
                 asset = session.get(AssetRecord, candidate.id)
                 if asset is not None and asset.deleted_at is None:
                     asset.purge_attempts += 1
-                    delay_seconds = min(
-                        3600, 60 * (2 ** min(asset.purge_attempts, 6))
-                    )
+                    delay_seconds = min(3600, 60 * (2 ** min(asset.purge_attempts, 6)))
                     asset.purge_next_retry_at = utc_now() + timedelta(
                         seconds=delay_seconds
                     )
@@ -552,11 +551,14 @@ async def cleanup_orphaned_crawl_assets(
             asset = session.get(AssetRecord, candidate.id)
             if asset is None or asset.deleted_at is not None:
                 continue
-            if session.scalar(
-                select(ProductAssetRecord.id)
-                .where(ProductAssetRecord.asset_id == asset.id)
-                .limit(1)
-            ) is not None:
+            if (
+                session.scalar(
+                    select(ProductAssetRecord.id)
+                    .where(ProductAssetRecord.asset_id == asset.id)
+                    .limit(1)
+                )
+                is not None
+            ):
                 continue
             now = utc_now()
             asset.lifecycle_status = "deleted"
@@ -693,18 +695,22 @@ def _heartbeat_profile_lease(
     now = utc_now()
     expires_at = now.replace(microsecond=0) + timedelta(seconds=ttl_seconds)
     with session_factory() as session:
-        updated = session.query(CrawlProfileLeaseRecord).filter(
-            CrawlProfileLeaseRecord.profile_id == profile_id,
-            CrawlProfileLeaseRecord.task_id == task_id,
-            CrawlProfileLeaseRecord.owner_id == owner_id,
-            CrawlProfileLeaseRecord.fencing_token == fencing_token,
-            CrawlProfileLeaseRecord.expires_at > now,
-        ).update(
-            {
-                CrawlProfileLeaseRecord.heartbeat_at: now,
-                CrawlProfileLeaseRecord.expires_at: expires_at,
-            },
-            synchronize_session=False,
+        updated = (
+            session.query(CrawlProfileLeaseRecord)
+            .filter(
+                CrawlProfileLeaseRecord.profile_id == profile_id,
+                CrawlProfileLeaseRecord.task_id == task_id,
+                CrawlProfileLeaseRecord.owner_id == owner_id,
+                CrawlProfileLeaseRecord.fencing_token == fencing_token,
+                CrawlProfileLeaseRecord.expires_at > now,
+            )
+            .update(
+                {
+                    CrawlProfileLeaseRecord.heartbeat_at: now,
+                    CrawlProfileLeaseRecord.expires_at: expires_at,
+                },
+                synchronize_session=False,
+            )
         )
         if updated != 1:
             session.rollback()
@@ -756,10 +762,27 @@ def _release_profile_lease(
             session.commit()
 
 
-def _schedule(
-    app: Any, task_id: str, *, delay_seconds: float = 0.0
-) -> None:
+def _schedule(app: Any, task_id: str, *, delay_seconds: float = 0.0) -> None:
     """Dispatch one crawl task inline or to the independent worker queue."""
+
+    bound, online = _bound_worker_required_and_online(app, task_id)
+    if bound and not online:
+        with app.state.session_factory() as session:
+            task = session.get(CrawlTaskRecord, task_id)
+            if task is not None and task.status == CrawlTaskStatus.QUEUED.value:
+                task.error_code = "LOCAL_WORKER_OFFLINE"
+                task.error_message_safe = "绑定的本机执行设备离线，任务未回退到服务器。"
+                _set_status(
+                    session,
+                    task,
+                    CrawlTaskStatus.FAILED,
+                    stage="failed",
+                    progress=100,
+                    message=task.error_message_safe,
+                    event_type="local_worker_offline",
+                )
+                session.commit()
+        return
 
     if app.state.settings.task_dispatcher == "celery":
         # A live local browser worker is the execution authority for domestic
@@ -815,10 +838,21 @@ def _has_online_local_worker(app: Any, task_id: str) -> bool:
             task = session.get(CrawlTaskRecord, task_id)
             if task is None or task.status != CrawlTaskStatus.QUEUED.value:
                 return False
+            account = (
+                session.get(EcommerceAccountRecord, task.account_id)
+                if task.account_id
+                else None
+            )
+            bound_worker_id = account.worker_id if account is not None else None
             workers = session.scalars(
                 select(EcommerceWorkerRecord).where(
                     EcommerceWorkerRecord.workspace_id == task.workspace_id,
                     EcommerceWorkerRecord.status == "online",
+                    *(
+                        [EcommerceWorkerRecord.id == bound_worker_id]
+                        if bound_worker_id
+                        else []
+                    ),
                 )
             ).all()
             now = utc_now()
@@ -836,6 +870,44 @@ def _has_online_local_worker(app: Any, task_id: str) -> bool:
     except Exception:
         logger.debug("local worker availability probe failed", exc_info=True)
     return False
+
+
+def _bound_worker_required_and_online(app: Any, task_id: str) -> tuple[bool, bool]:
+    """Return (bound, online) for an account-bound crawl task."""
+
+    session_factory = getattr(app.state, "session_factory", None)
+    if session_factory is None:
+        return False, False
+    timeout_seconds = int(
+        getattr(app.state.settings, "ecommerce_worker_heartbeat_timeout_seconds", 90)
+    )
+    try:
+        with session_factory() as session:
+            task = session.get(CrawlTaskRecord, task_id)
+            account = (
+                session.get(EcommerceAccountRecord, task.account_id)
+                if task and task.account_id
+                else None
+            )
+            worker_id = account.worker_id if account is not None else None
+            if not worker_id:
+                return False, False
+            worker = session.get(EcommerceWorkerRecord, worker_id)
+            if (
+                worker is None
+                or worker.status != "online"
+                or worker.last_seen_at is None
+            ):
+                return True, False
+            last_seen = (
+                worker.last_seen_at.replace(tzinfo=UTC)
+                if worker.last_seen_at.tzinfo is None
+                else worker.last_seen_at
+            )
+            return True, utc_now() - last_seen <= timedelta(seconds=timeout_seconds)
+    except Exception:
+        logger.debug("bound worker availability probe failed", exc_info=True)
+        return True, False
 
 
 async def _lease_heartbeat_loop(
@@ -868,9 +940,7 @@ async def _stop_lease_heartbeat(handle: asyncio.Task[Any]) -> None:
         await handle
 
 
-async def _run_task(
-    app: Any, task_id: str, *, worker_id: str | None = None
-) -> None:
+async def _run_task(app: Any, task_id: str, *, worker_id: str | None = None) -> None:
     session_factory = app.state.session_factory
     worker_id = worker_id or f"api-worker-{uuid4().hex[:12]}"
     with session_factory() as session:
@@ -880,10 +950,27 @@ async def _run_task(
         # A queued Celery message can outlive the worker-availability check in
         # ``_schedule``.  Re-check here so a server crawl worker cannot take
         # over after a local browser has connected in the meantime.
-        if worker_id.startswith("crawl-worker-") and _has_online_local_worker(
-            app, task_id
-        ):
-            return
+        if worker_id.startswith("crawl-worker-"):
+            bound, online = _bound_worker_required_and_online(app, task_id)
+            if bound:
+                if not online:
+                    task.error_code = "LOCAL_WORKER_OFFLINE"
+                    task.error_message_safe = (
+                        "绑定的本机执行设备离线，任务未回退到服务器。"
+                    )
+                    _set_status(
+                        session,
+                        task,
+                        CrawlTaskStatus.FAILED,
+                        stage="failed",
+                        progress=100,
+                        message=task.error_message_safe,
+                        event_type="local_worker_offline",
+                    )
+                    session.commit()
+                return
+            if _has_online_local_worker(app, task_id):
+                return
         if task.cancel_requested_at is not None:
             _set_status(
                 session,
@@ -1509,6 +1596,19 @@ def _select_automatic_account(
         return None, False
 
     now = utc_now()
+    worker_ids = {account.worker_id for account in accounts if account.worker_id}
+    workers = (
+        {
+            worker.id: worker
+            for worker in session.scalars(
+                select(EcommerceWorkerRecord).where(
+                    EcommerceWorkerRecord.id.in_(worker_ids)
+                )
+            ).all()
+        }
+        if worker_ids
+        else {}
+    )
     active_profile_ids = {
         lease.profile_id
         for lease in session.scalars(
@@ -1521,6 +1621,23 @@ def _select_automatic_account(
         ).all()
     }
     for account in accounts:
+        if account.worker_id:
+            worker = workers.get(account.worker_id)
+            if (
+                worker is None
+                or worker.status != "online"
+                or worker.last_seen_at is None
+            ):
+                continue
+            last_seen = (
+                worker.last_seen_at.replace(tzinfo=UTC)
+                if worker.last_seen_at.tzinfo is None
+                else worker.last_seen_at
+            )
+            if now - last_seen > timedelta(
+                seconds=90
+            ) or f"browser.{platform}" not in set(worker.capabilities or []):
+                continue
         if (
             account.status == "active"
             and account.login_state == EcommerceLoginState.READY.value
@@ -1736,9 +1853,12 @@ def list_crawl_tasks(
         filters.append(CrawlTaskRecord.platform == normalized_platform)
     if normalized_status:
         filters.append(CrawlTaskRecord.status == normalized_status)
-    total = session.scalar(
-        select(func.count()).select_from(CrawlTaskRecord).where(*filters)
-    ) or 0
+    total = (
+        session.scalar(
+            select(func.count()).select_from(CrawlTaskRecord).where(*filters)
+        )
+        or 0
+    )
     tasks = session.scalars(
         select(CrawlTaskRecord)
         .where(*filters)
@@ -1915,4 +2035,3 @@ def get_crawl_task_result(
         "success": True,
         "data": {"task": _task_response(task), "result": task.result_payload},
     }
-

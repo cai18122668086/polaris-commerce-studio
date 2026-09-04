@@ -297,6 +297,9 @@ class EcommerceAccountRecord(TimestampMixin, Base):
     display_name: Mapped[str | None] = mapped_column(String(120))
     profile_id: Mapped[str] = mapped_column(String(128), nullable=False)
     profile_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # Opaque id of the outbound Worker that owns this account's browser
+    # profile. Browser paths and credentials never cross the control plane.
+    worker_id: Mapped[str | None] = mapped_column(String(40), index=True)
     status: Mapped[str] = mapped_column(
         String(16), default=EcommerceAccountStatus.ACTIVE.value, nullable=False
     )
@@ -353,6 +356,15 @@ class EcommerceLoginSessionRecord(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(64))
+    # When transport is ``remote_worker`` these fields bind the login lease to
+    # one outbound worker.  The control plane stores only opaque identifiers
+    # and coarse state; browser profiles and credentials remain local.
+    worker_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    state: Mapped[str] = mapped_column(
+        String(32), default="queued", server_default=text("'queued'"), nullable=False
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_frame_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class EcommerceWorkerRecord(TimestampMixin, Base):

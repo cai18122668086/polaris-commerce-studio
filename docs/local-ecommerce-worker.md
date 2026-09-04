@@ -45,6 +45,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\tools\install_local_worker_task.ps1 -Action RunNow
 ```
 
+如果目录尚不存在，第一次 `Install` 会先生成模板并以退出码 2 结束；填好配置后再次执行 `RunNow` 即会完成注册并立即启动。
+
 `worker.env.ps1` 只存放在本机，不要提交仓库；建议只授予 `SYSTEM`、本机管理员和实际维护账号访问权限。查看状态：
 
 Worker session token 是短期令牌。supervisor 启动的 Worker 会定时轮换，并把新令牌原子写入 `POLARIS_WORKER_SESSION_TOKEN_FILE` 指定的文件；重启或开机后优先读取该文件，因此不需要人工定期改配置。若控制面连续不可达超过令牌有效期，仍需重新注册一次 Worker；重新注册后先删除旧的 token 文件，再把新的 bootstrap token 写入 env 文件。

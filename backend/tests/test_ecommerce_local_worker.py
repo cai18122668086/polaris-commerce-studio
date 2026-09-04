@@ -289,6 +289,7 @@ def test_local_login_uses_account_scoped_profile_without_api_credentials(
         timeout_seconds=5,
     )
     assert status["state"] == "ready"
-    assert str(observed["profile_path"]).endswith("accounts\\account_1")
+    profile_path = Path(observed["profile_path"])
+    assert profile_path.parts[-2:] == ("accounts", "account_1")
     assert observed["kwargs"]["platform"] == "taobao"
     assert observed["start"]["headless"] is False

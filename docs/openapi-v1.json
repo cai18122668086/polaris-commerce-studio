@@ -4519,6 +4519,409 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WorkerEnrollmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "device_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "workspace_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "device_id"
+        ],
+        "title": "WorkerEnrollmentRequest",
+        "type": "object"
+      },
+      "WorkerHeartbeatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capabilities"
+          },
+          "protocol_version": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "ready": {
+            "default": true,
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "protocol_version",
+          "agent_version"
+        ],
+        "title": "WorkerHeartbeatRequest",
+        "type": "object"
+      },
+      "WorkerProductResult": {
+        "additionalProperties": false,
+        "properties": {
+          "accessState": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessstate"
+          },
+          "descImageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Descimageurls",
+            "type": "array"
+          },
+          "imageDiagnostics": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 100,
+            "title": "Imagediagnostics",
+            "type": "object"
+          },
+          "imageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Imageurls",
+            "type": "array"
+          },
+          "numIid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numiid"
+          },
+          "platform": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Platform",
+            "type": "string"
+          },
+          "platformData": {
+            "additionalProperties": true,
+            "maxProperties": 100,
+            "title": "Platformdata",
+            "type": "object"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "propsText": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Propstext",
+            "type": "string"
+          },
+          "sales": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sales"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Services",
+            "type": "array"
+          },
+          "shopName": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shopname"
+          },
+          "skuImageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Skuimageurls",
+            "type": "array"
+          },
+          "skuPropGroups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 100,
+            "title": "Skupropgroups",
+            "type": "array"
+          },
+          "skus": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 500,
+            "title": "Skus",
+            "type": "array"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "tmall": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmall"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "platform"
+        ],
+        "title": "WorkerProductResult",
+        "type": "object"
+      },
+      "WorkerRegisterRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "device_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "enrollment_token": {
+            "maxLength": 256,
+            "minLength": 24,
+            "title": "Enrollment Token",
+            "type": "string"
+          },
+          "protocol_version": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Protocol Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enrollment_token",
+          "device_id",
+          "protocol_version",
+          "agent_version"
+        ],
+        "title": "WorkerRegisterRequest",
+        "type": "object"
+      },
+      "WorkerResultUploadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fencing_token": {
+            "minimum": 1.0,
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "result": {
+            "$ref": "#/components/schemas/WorkerProductResult"
+          }
+        },
+        "required": [
+          "fencing_token",
+          "result"
+        ],
+        "title": "WorkerResultUploadRequest",
+        "type": "object"
+      },
+      "WorkerTaskClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "platforms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 8,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platforms"
+          }
+        },
+        "title": "WorkerTaskClaimRequest",
+        "type": "object"
+      },
+      "WorkerTaskCompletionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message_safe": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message Safe"
+          },
+          "fencing_token": {
+            "minimum": 1.0,
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "outcome": {
+            "pattern": "^(cancelled|failed|timed_out)$",
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fencing_token",
+          "outcome"
+        ],
+        "title": "WorkerTaskCompletionRequest",
+        "type": "object"
+      },
+      "WorkerTaskLeaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fencing_token": {
+            "minimum": 1.0,
+            "title": "Fencing Token",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fencing_token"
+        ],
+        "title": "WorkerTaskLeaseRequest",
+        "type": "object"
+      },
       "WorkspaceResponse": {
         "properties": {
           "id": {
@@ -5582,6 +5985,596 @@
         "summary": "Ecommerce Session Status",
         "tags": [
           "ecommerce"
+        ]
+      }
+    },
+    "/api/ecommerce/workers": {
+      "get": {
+        "operationId": "list_workers_api_ecommerce_workers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Workers Api Ecommerce Workers Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Workers",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/enrollments": {
+      "post": {
+        "description": "Mint a one-time token for a user-authorized local device.",
+        "operationId": "create_worker_enrollment_api_ecommerce_workers_enrollments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerEnrollmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Worker Enrollment Api Ecommerce Workers Enrollments Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Worker Enrollment",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/register": {
+      "post": {
+        "operationId": "register_worker_api_ecommerce_workers_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Register Worker Api Ecommerce Workers Register Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Worker",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/heartbeat": {
+      "post": {
+        "operationId": "worker_heartbeat_api_ecommerce_workers__worker_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Worker Heartbeat Api Ecommerce Workers  Worker Id  Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Worker Heartbeat",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/claim": {
+      "post": {
+        "operationId": "claim_worker_task_api_ecommerce_workers__worker_id__tasks_claim_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerTaskClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Claim Worker Task Api Ecommerce Workers  Worker Id  Tasks Claim Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Worker Task",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/complete": {
+      "post": {
+        "operationId": "complete_worker_task_api_ecommerce_workers__worker_id__tasks__task_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerTaskCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Worker Task Api Ecommerce Workers  Worker Id  Tasks  Task Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Worker Task",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/control": {
+      "get": {
+        "operationId": "worker_task_control_api_ecommerce_workers__worker_id__tasks__task_id__control_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Worker Task Control Api Ecommerce Workers  Worker Id  Tasks  Task Id  Control Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Worker Task Control",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/lease": {
+      "post": {
+        "operationId": "renew_worker_task_lease_api_ecommerce_workers__worker_id__tasks__task_id__lease_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerTaskLeaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Renew Worker Task Lease Api Ecommerce Workers  Worker Id  Tasks  Task Id  Lease Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Renew Worker Task Lease",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/result": {
+      "post": {
+        "description": "Persist one structured product result while the worker lease is held.",
+        "operationId": "upload_worker_task_result_api_ecommerce_workers__worker_id__tasks__task_id__result_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerResultUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Worker Task Result Api Ecommerce Workers  Worker Id  Tasks  Task Id  Result Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Worker Task Result",
+        "tags": [
+          "ecommerce-workers"
         ]
       }
     },

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, typ
 import { Loader2, LogIn, Pause, Play, Plus, RefreshCw, ShieldCheck, Square } from "lucide-react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import { getAdminAccess, getAdminAccounts, getAdminWorkspaces, type AdminOperationalAccount, type AdminWorkspace } from "@/features/admin/api/admin";
+import { getAdminAccess, getAdminAccounts, getUserWorkspaces, type AdminOperationalAccount, type UserWorkspace } from "@/features/admin/api/admin";
 import { apiClient } from "@/lib/api/client";
 import { errorDiagnostic, unwrapApiResponse, type ApiResult } from "@/lib/api/request";
 import styles from "./page.module.css";
@@ -31,7 +31,7 @@ function platformLabel(value: string) {
 export default function AdminAccountsPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [accounts, setAccounts] = useState<AdminOperationalAccount[]>([]);
-  const [workspaces, setWorkspaces] = useState<AdminWorkspace[]>([]);
+  const [workspaces, setWorkspaces] = useState<UserWorkspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState("");
   const [platform, setPlatform] = useState<Platform>("taobao");
   const [accountKey, setAccountKey] = useState("");
@@ -105,12 +105,21 @@ export default function AdminAccountsPage() {
       const [access, accountResult, workspaceResult] = await Promise.all([
         getAdminAccess(),
         getAdminAccounts({ limit: 100 }),
-        getAdminWorkspaces({ limit: 100, status: "active" }),
+        getUserWorkspaces(),
       ]);
       setAllowed(access.can_manage);
       setAccounts(accountResult.items);
-      setWorkspaces(workspaceResult.items);
-      setWorkspaceId((current) => current || workspaceResult.items[0]?.id || "");
+      // Account creation is a write operation: viewers can inspect a
+      // workspace but must never be offered it as a selectable target.
+      const writableWorkspaces = workspaceResult.filter(
+        (workspace) => workspace.role === "owner" || workspace.role === "admin",
+      );
+      setWorkspaces(writableWorkspaces);
+      setWorkspaceId((current) =>
+        current && writableWorkspaces.some((workspace) => workspace.id === current)
+          ? current
+          : writableWorkspaces[0]?.id || "",
+      );
       return true;
     } catch (cause) {
       if (allowed === null) setAllowed(false);

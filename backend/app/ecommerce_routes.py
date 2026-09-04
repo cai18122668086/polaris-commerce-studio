@@ -378,6 +378,7 @@ def _normalise(result: object, source_url: str, include_desc: bool) -> dict:
         "services": raw.get("services", []),
         "platformData": platform_data,
         "imageDiagnostics": raw.get("image_diagnostics", {}),
+        "accessState": raw.get("access_state"),
         "sourceUrl": source_url,
         "warnings": list(raw.get("warnings", [])),
     }
@@ -1038,11 +1039,46 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
         # An empty static response or a renderer timeout does not prove that
         # the human-authorized session expired. Only an explicit platform
         # login/risk response should force a new authorization flow.
-        if any(
+        access_state = data.get("accessState")
+        if access_state == "login_required":
+            session_manager.mark_needs_relogin()
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "LOGIN_REQUIRED",
+                    "message": "淘宝/天猫商品页要求登录授权，请先完成官方登录。",
+                    "retryable": True,
+                },
+            )
+        if access_state == "captcha_required":
+            session_manager.mark_state(
+                "risk_controlled",
+                "淘宝/天猫商品页要求人工完成验证码验证。",
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "CAPTCHA_REQUIRED",
+                    "message": "淘宝/天猫商品页要求人工完成验证码验证。",
+                    "retryable": True,
+                },
+            )
+        if access_state == "risk_controlled" or any(
             "登录或风控" in warning or "风控" in warning
             for warning in data.get("warnings", [])
         ):
-            session_manager.mark_needs_relogin()
+            session_manager.mark_state(
+                "risk_controlled",
+                "淘宝/天猫商品页触发安全验证或风控。",
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "RISK_CONTROL",
+                    "message": "淘宝/天猫商品页触发风控，请完成人工验证后重试。",
+                    "retryable": True,
+                },
+            )
         raise HTTPException(
             status_code=422,
             detail={
@@ -1051,6 +1087,10 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
                 "retryable": True,
             },
         )
+    # ``accessState`` is an internal classification signal; callers receive
+    # the stable product contract while blocked pages are represented by the
+    # explicit HTTP error above.
+    data.pop("accessState", None)
     return {"success": True, "data": data}
 
 

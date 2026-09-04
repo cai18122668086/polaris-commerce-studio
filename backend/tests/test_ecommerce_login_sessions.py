@@ -246,6 +246,35 @@ def test_login_input_is_relayed_only_to_active_session(client) -> None:
     assert queued == [{"type": "click", "x": 420.0, "y": 260.0, "button": "left"}]
 
 
+def test_headless_login_stream_accepts_websocket_cookie_dependency(client) -> None:
+    """WebSocket auth must not invoke APIKeyCookie with a Request-only type."""
+
+    client.app.state.settings.ecommerce_login_transport = "headless_qr"
+    account = _create_account(client, account_key="stream-cookie-compat")
+    manager = _manager(client, account)
+    state = {
+        "state": "login_pending",
+        "message": "请完成官方登录。",
+        "platform": "taobao",
+        "sessionProfile": account["profile_id"],
+        "previewAvailable": True,
+    }
+    manager.status = lambda: dict(state)  # type: ignore[method-assign]
+    manager.start_login = lambda *args, **kwargs: dict(state)  # type: ignore[method-assign]
+    started = client.post(
+        "/api/ecommerce/session/start",
+        json={"account_id": account["id"], "platform": "taobao"},
+    )
+    assert started.status_code == 200
+
+    with client.websocket_connect(
+        f"/api/ecommerce/session/stream?account_id={account['id']}"
+    ) as websocket:
+        # ``websocket_connect`` only returns after a successful HTTP 101
+        # upgrade; the connection may close quickly when the helper exits.
+        assert websocket is not None
+
+
 def test_login_cancel_updates_session_and_audit(client) -> None:
     account = _create_account(client, account_key="cancel-login")
     manager = _pending_manager(client, account)

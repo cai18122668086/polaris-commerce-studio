@@ -269,7 +269,55 @@ def test_login_risk_html_discards_all_images() -> None:
 
     assert product.title is None
     assert product.images == []
+    assert product.access_state == "login_required"
     assert any("登录或风控" in warning for warning in product.warnings)
+
+
+@pytest.mark.parametrize(
+    ("html", "expected"),
+    [
+        (
+            '<html><script>var login_jump="https://login.taobao.com"</script></html>',
+            "login_required",
+        ),
+        ('<html><script>var x5secdata="challenge"</script></html>', "risk_controlled"),
+        ('<html><body>验证码</body></html>', "captcha_required"),
+    ],
+)
+def test_taobao_interstitial_markers_have_explicit_access_state(
+    html: str, expected: str
+) -> None:
+    product = parse_product_html(
+        html,
+        "https://item.taobao.com/item.htm?id=123456789012",
+        "https://item.taobao.com/item.htm?id=123456789012",
+    )
+    assert product.access_state == expected
+    assert product.images == []
+
+
+def test_fetch_item_surfaces_login_required_instead_of_parse_failed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    blocked = Product(
+        "https://item.taobao.com/item.htm?id=123456789012",
+        "https://item.taobao.com/item.htm?id=123456789012",
+        "taobao",
+        "123456789012",
+        None,
+        None,
+        warnings=["平台返回了登录或风控页面，未读取到商品数据。"],
+        access_state="login_required",
+    )
+    monkeypatch.setattr(ecommerce_routes, "crawl_one", lambda *args: blocked)
+
+    response = client.post(
+        "/api/ecommerce/fetch-item",
+        json={"url": blocked.source_url, "platform": "taobao"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "LOGIN_REQUIRED"
 
 
 def test_image_filter_removes_small_platform_assets_but_keeps_product_images() -> None:

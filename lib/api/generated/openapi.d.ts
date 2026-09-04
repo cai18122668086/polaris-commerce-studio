@@ -300,6 +300,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workers */
+        get: operations["list_workers_api_ecommerce_workers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Worker Enrollment
+         * @description Mint a one-time token for a user-authorized local device.
+         */
+        post: operations["create_worker_enrollment_api_ecommerce_workers_enrollments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Worker */
+        post: operations["register_worker_api_ecommerce_workers_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Worker Heartbeat */
+        post: operations["worker_heartbeat_api_ecommerce_workers__worker_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/tasks/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim Worker Task */
+        post: operations["claim_worker_task_api_ecommerce_workers__worker_id__tasks_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Worker Task */
+        post: operations["complete_worker_task_api_ecommerce_workers__worker_id__tasks__task_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Worker Task Control */
+        get: operations["worker_task_control_api_ecommerce_workers__worker_id__tasks__task_id__control_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew Worker Task Lease */
+        post: operations["renew_worker_task_lease_api_ecommerce_workers__worker_id__tasks__task_id__lease_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ecommerce/workers/{worker_id}/tasks/{task_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Worker Task Result
+         * @description Persist one structured product result while the worker lease is held.
+         */
+        post: operations["upload_worker_task_result_api_ecommerce_workers__worker_id__tasks__task_id__result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/accounts": {
         parameters: {
             query?: never;
@@ -2779,6 +2938,119 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WorkerEnrollmentRequest */
+        WorkerEnrollmentRequest: {
+            /** Device Id */
+            device_id: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** WorkerHeartbeatRequest */
+        WorkerHeartbeatRequest: {
+            /** Agent Version */
+            agent_version: string;
+            /** Capabilities */
+            capabilities?: string[] | null;
+            /** Protocol Version */
+            protocol_version: string;
+            /**
+             * Ready
+             * @default true
+             */
+            ready: boolean;
+        };
+        /** WorkerProductResult */
+        WorkerProductResult: {
+            /** Accessstate */
+            accessState?: string | null;
+            /** Descimageurls */
+            descImageUrls?: string[];
+            /** Imagediagnostics */
+            imageDiagnostics?: {
+                [key: string]: number;
+            };
+            /** Imageurls */
+            imageUrls?: string[];
+            /** Numiid */
+            numIid?: string | number | null;
+            /** Platform */
+            platform: string;
+            /** Platformdata */
+            platformData?: {
+                [key: string]: unknown;
+            };
+            /** Price */
+            price?: string | null;
+            /**
+             * Propstext
+             * @default
+             */
+            propsText: string;
+            /** Sales */
+            sales?: string | null;
+            /** Services */
+            services?: string[];
+            /** Shopname */
+            shopName?: string | null;
+            /** Skuimageurls */
+            skuImageUrls?: string[];
+            /** Skupropgroups */
+            skuPropGroups?: {
+                [key: string]: unknown;
+            }[];
+            /** Skus */
+            skus?: {
+                [key: string]: unknown;
+            }[];
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Tmall */
+            tmall?: boolean | null;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** WorkerRegisterRequest */
+        WorkerRegisterRequest: {
+            /** Agent Version */
+            agent_version: string;
+            /** Capabilities */
+            capabilities?: string[];
+            /** Device Id */
+            device_id: string;
+            /** Enrollment Token */
+            enrollment_token: string;
+            /** Protocol Version */
+            protocol_version: string;
+        };
+        /** WorkerResultUploadRequest */
+        WorkerResultUploadRequest: {
+            /** Fencing Token */
+            fencing_token: number;
+            result: components["schemas"]["WorkerProductResult"];
+        };
+        /** WorkerTaskClaimRequest */
+        WorkerTaskClaimRequest: {
+            /** Platforms */
+            platforms?: string[] | null;
+        };
+        /** WorkerTaskCompletionRequest */
+        WorkerTaskCompletionRequest: {
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message Safe */
+            error_message_safe?: string | null;
+            /** Fencing Token */
+            fencing_token: number;
+            /** Outcome */
+            outcome: string;
+        };
+        /** WorkerTaskLeaseRequest */
+        WorkerTaskLeaseRequest: {
+            /** Fencing Token */
+            fencing_token: number;
+        };
         /** WorkspaceResponse */
         WorkspaceResponse: {
             /** Id */
@@ -3416,6 +3688,343 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workers_api_ecommerce_workers_get: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_worker_enrollment_api_ecommerce_workers_enrollments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerEnrollmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_worker_api_ecommerce_workers_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_heartbeat_api_ecommerce_workers__worker_id__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerHeartbeatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_worker_task_api_ecommerce_workers__worker_id__tasks_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerTaskClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_worker_task_api_ecommerce_workers__worker_id__tasks__task_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerTaskCompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_task_control_api_ecommerce_workers__worker_id__tasks__task_id__control_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renew_worker_task_lease_api_ecommerce_workers__worker_id__tasks__task_id__lease_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerTaskLeaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_worker_task_result_api_ecommerce_workers__worker_id__tasks__task_id__result_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerResultUploadRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

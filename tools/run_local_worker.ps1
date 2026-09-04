@@ -57,16 +57,10 @@ while ($true) {
     $stderr = Join-Path $logRoot "worker-$stamp.err.log"
     try {
         Write-SupervisorLog "starting local worker"
-        $process = Start-Process `
-            -FilePath $python `
-            -ArgumentList @("-m", "app.ecommerce_local_worker") `
-            -WorkingDirectory $backendRoot `
-            -RedirectStandardOutput $stdout `
-            -RedirectStandardError $stderr `
-            -WindowStyle Hidden `
-            -PassThru
-        $process.WaitForExit()
-        $exitCode = $process.ExitCode
+        # Run in the supervisor's process tree so Scheduled Task stop/restart
+        # also reaps the Worker child instead of leaving an orphan instance.
+        & $python -m app.ecommerce_local_worker 1> $stdout 2> $stderr
+        $exitCode = $LASTEXITCODE
         Write-SupervisorLog "local worker exited with code $exitCode; restarting"
     } catch {
         Write-SupervisorLog ("worker supervisor error: " + $_.Exception.Message)

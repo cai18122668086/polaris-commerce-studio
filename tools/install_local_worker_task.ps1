@@ -27,6 +27,33 @@ if (-not (Test-Path -LiteralPath $runner)) {
     throw "Worker supervisor script not found: $runner"
 }
 
+# The env file is local administrator-controlled configuration. Load it so we
+# can protect both the rotating token and the browser profile root before the
+# SYSTEM task starts. Restricting the directories also protects future atomic
+# token replacements, whose temporary file inherits the parent ACL.
+. $envFile
+$existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($null -ne $existingTask -and $existingTask.State -eq "Running") {
+    Stop-ScheduledTask -TaskName $TaskName
+    Start-Sleep -Seconds 2
+}
+function Protect-WorkerPath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return }
+    New-Item -ItemType Directory -Force -Path $Path | Out-Null
+    $currentAccount = "$env:USERDOMAIN\$env:USERNAME"
+    # A previous SYSTEM run may own rotated token/log files. Reclaiming the
+    # exact Worker directory lets an elevated maintenance run repair ACLs.
+    & takeown.exe /f $Path /r /d y /a | Out-Null
+    & icacls.exe $Path /inheritance:r /grant:r `
+        '*S-1-5-18:(OI)(CI)(F)' `
+        '*S-1-5-32-544:(OI)(CI)(F)' `
+        "${currentAccount}:(OI)(CI)(F)" /T | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to protect Worker path: $Path" }
+}
+
+Protect-WorkerPath $WorkerRoot
+Protect-WorkerPath ([Environment]::GetEnvironmentVariable("POLARIS_WORKER_PROFILE_ROOT"))
+
 New-Item -ItemType Directory -Force -Path (Join-Path $WorkerRoot "logs") | Out-Null
 $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $argument = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runner`" -EnvFile `"$envFile`" -WorkerRoot `"$WorkerRoot`""

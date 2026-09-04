@@ -627,7 +627,15 @@ def main() -> int:
                 # reloading) a second visible page while the user is scanning.
                 jd_login_page_seen = True
                 jd_probe_attempted_since_login = False
-            for _ in range(600):
+            # Honor the caller-provided timeout instead of the historical
+            # fixed 600-iteration (~120 second) limit.  Browser/network
+            # probes can take longer than the nominal 200 ms sleep, so use a
+            # monotonic deadline rather than converting seconds to a loop
+            # count.
+            login_deadline = time.monotonic() + max(1, args.timeout_seconds)
+            iteration = 0
+            while time.monotonic() < login_deadline:
+                iteration += 1
                 _drain_input_actions(page, args.actions_dir)
                 try:
                     if not context.pages or page.is_closed():
@@ -643,7 +651,7 @@ def main() -> int:
                     body = ""
                 # CDP screencast frames are the primary transport. Keep the
                 # PNG snapshot as a low-rate fallback for older clients.
-                if args.screenshot_path is not None and (_ % 10 == 0):
+                if args.screenshot_path is not None and (iteration % 10 == 0):
                     _write_preview(page, args.screenshot_path)
                 login_page = (
                     any(

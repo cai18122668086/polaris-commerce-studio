@@ -32,6 +32,32 @@ Set-Location backend
 
 代理会周期发送心跳、领取任务并续租；按 `Ctrl+C` 或系统终止信号退出时，会停止领取并回报离线状态。首次灰度建议只配置一个淘宝/天猫能力和一个账号 profile。
 
+## Windows 长期运行
+
+推荐使用仓库提供的计划任务安装脚本。它以 `SYSTEM` 身份开机启动，Worker 异常退出时由 supervisor 自动重启，日志只写入 D 盘：
+
+```powershell
+Set-Location D:\Projects\polaris-commerce-studio-model-pose-entrypoints
+Set-ExecutionPolicy -Scope Process Bypass
+.\tools\install_local_worker_task.ps1 -Action Install
+# 编辑 D:\Polaris\local-worker\worker.env.ps1，填入真实 Worker 配置
+.\tools\install_local_worker_task.ps1 -Action RunNow
+```
+
+`worker.env.ps1` 只存放在本机，不要提交仓库；建议只授予 `SYSTEM`、本机管理员和实际维护账号访问权限。查看状态：
+
+```powershell
+Get-ScheduledTask -TaskName PolarisCommerceLocalWorker
+Get-ScheduledTaskInfo -TaskName PolarisCommerceLocalWorker
+Get-Content D:\Polaris\local-worker\logs\supervisor-*.log -Tail 40
+```
+
+卸载计划任务不会删除 Profile、env 或日志：
+
+```powershell
+.\tools\install_local_worker_task.ps1 -Action Uninstall
+```
+
 ## 在本机完成账号登录
 
 当前灰度阶段可以先在本机直接打开可见官方登录窗口，账号 profile 会写入 `POLARIS_WORKER_PROFILE_ROOT\accounts\<account_id>`：

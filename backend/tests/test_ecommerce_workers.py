@@ -128,6 +128,36 @@ def test_worker_heartbeat_and_expiry_are_explicit(client):
     assert listed.json()["data"][0]["error_code"] == "WORKER_OFFLINE"
 
 
+def test_worker_can_sync_account_login_state_without_browser_material(client):
+    worker = _register(client, "device-session-sync")
+    with client.app.state.session_factory() as session:
+        from app.models import EcommerceAccountRecord
+
+        account = EcommerceAccountRecord(
+            id="eac_session_sync",
+            workspace_id="ws_test",
+            created_by="usr_test",
+            platform="taobao",
+            account_key="seller-session-sync",
+            profile_id="account-profile-eac_session_sync",
+            profile_path="/profiles/eac_session_sync",
+            status="active",
+            login_state="unknown",
+        )
+        session.add(account)
+        session.commit()
+    response = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/accounts/eac_session_sync/session",
+        headers={"Authorization": f"Bearer {worker['session_token']}"},
+        json={"login_state": "ready"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == {
+        "account_id": "eac_session_sync",
+        "login_state": "ready",
+    }
+
+
 def test_worker_claim_renews_lease_and_acknowledges_cancel(client):
     worker = _register(client, "device-claim")
     task_id = "crw_worker_claim"

@@ -19,6 +19,7 @@ from app.models import (
     AssetRecord,
     CrawlProfileLeaseRecord,
     CrawlTaskRecord,
+    EcommerceWorkerRecord,
     ProductAssetRecord,
     ProductSnapshotRecord,
     utc_now,
@@ -468,6 +469,62 @@ def test_celery_schedule_publishes_to_dedicated_queue(monkeypatch) -> None:
     crawl_tasks._schedule(app, "crw_worker_queue", delay_seconds=1)
 
     assert published == [("crw_worker_queue", 1)]
+
+
+def test_celery_schedule_defers_to_online_local_worker(client, monkeypatch) -> None:
+    published: list[str] = []
+    monkeypatch.setattr(
+        ecommerce_worker,
+        "enqueue_crawl_task",
+        lambda task_id, *, countdown=0: published.append(task_id),
+    )
+    with client.app.state.session_factory() as session:
+        session.add(
+            CrawlTaskRecord(
+                id="crw_local_preferred",
+                workspace_id="ws_test",
+                created_by="usr_test",
+                platform="taobao",
+                source_url="https://item.taobao.com/item.htm?id=123456789012",
+                canonical_url="https://item.taobao.com/item.htm?id=123456789012",
+                request_hash="b" * 64,
+                status="queued",
+                stage="queued",
+                max_attempts=1,
+                profile_id="domestic-taobao",
+                request_payload={"platform": "taobao"},
+                queued_at=utc_now(),
+            )
+        )
+        session.commit()
+    with client.app.state.session_factory() as session:
+        session.add(
+            EcommerceWorkerRecord(
+                id="wrk_local_preferred",
+                user_id="usr_test",
+                workspace_id="ws_test",
+                device_id="device-local-preferred",
+                protocol_version="worker.v1",
+                agent_version="local-runtime.v1",
+                capabilities=["browser.taobao"],
+                status="online",
+                last_seen_at=utc_now(),
+            )
+        )
+        session.commit()
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            settings=SimpleNamespace(
+                task_dispatcher="celery",
+                ecommerce_worker_heartbeat_timeout_seconds=90,
+            ),
+            session_factory=client.app.state.session_factory,
+        )
+    )
+
+    crawl_tasks._schedule(app, "crw_local_preferred")
+
+    assert published == []
 
 
 def test_recovery_leaves_active_worker_lease_untouched(client, monkeypatch) -> None:

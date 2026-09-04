@@ -354,6 +354,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/workers/{worker_id}/accounts/{account_id}/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Worker Account Session
+         * @description Synchronize a local login result without exposing browser material.
+         */
+        post: operations["update_worker_account_session_api_ecommerce_workers__worker_id__accounts__account_id__session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecommerce/workers/{worker_id}/heartbeat": {
         parameters: {
             query?: never;
@@ -2938,6 +2958,10 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WorkerAccountSessionRequest */
+        WorkerAccountSessionRequest: {
+            login_state: components["schemas"]["EcommerceLoginState"];
+        };
         /** WorkerEnrollmentRequest */
         WorkerEnrollmentRequest: {
             /** Device Id */
@@ -3794,6 +3818,46 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_worker_account_session_api_ecommerce_workers__worker_id__accounts__account_id__session_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                worker_id: string;
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerAccountSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

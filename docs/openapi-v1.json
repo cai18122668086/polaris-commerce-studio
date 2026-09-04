@@ -4519,6 +4519,19 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WorkerAccountSessionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "login_state": {
+            "$ref": "#/components/schemas/EcommerceLoginState"
+          }
+        },
+        "required": [
+          "login_state"
+        ],
+        "title": "WorkerAccountSessionRequest",
+        "type": "object"
+      },
       "WorkerEnrollmentRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6126,6 +6139,86 @@
           }
         },
         "summary": "Register Worker",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/{worker_id}/accounts/{account_id}/session": {
+      "post": {
+        "description": "Synchronize a local login result without exposing browser material.",
+        "operationId": "update_worker_account_session_api_ecommerce_workers__worker_id__accounts__account_id__session_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerAccountSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Worker Account Session Api Ecommerce Workers  Worker Id  Accounts  Account Id  Session Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Worker Account Session",
         "tags": [
           "ecommerce-workers"
         ]

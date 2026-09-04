@@ -74,7 +74,9 @@ class LocalWorkerConfig:
     poll_interval_seconds: float = 2.0
     lease_renew_interval_seconds: float = 30.0
     browser_timeout_ms: int = 30_000
-    token_refresh_interval_seconds: float = 300.0
+    # Keep this below the server's minimum 60-second token TTL so a deployment
+    # using the shortest allowed lifetime still refreshes before expiry.
+    token_refresh_interval_seconds: float = 30.0
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> LocalWorkerConfig:
@@ -134,7 +136,7 @@ class LocalWorkerConfig:
                 values.get("POLARIS_WORKER_BROWSER_TIMEOUT_MS", "30000")
             )
             token_refresh_interval_seconds = float(
-                values.get("POLARIS_WORKER_TOKEN_REFRESH_INTERVAL", "300")
+                values.get("POLARIS_WORKER_TOKEN_REFRESH_INTERVAL", "30")
             )
         except ValueError as exc:
             raise LocalWorkerError("WORKER_CONFIG_INVALID") from exc
@@ -630,7 +632,7 @@ class LocalWorkerLoop:
         heartbeat_interval_seconds: float = 20.0,
         poll_interval_seconds: float = 2.0,
         lease_renew_interval_seconds: float = 30.0,
-        token_refresh_interval_seconds: float = 300.0,
+        token_refresh_interval_seconds: float = 30.0,
         on_token_refreshed: Callable[[str], None] | None = None,
     ) -> None:
         if heartbeat_interval_seconds <= 0 or poll_interval_seconds <= 0:

@@ -235,6 +235,22 @@ def create_ecommerce_account(
     return {"success": True, "data": _account_response(account)}
 
 
+@router.delete("/accounts/{account_id}")
+def delete_ecommerce_account(
+    account_id: str,
+    session: SessionDependency,
+    principal: PrincipalDependency,
+    _admin: AdminDependency,
+) -> dict[str, Any]:
+    """Remove an account from the operational pool while preserving history."""
+    account = _get_account(session, principal, account_id, write=True)
+    account.status = EcommerceAccountStatus.DISABLED.value
+    account.worker_id = None
+    account.disabled_at = utc_now()
+    session.commit()
+    return {"success": True, "data": {"id": account.id, "status": account.status}}
+
+
 @router.get("/accounts")
 def list_ecommerce_accounts(
     session: SessionDependency,

@@ -144,6 +144,8 @@ export default function AdminAccountsPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
+    // `load` is intentionally called once on mount; it is defined in this page component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -377,7 +379,7 @@ export default function AdminAccountsPage() {
       for (const socket of Object.values(sockets)) socket.close();
       for (const accountId of Object.keys(sockets)) delete sockets[accountId];
     };
-  }, [activeLoginIds, accounts]);
+  }, [activeLoginIds, accounts, loginSessionIds]);
 
   useEffect(() => {
     let cancelled = false;

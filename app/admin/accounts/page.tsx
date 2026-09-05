@@ -214,6 +214,15 @@ export default function AdminAccountsPage() {
     }
   }
 
+  async function removeAccount(account: AdminOperationalAccount) {
+    if (!window.confirm(`确认移除 ${account.label}？历史记录会保留。`)) return;
+    setBusyId(account.id); setError("");
+    try {
+      const result = await apiClient.DELETE("/api/ecommerce/accounts/{account_id}", { params: { path: { account_id: account.id } } });
+      unwrapApiResponse(result); setMessage(`${account.label} 已移除`); await load();
+    } catch (cause) { setError(errorDiagnostic(cause)); } finally { setBusyId(null); }
+  }
+
   function updateLoginActivity(accountId: string, data: LoginStatusResponse) {
     const isActive = data.loginSession?.status === "active";
     setActiveLoginIds((current) => {

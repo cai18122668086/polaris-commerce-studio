@@ -183,6 +183,10 @@ class Settings(BaseSettings):
     # Human-assisted production login is fail-closed and must be explicitly enabled.
     ecommerce_login_enabled: bool = False
     ecommerce_login_transport: Literal["local_visible", "headless_qr"] = "local_visible"
+    # When enabled, every account login must be dispatched to its explicitly
+    # enrolled workstation worker.  This prevents the API host (for example a
+    # Hong Kong production VM) from ever opening a fallback browser session.
+    ecommerce_login_require_worker: bool = False
     ecommerce_login_session_timeout_seconds: int = Field(
         default=600, ge=60, le=1800
     )

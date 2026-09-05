@@ -1350,6 +1350,19 @@ def ecommerce_session_open_page(
         requested_platform=payload.platform,
         write=True,
     )
+    if (
+        account is not None
+        and request.app.state.settings.ecommerce_login_require_worker
+        and not account.worker_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "LOCAL_WORKER_REQUIRED",
+                "message": "该环境要求绑定固定的本机执行设备后才能登录。请先为账号选择在线本机 Worker。",
+                "retryable": False,
+            },
+        )
     requested = (
         ("alibaba1688" if account.platform == "1688" else account.platform)
         if account is not None

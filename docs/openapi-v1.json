@@ -5230,6 +5230,54 @@
       }
     },
     "/api/ecommerce/accounts/{account_id}": {
+      "delete": {
+        "description": "Remove an account from the operational pool while preserving history.",
+        "operationId": "delete_ecommerce_account_api_ecommerce_accounts__account_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Ecommerce Account Api Ecommerce Accounts  Account Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Delete Ecommerce Account",
+        "tags": [
+          "ecommerce-accounts"
+        ]
+      },
       "get": {
         "operationId": "get_ecommerce_account_api_ecommerce_accounts__account_id__get",
         "parameters": [

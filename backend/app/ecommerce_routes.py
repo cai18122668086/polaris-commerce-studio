@@ -1359,7 +1359,10 @@ def ecommerce_session_open_page(
             status_code=409,
             detail={
                 "code": "LOCAL_WORKER_REQUIRED",
-                "message": "该环境要求绑定固定的本机执行设备后才能登录。请先为账号选择在线本机 Worker。",
+                "message": (
+                    "该环境要求绑定固定的本机执行设备后才能登录。"
+                    "请先为账号选择在线本机 Worker。"
+                ),
                 "retryable": False,
             },
         )

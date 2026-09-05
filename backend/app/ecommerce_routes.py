@@ -342,6 +342,7 @@ class LoginJobCreateRequest(BaseModel):
 
 class SessionInputRequest(BaseModel):
     account_id: str = Field(min_length=1, max_length=40)
+    session_id: str | None = Field(default=None, min_length=1, max_length=40)
     type: Literal["click", "drag", "wheel", "key", "text"]
     x: float | None = Field(default=None, ge=0, le=10000)
     y: float | None = Field(default=None, ge=0, le=10000)
@@ -1573,7 +1574,13 @@ def ecommerce_session_input(
     )
     if account is None:
         raise HTTPException(status_code=404, detail="登录会话必须绑定到指定电商账号。")
-    active_record = _latest_login_session(session, account.id, include_terminal=False)
+    active_record = (
+        session.get(EcommerceLoginSessionRecord, payload.session_id)
+        if payload.session_id
+        else _latest_login_session(session, account.id, include_terminal=False)
+    )
+    if active_record is not None and active_record.account_id != account.id:
+        raise HTTPException(status_code=404, detail="登录会话与电商账号不匹配。")
     if payload.type == "click" and (payload.x is None or payload.y is None):
         raise HTTPException(status_code=422, detail="点击事件缺少坐标。")
     if payload.type == "drag" and any(
@@ -1638,6 +1645,7 @@ async def ecommerce_session_stream(
     principal: PrincipalDependency,
     _admin: Annotated[Principal, Depends(require_admin)],
     account_id: str = Query(min_length=1, max_length=40),
+    session_id: str | None = Query(default=None, min_length=1, max_length=40),
 ) -> None:
     """Stream the isolated login browser and relay authenticated input.
 
@@ -1657,11 +1665,18 @@ async def ecommerce_session_stream(
     if account is None:
         await websocket.close(code=4404, reason="登录会话必须绑定到指定电商账号。")
         return
-    active_record = _latest_login_session(session, account.id, include_terminal=False)
+    active_record = (
+        session.get(EcommerceLoginSessionRecord, session_id)
+        if session_id
+        else _latest_login_session(session, account.id, include_terminal=False)
+    )
+    if active_record is not None and active_record.account_id != account.id:
+        await websocket.close(code=4404, reason="登录会话与电商账号不匹配。")
+        return
     if active_record is not None and active_record.transport == "remote_worker":
         await websocket.close(code=4409, reason="远程登录不开放浏览器控制。")
         return
-    record = _latest_login_session(session, account.id)
+    record = active_record or _latest_login_session(session, account.id)
     if record is not None:
         _sync_login_session(session, record, manager)
         session.commit()

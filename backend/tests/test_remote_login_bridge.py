@@ -108,6 +108,7 @@ def test_remote_login_input_is_queued_for_the_owning_worker(client):
         "/api/ecommerce/session/input",
         json={
             "account_id": account["id"],
+            "session_id": job["id"],
             "type": "text",
             "text": "example@example.com",
         },

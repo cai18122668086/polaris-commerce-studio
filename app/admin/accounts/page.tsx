@@ -58,7 +58,7 @@ export default function AdminAccountsPage() {
   function sendBrowserInput(accountId: string, action: Record<string, unknown>) {
     const stream = streams.current[accountId];
     if (stream?.readyState === WebSocket.OPEN) {
-      stream.send(JSON.stringify({ type: "input", seq: ++streamSeq.current, action }));
+      stream.send(JSON.stringify({ type: "input", seq: ++streamSeq.current, action: { session_id: loginSessionIds[accountId], ...action } }));
       return;
     }
     void fetch("/api/ecommerce/session/input", {
@@ -335,7 +335,9 @@ export default function AdminAccountsPage() {
       }
       if (sockets[accountId]) continue;
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}`);
+      const sessionId = loginSessionIds[accountId];
+      if (!sessionId) continue;
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}&session_id=${encodeURIComponent(sessionId)}`);
       sockets[accountId] = socket;
       setStreamStates((current) => ({ ...current, [accountId]: "connecting" }));
       socket.onopen = () => setStreamStates((current) => ({ ...current, [accountId]: "connected" }));

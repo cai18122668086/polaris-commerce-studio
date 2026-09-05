@@ -73,6 +73,10 @@ services:
       # Development may disable the durable quota ledger for unrestricted test
       # accounts. Production still requires quotas whenever a Provider is enabled.
       POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}
+      # Local development exposes the approved, human-assisted login flow.
+      # Production keeps this disabled in deploy/compose.production.yml.
+      POLARIS_ECOMMERCE_LOGIN_ENABLED: ${POLARIS_ECOMMERCE_LOGIN_ENABLED:-true}
+      POLARIS_ECOMMERCE_LOGIN_TRANSPORT: ${POLARIS_ECOMMERCE_LOGIN_TRANSPORT:-local_visible}
       POLARIS_PROVIDER_QUOTA_ENABLED: ${POLARIS_PROVIDER_QUOTA_ENABLED:-false}
       # Internal beta records credits but never rejects jobs for balance exhaustion.
       POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED: ${POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED:-false}

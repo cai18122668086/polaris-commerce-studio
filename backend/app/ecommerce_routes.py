@@ -1579,6 +1579,8 @@ def ecommerce_session_input(
         if payload.session_id
         else _latest_login_session(session, account.id, include_terminal=False)
     )
+    if payload.session_id and active_record is None:
+        raise HTTPException(status_code=404, detail="未找到登录会话。")
     if active_record is not None and active_record.account_id != account.id:
         raise HTTPException(status_code=404, detail="登录会话与电商账号不匹配。")
     if payload.type == "click" and (payload.x is None or payload.y is None):
@@ -1594,6 +1596,7 @@ def ecommerce_session_input(
         raise HTTPException(status_code=422, detail="文本事件缺少内容。")
     action = payload.model_dump(exclude_none=True)
     action.pop("account_id", None)
+    action.pop("session_id", None)
     if active_record is not None and active_record.transport == "remote_worker":
         if active_record.worker_id is None:
             raise HTTPException(status_code=409, detail="登录 Worker 未绑定。")
@@ -1670,6 +1673,9 @@ async def ecommerce_session_stream(
         if session_id
         else _latest_login_session(session, account.id, include_terminal=False)
     )
+    if session_id and active_record is None:
+        await websocket.close(code=4404, reason="未找到登录会话。")
+        return
     if active_record is not None and active_record.account_id != account.id:
         await websocket.close(code=4404, reason="登录会话与电商账号不匹配。")
         return
@@ -1788,6 +1794,8 @@ async def ecommerce_session_stream(
                         }
                     )
                     continue
+                action = dict(action)
+                action.pop("session_id", None)
                 status = manager.status()
                 if status.get("state") not in {"login_pending", "risk_controlled"}:
                     await websocket.send_json(

@@ -12,8 +12,25 @@ x-backend-common-environment: &backend-common-environment
   POLARIS_S3_ACCESS_KEY: ${POLARIS_MINIO_ROOT_USER:?set MinIO root user}
   POLARIS_S3_SECRET_KEY: ${POLARIS_MINIO_ROOT_PASSWORD:?set MinIO root password}
   POLARIS_S3_BUCKET: ${POLARIS_S3_BUCKET:?set the production asset bucket}
-  POLARIS_S3_AUTO_CREATE_BUCKET: "true"
+  POLARIS_S3_AUTO_CREATE_BUCKET: "false"
   POLARIS_ASSET_ACCESS_URL_MODE: same_origin
+  POLARIS_ECOMMERCE_PROXY_ENABLED: "false"
+  POLARIS_ECOMMERCE_LOGIN_ENABLED: ${POLARIS_ECOMMERCE_LOGIN_ENABLED:-false}
+  POLARIS_ECOMMERCE_LOGIN_TRANSPORT: ${POLARIS_ECOMMERCE_LOGIN_TRANSPORT:-headless_qr}
+  POLARIS_ECOMMERCE_LOGIN_SESSION_TIMEOUT_SECONDS: ${POLARIS_ECOMMERCE_LOGIN_SESSION_TIMEOUT_SECONDS:-600}
+  POLARIS_ECOMMERCE_SESSION_DIR: /app/.data/ecommerce-session/domestic-taobao-tmall
+  POLARIS_ECOMMERCE_1688_SESSION_DIR: /app/.data/ecommerce-session/domestic-1688
+  POLARIS_ECOMMERCE_JD_SESSION_DIR: /app/.data/ecommerce-session/domestic-jd
+  POLARIS_ECOMMERCE_PINDUODUO_SESSION_DIR: /app/.data/ecommerce-session/domestic-pinduoduo
+  # Domestic ecommerce containers must never inherit a host proxy.
+  HTTP_PROXY: ""
+  HTTPS_PROXY: ""
+  ALL_PROXY: ""
+  http_proxy: ""
+  https_proxy: ""
+  all_proxy: ""
+  NO_PROXY: "*"
+  no_proxy: "*"
   POLARIS_AURORA_WORK_ROOT: /app/.data/aurora-main-image
   POLARIS_AURORA_EXECUTION_MODE: ${POLARIS_AURORA_EXECUTION_MODE:-sequential_v017}
   POLARIS_AURORA_MAX_TRANSIENT_RETRIES: ${POLARIS_AURORA_MAX_TRANSIENT_RETRIES:-2}
@@ -73,6 +90,13 @@ x-provider-environment: &provider-environment
 x-backend-build: &backend-build
   context: ..
   dockerfile: deploy/backend.Dockerfile
+  pull: false
+  args:
+    POLARIS_PYTHON_BASE_IMAGE: ${POLARIS_PYTHON_BASE_IMAGE:?set approved Python name@sha256 digest}
+
+x-crawl-worker-build: &crawl-worker-build
+  context: ..
+  dockerfile: backend/Dockerfile.crawl-worker
   pull: false
   args:
     POLARIS_PYTHON_BASE_IMAGE: ${POLARIS_PYTHON_BASE_IMAGE:?set approved Python name@sha256 digest}
@@ -211,13 +235,14 @@ services:
 
   api:
     <<: *service-security
-    image: ${POLARIS_BACKEND_IMAGE:?set immutable backend release image}
+    image: ${POLARIS_CRAWL_WORKER_IMAGE:?set immutable browser/crawl release image}
     pull_policy: never
-    build: *backend-build
+    build: *crawl-worker-build
     environment:
       <<: [*backend-common-environment, *provider-environment]
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
+      - polaris_ecommerce_profiles:/app/.data/ecommerce-session
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
     depends_on:
       migrate:
@@ -246,7 +271,81 @@ services:
     pids_limit: 256
     stop_grace_period: 30s
     restart: unless-stopped
-    networks: [edge, backend, mail-egress]
+    networks: [edge, backend, mail-egress, provider-egress]
+
+  crawl-worker:
+    <<: *service-security
+    image: ${POLARIS_CRAWL_WORKER_IMAGE:?set immutable browser/crawl release image}
+    pull_policy: never
+    build: *crawl-worker-build
+    environment:
+      <<: [*backend-common-environment, *provider-environment]
+    volumes:
+      - polaris_ecommerce_profiles:/app/.data/ecommerce-session
+    command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=crawl", "--concurrency=1", "--hostname=crawl@%h"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app:celery_app inspect ping --timeout 5 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
+    cap_drop: [ALL]
+    init: true
+    mem_limit: 768m
+    cpus: "0.75"
+    pids_limit: 512
+    stop_grace_period: 90s
+    restart: unless-stopped
+    networks: [backend, provider-egress]
+
+  crawl-maintenance:
+    <<: *service-security
+    image: ${POLARIS_CRAWL_WORKER_IMAGE:?set immutable browser/crawl release image}
+    pull_policy: never
+    build: *crawl-worker-build
+    environment:
+      <<: [*backend-common-environment, *provider-environment]
+    volumes:
+      - polaris_ecommerce_profiles:/app/.data/ecommerce-session
+    command: ["python", "-m", "app.ecommerce_maintenance", "--interval", "60"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
+    cap_drop: [ALL]
+    init: true
+    mem_limit: 256m
+    cpus: "0.25"
+    pids_limit: 128
+    stop_grace_period: 30s
+    restart: unless-stopped
+    networks: [backend]
 
   worker:
     <<: *service-security
@@ -257,7 +356,7 @@ services:
       <<: [*backend-common-environment, *provider-environment]
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
-    command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=6", "--prefetch-multiplier=1"]
+    command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=6", "--prefetch-multiplier=1", "--queues=default"]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -417,3 +516,6 @@ volumes:
   caddy_data:
   caddy_config:
   polaris_aurora_work_data:
+  polaris_ecommerce_profiles:
+    name: polaris-production_ecommerce_profiles
+    external: true

@@ -1,12 +1,16 @@
 import { ApiError } from "./api-error";
 
+type ErrorPayload = {
+  code?: string;
+  message?: string;
+  details?: unknown;
+  request_id?: string;
+  retryable?: boolean;
+};
+
 type ErrorEnvelope = {
-  error?: {
-    code?: string;
-    message?: string;
-    details?: unknown;
-    request_id?: string;
-  };
+  error?: ErrorPayload;
+  detail?: ErrorPayload;
 };
 
 export function mapApiError(error: unknown, response?: Response): ApiError {
@@ -21,16 +25,19 @@ export function mapApiError(error: unknown, response?: Response): ApiError {
       retryable: false,
     });
   }
-  const envelope = isErrorEnvelope(error) ? error.error : undefined;
+  const payload = isErrorEnvelope(error)
+    ? error.error ?? error.detail
+    : undefined;
   if (response) {
     return new ApiError({
       kind: "http",
       status: response.status,
-      code: envelope?.code ?? `HTTP_${response.status}`,
-      message: envelope?.message ?? "请求未能完成。",
-      details: envelope?.details,
+      code: payload?.code ?? `HTTP_${response.status}`,
+      message: payload?.message ?? "请求未能完成。",
+      details: payload?.details,
       requestId:
-        envelope?.request_id ?? response.headers.get("X-Request-Id") ?? undefined,
+        payload?.request_id ?? response.headers.get("X-Request-Id") ?? undefined,
+      retryable: payload?.retryable,
     });
   }
   return new ApiError({
@@ -41,10 +48,11 @@ export function mapApiError(error: unknown, response?: Response): ApiError {
 }
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "error" in value &&
-    typeof value.error === "object"
-  );
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { error?: unknown; detail?: unknown };
+  return isErrorPayload(candidate.error) || isErrorPayload(candidate.detail);
+}
+
+function isErrorPayload(value: unknown): value is ErrorPayload {
+  return typeof value === "object" && value !== null;
 }

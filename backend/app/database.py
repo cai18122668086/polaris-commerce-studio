@@ -1,8 +1,8 @@
 from collections.abc import Iterator
 
-from fastapi import Request
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from starlette.requests import HTTPConnection
 
 
 class Base(DeclarativeBase):
@@ -29,7 +29,7 @@ def build_database(
     return engine, session_factory
 
 
-def get_session(request: Request) -> Iterator[Session]:
+def get_session(request: HTTPConnection) -> Iterator[Session]:
     session_factory: sessionmaker[Session] = request.app.state.session_factory
     with session_factory() as session:
         yield session

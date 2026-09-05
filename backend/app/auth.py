@@ -3,11 +3,12 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Annotated, Any
 
-from fastapi import Depends, Request, Security, status
+from fastapi import Depends, Security, status
 from fastapi.security import APIKeyCookie
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.requests import HTTPConnection
 
 from .database import get_session
 from .domain import (
@@ -34,7 +35,25 @@ from .supertokens_auth import (
 
 _EXTERNAL_AUTH_PROVIDER = "supertokens"
 _MAX_JIT_ATTEMPTS = 3
-_SESSION_COOKIE = APIKeyCookie(
+
+
+class _HTTPConnectionAPIKeyCookie(APIKeyCookie):
+    """Cookie security scheme compatible with HTTP and WebSocket scopes.
+
+    FastAPI's built-in ``APIKeyCookie`` annotates its dependency with
+    ``Request``.  A WebSocket handshake exposes a Starlette ``WebSocket``
+    (an ``HTTPConnection``), so the generated dependency can raise a 500
+    before our authentication adapter gets a chance to inspect the session.
+    Keep the OpenAPI security scheme while accepting the common connection
+    interface at runtime.
+    """
+
+    async def __call__(self, request: HTTPConnection) -> str | None:
+        api_key = request.cookies.get(self.model.name)
+        return self.check_api_key(api_key)
+
+
+_SESSION_COOKIE = _HTTPConnectionAPIKeyCookie(
     name="sAccessToken",
     scheme_name="SuperTokensSession",
     description=(
@@ -185,7 +204,7 @@ def _principal_from_user(user: UserRecord, *, email_verified: bool) -> Principal
 
 
 async def get_principal(
-    request: Request,
+    request: HTTPConnection,
     session: SessionDependency,
     _session_cookie: Annotated[
         str | None, Security(_SESSION_COOKIE)

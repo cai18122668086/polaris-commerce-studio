@@ -31,6 +31,8 @@ EXPECTED_SERVICES = {
     "supertokens",
     "migrate",
     "api",
+    "crawl-worker",
+    "crawl-maintenance",
     "worker",
     "dispatcher",
     "frontend",
@@ -55,7 +57,9 @@ EXPECTED_SERVICE_NETWORKS = {
     "minio": {"backend"},
     "supertokens": {"backend"},
     "migrate": {"backend"},
-    "api": {"edge", "backend", "mail-egress"},
+    "api": {"edge", "backend", "mail-egress", "provider-egress"},
+    "crawl-worker": {"backend", "provider-egress"},
+    "crawl-maintenance": {"backend"},
     "worker": {"backend", "provider-egress"},
     "dispatcher": {"backend"},
     "frontend": {"edge"},
@@ -65,7 +69,7 @@ RELEASE_SHA = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_REFERENCE = re.compile(
     r"^[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$"
 )
-APP_REFERENCE = re.compile(r"^polaris/(backend|frontend):([0-9a-f]{40})$")
+APP_REFERENCE = re.compile(r"^polaris/(backend|crawl-worker|frontend):([0-9a-f]{40})$")
 MARKER = re.compile(r"<[^>]+>|replace-with|change-me|dev_only", re.IGNORECASE)
 SUPERTOKENS_REFERENCE = (
     "supertokens/supertokens-postgresql:12.0.10@sha256:"
@@ -74,6 +78,7 @@ SUPERTOKENS_REFERENCE = (
 REQUIRED_ENV_KEYS = {
     "POLARIS_RELEASE_SHA",
     "POLARIS_BACKEND_IMAGE",
+    "POLARIS_CRAWL_WORKER_IMAGE",
     "POLARIS_FRONTEND_IMAGE",
     *IMAGE_KEYS,
     "POLARIS_SUPERTOKENS_IMAGE",
@@ -88,6 +93,11 @@ REQUIRED_ENV_KEYS = {
     "POLARIS_AUTH_EMAIL_FROM_ADDRESS",
     "POLARIS_ACME_EMAIL",
     "POLARIS_S3_BUCKET",
+    "POLARIS_AUTO_CREATE_SCHEMA",
+    "POLARIS_STORAGE_BACKEND",
+    "POLARIS_S3_AUTO_CREATE_BUCKET",
+    "POLARIS_TASK_DISPATCHER",
+    "POLARIS_ECOMMERCE_PROXY_ENABLED",
     *AUTHORIZATION_KEYS,
     *PROVIDER_KEYS,
 }
@@ -141,6 +151,36 @@ def service_networks(block: str) -> set[str]:
     return result
 
 
+def service_queues(block: str) -> set[str]:
+    """Return queue names explicitly passed to a Celery service command."""
+
+    queues: set[str] = set()
+    for match in re.findall(r"--queues(?:=|\s+)([a-z0-9_,-]+)", block):
+        queues.update(queue for queue in match.split(",") if queue)
+    return queues
+
+
+def validate_queue_topology(
+    compose: str, *, expected: dict[str, set[str]]
+) -> list[str]:
+    """Fail closed when worker queue assignments drift from the task routes."""
+
+    services = parse_mapping_blocks(compose, "services")
+    errors: list[str] = []
+    for service, expected_queues in expected.items():
+        if service not in services:
+            errors.append(f"{service} service is missing for queue topology validation")
+            continue
+        actual_queues = service_queues(services[service])
+        if actual_queues != expected_queues:
+            expected_text = ", ".join(sorted(expected_queues)) or "none"
+            actual_text = ", ".join(sorted(actual_queues)) or "none"
+            errors.append(
+                f"{service} must listen only to queue(s) {expected_text}; found {actual_text}"
+            )
+    return errors
+
+
 def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> list[str]:
     errors: list[str] = []
     missing = sorted(key for key in REQUIRED_ENV_KEYS if key not in env)
@@ -152,7 +192,11 @@ def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> lis
     sha = env.get("POLARIS_RELEASE_SHA", "")
     if not RELEASE_SHA.fullmatch(sha):
         errors.append("POLARIS_RELEASE_SHA must be a 40-character lowercase Git SHA")
-    for key in ("POLARIS_BACKEND_IMAGE", "POLARIS_FRONTEND_IMAGE"):
+    for key in (
+        "POLARIS_BACKEND_IMAGE",
+        "POLARIS_CRAWL_WORKER_IMAGE",
+        "POLARIS_FRONTEND_IMAGE",
+    ):
         value = env.get(key, "")
         match = APP_REFERENCE.fullmatch(value)
         if not match or match.group(2) != sha:
@@ -205,6 +249,15 @@ def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> lis
         errors.append("POLARIS_AUTH_SMTP_PORT must be between 1 and 65535")
     if env.get("POLARIS_AUTH_SMTP_SECURE", "").lower() not in {"true", "false"}:
         errors.append("POLARIS_AUTH_SMTP_SECURE must be true or false")
+    for key, expected in (
+        ("POLARIS_AUTO_CREATE_SCHEMA", "false"),
+        ("POLARIS_STORAGE_BACKEND", "s3"),
+        ("POLARIS_S3_AUTO_CREATE_BUCKET", "false"),
+        ("POLARIS_TASK_DISPATCHER", "celery"),
+        ("POLARIS_ECOMMERCE_PROXY_ENABLED", "false"),
+    ):
+        if env.get(key) != expected:
+            errors.append(f"{key} must be exactly {expected} for this release")
     boolean_keys = (
         *(key for key in PROVIDER_KEYS if key.endswith("_PROVIDER_ENABLED")),
         "POLARIS_PROVIDER_QUOTA_ENABLED",
@@ -262,10 +315,20 @@ def validate_compose(compose: str) -> list[str]:
     ):
         if required not in supertokens:
             errors.append(f"supertokens service is missing {required}")
-    if (
-        "POLARIS_ENVIRONMENT: production" not in compose
-        or "POLARIS_AUTH_MODE: external" not in compose
-    ):
+    required_literals = (
+        'POLARIS_ENVIRONMENT: production',
+        'POLARIS_AUTH_MODE: external',
+        'POLARIS_AUTO_CREATE_SCHEMA: "false"',
+        'POLARIS_STORAGE_BACKEND: s3',
+        'POLARIS_S3_AUTO_CREATE_BUCKET: "false"',
+        'POLARIS_TASK_DISPATCHER: celery',
+        'POLARIS_ECOMMERCE_PROXY_ENABLED: "false"',
+        'HTTP_PROXY: ""',
+        'HTTPS_PROXY: ""',
+        'ALL_PROXY: ""',
+        'NO_PROXY: "*"',
+    )
+    if any(literal not in compose for literal in required_literals):
         errors.append(
             "production Compose must force production/external authentication"
         )
@@ -279,6 +342,12 @@ def validate_compose(compose: str) -> list[str]:
         errors.append(
             "production Compose must require the announcement admin allowlist"
         )
+    errors.extend(
+        validate_queue_topology(
+            compose,
+            expected={"worker": {"default"}, "crawl-worker": {"crawl"}},
+        )
+    )
     volumes = parse_mapping_blocks(compose, "volumes")
     for volume, expected_name in EXPECTED_EXTERNAL_VOLUMES.items():
         block = volumes.get(volume, "")
@@ -296,6 +365,15 @@ def validate_compose(compose: str) -> list[str]:
             errors.append(f"{service} must mount the approved existing data volume")
     if "polaris_aurora_work_data" not in volumes:
         errors.append("production Compose is missing the Aurora work volume")
+    ecommerce_profiles = volumes.get("polaris_ecommerce_profiles", "")
+    if not re.search(r"^    name: polaris-production_ecommerce_profiles$", ecommerce_profiles, re.MULTILINE):
+        errors.append("production Compose must use the approved ecommerce profile volume")
+    if not re.search(r"^    external: true$", ecommerce_profiles, re.MULTILINE):
+        errors.append("ecommerce profile volume must be provisioned externally")
+    for service in ("api", "crawl-worker", "crawl-maintenance"):
+        block = services.get(service, "")
+        if not re.search(r"^      - polaris_ecommerce_profiles:/app/.data/ecommerce-session$", block, re.MULTILINE):
+            errors.append(f"{service} must mount the shared ecommerce profile volume")
     for service in AURORA_WORK_SERVICES:
         block = services.get(service, "")
         if not re.search(
@@ -383,6 +461,26 @@ def validate_backend_dockerfile(dockerfile: str) -> list[str]:
     return errors
 
 
+def validate_crawl_worker_dockerfile(dockerfile: str) -> list[str]:
+    errors: list[str] = []
+    required_literals = (
+        "ARG POLARIS_PYTHON_BASE_IMAGE",
+        "FROM ${POLARIS_PYTHON_BASE_IMAGE}",
+        "requirements.browser.lock",
+        "--require-hashes",
+        "playwright install --with-deps chromium",
+        "chromium.launch(headless=True)",
+        "USER 10001:10001",
+    )
+    for literal in required_literals:
+        if literal not in dockerfile:
+            errors.append(f"crawl-worker Dockerfile is missing {literal}")
+    if "FROM python:" in dockerfile or "pip install '.[browser]'" in dockerfile:
+        errors.append("crawl-worker image must not use floating or unlocked browser dependencies")
+    errors.extend(validate_backend_dockerfile(dockerfile))
+    return errors
+
+
 def validate_caddy(caddy: str) -> list[str]:
     errors: list[str] = []
     for required in (
@@ -430,6 +528,13 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).with_name("backend.Dockerfile"),
     )
+    parser.add_argument(
+        "--crawl-worker-dockerfile",
+        type=Path,
+        default=Path(__file__).resolve().parents[1]
+        / "backend"
+        / "Dockerfile.crawl-worker",
+    )
     return parser.parse_args()
 
 
@@ -445,6 +550,11 @@ def main() -> int:
         errors.extend(
             validate_backend_dockerfile(
                 args.backend_dockerfile.read_text(encoding="utf-8")
+            )
+        )
+        errors.extend(
+            validate_crawl_worker_dockerfile(
+                args.crawl_worker_dockerfile.read_text(encoding="utf-8")
             )
         )
     except (OSError, ValueError) as exc:

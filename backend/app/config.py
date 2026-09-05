@@ -39,6 +39,22 @@ def default_aurora_work_root() -> Path:
     return Path(__file__).resolve().parents[1] / ".data" / "aurora-main-image"
 
 
+def default_ecommerce_session_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / ".data" / "ecommerce-session"
+
+
+def default_ecommerce_1688_session_dir() -> Path:
+    return default_ecommerce_session_dir() / "domestic-1688"
+
+
+def default_ecommerce_jd_session_dir() -> Path:
+    return default_ecommerce_session_dir() / "domestic-jd"
+
+
+def default_ecommerce_pinduoduo_session_dir() -> Path:
+    return default_ecommerce_session_dir() / "domestic-pinduoduo"
+
+
 def default_aurora_v20_skill_root() -> Path:
     """Immutable source tree imported from the Aurora v2.0 ZIP."""
 
@@ -159,6 +175,42 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/1"
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=40_000_000, ge=1)
+    ecommerce_browser_fallback: bool = False
+    # Server-side policy switch only; domestic adapters fail closed when true.
+    # This does not configure a proxy or permit automatic direct fallback.
+    ecommerce_proxy_enabled: bool = False
+    ecommerce_browser_timeout_ms: int = Field(default=30_000, ge=5_000, le=90_000)
+    # Human-assisted production login is fail-closed and must be explicitly enabled.
+    ecommerce_login_enabled: bool = False
+    ecommerce_login_transport: Literal["local_visible", "headless_qr"] = "local_visible"
+    # When enabled, every account login must be dispatched to its explicitly
+    # enrolled workstation worker.  This prevents the API host (for example a
+    # Hong Kong production VM) from ever opening a fallback browser session.
+    ecommerce_login_require_worker: bool = False
+    ecommerce_login_session_timeout_seconds: int = Field(
+        default=600, ge=60, le=1800
+    )
+    ecommerce_session_dir: Path = Field(default_factory=default_ecommerce_session_dir)
+    ecommerce_1688_session_dir: Path = Field(
+        default_factory=default_ecommerce_1688_session_dir
+    )
+    ecommerce_jd_session_dir: Path = Field(
+        default_factory=default_ecommerce_jd_session_dir
+    )
+    ecommerce_pinduoduo_session_dir: Path = Field(
+        default_factory=default_ecommerce_pinduoduo_session_dir
+    )
+    # Local browser workers use short-lived, scope-bound enrollment/session
+    # tokens.  These values are deliberately bounded to keep credentials
+    # useful only for a narrow handoff window.
+    ecommerce_worker_enrollment_ttl_seconds: int = Field(
+        default=600, ge=60, le=1800
+    )
+    ecommerce_worker_token_ttl_seconds: int = Field(default=900, ge=60, le=3600)
+    ecommerce_worker_heartbeat_timeout_seconds: int = Field(
+        default=90, ge=30, le=600
+    )
+    ecommerce_worker_task_lease_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     retention_enabled: bool = False
     retention_days: int = Field(default=30, ge=30, le=30)
     retention_interval_seconds: int = Field(default=3600, ge=60, le=86400)
@@ -220,6 +272,29 @@ class Settings(BaseSettings):
         if self.auth_mode == "development":
             raise RuntimeError(
                 "production must not use development authentication mode"
+            )
+        if self.task_dispatcher != "celery":
+            raise RuntimeError(
+                "production ecommerce tasks must use the independent "
+                "worker"
+            )
+        if self.auto_create_schema:
+            raise RuntimeError("production must not auto-create the database schema")
+        if self.storage_backend != "s3":
+            raise RuntimeError("production assets must use durable object storage")
+        if self.s3_auto_create_bucket:
+            raise RuntimeError(
+                "production object storage buckets must be provisioned ahead of time"
+            )
+        if self.ecommerce_proxy_enabled:
+            raise RuntimeError("domestic ecommerce traffic must remain direct-only")
+        if (
+            self.ecommerce_login_enabled
+            and self.ecommerce_login_transport != "headless_qr"
+        ):
+            raise RuntimeError(
+                "production ecommerce login must use the protected "
+                "headless_qr transport"
             )
         if not self.supertokens_cookie_secure:
             raise RuntimeError("production SuperTokens cookies must use Secure")

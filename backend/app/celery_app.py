@@ -7,7 +7,7 @@ celery_app = Celery(
     "polaris",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks"],
+    include=["app.tasks", "app.ecommerce_worker"],
 )
 celery_app.conf.update(
     task_serializer="json",
@@ -22,4 +22,9 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     worker_cancel_long_running_tasks_on_connection_loss=True,
     worker_soft_shutdown_timeout=30,
+    task_routes={
+        "polaris.process_job": {"queue": "default"},
+        "polaris.cancel_job": {"queue": "default"},
+        "polaris.process_crawl_task": {"queue": "crawl"},
+    },
 )

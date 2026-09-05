@@ -73,6 +73,10 @@ services:
       # Development may disable the durable quota ledger for unrestricted test
       # accounts. Production still requires quotas whenever a Provider is enabled.
       POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}
+      # Local development exposes the approved, human-assisted login flow.
+      # Production keeps this disabled in deploy/compose.production.yml.
+      POLARIS_ECOMMERCE_LOGIN_ENABLED: ${POLARIS_ECOMMERCE_LOGIN_ENABLED:-true}
+      POLARIS_ECOMMERCE_LOGIN_TRANSPORT: ${POLARIS_ECOMMERCE_LOGIN_TRANSPORT:-local_visible}
       POLARIS_PROVIDER_QUOTA_ENABLED: ${POLARIS_PROVIDER_QUOTA_ENABLED:-false}
       # Internal beta records credits but never rejects jobs for balance exhaustion.
       POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED: ${POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED:-false}
@@ -100,12 +104,26 @@ services:
       # Shared by API/workers so Aurora identity locks and Harness sessions survive
       # task hand-off and container restarts.
       POLARIS_AURORA_WORK_ROOT: /app/.data/aurora-main-image
+      POLARIS_ECOMMERCE_SESSION_DIR: /app/.data/ecommerce-session/domestic-taobao-tmall
+      POLARIS_ECOMMERCE_1688_SESSION_DIR: /app/.data/ecommerce-session/domestic-1688
+      POLARIS_ECOMMERCE_JD_SESSION_DIR: /app/.data/ecommerce-session/domestic-jd
+      POLARIS_ECOMMERCE_PINDUODUO_SESSION_DIR: /app/.data/ecommerce-session/domestic-pinduoduo
       POLARIS_RETENTION_ENABLED: "true"
       POLARIS_RETENTION_DAYS: "30"
       POLARIS_RETENTION_INTERVAL_SECONDS: "3600"
       POLARIS_RETENTION_BATCH_SIZE: "100"
       POLARIS_AUTO_PROCESS_JOBS: "true"
       POLARIS_TASK_DISPATCHER: celery
+      # Domestic ecommerce traffic is direct-only. Do not inherit proxy values
+      # from the host/container environment.
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      ALL_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      all_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
       POLARIS_CELERY_BROKER_URL: redis://redis:6379/0
       POLARIS_CELERY_RESULT_BACKEND: redis://redis:6379/1
     command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
@@ -123,6 +141,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
+      - polaris_ecommerce_profiles:/app/.data/ecommerce-session
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -154,12 +173,72 @@ services:
       - worker
       - --loglevel=INFO
       - --concurrency=6
+      - --queues=default
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  crawl-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.crawl-worker
+    environment: *backend-environment
+    command:
+      - python
+      - -m
+      - celery
+      - -A
+      - app.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --queues=crawl
+      - --concurrency=1
+      - --hostname=crawl@%h
+    volumes:
+      - polaris_ecommerce_profiles:/app/.data/ecommerce-session
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -m
+        - celery
+        - -A
+        - app.celery_app:celery_app
+        - inspect
+        - ping
+        - --timeout=5
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  crawl-maintenance:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.crawl-worker
+    environment: *backend-environment
+    command: ["python", "-m", "app.ecommerce_maintenance", "--interval", "60"]
+    volumes:
+      - polaris_ecommerce_profiles:/app/.data/ecommerce-session
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     restart: unless-stopped
 
@@ -182,3 +261,4 @@ volumes:
   polaris_redis_data:
   polaris_minio_data:
   polaris_aurora_work_data:
+  polaris_ecommerce_profiles:

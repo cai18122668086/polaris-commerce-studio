@@ -400,3 +400,28 @@ env with `/etc/polaris/polaris.env`; it reports only names of changed Provider
 variables. This authentication profile does not authorize payment integration,
 changes to `backend/skill_sources/**`, Provider behavior, image-generation
 behavior, or Amazon protocol behavior.
+
+## 本机浏览器 Worker 灰度切换
+
+本项目采用 `ecommerce-workers` 协议：控制面只保存 Worker 元数据、短期会话令牌和
+结构化抓取结果；浏览器 profile、Cookie、localStorage 和 CDP 信息始终留在本机。
+生产切换仍必须先完成 migration、成对备份、Compose preflight 和健康检查。
+
+```text
+# 1. 生产管理员通过 POST /api/ecommerce/workers/enrollments 创建短期 enrollment_token
+# 2. 在大陆工作电脑上设置令牌和本机 profile 根目录：
+$env:POLARIS_WORKER_API_URL="https://www.tengliapi.xyz"
+$env:POLARIS_WORKER_SESSION_TOKEN="一次性或短期 Worker 令牌"
+$env:POLARIS_WORKER_ID="wrk_..."
+$env:POLARIS_WORKER_PROFILE_ROOT="D:\Polaris\ecommerce-profiles"
+
+# 3. 先执行配置检查，再启动 Worker
+Set-Location backend
+python -m app.ecommerce_local_worker --check-config
+python -m app.ecommerce_local_worker
+```
+
+首次灰度只绑定一个淘宝/天猫账号和一个能力。管理员通过
+`GET /api/ecommerce/workers?workspace_id=...` 确认 Worker 在线，再执行单链接抓取验收。
+Worker 离线、登录要求或风控页面必须作为失败状态处理，不得伪造成功或静默回落到其他
+服务器浏览器。

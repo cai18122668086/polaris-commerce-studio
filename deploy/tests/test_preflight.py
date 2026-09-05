@@ -114,6 +114,15 @@ class SourcePreflightTests(unittest.TestCase):
             errors, _ = PREFLIGHT.validate_source(target)
             return errors
 
+    def test_internal_worker_requires_default_queue(self) -> None:
+        errors = self.validate_mutation(
+            "compose.internal.yml",
+            lambda text: text.replace(
+                "      - --queues=default", "      - --queues=crawl", 1
+            ),
+        )
+        self.assertTrue(any("worker must listen only to queue(s) default" in item for item in errors))
+
     def test_non_loopback_port_is_rejected(self) -> None:
         errors = self.validate_mutation(
             "compose.internal.yml",

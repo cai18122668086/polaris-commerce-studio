@@ -2128,3 +2128,4 @@ def ecommerce_session_start(
         session.commit()
     result["loginSession"] = _login_session_response(login_session)
     return {"success": True, "data": result}
+

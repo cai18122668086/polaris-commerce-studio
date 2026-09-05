@@ -10,7 +10,7 @@ import { errorDiagnostic, unwrapApiResponse, type ApiResult } from "@/lib/api/re
 import styles from "./page.module.css";
 
 type Platform = "taobao" | "1688" | "jd" | "pinduoduo";
-type LoginSessionInfo = { status?: string } | null;
+type LoginSessionInfo = { id?: string; status?: string } | null;
 type LoginStatusResponse = { state?: string; message?: string; loginSession?: LoginSessionInfo };
 type LoginApiEnvelope = { data?: LoginStatusResponse } & LoginStatusResponse;
 type LocalWorker = { id: string; device_id: string; status: string; agent_version: string; capabilities: string[] };
@@ -47,6 +47,7 @@ export default function AdminAccountsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeLoginIds, setActiveLoginIds] = useState<Set<string>>(() => new Set());
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const [loginSessionIds, setLoginSessionIds] = useState<Record<string, string>>({});
   const [streamStates, setStreamStates] = useState<Record<string, "connecting" | "connected" | "fallback">>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -64,7 +65,7 @@ export default function AdminAccountsPage() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ account_id: accountId, ...action }),
+      body: JSON.stringify({ account_id: accountId, session_id: loginSessionIds[accountId], ...action }),
     }).then(async (response) => {
       if (response.ok) return;
       const payload = await response.json().catch(() => null);
@@ -261,6 +262,8 @@ export default function AdminAccountsPage() {
 
   function updateLoginActivity(accountId: string, data: LoginStatusResponse) {
     const isActive = data.loginSession?.status === "active";
+    const sessionId = data.loginSession?.id;
+    if (isActive && sessionId) setLoginSessionIds((current) => ({ ...current, [accountId]: sessionId }));
     setActiveLoginIds((current) => {
       const next = new Set(current);
       if (isActive) {
@@ -277,6 +280,7 @@ export default function AdminAccountsPage() {
         if (!previewUrl) return currentPreview;
         const nextPreview = { ...currentPreview };
         delete nextPreview[accountId];
+        setLoginSessionIds((current) => { const next = { ...current }; delete next[accountId]; return next; });
         return nextPreview;
       });
     }
@@ -287,7 +291,7 @@ export default function AdminAccountsPage() {
     async function refreshPreviews() {
       await Promise.all(Array.from(activeLoginIds).map(async (accountId) => {
         try {
-          const response = await fetch(`/api/ecommerce/session/preview?account_id=${encodeURIComponent(accountId)}`, {
+          const response = await fetch(`/api/ecommerce/session/preview?session_id=${encodeURIComponent(sessionId)}`, {
             credentials: "include",
             cache: "no-store",
           });
@@ -318,7 +322,7 @@ export default function AdminAccountsPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeLoginIds]);
+  }, [activeLoginIds, loginSessionIds]);
 
   useEffect(() => {
     const sockets = streams.current;

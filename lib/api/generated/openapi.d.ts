@@ -3141,8 +3141,6 @@ export interface components {
         SessionInputRequest: {
             /** Account Id */
             account_id: string;
-            /** Session Id */
-            session_id?: string | null;
             /**
              * Button
              * @default left
@@ -3159,6 +3157,8 @@ export interface components {
             fromY?: number | null;
             /** Key */
             key?: string | null;
+            /** Session Id */
+            session_id?: string | null;
             /** Text */
             text?: string | null;
             /** Tox */

@@ -290,6 +290,8 @@ export default function AdminAccountsPage() {
     let cancelled = false;
     async function refreshPreviews() {
       await Promise.all(Array.from(activeLoginIds).map(async (accountId) => {
+        const sessionId = loginSessionIds[accountId];
+        if (!sessionId) return;
         try {
           const response = await fetch(`/api/ecommerce/session/preview?session_id=${encodeURIComponent(sessionId)}`, {
             credentials: "include",

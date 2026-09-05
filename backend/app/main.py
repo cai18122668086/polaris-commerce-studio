@@ -117,6 +117,9 @@ def create_app(
     # Ephemeral remote-worker login frames. Entries are byte payloads with an
     # expiry timestamp and are never written to object storage or logs.
     application.state.ecommerce_remote_login_frames = {}
+    # Short-lived user input actions for remote Worker login sessions. Actions
+    # are consumed by the owning Worker and never persisted with credentials.
+    application.state.ecommerce_remote_login_inputs = {}
     # Keep the historical Taobao manager alias for existing callers, while
     # registering an independent 1688 manager and profile. Never share a
     # persistent browser profile across platform policies.

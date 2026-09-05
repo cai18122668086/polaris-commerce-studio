@@ -1018,6 +1018,7 @@ def upload_worker_login_frame(
 def worker_login_control(
     worker_id: str,
     session_id: str,
+    request: Request,
     session: SessionDependency,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
@@ -1031,6 +1032,8 @@ def worker_login_control(
         raise ApiError(
             status.HTTP_404_NOT_FOUND, "LOGIN_SESSION_NOT_FOUND", "未找到本机登录任务。"
         )
+    actions_by_session = request.app.state.ecommerce_remote_login_inputs
+    actions = actions_by_session.pop(record.id, [])
     return {
         "success": True,
         "data": {
@@ -1038,6 +1041,7 @@ def worker_login_control(
             "state": record.state,
             "cancel_requested": record.status == "cancelled",
             "expired": _as_utc(record.expires_at) <= utc_now(),
+            "actions": actions,
         },
     }
 

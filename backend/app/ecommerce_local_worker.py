@@ -987,6 +987,11 @@ def run_remote_login(
     while time.monotonic() < deadline:
         try:
             control = api.login_control(worker_id, session_id).get("data") or {}
+            actions = control.get("actions") or []
+            if isinstance(actions, list):
+                for action in actions:
+                    if isinstance(action, Mapping):
+                        manager.enqueue_input(dict(action))
             if control.get("cancel_requested") or control.get("expired"):
                 with suppress(Exception):
                     manager.cancel_login()

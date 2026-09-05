@@ -81,6 +81,48 @@ def test_remote_login_job_claim_frame_and_ready(client):
     assert status.json()["data"]["state"] == "ready"
 
 
+def test_remote_login_input_is_queued_for_the_owning_worker(client):
+    worker = _worker(client)
+    account = client.post(
+        "/api/ecommerce/accounts",
+        json={
+            "workspace_id": "ws_test",
+            "platform": "taobao",
+            "account_key": "remote-input",
+            "worker_id": worker["worker"]["id"],
+        },
+    ).json()["data"]
+    job = client.post(
+        "/api/ecommerce/login-jobs",
+        json={"account_id": account["id"], "worker_id": worker["worker"]["id"]},
+    ).json()["data"]["login_job"]
+    headers = {"Authorization": f"Bearer {worker['session_token']}"}
+    claimed = client.post(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/login-jobs/claim",
+        headers=headers,
+        json={"platforms": ["taobao"]},
+    )
+    assert claimed.status_code == 200
+
+    input_response = client.post(
+        "/api/ecommerce/session/input",
+        json={
+            "account_id": account["id"],
+            "type": "text",
+            "text": "example@example.com",
+        },
+    )
+    assert input_response.status_code == 200, input_response.text
+    control = client.get(
+        f"/api/ecommerce/workers/{worker['worker']['id']}/login-jobs/{job['id']}/control",
+        headers=headers,
+    )
+    assert control.status_code == 200
+    assert control.json()["data"]["actions"] == [
+        {"type": "text", "text": "example@example.com", "button": "left"}
+    ]
+
+
 def test_remote_login_rejects_bad_frame_and_offline_start(client):
     worker = _worker(client)
     account_response = client.post(

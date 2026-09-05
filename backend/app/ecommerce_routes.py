@@ -1574,15 +1574,6 @@ def ecommerce_session_input(
     if account is None:
         raise HTTPException(status_code=404, detail="登录会话必须绑定到指定电商账号。")
     active_record = _latest_login_session(session, account.id, include_terminal=False)
-    if active_record is not None and active_record.transport == "remote_worker":
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "REMOTE_LOGIN_INPUT_DISABLED",
-                "message": "远程登录仅展示目标本机二维码和状态，不开放浏览器控制。",
-                "retryable": False,
-            },
-        )
     if payload.type == "click" and (payload.x is None or payload.y is None):
         raise HTTPException(status_code=422, detail="点击事件缺少坐标。")
     if payload.type == "drag" and any(
@@ -1594,6 +1585,33 @@ def ecommerce_session_input(
         raise HTTPException(status_code=422, detail="键盘事件缺少按键。")
     if payload.type == "text" and payload.text is None:
         raise HTTPException(status_code=422, detail="文本事件缺少内容。")
+    action = payload.model_dump(exclude_none=True)
+    action.pop("account_id", None)
+    if active_record is not None and active_record.transport == "remote_worker":
+        if active_record.worker_id is None:
+            raise HTTPException(status_code=409, detail="登录 Worker 未绑定。")
+        if (
+            active_record.status != EcommerceLoginSessionStatus.ACTIVE.value
+            or active_record.state
+            not in {
+            "claimed",
+            "waiting_qr",
+            "waiting_user",
+            "risk_controlled",
+            }
+        ):
+            raise HTTPException(
+                status_code=409, detail="当前没有可操作的登录浏览器会话。"
+            )
+        actions = request.app.state.ecommerce_remote_login_inputs.setdefault(
+            active_record.id, []
+        )
+        if len(actions) >= 256:
+            raise HTTPException(
+                status_code=429, detail="登录输入队列繁忙，请稍后重试。"
+            )
+        actions.append(action)
+        return {"success": True, "queued": True}
     status = manager.status()
     login_session = _latest_login_session(session, account.id)
     if (
@@ -1602,8 +1620,6 @@ def ecommerce_session_input(
         or status.get("state") not in {"login_pending", "risk_controlled"}
     ):
         raise HTTPException(status_code=409, detail="当前没有可操作的登录浏览器会话。")
-    action = payload.model_dump(exclude_none=True)
-    action.pop("account_id", None)
     try:
         manager.enqueue_input(action)
     except RuntimeError as exc:

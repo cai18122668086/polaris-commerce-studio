@@ -65,7 +65,11 @@ export default function AdminAccountsPage() {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ account_id: accountId, ...action }),
-    }).catch(() => undefined);
+    }).then(async (response) => {
+      if (response.ok) return;
+      const payload = await response.json().catch(() => null);
+      setError(payload?.detail?.message || payload?.detail || "浏览器输入未送达，请刷新登录窗口。 ");
+    }).catch(() => setError("浏览器输入未送达，请检查本机 Worker 是否在线。"));
   }
 
   function imagePoint(event: PointerEvent<HTMLImageElement>) {

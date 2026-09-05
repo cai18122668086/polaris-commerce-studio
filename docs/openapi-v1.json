@@ -4323,6 +4323,19 @@
             "title": "Account Id",
             "type": "string"
           },
+          "session_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
           "button": {
             "default": "left",
             "enum": [

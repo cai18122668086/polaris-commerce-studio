@@ -983,6 +983,32 @@ def run_remote_login(
                 "本机浏览器启动失败，请检查本机浏览器和 Profile 权限。",
             )
         raise LocalWorkerError("WORKER_LOGIN_BROWSER_START_FAILED") from exc
+
+    # A login flow can wait several minutes for a QR scan or a manual risk
+    # check. Keep the Worker lease alive while that foreground job occupies
+    # the polling loop, otherwise the control plane marks it offline midway
+    # through a valid login session.
+    def keep_worker_online() -> None:
+        while True:
+            state = str(manager.status().get("state") or "")
+            if state not in {"login_pending", "risk_controlled"}:
+                return
+            with suppress(Exception):
+                api.heartbeat(
+                    worker_id,
+                    {
+                        "protocol_version": "worker.v1",
+                        "agent_version": "local-runtime.v1",
+                        "ready": True,
+                    },
+                )
+            time.sleep(10)
+
+    threading.Thread(
+        target=keep_worker_online,
+        name="polaris-login-heartbeat",
+        daemon=True,
+    ).start()
     api.update_login(worker_id, session_id, "waiting_qr", "目标本机登录页已打开。")
     deadline = time.monotonic() + timeout_seconds
     sequence = 0

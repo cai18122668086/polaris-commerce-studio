@@ -341,7 +341,6 @@ export default function AdminAccountsPage() {
       if (!sessionId) continue;
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}&session_id=${encodeURIComponent(sessionId)}`);
       sockets[accountId] = socket;
-      setStreamStates((current) => ({ ...current, [accountId]: "connecting" }));
       socket.onopen = () => setStreamStates((current) => ({ ...current, [accountId]: "connected" }));
       socket.onmessage = (event) => {
         try {

@@ -33,7 +33,11 @@ export interface paths {
         get: operations["get_ecommerce_account_api_ecommerce_accounts__account_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Ecommerce Account
+         * @description Remove an account from the operational pool while preserving history.
+         */
+        delete: operations["delete_ecommerce_account_api_ecommerce_accounts__account_id__delete"];
         options?: never;
         head?: never;
         /** Update Ecommerce Account */
@@ -3453,6 +3457,39 @@ export interface operations {
         };
     };
     get_ecommerce_account_api_ecommerce_accounts__account_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ecommerce_account_api_ecommerce_accounts__account_id__delete: {
         parameters: {
             query?: never;
             header?: never;

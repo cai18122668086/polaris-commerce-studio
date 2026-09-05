@@ -219,8 +219,9 @@ export default function AdminAccountsPage() {
     if (!window.confirm(`确认移除 ${account.label}？历史记录会保留。`)) return;
     setBusyId(account.id); setError("");
     try {
-      const result = await apiClient.DELETE("/api/ecommerce/accounts/{account_id}", { params: { path: { account_id: account.id } } });
-      unwrapApiResponse(result); setMessage(`${account.label} 已移除`); await load();
+      const response = await fetch(`/api/ecommerce/accounts/${encodeURIComponent(account.id)}`, { method: "DELETE", credentials: "include" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setMessage(`${account.label} 已移除`); await load();
     } catch (cause) { setError(errorDiagnostic(cause)); } finally { setBusyId(null); }
   }
 

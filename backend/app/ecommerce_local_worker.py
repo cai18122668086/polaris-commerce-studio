@@ -931,7 +931,10 @@ def run_local_login(
         status = manager.status()
         if status.get("state") not in {"login_pending", "risk_controlled"}:
             return status
-        time.sleep(0.5)
+        # Keep remote browser input responsive while retaining a bounded
+        # control-plane request rate. The browser helper itself drains the
+        # local action queue on its 200ms loop.
+        time.sleep(0.1)
     with suppress(Exception):
         manager.cancel_login()
     raise LocalWorkerError("LOGIN_TIMEOUT")

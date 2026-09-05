@@ -309,7 +309,7 @@ export default function AdminAccountsPage() {
     }
     if (activeLoginIds.size > 0) {
       void refreshPreviews();
-      const timer = window.setInterval(() => void refreshPreviews(), 2000);
+      const timer = window.setInterval(() => void refreshPreviews(), 500);
       return () => {
         cancelled = true;
         window.clearInterval(timer);

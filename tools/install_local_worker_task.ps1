@@ -40,7 +40,7 @@ if ($null -ne $existingTask -and $existingTask.State -eq "Running") {
 function Protect-WorkerPath([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
     New-Item -ItemType Directory -Force -Path $Path | Out-Null
-    $currentAccount = "$env:USERDOMAIN\$env:USERNAME"
+    $currentAccount = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     # A previous SYSTEM run may own rotated token/log files. Reclaiming the
     # exact Worker directory lets an elevated maintenance run repair ACLs.
     & takeown.exe /f $Path /r /d y /a | Out-Null
@@ -58,7 +58,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $WorkerRoot "logs") | Out-N
 $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $argument = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runner`" -EnvFile `"$envFile`" -WorkerRoot `"$WorkerRoot`""
 $taskAction = New-ScheduledTaskAction -Execute $powershell -Argument $argument
-$taskTrigger = New-ScheduledTaskTrigger -AtStartup -RandomDelay (New-TimeSpan -Seconds 30)
+$taskTrigger = New-ScheduledTaskTrigger -AtLogOn -RandomDelay (New-TimeSpan -Seconds 30)
 $taskSettings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
@@ -68,13 +68,13 @@ $taskSettings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -MultipleInstances IgnoreNew
 
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask `
     -TaskName $TaskName `
     -Action $taskAction `
     -Trigger $taskTrigger `
     -Settings $taskSettings `
-    -User "SYSTEM" `
-    -RunLevel Highest `
+    -Principal $principal `
     -Description "Persistent Polaris Commerce Studio local ecommerce Worker" `
     -Force | Out-Null
 

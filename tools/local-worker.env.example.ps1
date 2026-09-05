@@ -6,6 +6,8 @@ $env:POLARIS_WORKER_API_URL = "https://your-control-plane.example"
 # Bootstrap token from registration. The Worker refreshes it and persists the
 # replacement to the token file below; do not put the refreshed token in Git.
 $env:POLARIS_WORKER_SESSION_TOKEN = "<short-lived-token>"
+$env:POLARIS_WORKER_ENROLLMENT_TOKEN = "<optional-one-time-recovery-token>"
+$env:POLARIS_WORKER_DEVICE_ID = "polaris-local-pc"
 $env:POLARIS_WORKER_SESSION_TOKEN_FILE = "D:\Polaris\local-worker\worker.session-token"
 $env:POLARIS_WORKER_ID = "wrk_xxx"
 $env:POLARIS_WORKER_PROFILE_ROOT = "D:\Polaris\ecommerce-profiles"

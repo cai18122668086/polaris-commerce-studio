@@ -65,6 +65,7 @@ class LocalWorkerConfig:
 
     api_url: str
     session_token: str
+    enrollment_token: str
     session_token_file: Path
     worker_id: str
     profile_root: Path
@@ -83,6 +84,7 @@ class LocalWorkerConfig:
         values = os.environ if environ is None else environ
         api_url = values.get("POLARIS_WORKER_API_URL", "").strip()
         session_token = values.get("POLARIS_WORKER_SESSION_TOKEN", "").strip()
+        enrollment_token = values.get("POLARIS_WORKER_ENROLLMENT_TOKEN", "").strip()
         worker_id = values.get("POLARIS_WORKER_ID", "").strip()
         profile_root = values.get("POLARIS_WORKER_PROFILE_ROOT", "").strip()
         if not api_url or not worker_id or not profile_root:
@@ -100,10 +102,12 @@ class LocalWorkerConfig:
             try:
                 persisted_token = token_file.read_text(encoding="utf-8").strip()
             except OSError as exc:
-                raise LocalWorkerError("WORKER_TOKEN_FILE_UNREADABLE") from exc
+                if not enrollment_token:
+                    raise LocalWorkerError("WORKER_TOKEN_FILE_UNREADABLE") from exc
+                persisted_token = ""
             if persisted_token:
                 session_token = persisted_token
-        if not session_token:
+        if not session_token and not enrollment_token:
             raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
         raw_capabilities = values.get("POLARIS_WORKER_CAPABILITIES", "")
         capabilities = (
@@ -155,6 +159,7 @@ class LocalWorkerConfig:
         return cls(
             api_url=api_url,
             session_token=session_token,
+            enrollment_token=enrollment_token,
             session_token_file=token_file.resolve(),
             worker_id=worker_id,
             profile_root=Path(profile_root).expanduser(),
@@ -302,7 +307,7 @@ class WorkerApiClient:
         if not parsed.netloc:
             raise LocalWorkerError("INVALID_WORKER_API_URL")
         if not session_token.strip():
-            raise LocalWorkerError("WORKER_TOKEN_REQUIRED")
+            session_token = "enrollment-bootstrap"
         self.base_url = base_url.rstrip("/") + "/"
         self.session_token = session_token
         self.timeout = timeout
@@ -327,7 +332,14 @@ class WorkerApiClient:
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 parsed = json.loads(response.read())
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except HTTPError as exc:
+            try:
+                error_payload = json.loads(exc.read().decode("utf-8"))
+                code = error_payload.get("error", {}).get("code")
+            except Exception:
+                code = None
+            raise LocalWorkerError(str(code or "WORKER_API_UNAVAILABLE")) from exc
+        except (URLError, TimeoutError) as exc:
             raise LocalWorkerError("WORKER_API_UNAVAILABLE") from exc
         except (TypeError, ValueError) as exc:
             raise LocalWorkerError("WORKER_API_INVALID_RESPONSE") from exc
@@ -345,6 +357,30 @@ class WorkerApiClient:
         return self._post(
             f"/api/ecommerce/workers/{_validate_id(worker_id, 'worker_id')}/heartbeat",
             payload,
+        )
+
+    def register_worker(
+        self,
+        enrollment_token: str,
+        device_id: str,
+        *,
+        protocol_version: str,
+        agent_version: str,
+        capabilities: list[str],
+    ) -> dict[str, Any]:
+        token = enrollment_token.strip()
+        if not token:
+            raise LocalWorkerError("WORKER_ENROLLMENT_REQUIRED")
+        device = _validate_id(device_id, "device_id")
+        return self._post(
+            "/api/ecommerce/workers/register",
+            {
+                "enrollment_token": token,
+                "device_id": device,
+                "protocol_version": protocol_version,
+                "agent_version": agent_version,
+                "capabilities": capabilities,
+            },
         )
 
     def refresh_token(self, worker_id: str) -> dict[str, Any]:
@@ -634,6 +670,8 @@ class LocalWorkerLoop:
         lease_renew_interval_seconds: float = 30.0,
         token_refresh_interval_seconds: float = 30.0,
         on_token_refreshed: Callable[[str], None] | None = None,
+        enrollment_token: str = "",
+        device_id: str = "",
     ) -> None:
         if heartbeat_interval_seconds <= 0 or poll_interval_seconds <= 0:
             raise LocalWorkerError("WORKER_INTERVAL_INVALID")
@@ -651,6 +689,38 @@ class LocalWorkerLoop:
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.token_refresh_interval_seconds = token_refresh_interval_seconds
         self.on_token_refreshed = on_token_refreshed
+        self.enrollment_token = enrollment_token.strip()
+        self.device_id = (device_id or runtime.worker_id).strip()
+
+    def _recover_registration(self) -> bool:
+        if not self.enrollment_token:
+            return False
+        try:
+            response = self.api.register_worker(
+                self.enrollment_token,
+                self.device_id,
+                protocol_version=self.protocol_version,
+                agent_version=self.agent_version,
+                capabilities=self.capabilities,
+            )
+            data = response.get("data") if isinstance(response, Mapping) else None
+            token = data.get("session_token") if isinstance(data, Mapping) else None
+            worker = data.get("worker") if isinstance(data, Mapping) else None
+            worker_id = worker.get("id") if isinstance(worker, Mapping) else None
+            if (
+                not isinstance(token, str)
+                or not token.strip()
+                or not isinstance(worker_id, str)
+            ):
+                return False
+            self.api.session_token = token.strip()
+            self.runtime.worker_id = _validate_id(worker_id, "worker_id")
+            self.enrollment_token = ""
+            if self.on_token_refreshed is not None:
+                self.on_token_refreshed(token)
+            return True
+        except LocalWorkerError:
+            return False
 
     def _heartbeat(self, ready: bool) -> dict[str, Any]:
         return self.api.heartbeat(
@@ -760,7 +830,13 @@ class LocalWorkerLoop:
                     try:
                         self._heartbeat(True)
                         last_heartbeat = now
-                    except LocalWorkerError:
+                    except LocalWorkerError as exc:
+                        if exc.args and str(exc.args[0]) in {
+                            "WORKER_AUTH_INVALID",
+                            "WORKER_TOKEN_EXPIRED",
+                            "WORKER_TOKEN_ROTATED",
+                        }:
+                            self._recover_registration()
                         stop.wait(self.poll_interval_seconds)
                         continue
                 try:
@@ -803,6 +879,8 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
         lease_renew_interval_seconds=config.lease_renew_interval_seconds,
         token_refresh_interval_seconds=config.token_refresh_interval_seconds,
         on_token_refreshed=config.persist_session_token,
+        enrollment_token=config.enrollment_token,
+        device_id=os.environ.get("POLARIS_WORKER_DEVICE_ID", config.worker_id),
     )
     stop_event = threading.Event()
 
@@ -882,7 +960,26 @@ def run_remote_login(
         session_profile=f"domestic-{platform}",
         state_style="legacy" if platform == "taobao" else "canonical",
     )
-    manager.start_login(url, headless=True, timeout_seconds=timeout_seconds)
+    try:
+        manager.start_login(url, headless=True, timeout_seconds=timeout_seconds)
+    except Exception as exc:
+        # Keep the control plane from leaving a claimed login job waiting
+        # forever when the local browser/profile cannot be started. The
+        # exception type is useful in the local supervisor log and contains
+        # no profile, cookie, or credential material.
+        print(
+            f"local login browser startup failed: {type(exc).__name__}",
+            file=sys.stderr,
+            flush=True,
+        )
+        with suppress(Exception):
+            api.update_login(
+                worker_id,
+                session_id,
+                "failed",
+                "本机浏览器启动失败，请检查本机浏览器和 Profile 权限。",
+            )
+        raise LocalWorkerError("WORKER_LOGIN_BROWSER_START_FAILED") from exc
     api.update_login(worker_id, session_id, "waiting_qr", "目标本机登录页已打开。")
     deadline = time.monotonic() + timeout_seconds
     sequence = 0

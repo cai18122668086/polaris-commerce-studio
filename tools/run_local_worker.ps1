@@ -46,8 +46,9 @@ if ($missing.Count -gt 0) {
 $tokenFile = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_SESSION_TOKEN_FILE")
 $token = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_SESSION_TOKEN")
 if ([string]::IsNullOrWhiteSpace($token) -and
+    [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("POLARIS_WORKER_ENROLLMENT_TOKEN")) -and
     ([string]::IsNullOrWhiteSpace($tokenFile) -or -not (Test-Path -LiteralPath $tokenFile))) {
-    Write-SupervisorLog "worker session token and token file are both missing"
+    Write-SupervisorLog "worker session token, enrollment token and token file are all missing"
     exit 2
 }
 

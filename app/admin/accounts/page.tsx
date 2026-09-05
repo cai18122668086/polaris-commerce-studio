@@ -40,6 +40,8 @@ export default function AdminAccountsPage() {
   const [workerId, setWorkerId] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [workers, setWorkers] = useState<LocalWorker[]>([]);
+  const [workerDeviceId, setWorkerDeviceId] = useState("polaris-local-pc");
+  const [enrollmentToken, setEnrollmentToken] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -230,6 +232,27 @@ export default function AdminAccountsPage() {
     if (!account || !workerId) { setError("请选择账号和本机 Worker。"); return; }
     setBusyId(account.id); setError("");
     try { const result = await apiClient.PATCH("/api/ecommerce/accounts/{account_id}", { params: { path: { account_id: account.id } }, body: { worker_id: workerId } }); unwrapApiResponse(result); setMessage("账号已绑定本机 Worker"); await load(); } catch (cause) { setError(errorDiagnostic(cause)); } finally { setBusyId(null); }
+  }
+
+  async function createWorkerEnrollment() {
+    if (!workspaceId || !workerDeviceId.trim()) {
+      setError("请选择工作区并输入本机设备名称。");
+      return;
+    }
+    setBusyId("worker-enroll"); setError(""); setMessage(""); setEnrollmentToken("");
+    try {
+      const response = await fetch("/api/ecommerce/workers/enrollments", {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id: workspaceId, device_id: workerDeviceId.trim() }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error?.message || `HTTP ${response.status}`);
+      const token = payload?.data?.enrollment_token;
+      if (!token) throw new Error("服务器未返回注册令牌");
+      setEnrollmentToken(token);
+      setMessage("注册令牌已生成。请在当前电脑运行本机 Worker 注册命令，令牌仅显示一次。");
+    } catch (cause) { setError(errorDiagnostic(cause)); }
+    finally { setBusyId(null); }
   }
 
   function updateLoginActivity(accountId: string, data: LoginStatusResponse) {
@@ -451,6 +474,7 @@ export default function AdminAccountsPage() {
           <label>本机执行设备<select value={workerId} onChange={(event) => setWorkerId(event.target.value)}><option value="">不绑定（仅限服务器/旧流程）</option>{workers.map((worker) => <option key={worker.id} value={worker.id}>{worker.device_id} · {worker.status} · {worker.agent_version}</option>)}</select></label>
           <button className={styles.primary} type="button" onClick={() => void createAccount()} disabled={busyId === "new"}>{busyId === "new" ? "保存中…" : "保存账号"}</button>
         </div> : null}
+        <div className={styles.form}><label>本机设备名称<input value={workerDeviceId} onChange={(event) => setWorkerDeviceId(event.target.value)} placeholder="例如：polaris-local-pc" /></label><button className={styles.secondary} type="button" onClick={() => void createWorkerEnrollment()} disabled={busyId === "worker-enroll"}>{busyId === "worker-enroll" ? "生成中…" : "注册本机 Worker"}</button>{enrollmentToken ? <label>一次性注册令牌<input readOnly value={enrollmentToken} onFocus={(event) => event.currentTarget.select()} /></label> : null}</div>
         <div className={styles.form}><label>选择账号<select value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)}><option value="">请选择账号</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label><label>本机 Worker<select value={workerId} onChange={(event) => setWorkerId(event.target.value)}><option value="">请选择在线 Worker</option>{workers.map((worker) => <option key={worker.id} value={worker.id}>{worker.device_id} · {worker.status}</option>)}</select></label><button className={styles.secondary} type="button" onClick={() => void rebindAccount()}>绑定本机 Worker</button>{selectedAccountId ? <button className={styles.secondary} type="button" onClick={() => void removeAccount(accounts.find((item) => item.id === selectedAccountId) as AdminOperationalAccount)}>删除账号</button> : null}</div>
         <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td>{previewUrls[account.id] ? <div style={{ marginBottom: 8 }}><div tabIndex={0} role="application" aria-label={`${account.label}可操作登录浏览器`} onKeyDown={(event) => onPreviewKeyDown(account.id, event)} onWheel={(event) => onPreviewWheel(account.id, event)} style={{ width: "min(960px, 70vw)", maxHeight: "720px", overflow: "auto", border: "1px solid #d9d9e8", borderRadius: 8, background: "#fff", cursor: "crosshair", outline: "none" }}><img src={previewUrls[account.id]} alt={`${account.label}登录浏览器`} draggable={false} onPointerDown={(event) => onPreviewPointerDown(account.id, event)} onPointerUp={(event) => onPreviewPointerUp(account.id, event)} style={{ display: "block", width: "100%", height: "auto", userSelect: "none" }} /></div><small>可点击、拖动、滚动或先点击界面后输入；操作会发送到该账号的隔离登录浏览器</small></div> : null}<div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>
       </section>

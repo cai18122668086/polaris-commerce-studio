@@ -1035,6 +1035,12 @@ def run_remote_login(
                         last_mtime_ns = stat.st_mtime_ns
             except OSError:
                 pass
+            except LocalWorkerError as exc:
+                print(
+                    f"local login frame upload failed: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
         if mapped in {"ready", "needs_login", "risk_controlled", "failed"}:
             api.update_login(
                 worker_id, session_id, mapped, str(current.get("message") or "")

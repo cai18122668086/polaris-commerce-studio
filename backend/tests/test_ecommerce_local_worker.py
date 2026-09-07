@@ -92,6 +92,27 @@ class _FakeApi:
         self.heartbeats.append(payload)
         return {"accepted": True}
 
+    def register_worker(
+        self,
+        enrollment_token: str,
+        device_id: str,
+        *,
+        protocol_version: str,
+        agent_version: str,
+        capabilities: list[str],
+    ) -> dict:
+        return {
+            "data": {
+                "session_token": "registered-session",
+                "worker": {"id": "worker_registered"},
+                "enrollment_token": enrollment_token,
+                "device_id": device_id,
+                "protocol_version": protocol_version,
+                "agent_version": agent_version,
+                "capabilities": capabilities,
+            }
+        }
+
     def claim(self, _worker_id: str, _platforms: list[str] | None = None) -> dict:
         self.claims += 1
         return {"data": _task()} if self.claims == 1 else {"data": None}
@@ -193,6 +214,27 @@ def test_worker_loop_claims_renews_and_stops_cleanly(tmp_path: Path):
     assert api.heartbeats[-1]["ready"] is False
 
 
+def test_worker_loop_registers_before_using_the_bootstrap_worker_id(tmp_path: Path):
+    api = _FakeApi()
+    runtime = LocalWorkerRuntime(
+        api, "device-bootstrap", LocalProfileStore(tmp_path / "profiles")
+    )
+    persisted: list[str] = []
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        enrollment_token="one-time-token",
+        device_id="device-bootstrap",
+        on_worker_id_persisted=persisted.append,
+    )
+
+    assert loop._recover_registration() is True
+    assert runtime.worker_id == "worker_registered"
+    assert api.session_token == "registered-session"
+    assert persisted == ["worker_registered"]
+    assert loop.enrollment_token == ""
+
+
 def test_local_product_crawler_uses_only_claimed_profile(monkeypatch, tmp_path: Path):
     fake_product = SimpleNamespace(
         platform="taobao",
@@ -261,6 +303,33 @@ def test_local_worker_config_requires_env_and_never_requires_cli_secret(monkeypa
     ):
         monkeypatch.delenv(name, raising=False)
     assert local_worker.main(["--check-config"]) == 2
+
+
+def test_local_worker_config_bootstraps_from_enrollment_token(tmp_path: Path):
+    config = local_worker.LocalWorkerConfig.from_env(
+        {
+            "POLARIS_WORKER_API_URL": "https://api.example.test",
+            "POLARIS_WORKER_ENROLLMENT_TOKEN": "one-time-token",
+            "POLARIS_WORKER_DEVICE_ID": "device-bootstrap",
+            "POLARIS_WORKER_PROFILE_ROOT": str(tmp_path / "profiles"),
+        }
+    )
+    assert config.worker_id == "device-bootstrap"
+    config.persist_worker_id("wrk_registered")
+    assert config.worker_id_file is not None
+    assert config.worker_id_file.read_text(encoding="utf-8").strip() == "wrk_registered"
+
+    restored = local_worker.LocalWorkerConfig.from_env(
+        {
+            "POLARIS_WORKER_API_URL": "https://api.example.test",
+            "POLARIS_WORKER_SESSION_TOKEN": "session-token",
+            "POLARIS_WORKER_DEVICE_ID": "device-bootstrap",
+            "POLARIS_WORKER_PROFILE_ROOT": str(tmp_path / "profiles"),
+            "POLARIS_WORKER_ID_FILE": str(config.worker_id_file),
+        }
+    )
+    assert restored.worker_id == "wrk_registered"
+    assert restored.enrollment_token == ""
 
 
 def test_local_worker_config_loads_and_persists_token_file(tmp_path: Path):

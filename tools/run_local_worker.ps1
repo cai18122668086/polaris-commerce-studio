@@ -30,7 +30,6 @@ if (-not (Test-Path -LiteralPath $EnvFile)) {
 . $EnvFile
 $required = @(
     "POLARIS_WORKER_API_URL",
-    "POLARIS_WORKER_ID",
     "POLARIS_WORKER_PROFILE_ROOT",
     "POLARIS_WORKER_CAPABILITIES"
 )
@@ -41,6 +40,17 @@ $missing = @(
 )
 if ($missing.Count -gt 0) {
     Write-SupervisorLog ("worker env missing required keys: " + ($missing -join ","))
+    exit 2
+}
+$workerId = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_ID")
+$enrollmentToken = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_ENROLLMENT_TOKEN")
+$deviceId = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_DEVICE_ID")
+if ([string]::IsNullOrWhiteSpace($workerId) -and [string]::IsNullOrWhiteSpace($enrollmentToken)) {
+    Write-SupervisorLog "worker id or enrollment token is required"
+    exit 2
+}
+if (-not [string]::IsNullOrWhiteSpace($enrollmentToken) -and [string]::IsNullOrWhiteSpace($deviceId)) {
+    Write-SupervisorLog "worker device id is required for enrollment"
     exit 2
 }
 $tokenFile = [Environment]::GetEnvironmentVariable("POLARIS_WORKER_SESSION_TOKEN_FILE")

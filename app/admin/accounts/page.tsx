@@ -257,7 +257,7 @@ export default function AdminAccountsPage() {
       const token = payload?.data?.enrollment_token;
       if (!token) throw new Error("服务器未返回注册令牌");
       setEnrollmentToken(token);
-      setMessage("注册令牌已生成。请在当前电脑运行本机 Worker 注册命令，令牌仅显示一次。");
+      setMessage("令牌已生成；请在当前电脑启动本机 Worker，Worker 会自动完成注册并变为在线。令牌仅显示一次。");
     } catch (cause) { setError(errorDiagnostic(cause)); }
     finally { setBusyId(null); }
   }

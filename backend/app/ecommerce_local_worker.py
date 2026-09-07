@@ -106,7 +106,6 @@ class LocalWorkerConfig:
         # Once a refresh has been persisted, the file is authoritative over
         # the bootstrap value in the env script. This lets a reboot continue
         # with the rotated token instead of replaying an expired token.
-        persisted_token_loaded = False
         if token_file.is_file():
             try:
                 persisted_token = token_file.read_text(encoding="utf-8").strip()
@@ -116,8 +115,6 @@ class LocalWorkerConfig:
                 persisted_token = ""
             if persisted_token:
                 session_token = persisted_token
-                persisted_token_loaded = True
-        persisted_worker_id_loaded = False
         if not worker_id and worker_id_file.is_file():
             try:
                 worker_id = worker_id_file.read_text(encoding="utf-8").strip()
@@ -125,13 +122,7 @@ class LocalWorkerConfig:
                 if not enrollment_token:
                     raise LocalWorkerError("WORKER_ID_FILE_UNREADABLE") from exc
             else:
-                persisted_worker_id_loaded = bool(worker_id)
-        if worker_id and session_token and (
-            persisted_token_loaded or persisted_worker_id_loaded
-        ):
-            # The bootstrap token is one-time. Once the returned credentials
-            # have been persisted, never replay the token on a reboot.
-            enrollment_token = ""
+                worker_id = worker_id.strip()
         if not worker_id and enrollment_token:
             worker_id = device_id
         if not worker_id or (enrollment_token and not device_id):
@@ -880,7 +871,15 @@ class LocalWorkerLoop:
         refresher.start()
         try:
             while not stop.is_set():
-                if self.enrollment_token and not self._recover_registration():
+                # A new device has only its device id at bootstrap time. An
+                # existing worker should try its saved session first and use
+                # the one-time token only after the server rejects that
+                # session, so a stale token cannot block normal heartbeats.
+                if (
+                    self.enrollment_token
+                    and self.runtime.worker_id == self.device_id
+                    and not self._recover_registration()
+                ):
                     stop.wait(self.poll_interval_seconds)
                     continue
                 now = time.monotonic()

@@ -235,6 +235,51 @@ def test_worker_loop_registers_before_using_the_bootstrap_worker_id(tmp_path: Pa
     assert loop.enrollment_token == ""
 
 
+def test_worker_loop_reenrolls_formal_worker_after_session_auth_failure(tmp_path: Path):
+    stop = threading.Event()
+
+    class _ExpiredSessionApi(_FakeApi):
+        def __init__(self):
+            super().__init__()
+            self.registration_attempts = 0
+
+        def heartbeat(self, worker_id: str, payload: dict) -> dict:
+            super().heartbeat(worker_id, payload)
+            if payload["ready"] and self.registration_attempts == 0:
+                raise LocalWorkerError("WORKER_AUTH_INVALID")
+            if not payload["ready"]:
+                stop.set()
+            return {"accepted": True}
+
+        def register_worker(self, *args, **kwargs) -> dict:
+            self.registration_attempts += 1
+            return super().register_worker(*args, **kwargs)
+
+        def claim(self, _worker_id: str, _platforms: list[str] | None = None) -> dict:
+            if self.registration_attempts:
+                stop.set()
+            return {"data": None}
+
+    api = _ExpiredSessionApi()
+    runtime = LocalWorkerRuntime(
+        api, "worker_existing", LocalProfileStore(tmp_path / "profiles")
+    )
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        enrollment_token="recovery-token",
+        device_id="device-existing",
+        heartbeat_interval_seconds=0.01,
+        poll_interval_seconds=0.01,
+    )
+
+    loop.run(lambda _profile_path, _task: {}, stop)
+
+    assert api.registration_attempts == 1
+    assert runtime.worker_id == "worker_registered"
+    assert api.heartbeats[-1]["ready"] is False
+
+
 def test_local_product_crawler_uses_only_claimed_profile(monkeypatch, tmp_path: Path):
     fake_product = SimpleNamespace(
         platform="taobao",
@@ -323,13 +368,14 @@ def test_local_worker_config_bootstraps_from_enrollment_token(tmp_path: Path):
         {
             "POLARIS_WORKER_API_URL": "https://api.example.test",
             "POLARIS_WORKER_SESSION_TOKEN": "session-token",
+            "POLARIS_WORKER_ENROLLMENT_TOKEN": "recovery-token",
             "POLARIS_WORKER_DEVICE_ID": "device-bootstrap",
             "POLARIS_WORKER_PROFILE_ROOT": str(tmp_path / "profiles"),
             "POLARIS_WORKER_ID_FILE": str(config.worker_id_file),
         }
     )
     assert restored.worker_id == "wrk_registered"
-    assert restored.enrollment_token == ""
+    assert restored.enrollment_token == "recovery-token"
 
 
 def test_local_worker_config_loads_and_persists_token_file(tmp_path: Path):

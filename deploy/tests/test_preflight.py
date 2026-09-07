@@ -532,6 +532,17 @@ class SourcePreflightTests(unittest.TestCase):
         )
         self.assertEqual(errors, [])
 
+    def test_csp_allows_only_local_worker_bridge_http_sources(self) -> None:
+        errors = self.validate_mutation(
+            "Caddyfile",
+            lambda text: text.replace(
+                "connect-src 'self' http://localhost:8765/v1/enrollment",
+                "connect-src 'self' http://example.invalid http://localhost:8765/v1/enrollment",
+                1,
+            ),
+        )
+        self.assertTrue(any("external HTTP origins" in item for item in errors))
+
     def synthetic_deployment_values(self) -> dict[str, str]:
         digest_bases = (
             "0123456789abcdef",

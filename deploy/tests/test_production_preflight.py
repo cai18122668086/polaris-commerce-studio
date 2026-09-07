@@ -129,6 +129,17 @@ class ProductionPreflightTests(unittest.TestCase):
         ):
             self.assertIn(literal, compose)
 
+    def test_production_csp_allows_both_local_worker_bridge_hosts(self) -> None:
+        caddy = (DEPLOY / "Caddyfile.production").read_text(encoding="utf-8")
+        for origin in ("http://localhost:8765", "http://127.0.0.1:8765"):
+            self.assertIn(origin, caddy)
+
+    def test_production_csp_rejects_missing_local_worker_bridge_host(self) -> None:
+        caddy = (DEPLOY / "Caddyfile.production").read_text(encoding="utf-8")
+        mutated = caddy.replace(" http://127.0.0.1:8765/v1/enrollment", "")
+        errors = validate_caddy(mutated)
+        self.assertTrue(any("127.0.0.1:8765" in item for item in errors))
+
     def test_repository_compose_files_use_six_way_concurrency(self) -> None:
         compose_files = (
             DEPLOY.parent / "compose.yaml",

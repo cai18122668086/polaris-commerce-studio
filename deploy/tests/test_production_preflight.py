@@ -140,6 +140,16 @@ class ProductionPreflightTests(unittest.TestCase):
         errors = validate_caddy(mutated)
         self.assertTrue(any("127.0.0.1:8765" in item for item in errors))
 
+    def test_production_csp_rejects_external_http_source(self) -> None:
+        caddy = (DEPLOY / "Caddyfile.production").read_text(encoding="utf-8")
+        mutated = caddy.replace(
+            "connect-src 'self'",
+            "connect-src 'self' http://example.invalid",
+            1,
+        )
+        errors = validate_caddy(mutated)
+        self.assertTrue(any("external HTTP origins" in item for item in errors))
+
     def test_repository_compose_files_use_six_way_concurrency(self) -> None:
         compose_files = (
             DEPLOY.parent / "compose.yaml",

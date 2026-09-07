@@ -499,6 +499,16 @@ def validate_caddy(caddy: str) -> list[str]:
         )
     if ":8080" in caddy:
         errors.append("production Caddyfile must not use the internal-only :8080 site")
+    csp_match = re.search(r'Content-Security-Policy "([^"]+)"', caddy)
+    if not csp_match:
+        errors.append("production Caddyfile is missing a parseable CSP")
+    else:
+        csp = csp_match.group(1)
+        if "connect-src 'self'" not in csp:
+            errors.append("production CSP must retain same-origin connections")
+        for origin in ("http://localhost:8765", "http://127.0.0.1:8765"):
+            if origin not in csp:
+                errors.append(f"production CSP must allow local Worker bridge origin {origin}")
     return errors
 
 

@@ -9,7 +9,10 @@ $env:POLARIS_WORKER_SESSION_TOKEN = "<short-lived-token>"
 $env:POLARIS_WORKER_ENROLLMENT_TOKEN = "<optional-one-time-recovery-token>"
 $env:POLARIS_WORKER_DEVICE_ID = "polaris-local-pc"
 $env:POLARIS_WORKER_SESSION_TOKEN_FILE = "D:\Polaris\local-worker\worker.session-token"
-$env:POLARIS_WORKER_ID = "wrk_xxx"
+# Leave the Worker ID empty for the first run. The one-time enrollment token
+# registers the device and the returned Worker ID is persisted automatically.
+$env:POLARIS_WORKER_ID = ""
+$env:POLARIS_WORKER_ID_FILE = "D:\Polaris\local-worker\worker.id"
 $env:POLARIS_WORKER_PROFILE_ROOT = "D:\Polaris\ecommerce-profiles"
 $env:POLARIS_WORKER_CAPABILITIES = "browser.taobao,browser.tmall"
 $env:PLAYWRIGHT_BROWSERS_PATH = "D:\Tools\ms-playwright"

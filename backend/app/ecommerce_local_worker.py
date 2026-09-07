@@ -69,6 +69,7 @@ class LocalWorkerConfig:
     session_token_file: Path
     worker_id: str
     profile_root: Path
+    worker_id_file: Path | None = None
     capabilities: tuple[str, ...] = _DEFAULT_CAPABILITIES
     request_timeout_seconds: float = 20.0
     heartbeat_interval_seconds: float = 20.0
@@ -86,8 +87,9 @@ class LocalWorkerConfig:
         session_token = values.get("POLARIS_WORKER_SESSION_TOKEN", "").strip()
         enrollment_token = values.get("POLARIS_WORKER_ENROLLMENT_TOKEN", "").strip()
         worker_id = values.get("POLARIS_WORKER_ID", "").strip()
+        device_id = values.get("POLARIS_WORKER_DEVICE_ID", "").strip()
         profile_root = values.get("POLARIS_WORKER_PROFILE_ROOT", "").strip()
-        if not api_url or not worker_id or not profile_root:
+        if not api_url or not profile_root:
             raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
         token_file_value = values.get("POLARIS_WORKER_SESSION_TOKEN_FILE", "").strip()
         token_file = (
@@ -95,9 +97,16 @@ class LocalWorkerConfig:
             if token_file_value
             else Path(profile_root).expanduser() / ".worker-session-token"
         )
+        worker_id_file_value = values.get("POLARIS_WORKER_ID_FILE", "").strip()
+        worker_id_file = (
+            Path(worker_id_file_value).expanduser()
+            if worker_id_file_value
+            else token_file.with_name(".worker-id")
+        )
         # Once a refresh has been persisted, the file is authoritative over
         # the bootstrap value in the env script. This lets a reboot continue
         # with the rotated token instead of replaying an expired token.
+        persisted_token_loaded = False
         if token_file.is_file():
             try:
                 persisted_token = token_file.read_text(encoding="utf-8").strip()
@@ -107,6 +116,26 @@ class LocalWorkerConfig:
                 persisted_token = ""
             if persisted_token:
                 session_token = persisted_token
+                persisted_token_loaded = True
+        persisted_worker_id_loaded = False
+        if not worker_id and worker_id_file.is_file():
+            try:
+                worker_id = worker_id_file.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                if not enrollment_token:
+                    raise LocalWorkerError("WORKER_ID_FILE_UNREADABLE") from exc
+            else:
+                persisted_worker_id_loaded = bool(worker_id)
+        if worker_id and session_token and (
+            persisted_token_loaded or persisted_worker_id_loaded
+        ):
+            # The bootstrap token is one-time. Once the returned credentials
+            # have been persisted, never replay the token on a reboot.
+            enrollment_token = ""
+        if not worker_id and enrollment_token:
+            worker_id = device_id
+        if not worker_id or (enrollment_token and not device_id):
+            raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
         if not session_token and not enrollment_token:
             raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
         raw_capabilities = values.get("POLARIS_WORKER_CAPABILITIES", "")
@@ -163,6 +192,7 @@ class LocalWorkerConfig:
             session_token_file=token_file.resolve(),
             worker_id=worker_id,
             profile_root=Path(profile_root).expanduser(),
+            worker_id_file=worker_id_file.resolve(),
             capabilities=capabilities,
             request_timeout_seconds=request_timeout_seconds,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
@@ -192,6 +222,27 @@ class LocalWorkerConfig:
             with suppress(OSError):
                 temporary.unlink()
             raise LocalWorkerError("WORKER_TOKEN_FILE_UNWRITABLE") from exc
+
+    def persist_worker_id(self, worker_id: str) -> None:
+        """Persist the server-assigned worker id for the next local start."""
+
+        normalized = _validate_id(worker_id, "worker_id")
+        path = self.worker_id_file
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            temporary.write_text(normalized + "\n", encoding="utf-8")
+            with suppress(OSError):
+                os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+            with suppress(OSError):
+                os.chmod(path, 0o600)
+        except OSError as exc:
+            with suppress(OSError):
+                temporary.unlink()
+            raise LocalWorkerError("WORKER_ID_FILE_UNWRITABLE") from exc
 
 
 def _validate_id(value: str, label: str) -> str:
@@ -670,6 +721,7 @@ class LocalWorkerLoop:
         lease_renew_interval_seconds: float = 30.0,
         token_refresh_interval_seconds: float = 30.0,
         on_token_refreshed: Callable[[str], None] | None = None,
+        on_worker_id_persisted: Callable[[str], None] | None = None,
         enrollment_token: str = "",
         device_id: str = "",
     ) -> None:
@@ -689,6 +741,7 @@ class LocalWorkerLoop:
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.token_refresh_interval_seconds = token_refresh_interval_seconds
         self.on_token_refreshed = on_token_refreshed
+        self.on_worker_id_persisted = on_worker_id_persisted
         self.enrollment_token = enrollment_token.strip()
         self.device_id = (device_id or runtime.worker_id).strip()
 
@@ -718,6 +771,8 @@ class LocalWorkerLoop:
             self.enrollment_token = ""
             if self.on_token_refreshed is not None:
                 self.on_token_refreshed(token)
+            if self.on_worker_id_persisted is not None:
+                self.on_worker_id_persisted(worker_id)
             return True
         except LocalWorkerError:
             return False
@@ -825,6 +880,9 @@ class LocalWorkerLoop:
         refresher.start()
         try:
             while not stop.is_set():
+                if self.enrollment_token and not self._recover_registration():
+                    stop.wait(self.poll_interval_seconds)
+                    continue
                 now = time.monotonic()
                 if now - last_heartbeat >= self.heartbeat_interval_seconds:
                     try:
@@ -879,6 +937,7 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
         lease_renew_interval_seconds=config.lease_renew_interval_seconds,
         token_refresh_interval_seconds=config.token_refresh_interval_seconds,
         on_token_refreshed=config.persist_session_token,
+        on_worker_id_persisted=config.persist_worker_id,
         enrollment_token=config.enrollment_token,
         device_id=os.environ.get("POLARIS_WORKER_DEVICE_ID", config.worker_id),
     )

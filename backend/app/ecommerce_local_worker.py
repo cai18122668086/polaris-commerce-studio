@@ -21,6 +21,8 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -79,6 +81,9 @@ class LocalWorkerConfig:
     # Keep this below the server's minimum 60-second token TTL so a deployment
     # using the shortest allowed lifetime still refreshes before expiry.
     token_refresh_interval_seconds: float = 30.0
+    bridge_host: str = "127.0.0.1"
+    bridge_port: int = 8765
+    bridge_origin: str = ""
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> LocalWorkerConfig:
@@ -162,6 +167,7 @@ class LocalWorkerConfig:
             token_refresh_interval_seconds = float(
                 values.get("POLARIS_WORKER_TOKEN_REFRESH_INTERVAL", "30")
             )
+            bridge_port = int(values.get("POLARIS_WORKER_BRIDGE_PORT", "8765"))
         except ValueError as exc:
             raise LocalWorkerError("WORKER_CONFIG_INVALID") from exc
         if any(
@@ -176,6 +182,12 @@ class LocalWorkerConfig:
             )
         ):
             raise LocalWorkerError("WORKER_CONFIG_INVALID")
+        if not 1024 <= bridge_port <= 65535:
+            raise LocalWorkerError("WORKER_BRIDGE_PORT_INVALID")
+        parsed_api_url = urlparse(api_url)
+        bridge_origin = values.get("POLARIS_WORKER_BRIDGE_ORIGIN", "").strip()
+        if not bridge_origin:
+            bridge_origin = f"{parsed_api_url.scheme}://{parsed_api_url.netloc}"
         return cls(
             api_url=api_url,
             session_token=session_token,
@@ -191,6 +203,8 @@ class LocalWorkerConfig:
             lease_renew_interval_seconds=lease_renew_interval_seconds,
             browser_timeout_ms=browser_timeout_ms,
             token_refresh_interval_seconds=token_refresh_interval_seconds,
+            bridge_port=bridge_port,
+            bridge_origin=bridge_origin,
         )
 
     def persist_session_token(self, token: str) -> None:
@@ -735,6 +749,19 @@ class LocalWorkerLoop:
         self.on_worker_id_persisted = on_worker_id_persisted
         self.enrollment_token = enrollment_token.strip()
         self.device_id = (device_id or runtime.worker_id).strip()
+        self._enrollment_lock = threading.Lock()
+
+    def accept_enrollment(self, enrollment_token: str, device_id: str) -> None:
+        """Accept a browser-delivered one-time token without logging it."""
+
+        token = enrollment_token.strip()
+        normalized_device_id = device_id.strip()
+        if not token or len(token) > 256:
+            raise LocalWorkerError("WORKER_ENROLLMENT_REQUIRED")
+        if normalized_device_id != self.device_id:
+            raise LocalWorkerError("WORKER_DEVICE_MISMATCH")
+        with self._enrollment_lock:
+            self.enrollment_token = token
 
     def _recover_registration(self) -> bool:
         if not self.enrollment_token:
@@ -917,6 +944,124 @@ class LocalWorkerLoop:
         return list(dict.fromkeys(platforms)) or None
 
 
+class LocalWorkerBridge:
+    """Loopback-only bridge used by the signed-in control-plane page."""
+
+    def __init__(
+        self,
+        loop: LocalWorkerLoop,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        allowed_origin: str = "",
+    ) -> None:
+        self.loop = loop
+        self.host = host
+        self.port = port
+        self.allowed_origin = allowed_origin.rstrip("/")
+        self.server: ThreadingHTTPServer | None = None
+        self.thread: threading.Thread | None = None
+
+    def _handler(self) -> type[BaseHTTPRequestHandler]:
+        bridge = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def _origin_allowed(self) -> bool:
+                origin = self.headers.get("Origin", "").rstrip("/")
+                return not origin or origin == bridge.allowed_origin
+
+            def _headers(self) -> None:
+                origin = self.headers.get("Origin", "").rstrip("/")
+                if origin and origin == bridge.allowed_origin:
+                    self.send_header("Access-Control-Allow-Origin", origin)
+                    self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Private-Network", "true")
+
+            def _json(self, status: HTTPStatus, payload: Mapping[str, Any]) -> None:
+                body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                self.send_response(status)
+                self._headers()
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_OPTIONS(self) -> None:  # noqa: N802 - stdlib handler API
+                if self.path != "/v1/enrollment" or not self._origin_allowed():
+                    self._json(
+                        HTTPStatus.FORBIDDEN,
+                        {"ok": False, "error": "ORIGIN_FORBIDDEN"},
+                    )
+                    return
+                self.send_response(HTTPStatus.NO_CONTENT)
+                self._headers()
+                self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.end_headers()
+
+            def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+                if self.path != "/v1/enrollment" or not self._origin_allowed():
+                    self._json(
+                        HTTPStatus.FORBIDDEN,
+                        {"ok": False, "error": "ORIGIN_FORBIDDEN"},
+                    )
+                    return
+                try:
+                    content_length = int(self.headers.get("Content-Length", "0"))
+                    if content_length <= 0 or content_length > 4096:
+                        raise LocalWorkerError("WORKER_ENROLLMENT_PAYLOAD_INVALID")
+                    payload = json.loads(self.rfile.read(content_length))
+                    if not isinstance(payload, Mapping):
+                        raise LocalWorkerError("WORKER_ENROLLMENT_PAYLOAD_INVALID")
+                    bridge.loop.accept_enrollment(
+                        str(payload.get("enrollment_token", "")),
+                        str(payload.get("device_id", "")),
+                    )
+                except (ValueError, json.JSONDecodeError, LocalWorkerError) as exc:
+                    code = str(exc.args[0]) if exc.args else "WORKER_ENROLLMENT_FAILED"
+                    self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": code})
+                    return
+                self._json(
+                    HTTPStatus.OK,
+                    {
+                        "ok": True,
+                        "status": "registering",
+                        "device_id": bridge.loop.device_id,
+                    },
+                )
+
+            def log_message(self, _format: str, *_args: Any) -> None:
+                return
+
+        return Handler
+
+    def start(self) -> None:
+        try:
+            self.server = ThreadingHTTPServer(
+                (self.host, self.port), self._handler()
+            )
+        except OSError as exc:
+            raise LocalWorkerError("WORKER_BRIDGE_START_FAILED") from exc
+        self.server.daemon_threads = True
+        self.thread = threading.Thread(
+            target=self.server.serve_forever,
+            name="polaris-worker-bridge",
+            daemon=True,
+        )
+        self.thread.start()
+
+    def stop(self) -> None:
+        server = self.server
+        if server is None:
+            return
+        server.shutdown()
+        server.server_close()
+        if self.thread is not None:
+            self.thread.join(timeout=2.0)
+        self.server = None
+        self.thread = None
+
+
 def run_local_worker(config: LocalWorkerConfig) -> None:
     """Start the local loop from already validated, non-secret config."""
 
@@ -940,6 +1085,12 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
         enrollment_token=config.enrollment_token,
         device_id=os.environ.get("POLARIS_WORKER_DEVICE_ID", config.worker_id),
     )
+    bridge = LocalWorkerBridge(
+        loop,
+        host=config.bridge_host,
+        port=config.bridge_port,
+        allowed_origin=config.bridge_origin,
+    )
     stop_event = threading.Event()
 
     def request_stop(_signum: int, _frame: Any) -> None:
@@ -950,9 +1101,14 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
         if signal_value is not None:
             with suppress(ValueError):
                 signal.signal(signal_value, request_stop)
-    loop.run(
-        build_local_product_crawler(timeout_ms=config.browser_timeout_ms), stop_event
-    )
+    bridge.start()
+    try:
+        loop.run(
+            build_local_product_crawler(timeout_ms=config.browser_timeout_ms),
+            stop_event,
+        )
+    finally:
+        bridge.stop()
 
 
 def run_local_login(

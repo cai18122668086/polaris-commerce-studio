@@ -280,6 +280,22 @@ def test_worker_loop_reenrolls_formal_worker_after_session_auth_failure(tmp_path
     assert api.heartbeats[-1]["ready"] is False
 
 
+def test_worker_loop_accepts_browser_delivered_enrollment(tmp_path: Path):
+    api = _FakeApi()
+    runtime = LocalWorkerRuntime(api, "worker_existing", LocalProfileStore(tmp_path))
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        enrollment_token="stale-token",
+        device_id="device-existing",
+    )
+
+    loop.accept_enrollment("fresh-token", "device-existing")
+    assert loop.enrollment_token == "fresh-token"
+    with pytest.raises(LocalWorkerError, match="WORKER_DEVICE_MISMATCH"):
+        loop.accept_enrollment("another-token", "other-device")
+
+
 def test_local_product_crawler_uses_only_claimed_profile(monkeypatch, tmp_path: Path):
     fake_product = SimpleNamespace(
         platform="taobao",

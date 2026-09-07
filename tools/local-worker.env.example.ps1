@@ -16,6 +16,9 @@ $env:POLARIS_WORKER_ID_FILE = "D:\Polaris\local-worker\worker.id"
 $env:POLARIS_WORKER_PROFILE_ROOT = "D:\Polaris\ecommerce-profiles"
 $env:POLARIS_WORKER_CAPABILITIES = "browser.taobao,browser.tmall"
 $env:PLAYWRIGHT_BROWSERS_PATH = "D:\Tools\ms-playwright"
+# The signed-in admin page sends a newly minted enrollment token to this
+# loopback bridge automatically. Keep the bridge bound to the local machine.
+$env:POLARIS_WORKER_BRIDGE_PORT = "8765"
 
 # Optional tuning. Keep the defaults unless the control plane requires a
 # different polling cadence.

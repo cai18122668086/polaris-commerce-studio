@@ -78,7 +78,7 @@ Register-ScheduledTask `
     -Description "Persistent Polaris Commerce Studio local ecommerce Worker" `
     -Force | Out-Null
 
-Write-Host "Installed $TaskName. It starts at boot and restarts after Worker exit."
+Write-Host "Installed $TaskName. It starts when the configured Windows user logs on and restarts after Worker exit."
 if ($Action -eq "RunNow") {
     Start-ScheduledTask -TaskName $TaskName
     Write-Host "Started $TaskName."

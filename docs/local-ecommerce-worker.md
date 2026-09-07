@@ -35,7 +35,7 @@ Set-Location backend
 
 ## Windows 长期运行
 
-推荐使用仓库提供的计划任务安装脚本。它以 `SYSTEM` 身份开机启动，Worker 异常退出时由 supervisor 自动重启，日志只写入 D 盘：
+推荐使用仓库提供的计划任务安装脚本。它在配置的 Windows 用户登录时启动，Worker 异常退出时由 supervisor 自动重启，日志只写入 D 盘：
 
 ```powershell
 Set-Location D:\Projects\polaris-commerce-studio-model-pose-entrypoints
@@ -47,7 +47,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 如果目录尚不存在，第一次 `Install` 会先生成模板并以退出码 2 结束；填好配置后再次执行 `RunNow` 即会完成注册并立即启动。
 
-`worker.env.ps1` 只存放在本机，不要提交仓库；建议只授予 `SYSTEM`、本机管理员和实际维护账号访问权限。查看状态：
+`worker.env.ps1` 只存放在本机，不要提交仓库；建议只授予本机管理员和实际维护账号访问权限。管理员页面点击“注册本机 Worker”后，会通过本机 `127.0.0.1:8765` 桥接端口自动把一次性令牌交给正在运行的 Worker，不需要手动复制令牌。若桥接端口不可用，页面会保留令牌并提示检查本机任务。查看状态：
 
 Worker session token 是短期令牌。supervisor 启动的 Worker 会定时轮换，并把新令牌原子写入 `POLARIS_WORKER_SESSION_TOKEN_FILE` 指定的文件；重启或开机后优先读取该文件，因此不需要人工定期改配置。若控制面连续不可达超过令牌有效期，仍需重新注册一次 Worker；重新注册后先删除旧的 token 文件，再把新的 bootstrap token 写入 env 文件。
 

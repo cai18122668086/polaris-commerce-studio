@@ -25,6 +25,8 @@ const platforms: Array<{ value: Platform; label: string }> = [
 const accountStatusLabels: Record<string, string> = { active: "可用", paused: "已暂停", disabled: "已停用" };
 const loginStateLabels: Record<string, string> = { unknown: "未确认", ready: "已登录", needs_login: "需要登录" };
 
+const LOCAL_WORKER_BRIDGE_URL = "http://127.0.0.1:8765/v1/enrollment";
+
 function platformLabel(value: string) {
   return platforms.find((item) => item.value === value)?.label ?? value;
 }
@@ -257,6 +259,23 @@ export default function AdminAccountsPage() {
       const token = payload?.data?.enrollment_token;
       if (!token) throw new Error("服务器未返回注册令牌");
       setEnrollmentToken(token);
+      try {
+        const bridgeResponse = await fetch(LOCAL_WORKER_BRIDGE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enrollment_token: token, device_id: workerDeviceId.trim() }),
+        });
+        if (!bridgeResponse.ok) {
+          const bridgePayload = await bridgeResponse.json().catch(() => null);
+          throw new Error(bridgePayload?.error || `HTTP ${bridgeResponse.status}`);
+        }
+        setEnrollmentToken("");
+        setMessage("�����ѷ��͵����� Worker��������ע�ᣬ���Զ����ߡ�");
+        window.setTimeout(() => void load(), 1500);
+      } catch {
+        setMessage("");
+        setError("�����Ѵ����ɣ��������� Worker δ�����Զ�д�룬����ȷ�ϱ��ؼ�������ִ�С�");
+      }
       setMessage("令牌已生成；请在当前电脑启动本机 Worker，Worker 会自动完成注册并变为在线。令牌仅显示一次。");
     } catch (cause) { setError(errorDiagnostic(cause)); }
     finally { setBusyId(null); }

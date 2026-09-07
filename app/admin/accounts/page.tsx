@@ -266,15 +266,12 @@ export default function AdminAccountsPage() {
       let delivered = false;
       for (const bridgeUrl of LOCAL_WORKER_BRIDGE_URLS) {
         try {
-          const bridgeResponse = await fetch(bridgeUrl, {
+          await fetch(bridgeUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            mode: "no-cors",
+            headers: { "Content-Type": "text/plain" },
             body: JSON.stringify({ enrollment_token: token, device_id: workerDeviceId.trim() }),
           });
-          if (!bridgeResponse.ok) {
-            const bridgePayload = await bridgeResponse.json().catch(() => null);
-            throw new Error(bridgePayload?.error || "HTTP " + bridgeResponse.status);
-          }
           delivered = true;
           break;
         } catch (cause) {
@@ -289,8 +286,8 @@ export default function AdminAccountsPage() {
           : "\u4ee4\u724c\u5df2\u751f\u6210\uff0c\u4f46\u672c\u673a Worker \u6865\u63a5\u7aef\u53e3\u4e0d\u53ef\u7528\uff0c\u8bf7\u786e\u8ba4\u672c\u673a Worker \u4efb\u52a1\u6b63\u5728\u8fd0\u884c\u3002\u4ee4\u724c\u4ecd\u53ef\u91cd\u65b0\u53d1\u9001\u3002");
       } else {
         setEnrollmentToken("");
-        setMessage("\u4ee4\u724c\u5df2\u81ea\u52a8\u53d1\u9001\u5230\u672c\u673a Worker\uff0c\u6b63\u5728\u6ce8\u518c\u5e76\u5207\u6362\u4e3a\u5728\u7ebf\u3002");
-        window.setTimeout(() => void load(), 1500);
+        setMessage("\u4ee4\u724c\u5df2\u53d1\u9001\u5230\u672c\u673a Worker\uff0c\u6b63\u5728\u6ce8\u518c\u5e76\u5207\u6362\u4e3a\u5728\u7ebf\u3002");
+        window.setTimeout(() => void load(), 3000);
       }
     } catch (cause) { setError(errorDiagnostic(cause)); }
     finally { setBusyId(null); }

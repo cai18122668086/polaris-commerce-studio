@@ -25,7 +25,10 @@ const platforms: Array<{ value: Platform; label: string }> = [
 const accountStatusLabels: Record<string, string> = { active: "可用", paused: "已暂停", disabled: "已停用" };
 const loginStateLabels: Record<string, string> = { unknown: "未确认", ready: "已登录", needs_login: "需要登录" };
 
-const LOCAL_WORKER_BRIDGE_URL = "http://127.0.0.1:8765/v1/enrollment";
+const LOCAL_WORKER_BRIDGE_URLS = [
+  "http://localhost:8765/v1/enrollment",
+  "http://127.0.0.1:8765/v1/enrollment",
+];
 
 function platformLabel(value: string) {
   return platforms.find((item) => item.value === value)?.label ?? value;
@@ -259,24 +262,36 @@ export default function AdminAccountsPage() {
       const token = payload?.data?.enrollment_token;
       if (!token) throw new Error("服务器未返回注册令牌");
       setEnrollmentToken(token);
-      try {
-        const bridgeResponse = await fetch(LOCAL_WORKER_BRIDGE_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enrollment_token: token, device_id: workerDeviceId.trim() }),
-        });
-        if (!bridgeResponse.ok) {
-          const bridgePayload = await bridgeResponse.json().catch(() => null);
-          throw new Error(bridgePayload?.error || `HTTP ${bridgeResponse.status}`);
+      let bridgeError: unknown = null;
+      let delivered = false;
+      for (const bridgeUrl of LOCAL_WORKER_BRIDGE_URLS) {
+        try {
+          const bridgeResponse = await fetch(bridgeUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enrollment_token: token, device_id: workerDeviceId.trim() }),
+          });
+          if (!bridgeResponse.ok) {
+            const bridgePayload = await bridgeResponse.json().catch(() => null);
+            throw new Error(bridgePayload?.error || "HTTP " + bridgeResponse.status);
+          }
+          delivered = true;
+          break;
+        } catch (cause) {
+          bridgeError = cause;
         }
-        setEnrollmentToken("");
-        setMessage("�����ѷ��͵����� Worker��������ע�ᣬ���Զ����ߡ�");
-        window.setTimeout(() => void load(), 1500);
-      } catch {
-        setMessage("");
-        setError("�����Ѵ����ɣ��������� Worker δ�����Զ�д�룬����ȷ�ϱ��ؼ�������ִ�С�");
       }
-      setMessage("令牌已生成；请在当前电脑启动本机 Worker，Worker 会自动完成注册并变为在线。令牌仅显示一次。");
+      if (!delivered) {
+        setMessage("");
+        const errorCode = bridgeError instanceof Error ? bridgeError.message : "";
+        setError(errorCode === "WORKER_DEVICE_MISMATCH"
+          ? "\u4ee4\u724c\u5df2\u751f\u6210\uff0c\u4f46\u8bbe\u5907\u540d\u79f0\u4e0e\u672c\u673a Worker \u4e0d\u4e00\u81f4\uff0c\u8bf7\u4f7f\u7528 polaris-local-pc\u3002"
+          : "\u4ee4\u724c\u5df2\u751f\u6210\uff0c\u4f46\u672c\u673a Worker \u6865\u63a5\u7aef\u53e3\u4e0d\u53ef\u7528\uff0c\u8bf7\u786e\u8ba4\u672c\u673a Worker \u4efb\u52a1\u6b63\u5728\u8fd0\u884c\u3002\u4ee4\u724c\u4ecd\u53ef\u91cd\u65b0\u53d1\u9001\u3002");
+      } else {
+        setEnrollmentToken("");
+        setMessage("\u4ee4\u724c\u5df2\u81ea\u52a8\u53d1\u9001\u5230\u672c\u673a Worker\uff0c\u6b63\u5728\u6ce8\u518c\u5e76\u5207\u6362\u4e3a\u5728\u7ebf\u3002");
+        window.setTimeout(() => void load(), 1500);
+      }
     } catch (cause) { setError(errorDiagnostic(cause)); }
     finally { setBusyId(null); }
   }

@@ -506,9 +506,17 @@ def validate_caddy(caddy: str) -> list[str]:
         csp = csp_match.group(1)
         if "connect-src 'self'" not in csp:
             errors.append("production CSP must retain same-origin connections")
-        for origin in ("http://localhost:8765", "http://127.0.0.1:8765"):
-            if origin not in csp:
-                errors.append(f"production CSP must allow local Worker bridge origin {origin}")
+        allowed_loopback_bridge = {
+            "http://localhost:8765/v1/enrollment",
+            "http://127.0.0.1:8765/v1/enrollment",
+        }
+        http_sources = re.findall(r"https?://[^\s;]+", csp)
+        for source in http_sources:
+            if source not in allowed_loopback_bridge:
+                errors.append("production CSP must not allow external HTTP origins")
+        for source in sorted(allowed_loopback_bridge):
+            if source not in http_sources:
+                errors.append(f"production CSP must allow local Worker bridge source {source}")
     return errors
 
 

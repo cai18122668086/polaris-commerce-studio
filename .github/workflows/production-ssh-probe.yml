@@ -1,0 +1,34 @@
+name: Production SSH probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-ssh-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify production SSH access
+        env:
+          POLARIS_DEPLOY_SSH_KEY: ${{ secrets.POLARIS_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${POLARIS_DEPLOY_SSH_KEY}"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "${POLARIS_DEPLOY_SSH_KEY}" > "$HOME/.ssh/polaris_deploy"
+          chmod 600 "$HOME/.ssh/polaris_deploy"
+          ssh \
+            -i "$HOME/.ssh/polaris_deploy" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            ubuntu@43.129.198.147 \
+            "echo SSH_OK && hostname && docker version --format '{{.Server.Version}}'"

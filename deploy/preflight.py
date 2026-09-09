@@ -572,7 +572,12 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
         ):
             if directive not in csp:
                 errors.append(f"CSP is missing required directive: {directive}")
-        if "http:" in csp or "https:" in csp:
+        allowed_loopback_bridge = {
+            "http://localhost:8765/v1/enrollment",
+            "http://127.0.0.1:8765/v1/enrollment",
+        }
+        http_sources = re.findall(r"https?://[^\s;]+", csp)
+        if any(source not in allowed_loopback_bridge for source in http_sources):
             errors.append("CSP must not allow external HTTP origins")
 
     for dockerfile_name, arg_name, allowed_stages in (

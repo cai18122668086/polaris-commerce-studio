@@ -429,6 +429,62 @@ def test_local_product_crawler_uses_only_claimed_profile(monkeypatch, tmp_path: 
     }
 
 
+@pytest.mark.parametrize(
+    ("status", "expected_code"),
+    [
+        ("product", "IMAGE_EXTRACTION_INCOMPLETE"),
+        ("risk_controlled", "RISK_CONTROL_PAGE"),
+    ],
+)
+def test_local_jd_crawler_rejects_empty_images_and_preserves_risk_status(
+    monkeypatch, tmp_path: Path, status: str, expected_code: str
+):
+    from app.ecommerce_jd import JDProduct
+
+    url = "https://item.jd.com/10031245841078.html"
+    product = JDProduct(
+        status=status,
+        source_url=url,
+        resolved_url=url,
+        product_id="a00014",
+        title="中间页",
+    )
+    monkeypatch.setattr(
+        "app.ecommerce_jd.crawl_one_jd_browser", lambda *_args: product
+    )
+    with pytest.raises(local_worker.LocalWorkerTaskError, match=expected_code):
+        local_worker.build_local_product_crawler()(
+            tmp_path / "account_jd", {"platform": "jd", "canonical_url": url}
+        )
+
+
+@pytest.mark.parametrize("role", ["main", "detail", "sku"])
+def test_local_jd_crawler_accepts_valid_product_image_roles(
+    monkeypatch, tmp_path: Path, role: str
+):
+    from app.ecommerce_jd import JDImage, JDProduct
+
+    url = "https://item.jd.com/10031245841078.html"
+    product = JDProduct(
+        status="product",
+        source_url=url,
+        resolved_url=url,
+        product_id="10031245841078",
+        title="京东商品",
+        images=(JDImage("https://img10.360buyimg.com/n1/jfs/product.jpg", role=role),),
+    )
+    monkeypatch.setattr(
+        "app.ecommerce_jd.crawl_one_jd_browser", lambda *_args: product
+    )
+    result = local_worker.build_local_product_crawler()(
+        tmp_path / "account_jd", {"platform": "jd", "canonical_url": url}
+    )
+    image_key = {
+        "main": "imageUrls", "detail": "descImageUrls", "sku": "skuImageUrls"
+    }[role]
+    assert result[image_key] == [product.images[0].url]
+
+
 def test_local_worker_config_requires_env_and_never_requires_cli_secret(monkeypatch):
     with pytest.raises(LocalWorkerError, match="WORKER_CONFIG_REQUIRED"):
         local_worker.LocalWorkerConfig.from_env({})

@@ -773,6 +773,14 @@ def build_local_product_crawler(
                 "product_not_found": "PRODUCT_NOT_FOUND",
             }.get(str(status_value), "WORKER_FAILED")
             raise LocalWorkerTaskError(status_code, "本机商品页面未返回可用商品结果。")
+        # The completed JD browser result must contain a validated product
+        # image. A page title or an arbitrary ID alone can belong to an
+        # unrecognized error shell and must not be uploaded as a success.
+        if platform == "jd" and not getattr(result, "images", ()):
+            raise LocalWorkerTaskError(
+                "IMAGE_EXTRACTION_INCOMPLETE",
+                "京东页面未返回可用商品图片，请确认商品页可以正常展示后重试。",
+            )
         normalized = _normalise(result, url.strip(), include_desc)
         normalized["platform"] = platform
         if not normalized.get("title") and not normalized.get("numIid"):

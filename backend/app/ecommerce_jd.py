@@ -43,7 +43,13 @@ _RISK_MARKERS = (
     "forbidden",
     "暂时无法展示该商品的信息",
     "暂时无法展示该商品",
+    # 京东桌面端频控页可能只有通用标题，没有正文。
+    # Keep these markers before product-title/ID fallback in ``inspect_page``
+    # so a shell such as ``PC频控页`` cannot become a fake product.
+    "频控",
+    "频繁访问",
 )
+_RISK_HOSTS = ("pc-frequent-pro.pf.jd.com",)
 _NOT_FOUND_MARKERS = (
     "商品不存在",
     "页面不存在",
@@ -914,10 +920,16 @@ class JDAdapter:
             " ".join(parser.title_parts) or parser.meta.get("og:title")
         )
         body = " ".join(parser.visible_parts)
+        parsed_host = (urlparse(resolved_url).hostname or "").casefold()
         haystack = " ".join((resolved_url, title or "", body)).casefold()
         risk = tuple(
             marker for marker in _RISK_MARKERS if marker.casefold() in haystack
         )
+        if any(
+            parsed_host == host or parsed_host.endswith(f".{host}")
+            for host in _RISK_HOSTS
+        ):
+            risk = (*risk, parsed_host)
         if risk:
             return JDPageEntry(
                 "risk_controlled",
@@ -929,7 +941,6 @@ class JDAdapter:
         login = tuple(
             marker for marker in _LOGIN_MARKERS if marker.casefold() in haystack
         )
-        parsed_host = (urlparse(resolved_url).hostname or "").casefold()
         if login or any(part in parsed_host for part in ("passport", "login")):
             return JDPageEntry(
                 "login_required",

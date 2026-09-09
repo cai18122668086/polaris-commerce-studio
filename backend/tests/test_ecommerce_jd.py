@@ -458,6 +458,32 @@ def test_jd_product_unavailable_page_is_risk_controlled() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("html", "url"),
+    [
+        (
+            "<html><title>PC频控页</title><body></body></html>",
+            "https://item.jd.com/10031245841079.html",
+        ),
+        (
+            "<html><title>商品页</title><body>频繁访问，请稍后重试</body></html>",
+            "https://item.jd.com/10031245841079.html",
+        ),
+        (
+            "<html><title>普通标题</title><body></body></html>",
+            "https://pc-frequent-pro.pf.jd.com/",
+        ),
+    ],
+)
+def test_jd_pc_frequent_page_never_falls_back_to_product(
+    html: str, url: str
+) -> None:
+    adapter = JDAdapter()
+    entry = adapter.inspect_page(html, url)
+    assert entry.status == "risk_controlled"
+    assert adapter.parse_product(html, url).status == "risk_controlled"
+
+
 def test_jd_order_center_ignores_public_login_prompt_when_account_name_present(
 ) -> None:
     from app.ecommerce_login import looks_like_authenticated_page

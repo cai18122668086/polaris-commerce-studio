@@ -23,7 +23,7 @@ const platforms: Array<{ value: Platform; label: string }> = [
 ];
 
 const accountStatusLabels: Record<string, string> = { active: "可用", paused: "已暂停", disabled: "已停用" };
-const loginStateLabels: Record<string, string> = { unknown: "未确认", ready: "已登录", needs_login: "需要登录" };
+const loginStateLabels: Record<string, string> = { unknown: "未确认", ready: "已登录", needs_login: "需要登录或验证" };
 
 const LOCAL_WORKER_BRIDGE_URLS = [
   "http://localhost:8765/v1/enrollment",

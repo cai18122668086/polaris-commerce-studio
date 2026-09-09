@@ -41,6 +41,8 @@ _RISK_MARKERS = (
     "机器人验证",
     "too many requests",
     "forbidden",
+    "暂时无法展示该商品的信息",
+    "暂时无法展示该商品",
 )
 _NOT_FOUND_MARKERS = (
     "商品不存在",

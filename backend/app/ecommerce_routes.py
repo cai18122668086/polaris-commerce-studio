@@ -58,6 +58,7 @@ from .ecommerce_session import EcommerceSessionManager
 from .errors import ApiError
 from .models import (
     AuditEventRecord,
+    CrawlTaskRecord,
     EcommerceLoginSessionRecord,
     EcommerceWorkerRecord,
     utc_now,
@@ -1161,7 +1162,38 @@ def ecommerce_session_status(
                 ),
             }
             if login_session.state == "ready":
-                account.login_state = EcommerceLoginState.READY.value
+                # A completed login handshake is not proof that the next
+                # product request still has access. Keep a later crawl-time
+                # login/risk result authoritative until the user verifies the
+                # product page and retries.
+                blocked_after_login = session.scalar(
+                    select(CrawlTaskRecord.id)
+                    .where(
+                        CrawlTaskRecord.account_id == account.id,
+                        CrawlTaskRecord.error_code.in_(
+                            {
+                                "LOGIN_REQUIRED",
+                                "RISK_CONTROL",
+                                "RISK_CONTROL_PAGE",
+                                "CAPTCHA_REQUIRED",
+                            }
+                        ),
+                        CrawlTaskRecord.created_at > (
+                            login_session.completed_at or login_session.started_at
+                        ),
+                    )
+                    .order_by(CrawlTaskRecord.created_at.desc())
+                    .limit(1)
+                )
+                if blocked_after_login is None:
+                    account.login_state = EcommerceLoginState.READY.value
+                else:
+                    account.login_state = EcommerceLoginState.NEEDS_LOGIN.value
+                    session_status["state"] = EcommerceLoginState.NEEDS_LOGIN.value
+                    session_status["message"] = (
+                        "账号登录会话已建立，但商品页仍要求登录或安全验证；"
+                        "请在本机浏览器完成验证后重试。"
+                    )
             elif login_session.state in {
                 "needs_login",
                 "risk_controlled",

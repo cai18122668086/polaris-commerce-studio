@@ -445,6 +445,19 @@ def test_jd_order_center_with_account_greeting_is_authenticated() -> None:
     )
 
 
+def test_jd_product_unavailable_page_is_risk_controlled() -> None:
+    html = (
+        "<html><title>PC频繁访问</title>"
+        "<body>暂时无法展示该商品的信息，请稍后重试</body></html>"
+    )
+    assert (
+        JDAdapter()
+        .inspect_page(html, "https://pc-frequent-pro.pf.jd.com/")
+        .status
+        == "risk_controlled"
+    )
+
+
 def test_jd_order_center_ignores_public_login_prompt_when_account_name_present(
 ) -> None:
     from app.ecommerce_login import looks_like_authenticated_page

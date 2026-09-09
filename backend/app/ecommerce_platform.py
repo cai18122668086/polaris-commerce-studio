@@ -121,6 +121,15 @@ def _normalise_input_url(url: str) -> tuple[str, str]:
         raise PlatformPolicyError(
             "UNSUPPORTED_URL", "商品链接必须是有效的 HTTP 或 HTTPS URL。"
         )
+    # A JD risk/login redirect is an access-control surface, never a product
+    # target. Accepting it as a crawl URL makes the worker repeatedly fetch the
+    # challenge page and can leave a valid account looking broken. The caller
+    # must submit the original item/detail URL after completing any challenge.
+    if host == "cfe.m.jd.com" and "risk_handler" in parsed.path.casefold():
+        raise PlatformPolicyError(
+            "JD_VERIFICATION_URL",
+            "这是京东登录或安全验证页地址，请提交验证跳转中的商品详情页链接（item.jd.com/...），并先在该账号的本机浏览器完成验证。",
+        )
     return value, host
 
 

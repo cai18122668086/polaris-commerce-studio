@@ -151,3 +151,12 @@ def test_unknown_route_is_rejected_before_any_adapter_is_called(
 
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "SITE_NOT_RECOGNIZED"
+
+
+def test_jd_risk_redirect_is_rejected_as_a_crawl_target() -> None:
+    with pytest.raises(PlatformPolicyError, match="安全验证页") as caught:
+        resolve_site_policy(
+            "https://cfe.m.jd.com/privatedomain/risk_handler/03101900/"
+            "?returnurl=https%3A%2F%2Fitem.jd.com%2F10031245841079.html"
+        )
+    assert caught.value.code == "JD_VERIFICATION_URL"

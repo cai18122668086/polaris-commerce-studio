@@ -83,6 +83,7 @@ type CrawlResult = {
   imageUrls?: string[];
   descImageUrls?: string[];
   skuImageUrls?: string[];
+  skuPropGroups?: Array<{ name: string; values: string[]; image_urls?: Record<string, string> }>;
 };
 
 type ApiEnvelope<T> = { success?: boolean; data: T };
@@ -409,7 +410,40 @@ export function CommerceCrawlerWorkspace() {
         </aside>
       </div>
 
-      {task?.status === "succeeded" && result ? <section className={`${styles.card} ${styles.resultCardSection}`}><div className={styles.cardHeading}><div><span className={styles.step}>04</span><div><h2>商品结果与内部资产</h2><p>结果来自 ProductSnapshot；图片通过受保护的资产访问接口加载。</p></div></div><span className={styles.resultCount}>{assets.length} 个资产</span></div><div className={styles.productSummary}><div><span className={styles.resultPlatform}>{formatPlatform(result.platform)}</span><h2>{result.title || "未返回商品标题"}</h2><p>{result.shopName || "未返回店铺"} · {result.price || "价格未返回"}{result.sales ? ` · ${result.sales}` : ""}</p></div>{result.numIid ? <code>{result.numIid}</code> : null}</div>{result.warnings?.length ? <div className={styles.warningList}>{result.warnings.map((warning) => <span key={warning}><AlertCircle size={14} />{warning}</span>)}</div> : null}{assets.length ? <div className={styles.assetGrid}>{assets.map(({ role, id }) => <AssetThumb key={`${role}-${id}`} workspaceId={task.workspace_id} assetId={id} label={`${role === "main" ? "主图" : role === "detail" ? "详情图" : "SKU 图"} · ${id}`} />)}</div> : <div className={styles.noAssets}><ImageIcon size={20} />任务成功但暂未返回内部图片资产。</div>}<Link className={styles.resultLink} href="/assets">前往个人素材库查看全部资产 <ExternalLink size={14} /></Link></section> : null}
+      {task?.status === "succeeded" && result ? (
+        <section className={`${styles.card} ${styles.resultCardSection}`}>
+          <div className={styles.cardHeading}>
+            <div><span className={styles.step}>04</span><div><h2>商品结果与内部资产</h2><p>按主图、详情图和 SKU 图分别查看抓取结果。</p></div></div>
+            <span className={styles.resultCount}>{new Set(assets.map(({ id }) => id)).size} 张不同图片</span>
+          </div>
+          <div className={styles.productSummary}>
+            <div><span className={styles.resultPlatform}>{formatPlatform(result.platform)}</span><h2>{result.title || "未返回商品标题"}</h2><p>{result.shopName || "未返回店铺"} · {result.price || "价格未返回"}{result.sales ? ` · ${result.sales}` : ""}</p></div>
+            {result.numIid ? <code>{result.numIid}</code> : null}
+          </div>
+          {result.warnings?.length ? <div className={styles.warningList}>{result.warnings.map((warning) => <span key={warning}><AlertCircle size={14} />{warning}</span>)}</div> : null}
+          {result.skuPropGroups?.map((group, index) => {
+            const mappedImages = Object.values(group.image_urls ?? {}).filter(Boolean);
+            const shared = mappedImages.length > new Set(mappedImages).size;
+            return (
+              <div className={styles.skuGroup} key={`${group.name}-${index}`}>
+                <h3>{group.name} · {group.values.length} 个选项</h3>
+                <div className={styles.skuOptions}>{group.values.map((value) => <span key={value}>{value}</span>)}</div>
+                {shared ? <p>京东页面的部分规格共用同一张图片，SKU 图片已去重展示。</p> : null}
+              </div>
+            );
+          })}
+          {([['main', '主图'], ['detail', '详情图'], ['sku', 'SKU 图']] as const).map(([role, label]) => {
+            const ids = [...new Set(assetGroups[role] ?? [])];
+            return (
+              <div className={styles.imageGroup} key={role}>
+                <h3>{label} <span>{ids.length} 张</span></h3>
+                {ids.length ? <div className={styles.assetGrid}>{ids.map((id) => <AssetThumb key={id} workspaceId={task.workspace_id} assetId={id} label={`${label} · ${id}`} />)}</div> : <p className={styles.mutedText}>本次未取得{label}。</p>}
+              </div>
+            );
+          })}
+          <Link className={styles.resultLink} href="/assets">前往个人素材库查看全部资产 <ExternalLink size={14} /></Link>
+        </section>
+      ) : null}
     </div>
   );
 }

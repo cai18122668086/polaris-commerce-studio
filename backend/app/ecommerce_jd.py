@@ -137,6 +137,7 @@ _MAIN_TOKENS = (
     "pc-__image_main__",
 )
 _EXPLICIT_MAIN_TOKENS = ("spec-img", "main-img", "pc-__image_main__")
+_EXPLICIT_DETAIL_TOKENS = ("detail-main", "ssd-module", "ssd-widget-pic")
 _DETAIL_TOKENS = ("detail", "description", "desc", "图文详情", "商品详情")
 _REVIEW_TOKENS = (
     "review",
@@ -266,6 +267,7 @@ class JDImage:
 class JDSkuGroup:
     name: str
     values: tuple[str, ...] = ()
+    image_urls: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -564,11 +566,19 @@ def _parse_sku_groups(value: object) -> list[JDSkuGroup]:
     """Normalise JD's several public representations of selectable SKU specs."""
     groups: list[JDSkuGroup] = []
 
-    def add(name: object, raw_values: object) -> None:
+    def add(name: object, raw_values: object, raw_images: object = None) -> None:
         group_name = _text(name)
         values = tuple(dict.fromkeys(_extract_text_values(raw_values)))
         if group_name and values:
-            groups.append(JDSkuGroup(group_name, values))
+            images = {}
+            if isinstance(raw_images, dict):
+                for option in values:
+                    url = _clean_image_url(raw_images.get(option), "https://item.jd.com/")
+                    if url and _image_allowed(
+                        url, "specification-item-sku-image", "sku"
+                    ):
+                        images[option] = url
+            groups.append(JDSkuGroup(group_name, values, images))
 
     if isinstance(value, list):
         for item in value:
@@ -589,7 +599,7 @@ def _parse_sku_groups(value: object) -> list[JDSkuGroup]:
                     or item.get("val")
                 )
                 if name is not None and raw_values is not None:
-                    add(name, raw_values)
+                    add(name, raw_values, item.get("image_urls"))
                 elif len(item) == 1:
                     name, raw_values = next(iter(item.items()))
                     add(name, raw_values)
@@ -610,7 +620,7 @@ def _parse_sku_groups(value: object) -> list[JDSkuGroup]:
             or value.get("val")
         )
         if name is not None and raw_values is not None:
-            add(name, raw_values)
+            add(name, raw_values, value.get("image_urls"))
         else:
             for key, child in value.items():
                 if _key(key) in {"name", "label", "key", "propname", "propertyname"}:
@@ -621,13 +631,19 @@ def _parse_sku_groups(value: object) -> list[JDSkuGroup]:
 
 
 def _dedupe_sku_groups(values: list[JDSkuGroup]) -> list[JDSkuGroup]:
-    seen: set[tuple[str, tuple[str, ...]]] = set()
+    seen: dict[tuple[str, tuple[str, ...]], int] = {}
     result: list[JDSkuGroup] = []
     for group in values:
         identity = (group.name, group.values)
         if identity not in seen:
-            seen.add(identity)
+            seen[identity] = len(result)
             result.append(group)
+        else:
+            index = seen[identity]
+            previous = result[index]
+            result[index] = JDSkuGroup(
+                group.name, group.values, {**previous.image_urls, **group.image_urls}
+            )
     return result
 
 
@@ -805,6 +821,10 @@ def _role_from_context(context: str) -> ImageRole | None:
         return "main"
     if _context_has(context, _UI_CONTEXT_TOKENS):
         return None
+    # Current JD wraps the entire left column in preview-wrap. Its SSD
+    # detail modules are more specific evidence than that gallery ancestor.
+    if _context_has(context, _EXPLICIT_DETAIL_TOKENS):
+        return "detail"
     # JD's main gallery is commonly named ``spec-list``; ``spec`` here means
     # picture specification, not a selectable SKU specification.
     if "spec-list" in lowered and "choose" not in lowered and "sku" not in lowered:
@@ -841,6 +861,8 @@ def _iter_json_values(text: str) -> list[object]:
 
 def _json_role(key: str, inherited: ImageRole | None) -> ImageRole | None:
     normal = _key(key)
+    if inherited == "sku" and normal == "imageurls":
+        return "sku"
     if normal in _IMAGE_KEY_ROLES:
         return _IMAGE_KEY_ROLES[normal]
     if any(
@@ -1353,16 +1375,19 @@ def _computed_background_image_fragment(page: object) -> str:
                 background.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)
               ).map((match) => match[1]).filter(Boolean);
               if (!urls.length) return [];
-              const className = typeof element.className === 'string'
-                ? element.className
-                : '';
-              const marker = [
-                element.id,
-                className,
-                element.getAttribute('data-role'),
-                element.getAttribute('aria-label'),
-                element.getAttribute('title'),
-              ].filter(Boolean).join(' ');
+              const markers = [];
+              let node = element;
+              for (let depth = 0; node && depth < 12;
+                   depth += 1, node = node.parentElement) {
+                markers.push(
+                  node.id,
+                  typeof node.className === 'string' ? node.className : '',
+                  node.getAttribute('data-role'),
+                  node.getAttribute('aria-label'),
+                  node.getAttribute('title'),
+                );
+              }
+              const marker = markers.filter(Boolean).join(' ');
               return urls.map((url) => ({url, marker}));
             }).slice(0, 500)
             """
@@ -1450,6 +1475,45 @@ def _rendered_image_fragment(page: object) -> str:
     return "".join(fragments)
 
 
+def _rendered_sku_fragment(page: object) -> str:
+    """Keep DOM option labels and image associations even when images repeat.
+
+    Reading the selected product's controls does not invent SKU IDs or visit
+    recommendations. Multiple options may legitimately share a seller image.
+    """
+    try:
+        groups = page.evaluate(
+            """
+            () => Array.from(document.querySelectorAll('.specification-group'))
+              .map(group => {
+                const name = group.querySelector('.specification-group-label')
+                  ?.textContent?.trim() || '';
+                const values = [];
+                const image_urls = {};
+                const options = group.querySelectorAll('.specification-item-sku');
+                for (const option of options) {
+                  const image = option.querySelector('.specification-item-sku-image');
+                  const label = option.querySelector('.specification-item-sku-text')
+                    ?.textContent?.trim() || image?.alt?.trim() || '';
+                  if (!label) continue;
+                  values.push(label);
+                  const url = image?.currentSrc || image?.src;
+                  if (url) image_urls[label] = url;
+                }
+                return {name, values, image_urls};
+              }).filter(group => group.name && group.values.length)
+            """
+        )
+    except Exception:
+        return ""
+    if not isinstance(groups, list):
+        return ""
+    payload = json.dumps({"skuPropGroups": groups}, ensure_ascii=False).replace(
+        "<", "\\u003c"
+    )
+    return f'<script type="application/json">{payload}</script>'
+
+
 def _rendered_jd_content(page: object) -> str:
     parts = [page.content()]
     rendered = _rendered_image_fragment(page)
@@ -1458,6 +1522,9 @@ def _rendered_jd_content(page: object) -> str:
     computed = _computed_background_image_fragment(page)
     if computed:
         parts.append(computed)
+    sku = _rendered_sku_fragment(page)
+    if sku:
+        parts.append(sku)
     with suppress(Exception):
         shadow = page.evaluate(
             """

@@ -13,6 +13,8 @@ from app.ecommerce_jd import (
     _clean_image_url,
     _computed_background_image_fragment,
     _rendered_image_fragment,
+    _rendered_jd_content,
+    _rendered_sku_fragment,
     parse_product_html,
 )
 
@@ -498,6 +500,73 @@ def test_rendered_background_images_are_exposed_to_existing_parser() -> None:
         "https://img10.360buyimg.com/jfs/detail-bg.jpg"
     ]
     assert product.images[0].role == "detail"
+
+
+def test_current_jd_ssd_details_override_page_wide_preview_wrapper() -> None:
+    html = """
+    <html><title>CSS 详情商品</title><body><div class="preview-wrap">
+      <div id="detail-main"><div class="ssd-module-wrap">
+        <div class="ssd-module M17813209482851"
+          style="background-image:url(https://img10.360buyimg.com/cms/jfs/detail.jpg.avif)"></div>
+      </div></div>
+      <div id="comment-root"><div class="ssd-module"
+        style="background-image:url(https://img10.360buyimg.com/cms/jfs/review.jpg)"></div></div>
+      <div class="ssd-module toolbar"
+        style="background-image:url(https://img10.360buyimg.com/cms/jfs/control.png)"></div>
+    </div></body></html>
+    """
+    product = parse_product_html(html, URL)
+    assert [(image.url, image.role) for image in product.images] == [
+        ("https://img10.360buyimg.com/cms/jfs/detail.jpg", "detail")
+    ]
+
+
+def test_rendered_sku_groups_keep_options_when_seller_reuses_one_image() -> None:
+    shared = "https://img13.360buyimg.com/pcpubliccms/s48x48_jfs/shared.jpg.avif"
+
+    class SkuPage:
+        def evaluate(self, script: str) -> list[dict[str, object]]:
+            return [{
+                "name": "功效规格",
+                "values": ["保湿", "洁净", "香氛", "清爽"],
+                "image_urls": dict.fromkeys(["保湿", "洁净", "香氛", "清爽"], shared),
+            }]
+
+    product = parse_product_html(
+        "<html><title>规格商品</title>" + _rendered_sku_fragment(SkuPage()) + "</html>",
+        URL,
+    )
+    normalised = ecommerce_routes._normalise(product, URL, True)
+    group = normalised["skuPropGroups"][0]
+    expected_url = "https://img13.360buyimg.com/pcpubliccms/jfs/shared.jpg"
+    assert group["values"] == ("保湿", "洁净", "香氛", "清爽")
+    assert group["image_urls"] == dict.fromkeys(group["values"], expected_url)
+    assert normalised["skuImageUrls"] == [expected_url]
+    assert normalised["skus"] == []  # No invented SKU IDs for DOM-only options.
+
+
+def test_chromium_reads_stylesheet_details_and_distinct_sku_images() -> None:
+    """Exercise the extraction JavaScript, not just mocked evaluate results."""
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as runtime:
+        try:
+            browser = runtime.chromium.launch(channel="chrome", headless=True)
+        except playwright.Error:
+            pytest.skip("Chrome is not installed; parser regressions still run")
+        try:
+            page = browser.new_page()
+            page.route("**/*", lambda route: route.abort())
+            page.set_content(fixture("current-desktop-css-detail.html"))
+            product = parse_product_html(_rendered_jd_content(page), URL)
+            assert [image.role for image in product.images].count("detail") == 2
+            assert [image.role for image in product.images].count("sku") == 2
+            assert not any("control" in image.url for image in product.images)
+            group = product.sku_prop_groups[0]
+            assert group.values == ("保湿", "清爽", "香氛")
+            assert group.image_urls["保湿"] == group.image_urls["清爽"]
+            assert group.image_urls["香氛"] != group.image_urls["清爽"]
+        finally:
+            browser.close()
 
 
 class _RenderedImagePage:

@@ -10,7 +10,9 @@ import app.ecommerce_routes as ecommerce_routes
 from app.ecommerce_jd import (
     JDAdapter,
     JDProduct,
+    _clean_image_url,
     _computed_background_image_fragment,
+    _rendered_image_fragment,
     parse_product_html,
 )
 
@@ -496,4 +498,51 @@ def test_rendered_background_images_are_exposed_to_existing_parser() -> None:
         "https://img10.360buyimg.com/jfs/detail-bg.jpg"
     ]
     assert product.images[0].role == "detail"
+
+
+class _RenderedImagePage:
+    def evaluate(self, script: str) -> list[dict[str, object]]:
+        assert "currentSrc" in script
+        return [
+            {
+                "url": "https://m.360buyimg.com/mobilecms/s750x750_jfs/product.png!q80.dpg",
+                "marker": "storePageImg sku_info",
+                "width": 750,
+                "height": 750,
+            },
+            {
+                "url": "https://m.360buyimg.com/mobilecms/s750x750_jfs/product.png!q80.dpg",
+                "marker": "firstImg loopImgUl pic_list",
+                "width": 750,
+                "height": 750,
+            },
+            {
+                "url": "https://img30.360buyimg.com/jdphoto/badge.png",
+                "marker": "sku_info",
+                "width": 90,
+                "height": 30,
+            },
+        ]
+
+
+def test_rendered_current_src_preserves_loaded_product_image_and_drops_icons() -> None:
+    fragment = _rendered_image_fragment(_RenderedImagePage())
+    product = parse_product_html(
+        f"<html><head><title>浏览器图片商品</title></head><body>{fragment}</body></html>",
+        URL,
+    )
+
+    assert [image.url for image in product.images] == [
+        "https://m.360buyimg.com/mobilecms/jfs/product.png.dpg"
+    ]
+    assert product.images[0].role == "main"
+
+
+def test_mobile_jd_page_proxy_image_url_is_rejected() -> None:
+    assert _clean_image_url(
+        "https://item.m.jd.com/product/jfs/product.png", URL
+    ) is None
+    assert _clean_image_url(
+        "https://spider-font-oss.360buyimg.com/spiderFont.otf", URL
+    ) is None
 

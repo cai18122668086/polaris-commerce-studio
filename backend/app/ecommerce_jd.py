@@ -69,6 +69,24 @@ _UI_IMAGE_TOKENS = (
     "coupon",
     "star",
     "trust",
+    "activity",
+    "business_icon",
+    "tip_img",
+    "shoplogo",
+    "transparent",
+    "mod_tag",
+    "detail_decoration",
+    "specbusiness",
+    "shortcut",
+    "buttons_icon",
+    "mod_",
+    "time-order",
+    "header_",
+    "transfer_row",
+    "summaryenter",
+    "icon_promote",
+    "icon_point",
+    "tax-info",
     "recommend",
     "guess",
     "similar",
@@ -102,6 +120,13 @@ _MAIN_TOKENS = (
     "主图",
     "轮播",
     "product-image",
+    "loopimgul",
+    "loopimgdiv",
+    "loop-img",
+    "firstimg",
+    "firstimgli",
+    "pic_list",
+    "mod_slider",
 )
 _DETAIL_TOKENS = ("detail", "description", "desc", "图文详情", "商品详情")
 _REVIEW_TOKENS = (
@@ -323,7 +348,8 @@ class _JDPageParser(HTMLParser):
                 if value:
                     values.extend(_split_srcset(value))
             for value in values:
-                self.images.append(_DomImage(value, context, "dom"))
+                source = "rendered" if "jd-rendered-image" in context else "dom"
+                self.images.append(_DomImage(value, context, source))
         style = attr.get("style", "")
         for value in re.findall(r"url\(\s*['\"]?([^'\")]+)", style, re.I):
             self.images.append(_DomImage(value, context, "css"))
@@ -447,6 +473,8 @@ class _JDTextParser(HTMLParser):
 
 
 def _split_srcset(value: str) -> list[str]:
+    if value.lstrip().startswith(("data:", "blob:")):
+        return []
     return [part.strip().split()[0] for part in value.split(",") if part.strip()]
 
 
@@ -633,11 +661,19 @@ def _clean_image_url(raw: object, base_url: str) -> str | None:
     value = unescape(str(raw)).replace("\\/", "/").strip().strip("'\"")
     if not value or value.startswith(("data:", "blob:", "javascript:")):
         return None
+    if re.match(r"^/?jfs/", value, re.I):
+        value = "https://img10.360buyimg.com/n1/" + value.lstrip("/")
     value = urljoin(base_url, value)
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
     host = (parsed.hostname or "").casefold()
+    # A fully qualified item.m.jd.com product path is a page proxy, not a
+    # CDN image endpoint. Bare jfs paths are normalized to the CDN above.
+    if host == "item.m.jd.com":
+        return None
+    if re.search(r"\.(?:otf|ttf|woff2?|eot|css|js)$", parsed.path, re.I):
+        return None
     if not any(
         host == marker or host.endswith(f".{marker}")
         for marker in JD_IMAGE_HOST_MARKERS
@@ -680,14 +716,14 @@ def _role_for_image_url(
 ) -> ImageRole | None:
     """Apply URL-specific role evidence without overriding SKU or blocked DOM."""
 
-    if role == "sku":
-        return role
     if _context_has(context, _RECOMMEND_TOKENS):
         return None
     if _context_has(context, _REVIEW_TOKENS):
         return None
     if _context_has(context, _UI_CONTEXT_TOKENS):
         return None
+    if role == "sku":
+        return role
     if _is_jd_detail_asset_url(url):
         return "detail"
     return role
@@ -702,10 +738,18 @@ def _image_allowed(
     haystack = f"{raw_url} {url} {context}".casefold()
     if any(token.casefold() in haystack for token in _UI_IMAGE_TOKENS):
         return False
+    rendered_size = re.search(r"rendered-size-(\d+)x(\d+)", context)
+    if rendered_size:
+        width, height = map(int, rendered_size.groups())
+        if width and height and min(width, height) < 64:
+            return False
     if role != "sku" and _context_has(context, _UI_CONTEXT_TOKENS):
         return False
     if role != "sku":
-        for width, height in re.findall(r"(?<!\d)(\d{1,4})x(\d{1,4})(?!\d)", raw_url):
+        for width, height in re.findall(
+            r"(?<!\d)(\d{1,4})x(\d{1,4})(?!\d)",
+            f"{raw_url} {context}",
+        ):
             if int(width) <= 160 and int(height) <= 160:
                 return False
     return True
@@ -782,7 +826,9 @@ def _json_role(key: str, inherited: ImageRole | None) -> ImageRole | None:
         return "sku"
     if any(token in normal for token in ("detail", "desc", "description")):
         return "detail"
-    return "main" if "image" in normal or normal.endswith("url") else None
+    # A product's image array is useful evidence; arbitrary picUrl/mimgUrl
+    # fields also occur in service badges and must not become product images.
+    return "main" if normal in {"image", "images", "imageurl", "imagepath"} else None
 
 
 def _looks_like_image(value: str) -> bool:
@@ -1115,6 +1161,11 @@ def _finalise_images(
     diagnostics: dict[str, int],
 ) -> tuple[JDImage, ...]:
     priority = {"detail": 1, "main": 2, "sku": 3}
+    rejected_rendered_urls = {
+        _clean_image_url(raw, base_url)
+        for raw, role, source, context in candidates
+        if source == "rendered" and not _image_allowed(raw, context, role, raw)
+    }
     selected: dict[str, tuple[ImageRole, str, str, int]] = {}
     for raw_url, role, source, context in candidates:
         diagnostics["seen"] += 1
@@ -1122,12 +1173,19 @@ def _finalise_images(
         if not url:
             diagnostics["rejected_image_filter"] += 1
             continue
-        if not _image_allowed(url, context, role, raw_url):
+        if url in rejected_rendered_urls or not _image_allowed(
+            url, context, role, raw_url
+        ):
             diagnostics["rejected_image_filter"] += 1
             continue
         previous = selected.get(url)
         if previous:
-            if priority[role] > priority[previous[0]]:
+            candidate_rank = (source == "rendered" and role == "main", priority[role])
+            previous_rank = (
+                previous[1] == "rendered" and previous[0] == "main",
+                priority[previous[0]],
+            )
+            if candidate_rank > previous_rank:
                 selected[url] = (role, source, context, previous[3])
             diagnostics["dedup_identity"] += 1
             continue
@@ -1286,8 +1344,75 @@ def _computed_background_image_fragment(page: object) -> str:
     return "".join(fragments)
 
 
+def _rendered_image_fragment(page: object) -> str:
+    """Expose loaded ``currentSrc`` values, including browser-only CDN URLs.
+
+    JD's mobile page keeps a stale ``item.m.jd.com/product/jfs/...`` URL in
+    JSON while the browser actually loads the image from its 360buyimg CDN.
+    Serialising ``currentSrc`` lets the API persist the same image the user
+    sees locally.  Natural dimensions and ancestor markers also let the
+    normal filter drop service icons and other tiny chrome images.
+    """
+
+    try:
+        values = page.evaluate(
+            """
+            () => Array.from(document.images).map((element) => {
+              const markers = [];
+              let node = element;
+              for (
+                let depth = 0;
+                node && depth < 4;
+                depth += 1, node = node.parentElement
+              ) {
+                const className =
+                  typeof node.className === 'string' ? node.className : '';
+                markers.push(
+                  node.id,
+                  className,
+                  node.getAttribute('data-role'),
+                  node.getAttribute('aria-label'),
+                  node.getAttribute('title'),
+                );
+              }
+              return {
+                url: element.currentSrc || element.src || '',
+                marker: markers.filter(Boolean).join(' '),
+                width: element.naturalWidth || 0,
+                height: element.naturalHeight || 0,
+              };
+            }).filter((item) => item.url && !item.url.startsWith('data:')).slice(0, 800)
+            """
+        )
+    except Exception:
+        return ""
+    if not isinstance(values, list):
+        return ""
+    fragments: list[str] = []
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not isinstance(url, str) or not url.strip():
+            continue
+        marker = item.get("marker") if isinstance(item.get("marker"), str) else ""
+        width = item.get("width") if isinstance(item.get("width"), int) else 0
+        height = item.get("height") if isinstance(item.get("height"), int) else 0
+        if width <= 0 or height <= 0:
+            continue
+        marker = f"{marker} rendered-size-{width}x{height}".strip()
+        fragments.append(
+            f'<div class="jd-rendered-image {escape(marker, quote=True)}">'
+            f'<img src="{escape(url.strip(), quote=True)}"></div>'
+        )
+    return "".join(fragments)
+
+
 def _rendered_jd_content(page: object) -> str:
     parts = [page.content()]
+    rendered = _rendered_image_fragment(page)
+    if rendered:
+        parts.append(rendered)
     computed = _computed_background_image_fragment(page)
     if computed:
         parts.append(computed)

@@ -97,6 +97,10 @@ _RECOMMEND_TOKENS = (
     "guess",
     "similar",
     "relate",
+    "continuous-product",
+    "shop-best-seller",
+    "recently",
+    "recent-view",
     "also-buy",
     "may-like",
     "广告",
@@ -127,7 +131,12 @@ _MAIN_TOKENS = (
     "firstimgli",
     "pic_list",
     "mod_slider",
+    # Current desktop JD product page markers.
+    "spec-img",
+    "main-img",
+    "pc-__image_main__",
 )
+_EXPLICIT_MAIN_TOKENS = ("spec-img", "main-img", "pc-__image_main__")
 _DETAIL_TOKENS = ("detail", "description", "desc", "图文详情", "商品详情")
 _REVIEW_TOKENS = (
     "review",
@@ -173,6 +182,9 @@ _UI_CONTEXT_TOKENS = (
     "箭头",
     "返回",
     "二维码",
+    "bagimage",
+    "jdmcc",
+    "elevator",
 )
 _SKU_TOKENS = (
     "sku",
@@ -184,6 +196,12 @@ _SKU_TOKENS = (
     "规格",
     "颜色",
     "尺码",
+)
+_EXPLICIT_SKU_IMAGE_TOKENS = (
+    "specification-item-sku-image",
+    "sku-image",
+    "sku_img",
+    "specimage",
 )
 _LAZY_ATTRS = (
     "data-lazy-img",
@@ -685,6 +703,11 @@ def _clean_image_url(raw: object, base_url: str) -> str | None:
     path = re.sub(r"/(?:s\d+x\d+|s\d+)(?:_q\d+)?(?=\/|$)", "", path, flags=re.I)
     path = re.sub(r"[!_]s\d+x\d+(?:_q\d+)?(?=\.|$)", "", path, flags=re.I)
     path = re.sub(r"[!_]q\d+(?=\.|$)", "", path, flags=re.I)
+    # JD often serves a JPEG/PNG through AVIF negotiation as ``photo.jpg.avif``.
+    # The browser can render that response, but the server asset validator
+    # intentionally accepts JPEG/PNG/WEBP only.  Ask the CDN for the native
+    # public format so persistence follows the local preview contract.
+    path = re.sub(r"\.(jpe?g|png|webp)\.avif$", r".\1", path, flags=re.I)
     return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
 
 
@@ -720,7 +743,9 @@ def _role_for_image_url(
         return None
     if _context_has(context, _REVIEW_TOKENS):
         return None
-    if _context_has(context, _UI_CONTEXT_TOKENS):
+    if _context_has(context, _UI_CONTEXT_TOKENS) and not _context_has(
+        context, _EXPLICIT_MAIN_TOKENS
+    ):
         return None
     if role == "sku":
         return role
@@ -738,12 +763,27 @@ def _image_allowed(
     haystack = f"{raw_url} {url} {context}".casefold()
     if any(token.casefold() in haystack for token in _UI_IMAGE_TOKENS):
         return False
-    rendered_size = re.search(r"rendered-size-(\d+)x(\d+)", context)
+    # This is metadata added by _rendered_image_fragment, not semantic DOM
+    # context.  Keep the marker name out of _SKU_TOKENS so an ordinary loaded
+    # image cannot become a SKU merely because it has natural dimensions.
+    rendered_size = re.search(r"rendered-dimensions-(\d+)x(\d+)", context)
     if rendered_size:
         width, height = map(int, rendered_size.groups())
-        if width and height and min(width, height) < 64:
+        if (
+            width
+            and height
+            and min(width, height) < 64
+            and (
+                role != "sku"
+                or not _context_has(context, _EXPLICIT_SKU_IMAGE_TOKENS)
+            )
+        ):
             return False
-    if role != "sku" and _context_has(context, _UI_CONTEXT_TOKENS):
+    if (
+        role != "sku"
+        and _context_has(context, _UI_CONTEXT_TOKENS)
+        and not _context_has(context, _EXPLICIT_MAIN_TOKENS)
+    ):
         return False
     if role != "sku":
         for width, height in re.findall(
@@ -761,6 +801,8 @@ def _role_from_context(context: str) -> ImageRole | None:
         return None
     if _context_has(context, _REVIEW_TOKENS):
         return None
+    if _context_has(context, _EXPLICIT_MAIN_TOKENS):
+        return "main"
     if _context_has(context, _UI_CONTEXT_TOKENS):
         return None
     # JD's main gallery is commonly named ``spec-list``; ``spec`` here means
@@ -1362,7 +1404,7 @@ def _rendered_image_fragment(page: object) -> str:
               let node = element;
               for (
                 let depth = 0;
-                node && depth < 4;
+                node && depth < 12;
                 depth += 1, node = node.parentElement
               ) {
                 const className =
@@ -1400,7 +1442,7 @@ def _rendered_image_fragment(page: object) -> str:
         height = item.get("height") if isinstance(item.get("height"), int) else 0
         if width <= 0 or height <= 0:
             continue
-        marker = f"{marker} rendered-size-{width}x{height}".strip()
+        marker = f"{marker} rendered-dimensions-{width}x{height}".strip()
         fragments.append(
             f'<div class="jd-rendered-image {escape(marker, quote=True)}">'
             f'<img src="{escape(url.strip(), quote=True)}"></div>'

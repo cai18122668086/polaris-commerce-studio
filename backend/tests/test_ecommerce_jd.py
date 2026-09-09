@@ -538,6 +538,69 @@ def test_rendered_current_src_preserves_loaded_product_image_and_drops_icons() -
     assert product.images[0].role == "main"
 
 
+def test_current_jd_dom_boundaries_keep_product_and_sku_images_separate() -> None:
+    html = """
+    <html><head><title>笛梵商品</title></head><body>
+      <div class="recently-viewed continuous-product-card">
+        <img class="pc-__image_main__" src="https://img10.360buyimg.com/n1/recent.jpg">
+      </div>
+      <div class="image-area"><div class="image-zoom-container main-img">
+        <img id="spec-img" class="zoom-img" src="https://img10.360buyimg.com/pcpubliccms/main.jpg">
+      </div></div>
+      <div class="specification-item-sku"><img class="specification-item-sku-image"
+        src="https://img10.360buyimg.com/pcpubliccms/s48x48_jfs/sku.jpg">
+      </div>
+      <div id="comment-root"><img src="https://img30.360buyimg.com/shaidan/s300x300_jfs/review.jpg"></div>
+      <div class="jdmcc_elevator"><img class="bagImage" src="https://img11.360buyimg.com/babel/bag.png"></div>
+    </body></html>
+    """
+    product = parse_product_html(html, URL)
+    assert [(image.url, image.role) for image in product.images] == [
+        ("https://img10.360buyimg.com/pcpubliccms/main.jpg", "main"),
+        ("https://img10.360buyimg.com/pcpubliccms/jfs/sku.jpg", "sku"),
+    ]
+
+
+def test_rendered_dimensions_do_not_turn_unclassified_images_into_sku() -> None:
+    fragment = _rendered_image_fragment(
+        type(
+            "RenderedPage",
+            (),
+            {
+                "evaluate": lambda _self, _script: [
+                    {
+                        "url": "https://img10.360buyimg.com/pcpubliccms/s1440x1440_jfs/main.jpg.avif",
+                        "marker": "gallery product-shell",
+                        "width": 1440,
+                        "height": 1440,
+                    },
+                    {
+                        "url": "https://img10.360buyimg.com/pcpubliccms/s48x48_jfs/sku.jpg.avif",
+                        "marker": "specification-item-sku-image specification-item-sku",
+                        "width": 48,
+                        "height": 48,
+                    },
+                ]
+            },
+        )()
+    )
+    product = parse_product_html(
+        f"<html><head><title>尺寸标记商品</title></head><body>{fragment}</body></html>",
+        URL,
+    )
+    assert [(image.url, image.role) for image in product.images] == [
+        ("https://img10.360buyimg.com/pcpubliccms/jfs/main.jpg", "main"),
+        ("https://img10.360buyimg.com/pcpubliccms/jfs/sku.jpg", "sku"),
+    ]
+
+
+def test_jd_avif_negotiation_suffix_is_normalised_for_asset_persistence() -> None:
+    assert _clean_image_url(
+        "https://img10.360buyimg.com/pcpubliccms/s1440x1440_jfs/t1/x/1/photo.jpg.avif",
+        URL,
+    ) == "https://img10.360buyimg.com/pcpubliccms/jfs/t1/x/1/photo.jpg"
+
+
 def test_mobile_jd_page_proxy_image_url_is_rejected() -> None:
     assert _clean_image_url(
         "https://item.m.jd.com/product/jfs/product.png", URL

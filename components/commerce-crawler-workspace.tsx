@@ -18,7 +18,7 @@ import {
   Store,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { getAssetAccessUrl } from "@/features/assets/api/assets";
@@ -90,6 +90,10 @@ type CrawlTaskHistory = {
   items: CrawlTask[];
   pagination: { total: number; limit: number; offset: number; has_more: boolean };
 };
+
+const CREATE_TASK_TIMEOUT_MS = 15_000;
+const DETAIL_REQUEST_TIMEOUT_MS = 10_000;
+const terminalStatuses = new Set<CrawlStatus>(["succeeded", "failed", "cancelled"]);
 
 const platformLabels: Record<Exclude<Platform, "auto">, string> = {
   "1688": "1688",
@@ -207,6 +211,7 @@ export function CommerceCrawlerWorkspace() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+  const detailRequestInFlight = useRef(false);
 
   const urlHint = useMemo(() => classifyUrl(url), [url]);
   const loadTaskHistory = useCallback(async () => {
@@ -233,34 +238,50 @@ export function CommerceCrawlerWorkspace() {
   }, [loadTaskHistory]);
 
   const loadTaskDetail = useCallback(async (taskId: string, quiet = false) => {
+    if (detailRequestInFlight.current) return;
+    detailRequestInFlight.current = true;
     if (!quiet) setDetailLoading(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), DETAIL_REQUEST_TIMEOUT_MS);
     try {
       const [taskResponse, eventsResponse] = await Promise.all([
-        apiClient.GET("/api/ecommerce/crawl-tasks/{task_id}", { params: { path: { task_id: taskId } } }),
-        apiClient.GET("/api/ecommerce/crawl-tasks/{task_id}/events", { params: { path: { task_id: taskId } } }),
+        apiClient.GET("/api/ecommerce/crawl-tasks/{task_id}", { signal: controller.signal, params: { path: { task_id: taskId } } }),
+        apiClient.GET("/api/ecommerce/crawl-tasks/{task_id}/events", { signal: controller.signal, params: { path: { task_id: taskId } } }),
       ]);
       const nextTask = unwrap<ApiEnvelope<CrawlTask>>(taskResponse).data;
       setTask(nextTask);
       setEvents(unwrap<ApiEnvelope<CrawlEvent[]>>(eventsResponse).data ?? []);
       setTasks((current) => current.some((item) => item.id === nextTask.id) ? current.map((item) => item.id === nextTask.id ? nextTask : item) : [nextTask, ...current].slice(0, 8));
       if (nextTask.status === "succeeded") {
-        const resultResponse = await apiClient.GET("/api/ecommerce/crawl-tasks/{task_id}/result", { params: { path: { task_id: taskId } } });
+        const resultResponse = await apiClient.GET("/api/ecommerce/crawl-tasks/{task_id}/result", { signal: controller.signal, params: { path: { task_id: taskId } } });
         setResult(unwrap<ApiEnvelope<{ result: CrawlResult }>>(resultResponse).data.result);
       } else {
         setResult(undefined);
       }
+      return nextTask.status;
     } catch (requestError) {
       if (!quiet) setError(errorMessage(requestError));
     } finally {
+      window.clearTimeout(timeoutId);
       if (!quiet) setDetailLoading(false);
+      detailRequestInFlight.current = false;
     }
   }, []);
 
   useEffect(() => {
     if (!selectedTaskId) return;
-    const initial = window.setTimeout(() => void loadTaskDetail(selectedTaskId), 0);
-    const timer = window.setInterval(() => void loadTaskDetail(selectedTaskId, true), 2500);
-    return () => { window.clearTimeout(initial); window.clearInterval(timer); };
+    let cancelled = false;
+    let timer: number;
+    const poll = async (quiet = false) => {
+      const status = await loadTaskDetail(selectedTaskId, quiet);
+      // Schedule only after the preceding request finishes. Completed tasks
+      // no longer need to call the authentication service every 2.5 seconds.
+      if (!cancelled && (!status || !terminalStatuses.has(status))) {
+        timer = window.setTimeout(() => void poll(true), 2500);
+      }
+    };
+    timer = window.setTimeout(() => void poll(), 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [loadTaskDetail, selectedTaskId]);
 
   const createTask = async (event: FormEvent<HTMLFormElement>) => {
@@ -270,8 +291,14 @@ export function CommerceCrawlerWorkspace() {
     if (!trimmedUrl) return setError("请输入真实商品链接。");
     try { new URL(trimmedUrl); } catch { return setError("商品链接格式不正确，请粘贴完整 URL。"); }
     setLoading(true); setError(undefined); setMessage(undefined);
+    const timeoutController = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => timeoutController.abort(),
+      CREATE_TASK_TIMEOUT_MS,
+    );
     try {
       const response = await apiClient.POST("/api/ecommerce/crawl-tasks", {
+        signal: timeoutController.signal,
         params: { header: { "Idempotency-Key": crypto.randomUUID() } },
         body: {
           workspace_id: workspace.id,
@@ -290,8 +317,19 @@ export function CommerceCrawlerWorkspace() {
       setResult(undefined);
       setMessage("任务已进入真实异步爬虫队列。系统会自动选择当前可用的账号池。");
     } catch (requestError) {
-      setError(errorMessage(requestError));
-    } finally { setLoading(false); }
+      if (timeoutController.signal.aborted) {
+        // The API commits the task before dispatching it. If the auth/proxy
+        // path stalls after that commit, recover the durable history instead
+        // of leaving the submit button disabled forever.
+        void loadTaskHistory();
+        setError("提交响应超时，已刷新任务历史；请先确认是否已创建任务，再决定是否重试。");
+      } else {
+        setError(errorMessage(requestError));
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      setLoading(false);
+    }
   };
 
   const cancelTask = async () => {

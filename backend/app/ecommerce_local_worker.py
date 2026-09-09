@@ -833,7 +833,7 @@ class LocalWorkerLoop:
         self._enrollment_requested = bool(
             self.enrollment_token and runtime.worker_id == self.device_id
         )
-        self._enrollment_lock = threading.Lock()
+        self._enrollment_lock = threading.RLock()
 
     def accept_enrollment(self, enrollment_token: str, device_id: str) -> None:
         """Accept a browser-delivered one-time token without logging it."""
@@ -849,8 +849,18 @@ class LocalWorkerLoop:
             self._enrollment_requested = True
 
     def _recover_registration(self) -> bool:
+        # Heartbeat recovery and an explicit browser enrollment can now run
+        # alongside browser work. Serialize token rotation and persistence.
+        with self._enrollment_lock:
+            return self._recover_registration_locked()
+
+    def _recover_registration_locked(self) -> bool:
         recover_worker = getattr(self.api, "recover_worker", None)
-        if self.recovery_token and callable(recover_worker):
+        if (
+            self.recovery_token
+            and not self._enrollment_requested
+            and callable(recover_worker)
+        ):
             try:
                 response = recover_worker(
                     self.recovery_token,
@@ -993,8 +1003,38 @@ class LocalWorkerLoop:
         """Run until ``stop_event`` is set, tolerating transient API outages."""
 
         stop = stop_event or threading.Event()
-        last_heartbeat = 0.0
         refresh_stop = threading.Event()
+
+        def heartbeat_loop() -> None:
+            """Keep the worker online while login or crawling blocks the loop.
+
+            Login/browser work can legitimately take several minutes. Keeping
+            heartbeat in the claim loop meant the control plane marked an
+            otherwise healthy Worker offline after 90 seconds, so new jobs
+            were rejected with ``ACCOUNT_NOT_AVAILABLE``.
+            """
+
+            while not stop.is_set():
+                try:
+                    self._heartbeat(True)
+                except LocalWorkerError as exc:
+                    if exc.args and str(exc.args[0]) in {
+                        "WORKER_AUTH_INVALID",
+                        "WORKER_TOKEN_EXPIRED",
+                        "WORKER_TOKEN_ROTATED",
+                    }:
+                        if self.enrollment_token and (
+                            not self.recovery_token
+                            or not callable(getattr(self.api, "recover_worker", None))
+                        ):
+                            self._enrollment_requested = True
+                        self._recover_registration()
+                except Exception:
+                    # A transient network/API outage must not terminate the
+                    # Worker; the next heartbeat will retry.
+                    pass
+                if stop.wait(self.heartbeat_interval_seconds):
+                    return
 
         def refresh_token_loop() -> None:
             # Keep the token alive independently of crawl/login work.  A
@@ -1022,6 +1062,10 @@ class LocalWorkerLoop:
             target=refresh_token_loop, name="polaris-token-refresh", daemon=True
         )
         refresher.start()
+        heartbeat = threading.Thread(
+            target=heartbeat_loop, name="polaris-worker-heartbeat", daemon=True
+        )
+        heartbeat.start()
         try:
             while not stop.is_set():
                 # A new device has only its device id at bootstrap time. An
@@ -1035,27 +1079,6 @@ class LocalWorkerLoop:
                 ):
                     stop.wait(self.poll_interval_seconds)
                     continue
-                now = time.monotonic()
-                if now - last_heartbeat >= self.heartbeat_interval_seconds:
-                    try:
-                        self._heartbeat(True)
-                        last_heartbeat = now
-                    except LocalWorkerError as exc:
-                        if exc.args and str(exc.args[0]) in {
-                            "WORKER_AUTH_INVALID",
-                            "WORKER_TOKEN_EXPIRED",
-                            "WORKER_TOKEN_ROTATED",
-                        }:
-                            if self.enrollment_token and (
-                                not self.recovery_token
-                                or not callable(
-                                    getattr(self.api, "recover_worker", None)
-                                )
-                            ):
-                                self._enrollment_requested = True
-                            self._recover_registration()
-                        stop.wait(self.poll_interval_seconds)
-                        continue
                 try:
                     did_work = self.run_once(crawl)
                 except LocalWorkerError:
@@ -1063,8 +1086,10 @@ class LocalWorkerLoop:
                 if not did_work:
                     stop.wait(self.poll_interval_seconds)
         finally:
+            stop.set()
             refresh_stop.set()
             refresher.join(timeout=max(1.0, self.token_refresh_interval_seconds))
+            heartbeat.join(timeout=max(1.0, self.heartbeat_interval_seconds))
             with suppress(LocalWorkerError):
                 self._heartbeat(False)
 

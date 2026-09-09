@@ -259,6 +259,48 @@ def test_worker_loop_registers_before_using_the_bootstrap_worker_id(tmp_path: Pa
     assert loop.enrollment_token == ""
 
 
+def test_worker_keeps_heartbeating_while_browser_work_is_blocked(tmp_path: Path):
+    api = _FakeApi()
+    stop = threading.Event()
+    runtime = LocalWorkerRuntime(api, "worker_1", LocalProfileStore(tmp_path))
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        heartbeat_interval_seconds=0.01,
+        poll_interval_seconds=0.01,
+        lease_renew_interval_seconds=0.01,
+    )
+
+    def crawl(_profile_path: Path, _task: dict) -> dict:
+        initial_count = len(api.heartbeats)
+        deadline = time.monotonic() + 1
+        while len(api.heartbeats) < initial_count + 2:
+            assert time.monotonic() < deadline, "heartbeat stopped during browser work"
+            time.sleep(0.005)
+        stop.set()
+        return {"platform": "taobao", "title": "结果"}
+
+    loop.run(crawl, stop)
+    assert api.uploads
+    assert api.heartbeats[-1]["ready"] is False
+
+
+def test_browser_enrollment_takes_priority_over_saved_recovery(tmp_path: Path):
+    api = _FakeApi()
+    runtime = LocalWorkerRuntime(api, "worker_existing", LocalProfileStore(tmp_path))
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        recovery_token="saved-recovery-token",
+        device_id="device-existing",
+    )
+    loop.accept_enrollment("fresh-enrollment", "device-existing")
+    assert loop._recover_registration() is True
+    assert api.session_token == "registered-session"
+    assert loop._enrollment_requested is False
+    assert loop.enrollment_token == ""
+
+
 def test_worker_loop_recovers_with_persisted_recovery_token(tmp_path: Path):
     api = _FakeApi()
     runtime = LocalWorkerRuntime(api, "worker_existing", LocalProfileStore(tmp_path))

@@ -73,6 +73,42 @@ def test_worker_registration_is_scope_bound_and_one_time(client):
     assert replay.json()["error"]["code"] == "WORKER_ENROLLMENT_INVALID"
 
 
+def test_worker_recovery_re_registers_after_session_expiry(client):
+    data = _register(client, "device-recovery")
+    worker_id = data["worker"]["id"]
+    recovery_token = data["recovery_token"]
+    recovered = client.post(
+        "/api/ecommerce/workers/recover",
+        json={
+            "worker_id": worker_id,
+            "recovery_token": recovery_token,
+            "device_id": "device-recovery",
+            "protocol_version": "worker.v1",
+            "agent_version": "0.1.1",
+            "capabilities": ["browser.jd", "login.jd"],
+        },
+    )
+    assert recovered.status_code == 200, recovered.text
+    recovered_data = recovered.json()["data"]
+    assert recovered_data["worker"]["id"] == worker_id
+    assert recovered_data["session_token"] != data["session_token"]
+    assert recovered_data["recovery_token"] != recovery_token
+
+    replay = client.post(
+        "/api/ecommerce/workers/recover",
+        json={
+            "worker_id": worker_id,
+            "recovery_token": recovery_token,
+            "device_id": "device-recovery",
+            "protocol_version": "worker.v1",
+            "agent_version": "0.1.1",
+            "capabilities": ["browser.jd"],
+        },
+    )
+    assert replay.status_code == 401
+    assert replay.json()["error"]["code"] == "WORKER_RECOVERY_INVALID"
+
+
 def test_worker_protocol_rejects_sensitive_or_unknown_fields(client):
     enrollment = _enroll(client, "device-strict")
     payload = {

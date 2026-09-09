@@ -49,7 +49,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 `worker.env.ps1` 只存放在本机，不要提交仓库；建议只授予本机管理员和实际维护账号访问权限。管理员页面点击“注册本机 Worker”后，会通过本机 `127.0.0.1:8765` 桥接端口自动把一次性令牌交给正在运行的 Worker，不需要手动复制令牌。若桥接端口不可用，页面会保留令牌并提示检查本机任务。查看状态：
 
-Worker session token 是短期令牌。supervisor 启动的 Worker 会定时轮换，并把新令牌原子写入 `POLARIS_WORKER_SESSION_TOKEN_FILE` 指定的文件；重启或开机后优先读取该文件，因此不需要人工定期改配置。若控制面连续不可达超过令牌有效期，仍需重新注册一次 Worker；重新注册后先删除旧的 token 文件，再把新的 bootstrap token 写入 env 文件。
+Worker session token 是短期令牌。supervisor 启动的 Worker 会定时轮换，并把新令牌原子写入 `POLARIS_WORKER_SESSION_TOKEN_FILE` 指定的文件；首次注册响应中的恢复凭证会写入同目录的 `.worker-recovery-token`（也可用 `POLARIS_WORKER_RECOVERY_TOKEN_FILE` 指定）。如果控制面连续不可达超过 session token 有效期，Worker 会自动使用恢复凭证换取新的 session/recovery token，重启和长期运行都不需要再次手动注册。只有恢复凭证本身过期、被撤销或首次注册尚未完成时，才需要在管理员页面重新授权一次设备。
 
 ```powershell
 Get-ScheduledTask -TaskName PolarisCommerceLocalWorker

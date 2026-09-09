@@ -146,6 +146,51 @@ def test_login_session_is_durable_and_rejects_duplicate_active_flow(
         assert record.status == "completed"
 
 
+def test_account_login_revalidates_a_persisted_ready_profile(client) -> None:
+    """An explicit account login must not be short-circuited by stale ready state."""
+
+    account = _create_account(client, account_key="force-relogin")
+    manager = _manager(client, account)
+    statuses = iter(
+        [
+            {
+                "state": "ready",
+                "platform": "taobao",
+                "sessionProfile": account["profile_id"],
+                "previewAvailable": False,
+            },
+            {
+                "state": "login_pending",
+                "platform": "taobao",
+                "sessionProfile": account["profile_id"],
+                "previewAvailable": False,
+            },
+        ]
+    )
+    manager.status = lambda: next(statuses)  # type: ignore[method-assign]
+    captured: dict[str, object] = {}
+
+    def start_login(*args: object, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "state": "login_pending",
+            "platform": "taobao",
+            "sessionProfile": account["profile_id"],
+            "previewAvailable": False,
+        }
+
+    manager.start_login = start_login  # type: ignore[method-assign]
+    response = client.post(
+        "/api/ecommerce/session/start",
+        json={"account_id": account["id"], "platform": "taobao"},
+    )
+
+    assert response.status_code == 200
+    assert captured["force"] is True
+    assert response.json()["data"]["state"] == "login_pending"
+    assert response.json()["data"]["loginSession"]["status"] == "active"
+
+
 def test_expired_login_session_is_marked_expired(client) -> None:
     account = _create_account(client, account_key="expired-login")
     manager = _manager(client, account)

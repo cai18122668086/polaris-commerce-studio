@@ -9,6 +9,10 @@ $env:POLARIS_WORKER_SESSION_TOKEN = "<short-lived-token>"
 $env:POLARIS_WORKER_ENROLLMENT_TOKEN = "<optional-one-time-recovery-token>"
 $env:POLARIS_WORKER_DEVICE_ID = "polaris-local-pc"
 $env:POLARIS_WORKER_SESSION_TOKEN_FILE = "D:\Polaris\local-worker\worker.session-token"
+# The Worker receives and persists this recovery credential on first
+# enrollment; it lets future restarts re-register after a short session token
+# expires without another browser enrollment.
+$env:POLARIS_WORKER_RECOVERY_TOKEN_FILE = "D:\Polaris\local-worker\worker.recovery-token"
 # Leave the Worker ID empty for the first run. The one-time enrollment token
 # registers the device and the returned Worker ID is persisted automatically.
 $env:POLARIS_WORKER_ID = ""

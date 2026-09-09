@@ -174,12 +174,23 @@ class EcommerceSessionManager:
         *,
         headless: bool = False,
         timeout_seconds: int = 600,
+        force: bool = False,
     ) -> dict[str, Any]:
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 return self.status()
             existing = self._read_status()
-            if existing.get("state") == "ready" and self.profile_dir.exists():
+            # An explicit account login request (the admin page's “登录/重新登录”
+            # action) must validate the actual browser profile again.  A stale
+            # status file otherwise short-circuits the helper before it can
+            # show the platform login page, which is especially confusing for
+            # Taobao and JD accounts whose persisted state may outlive their
+            # web session.
+            if (
+                not force
+                and existing.get("state") == "ready"
+                and self.profile_dir.exists()
+            ):
                 return self._clean_status(existing)
             self.profile_dir.mkdir(parents=True, exist_ok=True)
             self._login_headless = headless

@@ -4960,6 +4960,58 @@
         "title": "WorkerProductResult",
         "type": "object"
       },
+      "WorkerRecoveryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "device_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "protocol_version": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "recovery_token": {
+            "maxLength": 256,
+            "minLength": 24,
+            "title": "Recovery Token",
+            "type": "string"
+          },
+          "worker_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "recovery_token",
+          "device_id",
+          "protocol_version",
+          "agent_version"
+        ],
+        "title": "WorkerRecoveryRequest",
+        "type": "object"
+      },
       "WorkerRegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6487,6 +6539,50 @@
           }
         ],
         "summary": "Create Worker Enrollment",
+        "tags": [
+          "ecommerce-workers"
+        ]
+      }
+    },
+    "/api/ecommerce/workers/recover": {
+      "post": {
+        "description": "Mint fresh credentials after a Worker was offline past session expiry.",
+        "operationId": "recover_worker_api_ecommerce_workers_recover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Recover Worker Api Ecommerce Workers Recover Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recover Worker",
         "tags": [
           "ecommerce-workers"
         ]

@@ -58,6 +58,17 @@ _1688_AUTHENTICATED_HOSTS = (
 )
 _JD_SESSION_CHECK_URL = "https://order.jd.com/center/list.action"
 _JD_ORDER_PAGE_MARKERS = ("订单中心", "近3个月订单")
+_JD_ACCOUNT_SHELL_MARKERS = (
+    "我的订单",
+    "我的钱包",
+    "账户设置",
+    "足迹收藏",
+    "客户服务",
+    "我的活动",
+    "特色业务",
+    "生活服务",
+)
+_JD_LOGIN_FLOW_MARKERS = ("扫码登录", "密码登录", "登录京东", "京东登录")
 _PDD_AUTHENTICATED_HOSTS = (
     "mobile.yangkeduo.com",
     "yangkeduo.com",
@@ -192,10 +203,23 @@ def looks_like_authenticated_page(
             marker.lower() in lowered_body for marker in _JD_ORDER_PAGE_MARKERS
         )
         has_order_card = bool(re.search(r"订单号\s*\d{8,}", lowered_body))
-        has_account_greeting = any(
-            marker in lowered_body for marker in ("你好，", "你好,")
-        ) and not any(marker.lower() in lowered_body for marker in _LOGIN_MARKERS)
-        if is_jd_order_page and (has_order_card or has_account_greeting):
+        # JD's public header often contains “你好，请登录” even after an
+        # authenticated redirect. Treat a greeting with an actual account
+        # name as the positive signal, while ignoring that public prompt.
+        has_account_greeting = bool(
+            re.search(r"你好[，,](?!请登录)([^\s，,]{1,40})", lowered_body)
+        )
+        has_account_shell = sum(
+            marker.lower() in lowered_body for marker in _JD_ACCOUNT_SHELL_MARKERS
+        ) >= 2
+        has_login_flow_marker = any(
+            marker.lower() in lowered_body for marker in _JD_LOGIN_FLOW_MARKERS
+        )
+        if is_jd_order_page and (
+            has_order_card
+            or has_account_greeting
+            or (has_account_shell and not has_login_flow_marker)
+        ):
             return True
 
         if any(marker.lower() in lowered_body for marker in AUTHENTICATED_PAGE_MARKERS):
@@ -661,6 +685,21 @@ def main() -> int:
                     or title in {"登录", "淘宝登录", "1688登录"}
                     or any(marker.lower() in body for marker in _LOGIN_MARKERS)
                 )
+                # The JD order center retains the public “你好，请登录”
+                # navigation text while rendering an authenticated account.
+                # Do not let that shared header keep the helper in the login
+                # state after the browser has left the passport page.
+                if (
+                    args.platform == "jd"
+                    and urlparse(page.url).hostname == "order.jd.com"
+                ):
+                    login_page = (
+                        any(
+                            marker in current_url
+                            for marker in ("login", "passport", "signin", "auth")
+                        )
+                        or title in {"登录", "京东登录", "login", "sign in"}
+                    )
                 blocked_page = looks_like_risk_control_page(page.url, title, body)
                 blocked_seen = blocked_seen or blocked_page
                 authenticated_page = looks_like_authenticated_page(

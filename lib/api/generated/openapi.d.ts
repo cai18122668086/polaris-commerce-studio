@@ -395,6 +395,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ecommerce/workers/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Worker
+         * @description Mint fresh credentials after a Worker was offline past session expiry.
+         */
+        post: operations["recover_worker_api_ecommerce_workers_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ecommerce/workers/register": {
         parameters: {
             query?: never;
@@ -3333,6 +3353,21 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** WorkerRecoveryRequest */
+        WorkerRecoveryRequest: {
+            /** Agent Version */
+            agent_version: string;
+            /** Capabilities */
+            capabilities?: string[];
+            /** Device Id */
+            device_id: string;
+            /** Protocol Version */
+            protocol_version: string;
+            /** Recovery Token */
+            recovery_token: string;
+            /** Worker Id */
+            worker_id: string;
+        };
         /** WorkerRegisterRequest */
         WorkerRegisterRequest: {
             /** Agent Version */
@@ -4216,6 +4251,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_worker_api_ecommerce_workers_recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

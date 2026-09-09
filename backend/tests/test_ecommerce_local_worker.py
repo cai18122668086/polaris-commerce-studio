@@ -104,12 +104,36 @@ class _FakeApi:
         return {
             "data": {
                 "session_token": "registered-session",
+                "recovery_token": "registered-recovery-token",
                 "worker": {"id": "worker_registered"},
                 "enrollment_token": enrollment_token,
                 "device_id": device_id,
                 "protocol_version": protocol_version,
                 "agent_version": agent_version,
                 "capabilities": capabilities,
+            }
+        }
+
+    def recover_worker(
+        self,
+        _recovery_token: str,
+        worker_id: str,
+        _device_id: str,
+        *,
+        protocol_version: str,
+        agent_version: str,
+        capabilities: list[str],
+    ) -> dict:
+        return {
+            "data": {
+                "session_token": "recovered-session",
+                "recovery_token": "recovered-recovery-token",
+                "worker": {
+                    "id": worker_id,
+                    "protocol_version": protocol_version,
+                    "agent_version": agent_version,
+                    "capabilities": capabilities,
+                },
             }
         }
 
@@ -235,6 +259,27 @@ def test_worker_loop_registers_before_using_the_bootstrap_worker_id(tmp_path: Pa
     assert loop.enrollment_token == ""
 
 
+def test_worker_loop_recovers_with_persisted_recovery_token(tmp_path: Path):
+    api = _FakeApi()
+    runtime = LocalWorkerRuntime(api, "worker_existing", LocalProfileStore(tmp_path))
+    refreshed: list[str] = []
+    recoveries: list[str] = []
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        recovery_token="recovery-token",
+        device_id="device-existing",
+        on_token_refreshed=refreshed.append,
+        on_recovery_token_refreshed=recoveries.append,
+    )
+
+    assert loop._recover_registration() is True
+    assert api.session_token == "recovered-session"
+    assert loop.recovery_token == "recovered-recovery-token"
+    assert refreshed == ["recovered-session"]
+    assert recoveries == ["recovered-recovery-token"]
+
+
 def test_worker_loop_reenrolls_formal_worker_after_session_auth_failure(tmp_path: Path):
     stop = threading.Event()
 
@@ -292,6 +337,9 @@ def test_worker_loop_accepts_browser_delivered_enrollment(tmp_path: Path):
 
     loop.accept_enrollment("fresh-token", "device-existing")
     assert loop.enrollment_token == "fresh-token"
+    assert loop._enrollment_requested is True
+    assert loop._recover_registration() is True
+    assert runtime.worker_id == "worker_registered"
     with pytest.raises(LocalWorkerError, match="WORKER_DEVICE_MISMATCH"):
         loop.accept_enrollment("another-token", "other-device")
 
@@ -392,6 +440,20 @@ def test_local_worker_config_bootstraps_from_enrollment_token(tmp_path: Path):
     )
     assert restored.worker_id == "wrk_registered"
     assert restored.enrollment_token == "recovery-token"
+
+
+def test_local_worker_config_loads_recovery_token_file(tmp_path: Path):
+    recovery_file = tmp_path / "worker-recovery-token"
+    recovery_file.write_text("recovery-file-token\n", encoding="utf-8")
+    config = local_worker.LocalWorkerConfig.from_env(
+        {
+            "POLARIS_WORKER_API_URL": "https://api.example.test",
+            "POLARIS_WORKER_RECOVERY_TOKEN_FILE": str(recovery_file),
+            "POLARIS_WORKER_ID": "worker_1",
+            "POLARIS_WORKER_PROFILE_ROOT": str(tmp_path / "profiles"),
+        }
+    )
+    assert config.recovery_token == "recovery-file-token"
 
 
 def test_local_worker_config_loads_and_persists_token_file(tmp_path: Path):

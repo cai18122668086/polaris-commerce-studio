@@ -207,6 +207,9 @@ class Settings(BaseSettings):
         default=600, ge=60, le=1800
     )
     ecommerce_worker_token_ttl_seconds: int = Field(default=900, ge=60, le=3600)
+    ecommerce_worker_recovery_token_ttl_seconds: int = Field(
+        default=2_592_000, ge=86_400, le=31_536_000
+    )
     ecommerce_worker_heartbeat_timeout_seconds: int = Field(
         default=90, ge=30, le=600
     )

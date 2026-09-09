@@ -2086,10 +2086,10 @@ def ecommerce_session_start(
             ) from exc
         manager = _session_manager_for_family(request, policy.site_family)
     manager_status = manager.status()
-    if manager_status.get("state") == "ready":
-        if account is not None:
-            _sync_account_login_state(session, account, manager_status)
-            session.commit()
+    # Anonymous/session convenience calls may reuse a validated profile, but
+    # an account-scoped admin click explicitly asks to open the login flow
+    # again (the UI labels it “重新登录” when appropriate).
+    if manager_status.get("state") == "ready" and account is None:
         manager_status["loginSession"] = None
         return {"success": True, "data": manager_status}
 
@@ -2130,6 +2130,10 @@ def ecommerce_session_start(
             timeout_seconds=(
                 request.app.state.settings.ecommerce_login_session_timeout_seconds
             ),
+            # An account-scoped login is an explicit admin request, including
+            # the “重新登录” action. Revalidate the browser profile instead of
+            # returning a possibly stale persisted ``ready`` status.
+            force=account is not None,
         )
     except Exception as exc:
         if login_session is not None:

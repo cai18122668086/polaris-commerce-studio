@@ -403,6 +403,12 @@ class EcommerceWorkerRecord(TimestampMixin, Base):
     session_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    # Long-lived, hashed recovery credential used only to mint a new short
+    # session token after a Worker has been offline past the session TTL.
+    recovery_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    recovery_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class EcommerceWorkerEnrollmentRecord(Base):

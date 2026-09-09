@@ -67,8 +67,10 @@ class LocalWorkerConfig:
 
     api_url: str
     session_token: str
+    recovery_token: str
     enrollment_token: str
     session_token_file: Path
+    recovery_token_file: Path
     worker_id: str
     profile_root: Path
     worker_id_file: Path | None = None
@@ -90,6 +92,7 @@ class LocalWorkerConfig:
         values = os.environ if environ is None else environ
         api_url = values.get("POLARIS_WORKER_API_URL", "").strip()
         session_token = values.get("POLARIS_WORKER_SESSION_TOKEN", "").strip()
+        recovery_token = values.get("POLARIS_WORKER_RECOVERY_TOKEN", "").strip()
         enrollment_token = values.get("POLARIS_WORKER_ENROLLMENT_TOKEN", "").strip()
         worker_id = values.get("POLARIS_WORKER_ID", "").strip()
         device_id = values.get("POLARIS_WORKER_DEVICE_ID", "").strip()
@@ -101,6 +104,14 @@ class LocalWorkerConfig:
             Path(token_file_value).expanduser()
             if token_file_value
             else Path(profile_root).expanduser() / ".worker-session-token"
+        )
+        recovery_token_file_value = values.get(
+            "POLARIS_WORKER_RECOVERY_TOKEN_FILE", ""
+        ).strip()
+        recovery_token_file = (
+            Path(recovery_token_file_value).expanduser()
+            if recovery_token_file_value
+            else token_file.with_name(".worker-recovery-token")
         )
         worker_id_file_value = values.get("POLARIS_WORKER_ID_FILE", "").strip()
         worker_id_file = (
@@ -120,6 +131,19 @@ class LocalWorkerConfig:
                 persisted_token = ""
             if persisted_token:
                 session_token = persisted_token
+        if recovery_token_file.is_file():
+            try:
+                persisted_recovery_token = recovery_token_file.read_text(
+                    encoding="utf-8"
+                ).strip()
+            except OSError as exc:
+                if not enrollment_token:
+                    raise LocalWorkerError(
+                        "WORKER_RECOVERY_TOKEN_FILE_UNREADABLE"
+                    ) from exc
+                persisted_recovery_token = ""
+            if persisted_recovery_token:
+                recovery_token = persisted_recovery_token
         if not worker_id and worker_id_file.is_file():
             try:
                 worker_id = worker_id_file.read_text(encoding="utf-8").strip()
@@ -132,7 +156,7 @@ class LocalWorkerConfig:
             worker_id = device_id
         if not worker_id or (enrollment_token and not device_id):
             raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
-        if not session_token and not enrollment_token:
+        if not session_token and not enrollment_token and not recovery_token:
             raise LocalWorkerError("WORKER_CONFIG_REQUIRED")
         raw_capabilities = values.get("POLARIS_WORKER_CAPABILITIES", "")
         capabilities = (
@@ -191,8 +215,10 @@ class LocalWorkerConfig:
         return cls(
             api_url=api_url,
             session_token=session_token,
+            recovery_token=recovery_token,
             enrollment_token=enrollment_token,
             session_token_file=token_file.resolve(),
+            recovery_token_file=recovery_token_file.resolve(),
             worker_id=worker_id,
             profile_root=Path(profile_root).expanduser(),
             worker_id_file=worker_id_file.resolve(),
@@ -248,6 +274,27 @@ class LocalWorkerConfig:
             with suppress(OSError):
                 temporary.unlink()
             raise LocalWorkerError("WORKER_ID_FILE_UNWRITABLE") from exc
+
+    def persist_recovery_token(self, token: str) -> None:
+        """Persist a rotated recovery token atomically."""
+
+        token = token.strip()
+        if not token:
+            raise LocalWorkerError("WORKER_RECOVERY_TOKEN_REQUIRED")
+        path = self.recovery_token_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            temporary.write_text(token + "\n", encoding="utf-8")
+            with suppress(OSError):
+                os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+            with suppress(OSError):
+                os.chmod(path, 0o600)
+        except OSError as exc:
+            with suppress(OSError):
+                temporary.unlink()
+            raise LocalWorkerError("WORKER_RECOVERY_TOKEN_FILE_UNWRITABLE") from exc
 
 
 def _validate_id(value: str, label: str) -> str:
@@ -452,6 +499,33 @@ class WorkerApiClient:
             raise LocalWorkerError("WORKER_API_INVALID_RESPONSE")
         self.session_token = replacement.strip()
         return response
+
+    def recover_worker(
+        self,
+        recovery_token: str,
+        worker_id: str,
+        device_id: str,
+        *,
+        protocol_version: str,
+        agent_version: str,
+        capabilities: list[str],
+    ) -> dict[str, Any]:
+        token = recovery_token.strip()
+        if not token:
+            raise LocalWorkerError("WORKER_RECOVERY_REQUIRED")
+        worker = _validate_id(worker_id, "worker_id")
+        device = _validate_id(device_id, "device_id")
+        return self._post(
+            "/api/ecommerce/workers/recover",
+            {
+                "recovery_token": token,
+                "worker_id": worker,
+                "device_id": device,
+                "protocol_version": protocol_version,
+                "agent_version": agent_version,
+                "capabilities": capabilities,
+            },
+        )
 
     def update_account_session(
         self, worker_id: str, account_id: str, login_state: str
@@ -726,8 +800,10 @@ class LocalWorkerLoop:
         lease_renew_interval_seconds: float = 30.0,
         token_refresh_interval_seconds: float = 30.0,
         on_token_refreshed: Callable[[str], None] | None = None,
+        on_recovery_token_refreshed: Callable[[str], None] | None = None,
         on_worker_id_persisted: Callable[[str], None] | None = None,
         enrollment_token: str = "",
+        recovery_token: str = "",
         device_id: str = "",
     ) -> None:
         if heartbeat_interval_seconds <= 0 or poll_interval_seconds <= 0:
@@ -746,9 +822,17 @@ class LocalWorkerLoop:
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.token_refresh_interval_seconds = token_refresh_interval_seconds
         self.on_token_refreshed = on_token_refreshed
+        self.on_recovery_token_refreshed = on_recovery_token_refreshed
         self.on_worker_id_persisted = on_worker_id_persisted
         self.enrollment_token = enrollment_token.strip()
+        self.recovery_token = recovery_token.strip()
         self.device_id = (device_id or runtime.worker_id).strip()
+        # A bootstrap token is attempted once at startup. A token delivered
+        # later through the loopback bridge explicitly re-arms the attempt,
+        # even when this process already has a formal server-assigned worker id.
+        self._enrollment_requested = bool(
+            self.enrollment_token and runtime.worker_id == self.device_id
+        )
         self._enrollment_lock = threading.Lock()
 
     def accept_enrollment(self, enrollment_token: str, device_id: str) -> None:
@@ -762,9 +846,42 @@ class LocalWorkerLoop:
             raise LocalWorkerError("WORKER_DEVICE_MISMATCH")
         with self._enrollment_lock:
             self.enrollment_token = token
+            self._enrollment_requested = True
 
     def _recover_registration(self) -> bool:
-        if not self.enrollment_token:
+        recover_worker = getattr(self.api, "recover_worker", None)
+        if self.recovery_token and callable(recover_worker):
+            try:
+                response = recover_worker(
+                    self.recovery_token,
+                    self.runtime.worker_id,
+                    self.device_id,
+                    protocol_version=self.protocol_version,
+                    agent_version=self.agent_version,
+                    capabilities=self.capabilities,
+                )
+                data = response.get("data") if isinstance(response, Mapping) else None
+                token = data.get("session_token") if isinstance(data, Mapping) else None
+                replacement = (
+                    data.get("recovery_token") if isinstance(data, Mapping) else None
+                )
+                if (
+                    not isinstance(token, str)
+                    or not token.strip()
+                    or not isinstance(replacement, str)
+                    or not replacement.strip()
+                ):
+                    return False
+                self.api.session_token = token.strip()
+                self.recovery_token = replacement.strip()
+                if self.on_token_refreshed is not None:
+                    self.on_token_refreshed(token)
+                if self.on_recovery_token_refreshed is not None:
+                    self.on_recovery_token_refreshed(replacement)
+                return True
+            except LocalWorkerError:
+                pass
+        if not self.enrollment_token or not self._enrollment_requested:
             return False
         try:
             response = self.api.register_worker(
@@ -786,13 +903,22 @@ class LocalWorkerLoop:
                 return False
             self.api.session_token = token.strip()
             self.runtime.worker_id = _validate_id(worker_id, "worker_id")
+            recovery_token = (
+                data.get("recovery_token") if isinstance(data, Mapping) else None
+            )
+            if isinstance(recovery_token, str) and recovery_token.strip():
+                self.recovery_token = recovery_token.strip()
+                if self.on_recovery_token_refreshed is not None:
+                    self.on_recovery_token_refreshed(recovery_token)
             self.enrollment_token = ""
+            self._enrollment_requested = False
             if self.on_token_refreshed is not None:
                 self.on_token_refreshed(token)
             if self.on_worker_id_persisted is not None:
                 self.on_worker_id_persisted(worker_id)
             return True
         except LocalWorkerError:
+            self._enrollment_requested = False
             return False
 
     def _heartbeat(self, ready: bool) -> dict[str, Any]:
@@ -904,7 +1030,7 @@ class LocalWorkerLoop:
                 # session, so a stale token cannot block normal heartbeats.
                 if (
                     self.enrollment_token
-                    and self.runtime.worker_id == self.device_id
+                    and self._enrollment_requested
                     and not self._recover_registration()
                 ):
                     stop.wait(self.poll_interval_seconds)
@@ -920,6 +1046,13 @@ class LocalWorkerLoop:
                             "WORKER_TOKEN_EXPIRED",
                             "WORKER_TOKEN_ROTATED",
                         }:
+                            if self.enrollment_token and (
+                                not self.recovery_token
+                                or not callable(
+                                    getattr(self.api, "recover_worker", None)
+                                )
+                            ):
+                                self._enrollment_requested = True
                             self._recover_registration()
                         stop.wait(self.poll_interval_seconds)
                         continue
@@ -1081,8 +1214,10 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
         lease_renew_interval_seconds=config.lease_renew_interval_seconds,
         token_refresh_interval_seconds=config.token_refresh_interval_seconds,
         on_token_refreshed=config.persist_session_token,
+        on_recovery_token_refreshed=config.persist_recovery_token,
         on_worker_id_persisted=config.persist_worker_id,
         enrollment_token=config.enrollment_token,
+        recovery_token=config.recovery_token,
         device_id=os.environ.get("POLARIS_WORKER_DEVICE_ID", config.worker_id),
     )
     bridge = LocalWorkerBridge(
@@ -1139,7 +1274,12 @@ def run_local_login(
         session_profile=f"domestic-{normalized_platform}",
         state_style="legacy" if normalized_platform == "taobao" else "canonical",
     )
-    manager.start_login(target_url, headless=False, timeout_seconds=timeout_seconds)
+    manager.start_login(
+        target_url,
+        headless=False,
+        timeout_seconds=timeout_seconds,
+        force=True,
+    )
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         status = manager.status()
@@ -1178,7 +1318,12 @@ def run_remote_login(
         state_style="legacy" if platform == "taobao" else "canonical",
     )
     try:
-        manager.start_login(url, headless=True, timeout_seconds=timeout_seconds)
+        manager.start_login(
+            url,
+            headless=True,
+            timeout_seconds=timeout_seconds,
+            force=True,
+        )
     except Exception as exc:
         # Keep the control plane from leaving a claimed login job waiting
         # forever when the local browser/profile cannot be started. The
@@ -1257,6 +1402,14 @@ def run_remote_login(
             "risk_controlled": "risk_controlled",
             "ready": "ready",
             "error": "failed",
+            # Canonical (JD/1688/PDD) profiles normalize the helper's
+            # terminal legacy states to these names. Keep them from falling
+            # through to ``waiting_user`` forever after the browser closes or
+            # fails during startup.
+            "not_initialized": "needs_login",
+            "signed_out": "needs_login",
+            "login_required": "needs_login",
+            "unavailable": "failed",
             "needs_relogin": "needs_login",
         }.get(state, "waiting_user")
         frame_path = (

@@ -441,6 +441,32 @@ def test_jd_order_center_with_account_greeting_is_authenticated() -> None:
     )
 
 
+def test_jd_order_center_ignores_public_login_prompt_when_account_name_present(
+) -> None:
+    from app.ecommerce_login import looks_like_authenticated_page
+
+    assert looks_like_authenticated_page(
+        "https://order.jd.com/center/list.action",
+        "订单列表-京东商城",
+        "你好，请登录 订单中心 近3个月订单 你好，张三 暂无订单",
+        platform="jd",
+    )
+
+
+def test_jd_order_center_account_shell_without_orders_is_authenticated() -> None:
+    from app.ecommerce_login import looks_like_authenticated_page
+
+    assert looks_like_authenticated_page(
+        "https://order.jd.com/center/list.action",
+        "订单列表-京东商城",
+        (
+            "订单中心 近3个月订单 我的订单 我的钱包 账户设置 足迹收藏 "
+            "客户服务 我的活动 暂无订单"
+        ),
+        platform="jd",
+    )
+
+
 def test_fixture_is_valid_utf8_json_contract() -> None:
     # Keep the fixture intentionally small and deterministic for future edits.
     payload = json.loads('{"platform":"jd","roles":["main","detail","sku"]}')

@@ -1,8 +1,9 @@
 """Minimal secure protocol for outbound local ecommerce browser workers.
 
-The control plane only sees worker metadata and structured heartbeats.  Tokens
-are short-lived, one-time or session-scoped, and bound to a user/workspace/device
-triple.  Request models deliberately reject unknown fields so cookies,
+The control plane only sees worker metadata and structured heartbeats. Session
+tokens are short-lived; enrollment and recovery credentials are bound to a
+user/workspace/device triple. Request models deliberately reject unknown fields so
+cookies,
 localStorage, browser profiles, and CDP endpoints cannot enter this protocol.
 """
 
@@ -115,6 +116,20 @@ class WorkerRegisterRequest(_StrictModel):
             if item not in normalized:
                 normalized.append(item)
         return normalized
+
+
+class WorkerRecoveryRequest(_StrictModel):
+    worker_id: str = Field(min_length=1, max_length=40)
+    recovery_token: str = Field(min_length=24, max_length=256)
+    device_id: str = Field(min_length=1, max_length=128)
+    protocol_version: str = Field(min_length=1, max_length=32)
+    agent_version: str = Field(min_length=1, max_length=64)
+    capabilities: list[str] = Field(default_factory=list, max_length=_MAX_CAPABILITIES)
+
+    @field_validator("capabilities")
+    @classmethod
+    def validate_capabilities(cls, values: list[str]) -> list[str]:
+        return WorkerRegisterRequest.validate_capabilities(values)
 
 
 class WorkerHeartbeatRequest(_StrictModel):
@@ -431,9 +446,14 @@ def register_worker(
         worker.capabilities = payload.capabilities
 
     session_token = secrets.token_urlsafe(32)
+    recovery_token = secrets.token_urlsafe(32)
     worker.session_token_hash = _hash_token(session_token)
     worker.session_token_expires_at = now + timedelta(
         seconds=request.app.state.settings.ecommerce_worker_token_ttl_seconds
+    )
+    worker.recovery_token_hash = _hash_token(recovery_token)
+    worker.recovery_token_expires_at = now + timedelta(
+        seconds=request.app.state.settings.ecommerce_worker_recovery_token_ttl_seconds
     )
     worker.last_seen_at = now
     worker.status = "online"
@@ -447,6 +467,90 @@ def register_worker(
                 request.app.state.settings.ecommerce_worker_heartbeat_timeout_seconds,
             ),
             "session_token": session_token,
+            "recovery_token": recovery_token,
+        },
+    }
+
+
+@router.post("/recover", status_code=status.HTTP_200_OK)
+def recover_worker(
+    payload: WorkerRecoveryRequest,
+    request: Request,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    """Mint fresh credentials after a Worker was offline past session expiry."""
+
+    worker_id = payload.worker_id.strip()
+    worker = session.scalar(
+        select(EcommerceWorkerRecord)
+        .where(
+            EcommerceWorkerRecord.id == worker_id,
+            EcommerceWorkerRecord.device_id == payload.device_id.strip(),
+        )
+        .with_for_update()
+    )
+    now = utc_now()
+    if (
+        worker is None
+        or not worker.recovery_token_hash
+        or not hmac.compare_digest(
+            worker.recovery_token_hash, _hash_token(payload.recovery_token)
+        )
+        or worker.recovery_token_expires_at is None
+        or _as_utc(worker.recovery_token_expires_at) <= now
+    ):
+        raise ApiError(
+            status.HTTP_401_UNAUTHORIZED,
+            "WORKER_RECOVERY_INVALID",
+            "本机代理恢复凭证无效或已过期，请重新授权设备。",
+        )
+    user = session.get(UserRecord, worker.user_id)
+    workspace = session.get(WorkspaceRecord, worker.workspace_id)
+    membership = session.scalar(
+        select(WorkspaceMemberRecord).where(
+            WorkspaceMemberRecord.workspace_id == worker.workspace_id,
+            WorkspaceMemberRecord.user_id == worker.user_id,
+            WorkspaceMemberRecord.status == MembershipStatus.ACTIVE.value,
+        )
+    )
+    if (
+        user is None
+        or user.status != "active"
+        or workspace is None
+        or workspace.status != WorkspaceStatus.ACTIVE.value
+        or membership is None
+    ):
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "WORKER_SCOPE_REVOKED",
+            "本机代理所属用户或工作区权限已撤销。",
+        )
+
+    session_token = secrets.token_urlsafe(32)
+    recovery_token = secrets.token_urlsafe(32)
+    worker.protocol_version = payload.protocol_version
+    worker.agent_version = payload.agent_version
+    worker.capabilities = payload.capabilities
+    worker.session_token_hash = _hash_token(session_token)
+    worker.session_token_expires_at = now + timedelta(
+        seconds=request.app.state.settings.ecommerce_worker_token_ttl_seconds
+    )
+    worker.recovery_token_hash = _hash_token(recovery_token)
+    worker.recovery_token_expires_at = now + timedelta(
+        seconds=request.app.state.settings.ecommerce_worker_recovery_token_ttl_seconds
+    )
+    worker.last_seen_at = now
+    worker.status = "online"
+    session.commit()
+    return {
+        "success": True,
+        "data": {
+            "worker": _worker_response(
+                worker,
+                request.app.state.settings.ecommerce_worker_heartbeat_timeout_seconds,
+            ),
+            "session_token": session_token,
+            "recovery_token": recovery_token,
         },
     }
 

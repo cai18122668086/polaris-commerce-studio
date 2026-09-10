@@ -8,6 +8,7 @@ from fastapi.security import APIKeyCookie
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import HTTPConnection
 
 from .database import get_session
@@ -213,10 +214,7 @@ async def get_principal(
     settings = request.app.state.settings
     if settings.auth_mode == "development":
         user_id = request.headers.get("X-User-Id") or settings.development_user_id
-        user = session.get(UserRecord, user_id)
-        if user is None:
-            return Principal(user_id=user_id)
-        return _principal_from_user(user, email_verified=True)
+        return await run_in_threadpool(_development_principal, session, user_id)
 
     auth_backend = request.app.state.external_auth_backend
     try:
@@ -246,6 +244,25 @@ async def get_principal(
             "EMAIL_NOT_VERIFIED",
             "请先完成邮箱验证。",
         )
+
+    return await run_in_threadpool(_external_principal, session, identity)
+
+
+def _development_principal(session: Session, user_id: str) -> Principal:
+    user = session.get(UserRecord, user_id)
+    principal = (
+        Principal(user_id=user_id)
+        if user is None
+        else _principal_from_user(user, email_verified=True)
+    )
+    session.rollback()
+    return principal
+
+
+def _external_principal(session: Session, identity: ExternalIdentity) -> Principal:
+    # Pool checkout and provisioning use the synchronous SQLAlchemy driver.
+    # Keep them off the ASGI event loop so occupied connections cannot freeze
+    # session refresh, health checks, or completion of other requests.
 
     try:
         user = _ensure_external_user(session, identity)
@@ -294,11 +311,15 @@ def require_workspace(
             "WORKSPACE_NOT_FOUND",
             "未找到指定工作区。",
         )
-    return WorkspaceContext(
+    context = WorkspaceContext(
         principal=principal,
         workspace_id=workspace_id,
         role=MembershipRole(membership.role),
     )
+    # The authorization snapshot contains no ORM objects. Release this read
+    # transaction before upload/download handlers wait on external storage.
+    session.rollback()
+    return context
 
 
 WorkspaceDependency = Annotated[WorkspaceContext, Depends(require_workspace)]

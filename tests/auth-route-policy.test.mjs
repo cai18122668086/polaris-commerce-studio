@@ -40,6 +40,20 @@ test("auth and legal routes are public and account does not require a workspace"
   assert.equal(routes.routeRequiresWorkspace("/assets"), true);
 });
 
+test("auth checks terminate stalled SDK work and abort slow requests", async () => {
+  const { withAuthTimeout, authRequestInit } = await importBundled("lib/auth/request-timeout.ts");
+  await assert.rejects(withAuthTimeout(new Promise(() => {}), 20), /AUTH_CHECK_TIMEOUT/);
+  assert.equal(await withAuthTimeout(Promise.resolve(true), 20), true);
+  const pending = authRequestInit({ credentials: "include" }, 20);
+  await withAuthTimeout(new Promise((resolve) => pending.signal.addEventListener("abort", resolve)), 2000);
+  assert.equal(pending.signal.aborted, true);
+  assert.equal(pending.credentials, "include");
+  const caller = new AbortController();
+  const combined = authRequestInit({ signal: caller.signal });
+  caller.abort();
+  assert.equal(combined.signal.aborted, true);
+});
+
 test("registration requires explicit agreement and opens legal documents without leaving the form", async () => {
   const [registerForm, registerPage, authApi, globalStyles] = await Promise.all([
     utf8("features/auth/components/register-form.tsx"),

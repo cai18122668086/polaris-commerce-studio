@@ -28,6 +28,7 @@ from pydantic import SecretStr
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.concurrency import run_in_threadpool
 
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .auth import (
@@ -1044,7 +1045,9 @@ async def create_asset_access_url(
     workspace: WorkspaceDependency,
     session: SessionDependency,
 ) -> AccessUrlResponse:
-    asset = get_workspace_asset(session, workspace.workspace_id, asset_id)
+    asset = await run_in_threadpool(
+        _asset_for_storage, session, workspace.workspace_id, asset_id
+    )
     if asset.lifecycle_status != AssetLifecycleStatus.READY.value:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -1096,6 +1099,16 @@ async def create_asset_access_url(
     )
 
 
+def _asset_for_storage(
+    session: Session, workspace_id: str, asset_id: str
+) -> AssetRecord:
+    """Return loaded scalar metadata without holding a connection during I/O."""
+    asset = get_workspace_asset(session, workspace_id, asset_id)
+    session.expunge(asset)
+    session.rollback()
+    return asset
+
+
 @router.get(
     "/workspaces/{workspace_id}/assets/{asset_id}/content",
     name="get_signed_asset_content",
@@ -1129,7 +1142,9 @@ async def get_signed_asset_content(
             "ACCESS_URL_EXPIRED",
             "访问地址无效或已过期。",
         )
-    asset = get_workspace_asset(session, workspace_id, asset_id)
+    asset = await run_in_threadpool(
+        _asset_for_storage, session, workspace_id, asset_id
+    )
     content_disposition = build_content_disposition(
         disposition, asset.original_filename
     )

@@ -141,12 +141,14 @@ export async function getAssetAccessUrl(
   workspaceId: string,
   assetId: string,
   disposition: "inline" | "attachment" = "inline",
+  signal?: AbortSignal,
 ) {
   const result = await apiClient.POST(
     "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/access-url",
     {
       params: { path: { workspace_id: workspaceId, asset_id: assetId } },
       body: { disposition, variant: "original" },
+      signal,
     },
   );
   return unwrapApiResponse(result);

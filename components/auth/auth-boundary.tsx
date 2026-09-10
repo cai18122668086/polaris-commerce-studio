@@ -11,6 +11,7 @@ import { getAuthMode } from "@/lib/auth/config";
 import { currentReturnTo, loginHref, verifyEmailHref } from "@/lib/auth/return-to";
 import { AUTH_ROUTES, isPublicRoute, routeRequiresWorkspace } from "@/lib/auth/routes";
 import { onAuthUnauthorised } from "@/lib/auth/session-events";
+import { withAuthTimeout } from "@/lib/auth/request-timeout";
 import { AuthStatus } from "./auth-status";
 
 type BoundaryResult = { state: "authenticated" | "error" };
@@ -49,8 +50,14 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     async function checkAuthentication() {
       try {
-        if (!(await sessionExists())) { if (!cancelled) redirectToLogin(); return; }
-        if (!(await isEmailVerified())) {
+        // SuperTokens can be temporarily blocked by a database/core restart.
+        // Never leave the entire application on an infinite spinner; surface
+        // a bounded retry state so the user can recover without closing tabs.
+        if (!(await withAuthTimeout(sessionExists()))) {
+          if (!cancelled) redirectToLogin();
+          return;
+        }
+        if (!(await withAuthTimeout(isEmailVerified()))) {
           if (!cancelled) { queryClient.clear(); router.replace(verifyEmailHref(currentReturnTo())); }
           return;
         }
@@ -67,7 +74,7 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   if (developmentAuth) return routeRequiresWorkspace(pathname) ? <WorkspaceGate>{children}</WorkspaceGate> : <>{children}</>;
   if (!result) return <AuthStatus busy title="正在确认登录状态" description="请稍候，我们正在安全地恢复你的会话。" />;
   if (result.state === "error") return <AuthStatus title="暂时无法确认登录状态" description="认证服务暂时不可用，请检查网络后重试。">
-    <button className="auth-button auth-button--primary" onClick={() => setRetryKey((key) => key + 1)}>重新检查</button>
+    <button className="auth-button auth-button--primary" onClick={() => { setResult(undefined); setRetryKey((key) => key + 1); }}>重新检查</button>
     <Link className="auth-button auth-button--secondary" href={AUTH_ROUTES.login}>返回登录</Link>
   </AuthStatus>;
   return routeRequiresWorkspace(pathname) ? <WorkspaceGate>{children}</WorkspaceGate> : <>{children}</>;

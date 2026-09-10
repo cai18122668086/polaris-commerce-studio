@@ -175,20 +175,36 @@ function eventIcon(event: CrawlEvent) {
 }
 
 function AssetThumb({ workspaceId, assetId, label }: { workspaceId: string; assetId: string; label: string }) {
+  const anchor = useRef<HTMLAnchorElement>(null);
   const [url, setUrl] = useState<string>();
   const [busy, setBusy] = useState(true);
   useEffect(() => {
     let active = true;
-    void getAssetAccessUrl(workspaceId, assetId)
-      .then((access) => { if (active) setUrl(access.url); })
-      .catch(() => { if (active) setUrl(undefined); })
-      .finally(() => { if (active) setBusy(false); });
-    return () => { active = false; };
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      timeout = setTimeout(() => controller.abort(), 12000);
+      void getAssetAccessUrl(workspaceId, assetId, "inline", controller.signal)
+        .then((access) => { if (active) setUrl(access.url); })
+        .catch(() => { if (active) setUrl(undefined); })
+        .finally(() => { clearTimeout(timeout); if (active) setBusy(false); });
+    };
+    // A result may contain dozens of detail/SKU images. Request signed URLs
+    // only near the viewport instead of flooding auth and storage on mount.
+    const observer = typeof IntersectionObserver === "undefined" ? undefined : new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        observer?.disconnect();
+        load();
+      }
+    }, { rootMargin: "200px" });
+    if (observer && anchor.current) observer.observe(anchor.current);
+    else load();
+    return () => { active = false; observer?.disconnect(); clearTimeout(timeout); controller.abort(); };
   }, [assetId, workspaceId]);
   return (
-    <a className={styles.assetCard} href={url} target="_blank" rel="noreferrer" aria-label={`查看${label}`}>
+    <a ref={anchor} className={styles.assetCard} href={url} target="_blank" rel="noreferrer" aria-label={`查看${label}`}>
       <div className={styles.assetMedia}>
-        {busy ? <LoaderCircle className="spin" size={20} /> : url ? <img src={url} alt={label} /> : <ImageIcon size={22} />}
+        {busy ? <LoaderCircle className="spin" size={20} /> : url ? <img src={url} alt={label} loading="lazy" decoding="async" /> : <ImageIcon size={22} />}
       </div>
       <span>{label}</span>
       <small>{assetId}</small>

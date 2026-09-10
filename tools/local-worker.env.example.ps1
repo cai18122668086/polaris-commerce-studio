@@ -19,6 +19,9 @@ $env:POLARIS_WORKER_ID = ""
 $env:POLARIS_WORKER_ID_FILE = "D:\Polaris\local-worker\worker.id"
 $env:POLARIS_WORKER_PROFILE_ROOT = "D:\Polaris\ecommerce-profiles"
 $env:POLARIS_WORKER_CAPABILITIES = "browser.taobao,browser.tmall"
+# Two independent accounts can run together; each account remains exclusive.
+# Supported range: 1..4. Omission keeps the previous single-slot behavior.
+$env:POLARIS_WORKER_CONCURRENCY = "2"
 $env:PLAYWRIGHT_BROWSERS_PATH = "D:\Tools\ms-playwright"
 # The signed-in admin page sends a newly minted enrollment token to this
 # loopback bridge automatically. Keep the bridge bound to the local machine.

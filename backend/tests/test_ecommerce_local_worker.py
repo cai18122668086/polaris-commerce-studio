@@ -285,6 +285,60 @@ def test_worker_keeps_heartbeating_while_browser_work_is_blocked(tmp_path: Path)
     assert api.heartbeats[-1]["ready"] is False
 
 
+def test_worker_loop_runs_different_account_tasks_in_parallel(tmp_path: Path):
+    class _TwoTaskApi(_FakeApi):
+        def __init__(self):
+            super().__init__()
+            self._claim_lock = threading.Lock()
+
+        def claim(self, _worker_id: str, _platforms: list[str] | None = None) -> dict:
+            with self._claim_lock:
+                self.claims += 1
+                number = self.claims
+            if number > 2:
+                return {"data": None}
+            task = _task()
+            task["id"] = f"task_{number}"
+            task["account_id"] = f"account_{number}"
+            return {"data": task}
+
+    api = _TwoTaskApi()
+    runtime = LocalWorkerRuntime(api, "worker_1", LocalProfileStore(tmp_path))
+    loop = local_worker.LocalWorkerLoop(
+        api,
+        runtime,
+        concurrency=2,
+        heartbeat_interval_seconds=0.01,
+        poll_interval_seconds=0.01,
+        lease_renew_interval_seconds=0.01,
+    )
+    stop = threading.Event()
+    active = 0
+    maximum = 0
+    state_lock = threading.Lock()
+
+    def crawl(_profile_path: Path, _task: dict) -> dict:
+        nonlocal active, maximum
+        with state_lock:
+            active += 1
+            maximum = max(maximum, active)
+            if active == 2:
+                stop.set()
+        time.sleep(0.04)
+        with state_lock:
+            active -= 1
+        return {"platform": "taobao", "title": "并发结果"}
+
+    watchdog = threading.Timer(2, stop.set)
+    watchdog.start()
+    try:
+        loop.run(crawl, stop)
+    finally:
+        watchdog.cancel()
+    assert maximum == 2
+    assert {upload[1] for upload in api.uploads} == {"task_1", "task_2"}
+
+
 def test_browser_enrollment_takes_priority_over_saved_recovery(tmp_path: Path):
     api = _FakeApi()
     runtime = LocalWorkerRuntime(api, "worker_existing", LocalProfileStore(tmp_path))
@@ -449,9 +503,7 @@ def test_local_jd_crawler_rejects_empty_images_and_preserves_risk_status(
         product_id="a00014",
         title="中间页",
     )
-    monkeypatch.setattr(
-        "app.ecommerce_jd.crawl_one_jd_browser", lambda *_args: product
-    )
+    monkeypatch.setattr("app.ecommerce_jd.crawl_one_jd_browser", lambda *_args: product)
     with pytest.raises(local_worker.LocalWorkerTaskError, match=expected_code):
         local_worker.build_local_product_crawler()(
             tmp_path / "account_jd", {"platform": "jd", "canonical_url": url}
@@ -473,15 +525,13 @@ def test_local_jd_crawler_accepts_valid_product_image_roles(
         title="京东商品",
         images=(JDImage("https://img10.360buyimg.com/n1/jfs/product.jpg", role=role),),
     )
-    monkeypatch.setattr(
-        "app.ecommerce_jd.crawl_one_jd_browser", lambda *_args: product
-    )
+    monkeypatch.setattr("app.ecommerce_jd.crawl_one_jd_browser", lambda *_args: product)
     result = local_worker.build_local_product_crawler()(
         tmp_path / "account_jd", {"platform": "jd", "canonical_url": url}
     )
-    image_key = {
-        "main": "imageUrls", "detail": "descImageUrls", "sku": "skuImageUrls"
-    }[role]
+    image_key = {"main": "imageUrls", "detail": "descImageUrls", "sku": "skuImageUrls"}[
+        role
+    ]
     assert result[image_key] == [product.images[0].url]
 
 
@@ -497,11 +547,13 @@ def test_local_worker_config_requires_env_and_never_requires_cli_secret(monkeypa
             "POLARIS_WORKER_PROFILE_ROOT": "C:/Polaris/profiles",
             "POLARIS_WORKER_CAPABILITIES": "browser.taobao, browser.jd",
             "POLARIS_WORKER_BROWSER_TIMEOUT_MS": "15000",
+            "POLARIS_WORKER_CONCURRENCY": "2",
         }
     )
     assert config.worker_id == "worker_1"
     assert config.capabilities == ("browser.taobao", "browser.jd")
     assert config.browser_timeout_ms == 15000
+    assert config.concurrency == 2
     for name in (
         "POLARIS_WORKER_API_URL",
         "POLARIS_WORKER_SESSION_TOKEN",

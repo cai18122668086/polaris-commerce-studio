@@ -59,6 +59,8 @@ export default function AdminAccountsPage() {
   const pointerStart = useRef<{ accountId: string; x: number; y: number } | null>(null);
   const streams = useRef<Record<string, WebSocket>>({});
   const streamSeq = useRef(0);
+  const loginSyncChannel = useRef<BroadcastChannel | null>(null);
+  const [loginSyncRevision, setLoginSyncRevision] = useState(0);
 
   function sendBrowserInput(accountId: string, action: Record<string, unknown>) {
     const stream = streams.current[accountId];
@@ -296,8 +298,11 @@ export default function AdminAccountsPage() {
   function updateLoginActivity(accountId: string, data: LoginStatusResponse) {
     const isActive = data.loginSession?.status === "active";
     const sessionId = data.loginSession?.id;
-    if (isActive && sessionId) setLoginSessionIds((current) => ({ ...current, [accountId]: sessionId }));
+    if (isActive && sessionId) {
+      setLoginSessionIds((current) => current[accountId] === sessionId ? current : ({ ...current, [accountId]: sessionId }));
+    }
     setActiveLoginIds((current) => {
+      if (current.has(accountId) === isActive) return current;
       const next = new Set(current);
       if (isActive) {
         next.add(accountId);
@@ -307,20 +312,61 @@ export default function AdminAccountsPage() {
       return next;
     });
     if (!isActive) {
+      setLoginSessionIds((current) => {
+        if (!(accountId in current)) return current;
+        const next = { ...current };
+        delete next[accountId];
+        return next;
+      });
       setPreviewUrls((currentPreview) => {
         const previewUrl = currentPreview[accountId];
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         if (!previewUrl) return currentPreview;
         const nextPreview = { ...currentPreview };
         delete nextPreview[accountId];
-        setLoginSessionIds((current) => { const next = { ...current }; delete next[accountId]; return next; });
         return nextPreview;
       });
+      const loginState = data.state === "ready" ? "ready" :
+        ["needs_login", "needs_relogin", "risk_controlled"].includes(data.state ?? "") ? "needs_login" : null;
+      if (loginState) setAccounts((current) => current.some((account) => account.id === accountId && account.login_state !== loginState)
+        ? current.map((account) => account.id === accountId ? { ...account, login_state: loginState } : account) : current);
+    }
+  }
+
+  function notifyLoginStatusChanged(accountId: string) {
+    const payload = { type: "login-status-changed", accountId, at: Date.now() };
+    loginSyncChannel.current?.postMessage(payload);
+    try {
+      window.localStorage.setItem("polaris-login-status", JSON.stringify(payload));
+    } catch {
+      // Private browsing or blocked storage does not prevent BroadcastChannel sync.
     }
   }
 
   useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== "polaris-login-status" || !event.newValue) return;
+      setLoginSyncRevision((revision) => revision + 1);
+    };
+    window.addEventListener("storage", onStorage);
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel("polaris-ecommerce-login");
+      loginSyncChannel.current = channel;
+      channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
+        if (event.data?.type === "login-status-changed") setLoginSyncRevision((revision) => revision + 1);
+      };
+    }
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      loginSyncChannel.current?.close();
+      loginSyncChannel.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    let timer: number | undefined;
     async function refreshPreviews() {
       await Promise.all(Array.from(activeLoginIds).map(async (accountId) => {
         const sessionId = loginSessionIds[accountId];
@@ -329,6 +375,7 @@ export default function AdminAccountsPage() {
           const response = await fetch(`/api/ecommerce/session/preview?session_id=${encodeURIComponent(sessionId)}`, {
             credentials: "include",
             cache: "no-store",
+            signal: controller.signal,
           });
           if (!response.ok || cancelled) return;
           const nextUrl = URL.createObjectURL(await response.blob());
@@ -345,19 +392,44 @@ export default function AdminAccountsPage() {
           // The preview is intentionally best-effort while Chrome is starting.
         }
       }));
+      if (!cancelled) timer = window.setTimeout(() => void refreshPreviews(), 500);
     }
-    if (activeLoginIds.size > 0) {
-      void refreshPreviews();
-      const timer = window.setInterval(() => void refreshPreviews(), 500);
-      return () => {
-        cancelled = true;
-        window.clearInterval(timer);
-      };
-    }
+    if (activeLoginIds.size > 0) void refreshPreviews();
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
     };
   }, [activeLoginIds, loginSessionIds]);
+
+  useEffect(() => {
+    if (activeLoginIds.size === 0) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    let timer: number | undefined;
+    async function refreshLoginStatuses() {
+      await Promise.all(Array.from(activeLoginIds).map(async (accountId) => {
+        const account = accounts.find((item) => item.id === accountId);
+        if (!account) return;
+        try {
+          const response = await apiClient.GET("/api/ecommerce/session/status", {
+            params: { query: { account_id: account.id, platform: account.platform } },
+            signal: controller.signal,
+          });
+          if (!cancelled) updateLoginActivity(account.id, readLoginStatus(response));
+        } catch {
+          // Keep the active preview while a transient status request is unavailable.
+        }
+      }));
+      if (!cancelled) timer = window.setTimeout(() => void refreshLoginStatuses(), 1500);
+    }
+    void refreshLoginStatuses();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [activeLoginIds, accounts, loginSyncRevision]);
 
   useEffect(() => {
     const sockets = streams.current;
@@ -413,11 +485,13 @@ export default function AdminAccountsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     async function restoreActiveSessions() {
       await Promise.all(accounts.map(async (account) => {
         try {
           const response = await apiClient.GET("/api/ecommerce/session/status", {
             params: { query: { account_id: account.id, platform: account.platform } },
+            signal: controller.signal,
           });
           if (!cancelled) updateLoginActivity(account.id, readLoginStatus(response));
         } catch {
@@ -428,8 +502,9 @@ export default function AdminAccountsPage() {
     if (accounts.length > 0) void restoreActiveSessions();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [accounts]);
+  }, [accounts, loginSyncRevision]);
 
   function readLoginStatus(response: ApiResult<unknown>): LoginStatusResponse {
     const envelope = unwrapApiResponse(response) as LoginApiEnvelope;
@@ -451,6 +526,7 @@ export default function AdminAccountsPage() {
       const data = readLoginStatus(response);
       updateLoginActivity(account.id, data);
       setMessage(data.message || "登录流程已启动，请继续在受控运维通道中完成登录。");
+      notifyLoginStatusChanged(account.id);
       await load();
     } catch (cause) {
       setError(errorDiagnostic(cause));
@@ -467,6 +543,7 @@ export default function AdminAccountsPage() {
       const data = readLoginStatus(response);
       updateLoginActivity(account.id, data);
       setMessage(data.message || "已请求取消该账号的登录流程。");
+      notifyLoginStatusChanged(account.id);
       await load();
     } catch (cause) {
       setError(errorDiagnostic(cause));

@@ -58,6 +58,7 @@ from .ecommerce_session import EcommerceSessionManager
 from .errors import ApiError
 from .models import (
     AuditEventRecord,
+    CrawlProfileLeaseRecord,
     CrawlTaskRecord,
     EcommerceLoginSessionRecord,
     EcommerceWorkerRecord,
@@ -1178,9 +1179,8 @@ def ecommerce_session_status(
                                 "CAPTCHA_REQUIRED",
                             }
                         ),
-                        CrawlTaskRecord.created_at > (
-                            login_session.completed_at or login_session.started_at
-                        ),
+                        CrawlTaskRecord.created_at
+                        > (login_session.completed_at or login_session.started_at),
                     )
                     .order_by(CrawlTaskRecord.created_at.desc())
                     .limit(1)
@@ -1636,10 +1636,10 @@ def ecommerce_session_input(
             active_record.status != EcommerceLoginSessionStatus.ACTIVE.value
             or active_record.state
             not in {
-            "claimed",
-            "waiting_qr",
-            "waiting_user",
-            "risk_controlled",
+                "claimed",
+                "waiting_qr",
+                "waiting_user",
+                "risk_controlled",
             }
         ):
             raise HTTPException(
@@ -1986,6 +1986,21 @@ def ecommerce_session_start(
     if account is not None and account.worker_id:
         from .ecommerce_worker_routes import _worker_state
 
+        # Lock the stable account row: locking only an existing login session
+        # does not prevent two tabs from simultaneously creating the first one.
+        session.refresh(account, with_for_update=True)
+        active_lease = session.scalar(
+            select(CrawlProfileLeaseRecord.id)
+            .where(
+                CrawlProfileLeaseRecord.profile_id == account.profile_id,
+                CrawlProfileLeaseRecord.expires_at > utc_now(),
+            )
+            .limit(1)
+        )
+        if active_lease is not None:
+            raise ApiError(
+                409, "ACCOUNT_BUSY", "该账号当前被任务占用，请等待任务完成后再登录。"
+            )
         existing_remote = session.scalar(
             select(EcommerceLoginSessionRecord)
             .where(
@@ -2187,4 +2202,3 @@ def ecommerce_session_start(
         session.commit()
     result["loginSession"] = _login_session_response(login_session)
     return {"success": True, "data": result}
-

@@ -1,5 +1,7 @@
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from time import monotonic
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
@@ -7,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
+from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
 
 from .admin_account_routes import router as admin_account_router
 from .admin_dashboard_routes import router as admin_dashboard_router
@@ -47,6 +50,8 @@ from .storage import (
 from .supertokens_auth import ExternalAuthBackend, SuperTokensAuthAdapter
 from .task_runner import build_task_runner, validate_task_runner_settings
 
+logger = logging.getLogger(__name__)
+
 
 def _serializable_validation_errors(
     exc: RequestValidationError,
@@ -69,9 +74,7 @@ def create_app(
     app_settings.validate_runtime_safety()
     validate_task_runner_settings(app_settings)
     set_quota_enabled(app_settings.provider_quota_enabled)
-    set_credit_enforcement_enabled(
-        app_settings.workspace_credit_enforcement_enabled
-    )
+    set_credit_enforcement_enabled(app_settings.workspace_credit_enforcement_enabled)
     auth_backend = external_auth_backend
     if app_settings.auth_mode == "external":
         auth_backend = auth_backend or SuperTokensAuthAdapter(app_settings)
@@ -189,9 +192,36 @@ def create_app(
     ) -> Response:
         request_id = request.headers.get("X-Request-Id") or f"req_{uuid4().hex}"
         request.state.request_id = request_id
+        started = monotonic()
         response = await call_next(request)
         response.headers["X-Request-Id"] = request_id
+        elapsed = monotonic() - started
+        if elapsed >= 2:
+            logger.warning(
+                "slow_request method=%s path=%s status=%s seconds=%.3f",
+                request.method,
+                request.url.path,
+                response.status_code,
+                elapsed,
+            )
         return response
+
+    @application.exception_handler(DatabasePoolTimeout)
+    async def handle_pool_timeout(
+        request: Request, exc: DatabasePoolTimeout
+    ) -> JSONResponse:
+        logger.warning("database_pool_busy path=%s", request.url.path)
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "3"},
+            content={
+                "error": {
+                    "code": "DATABASE_BUSY",
+                    "message": "服务暂时繁忙，请稍后重试。",
+                    "request_id": request.state.request_id,
+                }
+            },
+        )
 
     @application.exception_handler(ApiError)
     async def handle_api_error(request: Request, exc: ApiError) -> JSONResponse:
@@ -251,9 +281,7 @@ def create_app(
             checks["database"] = "failed"
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         if app_settings.task_dispatcher == "celery":
-            checks["task_broker"] = check_task_broker(
-                app_settings.celery_broker_url
-            )
+            checks["task_broker"] = check_task_broker(app_settings.celery_broker_url)
             if checks["task_broker"] != "ok":
                 response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 

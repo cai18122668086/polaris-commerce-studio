@@ -6,6 +6,7 @@ import Session from "supertokens-web-js/recipe/session";
 import { emitAuthUnauthorised } from "./session-events";
 import { isLocalDevelopmentAuthEnabled } from "./local-dev";
 import { getAuthRuntimeConfig } from "./config";
+import { boundedAuthRequest } from "./request-timeout";
 
 let authClientInitialized = false;
 
@@ -21,9 +22,10 @@ export function initializeAuthClient(): void {
   SuperTokens.init({
     appInfo: { appName: config.appName, apiDomain: config.apiDomain, apiBasePath: config.apiBasePath },
     recipeList: [
-      EmailPassword.init(),
-      EmailVerification.init(),
+      EmailPassword.init({ preAPIHook: boundedAuthRequest }),
+      EmailVerification.init({ preAPIHook: boundedAuthRequest }),
       Session.init({
+        preAPIHook: boundedAuthRequest,
         onHandleEvent(event) {
           if (event.action === "UNAUTHORISED") emitAuthUnauthorised("session");
           else if (event.action === "SIGN_OUT") emitAuthUnauthorised("sign-out");

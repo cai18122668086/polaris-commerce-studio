@@ -48,7 +48,14 @@ def ecommerce_postgres(tmp_path):
                     id="usr_parallel", auth_provider="test", auth_subject="parallel"
                 )
             )
-            session.add(WorkspaceRecord(id="ws_parallel", name="Concurrent accounts"))
+            session.flush()
+            session.add(
+                WorkspaceRecord(
+                    id="ws_parallel",
+                    name="Concurrent accounts",
+                    created_by_user_id="usr_parallel",
+                )
+            )
             session.commit()
             for number in range(2):
                 session.add(

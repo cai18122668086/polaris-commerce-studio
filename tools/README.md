@@ -34,6 +34,14 @@ python tools/taobao_tmall_crawler.py links.txt --batch --browser --out artifacts
 
 输出中的图片角色是 `main`、`sku`、`detail`，后续接入网站时可以分别映射到现有 Asset 的 `reference` 资源和商品素材选择器。当前版本还没有写入网站数据库，也没有上传对象存储。
 
+## 网站本机 Worker 并发
+
+在 `D:\Polaris\local-worker\worker.env.ps1` 设置
+`$env:POLARIS_WORKER_CONCURRENCY = "2"` 后重启 `PolarisCommerceLocalWorker` 计划任务，
+可同时执行两个不同账号的登录或抓取任务。有效范围为 1～4；不配置时保持单槽位。
+同一账号的登录和抓取互斥，账号 Profile 与 Cookie 仍独立保存在本机。
+浏览器按任务启动和退出，保留磁盘会话；常驻浏览器与延长平台 Cookie 有效期不属于此配置的功能。
+
 ## 调研依据
 
 - [JeremyDong22/taobao_mcp](https://github.com/JeremyDong22/taobao_mcp)：近期的 Playwright + 持久浏览器会话方案，包含淘宝/天猫主图、SKU 图、详情图提取思路。

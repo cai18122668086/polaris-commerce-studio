@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -78,6 +79,7 @@ class LocalWorkerConfig:
     request_timeout_seconds: float = 20.0
     heartbeat_interval_seconds: float = 20.0
     poll_interval_seconds: float = 2.0
+    concurrency: int = 1
     lease_renew_interval_seconds: float = 30.0
     browser_timeout_ms: int = 30_000
     # Keep this below the server's minimum 60-second token TTL so a deployment
@@ -182,6 +184,7 @@ class LocalWorkerConfig:
             poll_interval_seconds = float(
                 values.get("POLARIS_WORKER_POLL_INTERVAL", "2")
             )
+            concurrency = int(values.get("POLARIS_WORKER_CONCURRENCY", "1"))
             lease_renew_interval_seconds = float(
                 values.get("POLARIS_WORKER_LEASE_INTERVAL", "30")
             )
@@ -206,6 +209,8 @@ class LocalWorkerConfig:
             )
         ):
             raise LocalWorkerError("WORKER_CONFIG_INVALID")
+        if not 1 <= concurrency <= 4:
+            raise LocalWorkerError("WORKER_CONCURRENCY_INVALID")
         if not 1024 <= bridge_port <= 65535:
             raise LocalWorkerError("WORKER_BRIDGE_PORT_INVALID")
         parsed_api_url = urlparse(api_url)
@@ -226,6 +231,7 @@ class LocalWorkerConfig:
             request_timeout_seconds=request_timeout_seconds,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             poll_interval_seconds=poll_interval_seconds,
+            concurrency=concurrency,
             lease_renew_interval_seconds=lease_renew_interval_seconds,
             browser_timeout_ms=browser_timeout_ms,
             token_refresh_interval_seconds=token_refresh_interval_seconds,
@@ -414,6 +420,14 @@ class WorkerApiClient:
         self.base_url = base_url.rstrip("/") + "/"
         self.session_token = session_token
         self.timeout = timeout
+        self._session_token_lock = threading.RLock()
+
+    def set_session_token(self, token: str) -> None:
+        token = token.strip()
+        if not token:
+            raise LocalWorkerError("WORKER_TOKEN_REQUIRED")
+        with self._session_token_lock:
+            self.session_token = token
 
     def _request(
         self, method: str, path: str, payload: Mapping[str, Any] | None = None
@@ -422,11 +436,13 @@ class WorkerApiClient:
         if payload is not None:
             _assert_no_sensitive_fields(payload)
             body = json.dumps(dict(payload), ensure_ascii=False).encode("utf-8")
+        with self._session_token_lock:
+            session_token = self.session_token
         request = Request(
             urljoin(self.base_url, path.lstrip("/")),
             data=body,
             headers={
-                "Authorization": f"Bearer {self.session_token}",
+                "Authorization": f"Bearer {session_token}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
@@ -497,7 +513,7 @@ class WorkerApiClient:
         replacement = data.get("session_token")
         if not isinstance(replacement, str) or not replacement.strip():
             raise LocalWorkerError("WORKER_API_INVALID_RESPONSE")
-        self.session_token = replacement.strip()
+        self.set_session_token(replacement)
         return response
 
     def recover_worker(
@@ -807,6 +823,7 @@ class LocalWorkerLoop:
         poll_interval_seconds: float = 2.0,
         lease_renew_interval_seconds: float = 30.0,
         token_refresh_interval_seconds: float = 30.0,
+        concurrency: int = 1,
         on_token_refreshed: Callable[[str], None] | None = None,
         on_recovery_token_refreshed: Callable[[str], None] | None = None,
         on_worker_id_persisted: Callable[[str], None] | None = None,
@@ -820,6 +837,8 @@ class LocalWorkerLoop:
             raise LocalWorkerError("WORKER_LEASE_INTERVAL_INVALID")
         if token_refresh_interval_seconds <= 0:
             raise LocalWorkerError("WORKER_TOKEN_REFRESH_INTERVAL_INVALID")
+        if not 1 <= concurrency <= 4:
+            raise LocalWorkerError("WORKER_CONCURRENCY_INVALID")
         self.api = api
         self.runtime = runtime
         self.protocol_version = protocol_version
@@ -829,6 +848,7 @@ class LocalWorkerLoop:
         self.poll_interval_seconds = poll_interval_seconds
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.token_refresh_interval_seconds = token_refresh_interval_seconds
+        self.concurrency = concurrency
         self.on_token_refreshed = on_token_refreshed
         self.on_recovery_token_refreshed = on_recovery_token_refreshed
         self.on_worker_id_persisted = on_worker_id_persisted
@@ -842,6 +862,7 @@ class LocalWorkerLoop:
             self.enrollment_token and runtime.worker_id == self.device_id
         )
         self._enrollment_lock = threading.RLock()
+        self._claim_lock = threading.Lock()
 
     def accept_enrollment(self, enrollment_token: str, device_id: str) -> None:
         """Accept a browser-delivered one-time token without logging it."""
@@ -890,7 +911,11 @@ class LocalWorkerLoop:
                     or not replacement.strip()
                 ):
                     return False
-                self.api.session_token = token.strip()
+                setter = getattr(self.api, "set_session_token", None)
+                if callable(setter):
+                    setter(token)
+                else:
+                    self.api.session_token = token.strip()
                 self.recovery_token = replacement.strip()
                 if self.on_token_refreshed is not None:
                     self.on_token_refreshed(token)
@@ -919,7 +944,11 @@ class LocalWorkerLoop:
                 or not isinstance(worker_id, str)
             ):
                 return False
-            self.api.session_token = token.strip()
+            setter = getattr(self.api, "set_session_token", None)
+            if callable(setter):
+                setter(token)
+            else:
+                self.api.session_token = token.strip()
             self.runtime.worker_id = _validate_id(worker_id, "worker_id")
             recovery_token = (
                 data.get("recovery_token") if isinstance(data, Mapping) else None
@@ -955,23 +984,45 @@ class LocalWorkerLoop:
     ) -> bool:
         """Claim and execute at most one task; return whether work was done."""
 
-        claim_login = getattr(self.api, "claim_login", None)
-        if callable(claim_login):
-            login_response = claim_login(self.runtime.worker_id, self._platforms())
-            login_job = login_response.get("data")
-            if login_job is not None:
-                if not isinstance(login_job, Mapping):
-                    raise LocalWorkerError("WORKER_LOGIN_INVALID")
-                run_remote_login(
-                    self.api,
-                    self.runtime.worker_id,
-                    self.runtime.profiles,
-                    login_job,
+        # Serialize only claims, not browser execution. This also supports
+        # control planes predating concurrent slots without double-claiming.
+        login_job = None
+        task = None
+        with self._claim_lock:
+            claim_login = getattr(self.api, "claim_login", None)
+            if callable(claim_login):
+                login_job = claim_login(self.runtime.worker_id, self._platforms()).get(
+                    "data"
                 )
-                return True
-
-        response = self.api.claim(self.runtime.worker_id, self._platforms())
-        task = response.get("data")
+            if login_job is None:
+                task = self.api.claim(self.runtime.worker_id, self._platforms()).get(
+                    "data"
+                )
+        if login_job is not None:
+            if not isinstance(login_job, Mapping):
+                raise LocalWorkerError("WORKER_LOGIN_INVALID")
+            account_id = _validate_id(
+                str(login_job.get("account_id", "")), "account_id"
+            )
+            try:
+                with self.runtime.profiles.lock(account_id):
+                    run_remote_login(
+                        self.api,
+                        self.runtime.worker_id,
+                        self.runtime.profiles,
+                        login_job,
+                    )
+            except LocalWorkerError as exc:
+                if str(exc) == "PROFILE_BUSY":
+                    with suppress(Exception):
+                        self.api.update_login(
+                            self.runtime.worker_id,
+                            str(login_job["id"]),
+                            "failed",
+                            "该账号正在执行任务，请等待完成后再登录。",
+                        )
+                raise
+            return True
         if task is None:
             return False
         if not isinstance(task, Mapping):
@@ -1074,6 +1125,19 @@ class LocalWorkerLoop:
             target=heartbeat_loop, name="polaris-worker-heartbeat", daemon=True
         )
         heartbeat.start()
+        executor = ThreadPoolExecutor(
+            max_workers=self.concurrency, thread_name_prefix="polaris-worker"
+        )
+        futures: set[Future[bool]] = set()
+
+        def run_slot() -> bool:
+            try:
+                return self.run_once(crawl)
+            except LocalWorkerError:
+                return False
+            except Exception:
+                return False
+
         try:
             while not stop.is_set():
                 # A new device has only its device id at bootstrap time. An
@@ -1087,14 +1151,27 @@ class LocalWorkerLoop:
                 ):
                     stop.wait(self.poll_interval_seconds)
                     continue
-                try:
-                    did_work = self.run_once(crawl)
-                except LocalWorkerError:
-                    did_work = False
+                while len(futures) < self.concurrency and not stop.is_set():
+                    futures.add(executor.submit(run_slot))
+                if not futures:
+                    stop.wait(self.poll_interval_seconds)
+                    continue
+                done, pending = wait(
+                    futures,
+                    timeout=self.poll_interval_seconds,
+                    return_when=FIRST_COMPLETED,
+                )
+                futures = set(pending)
+                if not done:
+                    continue
+                did_work = any(future.result() for future in done)
                 if not did_work:
                     stop.wait(self.poll_interval_seconds)
         finally:
             stop.set()
+            for future in futures:
+                future.cancel()
+            executor.shutdown(wait=True, cancel_futures=True)
             refresh_stop.set()
             refresher.join(timeout=max(1.0, self.token_refresh_interval_seconds))
             heartbeat.join(timeout=max(1.0, self.heartbeat_interval_seconds))
@@ -1203,9 +1280,7 @@ class LocalWorkerBridge:
 
     def start(self) -> None:
         try:
-            self.server = ThreadingHTTPServer(
-                (self.host, self.port), self._handler()
-            )
+            self.server = ThreadingHTTPServer((self.host, self.port), self._handler())
         except OSError as exc:
             raise LocalWorkerError("WORKER_BRIDGE_START_FAILED") from exc
         self.server.daemon_threads = True
@@ -1242,6 +1317,7 @@ def run_local_worker(config: LocalWorkerConfig) -> None:
         api,
         runtime,
         capabilities=list(config.capabilities),
+        concurrency=config.concurrency,
         heartbeat_interval_seconds=config.heartbeat_interval_seconds,
         poll_interval_seconds=config.poll_interval_seconds,
         lease_renew_interval_seconds=config.lease_renew_interval_seconds,

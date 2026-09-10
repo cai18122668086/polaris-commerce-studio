@@ -50,6 +50,7 @@ from .models import (
     CrawlProfileLeaseRecord,
     CrawlTaskRecord,
     EcommerceAccountRecord,
+    EcommerceLoginSessionRecord,
     EcommerceWorkerRecord,
     ProductAssetRecord,
     ProductSnapshotRecord,
@@ -609,6 +610,7 @@ def _acquire_profile_lease(
     task_id: str,
     owner_id: str,
     ttl_seconds: int = _PROFILE_LEASE_TTL_SECONDS,
+    allow_reentry: bool = True,
 ) -> int | None:
     """Claim a profile and return its fencing token, or ``None`` if busy."""
 
@@ -616,14 +618,18 @@ def _acquire_profile_lease(
     expires_at = now.replace(microsecond=0) + timedelta(seconds=ttl_seconds)
     with session_factory() as session:
         lease = session.scalar(
-            select(CrawlProfileLeaseRecord).where(
-                CrawlProfileLeaseRecord.profile_id == profile_id
-            )
+            select(CrawlProfileLeaseRecord)
+            .where(CrawlProfileLeaseRecord.profile_id == profile_id)
+            .with_for_update()
         )
         if (
             lease is not None
             and _lease_time_is_active(lease.expires_at, now)
-            and (lease.task_id != task_id or lease.owner_id != owner_id)
+            and (
+                not allow_reentry
+                or lease.task_id != task_id
+                or lease.owner_id != owner_id
+            )
         ):
             return None
         fencing_token = 1 if lease is None else lease.fencing_token + 1
@@ -1565,14 +1571,16 @@ def _select_automatic_account(
     *,
     workspace_id: str,
     platform: str,
+    lock_accounts: bool = False,
 ) -> tuple[EcommerceAccountRecord | None, bool]:
     """Pick the least-recently used ready account for a platform.
 
     The selection is deliberately small and deterministic for the first
     account-pool release: disabled/paused/unlogged accounts are excluded and
-    an active profile lease is treated as busy.  The profile lease acquired by
-    the worker remains the concurrency boundary, so this helper does not try
-    to reserve a browser profile in the request transaction.
+    an active profile lease is treated as busy.  When called while creating a
+    task, the account rows are locked until the task and ``last_used_at``
+    update are committed, so concurrent submissions rotate across accounts
+    before the worker acquires the profile lease.
 
     The second tuple member distinguishes "no accounts configured" from
     "accounts configured but none are currently runnable".  The former keeps
@@ -1580,18 +1588,34 @@ def _select_automatic_account(
     an automatic task cannot silently run under an unintended session.
     """
 
-    accounts = session.scalars(
+    account_query = (
         select(EcommerceAccountRecord)
         .where(
             EcommerceAccountRecord.workspace_id == workspace_id,
             EcommerceAccountRecord.platform == platform,
         )
-        .order_by(
-            EcommerceAccountRecord.last_used_at.asc().nullsfirst(),
-            EcommerceAccountRecord.created_at.asc(),
-            EcommerceAccountRecord.id.asc(),
+        .order_by(EcommerceAccountRecord.id)
+    )
+    if lock_accounts:
+        # Serialize automatic assignments for this workspace/platform. The
+        # last_used_at update and task insert happen in the same transaction,
+        # so simultaneous submissions cannot select the same account before a
+        # worker has had a chance to acquire its profile lease.
+        account_query = account_query.with_for_update().execution_options(
+            populate_existing=True
         )
-    ).all()
+    accounts = list(session.scalars(account_query).all())
+    # PostgreSQL can sort before waiting on FOR UPDATE. Sort the refreshed
+    # values after obtaining the locks, and lock rows in stable ID order.
+    accounts.sort(
+        key=lambda account: (
+            account.last_used_at.replace(tzinfo=UTC)
+            if account.last_used_at is not None
+            else datetime.min.replace(tzinfo=UTC),
+            account.created_at.replace(tzinfo=UTC),
+            account.id,
+        )
+    )
     if not accounts:
         return None, False
 
@@ -1620,6 +1644,17 @@ def _select_automatic_account(
             )
         ).all()
     }
+    login_account_ids = set(
+        session.scalars(
+            select(EcommerceLoginSessionRecord.account_id).where(
+                EcommerceLoginSessionRecord.account_id.in_(
+                    [account.id for account in accounts]
+                ),
+                EcommerceLoginSessionRecord.status == "active",
+                EcommerceLoginSessionRecord.expires_at > now,
+            )
+        ).all()
+    )
     for account in accounts:
         if account.worker_id:
             worker = workers.get(account.worker_id)
@@ -1642,6 +1677,7 @@ def _select_automatic_account(
             account.status == "active"
             and account.login_state == EcommerceLoginState.READY.value
             and account.profile_id not in active_profile_ids
+            and account.id not in login_account_ids
         ):
             return account, True
     return None, True
@@ -1758,6 +1794,7 @@ async def create_crawl_task(
             session,
             workspace_id=payload.workspace_id,
             platform=_account_platform_for_policy(policy.adapter_name),
+            lock_accounts=True,
         )
         if has_platform_accounts and account is None:
             raise _account_unavailable_error()

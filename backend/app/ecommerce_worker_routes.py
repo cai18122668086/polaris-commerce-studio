@@ -849,7 +849,7 @@ def claim_worker_login_session(
             EcommerceLoginSessionRecord.started_at,
             EcommerceLoginSessionRecord.id,
         )
-        .with_for_update()
+        .with_for_update(of=EcommerceLoginSessionRecord, skip_locked=True)
         .limit(1)
     )
     if payload.platforms:
@@ -1227,7 +1227,12 @@ def claim_worker_task(
             )
             continue
         if task.account_id:
-            account = session.get(EcommerceAccountRecord, task.account_id)
+            account = session.scalar(
+                select(EcommerceAccountRecord)
+                .where(EcommerceAccountRecord.id == task.account_id)
+                .with_for_update(skip_locked=True)
+                .execution_options(populate_existing=True)
+            )
             if (
                 account is None
                 or account.workspace_id != worker.workspace_id
@@ -1235,6 +1240,17 @@ def claim_worker_task(
             ):
                 continue
             if account.worker_id and account.worker_id != worker.id:
+                continue
+            active_login = session.scalar(
+                select(EcommerceLoginSessionRecord.id)
+                .where(
+                    EcommerceLoginSessionRecord.account_id == account.id,
+                    EcommerceLoginSessionRecord.status == "active",
+                    EcommerceLoginSessionRecord.expires_at > utc_now(),
+                )
+                .limit(1)
+            )
+            if active_login is not None:
                 continue
         profile_id = task.profile_id or f"domestic-{task.platform}"
         fencing_token = _acquire_profile_lease(
@@ -1244,6 +1260,7 @@ def claim_worker_task(
             task_id=task.id,
             owner_id=worker.id,
             ttl_seconds=request.app.state.settings.ecommerce_worker_task_lease_ttl_seconds,
+            allow_reentry=False,
         )
         if fencing_token is None:
             continue

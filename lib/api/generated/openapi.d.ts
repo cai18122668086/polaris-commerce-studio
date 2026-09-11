@@ -1576,9 +1576,9 @@ export interface components {
             /**
              * Variant
              * @default original
-             * @constant
+             * @enum {string}
              */
-            variant: "original";
+            variant: "original" | "thumbnail";
         };
         /** AccessUrlResponse */
         AccessUrlResponse: {
@@ -1592,6 +1592,8 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+            /** Original Url */
+            original_url?: string | null;
             /** Url */
             url: string;
         };

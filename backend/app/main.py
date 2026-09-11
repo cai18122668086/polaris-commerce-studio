@@ -49,6 +49,7 @@ from .storage import (
 )
 from .supertokens_auth import ExternalAuthBackend, SuperTokensAuthAdapter
 from .task_runner import build_task_runner, validate_task_runner_settings
+from .thumbnails import ThumbnailCache
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,7 @@ def create_app(
     application.state.engine = engine
     application.state.session_factory = session_factory
     application.state.storage = storage
+    application.state.thumbnails = ThumbnailCache()
     application.state.image_validator = validator
     application.state.task_runner = task_runner
     application.state.ecommerce_crawl_handles = set()

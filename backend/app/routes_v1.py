@@ -140,6 +140,7 @@ from .storage import (
     ValidatedImage,
     build_content_disposition,
 )
+from .thumbnails import ThumbnailBusy
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
@@ -1055,6 +1056,12 @@ async def create_asset_access_url(
             "素材尚未就绪。",
         )
     expires_at = datetime.now(UTC) + timedelta(minutes=10)
+    if payload.variant == "thumbnail":
+        # A stable five-minute URL bucket allows private browser reuse across
+        # tabs; the signature still expires in at most ten minutes.
+        expires_at = datetime.fromtimestamp(
+            (int(datetime.now(UTC).timestamp()) // 300 + 2) * 300, UTC
+        )
     if asset.expires_at is not None:
         asset_expires_at = asset.expires_at
         if asset_expires_at.tzinfo is None:
@@ -1065,7 +1072,10 @@ async def create_asset_access_url(
         int((expires_at - datetime.now(UTC)).total_seconds()),
     )
     url = None
-    if request.app.state.settings.asset_access_url_mode == "auto":
+    if (
+        payload.variant == "original"
+        and request.app.state.settings.asset_access_url_mode == "auto"
+    ):
         url = await request.app.state.storage.create_access_url(
             asset.object_key,
             asset.original_filename,
@@ -1073,30 +1083,63 @@ async def create_asset_access_url(
             expires_seconds,
         )
     if url is None:
-        expires = int(expires_at.timestamp())
-        signature = _content_signature(
-            request.app.state.settings.access_url_secret,
+        url = _signed_asset_url(
+            request,
             workspace.workspace_id,
             asset.id,
-            expires,
+            expires_at,
             payload.disposition,
-        )
-        url = str(
-            request.url_for(
-                "get_signed_asset_content",
-                workspace_id=workspace.workspace_id,
-                asset_id=asset.id,
-            ).include_query_params(
-                expires=expires,
-                disposition=payload.disposition,
-                signature=signature,
-            )
+            payload.variant,
         )
     return AccessUrlResponse(
         url=url,
         expires_at=expires_at,
         disposition=payload.disposition,
+        original_url=(
+            _signed_asset_url(
+                request,
+                workspace.workspace_id,
+                asset.id,
+                expires_at,
+                payload.disposition,
+                "original",
+            )
+            if payload.variant == "thumbnail"
+            else None
+        ),
     )
+
+
+def _signed_asset_url(
+    request: Request,
+    workspace_id: str,
+    asset_id: str,
+    expires_at: datetime,
+    disposition: str,
+    variant: str,
+) -> str:
+    expires = int(expires_at.timestamp())
+    signature = _content_signature(
+        request.app.state.settings.access_url_secret,
+        workspace_id,
+        asset_id,
+        expires,
+        disposition,
+        variant,
+    )
+    url = str(
+        request.url_for(
+            "get_signed_asset_content",
+            workspace_id=workspace_id,
+            asset_id=asset_id,
+        ).include_query_params(
+            expires=expires,
+            disposition=disposition,
+            signature=signature,
+            variant=variant,
+        )
+    )
+    return url
 
 
 def _asset_for_storage(
@@ -1122,8 +1165,12 @@ async def get_signed_asset_content(
     expires: int,
     disposition: str,
     signature: str,
+    variant: str = "original",
 ) -> Response:
-    if disposition not in {"inline", "attachment"}:
+    if disposition not in {"inline", "attachment"} or variant not in {
+        "original",
+        "thumbnail",
+    }:
         raise ApiError(
             status.HTTP_403_FORBIDDEN, "ACCESS_URL_INVALID", "访问地址无效。"
         )
@@ -1133,6 +1180,7 @@ async def get_signed_asset_content(
         asset_id,
         expires,
         disposition,
+        variant,
     )
     if expires < int(datetime.now(UTC).timestamp()) or not hmac.compare_digest(
         signature, expected
@@ -1142,9 +1190,28 @@ async def get_signed_asset_content(
             "ACCESS_URL_EXPIRED",
             "访问地址无效或已过期。",
         )
-    asset = await run_in_threadpool(
-        _asset_for_storage, session, workspace_id, asset_id
-    )
+    asset = await run_in_threadpool(_asset_for_storage, session, workspace_id, asset_id)
+    if variant == "thumbnail":
+        etag = f'"thumbnail-v1-{asset.sha256}"'
+        max_age = max(0, min(60, expires - int(datetime.now(UTC).timestamp())))
+        headers = {
+            "Cache-Control": f"private, max-age={max_age}",
+            "ETag": etag,
+            "Content-Disposition": 'inline; filename="preview.webp"',
+        }
+        if request.headers.get("If-None-Match") == etag:
+            return Response(status_code=304, headers=headers)
+        try:
+            body = await request.app.state.thumbnails.get(
+                f"{asset.object_key}:{asset.sha256}",
+                lambda: request.app.state.storage.read_bytes(asset.object_key),
+            )
+        except ThumbnailBusy:
+            return Response(
+                status_code=503,
+                headers={"Retry-After": "3", "Cache-Control": "no-store"},
+            )
+        return Response(body, media_type="image/webp", headers=headers)
     content_disposition = build_content_disposition(
         disposition, asset.original_filename
     )
@@ -2995,6 +3062,9 @@ def _content_signature(
     asset_id: str,
     expires: int,
     disposition: str,
+    variant: str = "original",
 ) -> str:
-    message = f"{workspace_id}:{asset_id}:{expires}:{disposition}".encode()
-    return hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+    message = f"{workspace_id}:{asset_id}:{expires}:{disposition}"
+    if variant != "original":
+        message += f":{variant}-v1"
+    return hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()

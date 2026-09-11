@@ -177,15 +177,19 @@ function eventIcon(event: CrawlEvent) {
 function AssetThumb({ workspaceId, assetId, label }: { workspaceId: string; assetId: string; label: string }) {
   const anchor = useRef<HTMLAnchorElement>(null);
   const [url, setUrl] = useState<string>();
+  const [originalUrl, setOriginalUrl] = useState<string>();
   const [busy, setBusy] = useState(true);
   useEffect(() => {
     let active = true;
+    let started = false;
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const load = () => {
+      if (started) return;
+      started = true;
       timeout = setTimeout(() => controller.abort(), 12000);
-      void getAssetAccessUrl(workspaceId, assetId, "inline", controller.signal)
-        .then((access) => { if (active) setUrl(access.url); })
+      void getAssetAccessUrl(workspaceId, assetId, "inline", controller.signal, "thumbnail")
+        .then((access) => { if (active) { setUrl(access.url); setOriginalUrl(access.original_url ?? access.url); } })
         .catch(() => { if (active) setUrl(undefined); })
         .finally(() => { clearTimeout(timeout); if (active) setBusy(false); });
     };
@@ -202,7 +206,7 @@ function AssetThumb({ workspaceId, assetId, label }: { workspaceId: string; asse
     return () => { active = false; observer?.disconnect(); clearTimeout(timeout); controller.abort(); };
   }, [assetId, workspaceId]);
   return (
-    <a ref={anchor} className={styles.assetCard} href={url} target="_blank" rel="noreferrer" aria-label={`查看${label}`}>
+    <a ref={anchor} className={styles.assetCard} href={originalUrl} target="_blank" rel="noreferrer" aria-label={`查看${label}`}>
       <div className={styles.assetMedia}>
         {busy ? <LoaderCircle className="spin" size={20} /> : url ? <img src={url} alt={label} loading="lazy" decoding="async" /> : <ImageIcon size={22} />}
       </div>

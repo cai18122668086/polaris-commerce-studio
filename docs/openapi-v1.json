@@ -13,8 +13,11 @@
             "type": "string"
           },
           "variant": {
-            "const": "original",
             "default": "original",
+            "enum": [
+              "original",
+              "thumbnail"
+            ],
             "title": "Variant",
             "type": "string"
           }
@@ -36,6 +39,17 @@
             "format": "date-time",
             "title": "Expires At",
             "type": "string"
+          },
+          "original_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Url"
           },
           "url": {
             "title": "Url",

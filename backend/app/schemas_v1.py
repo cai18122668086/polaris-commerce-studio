@@ -158,13 +158,14 @@ class AssetListResponse(BaseModel):
 
 class AccessUrlRequest(BaseModel):
     disposition: Literal["inline", "attachment"] = "inline"
-    variant: Literal["original"] = "original"
+    variant: Literal["original", "thumbnail"] = "original"
 
 
 class AccessUrlResponse(BaseModel):
     url: str
     expires_at: datetime
     disposition: Literal["inline", "attachment"]
+    original_url: str | None = None
 
 
 class LocalEditInput(BaseModel):

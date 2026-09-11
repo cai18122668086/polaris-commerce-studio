@@ -16,7 +16,13 @@ def main() -> None:
     settings = Settings()
     settings.validate_runtime_safety()
     validate_task_runner_settings(settings)
-    engine, session_factory = build_database(settings.database_url)
+    engine, session_factory = build_database(
+        settings.database_url,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=settings.database_pool_timeout_seconds,
+        pool_recycle=settings.database_pool_recycle_seconds,
+    )
     storage = build_image_storage(settings)
     runner = build_task_runner(session_factory, settings, storage)
     next_retention_at = 0.0

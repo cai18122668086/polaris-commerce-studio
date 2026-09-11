@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
     timeout-minutes: 3
     steps:
       - name: Verify production SSH access
@@ -21,11 +21,12 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${POLARIS_DEPLOY_SSH_KEY}"
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "${POLARIS_DEPLOY_SSH_KEY}" > "$HOME/.ssh/polaris_deploy"
-          chmod 600 "$HOME/.ssh/polaris_deploy"
+          key_path="${RUNNER_TEMP}/polaris_deploy"
+          trap 'rm -f "$key_path"' EXIT
+          umask 077
+          printf '%s\n' "${POLARIS_DEPLOY_SSH_KEY}" > "$key_path"
           ssh \
-            -i "$HOME/.ssh/polaris_deploy" \
+            -i "$key_path" \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o IdentitiesOnly=yes \

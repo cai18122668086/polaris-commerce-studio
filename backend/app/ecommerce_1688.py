@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import parse_qs, unquote, urljoin, urlparse, urlunparse
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 from .ecommerce_chrome import connect_to_owned_chrome
 from .ecommerce_platform import PlatformPolicyError, SiteFamily, classify_site
@@ -336,6 +340,7 @@ def _label_value(text: str, labels: tuple[str, ...]) -> str | None:
 
 def _properties(value: Any) -> tuple[dict[str, str], ...]:
     result: list[dict[str, str]] = []
+    items: Iterable[tuple[Any, Any]]
     if isinstance(value, dict):
         items = value.items()
     elif isinstance(value, list):
@@ -997,7 +1002,7 @@ def _image_candidates_1688(
                 attrs.get(name, "") for name in ("class", "id", "alt", "aria-label")
             )
         )
-        role: ImageRole = _image_context_role(context)
+        role = _image_context_role(context)
         for attr in (
             "src",
             "data-src",
@@ -1066,7 +1071,7 @@ def _image_candidates_1688(
         context = " ".join(
             attrs.get(name, "") for name in ("class", "id", "alt", "aria-label")
         )
-        role: ImageRole = _image_context_role(context)
+        role = _image_context_role(context)
         for attr_value in image_attrs:
             for raw in re.findall(
                 r"(?:url\(\s*[\"']?|^)(https?://[^\"'\s)]+)",
@@ -1544,7 +1549,7 @@ def crawl_one_1688(url: str, timeout_seconds: float = 30.0) -> Alibaba1688Produc
     return Alibaba1688Adapter().parse_product(body, source_url, resolved_url)
 
 
-def _scroll_1688_page_for_lazy_images(page: object, timeout_ms: int) -> None:
+def _scroll_1688_page_for_lazy_images(page: Page, timeout_ms: int) -> None:
     """Walk the page so viewport-triggered gallery/detail images are loaded."""
 
     settle_budget_ms = min(12_000, max(2_000, timeout_ms // 3))
@@ -1610,7 +1615,7 @@ def _scroll_1688_page_for_lazy_images(page: object, timeout_ms: int) -> None:
     page.wait_for_timeout(min(500, interval_ms))
 
 
-def _activate_1688_detail_section(page: object) -> bool:
+def _activate_1688_detail_section(page: Page) -> bool:
     """Activate a visible product-detail tab without touching risk controls."""
 
     result = page.evaluate(
@@ -1634,7 +1639,7 @@ def _activate_1688_detail_section(page: object) -> bool:
     return result is True
 
 
-def _shadow_dom_1688_content(page: object) -> str:
+def _shadow_dom_1688_content(page: Page) -> str:
     """Serialize only public image attributes from open Shadow DOM trees.
 
     ``page.content()`` intentionally omits open Shadow DOM contents. 1688's
@@ -1742,7 +1747,7 @@ def _shadow_dom_1688_content(page: object) -> str:
     return ""
 
 
-def _rendered_1688_content(page: object) -> str:
+def _rendered_1688_content(page: Page) -> str:
     """Return main-document, Shadow DOM, and safe same-site iframe fragments.
 
     Some offers render the long description in an iframe or an open Shadow DOM.
@@ -1785,7 +1790,7 @@ def _rendered_1688_content(page: object) -> str:
 
 
 def _crawl_rendered_1688_page(
-    page: object,
+    page: Page,
     source_url: str,
     timeout_ms: int,
     playwright_error: type[Exception],

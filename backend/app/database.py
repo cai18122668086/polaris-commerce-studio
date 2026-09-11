@@ -11,6 +11,11 @@ class Base(DeclarativeBase):
 
 def build_database(
     database_url: str,
+    *,
+    pool_size: int = 5,
+    max_overflow: int = 10,
+    pool_timeout: float = 5,
+    pool_recycle: int = 1800,
 ) -> tuple[Engine, sessionmaker[Session]]:
     connect_args: dict[str, object]
     if database_url.startswith("sqlite"):
@@ -22,8 +27,10 @@ def build_database(
         # move the overload to PostgreSQL instead of fixing connection use.
         connect_args = {"connect_timeout": 5}
         pool_options = {
-            "pool_timeout": 5,
-            "pool_recycle": 1800,
+            "pool_size": pool_size,
+            "max_overflow": max_overflow,
+            "pool_timeout": pool_timeout,
+            "pool_recycle": pool_recycle,
         }
     engine = create_engine(
         database_url,

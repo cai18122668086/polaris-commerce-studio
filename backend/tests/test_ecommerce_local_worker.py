@@ -17,6 +17,19 @@ from app.ecommerce_local_worker import (
 )
 
 
+def test_profile_store_normalizes_windows_extended_path_prefix() -> None:
+    if os.name != "nt":
+        pytest.skip("Windows path normalization")
+    value = local_worker._normalise_windows_resolved_path(
+        Path("//?/C:/polaris/profiles/account_1")
+    )
+    assert str(value).replace("\\", "/").casefold() == "c:/polaris/profiles/account_1"
+    unc = local_worker._normalise_windows_resolved_path(
+        Path("//?/UNC/server/share/profiles/account_1")
+    )
+    assert str(unc).replace("\\", "/").casefold() == "//server/share/profiles/account_1"
+
+
 def test_profile_store_rejects_traversal_and_serializes_account_access(tmp_path: Path):
     store = LocalProfileStore(tmp_path / "profiles")
     profile = store.profile_path("account_1")

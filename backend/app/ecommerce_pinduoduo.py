@@ -13,9 +13,12 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import parse_qs, urljoin, urlparse, urlunparse
 from urllib.request import ProxyHandler, Request, build_opener
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 from .ecommerce_chrome import connect_to_owned_chrome
 from .ecommerce_platform import PlatformPolicyError, SiteFamily, classify_site
@@ -1221,10 +1224,9 @@ class PinduoduoAdapter:
                 "price",
             ),
         )
+        price_match = re.search(r"(?:¥|￥)\s*(\d+(?:\.\d{1,2})?)", text)
         price = _price(raw_price) or _price(
-            re.search(r"(?:¥|￥)\s*(\d+(?:\.\d{1,2})?)", text).group(1)
-            if re.search(r"(?:¥|￥)\s*(\d+(?:\.\d{1,2})?)", text)
-            else None
+            price_match.group(1) if price_match else None
         )
         shop_name = _string_value(
             _first_value(
@@ -1336,7 +1338,7 @@ def crawl_one_pinduoduo(url: str, timeout_ms: int = 30_000) -> PinduoduoProduct:
     return parse_product_html(html, url.strip(), resolved_url)
 
 
-def _scroll_page(page: object, timeout_ms: int) -> None:
+def _scroll_page(page: Page, timeout_ms: int) -> None:
     for _ in range(max(8, min(32, timeout_ms // 500))):
         with suppress(Exception):
             metrics = page.evaluate(
@@ -1366,7 +1368,7 @@ def _scroll_page(page: object, timeout_ms: int) -> None:
         page.evaluate("() => window.scrollTo(0, 0)")
 
 
-def _rendered_content(page: object) -> str:
+def _rendered_content(page: Page) -> str:
     """Serialize rendered media with the DOM context that produced it.
 
     ``page.content()`` contains classes/attributes but not runtime dimensions
@@ -1443,7 +1445,7 @@ def _rendered_content(page: object) -> str:
 
 
 def _navigation_diagnostics(
-    requested_url: str, resolved_url: str, page: object
+    requested_url: str, resolved_url: str, page: Page
 ) -> None:
     """Log safe navigation facts without query strings or page contents."""
 

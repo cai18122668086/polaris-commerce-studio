@@ -122,10 +122,11 @@ class EcommerceSessionManager:
             # legacy terminal states when a human closes the window. Normalize
             # those states at this profile boundary instead of exposing a
             # second state vocabulary for 1688.
+            state = value.get("state", "not_initialized")
             value["state"] = {
                 "signed_out": "not_initialized",
                 "error": "unavailable",
-            }.get(value.get("state"), value.get("state", "not_initialized"))
+            }.get(state, state) if isinstance(state, str) else state
         value.pop("cookie", None)
         value.pop("cookies", None)
         value["profileReady"] = self.profile_dir.exists()

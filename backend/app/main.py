@@ -1,4 +1,6 @@
+import hmac
 import logging
+import math
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from time import monotonic
@@ -8,8 +10,9 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import text
+from sqlalchemy import Engine, text
 from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
+from sqlalchemy.orm import Session, sessionmaker
 
 from .admin_account_routes import router as admin_account_router
 from .admin_dashboard_routes import router as admin_dashboard_router
@@ -53,6 +56,110 @@ from .thumbnails import ThumbnailCache
 
 logger = logging.getLogger(__name__)
 
+_METRICS_MAX_ROUTE_KEYS = 200
+_METRICS_BUCKETS_SECONDS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, math.inf)
+
+
+def _prometheus_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _metrics_text(application: FastAPI) -> str:
+    metrics = application.state.request_metrics
+    lines = [
+        "# HELP polaris_http_requests_total Total HTTP requests by route "
+        "and status class.",
+        "# TYPE polaris_http_requests_total counter",
+    ]
+    for key, value in sorted(metrics["requests"].items()):
+        method, route, status_class = key
+        lines.append(
+            f'polaris_http_requests_total{{method="{_prometheus_label(method)}",'
+            f'route="{_prometheus_label(route)}",'
+            f'status_class="{_prometheus_label(status_class)}"}} {value}'
+        )
+    lines.extend(
+        [
+            "# HELP polaris_http_request_duration_seconds HTTP request duration.",
+            "# TYPE polaris_http_request_duration_seconds histogram",
+        ]
+    )
+    for key, values in sorted(metrics["latency"].items()):
+        method, route = key
+        labels = (
+            f'method="{_prometheus_label(method)}",'
+            f'route="{_prometheus_label(route)}"'
+        )
+        cumulative = 0
+        for bucket, count in zip(
+            _METRICS_BUCKETS_SECONDS, values["buckets"], strict=True
+        ):
+            cumulative += count
+            boundary = "+Inf" if math.isinf(bucket) else f"{bucket:g}"
+            lines.append(
+                "polaris_http_request_duration_seconds_bucket{"
+                f'{labels},le="{boundary}"}} {cumulative}'
+            )
+        lines.append(
+            f"polaris_http_request_duration_seconds_sum{{{labels}}} "
+            f"{values['sum']:.6f}"
+        )
+        lines.append(
+            f"polaris_http_request_duration_seconds_count{{{labels}}} "
+            f"{values['count']}"
+        )
+    lines.extend(
+        [
+            "# HELP polaris_http_requests_in_flight Current in-flight requests.",
+            "# TYPE polaris_http_requests_in_flight gauge",
+            f"polaris_http_requests_in_flight {metrics['in_flight']}",
+        ]
+    )
+    pool = application.state.engine.pool
+    pool_size = getattr(pool, "size", lambda: 0)()
+    checked_out = getattr(pool, "checkedout", lambda: 0)()
+    overflow = max(0, int(getattr(pool, "overflow", lambda: 0)()))
+    available = max(0, int(pool_size) + overflow - int(checked_out))
+    lines.extend(
+        [
+            "# HELP polaris_database_pool_size Configured SQLAlchemy pool size.",
+            "# TYPE polaris_database_pool_size gauge",
+            f"polaris_database_pool_size {pool_size}",
+            "# HELP polaris_database_pool_checked_out Current checked-out connections.",
+            "# TYPE polaris_database_pool_checked_out gauge",
+            f"polaris_database_pool_checked_out {checked_out}",
+            "# HELP polaris_database_pool_overflow Current overflow connections.",
+            "# TYPE polaris_database_pool_overflow gauge",
+            f"polaris_database_pool_overflow {overflow}",
+            "# HELP polaris_database_pool_available Approximate idle pool capacity.",
+            "# TYPE polaris_database_pool_available gauge",
+            f"polaris_database_pool_available {available}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _build_database_for_settings(
+    app_settings: Settings,
+) -> tuple[Engine, sessionmaker[Session]]:
+    """Build a configured engine while keeping simple test doubles compatible."""
+
+    try:
+        return build_database(
+            app_settings.database_url,
+            pool_size=app_settings.database_pool_size,
+            max_overflow=app_settings.database_max_overflow,
+            pool_timeout=app_settings.database_pool_timeout_seconds,
+            pool_recycle=app_settings.database_pool_recycle_seconds,
+        )
+    except TypeError as exc:
+        # A few integration tests replace build_database with a one-argument
+        # factory. Only fall back for that explicit signature mismatch; real
+        # engine construction errors must still propagate.
+        if "unexpected keyword argument" not in str(exc):
+            raise
+        return build_database(app_settings.database_url)
+
 
 def _serializable_validation_errors(
     exc: RequestValidationError,
@@ -80,7 +187,7 @@ def create_app(
     if app_settings.auth_mode == "external":
         auth_backend = auth_backend or SuperTokensAuthAdapter(app_settings)
         auth_backend.initialize()
-    engine, session_factory = build_database(app_settings.database_url)
+    engine, session_factory = _build_database_for_settings(app_settings)
     storage: ImageStorage = build_image_storage(app_settings)
     validator = storage.validator
     task_runner = build_task_runner(session_factory, app_settings, storage)
@@ -109,6 +216,11 @@ def create_app(
     )
     application.state.settings = app_settings
     application.state.engine = engine
+    application.state.request_metrics = {
+        "requests": {},
+        "latency": {},
+        "in_flight": 0,
+    }
     application.state.session_factory = session_factory
     application.state.storage = storage
     application.state.thumbnails = ThumbnailCache()
@@ -195,9 +307,45 @@ def create_app(
         request_id = request.headers.get("X-Request-Id") or f"req_{uuid4().hex}"
         request.state.request_id = request_id
         started = monotonic()
-        response = await call_next(request)
+        application.state.request_metrics["in_flight"] += 1
+        response: Response | None = None
+        try:
+            response = await call_next(request)
+        finally:
+            elapsed = monotonic() - started
+            application.state.request_metrics["in_flight"] -= 1
+            if request.url.path != "/health/metrics":
+                route = request.scope.get("route")
+                route_name = str(getattr(route, "path", request.url.path))
+                requests = application.state.request_metrics["requests"]
+                latency = application.state.request_metrics["latency"]
+                if (
+                    len(requests) < _METRICS_MAX_ROUTE_KEYS
+                    or any(key[0:2] == (request.method, route_name) for key in requests)
+                ):
+                    status_code = response.status_code if response is not None else 500
+                    request_key = (
+                        request.method,
+                        route_name,
+                        f"{status_code // 100}xx",
+                    )
+                    requests[request_key] = requests.get(request_key, 0) + 1
+                    latency_key = (request.method, route_name)
+                    values = latency.setdefault(
+                        latency_key,
+                        {
+                            "buckets": [0] * len(_METRICS_BUCKETS_SECONDS),
+                            "sum": 0.0,
+                            "count": 0,
+                        },
+                    )
+                    values["sum"] += elapsed
+                    values["count"] += 1
+                    for index, boundary in enumerate(_METRICS_BUCKETS_SECONDS):
+                        if elapsed <= boundary:
+                            values["buckets"][index] += 1
+                            break
         response.headers["X-Request-Id"] = request_id
-        elapsed = monotonic() - started
         if elapsed >= 2:
             logger.warning(
                 "slow_request method=%s path=%s status=%s seconds=%.3f",
@@ -304,6 +452,26 @@ def create_app(
             service=app_settings.app_name,
             version=app_settings.app_version,
             checks=checks,
+        )
+
+    @application.get(
+        "/health/metrics",
+        include_in_schema=False,
+        response_class=Response,
+        tags=["system"],
+    )
+    def metrics(request: Request) -> Response:
+        configured_token = app_settings.metrics_token.get_secret_value()
+        supplied_token = request.headers.get("X-Metrics-Token", "")
+        if not configured_token or not hmac.compare_digest(
+            supplied_token, configured_token
+        ):
+            # Keep the endpoint indistinguishable from a disabled route when
+            # an operator has not provisioned a scrape token.
+            return Response(status_code=status.HTTP_404_NOT_FOUND)
+        return Response(
+            content=_metrics_text(application),
+            media_type="text/plain; version=0.0.4",
         )
 
     @application.get("/health/ecommerce", tags=["system"])

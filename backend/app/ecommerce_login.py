@@ -10,7 +10,11 @@ import time
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from playwright.sync_api import BrowserContext, Page
 
 from .ecommerce_chrome import connect_to_owned_chrome
 
@@ -274,7 +278,7 @@ def _write_closed_status(path: Path, message: str) -> None:
     _write(path, "signed_out", message)
 
 
-def _write_preview(page: object, screenshot_path: Path | None) -> None:
+def _write_preview(page: Page, screenshot_path: Path | None) -> None:
     """Persist a short-lived browser preview without exposing browser state."""
 
     if screenshot_path is None:
@@ -294,7 +298,7 @@ def _write_preview(page: object, screenshot_path: Path | None) -> None:
         return
 
 
-def _start_screencast(page: object, screencast_path: Path | None) -> object | None:
+def _start_screencast(page: Page, screencast_path: Path | None) -> object | None:
     """Start a CDP JPEG screencast and atomically publish the newest frame.
 
     The file is only a loopback IPC handoff between the isolated helper and
@@ -340,7 +344,7 @@ def _stop_screencast(cdp: object | None) -> None:
         cdp.send("Page.stopScreencast")  # type: ignore[attr-defined]
 
 
-def _drain_input_actions(page: object, actions_dir: Path | None) -> None:
+def _drain_input_actions(page: Page, actions_dir: Path | None) -> None:
     """Apply user-originated input events from the protected action queue."""
 
     if actions_dir is None or not actions_dir.is_dir():
@@ -374,7 +378,7 @@ def _drain_input_actions(page: object, actions_dir: Path | None) -> None:
         except Exception:
             with suppress(Exception):
                 action_path.unlink(missing_ok=True)
-def _read_page_snapshot(page: object) -> tuple[str, str, str]:
+def _read_page_snapshot(page: Page) -> tuple[str, str, str]:
     """Read only URL/title/visible text needed for session state detection."""
 
     current_url = page.url  # type: ignore[attr-defined]
@@ -385,7 +389,7 @@ def _read_page_snapshot(page: object) -> tuple[str, str, str]:
     return current_url, title, body
 
 
-def _close_extra_pages(context: object, keep_page: object) -> None:
+def _close_extra_pages(context: BrowserContext, keep_page: Page) -> None:
     """Keep the dedicated human-facing profile to one visible tab.
 
     This only operates on the isolated Chrome profile owned by Polaris. It
@@ -400,7 +404,7 @@ def _close_extra_pages(context: object, keep_page: object) -> None:
                 candidate.close()
 
 
-def _probe_pinduoduo_session(current_page: object) -> bool:
+def _probe_pinduoduo_session(current_page: Page) -> bool:
     """Validate an existing PDD profile on its official home page."""
 
     try:
@@ -422,10 +426,10 @@ def _probe_pinduoduo_session(current_page: object) -> bool:
 
 
 def _probe_jd_session(
-    context: object,
-    current_page: object,
-    probe_page: object | None = None,
-) -> tuple[object | None, bool]:
+    context: BrowserContext,
+    current_page: Page,
+    probe_page: Page | None = None,
+) -> tuple[Page | None, bool]:
     """Validate JD login in the current tab, without opening a second tab.
 
     The order center is a more reliable authentication signal than a product
@@ -574,7 +578,7 @@ def main() -> int:
     last_valid_page = False
     blocked_seen = False
     authenticated_streak = 0
-    jd_probe_page: object | None = None
+    jd_probe_page: Page | None = None
     jd_login_page_seen = False
     jd_probe_attempted_since_login = False
     try:

@@ -44,7 +44,13 @@ def _build_runtime() -> Any:
     if _engine is not None:
         _engine.dispose()
 
-    _engine, _session_factory = build_database(settings.database_url)
+    _engine, _session_factory = build_database(
+        settings.database_url,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=settings.database_pool_timeout_seconds,
+        pool_recycle=settings.database_pool_recycle_seconds,
+    )
     _storage = build_image_storage(settings)
     state = SimpleNamespace(
         settings=settings,
@@ -114,7 +120,10 @@ def process_crawl_task(self: Any, task_id: str) -> dict[str, str]:
         f"crawl-worker-{socket.gethostname()}-{os.getpid()}-{uuid4().hex[:10]}"
     )
     asyncio.run(_run_task(runtime, task_id, worker_id=worker_id))
-    with _session_factory() as session:
+    session_factory = _session_factory
+    if session_factory is None:
+        raise RuntimeError("crawl worker database is not initialized")
+    with session_factory() as session:
         task = session.get(CrawlTaskRecord, task_id)
         return {
             "task_id": task_id,

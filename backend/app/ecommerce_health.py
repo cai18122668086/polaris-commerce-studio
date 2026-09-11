@@ -41,6 +41,10 @@ def check_object_storage(storage: Any) -> str:
             # Development Compose may create the predeclared bucket; production
             # must provision it ahead of time and keeps auto-create disabled.
             storage._ensure_bucket()
+            # `_ensure_bucket` intentionally caches successful provisioning, but
+            # readiness must still detect a later S3/MinIO outage.  A lightweight
+            # HEAD is read-only and does not depend on object contents.
+            storage.client.head_bucket(Bucket=storage.bucket)
             return "ok"
     except Exception:
         return "failed"

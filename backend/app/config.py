@@ -78,6 +78,9 @@ class Settings(BaseSettings):
 
     app_name: str = "Polaris Commerce Studio API"
     app_version: str = "1.1.0"
+    # Metrics remain disabled unless an operator provisions a dedicated scrape
+    # token. Never expose request telemetry anonymously on the public edge.
+    metrics_token: SecretStr = SecretStr("")
     environment: Literal["development", "test", "production"] = "development"
     auth_mode: Literal["development", "external"] = "development"
     supertokens_connection_uri: str = "http://localhost:3567"
@@ -104,6 +107,12 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://polaris:polaris_dev_only@localhost:5432/polaris"
     )
+    # Keep connection use bounded per process. Production overrides these
+    # values because Celery creates one engine in each worker child.
+    database_pool_size: int = Field(default=5, ge=1, le=50)
+    database_max_overflow: int = Field(default=10, ge=0, le=50)
+    database_pool_timeout_seconds: float = Field(default=5, gt=0, le=60)
+    database_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
     auto_create_schema: bool = False
     storage_backend: Literal["local", "s3"] = "s3"
     storage_dir: Path = Path("backend/.data/storage")

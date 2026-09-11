@@ -13,9 +13,12 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from html import escape, unescape
 from html.parser import HTMLParser
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 from .ecommerce_chrome import connect_to_owned_chrome
 from .ecommerce_platform import PlatformPolicyError, SiteFamily, classify_site
@@ -1326,7 +1329,7 @@ def crawl_one_jd(url: str, timeout_ms: int = 30_000) -> JDProduct:
     return parse_product_html(html, url.strip(), resolved_url)
 
 
-def _scroll_page_for_lazy_images(page: object, timeout_ms: int) -> None:
+def _scroll_page_for_lazy_images(page: Page, timeout_ms: int) -> None:
     budget = min(12_000, max(2_000, timeout_ms // 3))
     for _ in range(max(8, min(40, budget // 300))):
         metrics = page.evaluate(
@@ -1355,7 +1358,7 @@ def _scroll_page_for_lazy_images(page: object, timeout_ms: int) -> None:
         page.evaluate("() => window.scrollTo(0, 0)")
 
 
-def _activate_detail_tab(page: object) -> None:
+def _activate_detail_tab(page: Page) -> None:
     selectors = (
         "text=图文详情",
         "text=商品详情",
@@ -1371,7 +1374,7 @@ def _activate_detail_tab(page: object) -> None:
                 return
 
 
-def _computed_background_image_fragment(page: object) -> str:
+def _computed_background_image_fragment(page: Page) -> str:
     """Expose computed CSS backgrounds to the HTML parser.
 
     京东详情图常把图片放在 CSS ``background-image`` 中，而不是 ``<img>``
@@ -1416,7 +1419,8 @@ def _computed_background_image_fragment(page: object) -> str:
         url = item.get("url")
         if not isinstance(url, str) or not url.strip():
             continue
-        marker = item.get("marker") if isinstance(item.get("marker"), str) else ""
+        marker_value = item.get("marker")
+        marker = marker_value if isinstance(marker_value, str) else ""
         fragments.append(
             f'<div class="jd-computed-background-image {escape(marker, quote=True)}">'
             f'<img src="{escape(url.strip(), quote=True)}"></div>'
@@ -1424,7 +1428,7 @@ def _computed_background_image_fragment(page: object) -> str:
     return "".join(fragments)
 
 
-def _rendered_image_fragment(page: object) -> str:
+def _rendered_image_fragment(page: Page) -> str:
     """Expose loaded ``currentSrc`` values, including browser-only CDN URLs.
 
     JD's mobile page keeps a stale ``item.m.jd.com/product/jfs/...`` URL in
@@ -1475,9 +1479,12 @@ def _rendered_image_fragment(page: object) -> str:
         url = item.get("url")
         if not isinstance(url, str) or not url.strip():
             continue
-        marker = item.get("marker") if isinstance(item.get("marker"), str) else ""
-        width = item.get("width") if isinstance(item.get("width"), int) else 0
-        height = item.get("height") if isinstance(item.get("height"), int) else 0
+        marker_value = item.get("marker")
+        marker = marker_value if isinstance(marker_value, str) else ""
+        width_value = item.get("width")
+        height_value = item.get("height")
+        width = width_value if isinstance(width_value, int) else 0
+        height = height_value if isinstance(height_value, int) else 0
         if width <= 0 or height <= 0:
             continue
         marker = f"{marker} rendered-dimensions-{width}x{height}".strip()
@@ -1488,7 +1495,7 @@ def _rendered_image_fragment(page: object) -> str:
     return "".join(fragments)
 
 
-def _rendered_sku_fragment(page: object) -> str:
+def _rendered_sku_fragment(page: Page) -> str:
     """Keep DOM option labels and image associations even when images repeat.
 
     Reading the selected product's controls does not invent SKU IDs or visit
@@ -1527,7 +1534,7 @@ def _rendered_sku_fragment(page: object) -> str:
     return f'<script type="application/json">{payload}</script>'
 
 
-def _rendered_jd_content(page: object) -> str:
+def _rendered_jd_content(page: Page) -> str:
     parts = [page.content()]
     rendered = _rendered_image_fragment(page)
     if rendered:
@@ -1570,7 +1577,7 @@ def _rendered_jd_content(page: object) -> str:
 
 
 def _crawl_rendered_jd_page(
-    page: object, source_url: str, timeout_ms: int, timeout_error: type[Exception]
+    page: Page, source_url: str, timeout_ms: int, timeout_error: type[Exception]
 ) -> JDProduct:
     page.goto(source_url, wait_until="domcontentloaded", timeout=timeout_ms)
     page.wait_for_timeout(1_000)

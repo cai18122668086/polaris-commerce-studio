@@ -3,8 +3,15 @@ name: polaris-production
 x-backend-common-environment: &backend-common-environment
   POLARIS_ENVIRONMENT: production
   POLARIS_AUTH_MODE: external
+  POLARIS_METRICS_TOKEN: ${POLARIS_METRICS_TOKEN:-}
   POLARIS_ACCESS_URL_SECRET: ${POLARIS_ACCESS_URL_SECRET:?set the existing server-local signing secret}
   POLARIS_DATABASE_URL: postgresql+psycopg://polaris:${POLARIS_POSTGRES_PASSWORD:?set PostgreSQL password}@postgres:5432/polaris
+  # Each Celery child owns its own SQLAlchemy engine. Keep the aggregate
+  # connection budget below PostgreSQL's small-instance limit.
+  POLARIS_DATABASE_POOL_SIZE: ${POLARIS_DATABASE_POOL_SIZE:-3}
+  POLARIS_DATABASE_MAX_OVERFLOW: ${POLARIS_DATABASE_MAX_OVERFLOW:-2}
+  POLARIS_DATABASE_POOL_TIMEOUT_SECONDS: ${POLARIS_DATABASE_POOL_TIMEOUT_SECONDS:-5}
+  POLARIS_DATABASE_POOL_RECYCLE_SECONDS: ${POLARIS_DATABASE_POOL_RECYCLE_SECONDS:-1800}
   POLARIS_AUTO_CREATE_SCHEMA: "false"
   POLARIS_STORAGE_BACKEND: s3
   POLARIS_S3_ENDPOINT_URL: http://minio:9000

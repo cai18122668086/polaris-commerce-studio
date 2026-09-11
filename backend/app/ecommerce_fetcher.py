@@ -15,8 +15,12 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from threading import RLock
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 HOSTS = ("taobao.com", "tmall.com", "tb.cn")
 ID_RE = re.compile(r"(?<!\d)(\d{10,14})(?!\d)")
@@ -879,7 +883,7 @@ def crawl_one(url: str, *_args: object, **_kwargs: object) -> Product:
     return parsed
 
 
-def _scroll_page_for_lazy_images(page: object, timeout_ms: int) -> None:
+def _scroll_page_for_lazy_images(page: Page, timeout_ms: int) -> None:
     """Walk the rendered page so viewport-triggered detail images are loaded.
 
     Taobao detail sections commonly lazy-load images only when their elements

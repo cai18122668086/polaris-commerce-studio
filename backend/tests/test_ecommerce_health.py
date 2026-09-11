@@ -1,6 +1,34 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+
+
+def test_object_storage_readiness_rechecks_cached_s3_bucket(monkeypatch) -> None:
+    from app.ecommerce_health import check_object_storage
+    from app.storage import S3ImageStorage
+
+    class _Client:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def head_bucket(self, *, Bucket: str) -> None:
+            assert Bucket == "bucket"
+            self.calls += 1
+
+    storage = object.__new__(S3ImageStorage)
+    storage._bucket_ready = True
+    storage.bucket = "bucket"
+    storage.client = _Client()
+
+    assert check_object_storage(storage) == "ok"
+    assert storage.client.calls == 1
+
+    def _failed(*, Bucket: str) -> None:
+        raise RuntimeError("storage unavailable")
+
+    monkeypatch.setattr(storage.client, "head_bucket", _failed)
+    assert check_object_storage(storage) == "failed"
 
 
 def test_ecommerce_health_exposes_aggregate_queue_and_lease_metrics(
@@ -56,3 +84,22 @@ def test_health_ready_reports_broker_only_for_celery(settings, monkeypatch) -> N
 
     assert response.status_code == 503
     assert response.json()["checks"]["task_broker"] == "failed"
+
+
+def test_metrics_endpoint_requires_operator_token_and_reports_pool(
+    client, settings
+) -> None:
+    assert client.get("/health/metrics").status_code == 404
+
+    settings.metrics_token = SecretStr("metrics-test-token")
+    from app.main import create_app
+
+    with TestClient(create_app(settings)) as token_client:
+        token_client.get("/health/live")
+        response = token_client.get(
+            "/health/metrics", headers={"X-Metrics-Token": "metrics-test-token"}
+        )
+
+    assert response.status_code == 200
+    assert "polaris_http_requests_total" in response.text
+    assert "polaris_database_pool_size" in response.text

@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   probe:
-    runs-on: [self-hosted, linux, x64, polaris-ci]
+    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
     timeout-minutes: 3
     steps:
       - name: Verify production SSH access

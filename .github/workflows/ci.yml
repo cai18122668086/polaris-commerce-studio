@@ -189,4 +189,7 @@ jobs:
           build-args: ${{ matrix.build_args }}
           push: false
           cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # Keep only final image layers in GitHub cache. Intermediate layers
+          # grew private-repository cache storage into multiple GiB without
+          # improving the release gate enough to justify the recurring cost.
+          cache-to: type=gha,mode=min,scope=${{ matrix.name }}

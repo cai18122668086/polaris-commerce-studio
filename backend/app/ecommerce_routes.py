@@ -11,7 +11,7 @@ import logging
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
 from fastapi import (
@@ -78,7 +78,9 @@ _ACCOUNT_PLATFORM_TO_FAMILY = {
 }
 
 
-def _account_manager(request: Request, account: Any) -> EcommerceSessionManager:
+def _account_manager(
+    request: Request | WebSocket, account: Any
+) -> EcommerceSessionManager:
     managers = request.app.state.ecommerce_account_sessions
     manager = managers.get(account.id)
     if manager is None:
@@ -113,7 +115,7 @@ def _sync_account_login_state(
 
 
 def _resolve_account_session_target(
-    request: Request,
+    request: Request | WebSocket,
     session: Session,
     principal: Principal,
     *,
@@ -303,7 +305,7 @@ def _session_manager_for_family(request: Request, site_family: SiteFamily):
     return request.app.state.ecommerce_session
 
 
-def _session_manager_for_hint(request: Request, platform: str):
+def _session_manager_for_hint(request: Request | WebSocket, platform: str):
     if platform in {"alibaba1688", "1688"}:
         return request.app.state.ecommerce_session_1688
     if platform == "jd":
@@ -700,7 +702,7 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
         profile_status = session_manager.status()
         profile_ready = bool(profile_status.get("profileReady"))
         session_ready = profile_ready and profile_status.get("state") == "ready"
-        result: Alibaba1688Product | None = None
+        alibaba_result: Alibaba1688Product | None = None
         static_error: Exception | None = None
 
         async def render_with_authorized_session():
@@ -723,13 +725,13 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
             # first hop. It also avoids two visits to the same offer before a
             # human has had a chance to complete the official verification.
             try:
-                result = await render_with_authorized_session()
+                alibaba_result = await render_with_authorized_session()
                 browser_used = True
             except Exception as browser_error:
                 static_error = browser_error
         else:
             try:
-                result = await asyncio.wait_for(
+                alibaba_result = await asyncio.wait_for(
                     asyncio.to_thread(crawl_one_1688, url), timeout=35
                 )
             except Exception as exc:
@@ -754,8 +756,8 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
                 },
             ) from static_error
 
-        assert result is not None
-        if result.status != "product":
+        assert alibaba_result is not None
+        if alibaba_result.status != "product":
             status_details = {
                 "login_required": (
                     401,
@@ -774,8 +776,8 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
                 ),
                 "empty": (422, "EMPTY_PRODUCT", "未读取到 1688 商品内容。"),
             }
-            status_code, code, message = status_details[result.status]
-            if result.status == "risk_controlled" and session_ready:
+            status_code, code, message = status_details[alibaba_result.status]
+            if alibaba_result.status == "risk_controlled" and session_ready:
                 message = (
                     "本次 1688 商品页触发风控，当前会话仍保持连接，"
                     "无需重新登录。请打开官方验证页完成一次人工验证后再拉取。"
@@ -784,20 +786,20 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
             # not prove that the human-authorized 1688 session expired, so keep
             # the existing session state (especially ``ready``) intact. Only an
             # explicit login page is evidence that the session needs relogin.
-            if result.status == "login_required":
+            if alibaba_result.status == "login_required":
                 session_manager.mark_needs_relogin()
             raise HTTPException(
                 status_code=status_code,
                 detail={
                     "code": code,
                     "message": message,
-                    "retryable": result.status != "product_not_found",
+                    "retryable": alibaba_result.status != "product_not_found",
                     "policy": policy.as_dict(),
                 },
             )
-        data = _normalise(result, url, payload.includeDescImages)
+        data = _normalise(alibaba_result, url, payload.includeDescImages)
         _log_image_diagnostics(
-            "1688-browser" if browser_used else "1688-static", result
+            "1688-browser" if browser_used else "1688-static", alibaba_result
         )
         needs_browser = (
             not data["imageUrls"]
@@ -807,7 +809,7 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
         )
         # 1688 product shells commonly expose title/price in the initial HTML
         # while adding the gallery only after client-side rendering. Image
-        # extraction therefore needs a browser retry whenever the static result
+        # extraction therefore needs a browser retry whenever the static alibaba_result
         # is incomplete, even when the optional authenticated profile is not
         # ready. This retry never logs in or submits credentials: it uses an
         # authorized profile only when ``session_ready`` is true, otherwise it
@@ -864,7 +866,7 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
         profile_status = session_manager.status()
         profile_ready = bool(profile_status.get("profileReady"))
         session_ready = profile_ready and profile_status.get("state") == "ready"
-        result: JDProduct | None = None
+        jd_result: JDProduct | None = None
         fetch_error: Exception | None = None
 
         async def render_with_authorized_session():
@@ -880,12 +882,12 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
 
         if session_ready:
             try:
-                result = await render_with_authorized_session()
+                jd_result = await render_with_authorized_session()
             except Exception as exc:
                 fetch_error = exc
         else:
             try:
-                result = await asyncio.wait_for(
+                jd_result = await asyncio.wait_for(
                     asyncio.to_thread(crawl_one_jd, url), timeout=35
                 )
             except Exception as exc:
@@ -910,8 +912,8 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
                 },
             ) from fetch_error
 
-        assert result is not None
-        if result.status != "product":
+        assert jd_result is not None
+        if jd_result.status != "product":
             status_details = {
                 "login_required": (401, "LOGIN_REQUIRED", "京东页面要求正常登录授权。"),
                 "risk_controlled": (
@@ -926,14 +928,14 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
                 ),
                 "empty": (422, "EMPTY_PRODUCT", "未读取到京东商品内容。"),
             }
-            status_code, code, message = status_details[result.status]
-            if result.status == "risk_controlled" and session_ready:
+            status_code, code, message = status_details[jd_result.status]
+            if jd_result.status == "risk_controlled" and session_ready:
                 message = (
                     "本次京东商品页触发风控，当前会话仍保持连接；"
                     "请打开京东官方页面完成人工验证后再拉取。"
                 )
             if (
-                result.status in {"login_required", "risk_controlled"}
+                jd_result.status in {"login_required", "risk_controlled"}
                 and not session_ready
             ):
                 session_manager.mark_needs_relogin()
@@ -942,12 +944,12 @@ async def fetch_item(request: Request, payload: FetchItemRequest) -> dict:
                 detail={
                     "code": code,
                     "message": message,
-                    "retryable": result.status != "product_not_found",
+                    "retryable": jd_result.status != "product_not_found",
                 },
             )
 
-        data = _normalise(result, url, payload.includeDescImages)
-        _log_image_diagnostics("jd", result)
+        data = _normalise(jd_result, url, payload.includeDescImages)
+        _log_image_diagnostics("jd", jd_result)
         if (
             (settings.ecommerce_browser_fallback or profile_ready)
             and (
@@ -1920,6 +1922,7 @@ def ecommerce_session_cancel(
                 "retryable": False,
             },
         )
+    result: dict[str, Any]
     if record.transport == "remote_worker":
         result = {
             "state": "cancelled",
@@ -1927,7 +1930,7 @@ def ecommerce_session_cancel(
         }
         request.app.state.ecommerce_remote_login_frames.pop(record.id, None)
     else:
-        result = manager.cancel_login()
+        result = cast(dict[str, Any], manager.cancel_login())
     now = utc_now()
     record.status = EcommerceLoginSessionStatus.CANCELLED.value
     record.completed_at = now
@@ -1980,6 +1983,7 @@ def ecommerce_session_start(
         requested_platform=requested_platform,
         write=True,
     )
+    login_session: EcommerceLoginSessionRecord | None = None
     # A bound account is always logged in by its designated workstation
     # Worker. The API creates a durable queued job and never opens a server
     # browser or accepts browser-session material.
@@ -2140,7 +2144,6 @@ def ecommerce_session_start(
         manager_status["loginSession"] = None
         return {"success": True, "data": manager_status}
 
-    login_session = None
     if account is not None:
         now = utc_now()
         login_session = EcommerceLoginSessionRecord(

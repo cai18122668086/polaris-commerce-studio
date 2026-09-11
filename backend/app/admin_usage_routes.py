@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -36,7 +36,11 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def _max_time(*values: datetime | None) -> datetime | None:
-    normalized = [value for value in (_utc(item) for item in values) if value]
+    normalized: list[datetime] = []
+    for item in values:
+        value = _utc(item)
+        if value is not None:
+            normalized.append(value)
     return max(normalized) if normalized else None
 
 
@@ -155,7 +159,7 @@ def _sum_status(
     return sum(counts.get(status, 0) for status in statuses)
 
 
-def _user_items(session, users: list[UserRecord]) -> list[dict[str, Any]]:
+def _user_items(session, users: Sequence[UserRecord]) -> list[dict[str, Any]]:
     user_ids = [user.id for user in users]
     ids_by_user, memberships_by_user = _workspace_ids_by_user(session, user_ids)
     all_workspace_ids = sorted(
@@ -208,10 +212,12 @@ def _user_items(session, users: list[UserRecord]) -> list[dict[str, Any]]:
             ),
             default=None,
         )
-        membership_activity = max(
-            (_utc(member.updated_at) for member in member_records),
-            default=None,
-        )
+        membership_timestamps = [
+            value
+            for member in member_records
+            if (value := _utc(member.updated_at)) is not None
+        ]
+        membership_activity = max(membership_timestamps, default=None)
         last_activity = _max_time(
             user.updated_at,
             user.last_login_at,
@@ -289,7 +295,7 @@ def _workspace_account_counts(
 
 
 def _workspace_items(
-    session, workspaces: list[WorkspaceRecord]
+    session, workspaces: Sequence[WorkspaceRecord]
 ) -> list[dict[str, Any]]:
     workspace_ids = [workspace.id for workspace in workspaces]
     job_counts = _workspace_job_counts(session, workspace_ids)

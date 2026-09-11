@@ -44,13 +44,13 @@ def _chrome_candidates() -> list[Path]:
     seen: set[str] = set()
     for candidate in candidates:
         try:
-            resolved = candidate.expanduser().resolve()
+            resolved_path = candidate.expanduser().resolve()
         except OSError:
             continue
-        key = str(resolved).casefold()
+        key = str(resolved_path).casefold()
         if key not in seen:
             seen.add(key)
-            unique.append(resolved)
+            unique.append(resolved_path)
     return unique
 
 

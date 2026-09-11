@@ -292,17 +292,31 @@ export function CommerceCrawlerWorkspace() {
   useEffect(() => {
     if (!selectedTaskId) return;
     let cancelled = false;
-    let timer: number;
+    let timer: number | undefined;
     const poll = async (quiet = false) => {
       const status = await loadTaskDetail(selectedTaskId, quiet);
       // Schedule only after the preceding request finishes. Completed tasks
       // no longer need to call the authentication service every 2.5 seconds.
       if (!cancelled && (!status || !terminalStatuses.has(status))) {
-        timer = window.setTimeout(() => void poll(true), 2500);
+        // A hidden tab cannot display progress, so let it back off while
+        // keeping visible tabs responsive. Returning to the tab triggers an
+        // immediate refresh below.
+        const delay = document.visibilityState === "hidden" ? 15_000 : 2_500;
+        timer = window.setTimeout(() => void poll(true), delay);
       }
     };
+    const refreshOnVisibility = () => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      if (timer !== undefined) window.clearTimeout(timer);
+      void poll(true);
+    };
+    document.addEventListener("visibilitychange", refreshOnVisibility);
     timer = window.setTimeout(() => void poll(), 0);
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [loadTaskDetail, selectedTaskId]);
 
   const createTask = async (event: FormEvent<HTMLFormElement>) => {

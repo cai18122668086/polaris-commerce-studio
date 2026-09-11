@@ -1215,11 +1215,20 @@ async def get_signed_asset_content(
     content_disposition = build_content_disposition(
         disposition, asset.original_filename
     )
+    etag = f'"original-v1-{asset.sha256}"'
+    max_age = max(0, min(60, expires - int(datetime.now(UTC).timestamp())))
+    headers = {
+        "Cache-Control": f"private, max-age={max_age}",
+        "ETag": etag,
+        "Content-Disposition": content_disposition,
+    }
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status_code=304, headers=headers)
     body = await request.app.state.storage.read_bytes(asset.object_key)
     return Response(
         body,
         media_type=asset.content_type,
-        headers={"Content-Disposition": content_disposition},
+        headers=headers,
     )
 
 

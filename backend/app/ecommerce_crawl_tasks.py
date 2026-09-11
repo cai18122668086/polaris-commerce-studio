@@ -1268,11 +1268,10 @@ async def _run_task(app: Any, task_id: str, *, worker_id: str | None = None) -> 
         )
         return
 
-    result_data = (
-        result.get("data")
-        if isinstance(result, dict) and isinstance(result.get("data"), dict)
-        else {"raw": result}
-    )
+    if isinstance(result, dict) and isinstance(result.get("data"), dict):
+        result_data: dict[str, Any] = result["data"]
+    else:
+        result_data = {"raw": result}
     if not _profile_lease_is_owned(
         session_factory,
         profile_id=profile_id,

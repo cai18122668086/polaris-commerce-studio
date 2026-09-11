@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import boto3
 from botocore.client import BaseClient
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 from fastapi import UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -252,6 +253,14 @@ class S3ImageStorage:
             region_name=region,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
+            # Object storage is on the request path for private assets. Bound
+            # network waits so a degraded MinIO/S3 endpoint cannot occupy the
+            # API thread pool indefinitely.
+            config=BotoConfig(
+                connect_timeout=3,
+                read_timeout=30,
+                retries={"mode": "standard", "max_attempts": 3},
+            ),
         )
         self._bucket_ready = False
 

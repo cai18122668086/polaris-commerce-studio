@@ -477,6 +477,14 @@ def test_same_origin_access_mode_never_returns_internal_s3_url(
     content = client.get(url)
     assert content.status_code == 200
     assert content.content == image_payload()
+    assert content.headers["cache-control"] == "private, max-age=60"
+    assert content.headers["etag"].startswith('"original-v1-')
+    not_modified = client.get(
+        url,
+        headers={"If-None-Match": content.headers["etag"]},
+    )
+    assert not_modified.status_code == 304
+    assert not_modified.content == b""
 
 
 @pytest.mark.parametrize(

@@ -49,6 +49,26 @@ _DEFAULT_CAPABILITIES = (
 )
 
 
+def _normalise_windows_resolved_path(path: Path) -> Path:
+    """Keep resolved paths comparable when Windows returns an extended prefix.
+
+    ``Path.resolve()`` can return ``//?/C:/...`` while another thread creates
+    a missing parent directory.  The prefix is equivalent to the regular
+    ``C:/...`` spelling, but ``Path.is_relative_to`` treats the two spellings
+    as unrelated.  Strip only that presentation prefix after resolution; the
+    symlink-aware resolution and containment check remain intact.
+    """
+
+    value = str(path)
+    if value.startswith("\\\\?\\UNC\\"):
+        value = "\\\\" + value[8:]
+    elif value.startswith("//?/UNC/"):
+        value = "//" + value[8:]
+    elif value.startswith("\\\\?\\") or value.startswith("//?/"):
+        value = value[4:]
+    return Path(value)
+
+
 class LocalWorkerError(RuntimeError):
     """A safe, non-secret local worker error."""
 
@@ -326,14 +346,18 @@ class LocalProfileStore:
     """Resolve account profiles below one user-selected local directory."""
 
     def __init__(self, root: str | Path) -> None:
-        self.root = Path(root).expanduser().resolve()
+        self.root = _normalise_windows_resolved_path(
+            Path(root).expanduser().resolve()
+        )
         self.root.mkdir(parents=True, exist_ok=True)
         self._locks = self.root / ".locks"
         self._locks.mkdir(parents=True, exist_ok=True)
 
     def profile_path(self, account_id: str) -> Path:
         safe_account = _validate_id(account_id, "account_id")
-        path = (self.root / "accounts" / safe_account).resolve()
+        path = _normalise_windows_resolved_path(
+            (self.root / "accounts" / safe_account).resolve()
+        )
         if not path.is_relative_to(self.root):
             raise LocalWorkerError("PROFILE_PATH_OUTSIDE_ROOT")
         path.mkdir(parents=True, exist_ok=True)

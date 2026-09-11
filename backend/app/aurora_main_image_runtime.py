@@ -100,8 +100,16 @@ class AuroraHarnessRunner:
         try:
             result = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
+            diagnostic = completed.stderr.strip()
+            if len(diagnostic) > 1000:
+                diagnostic = diagnostic[-1000:]
+            detail = f" (exit={completed.returncode}"
+            if diagnostic:
+                detail += f"; stderr={diagnostic}"
+            detail += ")"
             raise AuroraHarnessError(
-                "HARNESS_INVALID_OUTPUT", "Aurora Harness did not return JSON"
+                "HARNESS_INVALID_OUTPUT",
+                f"Aurora Harness did not return JSON{detail}",
             ) from exc
         if completed.returncode != 0 or result.get("status") == "BLOCKED":
             message = str(

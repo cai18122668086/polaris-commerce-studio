@@ -132,10 +132,12 @@ def _like_pattern(value: str) -> str:
 
 
 def _validate_range(created_from: datetime | None, created_to: datetime | None) -> None:
+    normalized_from = _utc(created_from) if created_from is not None else None
+    normalized_to = _utc(created_to) if created_to is not None else None
     if (
-        created_from is not None
-        and created_to is not None
-        and _utc(created_from) > _utc(created_to)
+        normalized_from is not None
+        and normalized_to is not None
+        and normalized_from > normalized_to
     ):
         raise ApiError(422, "INVALID_TIME_RANGE", "开始时间不能晚于结束时间。")
 
@@ -287,11 +289,18 @@ def _crawl_item(
 def _event_counts(session, task_ids: list[str], *, crawl: bool) -> dict[str, int]:
     if not task_ids:
         return {}
-    model = CrawlEventRecord if crawl else AuditEventRecord
-    column = model.task_id if crawl else model.resource_id
-    rows = session.execute(
-        select(column, func.count()).where(column.in_(task_ids)).group_by(column)
-    ).all()
+    if crawl:
+        rows = session.execute(
+            select(CrawlEventRecord.task_id, func.count())
+            .where(CrawlEventRecord.task_id.in_(task_ids))
+            .group_by(CrawlEventRecord.task_id)
+        ).all()
+    else:
+        rows = session.execute(
+            select(AuditEventRecord.resource_id, func.count())
+            .where(AuditEventRecord.resource_id.in_(task_ids))
+            .group_by(AuditEventRecord.resource_id)
+        ).all()
     return {str(resource_id): int(count) for resource_id, count in rows}
 
 

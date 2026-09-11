@@ -33,7 +33,13 @@ def _process_runner() -> MockTaskRunner:
         return _runner
     if _engine is not None:
         _engine.dispose()
-    _engine, _session_factory = build_database(settings.database_url)
+    _engine, _session_factory = build_database(
+        settings.database_url,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=settings.database_pool_timeout_seconds,
+        pool_recycle=settings.database_pool_recycle_seconds,
+    )
     _storage = build_image_storage(settings)
     _runner = build_task_runner(_session_factory, settings, _storage)
     _owner_pid = process_id

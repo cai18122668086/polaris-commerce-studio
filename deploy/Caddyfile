@@ -19,11 +19,19 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 	}
 
-	@api path /api/* /health/*
+	@api {
+		path /api/* /health/*
+		not path /api/v1/workspaces/*/assets/*/content
+	}
 	header @api Cache-Control "no-store"
 
 	@immutable path /_polaris-static/* /assets/*
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	@private_asset path /api/v1/workspaces/*/assets/*/content
+	handle @private_asset {
+		reverse_proxy api:8000
+	}
 
 	handle @api {
 		reverse_proxy api:8000

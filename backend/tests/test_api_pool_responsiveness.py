@@ -17,6 +17,10 @@ from sqlalchemy.orm import sessionmaker
 from app import auth, main
 from tests.test_auth_external import FakeExternalAuthBackend, verified_identity
 
+# The burst keeps every storage call blocked, but stages arrivals so the test
+# does not fail merely because 48 tasks race for a two-connection DB pool.
+BURST_START_TIMEOUT_SECONDS = 3
+
 
 def test_database_capacity_error_is_retryable_and_safe(settings):
     app = main.create_app(settings)
@@ -71,14 +75,13 @@ def test_slow_image_burst_releases_database_before_storage(
 
         async def scenario():
             release = asyncio.Event()
-            all_reading = asyncio.Event()
+            reading_started: asyncio.Queue[None] = asyncio.Queue()
             reading = 0
 
             async def slow_read(_key):
                 nonlocal reading
                 reading += 1
-                if reading == request_count:
-                    all_reading.set()
+                reading_started.put_nowait(None)
                 await release.wait()
                 return image
 
@@ -91,19 +94,28 @@ def test_slow_image_burst_releases_database_before_storage(
             monkeypatch.setattr(app.state.storage, "create_access_url", slow_presign)
             transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
             async with httpx.AsyncClient(transport=transport) as client:
-                tasks = [
-                    asyncio.create_task(
-                        client.get(url)
-                        if phase == "content"
-                        else client.post(
-                            f"http://testserver{access_path}",
-                            json={"disposition": "inline"},
-                        )
-                    )
-                    for _ in range(request_count)
-                ]
+                tasks = []
                 try:
-                    await asyncio.wait_for(all_reading.wait(), 3)
+                    for _ in range(request_count):
+                        tasks.append(
+                            asyncio.create_task(
+                                client.get(url)
+                                if phase == "content"
+                                else client.post(
+                                    f"http://testserver{access_path}",
+                                    json={"disposition": "inline"},
+                                )
+                            )
+                        )
+                        await asyncio.wait_for(
+                            reading_started.get(), BURST_START_TIMEOUT_SECONDS
+                        )
+                except TimeoutError:
+                    pytest.fail(
+                        "A burst request did not reach storage before the "
+                        "watchdog expired"
+                    )
+                try:
                     # Every download is still waiting; none may retain a DB slot.
                     assert engine.pool.checkedout() == 0
                     ready, identity = await asyncio.wait_for(

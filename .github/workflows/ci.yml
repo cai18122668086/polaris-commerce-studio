@@ -41,16 +41,18 @@ jobs:
           POSTGRES_USER: polaris
           POSTGRES_PASSWORD: polaris_ci_only
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U polaris -d polaris_ci"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
-    env:
-      POLARIS_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:5432/polaris_ci
     steps:
       - uses: actions/checkout@v6
+      - name: Configure CI database connection
+        run: |
+          db_url="postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci"
+          echo "POLARIS_DATABASE_URL=$db_url" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -63,7 +65,7 @@ jobs:
       - run: python -m pytest backend
       - name: Test PostgreSQL ecommerce concurrency
         env:
-          POLARIS_TEST_DATABASE_URL: ${{ env.POLARIS_DATABASE_URL }}
+          POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
         run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py
       - name: Test deployment preflight
         run: python -m unittest discover -s deploy/tests -v

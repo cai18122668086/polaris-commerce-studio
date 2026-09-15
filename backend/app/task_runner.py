@@ -107,8 +107,16 @@ def validate_task_runner_settings(settings: Settings) -> None:
         )
     if settings.task_runner == "mock":
         return
-    if not settings.tengli_api_key.get_secret_value().strip():
-        raise RuntimeError("tengli task runner requires a non-empty API key")
+    if not (
+        settings.analysis_api_key.get_secret_value().strip()
+        or settings.tengli_api_key.get_secret_value().strip()
+    ):
+        raise RuntimeError("real task runner requires a non-empty analysis API key")
+    if not (
+        settings.image_api_key.get_secret_value().strip()
+        or settings.tengli_api_key.get_secret_value().strip()
+    ):
+        raise RuntimeError("real task runner requires a non-empty image API key")
     budget = settings.tengli_smoke_budget_usd
     if not math.isfinite(budget) or budget <= 0 or budget > MAX_PROVIDER_ALLOWANCE:
         raise RuntimeError(
@@ -128,18 +136,44 @@ def validate_task_runner_settings(settings: Settings) -> None:
         )
 
     try:
-        endpoint = urlsplit(settings.tengli_base_url)
+        endpoint = urlsplit(settings.analysis_base_url)
         valid_endpoint = (
             endpoint.scheme in {"http", "https"} and endpoint.hostname is not None
         )
     except ValueError:
         valid_endpoint = False
     if not valid_endpoint:
+        raise RuntimeError("real task runner requires a valid analysis base URL")
+    try:
+        image_endpoint = urlsplit(settings.image_base_url)
+        valid_image_endpoint = (
+            image_endpoint.scheme in {"http", "https"}
+            and image_endpoint.hostname is not None
+        )
+    except ValueError:
+        valid_image_endpoint = False
+    if not valid_image_endpoint:
+        raise RuntimeError("real task runner requires a valid image base URL")
+    # Keep the legacy Tengli settings fail-closed for existing deployments and
+    # tests; the split provider settings above are the active route.
+    try:
+        legacy_endpoint = urlsplit(settings.tengli_base_url)
+        valid_legacy_endpoint = (
+            legacy_endpoint.scheme in {"http", "https"}
+            and legacy_endpoint.hostname is not None
+        )
+    except ValueError:
+        valid_legacy_endpoint = False
+    if not valid_legacy_endpoint:
         raise RuntimeError("tengli task runner requires a valid provider base URL")
     if not settings.tengli_image_model.strip():
         raise RuntimeError("tengli task runner requires an image model")
     if not settings.tengli_vision_model.strip():
         raise RuntimeError("tengli task runner requires a vision model")
+    if not settings.image_model.strip():
+        raise RuntimeError("real task runner requires an image model")
+    if not settings.analysis_model.strip():
+        raise RuntimeError("real task runner requires an analysis model")
 
 
 def build_task_runner(

@@ -149,6 +149,12 @@ class Settings(BaseSettings):
     tengli_base_url: str = "https://api.tengliapi.xyz:8443"
     tengli_image_model: str = "gpt-image-2"
     tengli_vision_model: str = "gpt-5.6-terra"
+    analysis_api_key: SecretStr = SecretStr("")
+    analysis_base_url: str = "https://api.ooapi.cc"
+    analysis_model: str = "gpt-5.6-terra"
+    image_api_key: SecretStr = SecretStr("")
+    image_base_url: str = "https://api.artflow.vip"
+    image_model: str = "gpt-image-2.5-flare"
     tengli_smoke_budget_usd: float = Field(
         default=200,
         gt=0,

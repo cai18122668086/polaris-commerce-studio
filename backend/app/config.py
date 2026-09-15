@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     tengli_vision_model: str = "gpt-5.6-terra"
     analysis_api_key: SecretStr = SecretStr("")
     analysis_base_url: str = "https://api.ooapi.cc"
-    analysis_model: str = "gpt-5.6-terra"
+    analysis_model: str = "gpt-5.5"
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"

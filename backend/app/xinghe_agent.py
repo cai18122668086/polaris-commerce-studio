@@ -42,7 +42,6 @@ from .domain import (
     UsageCompleteness,
 )
 from .masked_repair import (
-    MASKED_REPAIR_MODEL,
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
     MaskedVisualReviewCallResult,
@@ -1852,7 +1851,11 @@ class TengliOpenAICompatibleGateway:
                 request.api_mask_png,
             )
             fields = [
-                ("model", MASKED_REPAIR_MODEL),
+                # Use the same configured Artflow model as the normal image
+                # edit path.  The old hard-coded gpt-image-2 is not offered
+                # by the Artflow relay and causes masked repairs to fail with
+                # model_not_found.
+                ("model", self.image_model),
                 ("prompt", _tengli_masked_prompt(request.prompt)),
                 ("n", "1"),
                 ("size", f"{request.width}x{request.height}"),

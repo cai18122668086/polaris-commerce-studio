@@ -79,6 +79,8 @@ SENSITIVE_KEYS = {
 }
 PROVIDER_SENSITIVE_KEYS = {
     "POLARIS_TENGLI_API_KEY",
+    "POLARIS_ANALYSIS_API_KEY",
+    "POLARIS_IMAGE_API_KEY",
 }
 DIGEST_REFERENCE = re.compile(
     r"^[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:([0-9a-f]{64})$"
@@ -870,16 +872,32 @@ def validate_deployment(
     real_provider_requested = runner == "tengli" or any_provider_enabled
 
     if real_provider_requested:
-        for key in PROVIDER_SENSITIVE_KEYS:
+        legacy_key = values.get("POLARIS_TENGLI_API_KEY", "")
+        legacy_usable = bool(
+            legacy_key
+            and "<" not in legacy_key
+            and "SET_ON_SERVER" not in legacy_key.upper()
+            and "REPLACE" not in legacy_key.upper()
+        )
+        for key in ("POLARIS_ANALYSIS_API_KEY", "POLARIS_IMAGE_API_KEY"):
             value = values.get(key, "")
             upper = value.upper()
-            if (
+            if not legacy_usable and (
                 not value
                 or "<" in value
                 or "SET_ON_SERVER" in upper
                 or "REPLACE" in upper
             ):
                 errors.append(f"{key} is missing or still a placeholder")
+        # Legacy Tengli credentials remain accepted for rollback compatibility,
+        # but are no longer required when both split-provider keys are set.
+        if not legacy_usable and (
+            not values.get("POLARIS_ANALYSIS_API_KEY")
+            or not values.get("POLARIS_IMAGE_API_KEY")
+        ):
+            errors.append("split Provider API keys are required")
+        if legacy_key and not legacy_usable:
+            errors.append("POLARIS_TENGLI_API_KEY is missing or still a placeholder")
         endpoint = urlsplit(values.get("POLARIS_TENGLI_BASE_URL", ""))
         if endpoint.scheme != "https" or not endpoint.hostname:
             errors.append("POLARIS_TENGLI_BASE_URL must be an HTTPS Provider endpoint")

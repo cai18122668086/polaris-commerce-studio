@@ -1559,14 +1559,22 @@ class TengliOpenAICompatibleGateway:
         base_url: str,
         planner_model: str,
         image_model: str,
+        planner_api_key: str | None = None,
+        planner_base_url: str | None = None,
+        image_api_key: str | None = None,
+        image_base_url: str | None = None,
         medium_price_micros: int = DEFAULT_MEDIUM_PRICE_MICROS,
         high_price_micros: int = DEFAULT_HIGH_PRICE_MICROS,
         review_price_micros: int = 20_000,
         timeout_seconds: float = 600,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
-        if not api_key.strip():
-            raise ValueError("Tengli API key is required.")
+        if (
+            not api_key.strip()
+            and not (planner_api_key or "").strip()
+            and not (image_api_key or "").strip()
+        ):
+            raise ValueError("At least one Provider API key is required.")
         parsed = urlparse(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("Tengli base URL must be an absolute HTTP(S) URL.")
@@ -1576,6 +1584,10 @@ class TengliOpenAICompatibleGateway:
             raise ValueError("Configured unit prices cannot be negative.")
         self._api_key = api_key.strip()
         self.base_url = base_url.rstrip("/") + "/"
+        self._planner_api_key = (planner_api_key or api_key).strip()
+        self._image_api_key = (image_api_key or api_key).strip()
+        self._planner_base_url = (planner_base_url or base_url).rstrip("/") + "/"
+        self._image_base_url = (image_base_url or base_url).rstrip("/") + "/"
         self.planner_model = planner_model.strip()
         self.image_model = image_model.strip()
         self.medium_price_micros = medium_price_micros
@@ -1642,8 +1654,8 @@ class TengliOpenAICompatibleGateway:
         try:
             self.external_network_request_count += 1
             status, response = await self.transport.post_json(
-                url=urljoin(self.base_url, "v1/chat/completions"),
-                headers=self._headers(request.idempotency_key),
+                url=urljoin(self._planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, self._planner_api_key),
                 payload=payload,
                 timeout_seconds=self.timeout_seconds,
             )
@@ -1756,8 +1768,8 @@ class TengliOpenAICompatibleGateway:
         try:
             self.external_network_request_count += 1
             status, response = await self.transport.post_multipart(
-                url=urljoin(self.base_url, "v1/images/edits"),
-                headers=self._headers(request.idempotency_key),
+                url=urljoin(self._image_base_url, "v1/images/edits"),
+                headers=self._headers(request.idempotency_key, self._image_api_key),
                 fields=fields,
                 files=files,
                 timeout_seconds=self.timeout_seconds,
@@ -1859,8 +1871,8 @@ class TengliOpenAICompatibleGateway:
             ]
             self.external_network_request_count += 1
             status, response = await self.transport.post_multipart(
-                url=urljoin(self.base_url, "v1/images/edits"),
-                headers=self._headers(request.idempotency_key),
+                url=urljoin(self._image_base_url, "v1/images/edits"),
+                headers=self._headers(request.idempotency_key, self._image_api_key),
                 fields=fields,
                 files=files,
                 timeout_seconds=self.timeout_seconds,
@@ -2001,8 +2013,8 @@ class TengliOpenAICompatibleGateway:
         try:
             self.external_network_request_count += 1
             status, response = await self.transport.post_json(
-                url=urljoin(self.base_url, "v1/chat/completions"),
-                headers=self._headers(request.idempotency_key),
+                url=urljoin(self._planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, self._planner_api_key),
                 payload=payload,
                 timeout_seconds=self.timeout_seconds,
             )
@@ -2127,8 +2139,8 @@ class TengliOpenAICompatibleGateway:
         try:
             self.external_network_request_count += 1
             status, response = await self.transport.post_json(
-                url=urljoin(self.base_url, "v1/chat/completions"),
-                headers=self._headers(request.idempotency_key),
+                url=urljoin(self._planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, self._planner_api_key),
                 payload=payload,
                 timeout_seconds=self.timeout_seconds,
             )
@@ -2202,9 +2214,9 @@ class TengliOpenAICompatibleGateway:
                 retryable=exc.retryable,
             )
 
-    def _headers(self, idempotency_key: str) -> dict[str, str]:
+    def _headers(self, idempotency_key: str, api_key: str) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {self._api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Idempotency-Key": idempotency_key,
             "User-Agent": "Polaris-Commerce-Studio/1.2",
         }
@@ -2216,8 +2228,12 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
     return TengliOpenAICompatibleGateway(
         api_key=settings.tengli_api_key.get_secret_value(),
         base_url=settings.tengli_base_url,
-        planner_model=settings.tengli_vision_model,
-        image_model=settings.tengli_image_model,
+        planner_api_key=settings.analysis_api_key.get_secret_value() or None,
+        planner_base_url=settings.analysis_base_url,
+        image_api_key=settings.image_api_key.get_secret_value() or None,
+        image_base_url=settings.image_base_url,
+        planner_model=settings.analysis_model,
+        image_model=settings.image_model,
         medium_price_micros=settings.xinghe_medium_price_micros,
         high_price_micros=settings.xinghe_high_price_micros,
         review_price_micros=settings.tengli_planner_reserve_micros,

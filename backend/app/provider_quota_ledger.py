@@ -443,6 +443,14 @@ def _usage_charge(
     if _is_non_negative_int(usage.actual_cost_micros):
         return int(usage.actual_cost_micros), "actual"
     if not _is_non_negative_int(usage.estimated_cost_micros):
+        # Older failed provider attempts (and some relays that reject a
+        # request before returning usage) may have neither actual nor unit
+        # estimated cost.  The job reservation is already fail-closed, so use
+        # its conservative envelope to settle the attempt and allow retries;
+        # do not strand the whole job behind a historical missing field.
+        fallback = int(job.estimated_cost_max_micros or 0)
+        if _is_positive_int(fallback):
+            return fallback, "conservative_unknown"
         raise ProviderQuotaLedgerError(
             "Observed provider usage has no conservative cost."
         )

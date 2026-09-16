@@ -4909,7 +4909,11 @@ def _provider_rejection(
                 "outcome": ProviderOutcome.FAILED.value,
             },
         },
-        estimated_cost_micros=None,
+        # Even a preflight/provider rejection must carry a conservative unit
+        # cost so quota settlement can close the reservation safely.  Without
+        # this fallback, a retry can surface the misleading
+        # "no conservative cost" error instead of its real failure reason.
+        estimated_cost_micros=gateway.high_price_micros,
         actual_cost_micros=None,
         retryable=False,
         provider_name=gateway.provider_name,

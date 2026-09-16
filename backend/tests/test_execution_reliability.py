@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
 
+from app.aurora_main_image_planner import AuroraPlanningError
 from app.domain import (
     AttemptStatus,
     JobItemStatus,
@@ -110,6 +111,15 @@ class _SetAuditTrackingProvider(FakeProvider):
         return True
 
 
+class _ExplodingSetAuditProvider(FakeProvider):
+    async def audit_parallel_set(self, job_id: str) -> bool:
+        error = AuroraPlanningError(
+            "Aurora v2.0 set audit gateway returned HTTP 502."
+        )
+        error.http_status = 502
+        raise error
+
+
 def test_parallel_aurora_skips_set_audit_when_any_page_failed(
     client: TestClient,
 ) -> None:
@@ -148,8 +158,74 @@ def test_parallel_aurora_skips_set_audit_when_any_page_failed(
         worker_id="parallel-audit-skip",
     )
 
-    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) is None
+    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) == (
+        None,
+        None,
+    )
     assert provider.set_audit_calls == 0
+
+
+def _six_succeeded_aurora_pages(client: TestClient) -> str:
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert job is not None and first is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first.status = JobItemStatus.SUCCEEDED.value
+        for ordinal in range(1, 6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"page-{ordinal + 1:03d}",
+                    ordinal=ordinal,
+                    status=JobItemStatus.SUCCEEDED.value,
+                    configuration={},
+                )
+            )
+        session.commit()
+    return job_id
+
+
+def test_parallel_aurora_set_audit_failure_records_its_reason(
+    client: TestClient,
+) -> None:
+    """RC-4: a swallowed set-audit exception made 32 failures undiagnosable."""
+
+    job_id = _six_succeeded_aurora_pages(client)
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        _ExplodingSetAuditProvider(),
+        worker_id="parallel-audit-error",
+    )
+
+    applicable, error = asyncio.run(
+        coordinator._run_parallel_aurora_set_audit(job_id)
+    )
+
+    assert applicable is False
+    assert isinstance(error, AuroraPlanningError)
+
+    coordinator._mark_parallel_aurora_set_audit_failed(job_id, error)
+
+    with client.app.state.session_factory() as session:
+        item = session.scalar(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id == job_id,
+                JobItemRecord.error_code == "AURORA_SET_AUDIT_FAILED",
+            )
+        )
+
+    assert item is not None
+    assert item.error_details["scope"] == "set_audit"
+    assert item.error_details["reason"] == "AuroraPlanningError"
+    assert item.error_details["http_status"] == 502
+    assert "HTTP 502" in item.error_details["message"]
 
 
 def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) -> None:
@@ -177,6 +253,13 @@ def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) ->
         assert job.error_code == "AURORA_PLANNING_FAILED"
         assert job.history_expires_at is not None
         assert {item.status for item in items} == {JobItemStatus.FAILED.value}
+        # RC-4: the class name alone left all 54 planning failures identical.
+        assert job.error_details["reason"] == "OSError"
+        assert "workspace unavailable" in job.error_details["message"]
+        assert all(
+            item.error_details["message"] == job.error_details["message"]
+            for item in items
+        )
 
 
 class _ParallelAuroraFakeProvider:

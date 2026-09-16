@@ -328,6 +328,10 @@ class PlannerCallResult:
     request_id_presence: str = "not_available"
     usage_presence: str = "not_available"
     usage_completeness: str = "not_available"
+    # Opt-in bounded excerpt of the provider body, populated only when the
+    # response could not be decoded into an object and diagnostics sampling is
+    # enabled.  Off by default; raw prompts and secrets are never included.
+    content_sample: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1569,6 +1573,7 @@ class TengliOpenAICompatibleGateway:
         high_price_micros: int = DEFAULT_HIGH_PRICE_MICROS,
         review_price_micros: int = 20_000,
         timeout_seconds: float = 600,
+        diagnostic_content_sample: bool = False,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
         if (
@@ -1596,6 +1601,7 @@ class TengliOpenAICompatibleGateway:
         self.high_price_micros = high_price_micros
         self.review_price_micros = review_price_micros
         self.timeout_seconds = timeout_seconds
+        self.diagnostic_content_sample = diagnostic_content_sample
         self.transport = transport or UrllibOpenAITransport()
         self.external_network_request_count = 0
 
@@ -1687,6 +1693,39 @@ class TengliOpenAICompatibleGateway:
             plan_payload, parse_trace = _planner_content_payload_with_trace(text)
             raw_usage = _raw_usage(response)
             content_bytes = text.encode("utf-8")
+            content_sha256 = hashlib.sha256(content_bytes).hexdigest()
+            if not isinstance(plan_payload, Mapping):
+                # The gateway answered 200 but the body was not a JSON object.
+                # Previously the raw string was returned as the payload with no
+                # error code, so callers fell back to a generic "pixel audit
+                # failed" message that read as an image-quality verdict.  Name
+                # the real failure here instead.
+                return PlannerCallResult(
+                    payload=None,
+                    provider_request_id=_safe_request_id(response),
+                    raw_usage=raw_usage,
+                    normalized_usage=normalize_usage(raw_usage),
+                    api_latency_seconds=time.perf_counter() - started,
+                    actual_cost_micros=_usage_cost_micros(raw_usage),
+                    error_code="PLANNER_SCHEMA_INVALID",
+                    error_message=(
+                        "Planner content was not a JSON object ("
+                        + (", ".join(parse_trace) or "no parse trace")
+                        + ")."
+                    ),
+                    error_path=_json_pointer(),
+                    http_status=status,
+                    parse_trace=parse_trace,
+                    structure_fingerprint=_planner_structure_fingerprint(plan_payload),
+                    structure_profile=_planner_structure_profile(plan_payload),
+                    content_sample=text if self.diagnostic_content_sample else None,
+                    provider_envelope=envelope_diagnostics["provider_envelope"],
+                    content_utf8_bytes=len(content_bytes),
+                    content_sha256=content_sha256,
+                    request_id_presence=envelope_diagnostics["request_id_presence"],
+                    usage_presence=envelope_diagnostics["usage_presence"],
+                    usage_completeness=envelope_diagnostics["usage_completeness"],
+                )
             return PlannerCallResult(
                 payload=plan_payload,
                 provider_request_id=_safe_request_id(response),
@@ -1699,7 +1738,7 @@ class TengliOpenAICompatibleGateway:
                 structure_fingerprint=_planner_structure_fingerprint(plan_payload),
                 provider_envelope=envelope_diagnostics["provider_envelope"],
                 content_utf8_bytes=len(content_bytes),
-                content_sha256=hashlib.sha256(content_bytes).hexdigest(),
+                content_sha256=content_sha256,
                 request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
                 usage_completeness=envelope_diagnostics["usage_completeness"],
@@ -2243,6 +2282,7 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         medium_price_micros=settings.xinghe_medium_price_micros,
         high_price_micros=settings.xinghe_high_price_micros,
         review_price_micros=settings.tengli_planner_reserve_micros,
+        diagnostic_content_sample=settings.diagnostic_content_sample,
     )
 
 
@@ -5607,34 +5647,37 @@ def _artifact_from_bytes(
             provider_height=height,
         )
 
-    if image_format != "JPEG":
-        raise XingheAgentError(
-            "IMAGE_RESPONSE_FORMAT_INVALID",
-            "Provider did not return the requested JPEG format.",
-        )
+    # The relay does not reliably honour the requested output format: Artflow
+    # returns PNG bodies even for JPEG requests (see 0b5ca7e).  Re-encode into
+    # the configured delivery format instead of rejecting an otherwise
+    # successful generation, and always derive the content type, filename and
+    # bytes from that one format so the artifact stays self-consistent.
+    requested_format = IMAGE_FORMAT.upper()
     locally_resampled = width != expected_width or height != expected_height
-    if locally_resampled:
-        if width * expected_height != height * expected_width:
+    if image_format != requested_format or locally_resampled:
+        if locally_resampled and width * expected_height != height * expected_width:
             raise XingheAgentError(
                 "IMAGE_RESPONSE_SIZE_INVALID",
                 "Provider returned an image with an incompatible aspect ratio.",
             )
-        materialized = materialized.convert("RGB").resize(
-            (expected_width, expected_height),
-            Image.Resampling.LANCZOS,
-        )
+        materialized = materialized.convert("RGB")
+        if locally_resampled:
+            materialized = materialized.resize(
+                (expected_width, expected_height),
+                Image.Resampling.LANCZOS,
+            )
+        save_options: dict[str, Any] = {"optimize": True}
+        if requested_format == "JPEG":
+            save_options["quality"] = JPEG_QUALITY
         output = BytesIO()
-        materialized.save(
-            output,
-            format="JPEG",
-            quality=JPEG_QUALITY,
-            optimize=True,
-        )
+        materialized.save(output, format=requested_format, **save_options)
         payload = output.getvalue()
+
+    delivery_content_type, delivery_suffix = provider_formats[requested_format]
     return ProviderArtifact(
         payload=payload,
-        filename=filename,
-        content_type="image/jpeg",
+        filename=_replace_image_suffix(filename, delivery_suffix),
+        content_type=delivery_content_type,
         width=expected_width,
         height=expected_height,
         sha256=hashlib.sha256(payload).hexdigest(),
@@ -6331,7 +6374,18 @@ def _aurora_v20_visual_judgment_json_schema(
                 "required": observation_names,
                 "properties": observations_properties,
             },
-            "checks": {"type": "array", "minItems": 1, "items": check},
+            "checks": {
+                # The native contract requires every one of the 29 checks.
+                # ``anyOf`` alone only constrains each element, so a schema with
+                # ``minItems: 1`` accepted a single-check response that the
+                # validator and the immutable Harness runtime both reject.
+                # Pin the cardinality here; the validator accepts the set in any
+                # order and normalizes it back to the canonical order.
+                "type": "array",
+                "minItems": len(check_variants),
+                "maxItems": len(check_variants),
+                "items": check,
+            },
             "all_material_deficiencies": {
                 "type": "array",
                 "items": deficiency,

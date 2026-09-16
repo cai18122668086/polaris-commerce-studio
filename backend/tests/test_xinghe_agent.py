@@ -1800,6 +1800,67 @@ def test_planner_diagnostics_never_persist_response_content(
         assert transport.image_calls == 0
 
 
+def _undecodable_planner_gateway(
+    *, diagnostic_content_sample: bool
+) -> TengliOpenAICompatibleGateway:
+    return TengliOpenAICompatibleGateway(
+        api_key="offline-placeholder",
+        base_url="https://offline.invalid",
+        planner_model="planner-test",
+        image_model="image-test",
+        diagnostic_content_sample=diagnostic_content_sample,
+        transport=_PlannerContentTransport("plain non-JSON text", page_count=1),
+    )
+
+
+def _sample_planner_request() -> PlannerRequest:
+    return PlannerRequest(
+        workspace_id="workspace_one",
+        job_id="job_content_sample",
+        group_key="content-sample",
+        sources=(),
+        page_count=1,
+        language="zh-CN",
+        product_name="content sample",
+        product_information=(),
+        platform_code="TAOBAO_AURORA",
+        size="1024x1024",
+        idempotency_key="content-sample",
+    )
+
+
+def test_gateway_reports_undecodable_content_as_a_schema_failure() -> None:
+    """RC-5: an undecodable body is a contract failure, not a quality verdict."""
+
+    gateway = _undecodable_planner_gateway(diagnostic_content_sample=False)
+    result = asyncio.run(gateway.plan(_sample_planner_request()))
+
+    assert result.payload is None
+    assert result.error_code == "PLANNER_SCHEMA_INVALID"
+    assert result.error_path == "/"
+    assert result.http_status == 200
+    assert "not a JSON object" in (result.error_message or "")
+    assert "whole_json:decode_failed" in (result.error_message or "")
+
+
+def test_gateway_samples_undecodable_content_only_when_opted_in() -> None:
+    """The excerpt stays off by default and is only added on request."""
+
+    quiet = asyncio.run(
+        _undecodable_planner_gateway(diagnostic_content_sample=False).plan(
+            _sample_planner_request()
+        )
+    )
+    sampled = asyncio.run(
+        _undecodable_planner_gateway(diagnostic_content_sample=True).plan(
+            _sample_planner_request()
+        )
+    )
+
+    assert quiet.content_sample is None
+    assert sampled.content_sample == "plain non-JSON text"
+
+
 def _confirm_job(client: TestClient, job_id: str) -> None:
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/plan/confirm",
@@ -2357,6 +2418,66 @@ def test_image_artifact_uses_requested_canvas_size_contract() -> None:
     assert exc_info.value.code == "IMAGE_RESPONSE_SIZE_INVALID"
 
 
+def _png(size: tuple[int, int]) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", size, color=(9, 8, 7)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_image_artifact_accepts_png_provider_output_contract() -> None:
+    """RC-2: the delivery format is PNG, so a PNG provider body is the contract.
+
+    Commit 0b5ca7e switched ``IMAGE_FORMAT`` to ``png`` but left the validator
+    demanding JPEG, which rejected every otherwise-successful generation on the
+    non-preserving path (``XingheImageProvider`` / ``detail_pack``).
+    """
+
+    payload = _png((1024, 1536))
+    artifact = _artifact_from_bytes(
+        payload,
+        filename="provider-output.jpg",
+        expected_size=IMAGE_SIZE,
+    )
+
+    assert artifact.content_type == "image/png"
+    assert artifact.filename.endswith(".png")
+    assert artifact.payload == payload
+    assert artifact.locally_resampled is False
+    assert (artifact.width, artifact.height) == (1024, 1536)
+
+
+def test_image_artifact_normalizes_a_provider_format_mismatch() -> None:
+    """A relay that ignores the requested format must not fail the generation."""
+
+    normalized = _artifact_from_bytes(
+        _jpeg((512, 768)),
+        filename="provider-output.jpg",
+        expected_size=IMAGE_SIZE,
+    )
+
+    assert normalized.content_type == "image/png"
+    assert normalized.filename.endswith(".png")
+    assert normalized.locally_resampled is True
+    assert (normalized.width, normalized.height) == (1024, 1536)
+    with Image.open(BytesIO(normalized.payload)) as image:
+        assert image.format == "PNG"
+        assert image.size == (1024, 1536)
+
+
+def test_image_artifact_rejects_an_unsupported_provider_format() -> None:
+    buffer = BytesIO()
+    Image.new("RGB", (1024, 1536), color=(3, 2, 1)).save(buffer, format="BMP")
+
+    with pytest.raises(XingheAgentError) as exc_info:
+        _artifact_from_bytes(
+            buffer.getvalue(),
+            filename="provider-output.jpg",
+            expected_size=IMAGE_SIZE,
+        )
+
+    assert exc_info.value.code == "IMAGE_RESPONSE_FORMAT_INVALID"
+
+
 class _RecordingTransport:
     def __init__(self) -> None:
         self.json_calls: list[dict[str, Any]] = []
@@ -2747,11 +2868,55 @@ def test_tengli_adapter_is_openai_compatible_and_usage_safe() -> None:
     fields = dict(transport.multipart_calls[0]["fields"])
     assert fields["size"] == requested_size
     assert fields["output_format"] == IMAGE_FORMAT
-    assert fields["output_compression"] == str(JPEG_QUALITY)
+    # `output_compression` only exists for compressed formats; Tengli rejects it
+    # for PNG, which is the delivery format this adapter now requests.
+    assert "output_compression" not in fields
     assert fields["input_fidelity"] == "high"
     assert len(transport.multipart_calls[0]["files"]) == 3
     assert all(record[0] == "image" for record in transport.multipart_calls[0]["files"])
     assert "test-placeholder-key" not in repr(adapter)
+
+
+def test_image_edit_sends_output_compression_for_compressed_delivery() -> None:
+    transport = _RecordingTransport()
+    adapter = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://api.example.test",
+        planner_model="gpt-5.6-terra",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+    source = SourceImage(
+        asset_id="asset_one",
+        group_key="shoe",
+        filename="source.jpg",
+        content_type="image/jpeg",
+        sha256="a" * 64,
+        payload=b"source-pixels",
+    )
+
+    asyncio.run(
+        adapter.edit(
+            ImageEditRequest(
+                workspace_id="ws_test",
+                job_id="job_test",
+                job_item_id="item_test",
+                attempt_id="attempt_test",
+                page_number=1,
+                group_key="shoe",
+                sources=(source,),
+                prompt="square e-commerce product image",
+                quality="high",
+                idempotency_key="image-idem",
+                size=IMAGE_SIZE,
+                output_format="jpeg",
+            )
+        )
+    )
+
+    fields = dict(transport.multipart_calls[0]["fields"])
+    assert fields["output_format"] == "jpeg"
+    assert fields["output_compression"] == str(JPEG_QUALITY)
 
 
 def test_image_edit_multipart_preserves_two_image_pose_role_order() -> None:

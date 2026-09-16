@@ -83,6 +83,7 @@ class ProductionPreflightTests(unittest.TestCase):
             "POLARIS_TENGLI_BASE_URL": "https://api.tengliapi.xyz:8443",
             "POLARIS_TENGLI_IMAGE_MODEL": "gpt-image-2",
             "POLARIS_TENGLI_VISION_MODEL": "gpt-5.6-terra",
+            "POLARIS_ANALYSIS_MODEL": "gpt-5.6-sol",
             "POLARIS_TENGLI_SMOKE_BUDGET_USD": "200",
             "POLARIS_TENGLI_DAILY_BUDGET_USD": "0",
             "POLARIS_TENGLI_MONTHLY_BUDGET_USD": "0",

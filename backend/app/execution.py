@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import re
 import socket
 from collections.abc import Mapping, Sequence
@@ -60,6 +61,8 @@ from .provider_quota_ledger import ProviderQuotaLedgerError, usage_request_count
 from .services import new_id, settle_credits, transition_job
 from .skill_runtime import build_fake_skill_runtime_provider
 from .storage import ImageStorage, ValidatedImage
+
+logger = logging.getLogger(__name__)
 
 
 class DetailPlanner(Protocol):
@@ -585,6 +588,9 @@ class ExecutionCoordinator:
                 planned = await planner.plan(job_id)
             except Exception as exc:
                 if self._is_domestic_main_image_job(job_id):
+                    logger.exception(
+                        "domestic main image planning failed: job_id=%s", job_id
+                    )
                     return self.fail_domestic_main_image_planning(job_id, exc)
                 raise
             current = self.auto_confirm_detail_plan(job_id, planned)
@@ -630,9 +636,11 @@ class ExecutionCoordinator:
         # add latency and alter the original one-pass delivery protocol. The durable
         # review service remains available for an explicitly requested diagnostic run.
         if is_parallel_aurora:
-            set_audit = await self._run_parallel_aurora_set_audit(job_id)
+            set_audit, set_audit_error = await self._run_parallel_aurora_set_audit(
+                job_id
+            )
             if set_audit is False:
-                self._mark_parallel_aurora_set_audit_failed(job_id)
+                self._mark_parallel_aurora_set_audit_failed(job_id, set_audit_error)
         return self.finalize_job(job_id)
 
     def _skip_parallel_pages_after_style_failure(self, job_id: str) -> None:
@@ -645,7 +653,17 @@ class ExecutionCoordinator:
 
         return
 
-    async def _run_parallel_aurora_set_audit(self, job_id: str) -> bool | None:
+    async def _run_parallel_aurora_set_audit(
+        self, job_id: str
+    ) -> tuple[bool | None, Exception | None]:
+        """Run the six-page set audit, reporting why it failed.
+
+        Returns ``(None, None)`` when the audit does not apply, ``(passed, None)``
+        for a verdict, and ``(False, exc)`` when the audit raised.  The exception
+        used to be swallowed, which made every ``AURORA_SET_AUDIT_FAILED`` row
+        unrecoverable after the fact.
+        """
+
         with self.session_factory() as session:
             statuses = session.scalars(
                 select(JobItemRecord.status).where(JobItemRecord.job_id == job_id)
@@ -653,20 +671,23 @@ class ExecutionCoordinator:
         if len(statuses) != 6 or any(
             status not in SUCCESS_ITEM_STATUSES for status in statuses
         ):
-            return None
+            return None, None
         provider: object = self.provider
         routes = getattr(provider, "routes", None)
         if isinstance(routes, Mapping):
             provider = routes.get(JobType.DOMESTIC_MAIN_IMAGE.value, provider)
         audit = getattr(provider, "audit_parallel_set", None)
         if not callable(audit):
-            return None
+            return None, None
         try:
-            return bool(await audit(job_id))
-        except Exception:
-            return False
+            return bool(await audit(job_id)), None
+        except Exception as exc:
+            logger.exception("aurora set audit failed: job_id=%s", job_id)
+            return False, exc
 
-    def _mark_parallel_aurora_set_audit_failed(self, job_id: str) -> None:
+    def _mark_parallel_aurora_set_audit_failed(
+        self, job_id: str, error: Exception | None = None
+    ) -> None:
         with self.session_factory() as session:
             item = session.scalar(
                 select(JobItemRecord)
@@ -684,7 +705,16 @@ class ExecutionCoordinator:
             item.stage = "set_audit_failed"
             item.error_code = "AURORA_SET_AUDIT_FAILED"
             item.error_message = "Aurora v2.0 six-page set audit did not pass."
-            item.error_details = {"retryable": False, "scope": "set_audit"}
+            item.error_details = {
+                "retryable": False,
+                "scope": "set_audit",
+                "reason": type(error).__name__ if error is not None else None,
+                "message": str(error)[:512] if error is not None else None,
+                "http_status": getattr(error, "http_status", None),
+                "aurora_gateway_diagnostics": getattr(
+                    error, "aurora_gateway_diagnostics", None
+                ),
+            }
             item.finished_at = utc_now()
             item.state_version += 1
             session.commit()
@@ -947,6 +977,24 @@ class ExecutionCoordinator:
     ) -> JobStatus | None:
         """Persist Aurora planning failures instead of redelivering forever."""
 
+        # Only the exception class name used to be stored, so all 54 recorded
+        # planning failures were indistinguishable from each other.  Keep the
+        # bounded message and the gateway diagnostics too: they are what makes a
+        # failure diagnosable without a production re-run.
+        failure_details: dict[str, Any] = {
+            "reason": type(error).__name__,
+            "message": str(error)[:512],
+        }
+        gateway_diagnostics = getattr(error, "aurora_gateway_diagnostics", None)
+        if isinstance(gateway_diagnostics, Mapping):
+            failure_details["aurora_gateway_diagnostics"] = dict(gateway_diagnostics)
+        http_status = getattr(error, "http_status", None)
+        if isinstance(http_status, int):
+            failure_details["http_status"] = http_status
+        error_path = getattr(error, "error_path", None)
+        if isinstance(error_path, str):
+            failure_details["error_path"] = error_path
+
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
             if job is None:
@@ -969,13 +1017,13 @@ class ExecutionCoordinator:
                 item.stage = "planning_failed"
                 item.error_code = "AURORA_PLANNING_FAILED"
                 item.error_message = "国内电商主图规划失败，请重新提交任务。"
-                item.error_details = {"reason": type(error).__name__}
+                item.error_details = dict(failure_details)
                 item.finished_at = now
                 item.state_version += 1
             job.failed_item_count = len(items)
             job.error_code = "AURORA_PLANNING_FAILED"
             job.error_message = "国内电商主图规划失败，请重新提交任务。"
-            job.error_details = {"reason": type(error).__name__}
+            job.error_details = dict(failure_details)
             transition_job(
                 job,
                 JobStatus.FAILED,

@@ -157,7 +157,10 @@ SUPPORTED_IMAGE_SIZES = frozenset(
         "2200x2200",
     }
 )
-IMAGE_FORMAT = "jpeg"
+# Artflow currently returns PNG artifacts even when the relay accepts a JPEG
+# request.  Request PNG explicitly so the provider response and our contract
+# agree instead of rejecting successful generations as format-invalid.
+IMAGE_FORMAT = "png"
 JPEG_QUALITY = 92
 DEFAULT_MEDIUM_PRICE_MICROS = 45_000
 DEFAULT_HIGH_PRICE_MICROS = 90_000

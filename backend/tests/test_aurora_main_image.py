@@ -9,6 +9,7 @@ from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -24,6 +25,7 @@ from app.aurora_main_image_provider import (
     _VISUAL_CHECKS,
     AuroraMainImageProvider,
     _bounded_visual_audit_sources,
+    _classify_transient_failure,
     _generation_sources,
     _normalize_aurora_square_artifact,
     _normalize_parallel_set_audit_payload,
@@ -31,6 +33,9 @@ from app.aurora_main_image_provider import (
     _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
     _required_audit_check_names,
+    _safe_planner_diagnostics,
+    _v20_audit_failure_message,
+    _v20_gateway_error,
     _visual_judgment_schema,
 )
 from app.aurora_main_image_runtime import (
@@ -1738,6 +1743,123 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     assert judgment["audit_complete"] is True
 
 
+def _fake_v20_judgment_payload(job_id: str) -> dict[str, Any]:
+    """Produce a valid native v2.0 audit payload via the deterministic gateway."""
+
+    source = SourceImage(
+        asset_id="candidate",
+        group_key=job_id,
+        filename="candidate.png",
+        content_type="image/png",
+        sha256="a" * 64,
+        payload=b"candidate-pixels",
+        source_role="generated_candidate",
+    )
+    result = asyncio.run(
+        FakeXingheGateway().plan(
+            PlannerRequest(
+                workspace_id="workspace_one",
+                job_id=job_id,
+                group_key="audit",
+                sources=(source,),
+                page_count=1,
+                language="zh-CN",
+                product_name="Aurora v2 audit",
+                product_information=(
+                    json.dumps(
+                        {"required_check_names": list(_VISUAL_CHECKS)},
+                        ensure_ascii=False,
+                    ),
+                ),
+                platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+                size="1024x1024",
+                idempotency_key=f"{job_id}:audit",
+                planning_profile="aurora_v20_visual_audit",
+            )
+        )
+    )
+    assert isinstance(result.payload, dict)
+    payload = dict(result.payload)
+    for field in ("page_index", "image_sha256", "reviewer", "audit_complete"):
+        payload.pop(field, None)
+    return payload
+
+
+def test_v20_audit_schema_pins_the_complete_check_cardinality() -> None:
+    """RC-3: the schema must not accept a response the validator rejects.
+
+    The old ``minItems: 1`` plus ``anyOf`` only constrained each element, so a
+    fully schema-valid response could carry a single check while the validator
+    and the immutable Harness runtime both demanded all 29.
+    """
+
+    request = PlannerRequest(
+        workspace_id="workspace_one",
+        job_id="job_audit_schema",
+        group_key="audit",
+        sources=(),
+        page_count=1,
+        language="zh-CN",
+        product_name="Aurora v2 audit",
+        product_information=(),
+        platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+        size="1024x1024",
+        idempotency_key="audit-schema",
+        planning_profile="aurora_v20_visual_audit",
+    )
+
+    schema = _planner_response_format(request)["json_schema"]["schema"]
+    checks = schema["properties"]["checks"]
+
+    assert checks["minItems"] == len(_VISUAL_CHECKS)
+    assert checks["maxItems"] == len(_VISUAL_CHECKS)
+
+
+def test_v20_visual_judgment_accepts_checks_in_any_order() -> None:
+    """A complete check set must not fail the page for arriving out of order."""
+
+    payload = _fake_v20_judgment_payload("job_check_order")
+    payload["checks"] = list(reversed(payload["checks"]))
+
+    normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        payload,
+        {"page_index": 0},
+        runtime_image_sha256="a" * 64,
+    )
+
+    assert [item["name"] for item in normalized["checks"]] == list(_VISUAL_CHECKS)
+
+
+def test_v20_visual_judgment_names_the_missing_checks() -> None:
+    payload = _fake_v20_judgment_payload("job_check_missing")
+    dropped = payload["checks"][0]["name"]
+    payload["checks"] = payload["checks"][1:]
+
+    with pytest.raises(AuroraPlanningError) as captured:
+        AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+            payload,
+            {"page_index": 0},
+            runtime_image_sha256="a" * 64,
+        )
+
+    assert "complete native check set" in str(captured.value)
+    assert dropped in str(captured.value)
+
+
+def test_v20_visual_judgment_rejects_duplicate_checks() -> None:
+    payload = _fake_v20_judgment_payload("job_check_duplicate")
+    payload["checks"] = [*payload["checks"], dict(payload["checks"][0])]
+
+    with pytest.raises(AuroraPlanningError) as captured:
+        AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+            payload,
+            {"page_index": 0},
+            runtime_image_sha256="a" * 64,
+        )
+
+    assert "repeat the native check" in str(captured.value)
+
+
 def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.json"
     with pytest.raises(AuroraHarnessError) as captured:
@@ -1747,3 +1869,104 @@ def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> N
             {"input": outside, "session": tmp_path / "session.json"},
         )
     assert captured.value.code == "HARNESS_PATH_OUTSIDE_WORKSPACE"
+
+
+def _planner_result(**overrides: object) -> SimpleNamespace:
+    values: dict[str, object] = {
+        "http_status": None,
+        "provider_request_id": None,
+        "parse_trace": (),
+        "structure_fingerprint": None,
+        "structure_profile": None,
+        "provider_envelope": None,
+        "content_utf8_bytes": None,
+        "content_sha256": None,
+        "error_code": None,
+        "error_message": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_safe_planner_diagnostics_bounds_an_opted_in_content_sample() -> None:
+    """RC-4: the excerpt is bounded, and absent unless the caller opted in."""
+
+    quiet = _safe_planner_diagnostics(_planner_result())
+
+    assert "content_sample_head" not in quiet
+    assert "content_sample_tail" not in quiet
+
+    sampled = _safe_planner_diagnostics(_planner_result(content_sample="x" * 2000))
+
+    assert sampled["content_sample_head"] == "x" * 512
+    assert sampled["content_sample_tail"] == "x" * 256
+
+
+def test_v20_audit_failure_message_names_the_real_cause() -> None:
+    """RC-5: a decode failure must not read as an image-quality verdict."""
+
+    decode_failure = _planner_result(
+        http_status=200,
+        parse_trace=("whole_json:decode_failed", "fence:not_matched"),
+    )
+
+    message = _v20_audit_failure_message(decode_failure)
+
+    assert "no JSON object" in message
+    assert "whole_json:decode_failed" in message
+
+    assert _v20_audit_failure_message(_planner_result(http_status=502)) == (
+        "Aurora v2.0 pixel audit failed with HTTP 502."
+    )
+    assert (
+        _v20_audit_failure_message(
+            _planner_result(
+                http_status=502,
+                error_message="Planner request failed with HTTP 502.",
+            )
+        )
+        == "Planner request failed with HTTP 502."
+    )
+
+
+def test_gateway_error_carries_upstream_status_for_retry_classification() -> None:
+    """RC-6: a 502 must reach the transient classifier as retryable.
+
+    The classifier reads ``http_status`` off the exception.  Previously the
+    status lived only inside diagnostics, so every upstream 429/502/503 was
+    classified as permanent and the configured retry policy never engaged.
+    """
+
+    error = _v20_gateway_error(
+        _planner_result(http_status=502),
+        "Planner request failed with HTTP 502.",
+    )
+
+    assert isinstance(error, AuroraPlanningError)
+    assert error.http_status == 502
+    assert _classify_transient_failure(error) == (True, 502)
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503, 504])
+def test_transient_classifier_recovers_status_from_the_message(status: int) -> None:
+    """A lost attribute must not silently disable retries again."""
+
+    error = AuroraPlanningError(f"Planner request failed with HTTP {status}.")
+
+    retryable, recovered = _classify_transient_failure(error)
+
+    assert retryable is True
+    assert recovered == status
+
+
+def test_transient_classifier_keeps_contract_failures_permanent() -> None:
+    error = AuroraPlanningError("Aurora v2 observations must be an object")
+
+    assert _classify_transient_failure(error) == (False, None)
+
+
+def test_transient_classifier_ignores_a_non_transient_status() -> None:
+    error = AuroraPlanningError("Planner request failed with HTTP 400.")
+    error.http_status = 400
+
+    assert _classify_transient_failure(error) == (False, 400)

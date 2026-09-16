@@ -138,6 +138,11 @@ class Settings(BaseSettings):
     aurora_max_transient_retries: int = Field(default=2, ge=0, le=2)
     aurora_retry_backoff_base_seconds: float = Field(default=2, ge=0, le=30)
     aurora_retry_backoff_max_seconds: float = Field(default=30, ge=0, le=300)
+    # Troubleshooting switch.  When enabled, a planner response that could not be
+    # decoded into an object also stores a bounded head/tail excerpt under the
+    # job item's `aurora_gateway_diagnostics`, so the next investigation can see
+    # what the model actually returned.  Keep it off in normal operation.
+    diagnostic_content_sample: bool = Field(default=False)
     development_provider_env_file: Path = Field(
         default_factory=default_development_provider_env_file
     )
@@ -151,7 +156,13 @@ class Settings(BaseSettings):
     tengli_vision_model: str = "gpt-5.6-terra"
     analysis_api_key: SecretStr = SecretStr("")
     analysis_base_url: str = "https://api.ooapi.cc"
-    analysis_model: str = "gpt-5.5"
+    # `gpt-5.5` stopped serving on this relay (HTTP 502 "Upstream access
+    # forbidden"), and `gpt-5.6-luna` now answers 503 or not at all.  A live
+    # probe against the production relay on 2026-09-16 returned a healthy
+    # completion for `gpt-5.6-sol`, so that is the shipped default.  The relay
+    # rotates models without notice: change POLARIS_ANALYSIS_MODEL to move the
+    # model instead of editing this default.
+    analysis_model: str = "gpt-5.6-sol"
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"

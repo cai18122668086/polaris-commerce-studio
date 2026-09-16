@@ -91,7 +91,7 @@ def test_masked_edit_uses_provider_compatible_identity_reference() -> None:
         api_key="test-placeholder-key",
         base_url="https://provider.invalid",
         planner_model="planner-test",
-        image_model="configured-but-not-used-for-local-edit",
+        image_model="configured-local-edit-model",
         transport=transport,
     )
     identity_pixel = (220, 15, 80, 255)
@@ -114,7 +114,9 @@ def test_masked_edit_uses_provider_compatible_identity_reference() -> None:
     result = asyncio.run(gateway.edit_masked(request))
 
     fields = dict(transport.fields)
-    assert fields["model"] == "gpt-image-2"
+    # Commit 234ca70 made local edits use the configured image model instead of a
+    # hardcoded literal; this assertion used to pin the old literal.
+    assert fields["model"] == "configured-local-edit-model"
     assert fields["size"] == "4x4"
     assert fields["output_format"] == "png"
     assert fields["response_format"] == "b64_json"

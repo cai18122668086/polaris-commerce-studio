@@ -59,6 +59,11 @@ class AuroraPlanningError(RuntimeError):
     # Optional bounded response-shape evidence attached by provider boundary
     # failures.  Raw prompts, response bodies and credentials are never stored.
     aurora_gateway_diagnostics: dict[str, Any] | None = None
+    # Upstream HTTP status, when the failure came from a gateway response.
+    # Without this the transient-failure classifier cannot tell a retryable
+    # 429/502/503 apart from a permanent contract violation, so the configured
+    # retry policy never engages.
+    http_status: int | None = None
 
 
 class _PlannerGateway(Protocol):

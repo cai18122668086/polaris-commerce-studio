@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import re
 from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
@@ -43,6 +45,8 @@ from .xinghe_agent import (
     SourceImage,
     XingheGateway,
 )
+
+logger = logging.getLogger(__name__)
 
 _AUDIT_SYSTEM_PROMPT = """
 You are the direct-pixel quality reviewer for the Aurora domestic e-commerce
@@ -385,7 +389,7 @@ class AuroraMainImageProvider:
                         "image": generated_path,
                     },
                 )
-                judgment, usage, cost = await self._audit_v20_candidate(
+                judgment, usage, cost = await self._audit_v20_candidate_with_retry(
                     request,
                     generation_request,
                     generated_path,
@@ -518,6 +522,51 @@ class AuroraMainImageProvider:
                 pricing_version=self.gateway.pricing_version,
             )
 
+    async def _audit_v20_candidate_with_retry(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        generated_path: Path,
+        artifact: ProviderArtifact,
+    ) -> tuple[dict[str, Any], dict[str, Any], int]:
+        """Retry a transient audit failure without regenerating the candidate.
+
+        The image is already generated and billed by the time the audit runs, so
+        an upstream 429/5xx while reviewing it must not discard the artifact.
+        Only the audit call is repeated, on the same bounded backoff the
+        execution layer uses for whole-item retries.
+        """
+
+        for attempt in range(len(_AURORA_AUDIT_RETRY_DELAYS) + 1):
+            try:
+                return await self._audit_v20_candidate(
+                    request,
+                    generation_request,
+                    generated_path,
+                    artifact,
+                )
+            except AuroraPlanningError as exc:
+                status = getattr(exc, "http_status", None)
+                transient = (
+                    status in _AURORA_TRANSIENT_HTTP_STATUSES
+                    or _TRANSIENT_HTTP_STATUS.search(str(exc).casefold()) is not None
+                )
+                if not transient or attempt >= len(_AURORA_AUDIT_RETRY_DELAYS):
+                    raise
+                delay = _AURORA_AUDIT_RETRY_DELAYS[attempt]
+                logger.warning(
+                    "aurora v2 audit retry after transient failure: job_id=%s "
+                    "page=%s attempt=%s http_status=%s delay=%.1fs",
+                    request.job_id,
+                    generation_request.get("page_index"),
+                    attempt + 1,
+                    status,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+
+        raise AuroraPlanningError("Aurora v2.0 audit retry loop did not settle")
+
     async def _audit_v20_candidate(
         self,
         request: ProviderRequest,
@@ -603,7 +652,7 @@ class AuroraMainImageProvider:
         if result.error_code or not isinstance(result.payload, Mapping):
             raise _v20_gateway_error(
                 result,
-                result.error_message or "Aurora v2.0 pixel audit failed",
+                _v20_audit_failure_message(result),
             )
         try:
             judgment = self._normalize_v20_visual_judgment_payload(
@@ -949,20 +998,39 @@ class AuroraMainImageProvider:
             )
 
         checks = payload.get("checks")
-        if not isinstance(checks, list) or [
-            item.get("name") for item in checks if isinstance(item, Mapping)
-        ] != list(_VISUAL_CHECKS):
+        if not isinstance(checks, list) or not all(
+            isinstance(item, Mapping) for item in checks
+        ):
+            raise AuroraPlanningError("Aurora v2 check is not an object")
+        # The native contract is "every one of the 29 checks exactly once".  It
+        # is not "in this order": the JSON Schema can only constrain the set, so
+        # rejecting a complete but differently ordered response failed pages the
+        # model had actually reviewed.  Validate the set, then restore the
+        # canonical order the immutable Harness runtime compares against.
+        checks_by_name: dict[str, Mapping[str, Any]] = {}
+        for item in checks:
+            name = str(item.get("name"))
+            if name in checks_by_name:
+                raise AuroraPlanningError(
+                    f"Aurora v2 checks repeat the native check {name}"
+                )
+            checks_by_name[name] = item
+        missing = [name for name in _VISUAL_CHECKS if name not in checks_by_name]
+        unexpected = sorted(set(checks_by_name) - set(_VISUAL_CHECKS))
+        if missing or unexpected:
+            details = []
+            if missing:
+                details.append("missing: " + ", ".join(missing))
+            if unexpected:
+                details.append("unexpected: " + ", ".join(unexpected))
             raise AuroraPlanningError(
-                "Aurora v2 checks must contain the complete ordered native check set"
+                "Aurora v2 checks must contain the complete native check set ("
+                + "; ".join(details)
+                + ")"
             )
-        checks_mutable: list[dict[str, Any]] = [
-            dict(item) for item in checks if isinstance(item, Mapping)
-        ]
-        checks = checks_mutable
+        checks = [dict(checks_by_name[name]) for name in _VISUAL_CHECKS]
         payload["checks"] = checks
         for item in checks:
-            if not isinstance(item, Mapping):
-                raise AuroraPlanningError("Aurora v2 check is not an object")
             name = str(item.get("name"))
             expected_material = name in _V20_MATERIAL_CHECKS
             if item.get("material") is not expected_material:
@@ -1515,7 +1583,7 @@ _V20_MATERIAL_CHECKS = _AURORA_V20_MATERIAL_CHECKS
 def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:
     """Keep response-shape evidence without storing raw prompts or secrets."""
 
-    return {
+    diagnostics = {
         "provider_request_id_presence": (
             "present" if getattr(result, "provider_request_id", None) else "absent"
         ),
@@ -1532,6 +1600,34 @@ def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:
             result, "usage_completeness", "not_available"
         ),
     }
+    # Without an excerpt of what the gateway actually returned, a decode failure
+    # can only ever be described as "it did not parse".  The sample is bounded
+    # and only present when the caller explicitly opted in.
+    content_sample = getattr(result, "content_sample", None)
+    if isinstance(content_sample, str) and content_sample:
+        diagnostics["content_sample_head"] = content_sample[:512]
+        diagnostics["content_sample_tail"] = content_sample[-256:]
+    return diagnostics
+
+
+def _v20_audit_failure_message(result: Any) -> str:
+    """Name an audit failure precisely instead of as an image-quality verdict.
+
+    "Aurora v2.0 pixel audit failed" reads as "the picture was not good enough",
+    but in production the audit overwhelmingly fails because the gateway
+    answered 200 with content that was not a JSON object, or because the
+    upstream returned an HTTP error.  Say which one it was.
+    """
+
+    if result.error_message:
+        return str(result.error_message)
+    http_status = getattr(result, "http_status", None)
+    if isinstance(http_status, int) and http_status >= 400:
+        return f"Aurora v2.0 pixel audit failed with HTTP {http_status}."
+    trace = ", ".join(getattr(result, "parse_trace", ()) or ())
+    if trace:
+        return f"Aurora v2.0 pixel audit returned no JSON object ({trace})."
+    return "Aurora v2.0 pixel audit returned no JSON object."
 
 
 def _v20_gateway_error(result: Any, message: str) -> AuroraPlanningError:
@@ -1539,6 +1635,12 @@ def _v20_gateway_error(result: Any, message: str) -> AuroraPlanningError:
     # The execution layer persists this under metrics and never includes the
     # raw response body, prompt, authorization header or API key.
     error.aurora_gateway_diagnostics = _safe_planner_diagnostics(result)
+    # Surface the upstream status on the exception itself: the transient
+    # classifier reads it to decide whether the configured retry policy may
+    # run.  Keeping it only inside diagnostics made every 429/502/503 look
+    # permanent.
+    status = getattr(result, "http_status", None)
+    error.http_status = status if isinstance(status, int) else None
     return error
 
 
@@ -1885,6 +1987,17 @@ def _request_uses_parallel_v20(request: ProviderRequest) -> bool:
     )
 
 
+_TRANSIENT_HTTP_STATUS = re.compile(r"failed with http (408|429|5\d\d)\b")
+
+# Upstream statuses that justify another attempt at the same work.
+_AURORA_TRANSIENT_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+# In-page audit retry backoff.  It mirrors the execution layer's Aurora retry
+# schedule.  Only the audit call is repeated: the candidate image has already
+# been generated and paid for, so it is never regenerated here.
+_AURORA_AUDIT_RETRY_DELAYS = (2.5, 7.5)
+
+
 def _classify_transient_failure(exc: Exception) -> tuple[bool, int | None]:
     """Classify only transport failures; validation and Skill failures fail closed."""
 
@@ -1901,6 +2014,13 @@ def _classify_transient_failure(exc: Exception) -> tuple[bool, int | None]:
     ):
         return True, http_status
     message = str(exc).casefold()
+    # Gateway failures surface as "Planner request failed with HTTP 502." on the
+    # exception message.  Recover the status from the message so a lost
+    # attribute cannot silently disable the configured retry policy again.
+    match = _TRANSIENT_HTTP_STATUS.search(message)
+    if match is not None:
+        recovered = int(match.group(1))
+        return True, http_status if http_status is not None else recovered
     transient_markers = (
         "temporary unavailable",
         "temporarily unavailable",

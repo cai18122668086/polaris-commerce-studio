@@ -66,6 +66,17 @@ EXPECTED_SERVICE_NETWORKS = {
     "caddy": {"edge", "ingress"},
 }
 RELEASE_SHA = re.compile(r"^[0-9a-f]{40}$")
+# Budget/quota values are per-environment cost policy, not release-correctness
+# invariants: production intentionally caps tighter than the base env template.
+# Drift on these keys is reported as a warning instead of blocking the deploy.
+BUDGET_POLICY_KEYS = frozenset(
+    {
+        "POLARIS_TENGLI_SMOKE_BUDGET_USD",
+        "POLARIS_TENGLI_DAILY_BUDGET_USD",
+        "POLARIS_TENGLI_MONTHLY_BUDGET_USD",
+        "POLARIS_TENGLI_DAILY_REQUEST_LIMIT",
+    }
+)
 DIGEST_REFERENCE = re.compile(
     r"^[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$"
 )
@@ -181,7 +192,11 @@ def validate_queue_topology(
     return errors
 
 
-def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> list[str]:
+def validate_env(
+    env: dict[str, str],
+    base: dict[str, str] | None = None,
+    warnings: list[str] | None = None,
+) -> list[str]:
     errors: list[str] = []
     missing = sorted(key for key in REQUIRED_ENV_KEYS if key not in env)
     if missing:
@@ -282,9 +297,16 @@ def validate_env(env: dict[str, str], base: dict[str, str] | None = None) -> lis
             for key in PROVIDER_KEYS
             if key in base and env.get(key) != base.get(key)
         ]
-        if changed:
+        blocking = [key for key in changed if key not in BUDGET_POLICY_KEYS]
+        if blocking:
             errors.append(
-                "Provider settings changed during auth cutover: " + ", ".join(changed)
+                "Provider settings changed during auth cutover: " + ", ".join(blocking)
+            )
+        budget_changed = [key for key in changed if key in BUDGET_POLICY_KEYS]
+        if budget_changed and warnings is not None:
+            warnings.append(
+                "Budget policy keys differ from base env (per-environment cost "
+                "policy, non-blocking): " + ", ".join(budget_changed)
             )
     return errors
 
@@ -558,10 +580,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    warnings: list[str] = []
     try:
         env = load_env(args.env_file)
         base = load_env(args.base_env) if args.base_env else None
-        errors = validate_env(env, base)
+        errors = validate_env(env, base, warnings)
         errors.extend(validate_mode(args.env_file))
         errors.extend(validate_compose(args.compose_file.read_text(encoding="utf-8")))
         errors.extend(validate_caddy(args.caddyfile.read_text(encoding="utf-8")))
@@ -578,6 +601,8 @@ def main() -> int:
     except (OSError, ValueError) as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2
+    for warning in warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
     if errors:
         for error in errors:
             print(f"BLOCKED: {error}", file=sys.stderr)

@@ -16,6 +16,7 @@ from generate_production_env import (
     load_env,
 )
 from production_preflight import (
+    BUDGET_POLICY_KEYS,
     parse_args,
     validate_backend_dockerfile,
     validate_caddy,
@@ -271,6 +272,35 @@ class ProductionPreflightTests(unittest.TestCase):
         self.assertIn(
             "Provider settings changed during auth cutover: POLARIS_TASK_RUNNER", errors
         )
+
+    def test_budget_policy_drift_warns_without_blocking(self) -> None:
+        env = self.valid_env()
+        base = {key: env[key] for key in PROVIDER_KEYS}
+        for key in BUDGET_POLICY_KEYS:
+            env[key] = "999999"
+        warnings: list[str] = []
+        errors = validate_env(env, base, warnings)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(warnings), 1)
+        for key in sorted(BUDGET_POLICY_KEYS):
+            self.assertIn(key, warnings[0])
+
+    def test_budget_policy_warning_does_not_mask_provider_drift(self) -> None:
+        env = self.valid_env()
+        base = {key: env[key] for key in PROVIDER_KEYS}
+        env["POLARIS_TENGLI_DAILY_BUDGET_USD"] = "999999"
+        env["POLARIS_TASK_RUNNER"] = "tengli"
+        warnings: list[str] = []
+        errors = validate_env(env, base, warnings)
+        self.assertIn(
+            "Provider settings changed during auth cutover: POLARIS_TASK_RUNNER", errors
+        )
+        self.assertTrue(
+            any("POLARIS_TENGLI_DAILY_BUDGET_USD" in warning for warning in warnings)
+        )
+
+    def test_budget_policy_keys_are_provider_keys(self) -> None:
+        self.assertTrue(BUDGET_POLICY_KEYS.issubset(set(PROVIDER_KEYS)))
 
     def test_production_storage_and_domestic_policy_are_fail_closed(self) -> None:
         env = self.valid_env()

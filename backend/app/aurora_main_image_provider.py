@@ -2522,6 +2522,46 @@ def _normalized_deficiencies(
     return result
 
 
+# ``plan.schema.json`` declares these campaign-style tokens as strings and the
+# Harness prompt compiler renders them with ``str + str`` concatenation.
+_STYLE_TEXT_TOKENS = frozenset(
+    {
+        "photography_finish",
+        "light_direction",
+        "color_temperature",
+        "graphic_language",
+        "information_surfaces",
+        "density_band",
+    }
+)
+
+
+def _coerce_style_text_token(value: object) -> str | None:
+    """Return a prompt-safe string for a text style token, or ``None`` to drop it.
+
+    The observation agent returns short phrases as a list often enough that a
+    list-valued token used to escape calibration and reach the Harness compiler,
+    which aborted the page sequence with ``TypeError: can only concatenate str
+    (not "list") to str`` and surfaced as an opaque ``HARNESS_INVALID_OUTPUT``.
+    Joining the phrases keeps the observation instead of discarding it; anything
+    the compiler cannot render falls back to the compiled campaign style.
+    """
+
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        phrases = [
+            item.strip() for item in value if isinstance(item, str) and item.strip()
+        ]
+        # A list holding anything other than non-blank strings is unusable;
+        # never emit ``repr`` noise into the prompt.
+        if not phrases or len(phrases) != len(value):
+            return None
+        return "；".join(phrases)
+    return None
+
+
 def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Accept equivalent concrete-evidence arrays from compatible vision models."""
 
@@ -2575,6 +2615,19 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
         tokens.pop("palette_roles", None)
     if "typography" in tokens and not isinstance(tokens["typography"], Mapping):
         tokens.pop("typography", None)
+    # The compiled Harness campaign style is the source of truth for the text
+    # tokens as well. ``plan.schema.json`` declares them as strings and
+    # ``compile_prompt`` renders them with ``str + str``, so a list has to be
+    # joined (or dropped) here instead of terminating the page sequence at
+    # calibration with an opaque HARNESS_INVALID_OUTPUT.
+    for name in _STYLE_TEXT_TOKENS:
+        if name not in tokens:
+            continue
+        text = _coerce_style_text_token(tokens[name])
+        if text is None:
+            tokens.pop(name)
+        else:
+            tokens[name] = text
     payload["style_tokens"] = tokens
     return payload
 

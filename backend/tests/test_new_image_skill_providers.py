@@ -14,7 +14,10 @@ from app.creative_image_provider import CreativeImageProvider
 from app.new_detail_skill_provider import SKILL_ADAPTER_CONFIGURATION_KEY
 from app.new_image_skill_provider import (
     SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION,
+    NewImageSkillContractError,
     NewImageSkillProvider,
+    optional_string,
+    optional_string_list,
 )
 from app.product_image_provider import PRODUCT_IMAGE_PRESETS, ProductImageProvider
 from app.provider import (
@@ -311,6 +314,64 @@ def test_reference_remix_requires_product_and_style_clues(
     assert missing_key in (result.error_message or "")
     assert delegate.requests == []
     assert validator.calls == []
+
+
+def test_optional_string_treats_json_null_as_not_provided() -> None:
+    """Job schemas declare optional settings as ``X | None`` and persist ``null``."""
+
+    assert optional_string({"instruction": None}, "instruction") == ""
+    assert optional_string({"quality": None}, "quality", default="high") == "high"
+    assert optional_string({}, "quality", default="high") == "high"
+    assert optional_string({"quality": "low"}, "quality", default="high") == "low"
+
+
+def test_optional_string_list_treats_json_null_as_not_provided() -> None:
+    assert optional_string_list({"selling_points": None}, "selling_points") == []
+    assert optional_string_list({}, "selling_points") == []
+    assert optional_string_list(
+        {"selling_points": [" 透气 ", "", "无痕"]}, "selling_points"
+    ) == ["透气", "无痕"]
+
+
+def test_optional_helpers_still_reject_wrong_types() -> None:
+    with pytest.raises(NewImageSkillContractError):
+        optional_string({"quality": 3}, "quality")
+    with pytest.raises(NewImageSkillContractError):
+        optional_string_list({"selling_points": "透气"}, "selling_points")
+
+
+def test_reference_remix_accepts_null_reference_skill_from_workspace_form() -> None:
+    """The workspace form omits reference_skill, so the schema persists ``null``.
+
+    Regression: the provider used to fail this request in under a second with
+    ``PROMPT_INPUT_INVALID: reference_skill must be a string.``
+    """
+
+    delegate = StubDelegate(_artifact_result())
+    provider = ReferenceRemixProvider(delegate, manifest_validator=ManifestSpy())
+    request = _request(
+        "reference_remix",
+        input_config={
+            "product_asset_ids": ["asset-product"],
+            "reference_asset_ids": ["asset-reference"],
+        },
+        settings={
+            "image_count": 1,
+            "platform_code": "tmall",
+            "language": "zh-CN",
+            "selling_points": [],
+            "execution_mode": "planner",
+            "quality": "high",
+            "output_format": "png",
+            "instruction": "",
+            "reference_skill": None,
+        },
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert len(delegate.requests) == 1
 
 
 @pytest.mark.parametrize("image_count", [0, 13, True, "12"])

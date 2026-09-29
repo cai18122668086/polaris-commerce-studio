@@ -1059,6 +1059,95 @@ def test_style_calibration_keeps_unknown_fields_fail_closed(field: str) -> None:
         native_validator(observation)
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("plain text", "plain text"),
+        ("  padded  ", "padded"),
+        (["包装正面", "卖点标签"], "包装正面；卖点标签"),
+        (["  a  ", "b"], "a；b"),
+    ],
+)
+def test_style_calibration_coerces_text_token_to_prompt_string(
+    value: object, expected: str
+) -> None:
+    """The Harness prompt compiler renders text tokens with ``str + str``."""
+
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {"information_surfaces": value},
+        }
+    )
+
+    assert observation["style_tokens"] == {"information_surfaces": expected}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [],
+        ["ok", 7],
+        [{"nested": "object"}],
+        "",
+        "   ",
+        7,
+        None,
+        {"headline": "bold"},
+    ],
+)
+def test_style_calibration_drops_text_token_it_cannot_render(
+    value: object,
+) -> None:
+    """An unrenderable override falls back to the compiled campaign style."""
+
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {
+                "information_surfaces": value,
+                "density_band": "  medium  ",
+            },
+        }
+    )
+
+    assert observation["style_tokens"] == {"density_band": "medium"}
+
+
+def test_style_calibration_leaves_no_unrenderable_text_token_for_the_harness() -> None:
+    """Regression for the ``HARNESS_INVALID_OUTPUT`` page loss.
+
+    ``compile_prompt`` renders the campaign-style text tokens with ``str + str``.
+    A list-valued token that escaped calibration raised ``TypeError: can only
+    concatenate str (not "list") to str`` inside the Harness subprocess, which
+    exited non-zero and surfaced as an opaque ``HARNESS_INVALID_OUTPUT`` on the
+    page, leaving the job at ``partial``.
+    """
+
+    text_tokens = (
+        "photography_finish",
+        "light_direction",
+        "color_temperature",
+        "graphic_language",
+        "information_surfaces",
+        "density_band",
+    )
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {
+                **{name: [f"{name} A", f"{name} B"] for name in text_tokens},
+                "palette_roles": {"primary": "blue"},
+            },
+        }
+    )
+
+    tokens = observation["style_tokens"]
+    assert set(tokens) == set(text_tokens) | {"palette_roles"}
+    assert all(isinstance(tokens[name], str) for name in text_tokens)
+    assert tokens["palette_roles"] == {"primary": "blue"}
+
+
 def test_set_role_audit_adapts_page_evidence_to_harness_distinctions() -> None:
     observation = _normalize_set_role_audit_payload(
         {

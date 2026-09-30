@@ -27,6 +27,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from .creative_planning_contract import CREATIVE_FIELDS, CREATIVE_PLANNER_PROMPT
 from .domain import (
     AssetLifecycleStatus,
     AssetMediaKind,
@@ -248,6 +249,15 @@ class SingleImageProviderError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+def validate_execution_prompt_budget(prompt: str) -> None:
+    size = len(prompt.encode("utf-8"))
+    if size > 24_000:
+        raise SingleImageProviderError(
+            "EXECUTION_PROMPT_TOO_LARGE",
+            f"最终执行提示词为 {size} UTF-8 字节，超过 24000 字节。请精简描述后重新提交；尚未调用生图，商品约束未被截断。",
+        )
 
 
 @dataclass(frozen=True)
@@ -482,6 +492,8 @@ class XingheSingleImageProvider:
                     sources = style_sources + product_sources
             if not direct_prompt and not creative_analysis:
                 prompt = self._compile_prompt(envelope, protocol, reference_analysis=analysis)
+            if envelope.operation in {"reference_remix", "creative_image"}:
+                validate_execution_prompt_budget(prompt)
         except SingleImageProviderError as exc:
             return self._rejection(exc.code, str(exc))
         except Exception as exc:
@@ -649,7 +661,7 @@ class XingheSingleImageProvider:
         if missing:
             raise SingleImageProviderError(
                 "REFERENCE_VISUAL_ANALYSIS_INVALID",
-                "Reference visual analysis omitted required fields.",
+                "Reference visual analysis omitted required fields: " + ", ".join(missing),
             )
         return dict(analysis.payload)
 
@@ -681,7 +693,7 @@ class XingheSingleImageProvider:
             size=envelope.target.size,
             idempotency_key=f"{request.idempotency_key}:creative-analysis",
             system_prompt=(
-                ("Use the verified ecommerce creative-image Skill protocol below. "
+                (CREATIVE_PLANNER_PROMPT + " Use the verified ecommerce creative-image Skill protocol below. "
                 "Inspect the uploaded product image and the user's brief. Plan one "
                 "commercial image, then return JSON only with these keys: "
                 "product_identity_lock, hard_composition_skeleton, normalized_anchors, "
@@ -711,19 +723,11 @@ class XingheSingleImageProvider:
                 "CREATIVE_VISUAL_ANALYSIS_FAILED",
                 analysis.error_message or "Creative visual planning failed.",
             )
-        required = {
-            "product_identity_lock",
-            "hard_composition_skeleton",
-            "normalized_anchors",
-            "product_role_map",
-            "typography_zones",
-            "original_execution_prompt",
-        }
-        missing = sorted(key for key in required if key not in analysis.payload)
+        missing = sorted(key for key in CREATIVE_FIELDS if not analysis.payload.get(key))
         if missing:
             raise SingleImageProviderError(
                 "CREATIVE_VISUAL_ANALYSIS_INVALID",
-                "Creative planner omitted required fields.",
+                "Creative planner omitted required fields: " + ", ".join(missing),
             )
         return dict(analysis.payload)
 
@@ -753,8 +757,8 @@ class XingheSingleImageProvider:
         )
         if len(prompt.encode("utf-8")) > 24_000:
             raise SingleImageProviderError(
-                "CREATIVE_VISUAL_ANALYSIS_INVALID",
-                "The compiled creative execution prompt is unexpectedly large.",
+                "EXECUTION_PROMPT_TOO_LARGE",
+                f"创意执行提示词为 {len(prompt.encode('utf-8'))} UTF-8 字节，超过 24000 字节。请精简描述后重新提交；尚未调用生图，商品约束未被截断。",
             )
         return prompt
 
@@ -1494,8 +1498,8 @@ class XingheSingleImageProvider:
         )
         if len(prompt.encode("utf-8")) > 24_000:
             raise SingleImageProviderError(
-                "REFERENCE_VISUAL_ANALYSIS_INVALID",
-                "The compiled reference execution prompt is unexpectedly large.",
+                "EXECUTION_PROMPT_TOO_LARGE",
+                f"复刻执行提示词为 {len(prompt.encode('utf-8'))} UTF-8 字节，超过 24000 字节。请精简参考描述后重新提交；尚未调用生图，商品约束未被截断。",
             )
         return prompt
 

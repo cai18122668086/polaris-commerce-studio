@@ -357,7 +357,7 @@ class DetailPackConfiguration(BaseModel):
     market_region: Literal["domestic", "international"] = "international"
     category: str | None = Field(default=None, max_length=80)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
-    page_count: int = Field(ge=1, le=12)
+    page_count: int = Field(strict=True, ge=1, le=12)
     auto_start_after_plan: bool = True
     size: Literal[
         "1024x1536",

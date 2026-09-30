@@ -80,6 +80,15 @@ direct-pixel verdict sentence of at least 12 characters; never return a
 one-word verdict such as PASS, 合格 or 通过.
 """.strip()
 
+_STYLE_CALIBRATION_SYSTEM_PROMPT = """
+Compare only the shared visual style of the two attached campaign pages.
+Return the requested style-calibration JSON object, not a single-page quality
+judgment. Set agent_pixel_reviewed to true only if you actually inspected both
+images; otherwise set it to false and explain the unavailable evidence.
+Describe concrete observed pixels and shared style tokens. Do not infer product
+identity, invent facts, or report checks from a different review protocol.
+""".strip()
+
 
 class AuroraMainImageProvider:
     """Run generation, direct-pixel review and the one-repair loop per page."""
@@ -804,7 +813,7 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_STYLE_CALIBRATION",
                 size="1024x1024",
                 idempotency_key=f"{request.idempotency_key}:style-calibration:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_STYLE_CALIBRATION_SYSTEM_PROMPT,
                 planning_profile="aurora_style_calibration",
             )
         )
@@ -1575,7 +1584,7 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_STYLE_CALIBRATION",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-style-calibration:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_STYLE_CALIBRATION_SYSTEM_PROMPT,
                 planning_profile="aurora_style_calibration",
             )
         )
@@ -2089,6 +2098,17 @@ def _classify_transient_failure(exc: Exception) -> tuple[bool, int | None]:
 
     status = getattr(exc, "http_status", None) or getattr(exc, "status_code", None)
     http_status = status if isinstance(status, int) else None
+    # This diagnostic survives the planner/runtime exception wrappers. A read
+    # timeout may already have produced a billable image; never retry the whole
+    # item merely because the wrapped message contains the word "timeout".
+    marker = "Provider transport failed: "
+    if marker in str(exc):
+        try:
+            diagnostic, _ = json.JSONDecoder().raw_decode(str(exc).split(marker, 1)[1])
+            if isinstance(diagnostic, dict):
+                return diagnostic.get("safe_to_retry") is True, http_status
+        except (ValueError, TypeError):
+            return False, http_status
     if http_status in {408, 429} or (
         http_status is not None and 500 <= http_status <= 599
     ):
@@ -2653,8 +2673,9 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
 
     evidence = payload.get("observed_evidence")
     if not isinstance(evidence, str) or len(evidence.strip()) < 20:
-        concrete = payload.get("concrete_observed_evidence") or payload.get(
-            "concrete observed_evidence"
+        concrete = evidence if isinstance(evidence, (list, Mapping)) else (
+            payload.get("concrete_observed_evidence")
+            or payload.get("concrete observed_evidence")
         )
         statements = _flatten_style_evidence(concrete)
         if statements:

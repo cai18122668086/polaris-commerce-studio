@@ -1283,7 +1283,11 @@ class ExecutionCoordinator:
             operation=attempt.operation,
             configuration={
                 "job": dict(job.configuration),
-                "item": dict(item.configuration),
+                "item": {
+                    **dict(item.configuration),
+                    "item_key": item.item_key,
+                    "ordinal": item.ordinal,
+                },
             },
         )
 

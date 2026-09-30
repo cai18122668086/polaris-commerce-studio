@@ -87,7 +87,7 @@ export default function JobsPage() {
     retry.mutate({
       jobId: job.id,
       allowedActions: job.allowed_actions,
-      scope: itemId ? "selected" : "failed",
+      scope: itemId ? "selected" : job.status === "cancelled" ? "missing" : "failed",
       itemIds: itemId ? [itemId] : [],
     });
   };
@@ -174,7 +174,7 @@ export default function JobsPage() {
                   </div>
                   <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>{job.history_expires_at ? `保留至 ${formatDate(job.history_expires_at)}` : "实时更新"}</small></div>
                   <div className="record-actions">
-                    {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={(event) => { event.stopPropagation(); runRetry(job); }} disabled={retry.isPending}><RotateCcw size={16} /></button>}
+                    {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title={job.status === "cancelled" ? "继续未完成项" : "重试失败项"} className="emphasis" onClick={(event) => { event.stopPropagation(); runRetry(job); }} disabled={retry.isPending}><RotateCcw size={16} /></button>}
                     {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} title="取消任务" onClick={(event) => { event.stopPropagation(); runCancel(job); }} disabled={cancel.isPending}><Ban size={16} /></button>}
                     <Link aria-label={`打开对应工作台 ${jobTitle(job)}`} title="打开对应工作台" className="row-open" href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}><ArrowUpRight size={16} /></Link>
                   </div>

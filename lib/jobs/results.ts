@@ -2,6 +2,19 @@ import type { JobDetail } from "@/lib/api/types";
 
 export type JobResultAsset = JobDetail["assets"][number];
 
+export function canDownloadJobArchive(job: JobDetail | undefined): boolean {
+  if (!job || !["detail_pack", "amazon_visual_suite", "domestic_main_image"].includes(job.type)) return false;
+  if (job.expected_item_count < 1 || selectJobResultAssets(job).length !== job.expected_item_count) return false;
+  if (job.status === "completed") return true;
+  if (job.type !== "amazon_visual_suite" || job.status !== "partial" || job.expected_item_count !== 21 || job.items.length !== 21 || job.succeeded_item_count + job.failed_item_count !== 21) return false;
+  const preservedFailure = (item: JobDetail["items"][number]) => {
+    const details = item.error_details;
+    return item.status === "failed" && details?.failure_kind === "review_infrastructure_failure" && details.image_quality_failed === false && details.generated_asset_preserved === true;
+  };
+  const failures = job.items.filter(preservedFailure);
+  return failures.length > 0 && failures.length === job.failed_item_count && job.items.every(item => ["succeeded", "reused"].includes(item.status) || preservedFailure(item));
+}
+
 const REFERENCE_ASSET_ROLES = new Set([
   "brand_reference",
   "competitor_reference",

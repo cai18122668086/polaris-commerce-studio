@@ -37,6 +37,9 @@ const JOB_STAGE_LABELS: Record<string, string> = {
   planning_failed: "规划失败",
   suite_quality_reported: "质量检查已完成",
   suite_quality_passed: "质量检查通过",
+  set_auditing: "图片已生成，整组审核中",
+  set_audit_error: "图片已生成，审核异常待确认",
+  set_audit_failed: "图片已生成，整组审核未通过",
   suite_review_reported: "套图审核已完成",
   partial: "部分成功",
   completed: "已完成",
@@ -118,6 +121,12 @@ export function jobNote(job: Job | JobDetail): string {
 }
 
 export function safeJobFailureSummary(errorCode?: string | null): string {
+  if (errorCode === "AURORA_SET_AUDIT_ERROR") {
+    return "图片已生成并保留，整组审核发生技术错误，审核结论待确认。";
+  }
+  if (errorCode === "AURORA_SET_AUDIT_FAILED") {
+    return "图片已生成并保留，整组审核未通过，请检查审核结果。";
+  }
   if (errorCode === "AURORA_SEQUENCE_HALTED") {
     return "前序图片未完成，后续图片已停止生成。";
   }

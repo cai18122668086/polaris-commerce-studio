@@ -38,7 +38,7 @@ export default function DashboardPage() {
               {items.slice(0, 3).map((job) => (
                 <article key={job.id}>
                   <div className="api-job-cover"><Sparkles size={20} /></div>
-                  <div><div className="recent-job__title"><strong>{jobTitle(job)}</strong><StatusBadge status={job.status} /></div><p>{jobNote(job)}</p><span><Clock3 size={13} />{formatDate(job.created_at)}<i>·</i>{jobCount(job)}</span></div>
+                  <div><div className="recent-job__title"><strong>{jobTitle(job)}</strong><StatusBadge status={job.status} stage={job.stage} /></div><p>{jobNote(job)}</p><span><Clock3 size={13} />{formatDate(job.created_at)}<i>·</i>{jobCount(job)}</span></div>
                   <Link href="/jobs" aria-label={`查看任务 ${jobTitle(job)}`}><ArrowRight size={16} /></Link>
                 </article>
               ))}

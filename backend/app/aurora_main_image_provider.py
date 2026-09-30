@@ -25,10 +25,11 @@ from .aurora_main_image_runtime import (
     AuroraV20HarnessRunner,
     write_contract,
 )
+from .aurora_set_audit import SetAuditResult
+from .aurora_set_audit_contract import validate_evidence, validate_verdict_fields
 from .config import default_aurora_work_root
 from .domain import JobItemStatus
 from .models import (
-    AuditEventRecord,
     JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
@@ -1057,7 +1058,88 @@ class AuroraMainImageProvider:
                 raise AuroraPlanningError("Aurora v2 check evidence is missing")
 
         observations = _mapping(payload.get("observations"))
+        page_contract = _mapping(generation_request.get("page_contract"))
+        layout_contract = _mapping(page_contract.get("layout_contract"))
+        copy_contract = _mapping(page_contract.get("display_copy_contract"))
+
+        def _downgrade_contradicted(name: str, evidence: str) -> None:
+            """Turn a contradicted self-report into an ordinary failure.
+
+            The immutable Harness raises a fatal ``HarnessError`` whenever a
+            check claims ``passed`` while its own observations say otherwise,
+            and that error aborts the page before the repair machinery can run.
+            Applying the same rule here keeps the contradiction, but routes it
+            through the normal blocked/repair path so the page still gets its
+            single allowed repair instead of dying during validation.
+            """
+
+            check = next(
+                (item for item in checks if item.get("name") == name), None
+            )
+            if check is None or check.get("passed") is not True:
+                return
+            check["passed"] = False
+            check["score"] = min(float(check.get("score", 69)), 69)
+            check["observed_evidence"] = evidence
+
+        layout_matches = all(
+            observations.get(observation_key) == layout_contract.get(contract_key)
+            for observation_key, contract_key in (
+                ("composition_archetype_seen", "composition_archetype"),
+                ("product_zone_seen", "product_zone"),
+                ("copy_zone_seen", "copy_zone"),
+                ("dominant_view_seen", "dominant_view"),
+                ("evidence_topology_seen", "evidence_topology"),
+            )
+        )
+        if layout_contract and not layout_matches:
+            _downgrade_contradicted(
+                "layout_not_cloned",
+                "像素中的空间结构未落在该页专属布局合同上。",
+            )
+            _downgrade_contradicted(
+                "approved_plan_fidelity_match",
+                "可见布局与已批准计划的页面合同不一致。",
+            )
+        if (
+            expected_page > 0
+            and len(str(observations.get("neighbor_layout_difference") or "").strip())
+            < 12
+        ):
+            _downgrade_contradicted(
+                "layout_not_cloned",
+                "未能给出与上一页具体的可见布局差异。",
+            )
+        if observations.get("evidence_is_primary_visual") is not True:
+            _downgrade_contradicted(
+                "selling_point_visual_dominance",
+                "卖点并未由真实物理证据作为主视觉承担。",
+            )
+        if not observations.get("physical_evidence"):
+            _downgrade_contradicted(
+                "evidence_relation_visible",
+                "画面中没有可见的真实物理证据。",
+            )
         if expected_page == 0:
+            headline_text = re.sub(
+                r"[\s，,。；;：:·|/]+",
+                "",
+                str(observations.get("headline_text") or ""),
+            )
+            headline_concise = len(headline_text) <= int(
+                copy_contract.get("headline_hard_max_chars") or 12
+            ) and int(observations.get("headline_line_count") or 1) <= int(
+                copy_contract.get("headline_max_lines") or 2
+            )
+            if not headline_concise:
+                _downgrade_contradicted(
+                    "headline_treatment_match",
+                    "搜索页短标题超出显示文案合同的字数或行数硬上限。",
+                )
+                _downgrade_contradicted(
+                    "thumbnail_success",
+                    "搜索页短标题超长，缩略图点击竞争力不成立。",
+                )
             baseline_visible = (
                 observations.get("type_roles_seen", 0) >= 4
                 and observations.get("headline_rank") in {"FIRST", "JOINT_FIRST"}
@@ -1065,19 +1147,11 @@ class AuroraMainImageProvider:
                 and observations.get("commercial_closure_visible") is True
                 and bool(observations.get("physical_evidence"))
             )
-            baseline_check = next(
-                item
-                for item in checks
-                if item.get("name") == "baseline_performance_match"
-            )
-            if baseline_check.get("passed") is True and not baseline_visible:
-                baseline_check["passed"] = False
-                baseline_check["score"] = min(
-                    float(baseline_check.get("score", 69)), 69
-                )
-                baseline_check["observed_evidence"] = (
+            if not baseline_visible:
+                _downgrade_contradicted(
+                    "baseline_performance_match",
                     "搜索页像素未同时呈现四级文字角色、强标题、纵深、"
-                    "真实物理证据和已核验事实闭合。"
+                    "真实物理证据和已核验事实闭合。",
                 )
 
         # A contradictory passed=true/score<70 response must become a normal
@@ -1096,10 +1170,19 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 "Aurora v2 all_material_deficiencies must be an array"
             )
+        # Mirror the Harness classification exactly: only a failed hard check,
+        # or a failed material check below the 70-point floor, becomes a
+        # blocking deficiency there. Emitting a deficiency for any other failed
+        # check would make the Harness reject an otherwise valid judgment,
+        # because it compares this set against its own material failures.
         failed_material = {
             str(item["name"])
             for item in checks
-            if item.get("material") is True and item.get("passed") is False
+            if item.get("passed") is False
+            and (
+                str(item["name"]) in _V20_HARD_CHECKS
+                or (item.get("material") is True and float(item["score"]) < 70)
+            )
         }
         existing_by_name = {
             str(item.get("check")): dict(item)
@@ -1154,7 +1237,7 @@ class AuroraMainImageProvider:
         normalized["audit_complete"] = True
         return normalized
 
-    async def audit_parallel_set(self, job_id: str) -> bool:
+    async def audit_parallel_set(self, job_id: str) -> SetAuditResult:
         """Merge six page-local sessions and run the native v2.0 set audit."""
 
         with self.session_factory() as db:
@@ -1280,17 +1363,28 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{job_id}:aurora-v20-set-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=(
+                    "Inspect all six images and obey the supplied "
+                    "set-review JSON schema. "
+                    "Never infer missing evidence from a summary PASS."
+                ),
                 planning_profile="aurora_set_audit",
             )
         )
         if result.error_code or not isinstance(result.payload, Mapping):
-            raise AuroraPlanningError(
-                result.error_message or "Aurora v2.0 set audit failed"
+            raise _v20_gateway_error(result, "Aurora set audit gateway protocol error")
+        try:
+            observation = _normalize_parallel_set_audit_payload(
+                dict(result.payload), sources
             )
-        observation = _normalize_parallel_set_audit_payload(
-            dict(result.payload), sources
-        )
+        except ValueError as exc:
+            error = _v20_gateway_error(result, "Aurora set audit contract invalid")
+            error.aurora_gateway_diagnostics = {
+                **(error.aurora_gateway_diagnostics or {}),
+                "error_code": "AURORA_SET_AUDIT_PROTOCOL_INVALID",
+                "contract_reason": str(exc),
+            }
+            raise error from None
         observation_path = set_workspace / "observation.json"
         write_contract(observation_path, observation)
         runner = (
@@ -1305,37 +1399,8 @@ class AuroraMainImageProvider:
         )
         audited = _load_json(set_session_path)
         passed = audited.get("set_audit_passed") is True
-        with self.session_factory() as db:
-            stored_plan = db.scalar(
-                select(JobPlanRecord)
-                .where(JobPlanRecord.job_id == job_id)
-                .order_by(JobPlanRecord.revision.desc())
-                .limit(1)
-                .with_for_update()
-            )
-            if stored_plan is None:
-                raise AuroraPlanningError("Aurora v2.0 plan disappeared")
-            payload = dict(stored_plan.payload)
-            payload["_parallel_v20_set_session"] = audited
-            payload["set_audit_passed"] = passed
-            payload["harness_state"] = audited.get("state")
-            stored_plan.payload = payload
-            stored_plan.payload_hash = canonical_hash(payload)
-            db.add(
-                AuditEventRecord(
-                    workspace_id=items[0].workspace_id,
-                    action="aurora.parallel_v20_set_audited",
-                    resource_type="job",
-                    resource_id=job_id,
-                    request_id=f"{job_id}:v20-set-audit",
-                    details={
-                        "passed": passed,
-                        "harness_state": audited.get("state"),
-                    },
-                )
-            )
-            db.commit()
-        return passed
+        # Only the coordinator persists results, under the job lock and token.
+        return SetAuditResult(passed=passed, observation=audited)
 
     def _load_authorized_context(
         self, request: ProviderRequest
@@ -1548,7 +1613,11 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_SET_ROLE_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-set-role-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=(
+                    "Inspect all six images and obey the supplied "
+                    "set-review JSON schema. "
+                    "Never infer missing evidence from a summary PASS."
+                ),
                 planning_profile="aurora_set_audit",
             )
         )
@@ -1578,6 +1647,19 @@ class AuroraMainImageProvider:
 _VISUAL_CHECKS = _AURORA_V20_VISUAL_CHECKS
 
 _V20_MATERIAL_CHECKS = _AURORA_V20_MATERIAL_CHECKS
+
+# The five native hard checks. The Harness blocks on any failed hard check
+# regardless of score, so the application boundary must classify them the same
+# way when it builds the material deficiency list.
+_V20_HARD_CHECKS = frozenset(
+    {
+        "product_identity_match",
+        "factual_copy_match",
+        "source_background_noise_absent",
+        "no_unsupported_claim",
+        "no_hard_error",
+    }
+)
 
 
 def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:
@@ -1634,7 +1716,11 @@ def _v20_gateway_error(result: Any, message: str) -> AuroraPlanningError:
     error = AuroraPlanningError(message)
     # The execution layer persists this under metrics and never includes the
     # raw response body, prompt, authorization header or API key.
-    error.aurora_gateway_diagnostics = _safe_planner_diagnostics(result)
+    error.aurora_gateway_diagnostics = {
+        key: value
+        for key, value in _safe_planner_diagnostics(result).items()
+        if not key.startswith("content_sample")
+    }
     # Surface the upstream status on the exception itself: the transient
     # classifier reads it to decide whether the configured retry policy may
     # run.  Keeping it only inside diagnostics made every 429/502/503 look
@@ -2649,6 +2735,95 @@ def _flatten_style_evidence(value: object) -> list[str]:
     return []
 
 
+def _derive_set_role_verdict_from_checks(payload: dict[str, Any]) -> None:
+    """Derive the three Harness set-audit verdict fields from model-native checks.
+
+    The vision model obeys the v2 system prompt ("never use legacy aliases")
+    and returns checks such as ``page_0_is_search_listing_cover`` and
+    ``page_N_is_not_search_listing_cover``.  The legacy adapter only
+    understands ``search_listing_cover_assessment`` / ``set_verdict`` /
+    ``set_level_conclusion``, which the model no longer emits.  When those
+    fields are absent the adapter leaves ``identified_search_page_index`` as
+    ``None`` and ``search_role_is_unique`` unset, so ``audit_set`` always
+    blocks.  This helper corrects that by reading the actual checks.
+    """
+
+    checks = payload.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return
+
+    def _check_status(item: object) -> bool | None:
+        if not isinstance(item, Mapping):
+            return None
+        if item.get("passed") is False:
+            return False
+        status = item.get("status", item.get("result"))
+        if "status" in item and "result" in item and item["status"] != item["result"]:
+            return False
+        if isinstance(status, str):
+            s = status.strip().upper()
+            if s in {"PASS", "PASSED", "TRUE"}:
+                return True
+            if s in {"FAIL", "FAILED", "FALSE"}:
+                return False
+        passed = item.get("passed")
+        if passed is not None:
+            return passed is True
+        return None
+
+    def _check_name(item: object) -> str:
+        if not isinstance(item, Mapping):
+            return ""
+        return str(
+            item.get("check_name")
+            or item.get("required_check_name")
+            or item.get("name")
+            or item.get("check")
+            or ""
+        ).strip()
+
+    page_names = {
+        0: "page_0_is_search_listing_cover",
+        **{n: f"page_{n}_is_not_search_listing_cover" for n in range(1, 6)},
+    }
+    summary_names = {"search_listing_cover_role", "set_role_distinction"}
+    recognized = set(page_names.values()) | summary_names
+    statuses: dict[str, list[bool | None]] = {}
+    for item in checks:
+        name = _check_name(item)
+        if name in recognized:
+            statuses.setdefault(name, []).append(_check_status(item))
+    if not statuses:
+        return  # Legacy-only observations retain their existing adapter path.
+
+    def _passes(name: str) -> bool:
+        values = statuses.get(name, [])
+        return bool(values) and all(value is True for value in values)
+
+    # Never replace explicit failures, unknown statuses, or contradictory
+    # duplicates with a passing summary or a stale legacy verdict.
+    page_checks_present = any(name in statuses for name in page_names.values())
+    all_observed_pass = all(
+        all(value is True for value in values) for values in statuses.values()
+    )
+    if page_checks_present:
+        passed = all_observed_pass and all(
+            _passes(name) for name in page_names.values()
+        )
+        identified = 0 if _passes(page_names[0]) else None
+    else:
+        passed = all_observed_pass and all(_passes(name) for name in summary_names)
+        identified = 0 if _passes("search_listing_cover_role") else None
+
+    payload["identified_search_page_index"] = identified
+    payload["search_role_is_unique"] = passed
+    payload["confusable_page_indexes"] = [
+        n
+        for n in range(1, 6)
+        if any(value is False for value in statuses.get(page_names[n], []))
+    ]
+
+
 def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Adapt an equivalent blind six-page review to the Harness contract."""
 
@@ -2701,14 +2876,18 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
 
     assessment = _mapping(payload.get("search_listing_cover_assessment"))
     set_verdict = _mapping(payload.get("set_verdict"))
-    page_zero = next(
-        (
-            page
-            for page in pages
-            if isinstance(page, Mapping) and page.get("page_index") == 0
-        ),
-        {},
-    ) if isinstance(pages, list) else {}
+    page_zero = (
+        next(
+            (
+                page
+                for page in pages
+                if isinstance(page, Mapping) and page.get("page_index") == 0
+            ),
+            {},
+        )
+        if isinstance(pages, list)
+        else {}
+    )
     search_evidence = payload.get("search_identification_evidence")
     if not isinstance(search_evidence, str) or not search_evidence.strip():
         payload["search_identification_evidence"] = " ".join(
@@ -2743,6 +2922,7 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         "confusable_page_indexes",
         other_cover_indexes if isinstance(other_cover_indexes, list) else [],
     )
+    _derive_set_role_verdict_from_checks(payload)
     return payload
 
 
@@ -2751,7 +2931,28 @@ def _normalize_parallel_set_audit_payload(
 ) -> dict[str, Any]:
     """Bind equivalent provider output to the native six-page Harness contract."""
 
+    validate_verdict_fields(payload)
+    # Preserve explicit contradictory verdicts before deriving native fields.
+    explicit_failure = (
+        payload.get("search_role_is_unique") is False
+        or payload.get("page_0_alone_is_search_listing_cover") is False
+        or payload.get("set_role_distinction") == "FAIL"
+        or (
+            "identified_search_page_index" in payload
+            and payload["identified_search_page_index"] != 0
+        )
+        or (
+            "search_listing_cover_page_index" in payload
+            and payload["search_listing_cover_page_index"] != 0
+        )
+        or bool(payload.get("confusable_page_indexes"))
+    )
     observation = _normalize_set_role_audit_payload(payload)
+    validate_evidence(observation)
+    if len(sources) != 6:
+        raise ValueError("incomplete_source_set")
+    if explicit_failure:
+        observation["search_role_is_unique"] = False
     observation["agent_pixel_reviewed"] = True
     observation["review_mode"] = "BLIND_SIX_PAGE_ROLE_COMPARISON"
     observation["reviewed_page_indexes"] = list(range(6))

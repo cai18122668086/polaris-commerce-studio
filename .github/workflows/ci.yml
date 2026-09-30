@@ -66,7 +66,7 @@ jobs:
       - name: Test PostgreSQL ecommerce concurrency
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
-        run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py
+        run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py backend/tests/test_set_audit_concurrency_postgres.py
       - name: Test deployment preflight
         run: python -m unittest discover -s deploy/tests -v
       - name: Validate deployment sources
@@ -156,7 +156,7 @@ jobs:
   containers:
     name: Container build (${{ matrix.name }})
     runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -178,12 +178,16 @@ jobs:
               POLARIS_NODE_BASE_IMAGE=node:22.22.0-bookworm-slim@sha256:7cc56ef285a8568121537d17b05e72128f01b89c54607b51acf084a50ef483f3
     steps:
       - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
       - name: Build ${{ matrix.name }} image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          tags: ${{ matrix.image }}
-          build-args: ${{ matrix.build_args }}
-          push: false
+        env:
+          BUILD_ARGS: ${{ matrix.build_args }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          IMAGE_TAG: ${{ matrix.image }}
+        run: |
+          # Use the engine's durable layer cache. Creating an isolated BuildKit
+          # container per job redownloads base images over the runner's slow link.
+          args=()
+          while IFS= read -r arg; do
+            if [ -n "$arg" ]; then args+=(--build-arg "$arg"); fi
+          done <<< "$BUILD_ARGS"
+          docker build --file "$DOCKERFILE" --tag "$IMAGE_TAG" "${args[@]}" .

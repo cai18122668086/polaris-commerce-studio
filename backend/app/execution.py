@@ -18,6 +18,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import aurora_set_audit
 from . import provider_quota_ledger as quota_ledger
 from .config import (
     default_masked_skill_root,
@@ -636,11 +637,7 @@ class ExecutionCoordinator:
         # add latency and alter the original one-pass delivery protocol. The durable
         # review service remains available for an explicitly requested diagnostic run.
         if is_parallel_aurora:
-            set_audit, set_audit_error = await self._run_parallel_aurora_set_audit(
-                job_id
-            )
-            if set_audit is False:
-                self._mark_parallel_aurora_set_audit_failed(job_id, set_audit_error)
+            await self._run_parallel_aurora_set_audit(job_id)
         return self.finalize_job(job_id)
 
     def _skip_parallel_pages_after_style_failure(self, job_id: str) -> None:
@@ -656,68 +653,57 @@ class ExecutionCoordinator:
     async def _run_parallel_aurora_set_audit(
         self, job_id: str
     ) -> tuple[bool | None, Exception | None]:
-        """Run the six-page set audit, reporting why it failed.
-
-        Returns ``(None, None)`` when the audit does not apply, ``(passed, None)``
-        for a verdict, and ``(False, exc)`` when the audit raised.  The exception
-        used to be swallowed, which made every ``AURORA_SET_AUDIT_FAILED`` row
-        unrecoverable after the fact.
-        """
-
+        """Claim once under the job lock and fence every result commit."""
         with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None or JobStatus(job.status) in TERMINAL_JOB_STATUSES:
+                return None, None
             statuses = session.scalars(
                 select(JobItemRecord.status).where(JobItemRecord.job_id == job_id)
             ).all()
-        if len(statuses) != 6 or any(
-            status not in SUCCESS_ITEM_STATUSES for status in statuses
-        ):
-            return None, None
+            if len(statuses) != 6 or any(
+                status not in SUCCESS_ITEM_STATUSES for status in statuses
+            ):
+                return None, None
+            plan = aurora_set_audit.latest_plan(session, job_id)
+            if plan is None or not aurora_set_audit.needs_audit(plan):
+                return None, None
+            token = aurora_set_audit.claim(session, job, plan)
+            session.commit()
+            if token is None:
+                return None, None
         provider: object = self.provider
         routes = getattr(provider, "routes", None)
         if isinstance(routes, Mapping):
             provider = routes.get(JobType.DOMESTIC_MAIN_IMAGE.value, provider)
         audit = getattr(provider, "audit_parallel_set", None)
-        if not callable(audit):
-            return None, None
+        result: bool | aurora_set_audit.SetAuditResult | None = None
+        error: Exception | None = None
         try:
-            return bool(await audit(job_id)), None
-        except Exception as exc:
-            logger.exception("aurora set audit failed: job_id=%s", job_id)
-            return False, exc
-
-    def _mark_parallel_aurora_set_audit_failed(
-        self, job_id: str, error: Exception | None = None
-    ) -> None:
-        with self.session_factory() as session:
-            item = session.scalar(
-                select(JobItemRecord)
-                .where(
-                    JobItemRecord.job_id == job_id,
-                    JobItemRecord.status == JobItemStatus.SUCCEEDED.value,
-                )
-                .order_by(JobItemRecord.ordinal.desc())
-                .limit(1)
-                .with_for_update()
+            if not callable(audit):
+                raise RuntimeError("Set audit provider is unavailable")
+            result = await asyncio.wait_for(
+                audit(job_id), timeout=aurora_set_audit.AUDIT_TIMEOUT_SECONDS
             )
-            if item is None:
-                return
-            item.status = JobItemStatus.FAILED.value
-            item.stage = "set_audit_failed"
-            item.error_code = "AURORA_SET_AUDIT_FAILED"
-            item.error_message = "Aurora v2.0 six-page set audit did not pass."
-            item.error_details = {
-                "retryable": False,
-                "scope": "set_audit",
-                "reason": type(error).__name__ if error is not None else None,
-                "message": str(error)[:512] if error is not None else None,
-                "http_status": getattr(error, "http_status", None),
-                "aurora_gateway_diagnostics": getattr(
-                    error, "aurora_gateway_diagnostics", None
-                ),
-            }
-            item.finished_at = utc_now()
-            item.state_version += 1
-            session.commit()
+            if not isinstance(result, (bool, aurora_set_audit.SetAuditResult)):
+                raise TypeError("Invalid set audit result")
+        except Exception as exc:
+            logger.warning(
+                "aurora set audit error: job_id=%s type=%s", job_id, type(exc).__name__
+            )
+            error = exc
+        with self.session_factory() as session:
+            committed = aurora_set_audit.commit_result(
+                session, job_id, token, result, error
+            )
+        if not committed:
+            return None, None
+        passed = (
+            result.passed
+            if isinstance(result, aurora_set_audit.SetAuditResult)
+            else result is True
+        )
+        return passed if error is None else False, error
 
     def _seconds_until_aurora_retry(self, job_id: str) -> float | None:
         with self.session_factory() as session:
@@ -1259,9 +1245,8 @@ class ExecutionCoordinator:
             if isinstance(item.configuration, Mapping)
             else None
         )
-        if (
-            job.type == JobType.DOMESTIC_MAIN_IMAGE.value
-            and isinstance(snapshot, Mapping)
+        if job.type == JobType.DOMESTIC_MAIN_IMAGE.value and isinstance(
+            snapshot, Mapping
         ):
             provider_idempotency_key = (
                 f"{job.id}:{item.id}:plan-{snapshot.get('plan_revision', 1)}:"
@@ -1945,6 +1930,20 @@ class ExecutionCoordinator:
             if nonterminal:
                 return current
 
+            plan = aurora_set_audit.latest_plan(session, job_id)
+            review = aurora_set_audit.audit_state(plan)
+            all_generated = (
+                sum(counts.get(value, 0) for value in SUCCESS_ITEM_STATUSES)
+                == job.expected_item_count
+            )
+            if (
+                current != JobStatus.CANCELLING
+                and all_generated
+                and aurora_set_audit.needs_audit(plan)
+                and review.get("status") not in {"passed", "failed", "error"}
+            ):
+                return current
+
             succeeded = sum(counts.get(value, 0) for value in SUCCESS_ITEM_STATUSES)
             failed = counts.get(JobItemStatus.FAILED.value, 0)
             cancelled = counts.get(JobItemStatus.CANCELLED.value, 0)
@@ -2046,6 +2045,8 @@ class ExecutionCoordinator:
 
             if current == JobStatus.CANCELLING:
                 target = JobStatus.CANCELLED
+            elif review.get("status") in {"failed", "error"}:
+                target = JobStatus.PARTIAL
             elif succeeded == job.expected_item_count:
                 target = JobStatus.COMPLETED
             elif succeeded:
@@ -2054,7 +2055,12 @@ class ExecutionCoordinator:
                 target = JobStatus.CANCELLED
             else:
                 target = JobStatus.FAILED
-            terminal_stage = target.value
+            terminal_stage = (
+                job.stage
+                if target == JobStatus.PARTIAL
+                and review.get("status") in {"failed", "error"}
+                else target.value
+            )
             transition_job(job, target, stage=terminal_stage, progress=100)
             if job.type in {
                 JobType.DETAIL_PACK.value,

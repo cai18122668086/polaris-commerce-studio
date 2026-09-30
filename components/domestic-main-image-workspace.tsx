@@ -367,7 +367,7 @@ export function DomesticMainImageWorkspace() {
             </section>
 
             <section className={styles.card}>
-              <div className={styles.heading}><span>03</span><div><h2>六图方案确认</h2><p>确认后锁定商品身份、事实边界和整套视觉世界。</p></div>{job.data && <StatusBadge status={job.data.status} />}</div>
+              <div className={styles.heading}><span>03</span><div><h2>六图方案确认</h2><p>确认后锁定商品身份、事实边界和整套视觉世界。</p></div>{job.data && <StatusBadge status={job.data.status} stage={job.data.stage} />}</div>
               {!plan.length ? <div className={styles.empty}>创建任务后，Aurora 会先分析商品并锁定身份，再编译 1 张搜索主图与 5 张轮播图的完整方案。</div> : <>
                 <div className={styles.identityLock}>
                   <span>PRODUCT IDENTITY LOCK</span>

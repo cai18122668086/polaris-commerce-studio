@@ -257,7 +257,7 @@ export default function DetailPackPage() {
           {requestError && <div className="api-state api-state--error" role="alert"><AlertCircle size={24} /><div><strong>请求未完成</strong><p>{errorMessage(requestError)}</p></div></div>}
 
           <section className="planning-card" aria-busy={job.isFetching}>
-            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
+            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p></div></div>{job.data && <StatusBadge status={job.data.status} stage={job.data.stage} />}</div>
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
             {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在准备页面规划，请稍候…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}

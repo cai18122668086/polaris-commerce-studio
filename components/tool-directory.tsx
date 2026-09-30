@@ -129,9 +129,11 @@ function FeatureVisualImage({
 function HomeFeatureCardArt({
   featureId,
   FallbackIcon,
+  eager = false,
 }: {
   featureId: string;
   FallbackIcon: LucideIcon;
+  eager?: boolean;
 }) {
   const visual = HOME_FEATURE_VISUALS[featureId];
   const [previewState, setPreviewState] = useState<"idle" | "armed" | "playing" | "done">("idle");
@@ -180,17 +182,17 @@ function HomeFeatureCardArt({
         <FeatureVisualImage
           image={visual.primary}
           className="home-feature-card__image home-feature-card__image--primary"
-          eager
+          eager={eager}
         />
         <FeatureVisualImage
           image={visual.input}
           className="home-feature-card__image home-feature-card__image--input"
-          eager
+          eager={eager}
         />
         <FeatureVisualImage
           image={visual.primary}
           className="home-feature-card__image home-feature-card__image--result"
-          eager
+          eager={eager}
         />
       </span>
     </span>
@@ -450,7 +452,7 @@ export function ToolDirectory() {
         </header>
 
         <div className="home-feature-grid" ref={featureGridRef}>
-          {featuredTools.map((tool) => {
+          {featuredTools.map((tool, index) => {
               const capability = resolveRuntimeCapability(
                 runtime.data,
                 tool.runtimeCapability,
@@ -482,6 +484,7 @@ export function ToolDirectory() {
                   key={tool.id}
                 >
                   <HomeFeatureCardArt
+                    eager={index === 0}
                     featureId={tool.id}
                     FallbackIcon={Icon}
                   />

@@ -420,7 +420,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                     <span>03</span>
                     <div><h2>生成进度</h2><p>生成进度会自动更新。</p></div>
                   </div>
-                  {job.data ? <StatusBadge status={job.data.status} /> : null}
+                  {job.data ? <StatusBadge status={job.data.status} stage={job.data.stage} /> : null}
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" />正在读取任务…</div>

@@ -1,5 +1,39 @@
 name: polaris-production
 
+# ---------------------------------------------------------------------------
+# Capacity policy -- revised 2026-09-29 for multi-user production traffic.
+#
+# The limits below were originally sized around a single test account. Measured
+# on 2026-09-29 with all 11 long-running containers up, the host was 91% idle
+# (0.35 of 4 cores) while several containers spent most of their CFS periods
+# throttled:
+#
+#     frontend           60.7% of periods throttled   (throttled 2.67x usage)
+#     crawl-maintenance  47.1% -> resolved by raising cpus to 1.00 (was 0.50)
+#     worker             17.8%
+#     crawl-worker       17.4%
+#     api                17.2%                        (throttled 0.97x usage)
+#     dispatcher          7.6%
+#     caddy               4.3%
+#     postgres            0.05%   -- never throttled
+#
+# worker also sat at 80.8% of its memory limit in anonymous pages and api at
+# 80.7%, and every container ran with a soft nofile limit of 1024.
+#
+# These are ceilings, not reservations. Raising them removes artificial
+# throttling; the kernel still schedules fairly, and per-container limits still
+# stop one runaway process from taking the host down.
+#
+# Two rules keep the change tied to measurement rather than guesswork:
+#   * CPU is raised only where throttling exceeds 4%. postgres (0.05%), minio
+#     (0.7%), supertokens (1.1%) and redis (1.6%) are left alone -- they already
+#     have 50-100x headroom, so raising them would be guesswork.
+#   * Memory is raised only where anonymous usage exceeds 45%. Measured:
+#     postgres 8.5%, redis 1.6%, minio 28.2%, supertokens 52.6% -- so only
+#     supertokens (384m -> 512m) qualifies.
+# Totals become 9.0 CPU and ~6.0 GiB of ceilings on a 4-core / 7.5 GiB host.
+# ---------------------------------------------------------------------------
+
 x-backend-common-environment: &backend-common-environment
   POLARIS_ENVIRONMENT: production
   POLARIS_AUTH_MODE: external
@@ -119,6 +153,13 @@ x-crawl-worker-build: &crawl-worker-build
 x-service-security: &service-security
   security_opt:
     - no-new-privileges:true
+  # The base images ship a soft nofile limit of 1024, which caps concurrent
+  # connections and open asset handles far below what multi-user traffic needs.
+  # The hard limit is already 524288, so raising the soft limit is safe.
+  ulimits:
+    nofile:
+      soft: 65536
+      hard: 65536
   logging:
     driver: json-file
     options:
@@ -219,7 +260,7 @@ services:
       - /usr/lib/supertokens/temp:uid=1000,gid=1000,mode=0700
     cap_drop: [ALL]
     init: true
-    mem_limit: 384m
+    mem_limit: 512m
     cpus: "0.50"
     pids_limit: 256
     stop_grace_period: 30s
@@ -255,6 +296,12 @@ services:
     build: *crawl-worker-build
     environment:
       <<: [*backend-common-environment, *provider-environment]
+      # The API is the only process serving interactive requests, so it gets a
+      # bigger pool than the shared 3+2 default. The aggregate budget stays well
+      # under PostgreSQL's max_connections=100: measured 2026-09-29 the whole
+      # application held only 7 connections.
+      POLARIS_DATABASE_POOL_SIZE: ${POLARIS_API_DATABASE_POOL_SIZE:-10}
+      POLARIS_DATABASE_MAX_OVERFLOW: ${POLARIS_API_DATABASE_MAX_OVERFLOW:-5}
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
       - polaris_ecommerce_profiles:/app/.data/ecommerce-session
@@ -281,8 +328,13 @@ services:
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
     cap_drop: [ALL]
     init: true
-    mem_limit: 384m
-    cpus: "0.50"
+    # The API is the only container serving user HTTP traffic, yet it was capped
+    # at 0.5 CPU -- the same tier as MinIO and SuperTokens, and below the Celery
+    # worker. Measured on 2026-09-29 it spent 20% of its CFS periods throttled,
+    # so a workspace load queued requests past Caddy's proxy timeout and returned
+    # 502. The host idles at ~9% of 4 cores, so raise it to a real working share.
+    mem_limit: 768m
+    cpus: "1.50"
     pids_limit: 256
     stop_grace_period: 30s
     restart: unless-stopped
@@ -318,9 +370,12 @@ services:
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
     cap_drop: [ALL]
     init: true
-    mem_limit: 768m
-    cpus: "0.75"
+    mem_limit: 1024m
+    cpus: "1.25"
     pids_limit: 512
+    # Browser-driven crawls are the heaviest batch consumer on the host. Give
+    # them half the default weight so a crawl cannot starve the request path.
+    cpu_shares: 512
     stop_grace_period: 90s
     restart: unless-stopped
     networks: [backend, provider-egress]
@@ -356,8 +411,9 @@ services:
     cap_drop: [ALL]
     init: true
     mem_limit: 256m
-    cpus: "0.25"
+    cpus: "1.00"
     pids_limit: 128
+    cpu_shares: 512
     stop_grace_period: 30s
     restart: unless-stopped
     networks: [backend]
@@ -392,9 +448,14 @@ services:
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
     cap_drop: [ALL]
     init: true
-    mem_limit: 768m
-    cpus: "0.75"
+    # Six Celery children share this container, and they sat at 80.8% of the
+    # old 768m limit in anonymous pages. Image decoding for POLARIS_MAX_IMAGE_PIXELS
+    # (40 MP) is the driver, so the cap is raised to leave room for concurrent
+    # jobs rather than to invite more of them.
+    mem_limit: 1280m
+    cpus: "1.50"
     pids_limit: 512
+    cpu_shares: 512
     stop_grace_period: 90s
     restart: unless-stopped
     networks: [backend, provider-egress]
@@ -430,8 +491,8 @@ services:
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
     cap_drop: [ALL]
     init: true
-    mem_limit: 192m
-    cpus: "0.25"
+    mem_limit: 256m
+    cpus: "0.50"
     pids_limit: 128
     stop_grace_period: 30s
     restart: unless-stopped
@@ -462,8 +523,12 @@ services:
     tmpfs: ["/tmp:uid=1000,gid=1000,mode=0700"]
     cap_drop: [ALL]
     init: true
+    # The SSR server was the single most throttled container: 60.7% of its CFS
+    # periods were cut, and throttled_usec was 2.67x its actual usage_usec. That
+    # is what made page loads feel slow. Memory needs no change -- its 77% "usage"
+    # in docker stats was page cache; anonymous pages are only ~102 MB.
     mem_limit: 384m
-    cpus: "0.25"
+    cpus: "1.00"
     pids_limit: 256
     stop_grace_period: 30s
     restart: unless-stopped
@@ -499,8 +564,10 @@ services:
     cap_drop: [ALL]
     cap_add: [NET_BIND_SERVICE]
     init: true
+    # Every inbound request passes through here (TLS, proxy, zstd/gzip encode),
+    # so it is on the critical path for all users.
     mem_limit: 160m
-    cpus: "0.25"
+    cpus: "0.50"
     pids_limit: 128
     stop_grace_period: 30s
     restart: unless-stopped

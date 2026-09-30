@@ -343,11 +343,16 @@ def allowed_actions(job: JobRecord) -> list[str]:
         actions.append("cancel")
     if current == JobStatus.AWAITING_CONFIRMATION:
         actions.extend(["edit_plan", "confirm_plan"])
-    if current in {
-        JobStatus.PARTIAL,
-        JobStatus.FAILED,
-        JobStatus.CANCELLED,
-    } and _amazon_review_retry_is_available(job):
+    if (
+        current
+        in {
+            JobStatus.PARTIAL,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+        }
+        and _amazon_review_retry_is_available(job)
+        and job.error_code not in {"AURORA_SET_AUDIT_ERROR", "AURORA_SET_AUDIT_FAILED"}
+    ):
         actions.append("retry")
     if current in TERMINAL_JOB_STATUSES:
         actions.append("clone")
@@ -395,23 +400,19 @@ def job_list_response(
     primary_output_asset_id: str | None = None,
     generated_set_complete: bool = False,
 ) -> JobListItemResponse:
-    status = JobStatus.COMPLETED if generated_set_complete else JobStatus(job.status)
+    status = JobStatus(job.status)
     return JobListItemResponse(
         id=job.id,
         workspace_id=job.workspace_id,
         type=JobType(job.type),
         status=status,
-        stage="completed" if generated_set_complete else job.stage,
+        stage="set_audit_error" if generated_set_complete else job.stage,
         display_name=job.display_name,
         task_preset=job_task_preset(job),
         progress=job.progress,
         expected_item_count=job.expected_item_count,
-        succeeded_item_count=(
-            job.expected_item_count
-            if generated_set_complete
-            else job.succeeded_item_count
-        ),
-        failed_item_count=0 if generated_set_complete else job.failed_item_count,
+        succeeded_item_count=job.succeeded_item_count,
+        failed_item_count=job.failed_item_count,
         output_asset_count=output_asset_count,
         primary_output_asset_id=primary_output_asset_id,
         allowed_actions=["clone"] if generated_set_complete else allowed_actions(job),
@@ -954,6 +955,12 @@ def retry_item_ids(
     scope: RetryScope,
     selected_item_ids: list[str],
 ) -> list[str]:
+    if source.error_code in {"AURORA_SET_AUDIT_ERROR", "AURORA_SET_AUDIT_FAILED"}:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "SET_AUDIT_REVIEW_REQUIRED",
+            "图片已保留，请先处理整组审核；此操作不会重新生成图片。",
+        )
     items = session.scalars(
         select(JobItemRecord).where(JobItemRecord.job_id == source.id)
     ).all()

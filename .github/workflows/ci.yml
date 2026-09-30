@@ -178,7 +178,11 @@ jobs:
               POLARIS_NODE_BASE_IMAGE=node:22.22.0-bookworm-slim@sha256:7cc56ef285a8568121537d17b05e72128f01b89c54607b51acf084a50ef483f3
     steps:
       - uses: actions/checkout@v6
+      # The persistent runner already has verified base layers in its engine.
+      # A fresh docker-container builder discarded that cache for every job.
       - uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
       - name: Build ${{ matrix.name }} image
         uses: docker/build-push-action@v7
         with:

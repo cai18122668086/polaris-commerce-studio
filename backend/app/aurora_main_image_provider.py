@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -41,6 +42,7 @@ from .storage import ImageStorage
 from .xinghe_agent import (
     _AURORA_V20_MATERIAL_CHECKS,
     _AURORA_V20_VISUAL_CHECKS,
+    ImageCallResult,
     ImageEditRequest,
     PlannerRequest,
     SourceImage,
@@ -320,11 +322,12 @@ class AuroraMainImageProvider:
                 pricing_version=self.gateway.pricing_version,
             )
 
-    async def _execute_parallel_v20(
-        self, request: ProviderRequest
-    ) -> ProviderResult:
+    async def _execute_parallel_v20(self, request: ProviderRequest) -> ProviderResult:
         """Execute one pre-authorized page without shared session writes."""
 
+        artifact: ProviderArtifact | None = None
+        raw_usage: dict[str, Any] = {}
+        actual_cost = 0
         try:
             item_configuration = _mapping(request.configuration.get("item"))
             snapshot = _mapping(item_configuration.get("aurora_snapshot"))
@@ -337,6 +340,7 @@ class AuroraMainImageProvider:
             if expected_hash != canonical_hash(hash_payload):
                 raise AuroraPlanningError("Aurora v2.0 page snapshot hash mismatch")
             page_index = int(snapshot["page_index"])
+            retained = self._retained_v20_candidate(request, snapshot)
             workspace = (
                 self._workspace(request.job_id)
                 / "parallel-v20"
@@ -355,30 +359,32 @@ class AuroraMainImageProvider:
             logical_key = str(
                 snapshot.get("logical_idempotency_key") or request.idempotency_key
             )
-            raw_usage: dict[str, Any] = {}
             audit_usage: list[dict[str, Any]] = []
-            actual_cost = 0
-            artifact: ProviderArtifact | None = None
             image_result: Any = None
-            for visual_attempt in range(2):
+            first_visual_attempt = 0
+            if retained is not None:
+                image_result, generation_request, retained_session = retained
+                first_visual_attempt = int(generation_request.get("revision", 0))
+            for visual_attempt in range(first_visual_attempt, 2):
                 sources = _generation_sources(generation_request, request.job_id)
                 revision = int(generation_request.get("revision", visual_attempt))
-                image_result = await self.gateway.edit(
-                    ImageEditRequest(
-                        workspace_id=request.workspace_id,
-                        job_id=request.job_id,
-                        job_item_id=request.job_item_id,
-                        attempt_id=request.attempt_id,
-                        page_number=page_index + 1,
-                        group_key=request.job_id,
-                        sources=sources,
-                        prompt=str(generation_request["prompt"]),
-                        quality="high",
-                        idempotency_key=f"{logical_key}:visual-revision-{revision}",
-                        size="1024x1024",
-                        preserve_provider_artifact=True,
+                if retained is None or visual_attempt != first_visual_attempt:
+                    image_result = await self.gateway.edit(
+                        ImageEditRequest(
+                            workspace_id=request.workspace_id,
+                            job_id=request.job_id,
+                            job_item_id=request.job_item_id,
+                            attempt_id=request.attempt_id,
+                            page_number=page_index + 1,
+                            group_key=request.job_id,
+                            sources=sources,
+                            prompt=str(generation_request["prompt"]),
+                            quality="high",
+                            idempotency_key=f"{logical_key}:visual-revision-{revision}",
+                            size="1024x1024",
+                            preserve_provider_artifact=True,
+                        )
                     )
-                )
                 if (
                     image_result.outcome != ProviderOutcome.SUCCEEDED
                     or image_result.artifact is None
@@ -390,13 +396,34 @@ class AuroraMainImageProvider:
                 generated_path = _write_generated_artifact(
                     workspace, page_index, visual_attempt, artifact
                 )
-                runner.run(
-                    "record-generation",
-                    workspace,
+                if retained is not None and visual_attempt == first_visual_attempt:
+                    retained_session["generated_versions"][-1]["file"] = str(
+                        generated_path
+                    )
+                    write_contract(session_path, retained_session)
+                else:
+                    runner.run(
+                        "record-generation",
+                        workspace,
+                        {
+                            "session": session_path,
+                            "token": str(generation_request["generation_token"]),
+                            "image": generated_path,
+                        },
+                    )
+                # Save the exact pre-review state before any network audit. This
+                # also retains repair revisions without reusing their old token.
+                write_contract(
+                    workspace / "review-candidate.json",
                     {
-                        "session": session_path,
-                        "token": str(generation_request["generation_token"]),
-                        "image": generated_path,
+                        "snapshot_hash": expected_hash,
+                        "request": generation_request,
+                        "session": _load_json(session_path),
+                        "artifact": {
+                            "provider_width": artifact.provider_width,
+                            "provider_height": artifact.provider_height,
+                            "locally_resampled": artifact.locally_resampled,
+                        },
                     },
                 )
                 judgment, usage, cost = await self._audit_v20_candidate_with_retry(
@@ -472,9 +499,7 @@ class AuroraMainImageProvider:
             if not isinstance(network_requests, int) or network_requests < 0:
                 network_requests = 1
             raw_usage["network_requests"] = (
-                network_requests
-                + max(0, len(audit_usage) - 1)
-                + len(audit_usage)
+                network_requests + max(0, len(audit_usage) - 1) + len(audit_usage)
             )
             metrics = _mapping(raw_usage.get("metrics"))
             metrics.update(
@@ -510,27 +535,187 @@ class AuroraMainImageProvider:
             )
         except Exception as exc:
             retryable, http_status = _classify_transient_failure(exc)
+            candidate_retained = artifact is not None
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 error_code=getattr(exc, "code", "AURORA_EXECUTION_FAILED"),
                 error_message=str(exc),
-                usage_reported=False,
+                usage_reported=bool(raw_usage),
                 raw_usage={
+                    **raw_usage,
                     "provider_type": self.gateway.provider_name,
-                    "called": retryable,
+                    "called": candidate_retained or retryable,
                     "metrics": {
+                        **_mapping(raw_usage.get("metrics")),
                         "aurora_execution_mode": "parallel_v20",
+                        "candidate_retained": candidate_retained,
+                        "candidate_sha256": artifact.sha256 if artifact else None,
+                        "retry_action": "review_retained_candidate"
+                        if candidate_retained
+                        else None,
                         "aurora_gateway_diagnostics": getattr(
                             exc, "aurora_gateway_diagnostics", None
                         ),
                     },
                 },
-                retryable=retryable,
+                actual_cost_micros=actual_cost if candidate_retained else None,
+                retryable=retryable and not candidate_retained,
                 http_status=http_status,
                 provider_name=self.gateway.provider_name,
                 model_name=self.gateway.image_model,
                 pricing_version=self.gateway.pricing_version,
             )
+
+    def _retained_v20_candidate(
+        self, request: ProviderRequest, snapshot: Mapping[str, Any]
+    ) -> tuple[ImageCallResult, dict[str, Any], dict[str, Any]] | None:
+        """Recover only a same-workspace, same-snapshot durable retry ancestor.
+
+        User configuration cannot select a filesystem path or another job. A
+        recorded candidate that cannot be verified blocks generation instead of
+        silently replacing potentially billable images.
+        """
+        if self.session_factory is None:  # Standalone deterministic Harness tests.
+            return None
+        candidates: list[tuple[str, str]] = []
+        with self.session_factory() as db:
+            item = db.get(JobItemRecord, request.job_item_id)
+            if item is None or item.job_id != request.job_id:
+                raise AuroraPlanningError("Retained candidate task context is missing")
+            seen: set[str] = set()
+            while item is not None:
+                job = db.get(JobRecord, item.job_id)
+                if (
+                    item.id in seen
+                    or job is None
+                    or item.workspace_id != request.workspace_id
+                    or job.workspace_id != request.workspace_id
+                    or item.ordinal != int(snapshot["page_index"])
+                ):
+                    raise AuroraPlanningError("Retained candidate lineage mismatch")
+                seen.add(item.id)
+                stored = _mapping(_mapping(item.configuration).get("aurora_snapshot"))
+                if stored.get("snapshot_hash") != snapshot.get("snapshot_hash"):
+                    raise AuroraPlanningError("Retained candidate snapshot mismatch")
+                attempts = db.scalars(
+                    select(JobAttemptRecord)
+                    .where(
+                        JobAttemptRecord.workspace_id == request.workspace_id,
+                        JobAttemptRecord.job_item_id == item.id,
+                        JobAttemptRecord.id != request.attempt_id,
+                        JobAttemptRecord.status.in_(
+                            ["failed", "cancelled", "outcome_unknown"]
+                        ),
+                    )
+                    .order_by(JobAttemptRecord.attempt_no)
+                ).all()
+                candidates.extend((item.job_id, attempt.id) for attempt in attempts)
+                if not item.source_job_item_id:
+                    break
+                source = db.get(JobItemRecord, item.source_job_item_id)
+                if source is None or source.job_id != job.retry_of_job_id:
+                    raise AuroraPlanningError(
+                        "Retained candidate retry ancestor mismatch"
+                    )
+                item = source
+        for job_id, attempt_id in candidates:
+            root = (
+                self._workspace(job_id)
+                / "parallel-v20"
+                / f"page-{int(snapshot['page_index']) + 1:02d}"
+                / f"attempt-{attempt_id}"
+            ).resolve()
+            if not root.is_relative_to(self.work_root):
+                raise AuroraPlanningError("Retained candidate path escapes work root")
+            if not (root / "session.json").is_file():
+                continue
+            current = _load_json(root / "session.json")
+            if not current.get("generated_versions"):
+                continue
+            if current.get("state") not in {
+                "AWAITING_VISUAL_AUDIT",
+                "AWAITING_SEARCH_CALIBRATION",
+                "AWAITING_STYLE_CALIBRATION",
+                "AUTHORIZED",
+                "COMPLETE",
+            }:
+                raise AuroraPlanningError(
+                    "Retained candidate requires explicit quality repair"
+                )
+            saved = _load_json(root / "snapshot.json")
+            hash_payload = dict(saved)
+            stored_hash = hash_payload.pop("snapshot_hash", None)
+            if (
+                stored_hash != snapshot.get("snapshot_hash")
+                or canonical_hash(hash_payload) != stored_hash
+            ):
+                raise AuroraPlanningError("Retained candidate snapshot hash mismatch")
+            checkpoint_path = root / "review-candidate.json"
+            if checkpoint_path.is_file():
+                checkpoint = _load_json(checkpoint_path)
+                if checkpoint.get("snapshot_hash") != stored_hash:
+                    raise AuroraPlanningError("Retained candidate checkpoint mismatch")
+                session = checkpoint["session"]
+                generation = checkpoint["request"]
+                metadata = checkpoint.get("artifact", {})
+            else:
+                # Compatibility for already generated initial candidates. Never
+                # guess a repair request or resampling provenance for old data.
+                if current.get("state") != "AWAITING_VISUAL_AUDIT":
+                    raise AuroraPlanningError(
+                        "Retained candidate review checkpoint is unavailable"
+                    )
+                session, generation, metadata = current, saved["request"], {}
+            version = session["generated_versions"][-1]
+            revision = int(generation.get("revision", 0))
+            if (
+                session.get("state") != "AWAITING_VISUAL_AUDIT"
+                or version.get("page_index") != snapshot["page_index"]
+                or version.get("revision") != revision
+                or revision not in (0, 1)
+            ):
+                raise AuroraPlanningError("Retained candidate revision mismatch")
+            path = Path(version["file"]).resolve()
+            if not path.is_relative_to(root) or not path.is_file():
+                raise AuroraPlanningError("Retained candidate image is unavailable")
+            data = path.read_bytes()
+            if hashlib.sha256(data).hexdigest() != version.get("sha256"):
+                raise AuroraPlanningError("Retained candidate image hash mismatch")
+            with Image.open(BytesIO(data)) as image:
+                image.load()
+                artifact = ProviderArtifact(
+                    payload=data,
+                    filename=path.name,
+                    content_type=Image.MIME[str(image.format)],
+                    width=image.width,
+                    height=image.height,
+                    sha256=version["sha256"],
+                    **metadata,
+                )
+            return (
+                ImageCallResult(
+                    outcome=ProviderOutcome.SUCCEEDED,
+                    provider_request_id=None,
+                    raw_usage={
+                        "network_requests": 0,
+                        "image_request_count": 0,
+                        "metrics": {
+                            "candidate_reused": True,
+                            "source_attempt_id": attempt_id,
+                            "source_job_id": job_id,
+                            "original_usage_unknown": not checkpoint_path.is_file(),
+                        },
+                    },
+                    normalized_usage={},
+                    api_latency_seconds=0,
+                    actual_cost_micros=0,
+                    estimated_cost_micros=0,
+                    artifact=artifact,
+                ),
+                generation,
+                session,
+            )
+        return None
 
     async def _audit_v20_candidate_with_retry(
         self,

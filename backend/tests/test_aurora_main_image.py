@@ -1943,12 +1943,29 @@ def test_aurora_v20_source_matches_the_original_zip_manifest() -> None:
     )
 
 
+@pytest.mark.parametrize("review_failure", [None, 502, 400])
 def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    review_failure: int | None,
 ) -> None:
     class SparseNativeGateway(FakeXingheGateway):
+        edit_calls = 0
+
+        async def edit(self, request):
+            self.edit_calls += 1
+            return await super().edit(request)
+
         async def plan(self, request: PlannerRequest):
             result = await super().plan(request)
+            if review_failure and request.planning_profile == "aurora_v20_visual_audit":
+                return replace(
+                    result,
+                    payload=None,
+                    error_code="PLANNER_REQUEST_FAILED",
+                    error_message=f"Planner request failed with HTTP {review_failure}.",
+                    http_status=review_failure,
+                )
             if request.planning_profile == "aurora_v20_visual_audit" and isinstance(
                 result.payload, dict
             ):
@@ -2001,9 +2018,7 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     session_path = tmp_path / "session.json"
     request_path = tmp_path / "request.json"
     input_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
-    identity_path.write_text(
-        json.dumps(identity, ensure_ascii=False), encoding="utf-8"
-    )
+    identity_path.write_text(json.dumps(identity, ensure_ascii=False), encoding="utf-8")
     runner = AuroraV20HarnessRunner()
     runner.run("start", tmp_path, {"input": input_path, "session": session_path})
     runner.run(
@@ -2029,18 +2044,14 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         "page_index": 0,
         "group_key": job_id,
         "prompt": generation_request["prompt"],
-        "imagegen_reference_paths": generation_request[
-            "imagegen_reference_paths"
-        ],
+        "imagegen_reference_paths": generation_request["imagegen_reference_paths"],
         "edit_target": generation_request.get("edit_target"),
         "generation_token": generation_request["generation_token"],
         "page_revision": 0,
         "plan_revision": 1,
         "plan_hash": generation_request["plan_digest"],
         "identity_hash": "identity",
-        "style_lock": generation_request["campaign_constitution"][
-            "campaign_style"
-        ],
+        "style_lock": generation_request["campaign_constitution"]["campaign_style"],
         "source_asset_hashes": {
             "asset_one": hashlib.sha256(evidence_path.read_bytes()).hexdigest()
         },
@@ -2057,24 +2068,120 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         execution_mode="parallel_v20",
     )
 
-    provider_result = asyncio.run(
-        provider.execute(
-            ProviderRequest(
-                workspace_id="workspace_one",
-                job_id=job_id,
-                job_item_id="item_0",
-                attempt_id="attempt_0",
-                operation="domestic_main_image",
-                idempotency_key=snapshot["logical_idempotency_key"],
-                configuration={
-                    "item": {
-                        "aurora_execution_mode": "parallel_v20",
-                        "aurora_snapshot": snapshot,
-                    }
-                },
-            )
-        )
+    request = ProviderRequest(
+        workspace_id="workspace_one",
+        job_id=job_id,
+        job_item_id="item_0",
+        attempt_id="attempt_0",
+        operation="domestic_main_image",
+        idempotency_key=snapshot["logical_idempotency_key"],
+        configuration={
+            "item": {
+                "aurora_execution_mode": "parallel_v20",
+                "aurora_snapshot": snapshot,
+            }
+        },
     )
+    monkeypatch.setattr("app.aurora_main_image_provider._AURORA_AUDIT_RETRY_DELAYS", ())
+    provider_result = asyncio.run(provider.execute(request))
+    if review_failure:
+        assert provider_result.outcome == ProviderOutcome.FAILED
+        assert provider_result.retryable is False
+        assert provider_result.raw_usage["metrics"]["candidate_retained"] is True
+        assert provider.gateway.edit_calls == 1
+        original_hash = provider_result.raw_usage["metrics"]["candidate_sha256"]
+        # A durable manual retry must review exactly the retained bytes and
+        # make zero additional image calls, even for a permanent contract error.
+        from app.models import JobItemRecord, JobRecord
+
+        item = SimpleNamespace(
+            id="item_0",
+            job_id=job_id,
+            workspace_id="workspace_one",
+            ordinal=0,
+            configuration=request.configuration["item"],
+            source_job_item_id=None,
+        )
+        job = SimpleNamespace(
+            id=job_id, workspace_id="workspace_one", retry_of_job_id=None
+        )
+        records = {(JobItemRecord, item.id): item, (JobRecord, job.id): job}
+        root = (
+            tmp_path
+            / "work"
+            / job_id
+            / "parallel-v20"
+            / "page-01"
+            / "attempt-attempt_0"
+        )
+        checkpoint = json.loads((root / "review-candidate.json").read_text())
+        if review_failure == 502:
+            child = SimpleNamespace(
+                **{
+                    **vars(item),
+                    "id": "child_item",
+                    "job_id": "child_job",
+                    "source_job_item_id": item.id,
+                }
+            )
+            child_job = SimpleNamespace(
+                id="child_job", workspace_id="workspace_one", retry_of_job_id=job.id
+            )
+            records[(JobItemRecord, child.id)] = child
+            records[(JobRecord, child_job.id)] = child_job
+            request = replace(request, job_id=child_job.id, job_item_id=child.id)
+        else:
+            # Pre-release candidates only have the native Harness session.
+            (root / "review-candidate.json").unlink()
+
+        class Database:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def get(self, model, identifier):
+                return records.get((model, identifier))
+
+            def scalars(self, statement):
+                return SimpleNamespace(all=lambda: [SimpleNamespace(id="attempt_0")])
+
+        provider.session_factory = Database
+        review_failure = None
+        provider_result = asyncio.run(
+            provider.execute(replace(request, attempt_id="attempt_1"))
+        )
+        assert provider_result.outcome == ProviderOutcome.SUCCEEDED
+        assert provider_result.artifact.sha256 == original_hash
+        assert provider.gateway.edit_calls == 1
+        assert provider_result.raw_usage["image_request_count"] == 0
+        assert provider_result.raw_usage["metrics"]["candidate_reused"] is True
+        # Corrupt data or a foreign workspace must fail closed without billing.
+        root = (
+            tmp_path
+            / "work"
+            / job_id
+            / "parallel-v20"
+            / "page-01"
+            / "attempt-attempt_0"
+        )
+        image = Path(checkpoint["session"]["generated_versions"][-1]["file"])
+        image.write_bytes(b"corrupted")
+        corrupt = asyncio.run(
+            provider.execute(replace(request, attempt_id="attempt_2"))
+        )
+        assert corrupt.outcome == ProviderOutcome.FAILED
+        assert "hash mismatch" in corrupt.error_message
+        assert provider.gateway.edit_calls == 1
+        item.workspace_id = "foreign"
+        foreign = asyncio.run(
+            provider.execute(replace(request, attempt_id="attempt_3"))
+        )
+        assert foreign.outcome == ProviderOutcome.FAILED
+        assert "lineage mismatch" in foreign.error_message
+        assert provider.gateway.edit_calls == 1
+        return
 
     assert provider_result.outcome == ProviderOutcome.SUCCEEDED
     metrics = provider_result.raw_usage["metrics"]
@@ -2091,12 +2198,7 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         / "search-baseline-observation.json"
     ).is_file()
     attempt_workspace = (
-        tmp_path
-        / "work"
-        / job_id
-        / "parallel-v20"
-        / "page-01"
-        / "attempt-attempt_0"
+        tmp_path / "work" / job_id / "parallel-v20" / "page-01" / "attempt-attempt_0"
     )
     judgment = json.loads(
         (attempt_workspace / "judgment-1.json").read_text(encoding="utf-8")

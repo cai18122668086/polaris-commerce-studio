@@ -61,10 +61,13 @@ class CreativeImageProvider(NewImageSkillProvider):
         optional_string_list(settings, "selling_points")
         optional_string(settings, "instruction")
         optional_string(settings, "user_instruction")
-        if settings.get("inspiration_planning") not in {None, True}:
+        if (
+            settings.get("inspiration_planning") is not None
+            and type(settings["inspiration_planning"]) is not bool
+        ):
             raise NewImageSkillContractError(
                 "INSPIRATION_PLANNING_INVALID",
-                "inspiration_planning is reserved for the Inspiration tab.",
+                "inspiration_planning must be a boolean.",
             )
         if settings.get("inspiration_reference_planning") not in {None, True, False}:
             raise NewImageSkillContractError(
@@ -115,9 +118,7 @@ class CreativeImageProvider(NewImageSkillProvider):
                     settings, "platform_code", default="tmall"
                 ),
                 "language": optional_string(settings, "language", default="zh-CN"),
-                "product_information": optional_string_list(
-                    settings, "selling_points"
-                ),
+                "product_information": optional_string_list(settings, "selling_points"),
                 "user_instruction": (
                     optional_string(settings, "user_instruction") or instruction
                 )

@@ -156,6 +156,7 @@ class Settings(BaseSettings):
     tengli_vision_model: str = "gpt-5.6-terra"
     analysis_api_key: SecretStr = SecretStr("")
     analysis_base_url: str = "https://api.ooapi.cc"
+    analysis_api_mode: Literal["chat_completions", "responses"] = "chat_completions"
     # `gpt-5.5` stopped serving on this relay (HTTP 502 "Upstream access
     # forbidden"), and `gpt-5.6-luna` now answers 503 or not at all.  A live
     # probe against the production relay on 2026-09-16 returned a healthy

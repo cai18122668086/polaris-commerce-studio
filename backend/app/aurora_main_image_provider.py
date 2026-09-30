@@ -2089,6 +2089,17 @@ def _classify_transient_failure(exc: Exception) -> tuple[bool, int | None]:
 
     status = getattr(exc, "http_status", None) or getattr(exc, "status_code", None)
     http_status = status if isinstance(status, int) else None
+    # This diagnostic survives the planner/runtime exception wrappers. A read
+    # timeout may already have produced a billable image; never retry the whole
+    # item merely because the wrapped message contains the word "timeout".
+    marker = "Provider transport failed: "
+    if marker in str(exc):
+        try:
+            diagnostic, _ = json.JSONDecoder().raw_decode(str(exc).split(marker, 1)[1])
+            if isinstance(diagnostic, dict):
+                return diagnostic.get("safe_to_retry") is True, http_status
+        except (ValueError, TypeError):
+            return False, http_status
     if http_status in {408, 429} or (
         http_status is not None and 500 <= http_status <= 599
     ):

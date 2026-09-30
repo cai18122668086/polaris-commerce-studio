@@ -50,7 +50,7 @@ python -m alembic -c alembic.ini current
 python -m alembic -c alembic.ini heads
 ```
 
-The expected head for this release is `20260909_0024`. For a disposable
+The expected head for this release is `20260930_0025`. For a disposable
 PostgreSQL validation database, run the optional test only after setting both
 `POLARIS_POSTGRES_E2E_URL` and
 `POLARIS_POSTGRES_E2E_ALLOW_MUTATION=true`.

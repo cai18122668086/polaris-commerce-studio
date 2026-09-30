@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, CircleDollarSign, Clock3,
   FileCheck2, Globe2, GripVertical, ImagePlus, Info, Languages, LoaderCircle,
@@ -19,6 +19,7 @@ import { presentWorkflow, useRuntimeStatus, type WorkflowPresentation } from "@/
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import { IMAGE_UPLOAD_ACCEPT } from "@/lib/image-upload";
+import { DETAIL_PAGE_COUNT_ERROR, parseDetailPageCount } from "@/lib/detail-page-count";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
@@ -34,6 +35,18 @@ type PlanPage = { title: string; description?: string; quality?: string };
 
 const DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1200x1600";
 const INTERNATIONAL_FALLBACK_SIZE: MarketplaceImageSize = "1024x1536";
+
+function readSavedPageCount() {
+  try { return sessionStorage.getItem("polaris:detail-page-count") ?? "6"; }
+  catch { return "6"; }
+}
+
+function subscribePageCount(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+}
+
+function initialPageCount() { return "6"; }
 
 function readPlanPages(payload: Record<string, unknown> | undefined): PlanPage[] {
   if (!payload) return [];
@@ -86,7 +99,15 @@ function planItemPresentation(
 
 export default function DetailPackPage() {
   const fileInput = useRef<HTMLInputElement>(null);
-  const [pageCount, setPageCount] = useState(6);
+  const savedPageCount = useSyncExternalStore(subscribePageCount, readSavedPageCount, initialPageCount);
+  const [editedPageCount, setPageCountInput] = useState<string>();
+  const pageCountInput = editedPageCount ?? savedPageCount;
+  const pageCount = parseDetailPageCount(pageCountInput);
+  const setPageCount = (value: string) => {
+    setPageCountInput(value);
+    try { sessionStorage.setItem("polaris:detail-page-count", value); }
+    catch { /* The current form remains usable when browser storage is disabled. */ }
+  };
   const [marketRegion, setMarketRegion] = useState<MarketRegion>("domestic");
   const [marketplaceId, setMarketplaceId] = useState("tmall");
   const [imageSize, setImageSize] = useState<MarketplaceImageSize>(DOMESTIC_DETAIL_SIZE);
@@ -167,7 +188,7 @@ export default function DetailPackPage() {
   };
 
   const createPlanningJob = async () => {
-    if (!sources.length || !productName.trim() || !workspace) return;
+    if (!sources.length || !productName.trim() || !workspace || pageCount === undefined) return;
     const configuration = {
       product_name: productName.trim(),
       platform_code: marketplaceId,
@@ -249,7 +270,12 @@ export default function DetailPackPage() {
             <div className="form-section-head"><span className="number-chip">3</span><div><h2>输出设置</h2><p>{workflow.mode === "provider" ? "确认后将开始生成，请先核对输出设置。" : "当前仅保存规划和任务状态，暂不生成图片。"}</p></div></div>
             <div className="output-options">
               <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>简体中文</button><button className={language === "en-US" ? "active" : ""} onClick={() => setLanguage("en-US")}>English</button></div></div>
-              <div className="option-field"><span><FileCheck2 size={16} />详情页数</span><div className="page-count-control">{[4, 6, 8].map((count) => <button key={count} className={pageCount === count ? "active" : ""} onClick={() => setPageCount(count)}>{count} 页</button>)}</div></div>
+              <div className="option-field">
+                <label htmlFor="detail-page-count"><FileCheck2 size={16} />生成屏数</label>
+                <input id="detail-page-count" className="detail-count-input" type="text" inputMode="numeric" value={pageCountInput} onChange={(event) => setPageCount(event.target.value)} disabled={Boolean(jobId)} aria-invalid={pageCount === undefined} aria-describedby="detail-page-count-help" />
+                <small id="detail-page-count-help" role={pageCount === undefined ? "alert" : undefined}>{pageCount === undefined ? DETAIL_PAGE_COUNT_ERROR : "每个商品生成 1–12 屏，提交后按此数量规划和生成。"}</small>
+                <div className="page-count-control">{[4, 6, 8].map((count) => <button key={count} className={pageCount === count ? "active" : ""} onClick={() => setPageCount(String(count))} disabled={Boolean(jobId)}>{count} 屏</button>)}</div>
+              </div>
               {marketRegion === "international" && <div className="option-field"><span><Globe2 size={16} />图片尺寸</span><div className="page-count-control">{selectedMarketplace.sizePresets?.map((preset) => <button key={preset.value} className={imageSize === preset.value ? "active" : ""} onClick={() => setImageSize(preset.value)}>{preset.label}</button>)}</div></div>}
             </div>
           </section>
@@ -263,13 +289,14 @@ export default function DetailPackPage() {
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
             {planPages.length > 0 && <div className="plan-list">
               {planPages.map((page, index) => {
-                const item = job.data?.items.find((candidate) => candidate.ordinal === index + 1);
+                const item = job.data?.items.find((candidate) => candidate.ordinal === index);
                 const presentation = planItemPresentation(item?.status, job.data?.status, workflow);
                 return <article key={`${page.title}-${index}`}><span className="plan-drag"><GripVertical size={15} /></span><i>{String(index + 1).padStart(2, "0")}</i><div><strong>{page.title}</strong><p>{page.description ?? "页面规划内容已生成。"}</p></div><span className="quality-chip">{page.quality ?? "默认"}</span><span className={`page-status ${presentation.className}`}>{presentation.icon === "done" ? <CheckCircle2 size={14} /> : presentation.icon === "failed" ? <AlertCircle size={14} /> : <Clock3 size={14} />}{presentation.label}</span></article>;
               })}
             </div>}
           </section>
 
+          {job.data && <p role="status">生成进度：{job.data.succeeded_item_count}/{job.data.expected_item_count} 屏成功，{job.data.failed_item_count} 屏失败。</p>}
           {resultAssets.length > 0 && <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>所有已完成的图片会展示在这里，并支持后续下载。</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
             <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} />)}</div>
@@ -288,7 +315,7 @@ export default function DetailPackPage() {
               {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
-                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !sources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !sources.length || !productName.trim() || pageCount === undefined || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
               ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
                 <button className="primary-button" onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions })} disabled={confirmPlan.isPending}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并开始生成" : "确认并保存任务"}<ArrowRight size={17} /></button>
               ) : (
@@ -301,7 +328,7 @@ export default function DetailPackPage() {
           mode="detail-pack"
           taskTitle={productName.trim() ? `${productName.trim()}详情套图` : "等待填写商品名称"}
           assetSummary={sources.length ? `${sources.length} 张 · 同一分组` : "尚未上传"}
-          outputSummary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "中文" : "English"} · ${pageCount} 页`}
+          outputSummary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "中文" : "English"} · ${pageCount ?? "待填写"} 屏`}
         />
       </div>
     </AppShell>

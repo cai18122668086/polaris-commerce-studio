@@ -1658,6 +1658,16 @@ class TengliOpenAICompatibleGateway:
                     "max_completion_tokens": 16_000,
                 }
             )
+        elif request.planning_profile == "aurora_set_audit":
+            payload.update(
+                {
+                    # A six-page set-role audit emits 17 checks, 6 observations,
+                    # verdict fields and concrete pixel evidence.  The default
+                    # token budget truncates the JSON mid-object (observed as
+                    # ``whole_json:decode_failed, fence:not_matched``).
+                    "max_completion_tokens": 16_000,
+                }
+            )
         response: Mapping[str, Any] | None = None
         try:
             self.external_network_request_count += 1

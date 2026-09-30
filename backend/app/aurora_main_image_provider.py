@@ -2745,6 +2745,87 @@ def _flatten_style_evidence(value: object) -> list[str]:
     return []
 
 
+def _derive_set_role_verdict_from_checks(payload: dict[str, Any]) -> None:
+    """Derive the three Harness set-audit verdict fields from model-native checks.
+
+    The vision model obeys the v2 system prompt ("never use legacy aliases")
+    and returns checks such as ``page_0_is_search_listing_cover`` and
+    ``page_N_is_not_search_listing_cover``.  The legacy adapter only
+    understands ``search_listing_cover_assessment`` / ``set_verdict`` /
+    ``set_level_conclusion``, which the model no longer emits.  When those
+    fields are absent the adapter leaves ``identified_search_page_index`` as
+    ``None`` and ``search_role_is_unique`` unset, so ``audit_set`` always
+    blocks.  This helper corrects that by reading the actual checks.
+    """
+
+    checks = payload.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return
+
+    def _check_status(item: object) -> bool | None:
+        if not isinstance(item, Mapping):
+            return None
+        status = item.get("status")
+        if isinstance(status, str):
+            s = status.strip().upper()
+            if s in {"PASS", "PASSED", "TRUE"}:
+                return True
+            if s in {"FAIL", "FAILED", "FALSE"}:
+                return False
+        passed = item.get("passed")
+        if passed is not None:
+            return passed is True
+        return None
+
+    def _check_name(item: object) -> str:
+        if not isinstance(item, Mapping):
+            return ""
+        return str(
+            item.get("check_name") or item.get("name") or item.get("check") or ""
+        ).strip()
+
+    page0: bool | None = None
+    page_n: dict[int, bool | None] = {}
+    cover_role: bool | None = None
+    role_distinct: bool | None = None
+
+    for item in checks:
+        name = _check_name(item)
+        s = _check_status(item)
+        if name == "page_0_is_search_listing_cover":
+            page0 = s
+        elif name.startswith("page_") and name.endswith("_is_not_search_listing_cover"):
+            try:
+                n = int(name[len("page_") : name.index("_is_not_search_listing_cover")])
+                if 1 <= n <= 5:
+                    page_n[n] = s
+            except (ValueError, IndexError):
+                pass
+        elif name == "search_listing_cover_role":
+            cover_role = s
+        elif name == "set_role_distinction":
+            role_distinct = s
+
+    # Tier 1: per-page search-cover checks present for page 0 and all 1..5
+    if (
+        page0 is not None
+        and set(page_n.keys()) == set(range(1, 6))
+        and all(v is not None for v in page_n.values())
+    ):
+        confusable = [n for n in range(1, 6) if page_n[n] is False]
+        payload["identified_search_page_index"] = 0 if page0 else None
+        payload["search_role_is_unique"] = page0 is True and not confusable
+        payload["confusable_page_indexes"] = confusable
+        return
+
+    # Tier 2: set-level role checks present and both passing
+    if cover_role is True and role_distinct is True:
+        payload["identified_search_page_index"] = 0
+        payload["search_role_is_unique"] = True
+        payload["confusable_page_indexes"] = []
+        return
+
+
 def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Adapt an equivalent blind six-page review to the Harness contract."""
 
@@ -2839,6 +2920,7 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         "confusable_page_indexes",
         other_cover_indexes if isinstance(other_cover_indexes, list) else [],
     )
+    _derive_set_role_verdict_from_checks(payload)
     return payload
 
 

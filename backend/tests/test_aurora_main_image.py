@@ -1388,6 +1388,98 @@ def test_set_role_audit_adapts_tengli_explaining_evidence_and_set_verdict() -> N
     assert "product hero" in observation["search_identification_evidence"]
 
 
+def test_set_role_audit_derives_verdict_from_native_v2_checks() -> None:
+    """The model obeys the system prompt and returns checks, not legacy aliases."""
+    observation = _normalize_set_role_audit_payload(
+        {
+            "decision_summary": "Page 0 is the unique search cover; pages 1-5 are not.",
+            "checks": [
+                {"check_name": "product_identity", "status": "pass", "evidence": "x"},
+                {"check_name": "page_0_is_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_1_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_2_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_3_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_4_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_5_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+            ],
+        }
+    )
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is True
+    assert observation["confusable_page_indexes"] == []
+
+
+def test_set_role_audit_blocks_when_checks_contradict_uniqueness() -> None:
+    observation = _normalize_set_role_audit_payload(
+        {
+            "decision_summary": "Page 2 looks like a second search cover.",
+            "checks": [
+                {"name": "page_0_is_search_listing_cover", "passed": True, "observed_evidence": "x"},
+                {"name": "page_1_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
+                {"name": "page_2_is_not_search_listing_cover", "passed": False, "observed_evidence": "x"},
+                {"name": "page_3_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
+                {"name": "page_4_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
+                {"name": "page_5_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
+            ],
+        }
+    )
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is False
+    assert observation["confusable_page_indexes"] == [2]
+
+
+def test_set_role_audit_derives_from_set_level_checks_when_per_page_missing() -> None:
+    observation = _normalize_set_role_audit_payload(
+        {
+            "decision_summary": "The set roles are distinct.",
+            "checks": [
+                {"check_name": "search_listing_cover_role", "status": "PASS", "evidence": "x"},
+                {"check_name": "set_role_distinction", "status": "PASS", "evidence": "x"},
+            ],
+        }
+    )
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is True
+    assert observation["confusable_page_indexes"] == []
+
+
+def test_set_role_audit_preserves_legacy_fields_when_checks_absent() -> None:
+    observation = _normalize_set_role_audit_payload(
+        {
+            "search_listing_cover_assessment": {
+                "search_listing_cover_page_index": 0,
+                "page_0_alone_is_visibly_search_listing_cover": True,
+                "other_search_listing_cover_page_indices": [],
+            },
+        }
+    )
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is True
+    assert observation["confusable_page_indexes"] == []
+
+
+def test_set_role_audit_checks_take_precedence_over_legacy_fields() -> None:
+    """Checks are the model-native shape; they must override stale legacy hints."""
+    observation = _normalize_set_role_audit_payload(
+        {
+            "search_listing_cover_assessment": {
+                "search_listing_cover_page_index": 0,
+                "page_0_alone_is_visibly_search_listing_cover": False,
+            },
+            "checks": [
+                {"check_name": "page_0_is_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_1_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_2_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_3_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_4_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {"check_name": "page_5_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+            ],
+        }
+    )
+    assert observation["identified_search_page_index"] == 0
+    assert observation["search_role_is_unique"] is True
+
+
 def test_visual_audit_accepts_material_pass_with_audit_limitations() -> None:
     normalized = _normalize_visual_judgment_payload(
         {

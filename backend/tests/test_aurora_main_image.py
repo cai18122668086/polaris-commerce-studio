@@ -2157,6 +2157,24 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         assert provider.gateway.edit_calls == 1
         assert provider_result.raw_usage["image_request_count"] == 0
         assert provider_result.raw_usage["metrics"]["candidate_reused"] is True
+        if not (root / "review-candidate.json").exists():
+            legacy = json.loads((root / "session.json").read_text())
+            legacy["generated_versions"][-1]["revision"] = 1
+            legacy["modifications_used_by_page"] = {"0": 1}
+            (root / "session.json").write_text(json.dumps(legacy))
+            repair = {**snapshot["request"], "revision": 1}
+            repair_path = root / "repair-generation-request.json"
+            repair_path.write_text(json.dumps(repair))
+            recovered = provider._retained_v20_candidate(request, snapshot)
+            assert recovered[1]["revision"] == 1
+            assert recovered[2]["modifications_used_by_page"] == {"0": 1}
+            assert recovered[0].artifact.sha256 == original_hash
+            repair_path.unlink()
+            with pytest.raises(
+                AuroraPlanningError, match="repair request is unavailable"
+            ):
+                provider._retained_v20_candidate(request, snapshot)
+            repair_path.write_text(json.dumps(repair))
         # Corrupt data or a foreign workspace must fail closed without billing.
         root = (
             tmp_path

@@ -79,7 +79,10 @@ page_index, image_sha256 and reviewer, then derives the final audit_complete
 attestation only after all semantic checks pass. Do not invent image paths or
 hashes for those runtime-owned fields. decision_summary must be a concrete
 direct-pixel verdict sentence of at least 12 characters; never return a
-one-word verdict such as PASS, 合格 or 通过.
+one-word verdict such as PASS, 合格 or 通过. Evaluate factual copy against the
+approved page contract, including its approved source claims. Original product
+references authorize identity, not the target campaign style; compare style
+against campaign_constitution, not the source photo's background or typography.
 """.strip()
 
 _STYLE_CALIBRATION_SYSTEM_PROMPT = """
@@ -665,19 +668,28 @@ class AuroraMainImageProvider:
                 generation = checkpoint["request"]
                 metadata = checkpoint.get("artifact", {})
             else:
-                # Compatibility for already generated initial candidates. Never
-                # guess a repair request or resampling provenance for old data.
+                # Compatibility for old native sessions. Use the exact saved
+                # repair request, never reconstruct it or reset its budget.
                 if current.get("state") != "AWAITING_VISUAL_AUDIT":
                     raise AuroraPlanningError(
                         "Retained candidate review checkpoint is unavailable"
                     )
                 session, generation, metadata = current, saved["request"], {}
+                retained_revision = session["generated_versions"][-1].get("revision")
+                if retained_revision != generation.get("revision", 0):
+                    repair_path = root / "repair-generation-request.json"
+                    if not repair_path.is_file():
+                        raise AuroraPlanningError(
+                            "Retained repair request is unavailable"
+                        )
+                    generation = _load_json(repair_path)
             version = session["generated_versions"][-1]
             revision = int(generation.get("revision", 0))
             if (
                 session.get("state") != "AWAITING_VISUAL_AUDIT"
                 or version.get("page_index") != snapshot["page_index"]
                 or version.get("revision") != revision
+                or generation.get("page_index") != snapshot["page_index"]
                 or revision not in (0, 1)
             ):
                 raise AuroraPlanningError("Retained candidate revision mismatch")

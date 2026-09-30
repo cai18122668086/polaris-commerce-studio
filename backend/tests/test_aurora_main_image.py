@@ -1395,12 +1395,36 @@ def test_set_role_audit_derives_verdict_from_native_v2_checks() -> None:
             "decision_summary": "Page 0 is the unique search cover; pages 1-5 are not.",
             "checks": [
                 {"check_name": "product_identity", "status": "pass", "evidence": "x"},
-                {"check_name": "page_0_is_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_1_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_2_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_3_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_4_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_5_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {
+                    "check_name": "page_0_is_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_1_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_2_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_3_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_4_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_5_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
             ],
         }
     )
@@ -1414,12 +1438,36 @@ def test_set_role_audit_blocks_when_checks_contradict_uniqueness() -> None:
         {
             "decision_summary": "Page 2 looks like a second search cover.",
             "checks": [
-                {"name": "page_0_is_search_listing_cover", "passed": True, "observed_evidence": "x"},
-                {"name": "page_1_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
-                {"name": "page_2_is_not_search_listing_cover", "passed": False, "observed_evidence": "x"},
-                {"name": "page_3_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
-                {"name": "page_4_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
-                {"name": "page_5_is_not_search_listing_cover", "passed": True, "observed_evidence": "x"},
+                {
+                    "name": "page_0_is_search_listing_cover",
+                    "passed": True,
+                    "observed_evidence": "x",
+                },
+                {
+                    "name": "page_1_is_not_search_listing_cover",
+                    "passed": True,
+                    "observed_evidence": "x",
+                },
+                {
+                    "name": "page_2_is_not_search_listing_cover",
+                    "passed": False,
+                    "observed_evidence": "x",
+                },
+                {
+                    "name": "page_3_is_not_search_listing_cover",
+                    "passed": True,
+                    "observed_evidence": "x",
+                },
+                {
+                    "name": "page_4_is_not_search_listing_cover",
+                    "passed": True,
+                    "observed_evidence": "x",
+                },
+                {
+                    "name": "page_5_is_not_search_listing_cover",
+                    "passed": True,
+                    "observed_evidence": "x",
+                },
             ],
         }
     )
@@ -1433,8 +1481,16 @@ def test_set_role_audit_derives_from_set_level_checks_when_per_page_missing() ->
         {
             "decision_summary": "The set roles are distinct.",
             "checks": [
-                {"check_name": "search_listing_cover_role", "status": "PASS", "evidence": "x"},
-                {"check_name": "set_role_distinction", "status": "PASS", "evidence": "x"},
+                {
+                    "check_name": "search_listing_cover_role",
+                    "status": "PASS",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "set_role_distinction",
+                    "status": "PASS",
+                    "evidence": "x",
+                },
             ],
         }
     )
@@ -1467,12 +1523,36 @@ def test_set_role_audit_checks_take_precedence_over_legacy_fields() -> None:
                 "page_0_alone_is_visibly_search_listing_cover": False,
             },
             "checks": [
-                {"check_name": "page_0_is_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_1_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_2_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_3_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_4_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
-                {"check_name": "page_5_is_not_search_listing_cover", "status": "pass", "evidence": "x"},
+                {
+                    "check_name": "page_0_is_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_1_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_2_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_3_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_4_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
+                {
+                    "check_name": "page_5_is_not_search_listing_cover",
+                    "status": "pass",
+                    "evidence": "x",
+                },
             ],
         }
     )
@@ -2248,3 +2328,73 @@ def test_transient_classifier_ignores_a_non_transient_status() -> None:
     error.http_status = 400
 
     assert _classify_transient_failure(error) == (False, 400)
+
+
+@pytest.mark.parametrize(
+    "checks",
+    [
+        # A summary cannot override explicit page failure or incomplete review.
+        [
+            {"check_name": "page_0_is_search_listing_cover", "status": state},
+            {"check_name": "search_listing_cover_role", "status": "pass"},
+            {"check_name": "set_role_distinction", "status": "pass"},
+        ]
+        for state in ("fail", "unknown", "pass")
+    ]
+    + [
+        [{"check_name": "search_listing_cover_role", "status": "fail"}],
+        [{"check_name": "set_role_distinction", "status": "unknown"}],
+        [{"check_name": "search_listing_cover_role", "status": "pass"}],
+        [
+            {
+                "check_name": "search_listing_cover_role",
+                "status": "pass",
+                "passed": False,
+            },
+            {"check_name": "set_role_distinction", "status": "pass"},
+        ],
+    ],
+)
+def test_set_role_native_incomplete_or_failed_checks_override_legacy_pass(
+    checks: list[dict[str, object]],
+) -> None:
+    observation = _normalize_set_role_audit_payload(
+        {
+            "identified_search_page_index": 0,
+            "search_role_is_unique": True,
+            "confusable_page_indexes": [],
+            "checks": checks,
+        }
+    )
+    assert observation["search_role_is_unique"] is False
+
+
+@pytest.mark.parametrize("failure_first", [True, False])
+def test_set_role_conflicting_duplicate_checks_always_block(
+    failure_first: bool,
+) -> None:
+    checks = [
+        {"check_name": "page_0_is_search_listing_cover", "status": "pass"},
+        *[
+            {"check_name": f"page_{n}_is_not_search_listing_cover", "status": "pass"}
+            for n in range(1, 6)
+        ],
+    ]
+    failure = {"check_name": "page_2_is_not_search_listing_cover", "status": "fail"}
+    checks.insert(0 if failure_first else len(checks), failure)
+    observation = _normalize_set_role_audit_payload({"checks": checks})
+    assert observation["search_role_is_unique"] is False
+    assert observation["confusable_page_indexes"] == [2]
+
+
+def test_set_role_summary_failure_blocks_even_with_complete_page_passes() -> None:
+    checks = [
+        {"check_name": "page_0_is_search_listing_cover", "status": "pass"},
+        *[
+            {"check_name": f"page_{n}_is_not_search_listing_cover", "status": "pass"}
+            for n in range(1, 6)
+        ],
+        {"check_name": "set_role_distinction", "status": "fail"},
+    ]
+    observation = _normalize_set_role_audit_payload({"checks": checks})
+    assert observation["search_role_is_unique"] is False

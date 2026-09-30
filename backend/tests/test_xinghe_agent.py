@@ -3017,3 +3017,22 @@ def test_sensitive_agent_audits_store_no_prompt_source_or_key(
     assert "object_key" not in serialized
     assert attempts == 1
     assert plan is not None
+
+
+def test_aurora_set_audit_gateway_reserves_full_review_token_budget() -> None:
+    transport = _RecordingTransport()
+    adapter = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://api.example.test",
+        planner_model="gpt-5.6-terra",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+    asyncio.run(adapter.plan(PlannerRequest(
+        workspace_id="ws_set_audit", job_id="job_set_audit", group_key="set",
+        sources=(), page_count=6, language="zh-CN", product_name="Audit fixture",
+        product_information=(), platform_code="TAOBAO", size="1024x1024",
+        idempotency_key="set-audit-fixture", planning_profile="aurora_set_audit",
+    )))
+    assert len(transport.json_calls) == 1
+    assert transport.json_calls[0]["payload"]["max_completion_tokens"] == 16_000

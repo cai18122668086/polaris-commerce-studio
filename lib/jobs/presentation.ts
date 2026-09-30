@@ -121,6 +121,12 @@ export function jobNote(job: Job | JobDetail): string {
 }
 
 export function safeJobFailureSummary(errorCode?: string | null): string {
+  if (errorCode === "AURORA_SET_AUDIT_ERROR") {
+    return "图片已生成并保留，整组审核发生技术错误，审核结论待确认。";
+  }
+  if (errorCode === "AURORA_SET_AUDIT_FAILED") {
+    return "图片已生成并保留，整组审核未通过，请检查审核结果。";
+  }
   if (errorCode === "AURORA_SEQUENCE_HALTED") {
     return "前序图片未完成，后续图片已停止生成。";
   }

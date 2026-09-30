@@ -24,14 +24,19 @@ const statusMap: Record<
   cancelled: { label: "已取消", className: "status-neutral", icon: Ban },
 };
 
-export function StatusBadge({ status }: { status: JobStatus }) {
+export function StatusBadge({ status, stage }: { status: JobStatus; stage?: string | null }) {
+  const auditLabels: Record<string, string> = {
+    set_auditing: "整组审核中",
+    set_audit_error: "审核异常待确认",
+    set_audit_failed: "整组审核未通过",
+  };
   const config = statusMap[status];
   const Icon = config.icon;
 
   return (
     <span className={`status-badge ${config.className}`}>
       <Icon size={13} className={["processing", "planning", "cancelling"].includes(status) ? "spin" : ""} />
-      {config.label}
+      {(stage && auditLabels[stage]) || config.label}
     </span>
   );
 }

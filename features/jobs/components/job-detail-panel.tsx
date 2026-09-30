@@ -103,7 +103,7 @@ export function JobDetailPanel({
         {job && (
           <div className="job-detail-content">
             <div className="job-detail-heading">
-              <div><StatusBadge status={job.status} /><span>{jobTypeLabel(job.type)}</span></div>
+              <div><StatusBadge status={job.status} stage={job.stage} /><span>{jobTypeLabel(job.type)}</span></div>
               <button type="button" className="icon-button" onClick={() => void detail.refetch()} disabled={detail.isFetching} aria-label="刷新任务详情" title="刷新">
                 <RefreshCw size={16} className={detail.isFetching ? "spin" : ""} />
               </button>

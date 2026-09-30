@@ -168,7 +168,7 @@ export default function JobsPage() {
                 >
                   <JobRecordCover workspaceId={workspace?.id ?? ""} job={job} />
                   <div className="record-main">
-                    <div><StatusBadge status={job.status} /><small>{job.id}</small></div>
+                    <div><StatusBadge status={job.status} stage={job.stage} /><small>{job.id}</small></div>
                     <h3><Link href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}>{jobTitle(job)}</Link></h3><p>{jobNote(job)}</p>
                     {["queued", "planning", "processing", "cancelling"].includes(job.status) && <div className="record-progress"><i style={{ width: `${job.progress}%` }} /><span>{job.progress}%</span></div>}
                   </div>

@@ -320,6 +320,8 @@ class ProductionPreflightTests(unittest.TestCase):
             dockerfile.replace("ARG POLARIS_PYTHON_BASE_IMAGE", "FROM python:3.13.14-slim"),
             dockerfile.replace("python -m pip install --require-hashes", "python -m pip install '.[browser]'"),
             dockerfile.replace("requirements.browser.lock", "requirements.txt"),
+            dockerfile.replace("playwright install-deps chromium", "true"),
+            dockerfile.replace("playwright install chromium", "true"),
         )
         for mutated in mutations:
             with self.subTest():

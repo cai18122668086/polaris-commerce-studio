@@ -490,7 +490,8 @@ def validate_crawl_worker_dockerfile(dockerfile: str) -> list[str]:
         "FROM ${POLARIS_PYTHON_BASE_IMAGE}",
         "requirements.browser.lock",
         "--require-hashes",
-        "playwright install --with-deps chromium",
+        "playwright install-deps chromium",
+        "playwright install chromium",
         "chromium.launch(headless=True)",
         "USER 10001:10001",
     )

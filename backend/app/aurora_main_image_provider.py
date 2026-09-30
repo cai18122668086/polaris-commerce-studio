@@ -80,6 +80,15 @@ direct-pixel verdict sentence of at least 12 characters; never return a
 one-word verdict such as PASS, 合格 or 通过.
 """.strip()
 
+_STYLE_CALIBRATION_SYSTEM_PROMPT = """
+Compare only the shared visual style of the two attached campaign pages.
+Return the requested style-calibration JSON object, not a single-page quality
+judgment. Set agent_pixel_reviewed to true only if you actually inspected both
+images; otherwise set it to false and explain the unavailable evidence.
+Describe concrete observed pixels and shared style tokens. Do not infer product
+identity, invent facts, or report checks from a different review protocol.
+""".strip()
+
 
 class AuroraMainImageProvider:
     """Run generation, direct-pixel review and the one-repair loop per page."""
@@ -804,7 +813,7 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_STYLE_CALIBRATION",
                 size="1024x1024",
                 idempotency_key=f"{request.idempotency_key}:style-calibration:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_STYLE_CALIBRATION_SYSTEM_PROMPT,
                 planning_profile="aurora_style_calibration",
             )
         )
@@ -1575,7 +1584,7 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_STYLE_CALIBRATION",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-style-calibration:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_STYLE_CALIBRATION_SYSTEM_PROMPT,
                 planning_profile="aurora_style_calibration",
             )
         )
@@ -2664,8 +2673,9 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
 
     evidence = payload.get("observed_evidence")
     if not isinstance(evidence, str) or len(evidence.strip()) < 20:
-        concrete = payload.get("concrete_observed_evidence") or payload.get(
-            "concrete observed_evidence"
+        concrete = evidence if isinstance(evidence, (list, Mapping)) else (
+            payload.get("concrete_observed_evidence")
+            or payload.get("concrete observed_evidence")
         )
         statements = _flatten_style_evidence(concrete)
         if statements:

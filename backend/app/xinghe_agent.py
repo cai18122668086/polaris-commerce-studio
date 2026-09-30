@@ -1680,7 +1680,9 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
-        if request.planning_profile == "amazon_visual_suite":
+        if request.planning_profile == "aurora_style_calibration":
+            payload["max_completion_tokens"] = 4096
+        elif request.planning_profile == "amazon_visual_suite":
             payload.update(
                 {
                     "max_completion_tokens": 12_000,
@@ -6569,7 +6571,9 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_style_calibration":
         return (
             "Directly compare the two attached accepted Aurora campaign pages. "
-            "Return JSON with agent_pixel_reviewed=true, review_mode exactly "
+            "Return JSON with agent_pixel_reviewed=true only after inspecting both "
+            "images directly; if either cannot be read, set agent_pixel_reviewed=false "
+            "and explain why in observed_evidence. Set review_mode exactly "
             "DIRECT_PIXEL_VISUAL_COMPARISON, source_page_indexes [0,1], concrete "
             "observed_evidence, and nonempty style_tokens containing only shared "
             "photography_finish, light_direction, color_temperature, palette_roles, "

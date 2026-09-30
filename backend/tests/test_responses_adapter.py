@@ -86,7 +86,10 @@ def test_incomplete_or_refused_native_output_cannot_be_accepted(
         )
 
 
-def test_gateway_native_planning_reads_images_and_retains_id_usage():
+@pytest.mark.parametrize("profile", ["detail_pack", "aurora_style_calibration"])
+def test_gateway_native_planning_reads_images_and_retains_id_usage(profile):
+    from app.aurora_main_image_provider import _STYLE_CALIBRATION_SYSTEM_PROMPT
+
     class Transport:
         calls = []
 
@@ -145,6 +148,10 @@ def test_gateway_native_planning_reads_images_and_retains_id_usage():
         platform_code="tmall",
         size="1024x1024",
         idempotency_key="idem",
+        planning_profile=profile,
+        system_prompt=_STYLE_CALIBRATION_SYSTEM_PROMPT
+        if profile == "aurora_style_calibration"
+        else "Detail planning",
     )
     result = asyncio.run(gateway.plan(request))
     assert result.payload == {"pixel_reviewed": False}  # never forge vision evidence
@@ -154,6 +161,12 @@ def test_gateway_native_planning_reads_images_and_retains_id_usage():
     call = transport.calls[0]
     assert call["url"] == "https://example.test/v1/responses"
     assert call["headers"]["Idempotency-Key"] == "idem"
+    if profile == "aurora_style_calibration":
+        assert call["payload"]["max_output_tokens"] == 4096
+        wire_prompt = json.dumps(call["payload"]["input"])
+        assert "agent_pixel_reviewed=false" in wire_prompt
+        assert "decision_summary" not in wire_prompt
+        assert "all_material_deficiencies" not in wire_prompt
     assert call["payload"]["input"][1]["content"][-1]["image_url"].endswith(
         base64.b64encode(b"real source bytes").decode()
     )

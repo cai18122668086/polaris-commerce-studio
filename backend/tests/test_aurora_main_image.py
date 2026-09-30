@@ -995,12 +995,18 @@ def test_balanced_gate_does_not_repair_for_low_soft_score_mean() -> None:
     assert "thumbnail_success" in result["advisory_checks"]
 
 
-def test_style_calibration_joins_concrete_pixel_evidence() -> None:
+@pytest.mark.parametrize(
+    "evidence_key", ["concrete_observed_evidence", "observed_evidence"]
+)
+@pytest.mark.parametrize("pixel_reviewed", [True, False])
+def test_style_calibration_joins_concrete_pixel_evidence(
+    evidence_key, pixel_reviewed
+) -> None:
     observation = _normalize_style_calibration_payload(
         {
-            "agent_pixel_reviewed": True,
+            "agent_pixel_reviewed": pixel_reviewed,
             "review_mode": "DIRECT_PIXEL_VISUAL_COMPARISON",
-            "concrete_observed_evidence": [
+            evidence_key: [
                 "Both accepted pages use the same clean white studio field.",
                 "Both pages preserve matching blue product color and crisp finish.",
             ],
@@ -1011,6 +1017,7 @@ def test_style_calibration_joins_concrete_pixel_evidence() -> None:
 
     assert len(observation["observed_evidence"]) >= 20
     assert "concrete_observed_evidence" not in observation
+    assert observation["agent_pixel_reviewed"] is pixel_reviewed
 
 
 def test_style_calibration_flattens_spaced_nested_evidence_field() -> None:

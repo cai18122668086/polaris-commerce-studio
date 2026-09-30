@@ -628,9 +628,13 @@ class AuroraMainImageProvider:
             if not root.is_relative_to(self.work_root):
                 raise AuroraPlanningError("Retained candidate path escapes work root")
             if not (root / "session.json").is_file():
+                if list((root / "generated").glob("*")):
+                    raise AuroraPlanningError("Retained candidate session is unavailable")
                 continue
             current = _load_json(root / "session.json")
             if not current.get("generated_versions"):
+                if list((root / "generated").glob("*")):
+                    raise AuroraPlanningError("Retained candidate was not recorded")
                 continue
             if current.get("state") not in {
                 "AWAITING_VISUAL_AUDIT",

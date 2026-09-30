@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Runtime dependencies are fully pinned and hash-locked by the product commit.
 COPY backend/requirements.lock ./requirements.lock
-RUN python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+RUN --mount=type=cache,id=polaris-pip,target=/root/.cache/pip,sharing=locked python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
 
 COPY backend/alembic.ini ./
 COPY backend/app ./app

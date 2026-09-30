@@ -609,7 +609,8 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
         if re.search(r"\b(?:python\s+-m\s+)?pip\s+install\b", line)
     ]
     required_pip_install = (
-        "RUN python -m pip install --require-hashes "
+        "RUN --mount=type=cache,id=polaris-pip,target=/root/.cache/pip,sharing=locked "
+        "python -m pip install --require-hashes "
         "--only-binary=:all: -r requirements.lock"
     )
     if pip_install_lines != [required_pip_install]:

@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY backend/requirements.browser.lock ./requirements.browser.lock
-RUN python -m pip install --require-hashes --only-binary=:all: -r requirements.browser.lock \
+RUN --mount=type=cache,id=polaris-pip,target=/root/.cache/pip,sharing=locked python -m pip install --require-hashes --only-binary=:all: -r requirements.browser.lock \
     && python -m playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 

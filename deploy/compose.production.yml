@@ -22,9 +22,16 @@ name: polaris-production
 #
 # These are ceilings, not reservations. Raising them removes artificial
 # throttling; the kernel still schedules fairly, and per-container limits still
-# stop one runaway process from taking the host down. The totals are
-# deliberately overcommitted (10.0 CPU and ~6.4 GiB of ceilings on a 4-core /
-# 7.5 GiB host) because no container approaches its cap in normal operation.
+# stop one runaway process from taking the host down.
+#
+# Two rules keep the change tied to measurement rather than guesswork:
+#   * CPU is raised only where throttling exceeds 4%. postgres (0.05%), minio
+#     (0.7%), supertokens (1.1%) and redis (1.6%) are left alone -- they already
+#     have 50-100x headroom, so raising them would be guesswork.
+#   * Memory is raised only where anonymous usage exceeds 45%. Measured:
+#     postgres 8.5%, redis 1.6%, minio 28.2%, supertokens 52.6% -- so only
+#     supertokens (384m -> 512m) qualifies.
+# Totals become 9.0 CPU and ~6.0 GiB of ceilings on a 4-core / 7.5 GiB host.
 # ---------------------------------------------------------------------------
 
 x-backend-common-environment: &backend-common-environment
@@ -176,8 +183,8 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
-    mem_limit: 640m
-    cpus: "0.75"
+    mem_limit: 512m
+    cpus: "0.50"
     pids_limit: 256
     stop_grace_period: 60s
     restart: unless-stopped
@@ -198,8 +205,8 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
-    mem_limit: 256m
-    cpus: "0.50"
+    mem_limit: 112m
+    cpus: "0.25"
     pids_limit: 128
     stop_grace_period: 30s
     restart: unless-stopped
@@ -221,8 +228,8 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
-    mem_limit: 512m
-    cpus: "0.75"
+    mem_limit: 384m
+    cpus: "0.50"
     pids_limit: 256
     stop_grace_period: 60s
     restart: unless-stopped
@@ -254,7 +261,7 @@ services:
     cap_drop: [ALL]
     init: true
     mem_limit: 512m
-    cpus: "0.75"
+    cpus: "0.50"
     pids_limit: 256
     stop_grace_period: 30s
     restart: unless-stopped

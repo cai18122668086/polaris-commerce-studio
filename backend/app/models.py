@@ -677,7 +677,19 @@ class JobRecord(TimestampMixin, Base):
                     OR (
                         status = 'partial'
                         AND succeeded_item_count > 0
-                        AND succeeded_item_count < expected_item_count
+                        AND (
+                            succeeded_item_count < expected_item_count
+                            OR (
+                                type = 'domestic_main_image'
+                                AND succeeded_item_count = expected_item_count
+                                AND failed_item_count = 0
+                                AND error_code IN (
+                                    'AURORA_SET_AUDIT_ERROR',
+                                    'AURORA_SET_AUDIT_FAILED'
+                                )
+                                AND stage IN ('set_audit_error', 'set_audit_failed')
+                            )
+                        )
                     )
                     OR (status = 'failed' AND succeeded_item_count = 0)
                     OR status = 'cancelled'

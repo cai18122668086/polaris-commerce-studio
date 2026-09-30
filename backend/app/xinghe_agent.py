@@ -1661,10 +1661,8 @@ class TengliOpenAICompatibleGateway:
         elif request.planning_profile == "aurora_set_audit":
             payload.update(
                 {
-                    # A six-page set-role audit emits 17 checks, 6 observations,
-                    # verdict fields and concrete pixel evidence.  The default
-                    # token budget truncates the JSON mid-object (observed as
-                    # ``whole_json:decode_failed, fence:not_matched``).
+                    # Reserve room for six evidence-bearing checks. A parse
+                    # failure alone is not proof of truncation; retain finish_reason.
                     "max_completion_tokens": 16_000,
                 }
             )
@@ -6405,6 +6403,17 @@ def _aurora_v20_visual_judgment_json_schema(
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "aurora_set_audit":
+        from .aurora_set_audit_contract import json_schema
+
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_six_page_set_review",
+                "strict": True,
+                "schema": json_schema(),
+            },
+        }
     if request.planning_profile == "aurora_identity":
         return {
             "type": "json_schema",
@@ -6530,10 +6539,13 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_set_audit":
         return (
             "Blindly compare all six attached accepted Aurora pages in their supplied "
-            "page order. Return the complete set-role-distinction JSON contract. "
+            "page order. Return exactly the supplied strict set-review JSON schema. "
+            "Include all six per-page checks once, each with concrete pixel_evidence. "
+            "Aggregate checks or PASS summaries cannot replace per-page checks. "
             "Identify whether page 0 alone is visibly the search listing cover and "
             "give concrete pixel evidence explaining why each page 1 through 5 is "
-            "not a search cover. Use the exact supplied image hashes."
+            "not a search cover. The runtime binds image hashes; "
+            "omit runtime-owned fields."
         )
     if request.planning_profile == "aurora_visual_audit":
         return (
@@ -6928,6 +6940,13 @@ def _planner_envelope_diagnostics(
             "choice0_kind": _safe_json_kind(choice0),
             "message_kind": _safe_json_kind(message),
             "content_kind": _safe_json_kind(content),
+            "finish_reason": (
+                choice0.get("finish_reason")
+                if isinstance(choice0, Mapping)
+                and choice0.get("finish_reason")
+                in {"stop", "length", "content_filter", "tool_calls", "function_call"}
+                else "unknown"
+            ),
         },
         "request_id_presence": (
             "present" if _safe_request_id(payload) is not None else "absent"

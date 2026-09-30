@@ -845,9 +845,10 @@ def test_balanced_audit_keeps_unrequested_soft_checks_advisory() -> None:
     )
 
     assert judgment["checks"]["page_role_expression"]["passed"] is False
-    assert {
-        item["check"] for item in judgment["all_observed_deficiencies"]
-    } == {"page_role_expression", "selling_point_visible_without_copy"}
+    assert {item["check"] for item in judgment["all_observed_deficiencies"]} == {
+        "page_role_expression",
+        "selling_point_visible_without_copy",
+    }
 
 
 def test_balanced_audit_deficiencies_include_forced_core_proof_failure() -> None:
@@ -926,10 +927,7 @@ def test_balanced_gate_does_not_repair_for_low_soft_score_mean() -> None:
         visual_gate = importlib.import_module("visual_gate")
     finally:
         sys.path.pop(0)
-    blocking = (
-        visual_gate.HARD_BLOCKING_CHECKS
-        | visual_gate.MATERIAL_BLOCKING_CHECKS
-    )
+    blocking = visual_gate.HARD_BLOCKING_CHECKS | visual_gate.MATERIAL_BLOCKING_CHECKS
     checks = {
         name: {
             "passed": name in blocking,
@@ -1280,6 +1278,16 @@ def test_parallel_set_audit_binds_provider_output_to_harness_contract() -> None:
     sources = [SimpleNamespace(sha256=f"hash-{index}") for index in range(6)]
     observation = _normalize_parallel_set_audit_payload(
         {
+            "checks": [
+                {
+                    "check_name": "page_0_is_search_listing_cover"
+                    if index == 0
+                    else f"page_{index}_is_not_search_listing_cover",
+                    "status": "PASS",
+                    "pixel_evidence": f"Concrete evidence for page {index}.",
+                }
+                for index in range(6)
+            ],
             "pages": [
                 {
                     "page_index": index,
@@ -1600,9 +1608,10 @@ def test_visual_audit_normalizes_incomplete_evidence_in_complete_shape() -> None
         }
     )
 
-    assert len(
-        normalized["checks"]["page_role_expression"]["observed_evidence"].strip()
-    ) >= 12
+    assert (
+        len(normalized["checks"]["page_role_expression"]["observed_evidence"].strip())
+        >= 12
+    )
 
 
 def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:
@@ -1933,9 +1942,8 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     class SparseNativeGateway(FakeXingheGateway):
         async def plan(self, request: PlannerRequest):
             result = await super().plan(request)
-            if (
-                request.planning_profile == "aurora_v20_visual_audit"
-                and isinstance(result.payload, dict)
+            if request.planning_profile == "aurora_v20_visual_audit" and isinstance(
+                result.payload, dict
             ):
                 payload = dict(result.payload)
                 for field in (
@@ -2086,13 +2094,12 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     judgment = json.loads(
         (attempt_workspace / "judgment-1.json").read_text(encoding="utf-8")
     )
-    generated_path = (
-        attempt_workspace / "generated" / "page-01-attempt-1.jpg"
-    )
+    generated_path = attempt_workspace / "generated" / "page-01-attempt-1.jpg"
     assert judgment["page_index"] == 0
-    assert judgment["image_sha256"] == hashlib.sha256(
-        generated_path.read_bytes()
-    ).hexdigest()
+    assert (
+        judgment["image_sha256"]
+        == hashlib.sha256(generated_path.read_bytes()).hexdigest()
+    )
     assert judgment["reviewer"] == {
         "mode": "AGENT_DIRECT_PIXEL_REVIEW",
         "pixel_inspection_performed": True,

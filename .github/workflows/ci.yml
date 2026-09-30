@@ -66,7 +66,7 @@ jobs:
       - name: Test PostgreSQL ecommerce concurrency
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
-        run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py
+        run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py backend/tests/test_set_audit_concurrency_postgres.py
       - name: Test deployment preflight
         run: python -m unittest discover -s deploy/tests -v
       - name: Validate deployment sources

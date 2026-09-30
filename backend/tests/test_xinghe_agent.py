@@ -1550,7 +1550,7 @@ def test_raw_planner_envelope_diagnostics_are_safe_and_durable(
             "parse_trace": expected_trace,
             "structure_fingerprint": diagnostics["structure_fingerprint"],
             "structure_profile": expected_structure_profile,
-            "provider_envelope": expected_envelope,
+            "provider_envelope": {**expected_envelope, "finish_reason": "unknown"},
             "content_utf8_bytes": expected_bytes,
             "content_sha256": expected_sha256,
             "request_id_presence": expected_request_id,
@@ -1635,6 +1635,7 @@ def test_strict_planner_content_reaches_confirmation_gate(
             "choice0_kind": "mapping",
             "message_kind": "mapping",
             "content_kind": "string",
+            "finish_reason": "unknown",
         }
         assert diagnostics[0]["request_id_presence"] == "present"
         assert diagnostics[0]["usage_presence"] == "present"

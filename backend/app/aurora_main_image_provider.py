@@ -25,10 +25,11 @@ from .aurora_main_image_runtime import (
     AuroraV20HarnessRunner,
     write_contract,
 )
+from .aurora_set_audit import SetAuditResult
+from .aurora_set_audit_contract import validate_evidence, validate_verdict_fields
 from .config import default_aurora_work_root
 from .domain import JobItemStatus
 from .models import (
-    AuditEventRecord,
     JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
@@ -1125,11 +1126,10 @@ class AuroraMainImageProvider:
                 "",
                 str(observations.get("headline_text") or ""),
             )
-            headline_concise = (
-                len(headline_text)
-                <= int(copy_contract.get("headline_hard_max_chars") or 12)
-                and int(observations.get("headline_line_count") or 1)
-                <= int(copy_contract.get("headline_max_lines") or 2)
+            headline_concise = len(headline_text) <= int(
+                copy_contract.get("headline_hard_max_chars") or 12
+            ) and int(observations.get("headline_line_count") or 1) <= int(
+                copy_contract.get("headline_max_lines") or 2
             )
             if not headline_concise:
                 _downgrade_contradicted(
@@ -1237,7 +1237,7 @@ class AuroraMainImageProvider:
         normalized["audit_complete"] = True
         return normalized
 
-    async def audit_parallel_set(self, job_id: str) -> bool:
+    async def audit_parallel_set(self, job_id: str) -> SetAuditResult:
         """Merge six page-local sessions and run the native v2.0 set audit."""
 
         with self.session_factory() as db:
@@ -1363,17 +1363,28 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{job_id}:aurora-v20-set-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=(
+                    "Inspect all six images and obey the supplied "
+                    "set-review JSON schema. "
+                    "Never infer missing evidence from a summary PASS."
+                ),
                 planning_profile="aurora_set_audit",
             )
         )
         if result.error_code or not isinstance(result.payload, Mapping):
-            raise AuroraPlanningError(
-                result.error_message or "Aurora v2.0 set audit failed"
+            raise _v20_gateway_error(result, "Aurora set audit gateway protocol error")
+        try:
+            observation = _normalize_parallel_set_audit_payload(
+                dict(result.payload), sources
             )
-        observation = _normalize_parallel_set_audit_payload(
-            dict(result.payload), sources
-        )
+        except ValueError as exc:
+            error = _v20_gateway_error(result, "Aurora set audit contract invalid")
+            error.aurora_gateway_diagnostics = {
+                **(error.aurora_gateway_diagnostics or {}),
+                "error_code": "AURORA_SET_AUDIT_PROTOCOL_INVALID",
+                "contract_reason": str(exc),
+            }
+            raise error from None
         observation_path = set_workspace / "observation.json"
         write_contract(observation_path, observation)
         runner = (
@@ -1388,37 +1399,8 @@ class AuroraMainImageProvider:
         )
         audited = _load_json(set_session_path)
         passed = audited.get("set_audit_passed") is True
-        with self.session_factory() as db:
-            stored_plan = db.scalar(
-                select(JobPlanRecord)
-                .where(JobPlanRecord.job_id == job_id)
-                .order_by(JobPlanRecord.revision.desc())
-                .limit(1)
-                .with_for_update()
-            )
-            if stored_plan is None:
-                raise AuroraPlanningError("Aurora v2.0 plan disappeared")
-            payload = dict(stored_plan.payload)
-            payload["_parallel_v20_set_session"] = audited
-            payload["set_audit_passed"] = passed
-            payload["harness_state"] = audited.get("state")
-            stored_plan.payload = payload
-            stored_plan.payload_hash = canonical_hash(payload)
-            db.add(
-                AuditEventRecord(
-                    workspace_id=items[0].workspace_id,
-                    action="aurora.parallel_v20_set_audited",
-                    resource_type="job",
-                    resource_id=job_id,
-                    request_id=f"{job_id}:v20-set-audit",
-                    details={
-                        "passed": passed,
-                        "harness_state": audited.get("state"),
-                    },
-                )
-            )
-            db.commit()
-        return passed
+        # Only the coordinator persists results, under the job lock and token.
+        return SetAuditResult(passed=passed, observation=audited)
 
     def _load_authorized_context(
         self, request: ProviderRequest
@@ -1631,7 +1613,11 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_SET_ROLE_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-set-role-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=(
+                    "Inspect all six images and obey the supplied "
+                    "set-review JSON schema. "
+                    "Never infer missing evidence from a summary PASS."
+                ),
                 planning_profile="aurora_set_audit",
             )
         )
@@ -1730,7 +1716,11 @@ def _v20_gateway_error(result: Any, message: str) -> AuroraPlanningError:
     error = AuroraPlanningError(message)
     # The execution layer persists this under metrics and never includes the
     # raw response body, prompt, authorization header or API key.
-    error.aurora_gateway_diagnostics = _safe_planner_diagnostics(result)
+    error.aurora_gateway_diagnostics = {
+        key: value
+        for key, value in _safe_planner_diagnostics(result).items()
+        if not key.startswith("content_sample")
+    }
     # Surface the upstream status on the exception itself: the transient
     # classifier reads it to decide whether the configured retry policy may
     # run.  Keeping it only inside diagnostics made every 429/502/503 look
@@ -2767,7 +2757,9 @@ def _derive_set_role_verdict_from_checks(payload: dict[str, Any]) -> None:
             return None
         if item.get("passed") is False:
             return False
-        status = item.get("status")
+        status = item.get("status", item.get("result"))
+        if "status" in item and "result" in item and item["status"] != item["result"]:
+            return False
         if isinstance(status, str):
             s = status.strip().upper()
             if s in {"PASS", "PASSED", "TRUE"}:
@@ -2783,7 +2775,11 @@ def _derive_set_role_verdict_from_checks(payload: dict[str, Any]) -> None:
         if not isinstance(item, Mapping):
             return ""
         return str(
-            item.get("check_name") or item.get("name") or item.get("check") or ""
+            item.get("check_name")
+            or item.get("required_check_name")
+            or item.get("name")
+            or item.get("check")
+            or ""
         ).strip()
 
     page_names = {
@@ -2880,14 +2876,18 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
 
     assessment = _mapping(payload.get("search_listing_cover_assessment"))
     set_verdict = _mapping(payload.get("set_verdict"))
-    page_zero = next(
-        (
-            page
-            for page in pages
-            if isinstance(page, Mapping) and page.get("page_index") == 0
-        ),
-        {},
-    ) if isinstance(pages, list) else {}
+    page_zero = (
+        next(
+            (
+                page
+                for page in pages
+                if isinstance(page, Mapping) and page.get("page_index") == 0
+            ),
+            {},
+        )
+        if isinstance(pages, list)
+        else {}
+    )
     search_evidence = payload.get("search_identification_evidence")
     if not isinstance(search_evidence, str) or not search_evidence.strip():
         payload["search_identification_evidence"] = " ".join(
@@ -2931,7 +2931,28 @@ def _normalize_parallel_set_audit_payload(
 ) -> dict[str, Any]:
     """Bind equivalent provider output to the native six-page Harness contract."""
 
+    validate_verdict_fields(payload)
+    # Preserve explicit contradictory verdicts before deriving native fields.
+    explicit_failure = (
+        payload.get("search_role_is_unique") is False
+        or payload.get("page_0_alone_is_search_listing_cover") is False
+        or payload.get("set_role_distinction") == "FAIL"
+        or (
+            "identified_search_page_index" in payload
+            and payload["identified_search_page_index"] != 0
+        )
+        or (
+            "search_listing_cover_page_index" in payload
+            and payload["search_listing_cover_page_index"] != 0
+        )
+        or bool(payload.get("confusable_page_indexes"))
+    )
     observation = _normalize_set_role_audit_payload(payload)
+    validate_evidence(observation)
+    if len(sources) != 6:
+        raise ValueError("incomplete_source_set")
+    if explicit_failure:
+        observation["search_role_is_unique"] = False
     observation["agent_pixel_reviewed"] = True
     observation["review_mode"] = "BLIND_SIX_PAGE_ROLE_COMPARISON"
     observation["reviewed_page_indexes"] = list(range(6))

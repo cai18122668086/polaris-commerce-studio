@@ -242,6 +242,103 @@ def test_v20_visual_judgment_normalizes_fractional_scores_and_routes_baseline_to
     ] == ["baseline_performance_match"]
 
 
+def test_v20_audit_downgrades_contradicted_checks_instead_of_killing_the_page(
+    tmp_path: Path,
+) -> None:
+    """A self-report its own observations contradict must not be terminal.
+
+    The immutable Harness raises a terminal ``HarnessError`` whenever a check
+    claims ``passed`` while the recorded observations say otherwise, and that
+    error fires before the one-repair state is reachable.  A single over-long
+    search headline therefore killed the page *and* the page-1 style
+    calibration that reads page 0's contract.  The application boundary now
+    mirrors the same rules as ordinary failures so the page reaches repair.
+    """
+
+    source_path = tmp_path / "candidate.png"
+    source_path.write_bytes(b"candidate-pixels")
+    layout_contract = {
+        "composition_archetype": "PRODUCT_HERO_ARCHETYPE",
+        "product_zone": "LOWER_TWO_THIRDS",
+        "copy_zone": "UPPER_LEFT",
+        "dominant_view": "FRONT_THREE_QUARTER",
+        "evidence_topology": "MATERIAL_CUTAWAY",
+    }
+    display_copy_contract = {
+        "headline_hard_max_chars": 12,
+        "headline_max_lines": 2,
+        "headline_seed_source_segment": "主要配料 油柑原汁≥30g/L",
+    }
+    page_contract = {
+        "layout_contract": layout_contract,
+        "display_copy_contract": display_copy_contract,
+    }
+    result = asyncio.run(
+        FakeXingheGateway().plan(
+            PlannerRequest(
+                workspace_id="workspace_one",
+                job_id="job_headline_contract",
+                group_key="audit",
+                sources=(
+                    SourceImage(
+                        asset_id="candidate",
+                        group_key="job_headline_contract",
+                        filename=str(source_path),
+                        content_type="image/png",
+                        sha256="a" * 64,
+                        payload=b"candidate-pixels",
+                    ),
+                ),
+                page_count=1,
+                language="zh-CN",
+                product_name="Aurora v2 audit",
+                product_information=(
+                    json.dumps(
+                        {
+                            "required_check_names": list(_VISUAL_CHECKS),
+                            "page_contract": page_contract,
+                        }
+                    ),
+                ),
+                platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
+                size="1024x1024",
+                idempotency_key="job_headline_contract:audit",
+                planning_profile="aurora_v20_visual_audit",
+            )
+        )
+    )
+    assert isinstance(result.payload, dict)
+    payload = dict(result.payload)
+    payload["observations"].update(
+        {
+            # 13 effective characters once whitespace and separators are
+            # stripped, against the compiled 12-character hard cap.
+            "headline_text": "主要配料 油柑原汁≥30g/L",
+            "headline_line_count": 2,
+            "evidence_is_primary_visual": False,
+        }
+    )
+
+    normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        payload,
+        {"page_index": 0, "page_contract": page_contract},
+    )
+
+    checks = {item["name"]: item for item in normalized["checks"]}
+    assert checks["headline_treatment_match"]["passed"] is False
+    assert checks["thumbnail_success"]["passed"] is False
+    assert checks["selling_point_visual_dominance"]["passed"] is False
+    # The observed layout still matches its contract, so those gates stand.
+    assert checks["layout_not_cloned"]["passed"] is True
+    assert checks["approved_plan_fidelity_match"]["passed"] is True
+    # A contradicted style check stays advisory; the material ones must block.
+    assert checks["headline_treatment_match"]["material"] is False
+    assert {item["check"] for item in normalized["all_material_deficiencies"]} == {
+        "thumbnail_success",
+        "selling_point_visual_dominance",
+    }
+
+
 @pytest.mark.parametrize("bad_observations", ["像素观察文本", [], None])
 def test_v20_visual_judgment_rejects_non_object_observations(
     bad_observations: object,

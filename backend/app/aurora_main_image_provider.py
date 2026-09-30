@@ -1057,7 +1057,89 @@ class AuroraMainImageProvider:
                 raise AuroraPlanningError("Aurora v2 check evidence is missing")
 
         observations = _mapping(payload.get("observations"))
+        page_contract = _mapping(generation_request.get("page_contract"))
+        layout_contract = _mapping(page_contract.get("layout_contract"))
+        copy_contract = _mapping(page_contract.get("display_copy_contract"))
+
+        def _downgrade_contradicted(name: str, evidence: str) -> None:
+            """Turn a contradicted self-report into an ordinary failure.
+
+            The immutable Harness raises a fatal ``HarnessError`` whenever a
+            check claims ``passed`` while its own observations say otherwise,
+            and that error aborts the page before the repair machinery can run.
+            Applying the same rule here keeps the contradiction, but routes it
+            through the normal blocked/repair path so the page still gets its
+            single allowed repair instead of dying during validation.
+            """
+
+            check = next(
+                (item for item in checks if item.get("name") == name), None
+            )
+            if check is None or check.get("passed") is not True:
+                return
+            check["passed"] = False
+            check["score"] = min(float(check.get("score", 69)), 69)
+            check["observed_evidence"] = evidence
+
+        layout_matches = all(
+            observations.get(observation_key) == layout_contract.get(contract_key)
+            for observation_key, contract_key in (
+                ("composition_archetype_seen", "composition_archetype"),
+                ("product_zone_seen", "product_zone"),
+                ("copy_zone_seen", "copy_zone"),
+                ("dominant_view_seen", "dominant_view"),
+                ("evidence_topology_seen", "evidence_topology"),
+            )
+        )
+        if layout_contract and not layout_matches:
+            _downgrade_contradicted(
+                "layout_not_cloned",
+                "像素中的空间结构未落在该页专属布局合同上。",
+            )
+            _downgrade_contradicted(
+                "approved_plan_fidelity_match",
+                "可见布局与已批准计划的页面合同不一致。",
+            )
+        if (
+            expected_page > 0
+            and len(str(observations.get("neighbor_layout_difference") or "").strip())
+            < 12
+        ):
+            _downgrade_contradicted(
+                "layout_not_cloned",
+                "未能给出与上一页具体的可见布局差异。",
+            )
+        if observations.get("evidence_is_primary_visual") is not True:
+            _downgrade_contradicted(
+                "selling_point_visual_dominance",
+                "卖点并未由真实物理证据作为主视觉承担。",
+            )
+        if not observations.get("physical_evidence"):
+            _downgrade_contradicted(
+                "evidence_relation_visible",
+                "画面中没有可见的真实物理证据。",
+            )
         if expected_page == 0:
+            headline_text = re.sub(
+                r"[\s，,。；;：:·|/]+",
+                "",
+                str(observations.get("headline_text") or ""),
+            )
+            headline_concise = (
+                len(headline_text)
+                <= int(copy_contract.get("headline_hard_max_chars") or 12)
+                and int(observations.get("headline_line_count") or 1)
+                <= int(copy_contract.get("headline_max_lines") or 2)
+            )
+            if not headline_concise:
+                _downgrade_contradicted(
+                    "headline_treatment_match",
+                    "搜索页短标题超出显示文案合同的字数或行数硬上限。",
+                )
+                _downgrade_contradicted(
+                    "thumbnail_success",
+                    "搜索页短标题超长，缩略图点击竞争力不成立。",
+                )
             baseline_visible = (
                 observations.get("type_roles_seen", 0) >= 4
                 and observations.get("headline_rank") in {"FIRST", "JOINT_FIRST"}
@@ -1065,19 +1147,11 @@ class AuroraMainImageProvider:
                 and observations.get("commercial_closure_visible") is True
                 and bool(observations.get("physical_evidence"))
             )
-            baseline_check = next(
-                item
-                for item in checks
-                if item.get("name") == "baseline_performance_match"
-            )
-            if baseline_check.get("passed") is True and not baseline_visible:
-                baseline_check["passed"] = False
-                baseline_check["score"] = min(
-                    float(baseline_check.get("score", 69)), 69
-                )
-                baseline_check["observed_evidence"] = (
+            if not baseline_visible:
+                _downgrade_contradicted(
+                    "baseline_performance_match",
                     "搜索页像素未同时呈现四级文字角色、强标题、纵深、"
-                    "真实物理证据和已核验事实闭合。"
+                    "真实物理证据和已核验事实闭合。",
                 )
 
         # A contradictory passed=true/score<70 response must become a normal
@@ -1096,10 +1170,19 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 "Aurora v2 all_material_deficiencies must be an array"
             )
+        # Mirror the Harness classification exactly: only a failed hard check,
+        # or a failed material check below the 70-point floor, becomes a
+        # blocking deficiency there. Emitting a deficiency for any other failed
+        # check would make the Harness reject an otherwise valid judgment,
+        # because it compares this set against its own material failures.
         failed_material = {
             str(item["name"])
             for item in checks
-            if item.get("material") is True and item.get("passed") is False
+            if item.get("passed") is False
+            and (
+                str(item["name"]) in _V20_HARD_CHECKS
+                or (item.get("material") is True and float(item["score"]) < 70)
+            )
         }
         existing_by_name = {
             str(item.get("check")): dict(item)
@@ -1578,6 +1661,19 @@ class AuroraMainImageProvider:
 _VISUAL_CHECKS = _AURORA_V20_VISUAL_CHECKS
 
 _V20_MATERIAL_CHECKS = _AURORA_V20_MATERIAL_CHECKS
+
+# The five native hard checks. The Harness blocks on any failed hard check
+# regardless of score, so the application boundary must classify them the same
+# way when it builds the material deficiency list.
+_V20_HARD_CHECKS = frozenset(
+    {
+        "product_identity_match",
+        "factual_copy_match",
+        "source_background_noise_absent",
+        "no_unsupported_claim",
+        "no_hard_error",
+    }
+)
 
 
 def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:

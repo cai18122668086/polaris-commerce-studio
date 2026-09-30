@@ -9,7 +9,7 @@ name: polaris-production
 # throttled:
 #
 #     frontend           60.7% of periods throttled   (throttled 2.67x usage)
-#     crawl-maintenance  47.1%                        (throttled 2.03x usage)
+#     crawl-maintenance  47.1% -> resolved by raising cpus to 1.00 (was 0.50)
 #     worker             17.8%
 #     crawl-worker       17.4%
 #     api                17.2%                        (throttled 0.97x usage)
@@ -411,7 +411,7 @@ services:
     cap_drop: [ALL]
     init: true
     mem_limit: 256m
-    cpus: "0.50"
+    cpus: "1.00"
     pids_limit: 128
     cpu_shares: 512
     stop_grace_period: 30s

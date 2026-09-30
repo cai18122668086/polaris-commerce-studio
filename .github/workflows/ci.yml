@@ -156,7 +156,7 @@ jobs:
   containers:
     name: Container build (${{ matrix.name }})
     runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:

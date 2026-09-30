@@ -29,6 +29,7 @@ import {
   safeJobFailureSummary,
 } from "@/lib/jobs/presentation";
 import {
+  canDownloadJobArchive,
   selectJobInputAssets,
   selectJobIntermediateAssets,
   selectJobReferenceAssets,
@@ -153,7 +154,7 @@ export function JobDetailPanel({
                       />
                     ))}
                   </div>
-                  {resultAssets.length === job.expected_item_count && ["completed", "partial"].includes(job.status) ? <JobDeliverablesDownload workspaceId={workspaceId} jobId={job.id} /> : null}
+                  {canDownloadJobArchive(job) ? <JobDeliverablesDownload workspaceId={workspaceId} jobId={job.id} /> : null}
                 </>
               ) : (
                 <div className="job-empty-panel job-empty-panel--result">{resultEmptyMessage(job)}</div>
@@ -179,7 +180,7 @@ export function JobDetailPanel({
             <section className="job-detail-actions" aria-label="任务操作">
               <div className="job-detail-section__head"><div><span className="job-section-eyebrow">可用操作</span><h3>继续处理</h3></div></div>
               <div className="job-action-buttons">
-                {allowsJobAction(permittedActions, "retry") && <button type="button" className="secondary-button" onClick={() => onRetry(job)} disabled={retryPending}><RotateCcw size={15} />重试失败项</button>}
+                {allowsJobAction(permittedActions, "retry") && <button type="button" className="secondary-button" onClick={() => onRetry(job)} disabled={retryPending}><RotateCcw size={15} />{job.status === "cancelled" ? "继续未完成项" : "重试失败项"}</button>}
                 {allowsJobAction(permittedActions, "cancel") && <button type="button" className="secondary-button danger-button" onClick={() => onCancel(job)} disabled={cancelPending}><Ban size={15} />取消任务</button>}
                 {allowsJobAction(permittedActions, "confirm_plan") && job.plan && <button type="button" className="primary-button" onClick={() => onConfirmPlan(job)} disabled={confirmPending}><Check size={15} />确认方案</button>}
                 {!permittedActions.length && <p className="job-no-actions"><ShieldAlert size={15} />当前任务没有可用操作</p>}

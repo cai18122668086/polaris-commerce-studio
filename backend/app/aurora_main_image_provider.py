@@ -10,6 +10,7 @@ import re
 from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -904,10 +905,9 @@ class AuroraMainImageProvider:
     ) -> tuple[dict[str, Any], dict[str, Any], int]:
         """Run native Campaign Style calibration for the page-1 worker.
 
-        Page workers have independent sessions. When page 0 is already
-        durable, include its accepted pixels; otherwise the current page is
-        still reviewed by the style profile and the Harness remains the final
-        validator of the observation contract.
+        Page workers have independent sessions. Wait for page 0's accepted
+        pixels before comparing both pages. A slow audit or allowed repair
+        must not exhaust the former three-minute dependency wait prematurely.
         """
 
         sources: list[SourceImage] = []
@@ -928,7 +928,8 @@ class AuroraMainImageProvider:
         # Style calibration is a native gate: page 0 must have passed its
         # direct-pixel audit and search calibration, not merely produced bytes.
         # The wait is bounded so a failed page cannot leave page 1 hanging.
-        for _ in range(720):
+        deadline = monotonic() + 600
+        while monotonic() < deadline:
             with self.session_factory() as db:
                 page_zero_status = db.scalar(
                     select(JobItemRecord.status).where(

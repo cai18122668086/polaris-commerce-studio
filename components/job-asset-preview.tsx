@@ -9,12 +9,13 @@ import { jobAssetRoleLabel } from "@/lib/jobs/presentation";
 export function JobAssetPreview({ workspaceId, relation }: { workspaceId: string; relation: JobDetail["assets"][number] }) {
   const asset = useAsset(workspaceId, relation.asset_id);
   const access = useAssetAccessUrl(workspaceId, relation.asset_id);
+  const preview = useAssetAccessUrl(workspaceId, relation.asset_id, "thumbnail");
   const assetName = asset.data?.original_filename ?? relation.asset_id;
-  const unavailable = asset.error ?? access.error;
+  const unavailable = asset.error ?? access.error ?? preview.error;
   const cardBody = (
     <>
       <div className="job-asset-card__media">
-        {access.isPending ? <LoaderCircle className="spin" size={20} aria-label="正在获取预览" /> : access.data?.url ? <img src={access.data.url} alt={assetName} /> : <ImageIcon size={22} />}
+        {preview.isPending ? <LoaderCircle className="spin" size={20} aria-label="正在获取预览" /> : preview.data?.url ? <img src={preview.data.url} alt={assetName} loading="lazy" decoding="async" /> : <ImageIcon size={22} />}
       </div>
       <div className="job-asset-card__body">
         <strong title={assetName}>{assetName}</strong>

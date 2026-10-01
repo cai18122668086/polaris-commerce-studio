@@ -3158,9 +3158,21 @@ def _normalize_parallel_set_audit_payload(
 
     validate_verdict_fields(payload)
     # Preserve explicit contradictory verdicts before deriving native fields.
+    #
+    # ``search_role_is_unique`` is deliberately NOT consulted here: it is a
+    # *derived* field that ``_derive_set_role_verdict_from_checks`` recomputes
+    # from the per-page checks.  Treating the model's own value as an
+    # independent veto let a single mis-filled boolean override a fully
+    # consistent, passing check set (six PASS checks, an identified search
+    # page index of 0 and no confusable pages), which failed otherwise valid
+    # six-page sets and blocked their archive download.  Fail-closed
+    # behaviour is unchanged: a check-less payload is rejected as a protocol
+    # error by ``validate_evidence`` below, and every explicit negative
+    # signal (a failing page check, a non-zero cover index, confusable pages,
+    # or ``page_0_alone_is_search_listing_cover`` set to false) still forces
+    # the set to fail.
     explicit_failure = (
-        payload.get("search_role_is_unique") is False
-        or payload.get("page_0_alone_is_search_listing_cover") is False
+        payload.get("page_0_alone_is_search_listing_cover") is False
         or payload.get("set_role_distinction") == "FAIL"
         or (
             "identified_search_page_index" in payload

@@ -100,7 +100,6 @@ def test_unsupported_or_incomplete_contract_is_protocol_error(mutation):
     [
         "failed_page",
         "contradictory_status",
-        "explicit_false",
         "other_cover",
         "confusable",
     ],
@@ -111,12 +110,49 @@ def test_pass_summary_never_overrides_negative_evidence(mutation):
         payload["checks"][3]["status"] = "FAIL"
     elif mutation == "contradictory_status":
         payload["checks"][3]["result"] = "FAIL"
-    elif mutation == "explicit_false":
-        payload["search_role_is_unique"] = False
     elif mutation == "other_cover":
         payload["search_listing_cover_page_index"] = 4
     else:
         payload["confusable_page_indexes"] = [2]
+    assert normalize(payload)["search_role_is_unique"] is False
+
+
+def test_self_reported_non_unique_cannot_veto_consistent_checks():
+    """``search_role_is_unique`` is derived, not an independent veto.
+
+    Production six-page audits returned six PASS checks, an identified search
+    page index of 0 and no confusable pages, yet the model also filled
+    ``search_role_is_unique`` with ``false``.  The boolean is recomputed from
+    the per-page checks, so the consistent evidence must win and the set must
+    pass instead of failing and blocking its archive download.
+    """
+
+    payload = contract()
+    payload["search_role_is_unique"] = False
+    assert normalize(payload)["search_role_is_unique"] is True
+
+
+def test_check_less_audit_still_fails_closed_without_checks():
+    """Dropping that veto must not weaken the protocol guard.
+
+    A payload without the six per-page checks cannot be derived at all: the
+    evidence validator rejects it as a protocol error instead of letting the
+    model's own ``search_role_is_unique`` value through.
+    """
+
+    payload = contract()
+    payload.pop("checks")
+    payload["search_role_is_unique"] = False
+    with pytest.raises(ValueError):
+        normalize(payload)
+
+
+def test_explicit_negative_signals_still_force_failure():
+    """The remaining explicit negatives keep failing after the veto is gone."""
+
+    payload = contract()
+    payload["search_role_is_unique"] = False
+    payload["page_0_alone_is_search_listing_cover"] = False
     assert normalize(payload)["search_role_is_unique"] is False
 
 

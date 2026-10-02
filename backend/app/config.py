@@ -149,6 +149,12 @@ class Settings(BaseSettings):
     # missing and why.  Disabled by default so the existing "complete set only"
     # contract is untouched until the change is verified on a shadow run.
     domestic_partial_archive_enabled: bool = Field(default=False)
+    # L1 rubric switch.  When enabled, `domestic_main_image` audits run through
+    # the shadow channel in `aurora_main_image_l1_provider`: the reviewer gets
+    # the Skill's own `references/visual-audit.md` rubric plus the user fact
+    # pool.  Disabled by default so the shipped prompt and audit contract stay
+    # byte-identical until the change is measured on a shadow run.
+    aurora_l1_rubric_enabled: bool = Field(default=False)
     development_provider_env_file: Path = Field(
         default_factory=default_development_provider_env_file
     )

@@ -129,6 +129,32 @@ class AuroraMainImageProvider:
         )
         self.work_root = (work_root or default_aurora_work_root()).resolve()
 
+    # --- Audit prompt hooks -------------------------------------------------
+    # Both hooks are behavior-preserving: this shipped provider returns the
+    # frozen prompt and injects no extra contract fields, so every existing
+    # audit call stays byte-identical.  The L1 rubric channel
+    # (``aurora_main_image_l1_provider``) overrides them to load the Skill's
+    # own ``references/visual-audit.md`` rubric and the user fact pool without
+    # touching this class, its call sites, or ``skill_sources/``.
+    def _audit_system_prompt(self) -> str:
+        """Return the direct-pixel audit system prompt for this channel."""
+
+        return _AUDIT_SYSTEM_PROMPT
+
+    def _audit_contract_extras(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Return extra audit-contract fields for this channel.
+
+        The shipped provider adds nothing.  Keeping the merge point here means
+        a subclass can extend the contract the reviewer sees while the default
+        serialized contract stays byte-identical.
+        """
+
+        return {}
+
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if self.execution_mode == "parallel_v20" or _request_uses_parallel_v20(
             request
@@ -841,6 +867,9 @@ class AuroraMainImageProvider:
                 layout_contract.get("evidence_topology") or ""
             ),
         }
+        audit_contract.update(
+            self._audit_contract_extras(request, generation_request)
+        )
         result = await self.gateway.plan(
             PlannerRequest(
                 workspace_id=request.workspace_id,
@@ -859,7 +888,7 @@ class AuroraMainImageProvider:
                     f"{request.idempotency_key}:v20-audit:{page_index}:"
                     f"{generation_request.get('revision', 0)}"
                 ),
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=self._audit_system_prompt(),
                 planning_profile="aurora_v20_visual_audit",
             )
         )
@@ -1719,6 +1748,9 @@ class AuroraMainImageProvider:
                 "advisory unless they establish a named material check."
             ),
         }
+        audit_contract.update(
+            self._audit_contract_extras(request, generation_request)
+        )
         result = await self.gateway.plan(
             PlannerRequest(
                 workspace_id=request.workspace_id,
@@ -1735,7 +1767,7 @@ class AuroraMainImageProvider:
                     f"{request.idempotency_key}:audit:{page_index}:"
                     f"{generation_request.get('revision', 0)}"
                 ),
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=self._audit_system_prompt(),
                 planning_profile="aurora_visual_audit",
             )
         )

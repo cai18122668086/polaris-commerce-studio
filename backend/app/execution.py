@@ -2198,6 +2198,7 @@ def build_fake_coordinator(
     domestic_main_image_provider_enabled: bool = False,
     aurora_work_root: Path | None = None,
     aurora_execution_mode: str = "sequential_v017",
+    aurora_l1_rubric_enabled: bool = False,
     aurora_max_transient_retries: int = 2,
     aurora_retry_backoff_base_seconds: float = 2,
     aurora_retry_backoff_max_seconds: float = 30,
@@ -2352,6 +2353,22 @@ def build_fake_coordinator(
         work_root=aurora_work_root,
         execution_mode=aurora_execution_mode,
     )
+    if aurora_l1_rubric_enabled:
+        # L1 rubric channel.  `AuroraMainImageProvider` is instantiated as a
+        # concrete class here, so the shadow channel has to be constructed
+        # explicitly; it cannot be activated by configuration alone.  Rebind
+        # the name rather than branching at each route so both the fake-gateway
+        # route below and the real-gateway route further down audit through the
+        # same channel.
+        from .aurora_main_image_l1_provider import AuroraMainImageL1Provider
+
+        aurora_provider = AuroraMainImageL1Provider(
+            session_factory,
+            gateway,
+            storage,
+            work_root=aurora_work_root,
+            execution_mode=aurora_execution_mode,
+        )
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
             JobType.PRODUCT_IMAGE.value: default_provider,

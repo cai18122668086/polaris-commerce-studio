@@ -107,7 +107,7 @@ export function jobTitle(job: Job | JobDetail): string { return job.display_name
 export function jobCount(job: Job | JobDetail): string { return `${job.succeeded_item_count} / ${job.expected_item_count} 项`; }
 
 export function jobNote(job: Job | JobDetail): string {
-  if (job.status === "partial") return "部分结果已完成，可在详情中查看并重试失败项目。";
+  if (job.status === "partial") return "部分页未完成，可只重试缺失页；已生成的页可直接下载。";
   if (job.status === "failed") return "生成未完成，请查看详情中的安全错误摘要。";
   if (job.status === "awaiting_confirmation") return "生成方案已经就绪，等待确认后继续。";
   if (job.status === "cancelling") return "正在安全取消任务。";

@@ -143,6 +143,12 @@ class Settings(BaseSettings):
     # job item's `aurora_gateway_diagnostics`, so the next investigation can see
     # what the model actually returned.  Keep it off in normal operation.
     diagnostic_content_sample: bool = Field(default=False)
+    # P-7 switch.  When enabled, an incomplete `domestic_main_image` set may be
+    # downloaded as a best-effort archive: every page that has a ready
+    # deliverable is packed, and a `manifest.json` records which pages are
+    # missing and why.  Disabled by default so the existing "complete set only"
+    # contract is untouched until the change is verified on a shadow run.
+    domestic_partial_archive_enabled: bool = Field(default=False)
     development_provider_env_file: Path = Field(
         default_factory=default_development_provider_env_file
     )

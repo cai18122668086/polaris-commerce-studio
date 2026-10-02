@@ -3151,6 +3151,27 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
     return payload
 
 
+def _declares_non_zero_cover_index(payload: Mapping[str, Any], key: str) -> bool:
+    """Return True only for an explicit integer cover index other than ``0``.
+
+    The reviewer contract declares ``identified_search_page_index`` as
+    ``["integer", "null"]`` and ``validate_verdict_fields`` accepts ``None``.
+    A model that obeys the v2 system prompt ("never use legacy aliases") fills
+    the six per-page checks and leaves the legacy index ``null``; comparing
+    that against ``0`` treats "the model did not use the legacy field" as "the
+    model identified a non-zero cover page" and vetoes a fully consistent,
+    passing set.  ``null`` and a missing key therefore never force a failure;
+    only a real, non-zero integer index does.
+    """
+
+    if key not in payload:
+        return False
+    value = payload[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        return False
+    return value != 0
+
+
 def _normalize_parallel_set_audit_payload(
     payload: dict[str, Any], sources: Sequence[SourceImage]
 ) -> dict[str, Any]:
@@ -3171,17 +3192,16 @@ def _normalize_parallel_set_audit_payload(
     # signal (a failing page check, a non-zero cover index, confusable pages,
     # or ``page_0_alone_is_search_listing_cover`` set to false) still forces
     # the set to fail.
+    #
+    # A *declared* cover index only counts when it is a real integer other
+    # than 0.  The contract's nullable index is not an explicit negative
+    # signal: ``null`` means the reviewer deferred to the per-page checks,
+    # and the previous ``!= 0`` comparison read that as a non-zero cover page.
     explicit_failure = (
         payload.get("page_0_alone_is_search_listing_cover") is False
         or payload.get("set_role_distinction") == "FAIL"
-        or (
-            "identified_search_page_index" in payload
-            and payload["identified_search_page_index"] != 0
-        )
-        or (
-            "search_listing_cover_page_index" in payload
-            and payload["search_listing_cover_page_index"] != 0
-        )
+        or _declares_non_zero_cover_index(payload, "identified_search_page_index")
+        or _declares_non_zero_cover_index(payload, "search_listing_cover_page_index")
         or bool(payload.get("confusable_page_indexes"))
     )
     observation = _normalize_set_role_audit_payload(payload)

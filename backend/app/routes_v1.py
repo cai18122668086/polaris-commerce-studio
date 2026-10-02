@@ -1610,6 +1610,72 @@ def _allows_preserved_amazon_partial_archive(
     )
 
 
+def _allows_domestic_partial_archive(
+    job: JobRecord,
+    *,
+    enabled: bool,
+    deliverable_count: int,
+) -> bool:
+    """P-7: an incomplete domestic set may still be downloaded, best effort.
+
+    Every page that already produced a ready deliverable is packed; pages that
+    never produced one are listed in ``manifest.json`` instead of failing the
+    whole request.  Gated by ``POLARIS_DOMESTIC_PARTIAL_ARCHIVE_ENABLED`` so the
+    existing "complete set only" contract is untouched by default.
+    """
+
+    return bool(
+        enabled
+        and job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+        and JobStatus(job.status) == JobStatus.PARTIAL
+        and deliverable_count > 0
+    )
+
+
+def _build_domestic_partial_manifest(
+    session: Session,
+    *,
+    workspace: str,
+    job: JobRecord,
+    included_item_ids: set[str],
+    member_names: set[str],
+) -> str:
+    """Describe what the best-effort archive contains and what it is missing."""
+
+    items = session.scalars(
+        select(JobItemRecord)
+        .where(
+            JobItemRecord.workspace_id == workspace,
+            JobItemRecord.job_id == job.id,
+        )
+        .order_by(JobItemRecord.ordinal)
+    ).all()
+    missing_pages = [
+        {
+            "page": item.ordinal,
+            "item_key": item.item_key,
+            "status": item.status,
+            "reason": item.error_code or "NO_DELIVERABLE_ASSET",
+        }
+        for item in items
+        if item.id not in included_item_ids
+    ]
+    payload = {
+        "job_id": job.id,
+        "job_type": job.type,
+        "job_status": job.status,
+        "job_error_code": job.error_code,
+        "expected_pages": job.expected_item_count,
+        "included_pages": sorted(
+            item.ordinal for item in items if item.id in included_item_ids
+        ),
+        "included_files": sorted(member_names),
+        "missing_pages": missing_pages,
+        "note": "部分页未完成，可只重试缺失页；已生成的页可直接下载。",
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
 @router.get(
     "/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip",
     response_class=Response,
@@ -1640,6 +1706,7 @@ async def download_job_deliverables(
             "DELIVERABLE_ARCHIVE_UNSUPPORTED",
             "该任务类型暂不支持整套下载。",
         )
+    settings = request.app.state.settings
     partial_items: Sequence[JobItemRecord] = ()
     if (
         job.type == JobType.AMAZON_VISUAL_SUITE.value
@@ -1656,12 +1723,6 @@ async def download_job_deliverables(
     preserved_partial_archive = _allows_preserved_amazon_partial_archive(
         job, partial_items
     )
-    if JobStatus(job.status) != JobStatus.COMPLETED and not preserved_partial_archive:
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "DELIVERABLE_ARCHIVE_NOT_READY",
-            "套图尚未完整生成，请在全部图片完成后下载。",
-        )
 
     deliverables = session.execute(
         select(JobAssetRecord, JobItemRecord, AssetRecord)
@@ -1676,7 +1737,25 @@ async def download_job_deliverables(
         )
         .order_by(JobAssetRecord.ordinal)
     ).all()
-    if len(deliverables) != job.expected_item_count:
+
+    domestic_partial_archive = _allows_domestic_partial_archive(
+        job,
+        enabled=settings.domestic_partial_archive_enabled,
+        deliverable_count=len(deliverables),
+    )
+
+    if (
+        JobStatus(job.status) != JobStatus.COMPLETED
+        and not preserved_partial_archive
+        and not domestic_partial_archive
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DELIVERABLE_ARCHIVE_NOT_READY",
+            "套图尚未完整生成，请在全部图片完成后下载。",
+        )
+
+    if not domestic_partial_archive and len(deliverables) != job.expected_item_count:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "DELIVERABLE_ARCHIVE_INCOMPLETE",
@@ -1701,6 +1780,7 @@ async def download_job_deliverables(
 
     archive = BytesIO()
     member_names: set[str] = set()
+    included_item_ids: set[str] = set()
     with ZipFile(archive, mode="w", compression=ZIP_STORED) as bundle:
         for _, item, asset in deliverables:
             extension = {
@@ -1709,7 +1789,16 @@ async def download_job_deliverables(
                 "image/webp": ".webp",
             }.get(asset.content_type.lower())
             member_name = f"{item.item_key}{extension or ''}"
-            if (
+            if domestic_partial_archive:
+                # Best effort: pack whatever is ready instead of blocking the
+                # whole set because one page never produced a deliverable.
+                if (
+                    extension is None
+                    or member_name in member_names
+                    or asset.lifecycle_status != AssetLifecycleStatus.READY.value
+                ):
+                    continue
+            elif (
                 extension is None
                 or member_name in member_names
                 or asset.lifecycle_status != AssetLifecycleStatus.READY.value
@@ -1741,7 +1830,30 @@ async def download_job_deliverables(
                     "套图文件完整性校验失败，请联系管理员处理。",
                 )
             member_names.add(member_name)
+            included_item_ids.add(item.id)
             bundle.writestr(member_name, payload)
+
+        if domestic_partial_archive:
+            if not member_names:
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "DELIVERABLE_ARCHIVE_INCOMPLETE",
+                    "该任务没有任何可交付的图片，暂不能打包下载。",
+                    {
+                        "expected_item_count": job.expected_item_count,
+                        "deliverable_count": 0,
+                    },
+                )
+            bundle.writestr(
+                "manifest.json",
+                _build_domestic_partial_manifest(
+                    session,
+                    workspace=workspace.workspace_id,
+                    job=job,
+                    included_item_ids=included_item_ids,
+                    member_names=member_names,
+                ),
+            )
 
     archive_name = f"{job.type.replace('_', '-')}-{job.id}.zip"
     return Response(

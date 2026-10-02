@@ -156,6 +156,41 @@ def test_explicit_negative_signals_still_force_failure():
     assert normalize(payload)["search_role_is_unique"] is False
 
 
+def test_nullable_identified_search_page_index_does_not_veto_passing_checks():
+    """A schema-legal ``null`` cover index is not an explicit negative.
+
+    Production set audits returned six PASS checks, no confusable pages and
+    ``identified_search_page_index: null``: the reviewer obeyed the v2 prompt,
+    filled the per-page checks and left the legacy index empty.  The previous
+    ``payload[key] != 0`` comparison read that as "a non-zero cover page",
+    forced ``search_role_is_unique`` back to ``False`` after the adapter had
+    correctly derived it, and failed an otherwise valid six-page set, blocking
+    its archive download.
+    """
+
+    payload = contract()
+    payload["identified_search_page_index"] = None
+    jsonschema.validate(payload, json_schema())
+    assert normalize(copy.deepcopy(payload))["search_role_is_unique"] is True
+
+
+def test_nullable_legacy_cover_index_alias_does_not_veto_passing_checks():
+    """The same rule covers the adapter-only legacy alias."""
+
+    payload = contract()
+    payload["search_listing_cover_page_index"] = None
+    assert normalize(payload)["search_role_is_unique"] is True
+
+
+@pytest.mark.parametrize("index", [1, 3, 5])
+def test_declared_non_zero_cover_index_still_forces_failure(index):
+    """Only a real, non-zero integer index remains an explicit negative."""
+
+    payload = contract()
+    payload["identified_search_page_index"] = index
+    assert normalize(payload)["search_role_is_unique"] is False
+
+
 @pytest.mark.parametrize(
     "content,finish",
     [("", "stop"), ("not JSON SECRET", "stop"), ('{"checks": [', "length")],

@@ -1621,6 +1621,183 @@ def test_preserved_review_marker_does_not_open_other_archive_states(
     assert archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
 
 
+def _seed_domestic_partial_archive_fixture(
+    client: TestClient,
+    *,
+    missing_ordinals: frozenset[int] = frozenset(),
+) -> str:
+    """A six-page domestic job whose missing pages never produced a deliverable."""
+
+    asset = upload_asset(client, filename="domestic-partial-archive.png")
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.PARTIAL.value,
+                stage=(
+                    "set_audit_failed"
+                    if not missing_ordinals
+                    else JobStatus.PARTIAL.value
+                ),
+                display_name="Domestic partial archive fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=6,
+                succeeded_item_count=6 - len(missing_ordinals),
+                failed_item_count=len(missing_ordinals),
+                error_code=(
+                    "AURORA_EXECUTION_FAILED"
+                    if missing_ordinals
+                    else "AURORA_SET_AUDIT_FAILED"
+                ),
+                error_message="fixture",
+                currency="CNY",
+                finished_at=now,
+            )
+        )
+        for ordinal in range(6):
+            item_id = f"item_{uuid4().hex}"
+            missing = ordinal in missing_ordinals
+            session.add(
+                JobItemRecord(
+                    id=item_id,
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"PAGE-{ordinal + 1:02d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if missing
+                        else JobItemStatus.SUCCEEDED.value
+                    ),
+                    stage="failed" if missing else "done",
+                    quality="medium",
+                    configuration={},
+                    result_source=None if missing else "generated",
+                    error_code="AURORA_EXECUTION_FAILED" if missing else None,
+                    error_message="Generation failed." if missing else None,
+                    finished_at=now,
+                )
+            )
+            if missing:
+                continue
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    job_item_id=item_id,
+                    asset_id=asset["id"],
+                    direction="output",
+                    role="domestic_main_image",
+                    ordinal=ordinal,
+                    is_deliverable=True,
+                    validation={},
+                )
+            )
+        session.commit()
+    return job_id
+
+
+def test_domestic_partial_archive_stays_closed_by_default(
+    client: TestClient,
+) -> None:
+    job_id = _seed_domestic_partial_archive_fixture(
+        client, missing_ordinals=frozenset({5})
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 409
+    assert archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
+
+
+def test_domestic_partial_archive_packs_available_pages_and_manifest(
+    client: TestClient,
+) -> None:
+    client.app.state.settings.domestic_partial_archive_enabled = True
+    job_id = _seed_domestic_partial_archive_fixture(
+        client, missing_ordinals=frozenset({4})
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 200, archive.text
+    with ZipFile(BytesIO(archive.content)) as bundle:
+        assert bundle.namelist() == [
+            "PAGE-01.png",
+            "PAGE-02.png",
+            "PAGE-03.png",
+            "PAGE-04.png",
+            "PAGE-06.png",
+            "manifest.json",
+        ]
+        manifest = json.loads(bundle.read("manifest.json"))
+
+    assert manifest["expected_pages"] == 6
+    assert manifest["included_pages"] == [0, 1, 2, 3, 5]
+    assert manifest["missing_pages"] == [
+        {
+            "page": 4,
+            "item_key": "PAGE-05",
+            "status": "failed",
+            "reason": "AURORA_EXECUTION_FAILED",
+        }
+    ]
+
+
+def test_domestic_partial_archive_covers_set_audit_failure(
+    client: TestClient,
+) -> None:
+    client.app.state.settings.domestic_partial_archive_enabled = True
+    job_id = _seed_domestic_partial_archive_fixture(client)
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 200, archive.text
+    with ZipFile(BytesIO(archive.content)) as bundle:
+        assert bundle.namelist() == [
+            f"PAGE-{ordinal:02d}.png" for ordinal in range(1, 7)
+        ] + ["manifest.json"]
+        manifest = json.loads(bundle.read("manifest.json"))
+
+    assert manifest["job_error_code"] == "AURORA_SET_AUDIT_FAILED"
+    assert manifest["missing_pages"] == []
+
+
+def test_domestic_partial_archive_flag_does_not_open_other_types(
+    client: TestClient,
+) -> None:
+    client.app.state.settings.domestic_partial_archive_enabled = True
+    source = upload_asset(client, filename="detail-pack-partial.png")
+    job_id, _ = _seed_partial_retry_source(
+        client,
+        job_type=JobType.DETAIL_PACK,
+        failed_error_details={},
+    )
+    _attach_retry_fixture_deliverables(
+        client,
+        job_id=job_id,
+        asset_id=source["id"],
+    )
+
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
+    )
+
+    assert archive.status_code == 409
+    assert archive.json()["error"]["code"] == "DELIVERABLE_ARCHIVE_NOT_READY"
+
+
 def test_amazon_review_infrastructure_failure_hides_and_rejects_image_retry(
     client: TestClient,
 ) -> None:

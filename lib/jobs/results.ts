@@ -2,8 +2,27 @@ import type { JobDetail } from "@/lib/api/types";
 
 export type JobResultAsset = JobDetail["assets"][number];
 
+/**
+ * P-7 switch.  Mirrors `POLARIS_DOMESTIC_PARTIAL_ARCHIVE_ENABLED` on the API:
+ * when on, an incomplete domestic main image set is downloadable as a
+ * best-effort archive plus a `manifest.json`.  Off by default.
+ */
+function domesticPartialArchiveEnabled(): boolean {
+  return (
+    typeof process !== "undefined" &&
+    process.env.NEXT_PUBLIC_POLARIS_DOMESTIC_PARTIAL_ARCHIVE === "true"
+  );
+}
+
 export function canDownloadJobArchive(job: JobDetail | undefined): boolean {
   if (!job || !["detail_pack", "amazon_visual_suite", "domestic_main_image"].includes(job.type)) return false;
+  if (
+    domesticPartialArchiveEnabled() &&
+    job.type === "domestic_main_image" &&
+    job.status === "partial"
+  ) {
+    return selectJobResultAssets(job).length >= 1;
+  }
   if (job.expected_item_count < 1 || selectJobResultAssets(job).length !== job.expected_item_count) return false;
   if (job.status === "completed") return true;
   if (job.type !== "amazon_visual_suite" || job.status !== "partial" || job.expected_item_count !== 21 || job.items.length !== 21 || job.succeeded_item_count + job.failed_item_count !== 21) return false;

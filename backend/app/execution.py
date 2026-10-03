@@ -2199,6 +2199,7 @@ def build_fake_coordinator(
     aurora_work_root: Path | None = None,
     aurora_execution_mode: str = "sequential_v017",
     aurora_l1_rubric_enabled: bool = False,
+    aurora_l2_reference_enabled: bool = False,
     aurora_max_transient_retries: int = 2,
     aurora_retry_backoff_base_seconds: float = 2,
     aurora_retry_backoff_max_seconds: float = 30,
@@ -2353,7 +2354,19 @@ def build_fake_coordinator(
         work_root=aurora_work_root,
         execution_mode=aurora_execution_mode,
     )
-    if aurora_l1_rubric_enabled:
+    if aurora_l2_reference_enabled:
+        # L2 shadow channel. It inherits the L1 rubric/fact-pool audit and
+        # adds only the original Skill references at the image-call boundary.
+        from .aurora_main_image_l2_provider import AuroraMainImageL2Provider
+
+        aurora_provider = AuroraMainImageL2Provider(
+            session_factory,
+            gateway,
+            storage,
+            work_root=aurora_work_root,
+            execution_mode=aurora_execution_mode,
+        )
+    elif aurora_l1_rubric_enabled:
         # L1 rubric channel.  `AuroraMainImageProvider` is instantiated as a
         # concrete class here, so the shadow channel has to be constructed
         # explicitly; it cannot be activated by configuration alone.  Rebind
@@ -2494,6 +2507,7 @@ def build_fake_coordinator(
             gateway=gateway,
             work_root=aurora_work_root,
             execution_mode=aurora_execution_mode,
+            l2_reference_enabled=aurora_l2_reference_enabled,
         ),
         max_concurrency=xinghe_concurrency,
         # Detail-pack behavior remains unchanged. Amazon follows its own Skill

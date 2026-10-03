@@ -73,6 +73,8 @@ class ProductionPreflightTests(unittest.TestCase):
             "POLARIS_AURORA_MAX_TRANSIENT_RETRIES": "2",
             "POLARIS_AURORA_RETRY_BACKOFF_BASE_SECONDS": "2",
             "POLARIS_AURORA_RETRY_BACKOFF_MAX_SECONDS": "30",
+            "POLARIS_AURORA_L1_RUBRIC_ENABLED": "false",
+            "POLARIS_AURORA_L2_REFERENCE_ENABLED": "false",
             "POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED": "false",
             "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED": "false",
             "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED": "false",

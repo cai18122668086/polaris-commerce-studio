@@ -155,6 +155,16 @@ class Settings(BaseSettings):
     # pool.  Disabled by default so the shipped prompt and audit contract stay
     # byte-identical until the change is measured on a shadow run.
     aurora_l1_rubric_enabled: bool = Field(default=False)
+    # L2 shadow channel.  When enabled, the domestic six-image provider
+    # carries the original Skill generation references into image requests.
+    # Disabled by default so the shipped generation path remains unchanged.
+    aurora_l2_reference_enabled: bool = Field(default=False)
+    # 并发方案 A 开关（1-1-4 校准屏障）。开启后 `parallel_v20` 不再在第一次出图前
+    # 冻结全部六页请求，而是只冻结第 0/1 页；第 2~5 页等第 1 页完成 Campaign Style
+    # 校准（真实像素参与）后再用**校准后的提示词**冻结并发下发。关闭时保持现网
+    # 「六页一次性冻结」行为逐字节不变。
+    # 依据：`并发可行性与方案-2026-10-01.md` §5 方案 A。
+    aurora_parallel_calibration_barrier_enabled: bool = Field(default=False)
     development_provider_env_file: Path = Field(
         default_factory=default_development_provider_env_file
     )

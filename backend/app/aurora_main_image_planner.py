@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session, sessionmaker
 
+from .aurora_execution_modes import is_parallel_aurora_mode
 from .aurora_l2_references import (
     L2_PLANNING_REFERENCE_FILES,
     append_l2_reference_sections,
@@ -94,7 +95,7 @@ class AuroraMainImagePlanner:
         self.l2_reference_enabled = bool(l2_reference_enabled)
         self.harness = harness or (
             AuroraV20HarnessRunner()
-            if execution_mode == "parallel_v20"
+            if is_parallel_aurora_mode(execution_mode)
             else AuroraHarnessRunner()
         )
         self.storage = storage
@@ -144,7 +145,7 @@ class AuroraMainImagePlanner:
         raw = _build_raw(job_id, settings, evidence_paths)
         identity = await self._inspect_identity(job_id, workspace_id, settings, sources)
         identity = _bind_identity_evidence(identity, sources, evidence_paths)
-        if self.execution_mode == "parallel_v20":
+        if is_parallel_aurora_mode(self.execution_mode):
             identity.pop("profile01_semantics_read", None)
         workspace = self.job_workspace(job_id)
         input_path = workspace / "input.json"
@@ -152,7 +153,7 @@ class AuroraMainImagePlanner:
         session_path = workspace / "session.json"
         compiled_path = workspace / (
             "compiled-v20.json"
-            if self.execution_mode == "parallel_v20"
+            if is_parallel_aurora_mode(self.execution_mode)
             else "compiled-v013.json"
         )
         write_contract(input_path, raw)
@@ -173,7 +174,7 @@ class AuroraMainImagePlanner:
             )
             harness_session = _load_json(session_path)
         if harness_session.get("state") == "IDENTITY_LOCKED":
-            if self.execution_mode == "parallel_v20":
+            if is_parallel_aurora_mode(self.execution_mode):
                 self.harness.run(
                     "compile",
                     workspace,
@@ -198,7 +199,7 @@ class AuroraMainImagePlanner:
                 harness_session,
                 calibration_barrier=self.calibration_barrier_enabled,
             )
-            if self.execution_mode == "parallel_v20"
+            if is_parallel_aurora_mode(self.execution_mode)
             else _public_plan_payload(settings, identity, harness_session)
         )
         payload["_harness_session"] = harness_session
@@ -223,7 +224,7 @@ class AuroraMainImagePlanner:
                 validation_errors=[],
                 validator_version=(
                     f"aurora-harness-{AURORA_MAIN_IMAGE_V20_VERSION}"
-                    if self.execution_mode == "parallel_v20"
+                    if is_parallel_aurora_mode(self.execution_mode)
                     else f"aurora-harness-{AURORA_MAIN_IMAGE_VERSION}"
                 ),
                 validated_at=utc_now(),
@@ -234,7 +235,7 @@ class AuroraMainImagePlanner:
                     workspace_id=job.workspace_id,
                     action=(
                         "aurora.plan_compiled_v20"
-                        if self.execution_mode == "parallel_v20"
+                        if is_parallel_aurora_mode(self.execution_mode)
                         else "aurora.plan_compiled_v013"
                     ),
                     resource_type="job",
@@ -389,7 +390,7 @@ def authorize_aurora_plan(
     mode = execution_mode or str(stored_mode or "sequential_v017")
     runner = harness or (
         AuroraV20HarnessRunner()
-        if mode == "parallel_v20"
+        if is_parallel_aurora_mode(mode)
         else AuroraHarnessRunner()
     )
     runner.run(
@@ -403,7 +404,7 @@ def authorize_aurora_plan(
     payload["harness_state"] = harness_session["state"]
     plan.payload = payload
     plan.payload_hash = canonical_hash(payload)
-    if mode == "parallel_v20":
+    if is_parallel_aurora_mode(mode):
         # 并发方案 A 校准屏障。关闭时冻结全部六页请求（现网行为，逐字节不变）；
         # 开启时只冻结第 0/1 页，第 2~5 页由第 1 页风格校准后的
         # ``_publish_parallel_v20_style_calibration`` 用**校准后的**会话冻结，
@@ -1084,3 +1085,5 @@ def _suffix_for_type(content_type: str) -> str:
         "image/png": ".png",
         "image/webp": ".webp",
     }.get(content_type.lower(), ".img")
+
+

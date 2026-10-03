@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
+from .aurora_execution_modes import is_parallel_aurora_mode
 from .auth import (
     Principal,
     WorkspaceDependency,
@@ -2682,7 +2683,7 @@ def _reserve_real_provider_job_if_enabled(
         # one audit per attempt, first-pair style calibration and final set audit.
         transient_retry_count = (
             settings.aurora_max_transient_retries
-            if settings.aurora_execution_mode == "parallel_v20"
+            if is_parallel_aurora_mode(settings.aurora_execution_mode)
             else 0
         )
         estimated_cost = (

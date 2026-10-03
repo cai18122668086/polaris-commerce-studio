@@ -17,6 +17,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from .aurora_execution_modes import is_parallel_aurora_mode
 from .aurora_main_image_planner import (
     AuroraPlanningError,
     _persist_parallel_v20_snapshots,
@@ -118,13 +119,13 @@ class AuroraMainImageProvider:
         self.storage = storage
         self.harness = harness or (
             AuroraV20HarnessRunner()
-            if execution_mode == "parallel_v20"
+            if is_parallel_aurora_mode(execution_mode)
             else AuroraHarnessRunner()
         )
         self.execution_mode = execution_mode
         self.pricing_version = (
             "aurora-v2.0.0"
-            if execution_mode == "parallel_v20"
+            if is_parallel_aurora_mode(execution_mode)
             else "aurora-v0.1.17"
         )
         self.work_root = (work_root or default_aurora_work_root()).resolve()
@@ -172,7 +173,7 @@ class AuroraMainImageProvider:
         return dict(generation_request)
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
-        if self.execution_mode == "parallel_v20" or _request_uses_parallel_v20(
+        if is_parallel_aurora_mode(self.execution_mode) or _request_uses_parallel_v20(
             request
         ):
             return await self._execute_parallel_v20(request)
@@ -381,7 +382,7 @@ class AuroraMainImageProvider:
             item_configuration = _mapping(request.configuration.get("item"))
             snapshot = _mapping(item_configuration.get("aurora_snapshot"))
             generation_request = _mapping(snapshot.get("request"))
-            if snapshot.get("execution_mode") != "parallel_v20":
+            if not is_parallel_aurora_mode(snapshot.get("execution_mode")):
                 raise AuroraPlanningError("Aurora v2.0 page snapshot is missing")
             expected_hash = str(snapshot.get("snapshot_hash") or "")
             hash_payload = dict(snapshot)
@@ -2336,7 +2337,7 @@ def _request_uses_parallel_v20(request: ProviderRequest) -> bool:
     item = request.configuration.get("item")
     return (
         isinstance(item, Mapping)
-        and item.get("aurora_execution_mode") == "parallel_v20"
+        and is_parallel_aurora_mode(item.get("aurora_execution_mode"))
     )
 
 

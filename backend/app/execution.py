@@ -2603,7 +2603,6 @@ def build_fake_coordinator(
             gateway=gateway,
             work_root=aurora_work_root,
             execution_mode=aurora_execution_mode,
-            l2_reference_enabled=aurora_l2_reference_enabled,
         ),
         max_concurrency=xinghe_concurrency,
         # Detail-pack behavior remains unchanged. Amazon follows its own Skill

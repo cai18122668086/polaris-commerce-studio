@@ -11,6 +11,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
+from .aurora_execution_modes import is_parallel_aurora_mode
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
@@ -1027,7 +1028,7 @@ def retry_item_ids(
         policy = plan.payload.get("execution_policy") if plan is not None else None
         if (
             isinstance(policy, Mapping)
-            and policy.get("execution_mode") == "parallel_v20"
+            and is_parallel_aurora_mode(policy.get("execution_mode"))
         ):
             selected.extend(
                 item.id

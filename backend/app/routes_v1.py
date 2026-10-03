@@ -3108,7 +3108,8 @@ def _ensure_parallel_aurora_retry_snapshots(
         return
     policy = plan.payload.get("execution_policy")
     if not (
-        isinstance(policy, dict) and policy.get("execution_mode") == "parallel_v20"
+        isinstance(policy, dict)
+        and is_parallel_aurora_mode(policy.get("execution_mode"))
     ):
         return
     items = session.scalars(
@@ -3123,6 +3124,7 @@ def _ensure_parallel_aurora_retry_snapshots(
             "AURORA_RETRY_SNAPSHOT_INCOMPLETE",
             "Aurora 并发重试缺少完整六页条目，无法安全恢复。",
         )
+    calibrated = policy.get("execution_mode") == "parallel_v20_calibrated"
     if all(
         isinstance(item.configuration, dict)
         and isinstance(item.configuration.get("aurora_snapshot"), dict)
@@ -3140,13 +3142,31 @@ def _ensure_parallel_aurora_retry_snapshots(
     from .aurora_main_image_runtime import AuroraV20HarnessRunner
 
     workspace = (work_root / job.id).resolve()
+    missing_indexes = tuple(
+        item.ordinal
+        for item in items
+        if not (
+            isinstance(item.configuration, dict)
+            and isinstance(item.configuration.get("aurora_snapshot"), dict)
+        )
+    )
+    if calibrated:
+        if plan.payload.get("_parallel_v20_style_calibrated") is True:
+            allowed_indexes = missing_indexes
+        elif plan.payload.get("_parallel_v20_search_calibrated") is True:
+            allowed_indexes = tuple(index for index in missing_indexes if index == 1)
+        else:
+            allowed_indexes = tuple(index for index in missing_indexes if index == 0)
+    else:
+        allowed_indexes = tuple(range(6))
     _persist_parallel_v20_snapshots(
         plan,
         job,
         workspace,
         authorized_session,
         AuroraV20HarnessRunner(),
-        page_indexes=tuple(range(6)),
+        page_indexes=allowed_indexes,
+        execution_mode=str(policy.get("execution_mode") or "parallel_v20"),
     )
 
 

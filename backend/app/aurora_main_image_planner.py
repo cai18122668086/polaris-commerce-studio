@@ -12,11 +12,9 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session, sessionmaker
 
-from .aurora_execution_modes import is_parallel_aurora_mode
-from .aurora_l2_references import (
-    L2_PLANNING_REFERENCE_FILES,
-    append_l2_reference_sections,
-    load_l2_reference_sections,
+from .aurora_execution_modes import (
+    is_calibrated_parallel_aurora_mode,
+    is_parallel_aurora_mode,
 )
 from .aurora_main_image_runtime import (
     AURORA_MAIN_IMAGE_V20_VERSION,
@@ -25,7 +23,7 @@ from .aurora_main_image_runtime import (
     AuroraV20HarnessRunner,
     write_contract,
 )
-from .config import default_aurora_v20_skill_root, default_aurora_work_root
+from .config import default_aurora_work_root
 from .domain import JobStatus, PlanValidationStatus
 from .models import (
     AssetRecord,
@@ -86,13 +84,9 @@ class AuroraMainImagePlanner:
         gateway: XingheGateway | _PlannerGateway | None = None,
         work_root: Path | None = None,
         execution_mode: str = "sequential_v017",
-        calibration_barrier_enabled: bool = False,
-        l2_reference_enabled: bool = False,
     ) -> None:
         self.session_factory = session_factory
         self.execution_mode = execution_mode
-        self.calibration_barrier_enabled = bool(calibration_barrier_enabled)
-        self.l2_reference_enabled = bool(l2_reference_enabled)
         self.harness = harness or (
             AuroraV20HarnessRunner()
             if is_parallel_aurora_mode(execution_mode)
@@ -101,7 +95,6 @@ class AuroraMainImagePlanner:
         self.storage = storage
         self.gateway = gateway
         self.work_root = (work_root or default_aurora_work_root()).resolve()
-        self._l2_planning_prompt: str | None = None
 
     async def plan(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
@@ -197,7 +190,7 @@ class AuroraMainImagePlanner:
                 settings,
                 identity,
                 harness_session,
-                calibration_barrier=self.calibration_barrier_enabled,
+                execution_mode=self.execution_mode,
             )
             if is_parallel_aurora_mode(self.execution_mode)
             else _public_plan_payload(settings, identity, harness_session)
@@ -335,7 +328,7 @@ class AuroraMainImagePlanner:
                 platform_code="TAOBAO_DOMESTIC_MAIN_IMAGE",
                 size="1024x1024",
                 idempotency_key=f"{job_id}:aurora-identity:v1",
-                system_prompt=self._identity_system_prompt(),
+                system_prompt=_IDENTITY_SYSTEM_PROMPT,
                 planning_profile="aurora_identity",
             )
         )
@@ -344,23 +337,6 @@ class AuroraMainImagePlanner:
                 result.error_message or "Aurora product identity inspection failed"
             )
         return dict(result.payload)
-
-    def _identity_system_prompt(self) -> str:
-        """Inject only the planning-stage references in the L2 shadow path."""
-
-        if not self.l2_reference_enabled:
-            return _IDENTITY_SYSTEM_PROMPT
-        if self._l2_planning_prompt is None:
-            sections = load_l2_reference_sections(
-                default_aurora_v20_skill_root(),
-                L2_PLANNING_REFERENCE_FILES,
-            )
-            self._l2_planning_prompt = append_l2_reference_sections(
-                _IDENTITY_SYSTEM_PROMPT,
-                sections,
-                stage="planning",
-            )
-        return self._l2_planning_prompt
 
 
 def authorize_aurora_plan(
@@ -371,7 +347,6 @@ def authorize_aurora_plan(
     harness: AuroraHarnessRunner | None = None,
     work_root: Path | None = None,
     execution_mode: str | None = None,
-    calibration_barrier_enabled: bool = False,
 ) -> None:
     """Record the first and only pre-generation user authorization in Harness."""
 
@@ -405,36 +380,18 @@ def authorize_aurora_plan(
     plan.payload = payload
     plan.payload_hash = canonical_hash(payload)
     if is_parallel_aurora_mode(mode):
-        # 并发方案 A 校准屏障。关闭时冻结全部六页请求（现网行为，逐字节不变）；
-        # 开启时只冻结第 0/1 页，第 2~5 页由第 1 页风格校准后的
-        # ``_publish_parallel_v20_style_calibration`` 用**校准后的**会话冻结，
-        # 从而保留 skill 的 `style calibration is required before page 2` 硬门禁。
-        policy = plan.payload.get("execution_policy")
-        barrier = bool(calibration_barrier_enabled) or (
-            isinstance(policy, Mapping)
-            and policy.get("calibration_barrier") is True
-        )
-        if barrier:
-            payload = dict(plan.payload)
-            payload["_parallel_v20_calibration_barrier"] = True
-            plan.payload = payload
-            plan.payload_hash = canonical_hash(payload)
         _persist_parallel_v20_snapshots(
             plan,
             job,
             workspace,
             harness_session,
             runner,
-            # Parallel mode freezes every page request before any provider
-            # call.  The native sequential harness still performs the search
-            # and Campaign Style calibration stages in the page-local workers,
-            # but those post-generation observations cannot be used to gate
-            # requests that are already in flight.
-            #
-            # With the calibration barrier the freeze is deliberately staged:
-            # pages 0-1 are the calibration pair, so only they may be in flight
-            # before ``style_calibrated`` becomes true.
-            page_indexes=(0, 1) if barrier else tuple(range(6)),
+            page_indexes=(
+                (0,)
+                if is_calibrated_parallel_aurora_mode(mode)
+                else tuple(range(6))
+            ),
+            execution_mode=mode,
         )
 
 
@@ -452,12 +409,13 @@ def _persist_parallel_v20_snapshots(
     runner: AuroraHarnessRunner,
     *,
     page_indexes: Sequence[int] = tuple(range(6)),
+    execution_mode: str = "parallel_v20",
 ) -> None:
-    """Freeze all page requests before the first provider call.
+    """Freeze the requested page batch without changing native page contracts.
 
-    Each raw v2.0 session clone is page-local.  The adapter only changes the
-    outer sequencing fields needed to select that page; the v2.0 harness still
-    compiles the request, token, references, prompt and page contract.
+    Each raw v2.0 session clone is page-local. The calibrated shadow mode calls
+    this helper for one barrier release at a time, while the legacy parallel
+    mode still passes all six indexes at authorization.
     """
 
     db = object_session(plan)
@@ -528,7 +486,7 @@ def _persist_parallel_v20_snapshots(
             raise AuroraPlanningError("Aurora page snapshot ordinal mismatch")
         snapshot = {
             "schema_version": "aurora-parallel-page-snapshot-v1",
-            "execution_mode": "parallel_v20",
+            "execution_mode": execution_mode,
             "page_index": item.ordinal,
             "group_key": job.id,
             "prompt": request_payload["prompt"],
@@ -554,7 +512,7 @@ def _persist_parallel_v20_snapshots(
         configuration = dict(item.configuration or {})
         configuration.update(
             {
-                "aurora_execution_mode": "parallel_v20",
+                "aurora_execution_mode": execution_mode,
                 "aurora_snapshot": snapshot,
                 "size": "1024x1024",
             }
@@ -921,7 +879,7 @@ def _public_v20_plan_payload(
     identity: Mapping[str, Any],
     harness_session: Mapping[str, Any],
     *,
-    calibration_barrier: bool = False,
+    execution_mode: str = "parallel_v20",
 ) -> dict[str, Any]:
     """Expose the native v2.0 plan without passing through v013 rewrites."""
 
@@ -966,14 +924,13 @@ def _public_v20_plan_payload(
         "campaign_style": native_plan.get("campaign_style", {}),
         "pages": pages,
         "execution_policy": {
-            "execution_mode": "parallel_v20",
+            "execution_mode": execution_mode,
             "sequence": (
-                "parallel_calibrated_snapshots"
-                if calibration_barrier
+                "parallel_calibrated_barrier"
+                if is_calibrated_parallel_aurora_mode(execution_mode)
                 else "parallel_frozen_snapshots"
             ),
-            "max_parallel_pages": 4 if calibration_barrier else 6,
-            "calibration_barrier": calibration_barrier,
+            "max_parallel_pages": 6,
             "max_automatic_repairs_per_page": 1,
             "plan_authorization_required": True,
             "final_set_approval_required": True,
@@ -1085,5 +1042,3 @@ def _suffix_for_type(content_type: str) -> str:
         "image/png": ".png",
         "image/webp": ".webp",
     }.get(content_type.lower(), ".img")
-
-

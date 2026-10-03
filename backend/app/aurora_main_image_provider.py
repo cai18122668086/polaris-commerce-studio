@@ -17,7 +17,10 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .aurora_execution_modes import is_parallel_aurora_mode
+from .aurora_execution_modes import (
+    is_calibrated_parallel_aurora_mode,
+    is_parallel_aurora_mode,
+)
 from .aurora_main_image_planner import (
     AuroraPlanningError,
     _persist_parallel_v20_snapshots,
@@ -156,22 +159,6 @@ class AuroraMainImageProvider:
 
         return {}
 
-    def _augment_generation_request(
-        self,
-        request: ProviderRequest,
-        generation_request: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Return the request actually sent to the image provider.
-
-        The shipped provider is deliberately a no-op.  Shadow channels may
-        add integration context to the prompt while preserving the Harness
-        generation token, references, and page contract.  Keeping this hook at
-        the provider boundary makes the default path byte-for-byte unchanged
-        and lets review artifacts record the effective prompt.
-        """
-
-        return dict(generation_request)
-
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if is_parallel_aurora_mode(self.execution_mode) or _request_uses_parallel_v20(
             request
@@ -198,10 +185,7 @@ class AuroraMainImageProvider:
                     {"session": session_path, "out": generation_request_path},
                 )
                 self._persist_session(request.job_id, _load_json(session_path))
-                generation_request = self._augment_generation_request(
-                    request,
-                    _load_json(generation_request_path),
-                )
+                generation_request = _load_json(generation_request_path)
                 sources = _generation_sources(generation_request, request.job_id)
                 image_result = await self.gateway.edit(
                     ImageEditRequest(
@@ -382,7 +366,8 @@ class AuroraMainImageProvider:
             item_configuration = _mapping(request.configuration.get("item"))
             snapshot = _mapping(item_configuration.get("aurora_snapshot"))
             generation_request = _mapping(snapshot.get("request"))
-            if not is_parallel_aurora_mode(snapshot.get("execution_mode")):
+            snapshot_mode = str(snapshot.get("execution_mode") or "")
+            if not is_parallel_aurora_mode(snapshot_mode):
                 raise AuroraPlanningError("Aurora v2.0 page snapshot is missing")
             expected_hash = str(snapshot.get("snapshot_hash") or "")
             hash_payload = dict(snapshot)
@@ -416,9 +401,6 @@ class AuroraMainImageProvider:
                 image_result, generation_request, retained_session = retained
                 first_visual_attempt = int(generation_request.get("revision", 0))
             for visual_attempt in range(first_visual_attempt, 2):
-                generation_request = self._augment_generation_request(
-                    request, generation_request
-                )
                 sources = _generation_sources(generation_request, request.job_id)
                 revision = int(generation_request.get("revision", visual_attempt))
                 if retained is None or visual_attempt != first_visual_attempt:
@@ -504,6 +486,15 @@ class AuroraMainImageProvider:
                         {"session": session_path, "observation": baseline_path},
                     )
                     current = _load_json(session_path)
+                    if (
+                        is_calibrated_parallel_aurora_mode(snapshot_mode)
+                        and page_index == 0
+                        and current.get("state") == "AUTHORIZED"
+                    ):
+                        self._publish_parallel_v20_search_calibration(
+                            request.job_id,
+                            current,
+                        )
                 if current.get("state") == "AWAITING_STYLE_CALIBRATION":
                     observation, usage, cost = await self._calibrate_parallel_style(
                         request, workspace, generated_path, artifact
@@ -557,7 +548,7 @@ class AuroraMainImageProvider:
             metrics = _mapping(raw_usage.get("metrics"))
             metrics.update(
                 {
-                    "aurora_execution_mode": "parallel_v20",
+                    "aurora_execution_mode": snapshot_mode,
                     "page_index": page_index,
                     "snapshot_hash": expected_hash,
                     "logical_idempotency_key": logical_key,
@@ -600,7 +591,7 @@ class AuroraMainImageProvider:
                     "called": candidate_retained or retryable,
                     "metrics": {
                         **_mapping(raw_usage.get("metrics")),
-                        "aurora_execution_mode": "parallel_v20",
+                        "aurora_execution_mode": snapshot_mode,
                         "candidate_retained": candidate_retained,
                         "candidate_sha256": artifact.sha256 if artifact else None,
                         "retry_action": "review_retained_candidate"
@@ -1089,9 +1080,11 @@ class AuroraMainImageProvider:
         job_id: str,
         calibrated_session: Mapping[str, Any],
     ) -> None:
-        """Persist post-generation style calibration without gating pages.
+        """Persist post-generation style calibration and release page 2-5.
 
-        New parallel jobs already contain all six immutable snapshots.  The
+        Legacy parallel jobs already contain all six immutable snapshots. The
+        calibrated shadow mode reaches this method with only pages 0-1 present;
+        it materializes the remaining requests after the style gate. The
         missing-page fallback keeps recovery of older jobs safe, but never
         replaces a snapshot that may already have been claimed by a worker.
         """
@@ -1135,9 +1128,66 @@ class AuroraMainImageProvider:
                     calibrated_session,
                     runner,
                     page_indexes=missing_indexes,
+                    execution_mode=str(
+                        _mapping(_mapping(plan.payload).get("execution_policy")).get(
+                            "execution_mode", "parallel_v20"
+                        )
+                    ),
                 )
             payload = dict(plan.payload)
             payload["_parallel_v20_style_calibrated"] = True
+            payload["_harness_session"] = dict(calibrated_session)
+            payload["harness_state"] = calibrated_session.get("state")
+            plan.payload = payload
+            plan.payload_hash = canonical_hash(payload)
+            db.commit()
+
+    def _publish_parallel_v20_search_calibration(
+        self,
+        job_id: str,
+        calibrated_session: Mapping[str, Any],
+    ) -> None:
+        """Release page 1 only after page 0 search calibration is durable."""
+
+        with self.session_factory() as db:
+            plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            job = db.get(JobRecord, job_id, with_for_update=True)
+            if plan is None or job is None:
+                raise AuroraPlanningError("Aurora v2.0 continuation context is missing")
+            policy = _mapping(plan.payload.get("execution_policy"))
+            mode = str(policy.get("execution_mode") or "")
+            if not is_calibrated_parallel_aurora_mode(mode):
+                return
+            existing = plan.payload.get("_parallel_v20_snapshots")
+            existing_indexes = {
+                int(item.get("page_index"))
+                for item in existing or ()
+                if isinstance(item, Mapping) and item.get("page_index") is not None
+            }
+            if 1 not in existing_indexes:
+                root = self._workspace(job_id)
+                runner = (
+                    self.harness
+                    if isinstance(self.harness, AuroraV20HarnessRunner)
+                    else AuroraV20HarnessRunner()
+                )
+                _persist_parallel_v20_snapshots(
+                    plan,
+                    job,
+                    root,
+                    calibrated_session,
+                    runner,
+                    page_indexes=(1,),
+                    execution_mode=mode,
+                )
+            payload = dict(plan.payload)
+            payload["_parallel_v20_search_calibrated"] = True
             payload["_harness_session"] = dict(calibrated_session)
             payload["harness_state"] = calibrated_session.get("state")
             plan.payload = payload

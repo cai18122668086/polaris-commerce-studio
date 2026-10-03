@@ -579,6 +579,74 @@ def test_parallel_aurora_claims_all_pages_before_style_calibration(
     ] == list(range(6))
 
 
+def test_calibrated_parallel_aurora_claims_only_released_snapshots(
+    client: TestClient,
+) -> None:
+    """The shadow mode cannot dispatch page 1 before page 0 calibration."""
+
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert job is not None and first is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first.ordinal = 0
+        first.configuration = {
+            "aurora_execution_mode": "parallel_v20_calibrated",
+            "aurora_snapshot": {"page_index": 0},
+        }
+        for ordinal in range(1, 6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"page-{ordinal + 1:03d}",
+                    ordinal=ordinal,
+                    status=JobItemStatus.PENDING.value,
+                    configuration={
+                        "aurora_execution_mode": "parallel_v20_calibrated",
+                    },
+                )
+            )
+        now = utc_now()
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {
+                        "execution_mode": "parallel_v20_calibrated"
+                    }
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="parallel-calibrated-gate",
+        max_concurrency=6,
+    )
+    first_lease = coordinator.claim_next_item(job_id)
+    assert first_lease is not None
+    assert first_lease.configuration["item"]["aurora_snapshot"]["page_index"] == 0
+    assert coordinator.claim_next_item(job_id) is None
+
+
 def _expand_job_to_three_items(client: TestClient, job_id: str) -> None:
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)

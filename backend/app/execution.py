@@ -19,6 +19,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import aurora_set_audit
+from .aurora_execution_modes import (
+    is_calibrated_parallel_aurora_mode,
+    is_parallel_aurora_mode,
+)
 from . import provider_quota_ledger as quota_ledger
 from .config import (
     default_masked_skill_root,
@@ -603,6 +607,9 @@ class ExecutionCoordinator:
                 return current
 
         is_parallel_aurora = self._is_parallel_aurora_job(job_id)
+        parallel_mode = (
+            self._parallel_aurora_mode(job_id) if is_parallel_aurora else None
+        )
         claim_width = (
             1
             if self._is_domestic_main_image_job(job_id) and not is_parallel_aurora
@@ -631,6 +638,11 @@ class ExecutionCoordinator:
             ):
                 self._skip_domestic_pages_after_execution_failure(job_id)
                 break
+            if (
+                is_calibrated_parallel_aurora_mode(parallel_mode)
+                and self._domestic_batch_has_failure(job_id, leases)
+            ):
+                self._skip_calibrated_parallel_dependents(job_id, leases)
 
         # The bundled Amazon Skill owns creative QA. Do not add a second Provider
         # review call to the default execution path: even a read-only review would
@@ -750,8 +762,60 @@ class ExecutionCoordinator:
             policy = plan.payload.get("execution_policy")
             return (
                 isinstance(policy, Mapping)
-                and policy.get("execution_mode") == "parallel_v20"
+                and is_parallel_aurora_mode(policy.get("execution_mode"))
             )
+
+    def _parallel_aurora_mode(self, job_id: str) -> str | None:
+        with self.session_factory() as session:
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            policy = plan.payload.get("execution_policy") if plan else None
+            mode = policy.get("execution_mode") if isinstance(policy, Mapping) else None
+            return str(mode) if is_parallel_aurora_mode(mode) else None
+
+    def _skip_calibrated_parallel_dependents(
+        self, job_id: str, leases: Sequence[AttemptLease]
+    ) -> None:
+        """Close pages that cannot be planned after a calibration gate fails."""
+
+        failed_ordinals: list[int] = []
+        with self.session_factory() as session:
+            for lease in leases:
+                item = session.get(JobItemRecord, lease.item_id)
+                if item is not None and item.status == JobItemStatus.FAILED.value:
+                    failed_ordinals.append(int(item.ordinal))
+        if not failed_ordinals:
+            return
+        first_failed = min(failed_ordinals)
+        with self.session_factory() as session:
+            items = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.ordinal > first_failed,
+                    JobItemRecord.status.in_(
+                        [
+                            JobItemStatus.PENDING.value,
+                            JobItemStatus.QUEUED.value,
+                            JobItemStatus.RETRY_WAIT.value,
+                        ]
+                    ),
+                )
+                .with_for_update()
+            ).all()
+            now = utc_now()
+            for item in items:
+                item.status = JobItemStatus.SKIPPED.value
+                item.stage = "blocked_by_calibration"
+                item.error_code = "AURORA_CALIBRATION_BLOCKED"
+                item.error_message = "未完成前置页面校准，后续页面未启动。"
+                item.finished_at = now
+                item.state_version += 1
+            session.commit()
 
     def _skip_domestic_pages_after_execution_failure(self, job_id: str) -> None:
         """Stop a strictly sequential Aurora campaign after an infrastructure failure.
@@ -1065,6 +1129,20 @@ class ExecutionCoordinator:
                 | (JobItemRecord.next_attempt_at.is_(None))
                 | (JobItemRecord.next_attempt_at <= utc_now()),
             )
+            calibrated_parallel = False
+            if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(JobPlanRecord.job_id == job.id)
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                )
+                policy = plan.payload.get("execution_policy") if plan else None
+                calibrated_parallel = is_calibrated_parallel_aurora_mode(
+                    policy.get("execution_mode")
+                    if isinstance(policy, Mapping)
+                    else None
+                )
             if (
                 job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                 and not self._job_uses_parallel_aurora(session, job.id)
@@ -1105,11 +1183,29 @@ class ExecutionCoordinator:
                     JobItemRecord.ordinal >= lower,
                     JobItemRecord.ordinal <= upper,
                 )
-            item = session.scalar(
-                item_query.order_by(JobItemRecord.ordinal)
-                .limit(1)
-                .with_for_update(skip_locked=True)
-            )
+            if calibrated_parallel:
+                candidates = session.scalars(
+                    item_query.order_by(JobItemRecord.ordinal).with_for_update(
+                        skip_locked=True
+                    )
+                ).all()
+                item = next(
+                    (
+                        candidate
+                        for candidate in candidates
+                        if isinstance(candidate.configuration, Mapping)
+                        and isinstance(
+                            candidate.configuration.get("aurora_snapshot"), Mapping
+                        )
+                    ),
+                    None,
+                )
+            else:
+                item = session.scalar(
+                    item_query.order_by(JobItemRecord.ordinal)
+                    .limit(1)
+                    .with_for_update(skip_locked=True)
+                )
             if item is None:
                 return None
 
@@ -1166,7 +1262,7 @@ class ExecutionCoordinator:
         policy = plan.payload.get("execution_policy")
         return (
             isinstance(policy, Mapping)
-            and policy.get("execution_mode") == "parallel_v20"
+            and is_parallel_aurora_mode(policy.get("execution_mode"))
         )
 
     def _recover_expired_attempt(

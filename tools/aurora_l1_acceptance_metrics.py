@@ -153,11 +153,81 @@ def _deficiency_text(item: dict[str, Any]) -> str:
     )
 
 
-def _misjudged(item: dict[str, Any], authorized: set[str]) -> list[str]:
-    """Authorized wordings the rejection wrongly calls unsupported."""
+def _challenge_text(item: dict[str, Any]) -> str:
+    """The part of a deficiency that states the problem.
 
-    text = _deficiency_text(item)
-    return sorted(claim for claim in authorized if claim in text)
+    ``required_change`` is excluded on purpose: it is the repair instruction and
+    therefore lists the *correct* authorized wording ("keep only 透气 / 舒适 /
+    7A抑菌底裆"), which would otherwise read as if the reviewer were
+    challenging those authorized wordings.
+    """
+
+    return " ".join(
+        str(item.get(key) or "") for key in ("visible_problem", "root_cause")
+    )
+
+
+#: Wording that shows the reviewer is *comparing* the pixels against an
+#: authorized wording, rather than denying that wording's support.  Such a
+#: rejection reports a real defect (a typo such as 底档 for 底裆, a reworded
+#: claim) and must never be scored as a misjudgement, even though it quotes
+#: authorized text.
+_MISMATCH_MARKERS = (
+    "不一致",
+    "写成",
+    "误写",
+    "错字",
+    "错别",
+    "改为",
+    "应为",
+    "逐字",
+    "原文",
+    "与授权",
+    "核验事实",
+)
+
+#: Quoted spans, i.e. the wordings a rejection actually talks about.
+_QUOTED = re.compile(r"[“\"「『]([^”\"」』\n]{1,60})[”\"」』]")
+
+#: Checks whose failure can be a misjudgement.  Other checks (geometry,
+#: typography, set diversity, ...) never mean "this claim is unsupported".
+_COPY_CHECKS = frozenset({"factual_copy_match", "no_unsupported_claim"})
+
+#: Wording immediately before a quoted span that marks it as the *authorized*
+#: standard ("the pool only supports 透气"), not the challenged claim.
+_POSITIVE_PREFIX = ("支持", "授权", "核验", "相符", "一致", "来自", "属于")
+
+
+def _misjudged(item: dict[str, Any], authorized: set[str]) -> list[str]:
+    """Authorized wordings the rejection wrongly calls unsupported.
+
+    A rejection is misjudged only when the wording it *quotes as the challenged
+    claim* is itself authorized.  This is deliberately stricter than "an
+    authorized wording appears somewhere in the text": once the fact pool
+    reaches the reviewer, correct rejections cite authorized wordings as the
+    standard the pixels failed to meet (``底档`` should read ``底裆``), and the
+    looser test would score every one of those correct rejections as a
+    misjudgement.
+
+    Keyword gating still cannot fully replace reading the rejections, so treat
+    the resulting rate as a lower bound and confirm the headline number by hand.
+    """
+
+    if str(item.get("check") or "") not in _COPY_CHECKS:
+        return []
+    text = _challenge_text(item)
+    if any(marker in text for marker in _MISMATCH_MARKERS):
+        return []
+    hits: set[str] = set()
+    for match in _QUOTED.finditer(text):
+        span = match.group(1)
+        if span not in authorized:
+            continue
+        prefix = text[max(0, match.start() - 8): match.start()]
+        if any(marker in prefix for marker in _POSITIVE_PREFIX):
+            continue
+        hits.add(span)
+    return sorted(hits)
 
 
 def collect_job(workspace: Path) -> dict[str, Any]:

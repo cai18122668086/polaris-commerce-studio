@@ -16,6 +16,11 @@ from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
     is_parallel_aurora_mode,
 )
+from .aurora_l2_references import (
+    L2_PLANNING_REFERENCE_FILES,
+    append_l2_reference_sections,
+    load_l2_reference_sections,
+)
 from .aurora_main_image_runtime import (
     AURORA_MAIN_IMAGE_V20_VERSION,
     AURORA_MAIN_IMAGE_VERSION,
@@ -23,7 +28,7 @@ from .aurora_main_image_runtime import (
     AuroraV20HarnessRunner,
     write_contract,
 )
-from .config import default_aurora_work_root
+from .config import default_aurora_v20_skill_root, default_aurora_work_root
 from .domain import JobStatus, PlanValidationStatus
 from .models import (
     AssetRecord,
@@ -84,6 +89,7 @@ class AuroraMainImagePlanner:
         gateway: XingheGateway | _PlannerGateway | None = None,
         work_root: Path | None = None,
         execution_mode: str = "sequential_v017",
+        l2_reference_enabled: bool = False,
     ) -> None:
         self.session_factory = session_factory
         self.execution_mode = execution_mode
@@ -95,6 +101,8 @@ class AuroraMainImagePlanner:
         self.storage = storage
         self.gateway = gateway
         self.work_root = (work_root or default_aurora_work_root()).resolve()
+        self.l2_reference_enabled = bool(l2_reference_enabled)
+        self._l2_planning_prompt: str | None = None
 
     async def plan(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
@@ -328,7 +336,7 @@ class AuroraMainImagePlanner:
                 platform_code="TAOBAO_DOMESTIC_MAIN_IMAGE",
                 size="1024x1024",
                 idempotency_key=f"{job_id}:aurora-identity:v1",
-                system_prompt=_IDENTITY_SYSTEM_PROMPT,
+                system_prompt=self._identity_system_prompt(),
                 planning_profile="aurora_identity",
             )
         )
@@ -337,6 +345,18 @@ class AuroraMainImagePlanner:
                 result.error_message or "Aurora product identity inspection failed"
             )
         return dict(result.payload)
+
+    def _identity_system_prompt(self) -> str:
+        if not self.l2_reference_enabled:
+            return _IDENTITY_SYSTEM_PROMPT
+        if self._l2_planning_prompt is None:
+            sections = load_l2_reference_sections(
+                default_aurora_v20_skill_root(), L2_PLANNING_REFERENCE_FILES
+            )
+            self._l2_planning_prompt = append_l2_reference_sections(
+                _IDENTITY_SYSTEM_PROMPT, sections, stage="planning"
+            )
+        return self._l2_planning_prompt
 
 
 def authorize_aurora_plan(

@@ -133,6 +133,15 @@ class AuroraMainImageProvider:
         )
         self.work_root = (work_root or default_aurora_work_root()).resolve()
 
+    def _augment_generation_request(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Return the exact generation request for this provider channel."""
+
+        return dict(generation_request)
+
     # --- Audit prompt hooks -------------------------------------------------
     # Both hooks are behavior-preserving: this shipped provider returns the
     # frozen prompt and injects no extra contract fields, so every existing
@@ -186,6 +195,9 @@ class AuroraMainImageProvider:
                 )
                 self._persist_session(request.job_id, _load_json(session_path))
                 generation_request = _load_json(generation_request_path)
+                generation_request = self._augment_generation_request(
+                    request, generation_request
+                )
                 sources = _generation_sources(generation_request, request.job_id)
                 image_result = await self.gateway.edit(
                     ImageEditRequest(
@@ -401,6 +413,9 @@ class AuroraMainImageProvider:
                 image_result, generation_request, retained_session = retained
                 first_visual_attempt = int(generation_request.get("revision", 0))
             for visual_attempt in range(first_visual_attempt, 2):
+                generation_request = self._augment_generation_request(
+                    request, generation_request
+                )
                 sources = _generation_sources(generation_request, request.job_id)
                 revision = int(generation_request.get("revision", visual_attempt))
                 if retained is None or visual_attempt != first_visual_attempt:

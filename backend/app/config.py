@@ -157,6 +157,9 @@ class Settings(BaseSettings):
     # pool.  Disabled by default so the shipped prompt and audit contract stay
     # byte-identical until the change is measured on a shadow run.
     aurora_l1_rubric_enabled: bool = Field(default=False)
+    # L2 shadow channel. When enabled, domestic six-image generation carries
+    # the original Skill generation references into the real image request.
+    aurora_l2_reference_enabled: bool = Field(default=False)
     development_provider_env_file: Path = Field(
         default_factory=default_development_provider_env_file
     )

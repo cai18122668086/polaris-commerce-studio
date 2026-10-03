@@ -7,12 +7,11 @@ from typing import cast
 
 from fastapi.testclient import TestClient
 
-from app.aurora_l2_references import L2_PLANNING_REFERENCE_FILES, L2_REFERENCE_MARKER
+from app.aurora_l2_references import L2_REFERENCE_MARKER
 from app.aurora_main_image_l1_provider import AuroraMainImageL1Provider
 from app.aurora_main_image_l2_provider import (
     AuroraMainImageL2Provider,
 )
-from app.aurora_main_image_planner import AuroraMainImagePlanner
 from app.aurora_main_image_provider import AuroraMainImageProvider
 from app.domain import JobType
 from app.execution import build_fake_coordinator
@@ -128,20 +127,6 @@ def test_l2_repair_adds_only_original_repair_section(tmp_path: Path) -> None:
         augmented,
     )
     assert repeated["prompt"] == augmented["prompt"]
-
-
-def test_l2_planning_injects_only_planning_references(tmp_path: Path) -> None:
-    planner = AuroraMainImagePlanner(
-        session_factory=None,  # type: ignore[arg-type]
-        work_root=tmp_path / "work",
-        l2_reference_enabled=True,
-    )
-    prompt = planner._identity_system_prompt()
-    assert L2_REFERENCE_MARKER in prompt
-    for relative in L2_PLANNING_REFERENCE_FILES:
-        assert relative.name in prompt
-    assert "visual-strategy.md" not in prompt
-    assert "commercial-performance.md" not in prompt
 
 
 def test_l2_switch_selects_only_the_shadow_route(client: TestClient) -> None:

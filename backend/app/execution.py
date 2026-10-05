@@ -1227,7 +1227,7 @@ class ExecutionCoordinator:
                     .select_from(JobItemRecord)
                     .where(
                         JobItemRecord.job_id == job.id,
-                        JobItemRecord.status == JobItemStatus.SUCCEEDED.value,
+                        JobItemRecord.status.in_(SUCCESS_ITEM_STATUSES),
                     )
                 )
                 item_query = item_query.where(

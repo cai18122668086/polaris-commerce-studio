@@ -11,7 +11,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
-from .aurora_execution_modes import is_parallel_aurora_mode
+from .aurora_execution_modes import is_v20_aurora_mode
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
@@ -1007,7 +1007,7 @@ def retry_item_ids(
             and item.id in preserved_set_audit_ids
         )
     ]
-    # A parallel Aurora retry must recover pages that an older sequential/style
+    # An Aurora v2 retry must recover pages that an earlier/style
     # gate marked as synthetic SKIPPED rows.  They never produced an artifact,
     # so treating the retry scope as FAILED-only would permanently reduce a
     # six-page retry to the first two failed pages.  Aurora has no user-visible
@@ -1023,7 +1023,7 @@ def retry_item_ids(
         policy = plan.payload.get("execution_policy") if plan is not None else None
         if (
             isinstance(policy, Mapping)
-            and is_parallel_aurora_mode(policy.get("execution_mode"))
+            and is_v20_aurora_mode(policy.get("execution_mode"))
         ):
             selected.extend(
                 item.id

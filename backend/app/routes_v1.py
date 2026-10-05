@@ -3041,12 +3041,12 @@ def _copy_job_relations_for_retry(
             # call and return to the already authorized page cursor.  This
             # preserves accepted pages and the immutable plan while ensuring
             # the retry enters the Skill through a fresh ``generate-next``.
-            retryable_source_items = [
+            provider_failed_source_items = [
                 item
                 for item in source_items
                 if item.id in selected
+                and item.id not in preserved_set_audit_ids
                 and isinstance(item.error_details, dict)
-                and item.error_details.get("retryable") is True
                 and item.error_details.get("provider_outcome") == "failed"
             ]
             copied_session = copied_payload.get("_harness_session")
@@ -3058,7 +3058,7 @@ def _copy_job_relations_for_retry(
                     if isinstance(execution_policy, Mapping)
                     else None
                 )
-                and retryable_source_items
+                and provider_failed_source_items
                 and isinstance(copied_session, Mapping)
                 and copied_session.get("state") == "AWAITING_GENERATED_ASSET"
             ):

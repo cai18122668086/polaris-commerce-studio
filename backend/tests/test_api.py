@@ -1440,6 +1440,178 @@ def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
         ] == list(range(6))
 
 
+def test_sequential_v20_retry_requeues_synthetic_style_blockers(
+    client: TestClient,
+) -> None:
+    """A sequential v2 retry must restore pages blocked after the failure."""
+
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.FAILED.value,
+                stage=JobStatus.FAILED.value,
+                display_name="Aurora sequential retry fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=6,
+                failed_item_count=2,
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        for ordinal in range(6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"PAGE-{ordinal + 1:02d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if ordinal < 2
+                        else JobItemStatus.SKIPPED.value
+                    ),
+                    error_code=("HARNESS_BLOCKED" if ordinal < 2 else None),
+                    stage="reused" if ordinal >= 2 else "failed",
+                    finished_at=now,
+                )
+            )
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {"execution_mode": "sequential_v20"}
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+        source = session.get(JobRecord, job_id)
+        assert source is not None
+        selected = retry_item_ids(session, source, RetryScope.FAILED, [])
+        selected_items = session.scalars(
+            select(JobItemRecord).where(JobItemRecord.id.in_(selected))
+        ).all()
+        assert [
+            item.ordinal for item in sorted(selected_items, key=lambda v: v.ordinal)
+        ] == list(range(6))
+
+
+def test_domestic_provider_failure_retry_resets_pending_harness_session(
+    client: TestClient,
+) -> None:
+    """HTTP 400 provider failures must re-authorize an unbound v2 retry."""
+
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.PARTIAL.value,
+                stage=JobStatus.PARTIAL.value,
+                display_name="Aurora provider retry fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=2,
+                succeeded_item_count=1,
+                failed_item_count=1,
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        failed_id = f"item_{uuid4().hex}"
+        session.add_all(
+            [
+                JobItemRecord(
+                    id=failed_id,
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key="PAGE-01",
+                    ordinal=0,
+                    status=JobItemStatus.FAILED.value,
+                    error_code="IMAGE_REQUEST_FAILED",
+                    error_details={
+                        "provider_outcome": "failed",
+                        "retryable": False,
+                    },
+                    finished_at=now,
+                ),
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key="PAGE-02",
+                    ordinal=1,
+                    status=JobItemStatus.SUCCEEDED.value,
+                    finished_at=now,
+                ),
+            ]
+        )
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {"execution_mode": "sequential_v20"},
+                    "_harness_session": {
+                        "state": "AWAITING_GENERATED_ASSET",
+                        "pending_generation": {"page_index": 0},
+                        "active_page_index": 0,
+                        "authorization": {},
+                    },
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    retried = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "failed", "item_ids": []},
+    )
+    assert retried.status_code == 201, retried.text
+    retry_id = retried.json()["id"]
+    with client.app.state.session_factory() as session:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == retry_id)
+            .order_by(JobPlanRecord.revision.desc())
+        )
+        assert plan is not None
+        harness = plan.payload["_harness_session"]
+        assert harness["state"] == "AUTHORIZED"
+        assert harness["pending_generation"] is None
+        assert harness["active_page_index"] is None
+        assert harness["authorization"]["retry_after_provider_failure"] is True
+
+
 def test_amazon_partial_review_infrastructure_failure_allows_complete_archive(
     client: TestClient,
 ) -> None:

@@ -893,6 +893,45 @@ def test_domestic_pages_wait_for_predecessor_across_duplicate_deliveries(
         assert claimed.ordinal == 1
 
 
+def test_domestic_retry_with_reused_prefix_claims_next_pending_page(
+    client: TestClient,
+) -> None:
+    """REUSED pages count as completed for sequential retry ordering."""
+
+    job_id = _create_job(client)
+    _expand_job_to_three_items(client, job_id)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job_id)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        assert job is not None and len(items) == 3
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.status = JobStatus.PROCESSING.value
+        job.stage = "processing"
+        items[0].status = JobItemStatus.REUSED.value
+        items[1].status = JobItemStatus.PENDING.value
+        items[2].status = JobItemStatus.PENDING.value
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="aurora-retry-order",
+        lease_seconds=2,
+        heartbeat_seconds=0.2,
+        max_concurrency=6,
+    )
+    lease = coordinator.claim_next_item(job_id)
+    assert lease is not None
+    with client.app.state.session_factory() as session:
+        claimed = session.get(JobItemRecord, lease.item_id)
+        assert claimed is not None
+        assert claimed.ordinal == 1
+
+
 def test_parallel_page_failure_does_not_skip_other_pages(
     client: TestClient,
 ) -> None:

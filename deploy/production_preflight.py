@@ -77,6 +77,17 @@ BUDGET_POLICY_KEYS = frozenset(
         "POLARIS_TENGLI_DAILY_REQUEST_LIMIT",
     }
 )
+# Application execution mode is a reviewed release strategy, not a Provider
+# credential or feature drift. It may change as part of a release.
+DEPLOYMENT_STRATEGY_KEYS = frozenset({"POLARIS_AURORA_EXECUTION_MODE"})
+ALLOWED_AURORA_EXECUTION_MODES = frozenset(
+    {
+        "sequential_v017",
+        "sequential_v20",
+        "parallel_v20",
+        "parallel_v20_calibrated",
+    }
+)
 DIGEST_REFERENCE = re.compile(
     r"^[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$"
 )
@@ -273,6 +284,11 @@ def validate_env(
     ):
         if env.get(key) != expected:
             errors.append(f"{key} must be exactly {expected} for this release")
+    if env.get("POLARIS_AURORA_EXECUTION_MODE") not in ALLOWED_AURORA_EXECUTION_MODES:
+        errors.append(
+            "POLARIS_AURORA_EXECUTION_MODE must be one of "
+            + ", ".join(sorted(ALLOWED_AURORA_EXECUTION_MODES))
+        )
     boolean_keys = (
         *(key for key in PROVIDER_KEYS if key.endswith("_PROVIDER_ENABLED")),
         "POLARIS_PROVIDER_QUOTA_ENABLED",
@@ -297,7 +313,11 @@ def validate_env(
             for key in PROVIDER_KEYS
             if key in base and env.get(key) != base.get(key)
         ]
-        blocking = [key for key in changed if key not in BUDGET_POLICY_KEYS]
+        blocking = [
+            key
+            for key in changed
+            if key not in BUDGET_POLICY_KEYS and key not in DEPLOYMENT_STRATEGY_KEYS
+        ]
         if blocking:
             errors.append(
                 "Provider settings changed during auth cutover: " + ", ".join(blocking)
@@ -307,6 +327,14 @@ def validate_env(
             warnings.append(
                 "Budget policy keys differ from base env (per-environment cost "
                 "policy, non-blocking): " + ", ".join(budget_changed)
+            )
+        strategy_changed = [
+            key for key in changed if key in DEPLOYMENT_STRATEGY_KEYS
+        ]
+        if strategy_changed and warnings is not None:
+            warnings.append(
+                "Deployment strategy keys differ from base env (reviewed release "
+                "change): " + ", ".join(strategy_changed)
             )
     return errors
 

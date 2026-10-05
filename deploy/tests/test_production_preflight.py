@@ -273,6 +273,15 @@ class ProductionPreflightTests(unittest.TestCase):
             "Provider settings changed during auth cutover: POLARIS_TASK_RUNNER", errors
         )
 
+    def test_execution_mode_drift_is_allowed_as_reviewed_strategy(self) -> None:
+        env = self.valid_env()
+        base = {key: env[key] for key in PROVIDER_KEYS}
+        base["POLARIS_AURORA_EXECUTION_MODE"] = "parallel_v20_calibrated"
+        warnings: list[str] = []
+        errors = validate_env(env, base, warnings)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("POLARIS_AURORA_EXECUTION_MODE" in warning for warning in warnings))
+
     def test_budget_policy_drift_warns_without_blocking(self) -> None:
         env = self.valid_env()
         base = {key: env[key] for key in PROVIDER_KEYS}

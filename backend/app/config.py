@@ -133,9 +133,12 @@ class Settings(BaseSettings):
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
     domestic_main_image_provider_enabled: bool = Field(default=False)
     aurora_execution_mode: Literal[
-        "sequential_v017", "parallel_v20", "parallel_v20_calibrated"
+        "sequential_v017",
+        "sequential_v20",
+        "parallel_v20",
+        "parallel_v20_calibrated",
     ] = (
-        "sequential_v017"
+        "sequential_v20"
     )
     aurora_max_transient_retries: int = Field(default=2, ge=0, le=2)
     aurora_retry_backoff_base_seconds: float = Field(default=2, ge=0, le=30)
@@ -145,21 +148,6 @@ class Settings(BaseSettings):
     # job item's `aurora_gateway_diagnostics`, so the next investigation can see
     # what the model actually returned.  Keep it off in normal operation.
     diagnostic_content_sample: bool = Field(default=False)
-    # P-7 switch.  When enabled, an incomplete `domestic_main_image` set may be
-    # downloaded as a best-effort archive: every page that has a ready
-    # deliverable is packed, and a `manifest.json` records which pages are
-    # missing and why.  Disabled by default so the existing "complete set only"
-    # contract is untouched until the change is verified on a shadow run.
-    domestic_partial_archive_enabled: bool = Field(default=False)
-    # L1 rubric switch.  When enabled, `domestic_main_image` audits run through
-    # the shadow channel in `aurora_main_image_l1_provider`: the reviewer gets
-    # the Skill's own `references/visual-audit.md` rubric plus the user fact
-    # pool.  Disabled by default so the shipped prompt and audit contract stay
-    # byte-identical until the change is measured on a shadow run.
-    aurora_l1_rubric_enabled: bool = Field(default=False)
-    # L2 shadow channel. When enabled, domestic six-image generation carries
-    # the original Skill generation references into the real image request.
-    aurora_l2_reference_enabled: bool = Field(default=False)
     development_provider_env_file: Path = Field(
         default_factory=default_development_provider_env_file
     )
@@ -173,7 +161,6 @@ class Settings(BaseSettings):
     tengli_vision_model: str = "gpt-5.6-terra"
     analysis_api_key: SecretStr = SecretStr("")
     analysis_base_url: str = "https://api.ooapi.cc"
-    analysis_api_mode: Literal["chat_completions", "responses"] = "chat_completions"
     # `gpt-5.5` stopped serving on this relay (HTTP 502 "Upstream access
     # forbidden"), and `gpt-5.6-luna` now answers 503 or not at all.  A live
     # probe against the production relay on 2026-09-16 returned a healthy

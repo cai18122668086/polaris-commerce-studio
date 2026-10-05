@@ -7,7 +7,7 @@ import type { Job } from "@/lib/api/types";
 import { jobTypeLabel } from "@/lib/jobs/presentation";
 
 export function JobRecordCover({ workspaceId, job }: { workspaceId: string; job: Job }) {
-  const access = useAssetAccessUrl(workspaceId, job.primary_output_asset_id ?? undefined, "thumbnail");
+  const access = useAssetAccessUrl(workspaceId, job.primary_output_asset_id ?? undefined);
   const [failedUrl, setFailedUrl] = useState<string>();
   const title = job.display_name?.trim() || jobTypeLabel(job.type);
   const processing = ["queued", "planning", "awaiting_confirmation", "processing", "cancelling"].includes(job.status);
@@ -15,7 +15,7 @@ export function JobRecordCover({ workspaceId, job }: { workspaceId: string; job:
   return (
     <div className="record-cover api-job-cover" aria-label={`${title}生成结果预览`}>
       {access.data?.url && failedUrl !== access.data.url ? (
-        <img src={access.data.url} alt={`${title}生成结果`} loading="lazy" decoding="async" onError={() => setFailedUrl(access.data?.url)} />
+        <img src={access.data.url} alt={`${title}生成结果`} onError={() => setFailedUrl(access.data?.url)} />
       ) : access.isFetching || processing ? (
         <LoaderCircle className="spin" size={20} aria-label="正在加载结果预览" />
       ) : job.status === "failed" ? (

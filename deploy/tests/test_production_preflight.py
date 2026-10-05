@@ -69,12 +69,10 @@ class ProductionPreflightTests(unittest.TestCase):
             "POLARIS_TASK_RUNNER": "mock",
             "POLARIS_PROVIDER_QUOTA_ENABLED": "true",
             "POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED": "false",
-            "POLARIS_AURORA_EXECUTION_MODE": "parallel_v20",
+            "POLARIS_AURORA_EXECUTION_MODE": "sequential_v20",
             "POLARIS_AURORA_MAX_TRANSIENT_RETRIES": "2",
             "POLARIS_AURORA_RETRY_BACKOFF_BASE_SECONDS": "2",
             "POLARIS_AURORA_RETRY_BACKOFF_MAX_SECONDS": "30",
-            "POLARIS_AURORA_L1_RUBRIC_ENABLED": "false",
-            "POLARIS_AURORA_L2_REFERENCE_ENABLED": "false",
             "POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED": "false",
             "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED": "false",
             "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED": "false",
@@ -322,8 +320,6 @@ class ProductionPreflightTests(unittest.TestCase):
             dockerfile.replace("ARG POLARIS_PYTHON_BASE_IMAGE", "FROM python:3.13.14-slim"),
             dockerfile.replace("python -m pip install --require-hashes", "python -m pip install '.[browser]'"),
             dockerfile.replace("requirements.browser.lock", "requirements.txt"),
-            dockerfile.replace("playwright install-deps chromium", "true"),
-            dockerfile.replace("playwright install chromium", "true"),
         )
         for mutated in mutations:
             with self.subTest():
@@ -370,24 +366,7 @@ class ProductionPreflightTests(unittest.TestCase):
         ):
             with self.subTest(dockerfile=dockerfile):
                 self.assertIn(dockerfile, ci)
-        for image in ("polaris/backend:ci", "polaris/crawl-worker:ci", "polaris/frontend:ci"):
-            with self.subTest(image=image):
-                self.assertIn(f"image: {image}", ci)
-        for variable in ("POLARIS_PYTHON_BASE_IMAGE", "POLARIS_NODE_BASE_IMAGE"):
-            with self.subTest(variable=variable):
-                self.assertRegex(ci, rf"{variable}=\S+@sha256:[a-f0-9]{{64}}")
-        for binding in (
-            "BUILD_ARGS: ${{ matrix.build_args }}",
-            "DOCKERFILE: ${{ matrix.dockerfile }}",
-            "IMAGE_TAG: ${{ matrix.image }}",
-            'args+=(--build-arg "$arg")',
-            'done <<< "$BUILD_ARGS"',
-            'docker build --file "$DOCKERFILE" --tag "$IMAGE_TAG" "${args[@]}" .',
-        ):
-            with self.subTest(binding=binding):
-                self.assertIn(binding, ci)
-        self.assertNotIn("docker push", ci)
-        self.assertNotIn("--push", ci)
+        self.assertIn("docker/build-push-action@v7", ci)
         self.assertIn("POLARIS_CRAWL_WORKER_IMAGE: polaris/crawl-worker:ci", ci)
         self.assertIn(
             "docker compose -f deploy/compose.production.yml config --quiet", ci

@@ -75,6 +75,7 @@ class JobStatus(StrEnum):
     PLANNING = "planning"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
     PROCESSING = "processing"
+    AWAITING_FINAL_REVIEW = "awaiting_final_review"
     CANCELLING = "cancelling"
     PARTIAL = "partial"
     COMPLETED = "completed"
@@ -111,9 +112,15 @@ JOB_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.FAILED,
     },
     JobStatus.PROCESSING: {
+        JobStatus.AWAITING_FINAL_REVIEW,
         JobStatus.CANCELLING,
         JobStatus.PARTIAL,
         JobStatus.COMPLETED,
+        JobStatus.FAILED,
+    },
+    JobStatus.AWAITING_FINAL_REVIEW: {
+        JobStatus.COMPLETED,
+        JobStatus.CANCELLING,
         JobStatus.FAILED,
     },
     JobStatus.CANCELLING: {JobStatus.CANCELLED},

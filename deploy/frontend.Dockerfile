@@ -2,7 +2,7 @@ ARG POLARIS_NODE_BASE_IMAGE
 FROM ${POLARIS_NODE_BASE_IMAGE} AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN --mount=type=cache,id=polaris-npm,target=/root/.npm,sharing=locked npm ci --ignore-scripts --no-audit --fund=false
+RUN npm ci --ignore-scripts --no-audit --fund=false
 
 FROM dependencies AS build
 COPY .openai/hosting.json .openai/hosting.json

@@ -120,6 +120,12 @@ class _ExplodingSetAuditProvider(FakeProvider):
         raise error
 
 
+class _BlockedSetAuditProvider(FakeProvider):
+    async def audit_parallel_set(self, job_id: str) -> bool:
+        del job_id
+        return False
+
+
 def test_parallel_aurora_skips_set_audit_when_any_page_failed(
     client: TestClient,
 ) -> None:
@@ -174,17 +180,6 @@ def _six_succeeded_aurora_pages(client: TestClient) -> str:
         )
         assert job is not None and first is not None
         job.type = JobType.DOMESTIC_MAIN_IMAGE.value
-        job.status = JobStatus.PROCESSING.value
-        session.add(
-            JobPlanRecord(
-                id=f"plan_{uuid4().hex}",
-                workspace_id=WORKSPACE_ID,
-                job_id=job_id,
-                revision=1,
-                payload={"execution_policy": {"execution_mode": "parallel_v20"}},
-                payload_hash="fixture",
-            )
-        )
         job.expected_item_count = 6
         first.status = JobItemStatus.SUCCEEDED.value
         for ordinal in range(1, 6):
@@ -222,59 +217,57 @@ def test_parallel_aurora_set_audit_failure_records_its_reason(
     assert applicable is False
     assert isinstance(error, AuroraPlanningError)
 
-    assert coordinator.finalize_job(job_id) == JobStatus.PARTIAL
+    coordinator._mark_parallel_aurora_set_audit_failed(job_id, error)
+
+    with client.app.state.session_factory() as session:
+        item = session.scalar(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id == job_id,
+                JobItemRecord.error_code == "AURORA_SET_AUDIT_FAILED",
+            )
+        )
+
+    assert item is not None
+    assert item.error_details["scope"] == "set_audit"
+    assert item.error_details["reason"] == "AuroraPlanningError"
+    assert item.error_details["http_status"] == 502
+    assert "HTTP 502" in item.error_details["message"]
+
+
+def test_v20_blocked_set_audit_waits_for_user_final_review(
+    client: TestClient,
+) -> None:
+    job_id = _six_succeeded_aurora_pages(client)
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)
-        items = session.scalars(
-            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
-        ).all()
-        assert job.succeeded_item_count == 6
-        assert job.failed_item_count == 0
-        assert all(item.status == "succeeded" for item in items)
-        assert job.error_details["scope"] == "set_audit"
-        assert job.error_details["reason"] == "AuroraPlanningError"
-        assert job.error_details["http_status"] == 502
-        assert job.stage == "set_audit_error"
+        assert job is not None
+        job.status = JobStatus.PROCESSING.value
+        job.stage = "generating"
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                payload={"execution_policy": {"execution_mode": "parallel_v20"}},
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+            )
+        )
+        session.commit()
 
-    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
-    assert detail["status"] == "partial"
-    assert detail["succeeded_item_count"] == 6
-    assert detail["failed_item_count"] == 0
-    assert "retry" not in detail["allowed_actions"]
-    assert all(item["status"] == "succeeded" for item in detail["items"])
-    retry = client.post(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
-        headers={"Idempotency-Key": str(uuid4())},
-        json={"scope": "full"},
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        _BlockedSetAuditProvider(),
+        worker_id="parallel-audit-blocked",
     )
-    assert retry.status_code == 409
 
-
-def test_legacy_set_error_is_not_presented_as_completed() -> None:
-    from app.services import job_list_response
-
-    now = utc_now()
-    job = JobRecord(
-        id="job_legacy",
-        workspace_id=WORKSPACE_ID,
-        type="domestic_main_image",
-        status="partial",
-        stage="partial",
-        progress=100,
-        expected_item_count=6,
-        succeeded_item_count=5,
-        failed_item_count=1,
-        configuration={},
-        api_request_count=0,
-        usage_completeness="none",
-        created_at=now,
-        updated_at=now,
-    )
-    response = job_list_response(job, output_asset_count=6, generated_set_complete=True)
-    assert response.status == "partial"
-    assert response.stage == "set_audit_error"
-    assert (response.succeeded_item_count, response.failed_item_count) == (5, 1)
-    assert response.allowed_actions == ["clone"]
+    assert asyncio.run(coordinator.run(job_id)) == JobStatus.AWAITING_FINAL_REVIEW
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        assert job.status == JobStatus.AWAITING_FINAL_REVIEW.value
+        assert job.stage == "awaiting_final_review"
 
 
 def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) -> None:
@@ -312,9 +305,6 @@ def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) ->
 
 
 class _ParallelAuroraFakeProvider:
-    async def audit_parallel_set(self, job_id: str) -> bool:
-        return True
-
     name = "aurora-fake"
     model = "none"
     pricing_version = "test"

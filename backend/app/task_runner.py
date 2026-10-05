@@ -36,9 +36,7 @@ class MockTaskRunner:
         crossborder_detail_provider_enabled: bool = False,
         domestic_main_image_provider_enabled: bool = False,
         aurora_work_root: Path | None = None,
-        aurora_execution_mode: str = "sequential_v017",
-        aurora_l1_rubric_enabled: bool = False,
-        aurora_l2_reference_enabled: bool = False,
+        aurora_execution_mode: str = "sequential_v20",
         aurora_max_transient_retries: int = 2,
         aurora_retry_backoff_base_seconds: float = 2,
         aurora_retry_backoff_max_seconds: float = 30,
@@ -62,8 +60,6 @@ class MockTaskRunner:
             domestic_main_image_provider_enabled=(domestic_main_image_provider_enabled),
             aurora_work_root=aurora_work_root,
             aurora_execution_mode=aurora_execution_mode,
-            aurora_l1_rubric_enabled=aurora_l1_rubric_enabled,
-            aurora_l2_reference_enabled=aurora_l2_reference_enabled,
             aurora_max_transient_retries=aurora_max_transient_retries,
             aurora_retry_backoff_base_seconds=aurora_retry_backoff_base_seconds,
             aurora_retry_backoff_max_seconds=aurora_retry_backoff_max_seconds,
@@ -202,8 +198,6 @@ def build_task_runner(
             xinghe_skill_root=settings.xinghe_skill_root,
             aurora_work_root=settings.aurora_work_root,
             aurora_execution_mode=settings.aurora_execution_mode,
-            aurora_l1_rubric_enabled=settings.aurora_l1_rubric_enabled,
-            aurora_l2_reference_enabled=settings.aurora_l2_reference_enabled,
             aurora_max_transient_retries=settings.aurora_max_transient_retries,
             aurora_retry_backoff_base_seconds=(
                 settings.aurora_retry_backoff_base_seconds
@@ -259,8 +253,6 @@ def build_tengli_task_runner(
         ),
         aurora_work_root=settings.aurora_work_root,
         aurora_execution_mode=settings.aurora_execution_mode,
-        aurora_l1_rubric_enabled=settings.aurora_l1_rubric_enabled,
-        aurora_l2_reference_enabled=settings.aurora_l2_reference_enabled,
         aurora_max_transient_retries=settings.aurora_max_transient_retries,
         aurora_retry_backoff_base_seconds=(
             settings.aurora_retry_backoff_base_seconds

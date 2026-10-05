@@ -357,7 +357,7 @@ class DetailPackConfiguration(BaseModel):
     market_region: Literal["domestic", "international"] = "international"
     category: str | None = Field(default=None, max_length=80)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
-    page_count: int = Field(strict=True, ge=1, le=12)
+    page_count: int = Field(ge=1, le=12)
     auto_start_after_plan: bool = True
     size: Literal[
         "1024x1536",
@@ -444,6 +444,7 @@ class DomesticMainImageConfiguration(BaseModel):
     product_name: str = Field(min_length=1, max_length=160)
     category: str = Field(min_length=1, max_length=120)
     selling_points: list[str] = Field(min_length=1, max_length=24)
+    user_provided_display_facts: list[str] = Field(default_factory=list, max_length=24)
     product_attributes: list[str] = Field(default_factory=list, max_length=24)
     scenes: list[str] = Field(default_factory=list, max_length=12)
     offers: list[str] = Field(default_factory=list, max_length=12)
@@ -451,6 +452,10 @@ class DomesticMainImageConfiguration(BaseModel):
     style_preferences: list[str] = Field(default_factory=list, max_length=12)
     instruction: str = Field(default="", max_length=4000)
     language: Literal["zh-CN"] = "zh-CN"
+    # Development-only opt-in. The production default remains the native
+    # Aurora generation path; the shadow value is carried through the normal
+    # job envelope so a local user submission can be reviewed end to end.
+    aurora_shadow_mode: Literal["off", "contract_first_rebuild_v1", "execution_semantics_v1"] = "off"
 
 
 class JobCreateBase(BaseModel):
@@ -639,6 +644,10 @@ class PlanUpdateRequest(BaseModel):
 class PlanConfirmRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     approval_text: str | None = Field(default=None, min_length=2, max_length=240)
+
+
+class FinalizeJobRequest(BaseModel):
+    approval_text: str = Field(min_length=2, max_length=240)
 
 
 class HealthResponse(BaseModel):

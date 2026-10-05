@@ -341,17 +341,7 @@ def optional_string(
     default: str = "",
     code: str = "PROMPT_INPUT_INVALID",
 ) -> str:
-    """Read an optional string, treating an explicit JSON null as "not provided".
-
-    Job configuration schemas declare optional settings as ``X | None = None``
-    and persist them as ``null``.  A present-but-null value therefore means the
-    caller did not supply the field, so it must fall back to ``default`` instead
-    of being rejected as a type error.
-    """
-
-    value = source.get(key)
-    if value is None:
-        value = default
+    value = source.get(key, default)
     if not isinstance(value, str):
         raise NewImageSkillContractError(code, f"{key} must be a string.")
     return value.strip()
@@ -363,11 +353,7 @@ def optional_string_list(
     *,
     code: str = "PROMPT_INPUT_INVALID",
 ) -> list[str]:
-    """Read an optional string list, treating an explicit JSON null as absent."""
-
-    value = source.get(key)
-    if value is None:
-        value = []
+    value = source.get(key, [])
     if not isinstance(value, list) or any(
         not isinstance(entry, str) for entry in value
     ):

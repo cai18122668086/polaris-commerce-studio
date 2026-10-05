@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import re
 from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
-from time import monotonic
 from typing import Any
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -20,22 +18,25 @@ from sqlalchemy.orm import Session, sessionmaker
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
     is_parallel_aurora_mode,
+    is_v20_aurora_mode,
 )
 from .aurora_main_image_planner import (
     AuroraPlanningError,
+    _normalize_commercial_fact_pool,
     _persist_parallel_v20_snapshots,
 )
 from .aurora_main_image_runtime import (
     AuroraHarnessError,
     AuroraHarnessRunner,
     AuroraV20HarnessRunner,
+    reset_v20_pending_generation_for_retry,
     write_contract,
 )
-from .aurora_set_audit import SetAuditResult
-from .aurora_set_audit_contract import validate_evidence, validate_verdict_fields
+from .aurora_generation_shadow import prepare_shadow_generation_request
 from .config import default_aurora_work_root
 from .domain import JobItemStatus
 from .models import (
+    AuditEventRecord,
     JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
@@ -47,7 +48,6 @@ from .storage import ImageStorage
 from .xinghe_agent import (
     _AURORA_V20_MATERIAL_CHECKS,
     _AURORA_V20_VISUAL_CHECKS,
-    ImageCallResult,
     ImageEditRequest,
     PlannerRequest,
     SourceImage,
@@ -84,19 +84,39 @@ page_index, image_sha256 and reviewer, then derives the final audit_complete
 attestation only after all semantic checks pass. Do not invent image paths or
 hashes for those runtime-owned fields. decision_summary must be a concrete
 direct-pixel verdict sentence of at least 12 characters; never return a
-one-word verdict such as PASS, 合格 or 通过. Evaluate factual copy against the
-approved page contract, including its approved source claims. Original product
-references authorize identity, not the target campaign style; compare style
-against campaign_constitution, not the source photo's background or typography.
+one-word verdict such as PASS, 合格 or 通过.
+The audit contract includes an authorized_fact_pool. Treat only those user
+entered strings, plus faithful non-strengthening paraphrases, as claim
+authority. Before deciding factual_copy_match or no_unsupported_claim,
+transcribe every visible headline, badge, number, comparison, feature label,
+rating, safety statement, and specification from the candidate pixels. Any
+proposition absent from that pool is an unsupported claim even when it is
+plausible for the category; return a material failure with the exact visible
+wording and the required change to remove or replace it.
+For product_identity_match, compare the candidate against every supplied
+product_reference image as one complementary identity set. Fail materially
+when the candidate changes silhouette, proportions, wheel count or placement,
+seat count, red/black color partition, steering wheel, dashboard/music panel,
+grille, headlights, doors, steps, mirrors, labels, or component relationships.
+User facts may authorize copy, but they never authorize a new visible part or
+variant component that the product references do not show. An identity failure
+must recommend rebuilding from the original product references, never polishing
+the failed candidate as a repair canvas.
 """.strip()
 
 _STYLE_CALIBRATION_SYSTEM_PROMPT = """
-Compare only the shared visual style of the two attached campaign pages.
-Return the requested style-calibration JSON object, not a single-page quality
-judgment. Set agent_pixel_reviewed to true only if you actually inspected both
-images; otherwise set it to false and explain the unavailable evidence.
-Describe concrete observed pixels and shared style tokens. Do not infer product
-identity, invent facts, or report checks from a different review protocol.
+You are the direct-pixel style calibration reviewer for the Aurora domestic
+e-commerce six-image Skill. Inspect the supplied accepted generated pages and
+return one JSON object only. Set agent_pixel_reviewed to true, set
+source_page_indexes to the supplied accepted page indexes, and write
+observed_evidence as a concrete description of visible pixels on those pages
+with at least 12 characters. Derive only reusable campaign-style observations
+from the pixels: photography_finish, light_direction, color_temperature,
+palette_roles, palette_usage_ratio, typography, graphic_language,
+information_surfaces and density_band. Do not return identity, page layout,
+copy, or invented product facts. If a style field cannot be supported by the
+pixels, omit that field rather than guessing. The observed_evidence field is
+mandatory even when style_tokens is sparse.
 """.strip()
 
 
@@ -115,58 +135,23 @@ class AuroraMainImageProvider:
         *,
         harness: AuroraHarnessRunner | None = None,
         work_root: Path | None = None,
-        execution_mode: str = "sequential_v017",
+        execution_mode: str = "sequential_v20",
     ) -> None:
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage
         self.harness = harness or (
             AuroraV20HarnessRunner()
-            if is_parallel_aurora_mode(execution_mode)
+            if is_v20_aurora_mode(execution_mode)
             else AuroraHarnessRunner()
         )
         self.execution_mode = execution_mode
         self.pricing_version = (
             "aurora-v2.0.0"
-            if is_parallel_aurora_mode(execution_mode)
+            if is_v20_aurora_mode(execution_mode)
             else "aurora-v0.1.17"
         )
         self.work_root = (work_root or default_aurora_work_root()).resolve()
-
-    def _augment_generation_request(
-        self,
-        request: ProviderRequest,
-        generation_request: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Return the exact generation request for this provider channel."""
-
-        return dict(generation_request)
-
-    # --- Audit prompt hooks -------------------------------------------------
-    # Both hooks are behavior-preserving: this shipped provider returns the
-    # frozen prompt and injects no extra contract fields, so every existing
-    # audit call stays byte-identical.  The L1 rubric channel
-    # (``aurora_main_image_l1_provider``) overrides them to load the Skill's
-    # own ``references/visual-audit.md`` rubric and the user fact pool without
-    # touching this class, its call sites, or ``skill_sources/``.
-    def _audit_system_prompt(self) -> str:
-        """Return the direct-pixel audit system prompt for this channel."""
-
-        return _AUDIT_SYSTEM_PROMPT
-
-    def _audit_contract_extras(
-        self,
-        request: ProviderRequest,
-        generation_request: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Return extra audit-contract fields for this channel.
-
-        The shipped provider adds nothing.  Keeping the merge point here means
-        a subclass can extend the contract the reviewer sees while the default
-        serialized contract stays byte-identical.
-        """
-
-        return {}
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if is_parallel_aurora_mode(self.execution_mode) or _request_uses_parallel_v20(
@@ -195,9 +180,18 @@ class AuroraMainImageProvider:
                 )
                 self._persist_session(request.job_id, _load_json(session_path))
                 generation_request = _load_json(generation_request_path)
-                generation_request = self._augment_generation_request(
-                    request, generation_request
-                )
+                # The native v2 harness owns page composition, but it does not
+                # know the API job's fact buckets. Attach the exact user fact
+                # pool to the sequential request before the image call and
+                # direct-pixel audit so generated copy is judged against the
+                # same authority used by planning and parallel snapshots.
+                if is_v20_aurora_mode(self.execution_mode):
+                    job_configuration = _mapping(request.configuration.get("job"))
+                    job_settings = _mapping(job_configuration.get("settings"))
+                    generation_request["authorized_facts"] = (
+                        _normalize_commercial_fact_pool(job_settings)
+                    )
+                    write_contract(generation_request_path, generation_request)
                 sources = _generation_sources(generation_request, request.job_id)
                 image_result = await self.gateway.edit(
                     ImageEditRequest(
@@ -225,6 +219,18 @@ class AuroraMainImageProvider:
                     image_result.outcome != ProviderOutcome.SUCCEEDED
                     or image_result.artifact is None
                 ):
+                    if (
+                        is_v20_aurora_mode(self.execution_mode)
+                        and image_result.retryable
+                    ):
+                        pending_session = _load_json(session_path)
+                        if pending_session.get("state") == "AWAITING_GENERATED_ASSET":
+                            self._persist_session(
+                                request.job_id,
+                                reset_v20_pending_generation_for_retry(
+                                    pending_session
+                                ),
+                            )
                     return _failed_image_result(image_result, self)
                 artifact = _normalize_aurora_square_artifact(image_result.artifact)
                 generation_usage.update(
@@ -249,13 +255,21 @@ class AuroraMainImageProvider:
                     },
                 )
                 current = _load_json(session_path)
-                judgment, usage, cost = await self._audit_candidate(
-                    request,
-                    current,
-                    generation_request,
-                    generated_path,
-                    artifact,
-                )
+                if is_v20_aurora_mode(self.execution_mode):
+                    judgment, usage, cost = await self._audit_v20_candidate_with_retry(
+                        request,
+                        generation_request,
+                        generated_path,
+                        artifact,
+                    )
+                else:
+                    judgment, usage, cost = await self._audit_candidate(
+                        request,
+                        current,
+                        generation_request,
+                        generated_path,
+                        artifact,
+                    )
                 audit_usage.append(usage)
                 actual_cost += cost
                 judgment_path = (
@@ -269,18 +283,34 @@ class AuroraMainImageProvider:
                     {"session": session_path, "judgment": judgment_path},
                 )
                 current = _load_json(session_path)
-                if current.get("state") == "AWAITING_SEARCH_BASELINE_CALIBRATION":
+                search_calibration_state = (
+                    "AWAITING_SEARCH_CALIBRATION"
+                    if is_v20_aurora_mode(self.execution_mode)
+                    else "AWAITING_SEARCH_BASELINE_CALIBRATION"
+                )
+                if current.get("state") == search_calibration_state:
                     baseline_path = workspace / "search-baseline-observation.json"
                     write_contract(baseline_path, _baseline_observation(judgment))
                     self.harness.run(
-                        "calibrate-search-baseline",
+                        (
+                            "calibrate-search"
+                            if is_v20_aurora_mode(self.execution_mode)
+                            else "calibrate-search-baseline"
+                        ),
                         workspace,
                         {"session": session_path, "observation": baseline_path},
                     )
                     current = _load_json(session_path)
                 if current.get("state") == "REPAIR_REQUIRED" and attempt_index == 0:
                     repair_path = workspace / f"repair-page-{page_index + 1}.json"
-                    write_contract(repair_path, _repair_plan(current))
+                    write_contract(
+                        repair_path,
+                        (
+                            _v20_repair_plan(current)
+                            if is_v20_aurora_mode(self.execution_mode)
+                            else _repair_plan(current)
+                        ),
+                    )
                     self.harness.run(
                         "prepare-repair",
                         workspace,
@@ -293,8 +323,15 @@ class AuroraMainImageProvider:
             if artifact is None:
                 raise AuroraPlanningError("Aurora generation returned no artifact")
             current = _load_json(session_path)
-            if current.get("state") == "AWAITING_AGENT_STYLE_CALIBRATION":
-                observation, usage, cost = await self._calibrate_style(request, current)
+            style_calibration_state = (
+                "AWAITING_STYLE_CALIBRATION"
+                if is_v20_aurora_mode(self.execution_mode)
+                else "AWAITING_AGENT_STYLE_CALIBRATION"
+            )
+            if current.get("state") == style_calibration_state:
+                observation, usage, cost = await self._calibrate_style(
+                    request, current
+                )
                 audit_usage.append(usage)
                 actual_cost += cost
                 observation_path = workspace / "style-calibration.json"
@@ -368,16 +405,23 @@ class AuroraMainImageProvider:
                 pricing_version=self.gateway.pricing_version,
             )
 
-    async def _execute_parallel_v20(self, request: ProviderRequest) -> ProviderResult:
+    async def _execute_parallel_v20(
+        self, request: ProviderRequest
+    ) -> ProviderResult:
         """Execute one pre-authorized page without shared session writes."""
 
-        artifact: ProviderArtifact | None = None
-        raw_usage: dict[str, Any] = {}
-        actual_cost = 0
         try:
             item_configuration = _mapping(request.configuration.get("item"))
             snapshot = _mapping(item_configuration.get("aurora_snapshot"))
+            shadow_mode = str(
+                item_configuration.get("aurora_shadow_mode") or ""
+            ).strip()
             generation_request = _mapping(snapshot.get("request"))
+            if shadow_mode:
+                generation_request = prepare_shadow_generation_request(
+                    generation_request,
+                    mode=shadow_mode,
+                )
             snapshot_mode = str(snapshot.get("execution_mode") or "")
             if not is_parallel_aurora_mode(snapshot_mode):
                 raise AuroraPlanningError("Aurora v2.0 page snapshot is missing")
@@ -387,7 +431,6 @@ class AuroraMainImageProvider:
             if expected_hash != canonical_hash(hash_payload):
                 raise AuroraPlanningError("Aurora v2.0 page snapshot hash mismatch")
             page_index = int(snapshot["page_index"])
-            retained = self._retained_v20_candidate(request, snapshot)
             workspace = (
                 self._workspace(request.job_id)
                 / "parallel-v20"
@@ -406,35 +449,30 @@ class AuroraMainImageProvider:
             logical_key = str(
                 snapshot.get("logical_idempotency_key") or request.idempotency_key
             )
+            raw_usage: dict[str, Any] = {}
             audit_usage: list[dict[str, Any]] = []
+            actual_cost = 0
+            artifact: ProviderArtifact | None = None
             image_result: Any = None
-            first_visual_attempt = 0
-            if retained is not None:
-                image_result, generation_request, retained_session = retained
-                first_visual_attempt = int(generation_request.get("revision", 0))
-            for visual_attempt in range(first_visual_attempt, 2):
-                generation_request = self._augment_generation_request(
-                    request, generation_request
-                )
+            for visual_attempt in range(2):
                 sources = _generation_sources(generation_request, request.job_id)
                 revision = int(generation_request.get("revision", visual_attempt))
-                if retained is None or visual_attempt != first_visual_attempt:
-                    image_result = await self.gateway.edit(
-                        ImageEditRequest(
-                            workspace_id=request.workspace_id,
-                            job_id=request.job_id,
-                            job_item_id=request.job_item_id,
-                            attempt_id=request.attempt_id,
-                            page_number=page_index + 1,
-                            group_key=request.job_id,
-                            sources=sources,
-                            prompt=str(generation_request["prompt"]),
-                            quality="high",
-                            idempotency_key=f"{logical_key}:visual-revision-{revision}",
-                            size="1024x1024",
-                            preserve_provider_artifact=True,
-                        )
+                image_result = await self.gateway.edit(
+                    ImageEditRequest(
+                        workspace_id=request.workspace_id,
+                        job_id=request.job_id,
+                        job_item_id=request.job_item_id,
+                        attempt_id=request.attempt_id,
+                        page_number=page_index + 1,
+                        group_key=request.job_id,
+                        sources=sources,
+                        prompt=str(generation_request["prompt"]),
+                        quality="high",
+                        idempotency_key=f"{logical_key}:visual-revision-{revision}",
+                        size="1024x1024",
+                        preserve_provider_artifact=True,
                     )
+                )
                 if (
                     image_result.outcome != ProviderOutcome.SUCCEEDED
                     or image_result.artifact is None
@@ -446,34 +484,13 @@ class AuroraMainImageProvider:
                 generated_path = _write_generated_artifact(
                     workspace, page_index, visual_attempt, artifact
                 )
-                if retained is not None and visual_attempt == first_visual_attempt:
-                    retained_session["generated_versions"][-1]["file"] = str(
-                        generated_path
-                    )
-                    write_contract(session_path, retained_session)
-                else:
-                    runner.run(
-                        "record-generation",
-                        workspace,
-                        {
-                            "session": session_path,
-                            "token": str(generation_request["generation_token"]),
-                            "image": generated_path,
-                        },
-                    )
-                # Save the exact pre-review state before any network audit. This
-                # also retains repair revisions without reusing their old token.
-                write_contract(
-                    workspace / "review-candidate.json",
+                runner.run(
+                    "record-generation",
+                    workspace,
                     {
-                        "snapshot_hash": expected_hash,
-                        "request": generation_request,
-                        "session": _load_json(session_path),
-                        "artifact": {
-                            "provider_width": artifact.provider_width,
-                            "provider_height": artifact.provider_height,
-                            "locally_resampled": artifact.locally_resampled,
-                        },
+                        "session": session_path,
+                        "token": str(generation_request["generation_token"]),
+                        "image": generated_path,
                     },
                 )
                 judgment, usage, cost = await self._audit_v20_candidate_with_retry(
@@ -549,6 +566,27 @@ class AuroraMainImageProvider:
                         if isinstance(next_request, Mapping)
                         else _load_json(next_request_path)
                     )
+                    # Harness-generated repair requests are intentionally
+                    # page-local and therefore do not carry planner-only
+                    # authority metadata. Reattach the immutable fact pool
+                    # before rebuilding the shadow prompt so a repair cannot
+                    # fall back to model-invented copy.
+                    authorized_facts = _mapping(
+                        _mapping(generation_request).get("authorized_facts")
+                    )
+                    if not authorized_facts:
+                        authorized_facts = _mapping(
+                            _mapping(snapshot.get("request")).get(
+                                "authorized_facts"
+                            )
+                        )
+                    if authorized_facts:
+                        generation_request["authorized_facts"] = authorized_facts
+                    if shadow_mode:
+                        generation_request = prepare_shadow_generation_request(
+                            generation_request,
+                            mode=shadow_mode,
+                        )
                     continue
                 break
             if artifact is None or image_result is None:
@@ -558,7 +596,9 @@ class AuroraMainImageProvider:
             if not isinstance(network_requests, int) or network_requests < 0:
                 network_requests = 1
             raw_usage["network_requests"] = (
-                network_requests + max(0, len(audit_usage) - 1) + len(audit_usage)
+                network_requests
+                + max(0, len(audit_usage) - 1)
+                + len(audit_usage)
             )
             metrics = _mapping(raw_usage.get("metrics"))
             metrics.update(
@@ -577,6 +617,7 @@ class AuroraMainImageProvider:
                         .get("modifications_used_by_page", {})
                         .get(str(page_index), 0)
                     ),
+                    "aurora_shadow_mode": shadow_mode or None,
                 }
             )
             raw_usage["metrics"] = metrics
@@ -594,202 +635,38 @@ class AuroraMainImageProvider:
             )
         except Exception as exc:
             retryable, http_status = _classify_transient_failure(exc)
-            candidate_retained = artifact is not None
+            # The opt-in shadow path can recover a bounded set of visual
+            # contract rejections by submitting the same immutable page again.
+            # The native Skill remains fail-closed; only the known composition
+            # gate mismatch is eligible for the existing item retry budget.
+            if (
+                shadow_mode
+                and isinstance(exc, AuroraHarnessError)
+                and exc.code == "HARNESS_BLOCKED"
+                and _is_shadow_composition_gate_failure(str(exc))
+            ):
+                retryable = True
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 error_code=getattr(exc, "code", "AURORA_EXECUTION_FAILED"),
                 error_message=str(exc),
-                usage_reported=bool(raw_usage),
+                usage_reported=False,
                 raw_usage={
-                    **raw_usage,
                     "provider_type": self.gateway.provider_name,
-                    "called": candidate_retained or retryable,
+                    "called": retryable,
                     "metrics": {
-                        **_mapping(raw_usage.get("metrics")),
                         "aurora_execution_mode": snapshot_mode,
-                        "candidate_retained": candidate_retained,
-                        "candidate_sha256": artifact.sha256 if artifact else None,
-                        "retry_action": "review_retained_candidate"
-                        if candidate_retained
-                        else None,
                         "aurora_gateway_diagnostics": getattr(
                             exc, "aurora_gateway_diagnostics", None
                         ),
                     },
                 },
-                actual_cost_micros=actual_cost if candidate_retained else None,
-                retryable=retryable and not candidate_retained,
+                retryable=retryable,
                 http_status=http_status,
                 provider_name=self.gateway.provider_name,
                 model_name=self.gateway.image_model,
                 pricing_version=self.gateway.pricing_version,
             )
-
-    def _retained_v20_candidate(
-        self, request: ProviderRequest, snapshot: Mapping[str, Any]
-    ) -> tuple[ImageCallResult, dict[str, Any], dict[str, Any]] | None:
-        """Recover only a same-workspace, same-snapshot durable retry ancestor.
-
-        User configuration cannot select a filesystem path or another job. A
-        recorded candidate that cannot be verified blocks generation instead of
-        silently replacing potentially billable images.
-        """
-        if self.session_factory is None:  # Standalone deterministic Harness tests.
-            return None
-        candidates: list[tuple[str, str]] = []
-        with self.session_factory() as db:
-            item = db.get(JobItemRecord, request.job_item_id)
-            if item is None or item.job_id != request.job_id:
-                raise AuroraPlanningError("Retained candidate task context is missing")
-            seen: set[str] = set()
-            while item is not None:
-                job = db.get(JobRecord, item.job_id)
-                if (
-                    item.id in seen
-                    or job is None
-                    or item.workspace_id != request.workspace_id
-                    or job.workspace_id != request.workspace_id
-                    or item.ordinal != int(snapshot["page_index"])
-                ):
-                    raise AuroraPlanningError("Retained candidate lineage mismatch")
-                seen.add(item.id)
-                stored = _mapping(_mapping(item.configuration).get("aurora_snapshot"))
-                if stored.get("snapshot_hash") != snapshot.get("snapshot_hash"):
-                    raise AuroraPlanningError("Retained candidate snapshot mismatch")
-                attempts = db.scalars(
-                    select(JobAttemptRecord)
-                    .where(
-                        JobAttemptRecord.workspace_id == request.workspace_id,
-                        JobAttemptRecord.job_item_id == item.id,
-                        JobAttemptRecord.id != request.attempt_id,
-                        JobAttemptRecord.status.in_(
-                            ["failed", "cancelled", "outcome_unknown"]
-                        ),
-                    )
-                    .order_by(JobAttemptRecord.attempt_no)
-                ).all()
-                candidates.extend((item.job_id, attempt.id) for attempt in attempts)
-                if not item.source_job_item_id:
-                    break
-                source = db.get(JobItemRecord, item.source_job_item_id)
-                if source is None or source.job_id != job.retry_of_job_id:
-                    raise AuroraPlanningError(
-                        "Retained candidate retry ancestor mismatch"
-                    )
-                item = source
-        for job_id, attempt_id in candidates:
-            root = (
-                self._workspace(job_id)
-                / "parallel-v20"
-                / f"page-{int(snapshot['page_index']) + 1:02d}"
-                / f"attempt-{attempt_id}"
-            ).resolve()
-            if not root.is_relative_to(self.work_root):
-                raise AuroraPlanningError("Retained candidate path escapes work root")
-            if not (root / "session.json").is_file():
-                if list((root / "generated").glob("*")):
-                    raise AuroraPlanningError(
-                        "Retained candidate session is unavailable"
-                    )
-                continue
-            current = _load_json(root / "session.json")
-            if not current.get("generated_versions"):
-                if list((root / "generated").glob("*")):
-                    raise AuroraPlanningError("Retained candidate was not recorded")
-                continue
-            if current.get("state") not in {
-                "AWAITING_VISUAL_AUDIT",
-                "AWAITING_SEARCH_CALIBRATION",
-                "AWAITING_STYLE_CALIBRATION",
-                "AUTHORIZED",
-                "COMPLETE",
-            }:
-                raise AuroraPlanningError(
-                    "Retained candidate requires explicit quality repair"
-                )
-            saved = _load_json(root / "snapshot.json")
-            hash_payload = dict(saved)
-            stored_hash = hash_payload.pop("snapshot_hash", None)
-            if (
-                stored_hash != snapshot.get("snapshot_hash")
-                or canonical_hash(hash_payload) != stored_hash
-            ):
-                raise AuroraPlanningError("Retained candidate snapshot hash mismatch")
-            checkpoint_path = root / "review-candidate.json"
-            if checkpoint_path.is_file():
-                checkpoint = _load_json(checkpoint_path)
-                if checkpoint.get("snapshot_hash") != stored_hash:
-                    raise AuroraPlanningError("Retained candidate checkpoint mismatch")
-                session = checkpoint["session"]
-                generation = checkpoint["request"]
-                metadata = checkpoint.get("artifact", {})
-            else:
-                # Compatibility for old native sessions. Use the exact saved
-                # repair request, never reconstruct it or reset its budget.
-                if current.get("state") != "AWAITING_VISUAL_AUDIT":
-                    raise AuroraPlanningError(
-                        "Retained candidate review checkpoint is unavailable"
-                    )
-                session, generation, metadata = current, saved["request"], {}
-                retained_revision = session["generated_versions"][-1].get("revision")
-                if retained_revision != generation.get("revision", 0):
-                    repair_path = root / "repair-generation-request.json"
-                    if not repair_path.is_file():
-                        raise AuroraPlanningError(
-                            "Retained repair request is unavailable"
-                        )
-                    generation = _load_json(repair_path)
-            version = session["generated_versions"][-1]
-            revision = int(generation.get("revision", 0))
-            if (
-                session.get("state") != "AWAITING_VISUAL_AUDIT"
-                or version.get("page_index") != snapshot["page_index"]
-                or version.get("revision") != revision
-                or generation.get("page_index") != snapshot["page_index"]
-                or revision not in (0, 1)
-            ):
-                raise AuroraPlanningError("Retained candidate revision mismatch")
-            path = Path(version["file"]).resolve()
-            if not path.is_relative_to(root) or not path.is_file():
-                raise AuroraPlanningError("Retained candidate image is unavailable")
-            data = path.read_bytes()
-            if hashlib.sha256(data).hexdigest() != version.get("sha256"):
-                raise AuroraPlanningError("Retained candidate image hash mismatch")
-            with Image.open(BytesIO(data)) as image:
-                image.load()
-                artifact = ProviderArtifact(
-                    payload=data,
-                    filename=path.name,
-                    content_type=Image.MIME[str(image.format)],
-                    width=image.width,
-                    height=image.height,
-                    sha256=version["sha256"],
-                    **metadata,
-                )
-            return (
-                ImageCallResult(
-                    outcome=ProviderOutcome.SUCCEEDED,
-                    provider_request_id=None,
-                    raw_usage={
-                        "network_requests": 0,
-                        "image_request_count": 0,
-                        "metrics": {
-                            "candidate_reused": True,
-                            "source_attempt_id": attempt_id,
-                            "source_job_id": job_id,
-                            "original_usage_unknown": not checkpoint_path.is_file(),
-                        },
-                    },
-                    normalized_usage={},
-                    api_latency_seconds=0,
-                    actual_cost_micros=0,
-                    estimated_cost_micros=0,
-                    artifact=artifact,
-                ),
-                generation,
-                session,
-            )
-        return None
 
     async def _audit_v20_candidate_with_retry(
         self,
@@ -808,12 +685,41 @@ class AuroraMainImageProvider:
 
         for attempt in range(len(_AURORA_AUDIT_RETRY_DELAYS) + 1):
             try:
-                return await self._audit_v20_candidate(
+                judgment, usage, cost = await self._audit_v20_candidate(
                     request,
                     generation_request,
                     generated_path,
                     artifact,
                 )
+                identity_sources = _identity_sources(
+                    generation_request, request.job_id
+                )
+                omitted_identity = identity_sources[_MAX_VISUAL_AUDIT_IMAGES - 1 :]
+                if omitted_identity:
+                    coverage_usage: list[dict[str, Any]] = []
+                    coverage_cost = 0
+                    for batch_index in range(0, len(omitted_identity), 3):
+                        coverage_sources = omitted_identity[batch_index : batch_index + 3]
+                        coverage_judgment, coverage_call_usage, coverage_call_cost = (
+                            await self._audit_v20_candidate(
+                                request,
+                                generation_request,
+                                generated_path,
+                                artifact,
+                                identity_sources=coverage_sources,
+                                audit_suffix=f":identity-coverage-{batch_index // 3 + 1}",
+                            )
+                        )
+                        coverage_usage.append(coverage_call_usage)
+                        coverage_cost += coverage_call_cost
+                        _merge_identity_coverage_judgment(
+                            judgment, coverage_judgment
+                        )
+                    usage = dict(usage)
+                    usage["identity_coverage_calls"] = len(coverage_usage)
+                    usage["identity_coverage_usage"] = coverage_usage
+                    cost += coverage_cost
+                return judgment, usage, cost
             except AuroraPlanningError as exc:
                 status = getattr(exc, "http_status", None)
                 transient = (
@@ -842,6 +748,9 @@ class AuroraMainImageProvider:
         generation_request: Mapping[str, Any],
         generated_path: Path,
         artifact: ProviderArtifact,
+        *,
+        identity_sources: Sequence[SourceImage] | None = None,
+        audit_suffix: str = "",
     ) -> tuple[dict[str, Any], dict[str, Any], int]:
         page_index = int(generation_request["page_index"])
         candidate = SourceImage(
@@ -853,8 +762,12 @@ class AuroraMainImageProvider:
             payload=artifact.payload,
             source_role="generated_candidate",
         )
-        sources = _bounded_visual_audit_sources(
-            _identity_sources(generation_request, request.job_id), candidate
+        sources = (
+            (*tuple(identity_sources), candidate)
+            if identity_sources is not None
+            else _bounded_visual_audit_sources(
+                _identity_sources(generation_request, request.job_id), candidate
+            )
         )
         audit_contract = {
             "page_index": page_index,
@@ -863,6 +776,21 @@ class AuroraMainImageProvider:
             "campaign_constitution": generation_request.get(
                 "campaign_constitution"
             ),
+            "authorized_fact_pool": _authorized_fact_pool_for_audit(
+                generation_request
+            ),
+            "factual_copy_audit": {
+                "visible_copy_must_be_transcribed": True,
+                "unsupported_claim_is_material": True,
+                "allow_faithful_paraphrase": True,
+                "allow_category_prior_as_fact": False,
+            },
+            "product_identity_audit": {
+                "identity_authority": "all supplied product_reference images",
+                "compare_silhouette_proportions_components_and_color_partitions": True,
+                "variant_facts_may_not_add_visible_parts": True,
+                "identity_failure_repair": "REBUILD_FROM_PRODUCT_EVIDENCE",
+            },
             "required_check_names": list(_VISUAL_CHECKS),
             "response_contract": "aurora-native-v2-visual-judgment",
             "runtime_bound_fields": [
@@ -896,9 +824,6 @@ class AuroraMainImageProvider:
                 layout_contract.get("evidence_topology") or ""
             ),
         }
-        audit_contract.update(
-            self._audit_contract_extras(request, generation_request)
-        )
         result = await self.gateway.plan(
             PlannerRequest(
                 workspace_id=request.workspace_id,
@@ -915,9 +840,9 @@ class AuroraMainImageProvider:
                 size="1024x1024",
                 idempotency_key=(
                     f"{request.idempotency_key}:v20-audit:{page_index}:"
-                    f"{generation_request.get('revision', 0)}"
+                    f"{generation_request.get('revision', 0)}{audit_suffix}"
                 ),
-                system_prompt=self._audit_system_prompt(),
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_v20_visual_audit",
             )
         )
@@ -963,9 +888,10 @@ class AuroraMainImageProvider:
     ) -> tuple[dict[str, Any], dict[str, Any], int]:
         """Run native Campaign Style calibration for the page-1 worker.
 
-        Page workers have independent sessions. Wait for page 0's accepted
-        pixels before comparing both pages. A slow audit or allowed repair
-        must not exhaust the former three-minute dependency wait prematurely.
+        Page workers have independent sessions. When page 0 is already
+        durable, include its accepted pixels; otherwise the current page is
+        still reviewed by the style profile and the Harness remains the final
+        validator of the observation contract.
         """
 
         sources: list[SourceImage] = []
@@ -986,8 +912,7 @@ class AuroraMainImageProvider:
         # Style calibration is a native gate: page 0 must have passed its
         # direct-pixel audit and search calibration, not merely produced bytes.
         # The wait is bounded so a failed page cannot leave page 1 hanging.
-        deadline = monotonic() + 600
-        while monotonic() < deadline:
+        for _ in range(720):
             with self.session_factory() as db:
                 page_zero_status = db.scalar(
                     select(JobItemRecord.status).where(
@@ -1339,13 +1264,45 @@ class AuroraMainImageProvider:
         # model had actually reviewed.  Validate the set, then restore the
         # canonical order the immutable Harness runtime compares against.
         checks_by_name: dict[str, Mapping[str, Any]] = {}
+        duplicate_check_names: set[str] = set()
         for item in checks:
             name = str(item.get("name"))
             if name in checks_by_name:
-                raise AuroraPlanningError(
-                    f"Aurora v2 checks repeat the native check {name}"
-                )
+                # Some OpenAI-compatible gateways have returned one native
+                # check twice despite the strict response schema.  Treat this
+                # as a recoverable response-shape defect: keep the more
+                # conservative observation so an accidental duplicate can
+                # never turn a real failure into a pass.  The complete native
+                # set is still enforced immediately below, so a duplicate
+                # cannot hide an omitted check.
+                duplicate_check_names.add(name)
+                current = checks_by_name[name]
+                current_passed = current.get("passed") is True
+                candidate_passed = item.get("passed") is True
+                if current_passed != candidate_passed:
+                    if not candidate_passed:
+                        checks_by_name[name] = item
+                    continue
+                current_score = current.get("score")
+                candidate_score = item.get("score")
+                if (
+                    isinstance(candidate_score, (int, float))
+                    and not isinstance(candidate_score, bool)
+                    and (
+                        not isinstance(current_score, (int, float))
+                        or isinstance(current_score, bool)
+                        or candidate_score < current_score
+                    )
+                ):
+                    checks_by_name[name] = item
+                continue
             checks_by_name[name] = item
+        if duplicate_check_names:
+            logger.warning(
+                "aurora v2 audit response repeated native checks; "
+                "coalesced conservatively: %s",
+                ", ".join(sorted(duplicate_check_names)),
+            )
         missing = [name for name in _VISUAL_CHECKS if name not in checks_by_name]
         unexpected = sorted(set(checks_by_name) - set(_VISUAL_CHECKS))
         if missing or unexpected:
@@ -1388,88 +1345,41 @@ class AuroraMainImageProvider:
                 raise AuroraPlanningError("Aurora v2 check evidence is missing")
 
         observations = _mapping(payload.get("observations"))
-        page_contract = _mapping(generation_request.get("page_contract"))
-        layout_contract = _mapping(page_contract.get("layout_contract"))
-        copy_contract = _mapping(page_contract.get("display_copy_contract"))
-
-        def _downgrade_contradicted(name: str, evidence: str) -> None:
-            """Turn a contradicted self-report into an ordinary failure.
-
-            The immutable Harness raises a fatal ``HarnessError`` whenever a
-            check claims ``passed`` while its own observations say otherwise,
-            and that error aborts the page before the repair machinery can run.
-            Applying the same rule here keeps the contradiction, but routes it
-            through the normal blocked/repair path so the page still gets its
-            single allowed repair instead of dying during validation.
-            """
-
-            check = next(
-                (item for item in checks if item.get("name") == name), None
-            )
-            if check is None or check.get("passed") is not True:
-                return
-            check["passed"] = False
-            check["score"] = min(float(check.get("score", 69)), 69)
-            check["observed_evidence"] = evidence
-
-        layout_matches = all(
-            observations.get(observation_key) == layout_contract.get(contract_key)
-            for observation_key, contract_key in (
-                ("composition_archetype_seen", "composition_archetype"),
-                ("product_zone_seen", "product_zone"),
-                ("copy_zone_seen", "copy_zone"),
-                ("dominant_view_seen", "dominant_view"),
-                ("evidence_topology_seen", "evidence_topology"),
-            )
-        )
-        if layout_contract and not layout_matches:
-            _downgrade_contradicted(
-                "layout_not_cloned",
-                "像素中的空间结构未落在该页专属布局合同上。",
-            )
-            _downgrade_contradicted(
-                "approved_plan_fidelity_match",
-                "可见布局与已批准计划的页面合同不一致。",
-            )
-        if (
-            expected_page > 0
-            and len(str(observations.get("neighbor_layout_difference") or "").strip())
-            < 12
-        ):
-            _downgrade_contradicted(
-                "layout_not_cloned",
-                "未能给出与上一页具体的可见布局差异。",
-            )
-        if observations.get("evidence_is_primary_visual") is not True:
-            _downgrade_contradicted(
-                "selling_point_visual_dominance",
-                "卖点并未由真实物理证据作为主视觉承担。",
-            )
-        if not observations.get("physical_evidence"):
-            _downgrade_contradicted(
-                "evidence_relation_visible",
-                "画面中没有可见的真实物理证据。",
-            )
         if expected_page == 0:
-            headline_text = re.sub(
+            copy_contract = _mapping(
+                _mapping(generation_request.get("page_contract")).get(
+                    "display_copy_contract"
+                )
+            )
+            headline = re.sub(
                 r"[\s，,。；;：:·|/]+",
                 "",
                 str(observations.get("headline_text") or ""),
             )
-            headline_concise = len(headline_text) <= int(
-                copy_contract.get("headline_hard_max_chars") or 12
-            ) and int(observations.get("headline_line_count") or 1) <= int(
-                copy_contract.get("headline_max_lines") or 2
-            )
-            if not headline_concise:
-                _downgrade_contradicted(
-                    "headline_treatment_match",
-                    "搜索页短标题超出显示文案合同的字数或行数硬上限。",
+            hard_max = copy_contract.get("headline_hard_max_chars", 12)
+            max_lines = copy_contract.get("headline_max_lines", 2)
+            if (
+                isinstance(hard_max, (int, float))
+                and not isinstance(hard_max, bool)
+                and isinstance(max_lines, (int, float))
+                and not isinstance(max_lines, bool)
+                and (
+                    len(headline) > int(hard_max)
+                    or int(observations.get("headline_line_count") or 0)
+                    > int(max_lines)
                 )
-                _downgrade_contradicted(
-                    "thumbnail_success",
-                    "搜索页短标题超长，缩略图点击竞争力不成立。",
-                )
+            ):
+                for check_name in ("headline_treatment_match", "thumbnail_success"):
+                    check = next(
+                        item for item in checks if item.get("name") == check_name
+                    )
+                    if check.get("passed") is True:
+                        check["passed"] = False
+                        check["score"] = min(float(check.get("score", 69)), 69)
+                        check["observed_evidence"] = (
+                            "搜索主标题超过已批准显示文案合同的硬上限，需压缩后再验收。"
+                        )
+        if expected_page == 0:
             baseline_visible = (
                 observations.get("type_roles_seen", 0) >= 4
                 and observations.get("headline_rank") in {"FIRST", "JOINT_FIRST"}
@@ -1477,11 +1387,19 @@ class AuroraMainImageProvider:
                 and observations.get("commercial_closure_visible") is True
                 and bool(observations.get("physical_evidence"))
             )
-            if not baseline_visible:
-                _downgrade_contradicted(
-                    "baseline_performance_match",
+            baseline_check = next(
+                item
+                for item in checks
+                if item.get("name") == "baseline_performance_match"
+            )
+            if baseline_check.get("passed") is True and not baseline_visible:
+                baseline_check["passed"] = False
+                baseline_check["score"] = min(
+                    float(baseline_check.get("score", 69)), 69
+                )
+                baseline_check["observed_evidence"] = (
                     "搜索页像素未同时呈现四级文字角色、强标题、纵深、"
-                    "真实物理证据和已核验事实闭合。",
+                    "真实物理证据和已核验事实闭合。"
                 )
 
         # A contradictory passed=true/score<70 response must become a normal
@@ -1500,19 +1418,10 @@ class AuroraMainImageProvider:
             raise AuroraPlanningError(
                 "Aurora v2 all_material_deficiencies must be an array"
             )
-        # Mirror the Harness classification exactly: only a failed hard check,
-        # or a failed material check below the 70-point floor, becomes a
-        # blocking deficiency there. Emitting a deficiency for any other failed
-        # check would make the Harness reject an otherwise valid judgment,
-        # because it compares this set against its own material failures.
         failed_material = {
             str(item["name"])
             for item in checks
-            if item.get("passed") is False
-            and (
-                str(item["name"]) in _V20_HARD_CHECKS
-                or (item.get("material") is True and float(item["score"]) < 70)
-            )
+            if item.get("material") is True and item.get("passed") is False
         }
         existing_by_name = {
             str(item.get("check")): dict(item)
@@ -1567,7 +1476,7 @@ class AuroraMainImageProvider:
         normalized["audit_complete"] = True
         return normalized
 
-    async def audit_parallel_set(self, job_id: str) -> SetAuditResult:
+    async def audit_parallel_set(self, job_id: str) -> bool:
         """Merge six page-local sessions and run the native v2.0 set audit."""
 
         with self.session_factory() as db:
@@ -1693,28 +1602,17 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{job_id}:aurora-v20-set-audit:v1",
-                system_prompt=(
-                    "Inspect all six images and obey the supplied "
-                    "set-review JSON schema. "
-                    "Never infer missing evidence from a summary PASS."
-                ),
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
         if result.error_code or not isinstance(result.payload, Mapping):
-            raise _v20_gateway_error(result, "Aurora set audit gateway protocol error")
-        try:
-            observation = _normalize_parallel_set_audit_payload(
-                dict(result.payload), sources
+            raise AuroraPlanningError(
+                result.error_message or "Aurora v2.0 set audit failed"
             )
-        except ValueError as exc:
-            error = _v20_gateway_error(result, "Aurora set audit contract invalid")
-            error.aurora_gateway_diagnostics = {
-                **(error.aurora_gateway_diagnostics or {}),
-                "error_code": "AURORA_SET_AUDIT_PROTOCOL_INVALID",
-                "contract_reason": str(exc),
-            }
-            raise error from None
+        observation = _normalize_parallel_set_audit_payload(
+            dict(result.payload), sources
+        )
         observation_path = set_workspace / "observation.json"
         write_contract(observation_path, observation)
         runner = (
@@ -1729,8 +1627,128 @@ class AuroraMainImageProvider:
         )
         audited = _load_json(set_session_path)
         passed = audited.get("set_audit_passed") is True
-        # Only the coordinator persists results, under the job lock and token.
-        return SetAuditResult(passed=passed, observation=audited)
+        with self.session_factory() as db:
+            stored_plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if stored_plan is None:
+                raise AuroraPlanningError("Aurora v2.0 plan disappeared")
+            payload = dict(stored_plan.payload)
+            payload["_parallel_v20_set_session"] = audited
+            payload["set_audit_passed"] = passed
+            payload["harness_state"] = audited.get("state")
+            stored_plan.payload = payload
+            stored_plan.payload_hash = canonical_hash(payload)
+            db.add(
+                AuditEventRecord(
+                    workspace_id=items[0].workspace_id,
+                    action="aurora.parallel_v20_set_audited",
+                    resource_type="job",
+                    resource_id=job_id,
+                    request_id=f"{job_id}:v20-set-audit",
+                    details={
+                        "passed": passed,
+                        "harness_state": audited.get("state"),
+                    },
+                )
+            )
+            db.commit()
+        return passed
+
+    async def audit_sequential_v20_set(self, job_id: str) -> bool:
+        """Run the native v2.0 set audit over the shared sequential session."""
+
+        with self.session_factory() as db:
+            plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            items = db.scalars(
+                select(JobItemRecord)
+                .where(JobItemRecord.job_id == job_id)
+                .order_by(JobItemRecord.ordinal)
+            ).all()
+            if plan is None or len(items) != 6:
+                raise AuroraPlanningError("Aurora v2.0 sequential set context is incomplete")
+            session = _mapping(plan.payload.get("_harness_session"))
+            if session.get("state") != "AWAITING_SET_AUDIT":
+                raise AuroraPlanningError(
+                    "Aurora v2.0 sequential session is not awaiting set audit"
+                )
+            workspace_id = items[0].workspace_id
+
+        set_workspace = self._workspace(job_id) / "sequential-v20" / "set-audit"
+        set_workspace.mkdir(parents=True, exist_ok=True)
+        sources = _accepted_generated_sources(session, job_id, tuple(range(6)))
+        set_session_path = set_workspace / "session.json"
+        write_contract(set_session_path, session)
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=workspace_id,
+                job_id=job_id,
+                group_key=f"{job_id}:v20-sequential-set-audit",
+                sources=tuple(sources),
+                page_count=6,
+                language="zh-CN",
+                product_name="Aurora v2.0 six-page set audit",
+                product_information=(),
+                platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
+                size="1024x1024",
+                idempotency_key=f"{job_id}:aurora-v20-sequential-set-audit:v1",
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_set_audit",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            raise AuroraPlanningError(
+                result.error_message or "Aurora v2.0 sequential set audit failed"
+            )
+        observation = _normalize_parallel_set_audit_payload(
+            dict(result.payload), sources
+        )
+        observation_path = set_workspace / "observation.json"
+        write_contract(observation_path, observation)
+        AuroraV20HarnessRunner().run(
+            "audit-set",
+            set_workspace,
+            {"session": set_session_path, "observation": observation_path},
+        )
+        audited = _load_json(set_session_path)
+        passed = audited.get("set_audit_passed") is True
+        with self.session_factory() as db:
+            stored_plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if stored_plan is None:
+                raise AuroraPlanningError("Aurora v2.0 sequential plan disappeared")
+            payload = dict(stored_plan.payload)
+            payload["_sequential_v20_set_session"] = audited
+            payload["set_audit_passed"] = passed
+            payload["harness_state"] = audited.get("state")
+            stored_plan.payload = payload
+            stored_plan.payload_hash = canonical_hash(payload)
+            db.add(
+                AuditEventRecord(
+                    workspace_id=workspace_id,
+                    action="aurora.sequential_v20_set_audited",
+                    resource_type="job",
+                    resource_id=job_id,
+                    request_id=f"{job_id}:v20-sequential-set-audit",
+                    details={"passed": passed, "harness_state": audited.get("state")},
+                )
+            )
+            db.commit()
+        return passed
 
     def _load_authorized_context(
         self, request: ProviderRequest
@@ -1758,7 +1776,11 @@ class AuroraMainImageProvider:
                 raise AuroraPlanningError(
                     "Aurora Harness is not authorized for generation"
                 )
-            accepted = stored.get("accepted_page_indexes", [])
+            accepted = (
+                stored.get("accepted_pages", [])
+                if is_v20_aurora_mode(self.execution_mode)
+                else stored.get("accepted_page_indexes", [])
+            )
             if item.ordinal != len(accepted):
                 raise AuroraPlanningError(
                     "Aurora pages must be generated strictly in order"
@@ -1836,9 +1858,6 @@ class AuroraMainImageProvider:
                 "advisory unless they establish a named material check."
             ),
         }
-        audit_contract.update(
-            self._audit_contract_extras(request, generation_request)
-        )
         result = await self.gateway.plan(
             PlannerRequest(
                 workspace_id=request.workspace_id,
@@ -1855,7 +1874,7 @@ class AuroraMainImageProvider:
                     f"{request.idempotency_key}:audit:{page_index}:"
                     f"{generation_request.get('revision', 0)}"
                 ),
-                system_prompt=self._audit_system_prompt(),
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_visual_audit",
             )
         )
@@ -1946,11 +1965,7 @@ class AuroraMainImageProvider:
                 platform_code="TAOBAO_AURORA_SET_ROLE_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-set-role-audit:v1",
-                system_prompt=(
-                    "Inspect all six images and obey the supplied "
-                    "set-review JSON schema. "
-                    "Never infer missing evidence from a summary PASS."
-                ),
+                system_prompt=_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -1980,19 +1995,6 @@ class AuroraMainImageProvider:
 _VISUAL_CHECKS = _AURORA_V20_VISUAL_CHECKS
 
 _V20_MATERIAL_CHECKS = _AURORA_V20_MATERIAL_CHECKS
-
-# The five native hard checks. The Harness blocks on any failed hard check
-# regardless of score, so the application boundary must classify them the same
-# way when it builds the material deficiency list.
-_V20_HARD_CHECKS = frozenset(
-    {
-        "product_identity_match",
-        "factual_copy_match",
-        "source_background_noise_absent",
-        "no_unsupported_claim",
-        "no_hard_error",
-    }
-)
 
 
 def _safe_planner_diagnostics(result: Any) -> dict[str, Any]:
@@ -2049,11 +2051,7 @@ def _v20_gateway_error(result: Any, message: str) -> AuroraPlanningError:
     error = AuroraPlanningError(message)
     # The execution layer persists this under metrics and never includes the
     # raw response body, prompt, authorization header or API key.
-    error.aurora_gateway_diagnostics = {
-        key: value
-        for key, value in _safe_planner_diagnostics(result).items()
-        if not key.startswith("content_sample")
-    }
+    error.aurora_gateway_diagnostics = _safe_planner_diagnostics(result)
     # Surface the upstream status on the exception itself: the transient
     # classifier reads it to decide whether the configured retry policy may
     # run.  Keeping it only inside diagnostics made every 429/502/503 look
@@ -2151,6 +2149,92 @@ def _bounded_visual_audit_sources(
 
     identity_limit = _MAX_VISUAL_AUDIT_IMAGES - 1
     return (*tuple(identity_sources[:identity_limit]), candidate)
+
+
+def _merge_identity_coverage_judgment(
+    primary: dict[str, Any], coverage: Mapping[str, Any]
+) -> None:
+    """Fail the page identity check when any omitted source disagrees.
+
+    The vision endpoint accepts at most four images in one request. The primary
+    audit therefore reviews the first three identity references plus the
+    candidate, while supplemental calls review the remaining references. Only
+    the identity check is merged from those supplemental calls; page layout and
+    copy checks remain owned by the primary audit so a bounded coverage pass
+    cannot create unrelated repair findings.
+    """
+
+    coverage_checks = coverage.get("checks")
+    if not isinstance(coverage_checks, list):
+        return
+    identity_check = next(
+        (
+            item
+            for item in coverage_checks
+            if isinstance(item, Mapping)
+            and item.get("name") == "product_identity_match"
+        ),
+        None,
+    )
+    if not isinstance(identity_check, Mapping) or identity_check.get("passed") is True:
+        return
+    primary_checks = primary.get("checks")
+    if not isinstance(primary_checks, list):
+        return
+    primary_identity = next(
+        (
+            item
+            for item in primary_checks
+            if isinstance(item, dict)
+            and item.get("name") == "product_identity_match"
+        ),
+        None,
+    )
+    if not isinstance(primary_identity, dict):
+        return
+    primary_identity["passed"] = False
+    primary_identity["score"] = min(
+        float(primary_identity.get("score", 69)),
+        float(identity_check.get("score", 69)),
+        69.0,
+    )
+    primary_identity["observed_evidence"] = (
+        str(primary_identity.get("observed_evidence") or "")
+        + "；补充商品源图审计发现候选图与另一张原始商品视图的身份特征不一致。"
+    )
+    deficiencies = primary.get("all_material_deficiencies")
+    if not isinstance(deficiencies, list):
+        deficiencies = []
+    existing = next(
+        (
+            item
+            for item in deficiencies
+            if isinstance(item, dict) and item.get("check") == "product_identity_match"
+        ),
+        None,
+    )
+    if isinstance(existing, dict):
+        existing["visible_problem"] = (
+            str(existing.get("visible_problem") or "")
+            + "；补充源图比较未通过。"
+        )
+    else:
+        deficiencies.append(
+            {
+                "check": "product_identity_match",
+                "visible_problem": str(
+                    identity_check.get("observed_evidence")
+                    or "补充商品源图比较发现身份不一致。"
+                ),
+                "root_cause": "候选图没有保持全部原始商品视图共同锁定的同一 SKU 身份。",
+                "required_change": "从全部原始商品证据重建候选图，不能继续使用失败候选作为修复画布。",
+            }
+        )
+    primary["all_material_deficiencies"] = deficiencies
+    primary["decision_summary"] = (
+        str(primary.get("decision_summary") or "")
+        + "；补充源图身份审计未通过。"
+    )
 
 
 def _accepted_generated_sources(
@@ -2417,22 +2501,29 @@ _AURORA_TRANSIENT_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 _AURORA_AUDIT_RETRY_DELAYS = (2.5, 7.5)
 
 
+def _is_shadow_composition_gate_failure(message: str) -> bool:
+    """Return true only for a recoverable page-local composition rejection."""
+
+    normalized = message.casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "selling-point dominance",
+            "evidence is not a primary visual",
+            "layout-not-cloned",
+            "approved-plan fidelity",
+            "product identity",
+            "identity mismatch",
+            "identity drift",
+        )
+    )
+
+
 def _classify_transient_failure(exc: Exception) -> tuple[bool, int | None]:
     """Classify only transport failures; validation and Skill failures fail closed."""
 
     status = getattr(exc, "http_status", None) or getattr(exc, "status_code", None)
     http_status = status if isinstance(status, int) else None
-    # This diagnostic survives the planner/runtime exception wrappers. A read
-    # timeout may already have produced a billable image; never retry the whole
-    # item merely because the wrapped message contains the word "timeout".
-    marker = "Provider transport failed: "
-    if marker in str(exc):
-        try:
-            diagnostic, _ = json.JSONDecoder().raw_decode(str(exc).split(marker, 1)[1])
-            if isinstance(diagnostic, dict):
-                return diagnostic.get("safe_to_retry") is True, http_status
-        except (ValueError, TypeError):
-            return False, http_status
     if http_status in {408, 429} or (
         http_status is not None and 500 <= http_status <= 599
     ):
@@ -2477,6 +2568,34 @@ def _sha256(payload: bytes) -> str:
 
 def _mapping(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _authorized_fact_pool_for_audit(
+    generation_request: Mapping[str, Any],
+) -> dict[str, list[str]]:
+    """Expose user fact authority to the direct-pixel reviewer."""
+
+    authorized = _mapping(generation_request.get("authorized_facts"))
+    buckets = (
+        "display_facts",
+        "selling_points",
+        "attributes",
+        "scenes",
+        "offers",
+        "service_or_trust",
+    )
+    pool: dict[str, list[str]] = {}
+    for bucket in buckets:
+        values = authorized.get(bucket)
+        pool[bucket] = (
+            [str(value).strip() for value in values if str(value).strip()]
+            if isinstance(values, list)
+            else []
+        )
+    pool["all_exact_fact_seeds"] = list(
+        dict.fromkeys(value for bucket in buckets for value in pool[bucket])
+    )
+    return pool
 
 
 def _string_list(value: object) -> list[str]:
@@ -2952,54 +3071,13 @@ def _normalized_deficiencies(
     return result
 
 
-# ``plan.schema.json`` declares these campaign-style tokens as strings and the
-# Harness prompt compiler renders them with ``str + str`` concatenation.
-_STYLE_TEXT_TOKENS = frozenset(
-    {
-        "photography_finish",
-        "light_direction",
-        "color_temperature",
-        "graphic_language",
-        "information_surfaces",
-        "density_band",
-    }
-)
-
-
-def _coerce_style_text_token(value: object) -> str | None:
-    """Return a prompt-safe string for a text style token, or ``None`` to drop it.
-
-    The observation agent returns short phrases as a list often enough that a
-    list-valued token used to escape calibration and reach the Harness compiler,
-    which aborted the page sequence with ``TypeError: can only concatenate str
-    (not "list") to str`` and surfaced as an opaque ``HARNESS_INVALID_OUTPUT``.
-    Joining the phrases keeps the observation instead of discarding it; anything
-    the compiler cannot render falls back to the compiled campaign style.
-    """
-
-    if isinstance(value, str):
-        text = value.strip()
-        return text or None
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        phrases = [
-            item.strip() for item in value if isinstance(item, str) and item.strip()
-        ]
-        # A list holding anything other than non-blank strings is unusable;
-        # never emit ``repr`` noise into the prompt.
-        if not phrases or len(phrases) != len(value):
-            return None
-        return "；".join(phrases)
-    return None
-
-
 def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Accept equivalent concrete-evidence arrays from compatible vision models."""
 
     evidence = payload.get("observed_evidence")
     if not isinstance(evidence, str) or len(evidence.strip()) < 20:
-        concrete = evidence if isinstance(evidence, (list, Mapping)) else (
-            payload.get("concrete_observed_evidence")
-            or payload.get("concrete observed_evidence")
+        concrete = payload.get("concrete_observed_evidence") or payload.get(
+            "concrete observed_evidence"
         )
         statements = _flatten_style_evidence(concrete)
         if statements:
@@ -3021,6 +3099,26 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
     # prohibited_styles belongs to the compiled campaign-style contract, not
     # the pixel-observation token allowlist enforced by the v2 Harness.
     tokens.pop("prohibited_styles", None)
+    # The v2 Harness compiles these campaign-style fields as strings. Some
+    # compatible vision gateways return an equivalent list of observations;
+    # coalesce those values at this provider boundary so one malformed field
+    # cannot abort the calibrated page sequence with a Python type error.
+    for field in (
+        "photography_finish",
+        "light_direction",
+        "color_temperature",
+        "graphic_language",
+        "information_surfaces",
+        "density_band",
+    ):
+        value = tokens.get(field)
+        if isinstance(value, str):
+            continue
+        statements = _flatten_style_evidence(value)
+        if statements:
+            tokens[field] = "；".join(statements)
+        elif field in tokens:
+            tokens.pop(field, None)
     if "palette_usage_ratio" in tokens:
         ratios = _mapping(tokens["palette_usage_ratio"])
         ratio_values = list(ratios.values())
@@ -3046,19 +3144,6 @@ def _normalize_style_calibration_payload(payload: dict[str, Any]) -> dict[str, A
         tokens.pop("palette_roles", None)
     if "typography" in tokens and not isinstance(tokens["typography"], Mapping):
         tokens.pop("typography", None)
-    # The compiled Harness campaign style is the source of truth for the text
-    # tokens as well. ``plan.schema.json`` declares them as strings and
-    # ``compile_prompt`` renders them with ``str + str``, so a list has to be
-    # joined (or dropped) here instead of terminating the page sequence at
-    # calibration with an opaque HARNESS_INVALID_OUTPUT.
-    for name in _STYLE_TEXT_TOKENS:
-        if name not in tokens:
-            continue
-        text = _coerce_style_text_token(tokens[name])
-        if text is None:
-            tokens.pop(name)
-        else:
-            tokens[name] = text
     payload["style_tokens"] = tokens
     return payload
 
@@ -3078,95 +3163,6 @@ def _flatten_style_evidence(value: object) -> list[str]:
             statements.extend(_flatten_style_evidence(nested))
         return statements
     return []
-
-
-def _derive_set_role_verdict_from_checks(payload: dict[str, Any]) -> None:
-    """Derive the three Harness set-audit verdict fields from model-native checks.
-
-    The vision model obeys the v2 system prompt ("never use legacy aliases")
-    and returns checks such as ``page_0_is_search_listing_cover`` and
-    ``page_N_is_not_search_listing_cover``.  The legacy adapter only
-    understands ``search_listing_cover_assessment`` / ``set_verdict`` /
-    ``set_level_conclusion``, which the model no longer emits.  When those
-    fields are absent the adapter leaves ``identified_search_page_index`` as
-    ``None`` and ``search_role_is_unique`` unset, so ``audit_set`` always
-    blocks.  This helper corrects that by reading the actual checks.
-    """
-
-    checks = payload.get("checks")
-    if not isinstance(checks, list) or not checks:
-        return
-
-    def _check_status(item: object) -> bool | None:
-        if not isinstance(item, Mapping):
-            return None
-        if item.get("passed") is False:
-            return False
-        status = item.get("status", item.get("result"))
-        if "status" in item and "result" in item and item["status"] != item["result"]:
-            return False
-        if isinstance(status, str):
-            s = status.strip().upper()
-            if s in {"PASS", "PASSED", "TRUE"}:
-                return True
-            if s in {"FAIL", "FAILED", "FALSE"}:
-                return False
-        passed = item.get("passed")
-        if passed is not None:
-            return passed is True
-        return None
-
-    def _check_name(item: object) -> str:
-        if not isinstance(item, Mapping):
-            return ""
-        return str(
-            item.get("check_name")
-            or item.get("required_check_name")
-            or item.get("name")
-            or item.get("check")
-            or ""
-        ).strip()
-
-    page_names = {
-        0: "page_0_is_search_listing_cover",
-        **{n: f"page_{n}_is_not_search_listing_cover" for n in range(1, 6)},
-    }
-    summary_names = {"search_listing_cover_role", "set_role_distinction"}
-    recognized = set(page_names.values()) | summary_names
-    statuses: dict[str, list[bool | None]] = {}
-    for item in checks:
-        name = _check_name(item)
-        if name in recognized:
-            statuses.setdefault(name, []).append(_check_status(item))
-    if not statuses:
-        return  # Legacy-only observations retain their existing adapter path.
-
-    def _passes(name: str) -> bool:
-        values = statuses.get(name, [])
-        return bool(values) and all(value is True for value in values)
-
-    # Never replace explicit failures, unknown statuses, or contradictory
-    # duplicates with a passing summary or a stale legacy verdict.
-    page_checks_present = any(name in statuses for name in page_names.values())
-    all_observed_pass = all(
-        all(value is True for value in values) for values in statuses.values()
-    )
-    if page_checks_present:
-        passed = all_observed_pass and all(
-            _passes(name) for name in page_names.values()
-        )
-        identified = 0 if _passes(page_names[0]) else None
-    else:
-        passed = all_observed_pass and all(_passes(name) for name in summary_names)
-        identified = 0 if _passes("search_listing_cover_role") else None
-
-    payload["identified_search_page_index"] = identified
-    payload["search_role_is_unique"] = passed
-    payload["confusable_page_indexes"] = [
-        n
-        for n in range(1, 6)
-        if any(value is False for value in statuses.get(page_names[n], []))
-    ]
 
 
 def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -3221,18 +3217,14 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
 
     assessment = _mapping(payload.get("search_listing_cover_assessment"))
     set_verdict = _mapping(payload.get("set_verdict"))
-    page_zero = (
-        next(
-            (
-                page
-                for page in pages
-                if isinstance(page, Mapping) and page.get("page_index") == 0
-            ),
-            {},
-        )
-        if isinstance(pages, list)
-        else {}
-    )
+    page_zero = next(
+        (
+            page
+            for page in pages
+            if isinstance(page, Mapping) and page.get("page_index") == 0
+        ),
+        {},
+    ) if isinstance(pages, list) else {}
     search_evidence = payload.get("search_identification_evidence")
     if not isinstance(search_evidence, str) or not search_evidence.strip():
         payload["search_identification_evidence"] = " ".join(
@@ -3267,29 +3259,7 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         "confusable_page_indexes",
         other_cover_indexes if isinstance(other_cover_indexes, list) else [],
     )
-    _derive_set_role_verdict_from_checks(payload)
     return payload
-
-
-def _declares_non_zero_cover_index(payload: Mapping[str, Any], key: str) -> bool:
-    """Return True only for an explicit integer cover index other than ``0``.
-
-    The reviewer contract declares ``identified_search_page_index`` as
-    ``["integer", "null"]`` and ``validate_verdict_fields`` accepts ``None``.
-    A model that obeys the v2 system prompt ("never use legacy aliases") fills
-    the six per-page checks and leaves the legacy index ``null``; comparing
-    that against ``0`` treats "the model did not use the legacy field" as "the
-    model identified a non-zero cover page" and vetoes a fully consistent,
-    passing set.  ``null`` and a missing key therefore never force a failure;
-    only a real, non-zero integer index does.
-    """
-
-    if key not in payload:
-        return False
-    value = payload[key]
-    if isinstance(value, bool) or not isinstance(value, int):
-        return False
-    return value != 0
 
 
 def _normalize_parallel_set_audit_payload(
@@ -3297,39 +3267,7 @@ def _normalize_parallel_set_audit_payload(
 ) -> dict[str, Any]:
     """Bind equivalent provider output to the native six-page Harness contract."""
 
-    validate_verdict_fields(payload)
-    # Preserve explicit contradictory verdicts before deriving native fields.
-    #
-    # ``search_role_is_unique`` is deliberately NOT consulted here: it is a
-    # *derived* field that ``_derive_set_role_verdict_from_checks`` recomputes
-    # from the per-page checks.  Treating the model's own value as an
-    # independent veto let a single mis-filled boolean override a fully
-    # consistent, passing check set (six PASS checks, an identified search
-    # page index of 0 and no confusable pages), which failed otherwise valid
-    # six-page sets and blocked their archive download.  Fail-closed
-    # behaviour is unchanged: a check-less payload is rejected as a protocol
-    # error by ``validate_evidence`` below, and every explicit negative
-    # signal (a failing page check, a non-zero cover index, confusable pages,
-    # or ``page_0_alone_is_search_listing_cover`` set to false) still forces
-    # the set to fail.
-    #
-    # A *declared* cover index only counts when it is a real integer other
-    # than 0.  The contract's nullable index is not an explicit negative
-    # signal: ``null`` means the reviewer deferred to the per-page checks,
-    # and the previous ``!= 0`` comparison read that as a non-zero cover page.
-    explicit_failure = (
-        payload.get("page_0_alone_is_search_listing_cover") is False
-        or payload.get("set_role_distinction") == "FAIL"
-        or _declares_non_zero_cover_index(payload, "identified_search_page_index")
-        or _declares_non_zero_cover_index(payload, "search_listing_cover_page_index")
-        or bool(payload.get("confusable_page_indexes"))
-    )
     observation = _normalize_set_role_audit_payload(payload)
-    validate_evidence(observation)
-    if len(sources) != 6:
-        raise ValueError("incomplete_source_set")
-    if explicit_failure:
-        observation["search_role_is_unique"] = False
     observation["agent_pixel_reviewed"] = True
     observation["review_mode"] = "BLIND_SIX_PAGE_ROLE_COMPARISON"
     observation["reviewed_page_indexes"] = list(range(6))

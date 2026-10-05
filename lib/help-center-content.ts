@@ -146,7 +146,7 @@ export const HELP_FAQS: readonly HelpFaq[] = [
     id: "partial-success",
     category: "tasks",
     question: "“部分成功”是什么意思？",
-    answer: "套图中的一部分已经生成，另一部分失败。已生成的页可以正常查看和下载：结果包里会附带一份 manifest.json，列明缺了哪几页以及失败原因。进入任务详情，只重试失败项即可，不需要重新创建整套任务。",
+    answer: "套图中的一部分已经生成，另一部分失败。成功图片仍可查看和下载；进入任务详情，只重试失败项即可，不需要重新创建整套任务。",
     keywords: ["部分成功", "失败项", "重试"],
   },
   {

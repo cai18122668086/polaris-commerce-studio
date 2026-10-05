@@ -287,4 +287,26 @@ export function useConfirmPlan(workspaceId: string | undefined) {
   );
 }
 
+export function useFinalizeJob(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, AuthorizedJobAction & { approvalText: string }>(
+    workspaceId,
+    "finalize-job",
+    ({ jobId, approvalText }) => ({ jobId, approvalText }),
+    async (id, input, key) => {
+      assertJobAction(input.allowedActions, "finalize");
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+        {
+          params: {
+            path: { workspace_id: id, job_id: input.jobId },
+            header: { "Idempotency-Key": key },
+          },
+          body: { approval_text: input.approvalText },
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
 export { activeJobStatuses };

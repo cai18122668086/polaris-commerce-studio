@@ -158,12 +158,11 @@ export async function getAssetAccessUrl(
 export function useAssetAccessUrl(
   workspaceId: string | undefined,
   assetId: string | undefined,
-  variant: "original" | "thumbnail" = "original",
 ) {
   return useQuery({
-    queryKey: ["asset-access-url", workspaceId, assetId, "inline", variant],
+    queryKey: ["asset-access-url", workspaceId, assetId, "inline"],
     enabled: Boolean(workspaceId && assetId),
-    queryFn: () => getAssetAccessUrl(workspaceId!, assetId!, "inline", undefined, variant),
+    queryFn: () => getAssetAccessUrl(workspaceId!, assetId!),
     staleTime: 4 * 60_000,
   });
 }

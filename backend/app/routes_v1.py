@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
-from .aurora_execution_modes import is_parallel_aurora_mode
+from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
 from .auth import (
     Principal,
     WorkspaceDependency,
@@ -92,6 +92,7 @@ from .schemas_v1 import (
     DomesticMainImageJobCreate,
     DraftJobUpdate,
     ErrorResponse,
+    FinalizeJobRequest,
     JobCreate,
     JobDetailResponse,
     JobListResponse,
@@ -1611,72 +1612,6 @@ def _allows_preserved_amazon_partial_archive(
     )
 
 
-def _allows_domestic_partial_archive(
-    job: JobRecord,
-    *,
-    enabled: bool,
-    deliverable_count: int,
-) -> bool:
-    """P-7: an incomplete domestic set may still be downloaded, best effort.
-
-    Every page that already produced a ready deliverable is packed; pages that
-    never produced one are listed in ``manifest.json`` instead of failing the
-    whole request.  Gated by ``POLARIS_DOMESTIC_PARTIAL_ARCHIVE_ENABLED`` so the
-    existing "complete set only" contract is untouched by default.
-    """
-
-    return bool(
-        enabled
-        and job.type == JobType.DOMESTIC_MAIN_IMAGE.value
-        and JobStatus(job.status) == JobStatus.PARTIAL
-        and deliverable_count > 0
-    )
-
-
-def _build_domestic_partial_manifest(
-    session: Session,
-    *,
-    workspace: str,
-    job: JobRecord,
-    included_item_ids: set[str],
-    member_names: set[str],
-) -> str:
-    """Describe what the best-effort archive contains and what it is missing."""
-
-    items = session.scalars(
-        select(JobItemRecord)
-        .where(
-            JobItemRecord.workspace_id == workspace,
-            JobItemRecord.job_id == job.id,
-        )
-        .order_by(JobItemRecord.ordinal)
-    ).all()
-    missing_pages = [
-        {
-            "page": item.ordinal,
-            "item_key": item.item_key,
-            "status": item.status,
-            "reason": item.error_code or "NO_DELIVERABLE_ASSET",
-        }
-        for item in items
-        if item.id not in included_item_ids
-    ]
-    payload = {
-        "job_id": job.id,
-        "job_type": job.type,
-        "job_status": job.status,
-        "job_error_code": job.error_code,
-        "expected_pages": job.expected_item_count,
-        "included_pages": sorted(
-            item.ordinal for item in items if item.id in included_item_ids
-        ),
-        "included_files": sorted(member_names),
-        "missing_pages": missing_pages,
-        "note": "部分页未完成，可只重试缺失页；已生成的页可直接下载。",
-    }
-    return json.dumps(payload, ensure_ascii=False, indent=2)
-
-
 @router.get(
     "/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip",
     response_class=Response,
@@ -1707,7 +1642,6 @@ async def download_job_deliverables(
             "DELIVERABLE_ARCHIVE_UNSUPPORTED",
             "该任务类型暂不支持整套下载。",
         )
-    settings = request.app.state.settings
     partial_items: Sequence[JobItemRecord] = ()
     if (
         job.type == JobType.AMAZON_VISUAL_SUITE.value
@@ -1724,6 +1658,12 @@ async def download_job_deliverables(
     preserved_partial_archive = _allows_preserved_amazon_partial_archive(
         job, partial_items
     )
+    if JobStatus(job.status) != JobStatus.COMPLETED and not preserved_partial_archive:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DELIVERABLE_ARCHIVE_NOT_READY",
+            "套图尚未完整生成，请在全部图片完成后下载。",
+        )
 
     deliverables = session.execute(
         select(JobAssetRecord, JobItemRecord, AssetRecord)
@@ -1738,25 +1678,7 @@ async def download_job_deliverables(
         )
         .order_by(JobAssetRecord.ordinal)
     ).all()
-
-    domestic_partial_archive = _allows_domestic_partial_archive(
-        job,
-        enabled=settings.domestic_partial_archive_enabled,
-        deliverable_count=len(deliverables),
-    )
-
-    if (
-        JobStatus(job.status) != JobStatus.COMPLETED
-        and not preserved_partial_archive
-        and not domestic_partial_archive
-    ):
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "DELIVERABLE_ARCHIVE_NOT_READY",
-            "套图尚未完整生成，请在全部图片完成后下载。",
-        )
-
-    if not domestic_partial_archive and len(deliverables) != job.expected_item_count:
+    if len(deliverables) != job.expected_item_count:
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "DELIVERABLE_ARCHIVE_INCOMPLETE",
@@ -1781,7 +1703,6 @@ async def download_job_deliverables(
 
     archive = BytesIO()
     member_names: set[str] = set()
-    included_item_ids: set[str] = set()
     with ZipFile(archive, mode="w", compression=ZIP_STORED) as bundle:
         for _, item, asset in deliverables:
             extension = {
@@ -1790,16 +1711,7 @@ async def download_job_deliverables(
                 "image/webp": ".webp",
             }.get(asset.content_type.lower())
             member_name = f"{item.item_key}{extension or ''}"
-            if domestic_partial_archive:
-                # Best effort: pack whatever is ready instead of blocking the
-                # whole set because one page never produced a deliverable.
-                if (
-                    extension is None
-                    or member_name in member_names
-                    or asset.lifecycle_status != AssetLifecycleStatus.READY.value
-                ):
-                    continue
-            elif (
+            if (
                 extension is None
                 or member_name in member_names
                 or asset.lifecycle_status != AssetLifecycleStatus.READY.value
@@ -1831,30 +1743,7 @@ async def download_job_deliverables(
                     "套图文件完整性校验失败，请联系管理员处理。",
                 )
             member_names.add(member_name)
-            included_item_ids.add(item.id)
             bundle.writestr(member_name, payload)
-
-        if domestic_partial_archive:
-            if not member_names:
-                raise ApiError(
-                    status.HTTP_409_CONFLICT,
-                    "DELIVERABLE_ARCHIVE_INCOMPLETE",
-                    "该任务没有任何可交付的图片，暂不能打包下载。",
-                    {
-                        "expected_item_count": job.expected_item_count,
-                        "deliverable_count": 0,
-                    },
-                )
-            bundle.writestr(
-                "manifest.json",
-                _build_domestic_partial_manifest(
-                    session,
-                    workspace=workspace.workspace_id,
-                    job=job,
-                    included_item_ids=included_item_ids,
-                    member_names=member_names,
-                ),
-            )
 
     archive_name = f"{job.type.replace('_', '-')}-{job.id}.zip"
     return Response(
@@ -2418,6 +2307,136 @@ def confirm_plan(
     session.commit()
     _schedule_outbox(request, background_tasks)
     return job_detail_response(session, job)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+    response_model=JobDetailResponse,
+    tags=["jobs"],
+)
+def finalize_domestic_main_image(
+    job_id: str,
+    payload: FinalizeJobRequest,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    """Record the user's complete-set approval through the native v2 Harness."""
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_FINALIZE_UNSUPPORTED",
+            "只有国内主图六图任务支持 Aurora 最终批准。",
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    policy = plan.payload.get("execution_policy") if plan else None
+    mode = policy.get("execution_mode") if isinstance(policy, Mapping) else None
+    if plan is None or not is_v20_aurora_mode(mode):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_FINALIZE_REQUIRES_V20",
+            "只有 Aurora v2.0 执行链支持最终批准。",
+        )
+
+    from .aurora_main_image_runtime import (
+        AuroraHarnessError,
+        AuroraV20HarnessRunner,
+        write_contract,
+    )
+
+    set_session = plan.payload.get(
+        "_parallel_v20_set_session"
+        if is_parallel_aurora_mode(mode)
+        else "_sequential_v20_set_session"
+    )
+    if not isinstance(set_session, Mapping):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_SET_AUDIT_MISSING",
+            "完整六图审计尚未完成，不能最终批准。",
+        )
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+        idempotency_key=key,
+        request_hash=canonical_hash(
+            {"job_id": job.id, "approval_text": payload.approval_text}
+        ),
+    )
+    if replay:
+        # Approval is durably recorded before cost settlement; a retry can
+        # complete settlement if the first response was interrupted.
+        coordinator = getattr(request.app.state.task_runner, "coordinator", None)
+        if JobStatus(job.status) == JobStatus.AWAITING_FINAL_REVIEW and coordinator:
+            session.commit()
+            coordinator.finalize_job(job.id)
+            session.expire_all()
+        return job_detail_response(session, job)
+    if JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "JOB_NOT_AWAITING_FINAL_REVIEW",
+            "任务当前状态不允许最终批准。",
+        )
+    coordinator = getattr(request.app.state.task_runner, "coordinator", None)
+    if coordinator is None:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "AURORA_FINALIZE_COORDINATOR_UNAVAILABLE",
+            "任务执行协调器当前不可用，暂不能完成最终批准。",
+        )
+    workspace_root = (request.app.state.settings.aurora_work_root / job.id).resolve()
+    set_dir = "parallel-v20" if is_parallel_aurora_mode(mode) else "sequential-v20"
+    finalize_workspace = workspace_root / set_dir / "set-audit"
+    finalize_workspace.mkdir(parents=True, exist_ok=True)
+    session_path = finalize_workspace / "session.json"
+    output_path = finalize_workspace / "final-manifest.json"
+    write_contract(session_path, dict(set_session))
+    try:
+        AuroraV20HarnessRunner().run(
+            "finalize",
+            finalize_workspace,
+            {
+                "session": session_path,
+                "output": output_path,
+                "approval-text": payload.approval_text,
+            },
+        )
+    except (AuroraHarnessError, OSError, ValueError) as exc:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_FINALIZE_FAILED",
+            "Aurora 最终批准未能写入 Harness。",
+            {"reason": getattr(exc, "code", type(exc).__name__)},
+        ) from exc
+
+    plan_payload = dict(plan.payload)
+    finalized_session = json.loads(session_path.read_text(encoding="utf-8"))
+    plan_payload["_harness_session"] = finalized_session
+    plan_payload["final_manifest"] = str(output_path)
+    plan_payload["harness_state"] = finalized_session.get("state")
+    plan.payload = plan_payload
+    plan.payload_hash = canonical_hash(plan_payload)
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=200
+    )
+    session.commit()
+    coordinator.finalize_job(job.id)
+    session.expire_all()
+    finalized_job = get_workspace_job(session, workspace.workspace_id, job.id)
+    return job_detail_response(session, finalized_job)
 
 
 def _validate_model_pose_transfer_assets(
@@ -3014,6 +3033,44 @@ def _copy_job_relations_for_retry(
         if source_plan is not None and source_plan.confirmed_at is not None:
             copied_payload = dict(source_plan.payload)
             copied_payload["state"] = "confirmed"
+            # A transient provider failure can happen after the native v2
+            # harness has issued ``generate-next`` but before an image is
+            # bound.  The source session is then intentionally left in
+            # ``AWAITING_GENERATED_ASSET``.  A user-requested retry has a new
+            # provider idempotency scope, so clear only that unbound pending
+            # call and return to the already authorized page cursor.  This
+            # preserves accepted pages and the immutable plan while ensuring
+            # the retry enters the Skill through a fresh ``generate-next``.
+            retryable_source_items = [
+                item
+                for item in source_items
+                if item.id in selected
+                and isinstance(item.error_details, dict)
+                and item.error_details.get("retryable") is True
+                and item.error_details.get("provider_outcome") == "failed"
+            ]
+            copied_session = copied_payload.get("_harness_session")
+            execution_policy = copied_payload.get("execution_policy")
+            if (
+                source.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                and is_v20_aurora_mode(
+                    execution_policy.get("execution_mode")
+                    if isinstance(execution_policy, Mapping)
+                    else None
+                )
+                and retryable_source_items
+                and isinstance(copied_session, Mapping)
+                and copied_session.get("state") == "AWAITING_GENERATED_ASSET"
+            ):
+                from .aurora_main_image_runtime import (
+                    reset_v20_pending_generation_for_retry,
+                )
+
+                retry_session = reset_v20_pending_generation_for_retry(
+                    copied_session
+                )
+                copied_payload["_harness_session"] = retry_session
+                copied_payload["harness_state"] = "AUTHORIZED"
             cost_value = copied_payload.get("cost")
             cost = dict(cost_value) if isinstance(cost_value, dict) else {}
             pending_items = [item for item in source_items if item.id in selected]

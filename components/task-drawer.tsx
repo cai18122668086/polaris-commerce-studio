@@ -150,7 +150,7 @@ export function TaskDrawer({
           {visibleJobs.map((job) => (
             <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">
-                <div className="drawer-job__top"><StatusBadge status={job.status} stage={job.stage} /><small>{formatDate(job.created_at)}</small></div>
+                <div className="drawer-job__top"><StatusBadge status={job.status} /><small>{formatDate(job.created_at)}</small></div>
                 <Link href={jobWorkspaceHref(job)} onClick={onClose} className="drawer-job__link"><strong>{jobTitle(job)}</strong><p>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "Mock 流程已结束，没有生成真实图片。" : jobNote(job)}</p></Link>
                 {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">

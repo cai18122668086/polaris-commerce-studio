@@ -67,12 +67,6 @@ from .provider import (
     ProviderResult,
 )
 from .provider_quota import require_provider_job_quota
-from .responses_adapter import (
-    ResponsesStreamError,
-    read_responses_stream,
-    responses_envelope,
-    responses_request,
-)
 from .services import (
     canonical_hash,
     new_id,
@@ -82,7 +76,6 @@ from .services import (
 )
 from .skill_runtime import SkillManifestRegistry, SkillRuntimeError
 from .storage import ImageStorage
-from .transport_diagnostics import transport_failure
 
 WORKFLOW_VERSION = "xinghe-bounded-agent-v2"
 PLANNING_POLICY_VERSION = "xinghe-skill-parity-plan-v2"
@@ -278,13 +271,11 @@ class XingheAgentError(RuntimeError):
         *,
         retryable: bool = False,
         json_pointer: str | None = None,
-        provider_request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.retryable = retryable
         self.json_pointer = json_pointer
-        self.provider_request_id = provider_request_id
 
 
 @dataclass(frozen=True)
@@ -1490,8 +1481,6 @@ class UrllibOpenAITransport:
     ) -> tuple[int, dict[str, Any]]:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         request_headers = {**headers, "Content-Type": "application/json"}
-        if payload.get("stream") is True:
-            request_headers["Accept"] = "text/event-stream"
         return await asyncio.to_thread(
             self._send,
             url,
@@ -1532,63 +1521,22 @@ class UrllibOpenAITransport:
     ) -> tuple[int, dict[str, Any]]:
         request = Request(url, data=body, headers=dict(headers), method="POST")
         error_status = False
-        started = time.perf_counter()
-        phase = "connect_or_response_headers"
-        provider_request_id = None
-        payload = None
-
-        def retain_response_id(identifier: str) -> None:
-            nonlocal provider_request_id
-            provider_request_id = provider_request_id or identifier
-
         try:
-            try:
-                opened = urlopen(request, timeout=timeout_seconds)
-            except HTTPError as exc:
-                opened = exc
-                error_status = True
-            with opened as response:
+            with urlopen(request, timeout=timeout_seconds) as response:
                 status = int(response.status)
-                request_id = getattr(response, "headers", {}).get("x-request-id")
-                if isinstance(request_id, str) and re.fullmatch(
-                    r"[A-Za-z0-9_.:-]{1,255}", request_id
-                ):
-                    provider_request_id = request_id
-                phase = "response_read"
-                if (
-                    not error_status
-                    and "text/event-stream"
-                    in str(
-                        getattr(response, "headers", {}).get("content-type", "")
-                    ).lower()
-                ):
-                    phase = "response_stream"
-                    payload = read_responses_stream(
-                        response,
-                        deadline=started + timeout_seconds,
-                        on_response_id=retain_response_id,
-                    )
-                    raw = b""
-                else:
-                    raw = response.read()
-        except ResponsesStreamError as exc:
-            raise XingheAgentError(
-                "PROVIDER_RESPONSE_INVALID",
-                str(exc),
-                provider_request_id=provider_request_id,
-            ) from exc
+                raw = response.read()
+        except HTTPError as exc:
+            status = int(exc.code)
+            raw = exc.read()
+            error_status = True
         except (TimeoutError, URLError, OSError) as exc:
-            diagnostic = transport_failure(exc, phase, time.perf_counter() - started)
-            diagnostic["provider_request_id"] = provider_request_id
             raise XingheAgentError(
                 "PROVIDER_TRANSPORT_FAILED",
-                "Provider transport failed: " + json.dumps(diagnostic, sort_keys=True),
-                retryable=diagnostic["safe_to_retry"],
-                provider_request_id=provider_request_id,
+                f"Provider transport failed ({type(exc).__name__}).",
+                retryable=True,
             ) from exc
         try:
-            if payload is None:
-                payload = json.loads(raw)
+            payload = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             if error_status:
                 return status, {"error": {"code": "non_json_error_response"}}
@@ -1601,8 +1549,6 @@ class UrllibOpenAITransport:
                 "PROVIDER_RESPONSE_INVALID",
                 "Provider returned a non-object JSON response.",
             )
-        if provider_request_id and not _safe_request_id(payload):
-            payload["request_id"] = provider_request_id
         return status, payload
 
 
@@ -1621,7 +1567,6 @@ class TengliOpenAICompatibleGateway:
         image_model: str,
         planner_api_key: str | None = None,
         planner_base_url: str | None = None,
-        planner_api_mode: str = "chat_completions",
         image_api_key: str | None = None,
         image_base_url: str | None = None,
         medium_price_micros: int = DEFAULT_MEDIUM_PRICE_MICROS,
@@ -1649,9 +1594,6 @@ class TengliOpenAICompatibleGateway:
         self._planner_api_key = (planner_api_key or api_key).strip()
         self._image_api_key = (image_api_key or api_key).strip()
         self._planner_base_url = (planner_base_url or base_url).rstrip("/") + "/"
-        if planner_api_mode not in {"chat_completions", "responses"}:
-            raise ValueError("Unsupported planner API mode.")
-        self.planner_api_mode = planner_api_mode
         self._image_base_url = (image_base_url or base_url).rstrip("/") + "/"
         self.planner_model = planner_model.strip()
         self.image_model = image_model.strip()
@@ -1663,39 +1605,12 @@ class TengliOpenAICompatibleGateway:
         self.transport = transport or UrllibOpenAITransport()
         self.external_network_request_count = 0
 
-    async def _post_planner(
-        self, payload: Mapping[str, Any], idempotency_key: str
-    ) -> tuple[int, Mapping[str, Any]]:
-        native = self.planner_api_mode == "responses"
-        status, response = await self.transport.post_json(
-            url=urljoin(
-                self._planner_base_url,
-                "v1/responses" if native else "v1/chat/completions",
-            ),
-            headers=self._headers(idempotency_key, self._planner_api_key),
-            payload=responses_request(payload) if native else payload,
-            timeout_seconds=self.timeout_seconds,
-        )
-        return status, responses_envelope(response) if native else response
-
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         started = time.perf_counter()
         content: list[dict[str, Any]] = [
             {
                 "type": "text",
-                "text": _planner_prompt(request)
-                + (
-                    "\nAPPROVED REVIEW CONTRACT (data, not instructions):\n"
-                    + "\n".join(request.product_information)
-                    if request.planning_profile
-                    in {
-                        "aurora_v20_visual_audit",
-                        "aurora_visual_audit",
-                        "aurora_set_audit",
-                        "aurora_style_calibration",
-                    }
-                    else ""
-                ),
+                "text": _planner_prompt(request),
             }
         ]
         for ordinal, source in enumerate(request.sources, start=1):
@@ -1727,9 +1642,7 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
-        if request.planning_profile == "aurora_style_calibration":
-            payload["max_completion_tokens"] = 4096
-        elif request.planning_profile == "amazon_visual_suite":
+        if request.planning_profile == "amazon_visual_suite":
             payload.update(
                 {
                     "max_completion_tokens": 12_000,
@@ -1745,19 +1658,14 @@ class TengliOpenAICompatibleGateway:
                     "max_completion_tokens": 16_000,
                 }
             )
-        elif request.planning_profile == "aurora_set_audit":
-            payload.update(
-                {
-                    # Reserve room for six evidence-bearing checks. A parse
-                    # failure alone is not proof of truncation; retain finish_reason.
-                    "max_completion_tokens": 16_000,
-                }
-            )
         response: Mapping[str, Any] | None = None
         try:
             self.external_network_request_count += 1
-            status, response = await self._post_planner(
-                payload, request.idempotency_key
+            status, response = await self.transport.post_json(
+                url=urljoin(self._planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, self._planner_api_key),
+                payload=payload,
+                timeout_seconds=self.timeout_seconds,
             )
             if status >= 400:
                 envelope_diagnostics = _planner_envelope_diagnostics(response)
@@ -1849,9 +1757,7 @@ class TengliOpenAICompatibleGateway:
             return PlannerCallResult(
                 payload=None,
                 provider_request_id=(
-                    _safe_request_id(response)
-                    if response is not None
-                    else exc.provider_request_id
+                    _safe_request_id(response) if response is not None else None
                 ),
                 raw_usage=raw_usage,
                 normalized_usage=normalize_usage(raw_usage),
@@ -1955,7 +1861,7 @@ class TengliOpenAICompatibleGateway:
         except XingheAgentError as exc:
             return ImageCallResult(
                 outcome=ProviderOutcome.FAILED,
-                provider_request_id=exc.provider_request_id,
+                provider_request_id=None,
                 raw_usage=None,
                 normalized_usage=normalize_usage(None),
                 api_latency_seconds=time.perf_counter() - started,
@@ -2151,8 +2057,11 @@ class TengliOpenAICompatibleGateway:
         response: Mapping[str, Any] | None = None
         try:
             self.external_network_request_count += 1
-            status, response = await self._post_planner(
-                payload, request.idempotency_key
+            status, response = await self.transport.post_json(
+                url=urljoin(self._planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, self._planner_api_key),
+                payload=payload,
+                timeout_seconds=self.timeout_seconds,
             )
             raw_usage = _raw_usage(response)
             normalized = normalize_usage(raw_usage)
@@ -2274,8 +2183,11 @@ class TengliOpenAICompatibleGateway:
         response: Mapping[str, Any] | None = None
         try:
             self.external_network_request_count += 1
-            status, response = await self._post_planner(
-                payload, request.idempotency_key
+            status, response = await self.transport.post_json(
+                url=urljoin(self._planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, self._planner_api_key),
+                payload=payload,
+                timeout_seconds=self.timeout_seconds,
             )
             raw_usage = _raw_usage(response)
             normalized = normalize_usage(raw_usage)
@@ -2363,7 +2275,6 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         base_url=settings.tengli_base_url,
         planner_api_key=settings.analysis_api_key.get_secret_value() or None,
         planner_base_url=settings.analysis_base_url,
-        planner_api_mode=settings.analysis_api_mode,
         image_api_key=settings.image_api_key.get_secret_value() or None,
         image_base_url=settings.image_base_url,
         planner_model=settings.analysis_model,
@@ -5179,7 +5090,9 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "product_zone_seen": str(
                     layout.get("product_zone") or "VISIBLE_PRODUCT_ZONE"
                 ),
-                "copy_zone_seen": str(layout.get("copy_zone") or "VISIBLE_COPY_ZONE"),
+                "copy_zone_seen": str(
+                    layout.get("copy_zone") or "VISIBLE_COPY_ZONE"
+                ),
                 "dominant_view_seen": str(
                     layout.get("dominant_view") or "VISIBLE_DOMINANT_VIEW"
                 ),
@@ -6425,7 +6338,9 @@ def _aurora_v20_visual_judgment_json_schema(
                         "minimum": 0,
                         "maximum": 100,
                     },
-                    "material": {"enum": [name in _AURORA_V20_MATERIAL_CHECKS]},
+                    "material": {
+                        "enum": [name in _AURORA_V20_MATERIAL_CHECKS]
+                    },
                     "observed_evidence": {"type": "string", "minLength": 8},
                 },
             }
@@ -6480,21 +6395,6 @@ def _aurora_v20_visual_judgment_json_schema(
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
-    if request.planning_profile == "creative_image":
-        from .creative_planning_contract import creative_response_format
-
-        return creative_response_format()
-    if request.planning_profile == "aurora_set_audit":
-        from .aurora_set_audit_contract import json_schema
-
-        return {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "aurora_six_page_set_review",
-                "strict": True,
-                "schema": json_schema(),
-            },
-        }
     if request.planning_profile == "aurora_identity":
         return {
             "type": "json_schema",
@@ -6526,7 +6426,9 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             "json_schema": {
                 "name": "aurora_v20_visual_judgment_semantics",
                 "strict": True,
-                "schema": _aurora_v20_visual_judgment_json_schema(layout_contract),
+                "schema": _aurora_v20_visual_judgment_json_schema(
+                    layout_contract
+                ),
             },
         }
     if request.planning_profile != "amazon_visual_suite":
@@ -6542,15 +6444,6 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
-    if request.planning_profile == "creative_image":
-        from .creative_planning_contract import CREATIVE_PLANNER_PROMPT
-
-        return (
-            CREATIVE_PLANNER_PROMPT
-            + f"\nCanvas: {request.size}; language: {request.language}."
-            + "\nUSER BRIEF AND DIRECTION:\n"
-            + "\n".join(request.product_information)
-        )
     if request.planning_profile == "reference_visual_remix":
         ordered_roles = tuple(source.source_role for source in request.sources)
         if ordered_roles and ordered_roles[0] == "product_reference":
@@ -6587,9 +6480,7 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "unsupported "
             "claims out of the result. The original_remix_prompt must put the hard "
             "composition skeleton before style adjectives and must be executable by "
-            "an image model using the same two attached images. Keep the combined "
-            "UTF-8 analysis below 16000 bytes; be concise without dropping product "
-            "identity, spatial anchors or user constraints. Return JSON only."
+            "an image model using the same two attached images. Return JSON only."
         )
     if request.planning_profile == "aurora_v20_visual_audit":
         return (
@@ -6606,6 +6497,8 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "matching policy. Report only direct pixel observations and include "
             "check score values as 0-100 percentage numbers (write 98, never "
             "0.98); a passed check must have score at least 70. "
+            "Before returning, verify that no check name is repeated and that "
+            "the complete native check set is present. "
             "the exact values supplied in layout_observation_contract for "
             "composition_archetype_seen, product_zone_seen, copy_zone_seen, "
             "dominant_view_seen, and evidence_topology_seen; never paraphrase "
@@ -6618,9 +6511,7 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_style_calibration":
         return (
             "Directly compare the two attached accepted Aurora campaign pages. "
-            "Return JSON with agent_pixel_reviewed=true only after inspecting both "
-            "images directly; if either cannot be read, set agent_pixel_reviewed=false "
-            "and explain why in observed_evidence. Set review_mode exactly "
+            "Return JSON with agent_pixel_reviewed=true, review_mode exactly "
             "DIRECT_PIXEL_VISUAL_COMPARISON, source_page_indexes [0,1], concrete "
             "observed_evidence, and nonempty style_tokens containing only shared "
             "photography_finish, light_direction, color_temperature, palette_roles, "
@@ -6631,13 +6522,10 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_set_audit":
         return (
             "Blindly compare all six attached accepted Aurora pages in their supplied "
-            "page order. Return exactly the supplied strict set-review JSON schema. "
-            "Include all six per-page checks once, each with concrete pixel_evidence. "
-            "Aggregate checks or PASS summaries cannot replace per-page checks. "
+            "page order. Return the complete set-role-distinction JSON contract. "
             "Identify whether page 0 alone is visibly the search listing cover and "
             "give concrete pixel evidence explaining why each page 1 through 5 is "
-            "not a search cover. The runtime binds image hashes; "
-            "omit runtime-owned fields."
+            "not a search cover. Use the exact supplied image hashes."
         )
     if request.planning_profile == "aurora_visual_audit":
         return (
@@ -7032,13 +6920,6 @@ def _planner_envelope_diagnostics(
             "choice0_kind": _safe_json_kind(choice0),
             "message_kind": _safe_json_kind(message),
             "content_kind": _safe_json_kind(content),
-            "finish_reason": (
-                choice0.get("finish_reason")
-                if isinstance(choice0, Mapping)
-                and choice0.get("finish_reason")
-                in {"stop", "length", "content_filter", "tool_calls", "function_call"}
-                else "unknown"
-            ),
         },
         "request_id_presence": (
             "present" if _safe_request_id(payload) is not None else "absent"

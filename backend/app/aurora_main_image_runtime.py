@@ -194,6 +194,31 @@ def write_contract(path: Path, value: Mapping[str, Any] | Sequence[Any]) -> None
     )
 
 
+def reset_v20_pending_generation_for_retry(
+    session: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return an authorized v2 session after a transient unbound provider call.
+
+    The native Skill intentionally remains in ``AWAITING_GENERATED_ASSET``
+    after ``generate-next`` until an image is recorded.  The API's bounded
+    transient retry is a new attempt scope; when no artifact was returned, it
+    must clear that unbound token before issuing the next native request.
+    """
+
+    reset = dict(session)
+    reset["pending_generation"] = None
+    reset["active_page_index"] = None
+    reset["state"] = "AUTHORIZED"
+    authorization = dict(
+        session.get("authorization")
+        if isinstance(session.get("authorization"), Mapping)
+        else {}
+    )
+    authorization["retry_after_provider_failure"] = True
+    reset["authorization"] = authorization
+    return reset
+
+
 def verify_aurora_v20_source(skill_root: Path | None = None) -> dict[str, Any]:
     """Fail closed if any imported v2.0 source file changes or disappears."""
 

@@ -17,6 +17,7 @@ const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   planning: "规划中",
   awaiting_confirmation: "待确认",
   processing: "处理中",
+  awaiting_final_review: "等待整组确认",
   cancelling: "取消中",
   partial: "部分成功",
   completed: "已完成",
@@ -31,15 +32,13 @@ const JOB_STAGE_LABELS: Record<string, string> = {
   awaiting_confirmation: "等待确认",
   processing: "处理中",
   generating: "生成中",
+  awaiting_final_review: "等待整组确认",
   validating: "校验中",
   validation: "校验中",
   organizing: "整理结果中",
   planning_failed: "规划失败",
   suite_quality_reported: "质量检查已完成",
   suite_quality_passed: "质量检查通过",
-  set_auditing: "图片已生成，整组审核中",
-  set_audit_error: "图片已生成，审核异常待确认",
-  set_audit_failed: "图片已生成，整组审核未通过",
   suite_review_reported: "套图审核已完成",
   partial: "部分成功",
   completed: "已完成",
@@ -107,7 +106,7 @@ export function jobTitle(job: Job | JobDetail): string { return job.display_name
 export function jobCount(job: Job | JobDetail): string { return `${job.succeeded_item_count} / ${job.expected_item_count} 项`; }
 
 export function jobNote(job: Job | JobDetail): string {
-  if (job.status === "partial") return "部分页未完成，可只重试缺失页；已生成的页可直接下载。";
+  if (job.status === "partial") return "部分结果已完成，可在详情中查看并重试失败项目。";
   if (job.status === "failed") return "生成未完成，请查看详情中的安全错误摘要。";
   if (job.status === "awaiting_confirmation") return "生成方案已经就绪，等待确认后继续。";
   if (job.status === "cancelling") return "正在安全取消任务。";
@@ -121,12 +120,6 @@ export function jobNote(job: Job | JobDetail): string {
 }
 
 export function safeJobFailureSummary(errorCode?: string | null): string {
-  if (errorCode === "AURORA_SET_AUDIT_ERROR") {
-    return "图片已生成并保留，整组审核发生技术错误，审核结论待确认。";
-  }
-  if (errorCode === "AURORA_SET_AUDIT_FAILED") {
-    return "图片已生成并保留，整组审核未通过，请检查审核结果。";
-  }
   if (errorCode === "AURORA_SEQUENCE_HALTED") {
     return "前序图片未完成，后续图片已停止生成。";
   }

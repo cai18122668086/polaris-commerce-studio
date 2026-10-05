@@ -175,10 +175,10 @@ def normalized_text(value: object) -> str:
 
 def requested_page_count(configuration: Mapping[str, Any], default: int = 8) -> int:
     value = configuration.get("page_count", default)
-    if type(value) is not int or not 1 <= value <= 12:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise AdapterValidationError(
             "DETAIL_PAGE_COUNT_INVALID",
-            "Detail page_count must be an integer from 1 to 12.",
+            "Detail page_count must be a positive integer.",
         )
     return value
 

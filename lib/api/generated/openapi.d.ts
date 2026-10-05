@@ -1422,6 +1422,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finalize Domestic Main Image
+         * @description Record the user's complete-set approval through the native v2 Harness.
+         */
+        post: operations["finalize_domestic_main_image_api_v1_workspaces__workspace_id__jobs__job_id__finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan": {
         parameters: {
             query?: never;
@@ -2133,6 +2153,12 @@ export interface components {
         };
         /** DomesticMainImageConfiguration */
         DomesticMainImageConfiguration: {
+            /**
+             * Aurora Shadow Mode
+             * @default off
+             * @enum {string}
+             */
+            aurora_shadow_mode: "off" | "contract_first_rebuild_v1" | "execution_semantics_v1";
             /** Category */
             category: string;
             /**
@@ -2160,6 +2186,8 @@ export interface components {
             service_or_trust_facts?: string[];
             /** Style Preferences */
             style_preferences?: string[];
+            /** User Provided Display Facts */
+            user_provided_display_facts?: string[];
         };
         /** DomesticMainImageInput */
         DomesticMainImageInput: {
@@ -2257,6 +2285,11 @@ export interface components {
             platform: "auto" | "taobao" | "tmall" | "alibaba1688" | "jd" | "pinduoduo" | "amazon";
             /** Url */
             url: string;
+        };
+        /** FinalizeJobRequest */
+        FinalizeJobRequest: {
+            /** Approval Text */
+            approval_text: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2736,7 +2769,7 @@ export interface components {
          * JobStatus
          * @enum {string}
          */
-        JobStatus: "draft" | "queued" | "planning" | "awaiting_confirmation" | "processing" | "cancelling" | "partial" | "completed" | "failed" | "cancelled";
+        JobStatus: "draft" | "queued" | "planning" | "awaiting_confirmation" | "processing" | "awaiting_final_review" | "cancelling" | "partial" | "completed" | "failed" | "cancelled";
         /**
          * JobType
          * @enum {string}
@@ -6465,6 +6498,44 @@ export interface operations {
                 };
                 content: {
                     "application/zip": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_domestic_main_image_api_v1_workspaces__workspace_id__jobs__job_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinalizeJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
                 };
             };
             /** @description Validation Error */

@@ -1665,6 +1665,16 @@
       },
       "DomesticMainImageConfiguration": {
         "properties": {
+          "aurora_shadow_mode": {
+            "default": "off",
+            "enum": [
+              "off",
+              "contract_first_rebuild_v1",
+              "execution_semantics_v1"
+            ],
+            "title": "Aurora Shadow Mode",
+            "type": "string"
+          },
           "category": {
             "maxLength": 120,
             "minLength": 1,
@@ -1736,6 +1746,14 @@
             },
             "maxItems": 12,
             "title": "Style Preferences",
+            "type": "array"
+          },
+          "user_provided_display_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "User Provided Display Facts",
             "type": "array"
           }
         },
@@ -2047,6 +2065,21 @@
           "url"
         ],
         "title": "FetchItemRequest",
+        "type": "object"
+      },
+      "FinalizeJobRequest": {
+        "properties": {
+          "approval_text": {
+            "maxLength": 240,
+            "minLength": 2,
+            "title": "Approval Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_text"
+        ],
+        "title": "FinalizeJobRequest",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3352,6 +3385,7 @@
           "planning",
           "awaiting_confirmation",
           "processing",
+          "awaiting_final_review",
           "cancelling",
           "partial",
           "completed",
@@ -11145,6 +11179,89 @@
           }
         ],
         "summary": "Download Job Deliverables",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize": {
+      "post": {
+        "description": "Record the user's complete-set approval through the native v2 Harness.",
+        "operationId": "finalize_domestic_main_image_api_v1_workspaces__workspace_id__jobs__job_id__finalize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Finalize Domestic Main Image",
         "tags": [
           "jobs"
         ]

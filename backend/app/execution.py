@@ -18,11 +18,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import aurora_set_audit
 from . import provider_quota_ledger as quota_ledger
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
     is_parallel_aurora_mode,
+    is_v20_aurora_mode,
 )
 from .config import (
     default_masked_skill_root,
@@ -579,6 +579,8 @@ class ExecutionCoordinator:
         current = self.prepare(job_id)
         if current is None or current in TERMINAL_JOB_STATUSES:
             return current
+        if current == JobStatus.AWAITING_FINAL_REVIEW:
+            return current
         if current == JobStatus.CANCELLING:
             return self.cancel(job_id)
         if current == JobStatus.PLANNING:
@@ -607,6 +609,7 @@ class ExecutionCoordinator:
                 return current
 
         is_parallel_aurora = self._is_parallel_aurora_job(job_id)
+        is_v20_aurora = self._is_v20_aurora_job(job_id)
         parallel_mode = (
             self._parallel_aurora_mode(job_id) if is_parallel_aurora else None
         )
@@ -625,7 +628,7 @@ class ExecutionCoordinator:
             if not leases:
                 retry_delay = (
                     self._seconds_until_aurora_retry(job_id)
-                    if is_parallel_aurora
+                    if is_v20_aurora
                     else None
                 )
                 if retry_delay is not None:
@@ -648,8 +651,17 @@ class ExecutionCoordinator:
         # review call to the default execution path: even a read-only review would
         # add latency and alter the original one-pass delivery protocol. The durable
         # review service remains available for an explicitly requested diagnostic run.
-        if is_parallel_aurora:
-            await self._run_parallel_aurora_set_audit(job_id)
+        if is_v20_aurora:
+            set_audit, set_audit_error = await self._run_parallel_aurora_set_audit(
+                job_id
+            )
+            if set_audit is False and set_audit_error is not None:
+                self._mark_parallel_aurora_set_audit_failed(job_id, set_audit_error)
+            elif set_audit in (True, False) and set_audit_error is None:
+                # A native v2 audit can complete with a BLOCKED verdict.  The
+                # skill still moves to user final review so the residual issue
+                # is disclosed and the user can explicitly approve the set.
+                return self._mark_aurora_final_review_pending(job_id)
         return self.finalize_job(job_id)
 
     def _skip_parallel_pages_after_style_failure(self, job_id: str) -> None:
@@ -665,57 +677,99 @@ class ExecutionCoordinator:
     async def _run_parallel_aurora_set_audit(
         self, job_id: str
     ) -> tuple[bool | None, Exception | None]:
-        """Claim once under the job lock and fence every result commit."""
+        """Run the six-page set audit, reporting why it failed.
+
+        Returns ``(None, None)`` when the audit does not apply, ``(passed, None)``
+        for a verdict, and ``(False, exc)`` when the audit raised.  The exception
+        used to be swallowed, which made every ``AURORA_SET_AUDIT_FAILED`` row
+        unrecoverable after the fact.
+        """
+
         with self.session_factory() as session:
-            job = session.get(JobRecord, job_id, with_for_update=True)
-            if job is None or JobStatus(job.status) in TERMINAL_JOB_STATUSES:
-                return None, None
             statuses = session.scalars(
                 select(JobItemRecord.status).where(JobItemRecord.job_id == job_id)
             ).all()
-            if len(statuses) != 6 or any(
-                status not in SUCCESS_ITEM_STATUSES for status in statuses
-            ):
-                return None, None
-            plan = aurora_set_audit.latest_plan(session, job_id)
-            if plan is None or not aurora_set_audit.needs_audit(plan):
-                return None, None
-            token = aurora_set_audit.claim(session, job, plan)
-            session.commit()
-            if token is None:
-                return None, None
+        if len(statuses) != 6 or any(
+            status not in SUCCESS_ITEM_STATUSES for status in statuses
+        ):
+            return None, None
         provider: object = self.provider
         routes = getattr(provider, "routes", None)
         if isinstance(routes, Mapping):
             provider = routes.get(JobType.DOMESTIC_MAIN_IMAGE.value, provider)
-        audit = getattr(provider, "audit_parallel_set", None)
-        result: bool | aurora_set_audit.SetAuditResult | None = None
-        error: Exception | None = None
-        try:
-            if not callable(audit):
-                raise RuntimeError("Set audit provider is unavailable")
-            result = await asyncio.wait_for(
-                audit(job_id), timeout=aurora_set_audit.AUDIT_TIMEOUT_SECONDS
-            )
-            if not isinstance(result, (bool, aurora_set_audit.SetAuditResult)):
-                raise TypeError("Invalid set audit result")
-        except Exception as exc:
-            logger.warning(
-                "aurora set audit error: job_id=%s type=%s", job_id, type(exc).__name__
-            )
-            error = exc
         with self.session_factory() as session:
-            committed = aurora_set_audit.commit_result(
-                session, job_id, token, result, error
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
             )
-        if not committed:
-            return None, None
-        passed = (
-            result.passed
-            if isinstance(result, aurora_set_audit.SetAuditResult)
-            else result is True
+            policy = plan.payload.get("execution_policy") if plan else None
+            mode = policy.get("execution_mode") if isinstance(policy, Mapping) else None
+        audit = getattr(
+            provider,
+            "audit_parallel_set"
+            if is_parallel_aurora_mode(mode) or not mode
+            else "audit_sequential_v20_set",
+            None,
         )
-        return passed if error is None else False, error
+        if not callable(audit):
+            return None, None
+        try:
+            return bool(await audit(job_id)), None
+        except Exception as exc:
+            logger.exception("aurora set audit failed: job_id=%s", job_id)
+            return False, exc
+
+    def _mark_aurora_final_review_pending(self, job_id: str) -> JobStatus | None:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            if JobStatus(job.status) == JobStatus.AWAITING_FINAL_REVIEW:
+                return JobStatus.AWAITING_FINAL_REVIEW
+            transition_job(
+                job,
+                JobStatus.AWAITING_FINAL_REVIEW,
+                stage="awaiting_final_review",
+                progress=95,
+            )
+            session.commit()
+            return JobStatus.AWAITING_FINAL_REVIEW
+
+    def _mark_parallel_aurora_set_audit_failed(
+        self, job_id: str, error: Exception | None = None
+    ) -> None:
+        with self.session_factory() as session:
+            item = session.scalar(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status == JobItemStatus.SUCCEEDED.value,
+                )
+                .order_by(JobItemRecord.ordinal.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if item is None:
+                return
+            item.status = JobItemStatus.FAILED.value
+            item.stage = "set_audit_failed"
+            item.error_code = "AURORA_SET_AUDIT_FAILED"
+            item.error_message = "Aurora v2.0 six-page set audit did not pass."
+            item.error_details = {
+                "retryable": False,
+                "scope": "set_audit",
+                "reason": type(error).__name__ if error is not None else None,
+                "message": str(error)[:512] if error is not None else None,
+                "http_status": getattr(error, "http_status", None),
+                "aurora_gateway_diagnostics": getattr(
+                    error, "aurora_gateway_diagnostics", None
+                ),
+            }
+            item.finished_at = utc_now()
+            item.state_version += 1
+            session.commit()
 
     def _seconds_until_aurora_retry(self, job_id: str) -> float | None:
         with self.session_factory() as session:
@@ -763,6 +817,22 @@ class ExecutionCoordinator:
             return (
                 isinstance(policy, Mapping)
                 and is_parallel_aurora_mode(policy.get("execution_mode"))
+            )
+
+    def _is_v20_aurora_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            if job is None or job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+                return False
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            policy = plan.payload.get("execution_policy") if plan else None
+            return isinstance(policy, Mapping) and is_v20_aurora_mode(
+                policy.get("execution_mode")
             )
 
     def _parallel_aurora_mode(self, job_id: str) -> str | None:
@@ -1265,6 +1335,21 @@ class ExecutionCoordinator:
             and is_parallel_aurora_mode(policy.get("execution_mode"))
         )
 
+    @staticmethod
+    def _job_uses_v20_aurora(session: Session, job_id: str) -> bool:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job_id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None or not isinstance(plan.payload, Mapping):
+            return False
+        policy = plan.payload.get("execution_policy")
+        return isinstance(policy, Mapping) and is_v20_aurora_mode(
+            policy.get("execution_mode")
+        )
+
     def _recover_expired_attempt(
         self, session: Session, job: JobRecord
     ) -> tuple[AttemptLease | None, bool]:
@@ -1302,7 +1387,7 @@ class ExecutionCoordinator:
         attempt.finished_at = now
         if (
             job.type == JobType.DOMESTIC_MAIN_IMAGE.value
-            and self._job_uses_parallel_aurora(session, job.id)
+            and self._job_uses_v20_aurora(session, job.id)
             and attempt.attempt_no <= self.max_aurora_retries
         ):
             # The v2.0 page snapshot and Provider idempotency key are immutable.
@@ -1341,8 +1426,9 @@ class ExecutionCoordinator:
             if isinstance(item.configuration, Mapping)
             else None
         )
-        if job.type == JobType.DOMESTIC_MAIN_IMAGE.value and isinstance(
-            snapshot, Mapping
+        if (
+            job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+            and isinstance(snapshot, Mapping)
         ):
             provider_idempotency_key = (
                 f"{job.id}:{item.id}:plan-{snapshot.get('plan_revision', 1)}:"
@@ -1379,11 +1465,7 @@ class ExecutionCoordinator:
             operation=attempt.operation,
             configuration={
                 "job": dict(job.configuration),
-                "item": {
-                    **dict(item.configuration),
-                    "item_key": item.item_key,
-                    "ordinal": item.ordinal,
-                },
+                "item": dict(item.configuration),
             },
         )
 
@@ -1712,14 +1794,14 @@ class ExecutionCoordinator:
                     )
                     or (
                         job.type == JobType.DOMESTIC_MAIN_IMAGE.value
-                        and self._job_uses_parallel_aurora(session, job.id)
+                        and self._job_uses_v20_aurora(session, job.id)
                         and attempt.attempt_no <= self.max_aurora_retries
                     )
                 )
                 aurora_retry = (
                     should_retry
                     and job.type == JobType.DOMESTIC_MAIN_IMAGE.value
-                    and self._job_uses_parallel_aurora(session, job.id)
+                    and self._job_uses_v20_aurora(session, job.id)
                 )
                 item.status = (
                     JobItemStatus.RETRY_WAIT.value
@@ -2030,20 +2112,6 @@ class ExecutionCoordinator:
             if nonterminal:
                 return current
 
-            plan = aurora_set_audit.latest_plan(session, job_id)
-            review = aurora_set_audit.audit_state(plan)
-            all_generated = (
-                sum(counts.get(value, 0) for value in SUCCESS_ITEM_STATUSES)
-                == job.expected_item_count
-            )
-            if (
-                current != JobStatus.CANCELLING
-                and all_generated
-                and aurora_set_audit.needs_audit(plan)
-                and review.get("status") not in {"passed", "failed", "error"}
-            ):
-                return current
-
             succeeded = sum(counts.get(value, 0) for value in SUCCESS_ITEM_STATUSES)
             failed = counts.get(JobItemStatus.FAILED.value, 0)
             cancelled = counts.get(JobItemStatus.CANCELLED.value, 0)
@@ -2145,8 +2213,6 @@ class ExecutionCoordinator:
 
             if current == JobStatus.CANCELLING:
                 target = JobStatus.CANCELLED
-            elif review.get("status") in {"failed", "error"}:
-                target = JobStatus.PARTIAL
             elif succeeded == job.expected_item_count:
                 target = JobStatus.COMPLETED
             elif succeeded:
@@ -2155,12 +2221,7 @@ class ExecutionCoordinator:
                 target = JobStatus.CANCELLED
             else:
                 target = JobStatus.FAILED
-            terminal_stage = (
-                job.stage
-                if target == JobStatus.PARTIAL
-                and review.get("status") in {"failed", "error"}
-                else target.value
-            )
+            terminal_stage = target.value
             transition_job(job, target, stage=terminal_stage, progress=100)
             if job.type in {
                 JobType.DETAIL_PACK.value,
@@ -2293,9 +2354,7 @@ def build_fake_coordinator(
     crossborder_detail_provider_enabled: bool = False,
     domestic_main_image_provider_enabled: bool = False,
     aurora_work_root: Path | None = None,
-    aurora_execution_mode: str = "sequential_v017",
-    aurora_l1_rubric_enabled: bool = False,
-    aurora_l2_reference_enabled: bool = False,
+    aurora_execution_mode: str = "sequential_v20",
     aurora_max_transient_retries: int = 2,
     aurora_retry_backoff_base_seconds: float = 2,
     aurora_retry_backoff_max_seconds: float = 30,
@@ -2450,34 +2509,6 @@ def build_fake_coordinator(
         work_root=aurora_work_root,
         execution_mode=aurora_execution_mode,
     )
-    if aurora_l2_reference_enabled:
-        # L2 shadow channel. It inherits the L1 rubric/fact-pool audit and
-        # adds only the original Skill references at the image-call boundary.
-        from .aurora_main_image_l2_provider import AuroraMainImageL2Provider
-
-        aurora_provider = AuroraMainImageL2Provider(
-            session_factory,
-            gateway,
-            storage,
-            work_root=aurora_work_root,
-            execution_mode=aurora_execution_mode,
-        )
-    elif aurora_l1_rubric_enabled:
-        # L1 rubric channel.  `AuroraMainImageProvider` is instantiated as a
-        # concrete class here, so the shadow channel has to be constructed
-        # explicitly; it cannot be activated by configuration alone.  Rebind
-        # the name rather than branching at each route so both the fake-gateway
-        # route below and the real-gateway route further down audit through the
-        # same channel.
-        from .aurora_main_image_l1_provider import AuroraMainImageL1Provider
-
-        aurora_provider = AuroraMainImageL1Provider(
-            session_factory,
-            gateway,
-            storage,
-            work_root=aurora_work_root,
-            execution_mode=aurora_execution_mode,
-        )
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
             JobType.PRODUCT_IMAGE.value: default_provider,

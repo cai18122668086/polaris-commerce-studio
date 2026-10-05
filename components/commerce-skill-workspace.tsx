@@ -1055,7 +1055,7 @@ export function CommerceSkillWorkspace({
                     <span>03</span>
                     <div><h2>任务状态</h2><p>任务详情约每 1.5 秒自动轮询。</p></div>
                   </div>
-                  {job.data ? <StatusBadge status={job.data.status} stage={job.data.stage} /> : null}
+                  {job.data ? <StatusBadge status={job.data.status} /> : null}
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" size={18} />正在读取任务…</div>

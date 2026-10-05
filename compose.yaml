@@ -110,6 +110,7 @@ services:
       # Shared by API/workers so Aurora identity locks and Harness sessions survive
       # task hand-off and container restarts.
       POLARIS_AURORA_WORK_ROOT: /app/.data/aurora-main-image
+      POLARIS_AURORA_EXECUTION_MODE: ${POLARIS_AURORA_EXECUTION_MODE:-sequential_v20}
       POLARIS_ECOMMERCE_SESSION_DIR: /app/.data/ecommerce-session/domestic-taobao-tmall
       POLARIS_ECOMMERCE_1688_SESSION_DIR: /app/.data/ecommerce-session/domestic-1688
       POLARIS_ECOMMERCE_JD_SESSION_DIR: /app/.data/ecommerce-session/domestic-jd

@@ -649,6 +649,7 @@ export function ModelPoseTransferWorkspace() {
               assets={resultAssets}
               expectedCount={1}
               title="模特换姿势结果"
+              archiveJobId={job.data?.status === "completed" ? job.data.id : undefined}
             />
           </main>
 

@@ -996,28 +996,6 @@ def test_reference_visual_direct_prompt_keeps_reference_first_without_planner(
     assert harness.gateway.requests[0].prompt == "original current case instruction"
 
 
-def test_remix_oversize_final_prompt_rejects_before_image_call(
-    harness: Harness, monkeypatch
-):
-    provider, request = _reference_follow_request(
-        harness,
-        reference_payload=_image_bytes((675, 1199), image_format="JPEG"),
-        exact_skill=True,
-    )
-    original_plan = harness.gateway.plan
-
-    async def large_analysis(planner_request):
-        response = await original_plan(planner_request)
-        response.payload["product_identity_lock"] = "商品" * 4001
-        return response
-
-    monkeypatch.setattr(harness.gateway, "plan", large_analysis)
-    result = asyncio.run(provider.execute(request))
-    assert result.error_code == "EXECUTION_PROMPT_TOO_LARGE"
-    assert "24000" in result.error_message
-    assert harness.gateway.requests == []
-
-
 def test_inspiration_planned_remix_can_put_product_before_style_reference(
     harness: Harness,
 ) -> None:

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, CircleDollarSign, Clock3,
@@ -14,8 +15,8 @@ import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useUploadAsset } from "@/features/assets/api/assets";
-import { useConfirmPlan, useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
-import { presentWorkflow, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
+import { useConfirmPlan, useCreateJob, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
+import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import { IMAGE_UPLOAD_ACCEPT } from "@/lib/image-upload";
@@ -32,7 +33,7 @@ import {
 type UploadedSource = { asset: Asset; previewUrl: string };
 type PlanPage = { title: string; description?: string; quality?: string };
 
-const DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1200x1600";
+const DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920";
 const INTERNATIONAL_FALLBACK_SIZE: MarketplaceImageSize = "1024x1536";
 
 function readPlanPages(payload: Record<string, unknown> | undefined): PlanPage[] {
@@ -40,14 +41,19 @@ function readPlanPages(payload: Record<string, unknown> | undefined): PlanPage[]
   const nested = payload.plan && typeof payload.plan === "object"
     ? (payload.plan as Record<string, unknown>).screens
     : undefined;
-  const pages = Array.isArray(payload.pages) ? payload.pages : Array.isArray(nested) ? nested : [];
+  const auroraModules = Array.isArray(payload.modules)
+    ? payload.modules
+    : payload.aurora_plan && typeof payload.aurora_plan === "object" && Array.isArray((payload.aurora_plan as Record<string, unknown>).modules)
+      ? ((payload.aurora_plan as Record<string, unknown>).modules as unknown[])
+      : [];
+  const pages = Array.isArray(payload.pages) ? payload.pages : auroraModules.length > 0 ? auroraModules : Array.isArray(nested) ? nested : [];
   return pages.flatMap((item, index) => {
     if (!item || typeof item !== "object") return [];
     const page = item as Record<string, unknown>;
     const planDetails = [page.role, page.structure, page.subject_scale, page.composition, page.device]
       .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
     return [{
-      title: typeof page.title === "string" ? page.title : `页面 ${index + 1}`,
+      title: typeof page.title === "string" ? page.title : typeof page.lead_conclusion === "string" ? page.lead_conclusion : `页面 ${index + 1}`,
       description: planDetails.length > 0
         ? planDetails.join(" · ")
         : typeof page.description === "string"
@@ -86,29 +92,41 @@ function planItemPresentation(
 
 export default function DetailPackPage() {
   const fileInput = useRef<HTMLInputElement>(null);
-  const [pageCount, setPageCount] = useState(6);
+  const searchParams = useSearchParams();
+  const [pageCount, setPageCount] = useState(8);
   const [marketRegion, setMarketRegion] = useState<MarketRegion>("domestic");
   const [marketplaceId, setMarketplaceId] = useState("tmall");
   const [imageSize, setImageSize] = useState<MarketplaceImageSize>(DOMESTIC_DETAIL_SIZE);
   const [language, setLanguage] = useState<"zh-CN" | "en-US">("zh-CN");
   const [productName, setProductName] = useState("");
+  const [category, setCategory] = useState("");
+  const [targetBuyer, setTargetBuyer] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
   const [sources, setSources] = useState<UploadedSource[]>([]);
   const [uploadError, setUploadError] = useState<string>();
-  const [jobId, setJobId] = useState<string>();
+  // Prefer the task-center URL when present; the local value covers jobs
+  // created or retried from this form. Deriving this value also handles SPA
+  // navigation between task links without an effect-driven state update.
+  const [localJobId, setLocalJobId] = useState<string>();
+  const jobId = searchParams.get("jobId") ?? localJobId ?? "";
   const { workspace } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
   const retryJob = useRetryJob(workspace?.id);
+  const finalizeJob = useFinalizeJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
   const runtime = useRuntimeStatus();
-  const workflow = presentWorkflow(runtime.data?.capabilities.detail_pack);
+  const workflow = presentWorkflow(
+    marketRegion === "international"
+      ? resolveRuntimeCapability(runtime.data, "crossborder_detail")
+      : runtime.data?.capabilities.detail_pack,
+  );
   const workflowAvailable = workflow.mode === "mock" || workflow.mode === "provider";
   const selectedMarketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId) ?? marketplaceGroups[marketRegion][0];
   const planPages = readPlanPages(job.data?.plan?.payload);
   const resultAssets = selectJobResultAssets(job.data);
-  const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? job.error;
+  const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
   const sourcesRef = useRef(sources);
   useEffect(() => { sourcesRef.current = sources; }, [sources]);
@@ -167,15 +185,29 @@ export default function DetailPackPage() {
   };
 
   const createPlanningJob = async () => {
-    if (!sources.length || !productName.trim() || !workspace) return;
+    if (!workflowAvailable || !sources.length || !productName.trim() || !workspace) return;
     const configuration = {
       product_name: productName.trim(),
       platform_code: marketplaceId,
       page_count: pageCount,
       language,
       market_region: marketRegion,
-      auto_start_after_plan: marketRegion === "domestic",
+      category: category.trim() || undefined,
+      target_buyer: targetBuyer.trim() || undefined,
+      // Aurora v4.3 requires explicit approval of the complete campaign
+      // group→screen packet before any pair generation can start.
+      auto_start_after_plan: false,
       selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
+      verified_facts: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 24),
+      conflict_scan: { status: "NO_MATERIAL_CONFLICTS_REPORTED" },
+      source_conflicts: [],
+      reference_materials: [],
+      platform_profile: {
+        marketplace: marketplaceId,
+        region: marketRegion,
+        screen_size: imageSize,
+        pair_canvas_aspect_ratio: marketRegion === "domestic" ? "3:8" : undefined,
+      },
       size: imageSize,
     };
     const created = await createJob.mutateAsync({
@@ -185,7 +217,7 @@ export default function DetailPackPage() {
       input: { product_groups: [{ group_key: "primary-product", asset_ids: sources.map((source) => source.asset.id) }] },
       configuration,
     });
-    setJobId(created.id);
+    setLocalJobId(created.id);
   };
 
   const retry = async () => {
@@ -195,7 +227,7 @@ export default function DetailPackPage() {
       allowedActions: job.data.allowed_actions,
       scope: "failed",
     });
-    setJobId(retried.id);
+    setLocalJobId(retried.id);
   };
 
   const step = !sources.length ? 0 : !productName.trim() ? 1 : !jobId ? 2 : job.data?.status === "awaiting_confirmation" ? 3 : 4;
@@ -240,6 +272,8 @@ export default function DetailPackPage() {
             <div className="form-section-head"><span className="number-chip">2</span><div><h2>商品信息</h2><p>请填写商品名称与核心卖点，用于生成页面方案。</p></div></div>
             <div className="form-grid">
               <label><span>商品名称 <i>*</i></span><input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：鎏金焕亮精华液" /></label>
+              <label><span>商品类目</span><input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
+              <label><span>目标买家</span><input value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
               <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize}</strong></div></label>
               <label className="full"><span>核心卖点</span><textarea value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
             </div>
@@ -249,7 +283,7 @@ export default function DetailPackPage() {
             <div className="form-section-head"><span className="number-chip">3</span><div><h2>输出设置</h2><p>{workflow.mode === "provider" ? "确认后将开始生成，请先核对输出设置。" : "当前仅保存规划和任务状态，暂不生成图片。"}</p></div></div>
             <div className="output-options">
               <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>简体中文</button><button className={language === "en-US" ? "active" : ""} onClick={() => setLanguage("en-US")}>English</button></div></div>
-              <div className="option-field"><span><FileCheck2 size={16} />详情页数</span><div className="page-count-control">{[4, 6, 8].map((count) => <button key={count} className={pageCount === count ? "active" : ""} onClick={() => setPageCount(count)}>{count} 页</button>)}</div></div>
+              <div className="option-field"><span><FileCheck2 size={16} />详情页数</span><div className="page-count-control">{[8, 10, 12].map((count) => <button key={count} className={pageCount === count ? "active" : ""} onClick={() => setPageCount(count)}>{count} 页</button>)}</div></div>
               {marketRegion === "international" && <div className="option-field"><span><Globe2 size={16} />图片尺寸</span><div className="page-count-control">{selectedMarketplace.sizePresets?.map((preset) => <button key={preset.value} className={imageSize === preset.value ? "active" : ""} onClick={() => setImageSize(preset.value)}>{preset.label}</button>)}</div></div>}
             </div>
           </section>
@@ -257,7 +291,7 @@ export default function DetailPackPage() {
           {requestError && <div className="api-state api-state--error" role="alert"><AlertCircle size={24} /><div><strong>请求未完成</strong><p>{errorMessage(requestError)}</p></div></div>}
 
           <section className="planning-card" aria-busy={job.isFetching}>
-            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
+            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p><small>{marketRegion === "domestic" ? "国内详情按相邻两屏组成一个 3:8 连续画布，审核通过后固定切成两张 3:4 图片。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
             {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在准备页面规划，请稍候…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
@@ -289,8 +323,21 @@ export default function DetailPackPage() {
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
                 <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !sources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
+              ) : job.data?.status === "awaiting_final_review" && allowsJobAction(job.data.allowed_actions, "finalize") ? (
+                <button className="primary-button" onClick={() => finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: "我已完成详情图逐 pair 最终审核并确认交付" })} disabled={finalizeJob.isPending}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />}确认最终审核并交付<ArrowRight size={17} /></button>
               ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
-                <button className="primary-button" onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions })} disabled={confirmPlan.isPending}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并开始生成" : "确认并保存任务"}<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => {
+                  const aurora = job.data!.plan!.payload.aurora_v4_3 as Record<string, unknown> | undefined;
+                  confirmPlan.mutate({
+                    jobId: job.data!.id,
+                    revision: job.data!.plan!.revision,
+                    allowedActions: job.data!.allowed_actions,
+                    approvalText: "我确认完整详情图审批包，并授权按 pair 逐组生成",
+                    approvalDocumentSha256: typeof aurora?.approval_document_sha256 === "string" ? aurora.approval_document_sha256 : undefined,
+                    approvedModuleCount: typeof aurora?.approved_module_count === "number" ? aurora.approved_module_count : undefined,
+                    approvedPairCanvasAspectRatio: aurora?.approved_pair_canvas_aspect_ratio === "3:8" ? "3:8" : undefined,
+                  });
+                }} disabled={confirmPlan.isPending}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并开始生成" : "确认并保存任务"}<ArrowRight size={17} /></button>
               ) : (
                 <button className="primary-button" disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data ? jobNote(job.data) : "正在读取任务"}</button>
               )}

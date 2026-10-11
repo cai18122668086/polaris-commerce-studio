@@ -373,6 +373,8 @@ def _service(
     *,
     worker_id: str,
     lease_seconds: float = 30,
+    enforce_delivery: bool = False,
+    max_review_rounds: int = 1,
 ) -> AmazonSuiteQualityService:
     service = AmazonSuiteQualityService(
         client.app.state.session_factory,
@@ -380,6 +382,8 @@ def _service(
         object(),
         skill_root=Path("."),
         manifest_validator=lambda _skill_id: "a" * 64,
+        max_review_rounds=max_review_rounds,
+        enforce_delivery=enforce_delivery,
         worker_id=worker_id,
         review_lease_seconds=lease_seconds,
     )
@@ -700,6 +704,57 @@ def test_review_findings_are_read_only_and_do_not_demote_outputs(
             "reference_guidance": "original planner guidance"
         }
         assert all(link.is_deliverable for link in links)
+
+
+def test_enforced_review_schedules_only_failed_items_for_bounded_redraw(
+    client: TestClient,
+) -> None:
+    snapshot = _seed_snapshot(client, "enforced-redraw")
+    gateway = _ImmediateGateway(result=_finding_result())
+    service = _service(
+        client,
+        gateway,
+        snapshot,
+        worker_id="review-enforced-redraw",
+        enforce_delivery=True,
+        max_review_rounds=2,
+    )
+
+    outcome = asyncio.run(service.review(snapshot.job_id))
+
+    assert outcome.action == "retry_items"
+    assert outcome.review_round == 1
+    assert outcome.failed_item_keys == (AMAZON_ITEM_KEYS[0],)
+    with client.app.state.session_factory() as session:
+        plan = session.get(JobPlanRecord, snapshot.plan_id)
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == snapshot.job_id)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        links = session.scalars(
+            select(JobAssetRecord).where(
+                JobAssetRecord.job_id == snapshot.job_id,
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+            )
+        ).all()
+        assert plan is not None
+        quality = plan.payload["business_quality"]
+        assert quality["status"] == "redraw_pending"
+        assert quality["delivery_status"] == "redraw_pending"
+        assert quality["max_suite_review_rounds"] == 2
+        assert plan.payload["controls"]["automatic_redraw_enabled"] is True
+        assert items[0].status == JobItemStatus.PENDING.value
+        assert items[0].stage == "qa_redraw"
+        assert items[0].configuration["qa_redraw"]["review_round"] == 2
+        assert all(item.status == JobItemStatus.SUCCEEDED.value for item in items[1:])
+        item_by_id = {item.id: item for item in items}
+        assert all(
+            (not link.is_deliverable)
+            if item_by_id[link.job_item_id].item_key == AMAZON_ITEM_KEYS[0]
+            else link.is_deliverable
+            for link in links
+        )
 
 
 @pytest.mark.parametrize("result_kind", ["apply", "unavailable"])

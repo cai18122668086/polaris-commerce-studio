@@ -5,6 +5,11 @@ import { ChevronDown, ChevronRight, Copy, ImagePlus, Layers3, Loader2, Sparkles,
 import { getAssetAccessUrl, useAssetAccessUrl, useAssets, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
+import {
+  presentWorkflow,
+  resolveRuntimeCapability,
+  useRuntimeStatus,
+} from "@/features/runtime/api/runtime";
 import type { Asset as ApiAsset } from "@/lib/api/types";
 import styles from "./inspiration-gallery.module.css";
 
@@ -103,6 +108,17 @@ export function InspirationGalleryDb() {
   const { workspace, workspaceState } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
+  const runtime = useRuntimeStatus();
+  const creativeWorkflow = presentWorkflow(
+    resolveRuntimeCapability(runtime.data, "creative_image"),
+  );
+  const referenceWorkflow = presentWorkflow(
+    resolveRuntimeCapability(runtime.data, "reference_remix"),
+  );
+  const launchWorkflow =
+    activeCase?.workflow_type === "reference_remix"
+      ? referenceWorkflow
+      : creativeWorkflow;
   const repositoryQuery = useAssets(workspace?.id, { originKind: "upload", limit: 100 });
   const repositoryAssets = repositoryQuery.data?.items ?? [];
   const repositoryPageSize = 10;
@@ -318,6 +334,16 @@ export function InspirationGalleryDb() {
 
   const launchRemix = async () => {
     const remixCase = activeCase;
+    const requiredWorkflow =
+      !remixCase || remixCase.workflow_type === "product_prompt"
+        ? creativeWorkflow
+        : remixCase.workflow_type === "reference_remix"
+          ? referenceWorkflow
+          : undefined;
+    if (requiredWorkflow && !requiredWorkflow.canSubmit) {
+      setComposeError(requiredWorkflow.message);
+      return;
+    }
     if (!remixCase) {
       if (!instruction.trim()) return;
       if (!workspace?.id) {
@@ -538,7 +564,7 @@ export function InspirationGalleryDb() {
               {imageCountOpen && <div className={styles.countMenu} role="menu" aria-label="生成张数">{IMAGE_COUNT_OPTIONS.map((count) => <button type="button" role="menuitem" key={count} className={imageCount === count ? styles.countSelected : ""} onClick={() => { setImageCount(count); setImageCountOpen(false); }}>{count} 张</button>)}</div>}
             </div>
             <small>消耗 {imageCount} 次</small>
-            <button className={styles.commandSubmit} aria-label={activeCase ? activeCase.button_label : "开始创作"} onClick={launchRemix} disabled={Boolean(materializingCaseId) || generating || createJob.isPending || !workspace?.id || (activeCase ? activeCase.workflow_type === "legacy_unclassified" || activeCase.workflow_type === "local_edit" || composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || (activeCase.workflow_type === "reference_remix" && composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id)) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
+          <button className={styles.commandSubmit} aria-label={activeCase ? activeCase.button_label : "开始创作"} onClick={launchRemix} disabled={Boolean(materializingCaseId) || generating || createJob.isPending || !workspace?.id || !launchWorkflow.canSubmit || (activeCase ? activeCase.workflow_type === "legacy_unclassified" || activeCase.workflow_type === "local_edit" || composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || (activeCase.workflow_type === "reference_remix" && composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id)) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
           </div>
           {activeCase && activeCase.workflow_type === "legacy_unclassified" && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例正在配置中，暂不支持一键使用。</p>}
           {activeCase && activeCase.workflow_type === "reference_remix" && !composerAssets.some((asset) => asset.role === "reference") && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例需要商品图 + 参考图；可替换或补充参考图后生成。</p>}

@@ -262,7 +262,13 @@ export function useRetryJob(workspaceId: string | undefined) {
 export function useConfirmPlan(workspaceId: string | undefined) {
   return useJobMutation<
     JobDetail,
-    AuthorizedJobAction & { revision: number; approvalText?: string }
+    AuthorizedJobAction & {
+      revision: number;
+      approvalText?: string;
+      approvalDocumentSha256?: string;
+      approvedModuleCount?: number;
+      approvedPairCanvasAspectRatio?: "3:8";
+    }
   >(
     workspaceId,
     "confirm-plan",
@@ -279,6 +285,9 @@ export function useConfirmPlan(workspaceId: string | undefined) {
           body: {
             expected_revision: input.revision,
             approval_text: input.approvalText,
+            approval_document_sha256: input.approvalDocumentSha256,
+            approved_module_count: input.approvedModuleCount,
+            approved_pair_canvas_aspect_ratio: input.approvedPairCanvasAspectRatio,
           },
         },
       );

@@ -245,6 +245,38 @@ def _planner_charges(
     usage = payload.get("usage")
     planner = usage.get("planner") if isinstance(usage, dict) else None
     if planner is None:
+        # A cancellation can race the planner lease before the provider call
+        # writes its attempt metadata.  That terminal state is auditable from
+        # the durable plan snapshot (cancelled + no image requests) and must
+        # settle at zero instead of poisoning every later quota check.  Keep a
+        # zero-value source in the settlement so the repair remains visible.
+        image_usage = usage.get("image") if isinstance(usage, dict) else None
+        image_requests = (
+            image_usage.get("requests")
+            if isinstance(image_usage, dict)
+            else None
+        )
+        if (
+            job.status == JobStatus.CANCELLED.value
+            and payload.get("state") == "cancelled"
+            and not usage_events
+            and (image_requests is None or image_requests == [])
+            and observed_usage_requests == 0
+        ):
+            return (
+                [
+                    {
+                        "source": "planner_unattempted",
+                        "provider_request_count": 0,
+                        "charged_cost_micros": 0,
+                        "cost_basis": "cancelled_before_planner",
+                        "actual_cost_reported": False,
+                    }
+                ],
+                0,
+                0,
+                0,
+            )
         if (
             payload.get("state") == "planner_reserved"
             and job.error_code == "PLANNER_OUTCOME_UNKNOWN"

@@ -1424,6 +1424,11 @@
             ],
             "title": "Category"
           },
+          "conflict_scan": {
+            "additionalProperties": true,
+            "title": "Conflict Scan",
+            "type": "object"
+          },
           "language": {
             "default": "zh-CN",
             "maxLength": 16,
@@ -1452,11 +1457,24 @@
             "title": "Platform Code",
             "type": "string"
           },
+          "platform_profile": {
+            "additionalProperties": true,
+            "title": "Platform Profile",
+            "type": "object"
+          },
           "product_name": {
             "maxLength": 160,
             "minLength": 1,
             "title": "Product Name",
             "type": "string"
+          },
+          "reference_materials": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Reference Materials",
+            "type": "array"
           },
           "selling_points": {
             "items": {
@@ -1467,23 +1485,44 @@
             "type": "array"
           },
           "size": {
-            "default": "1024x1536",
-            "enum": [
-              "1024x1536",
-              "1600x1600",
-              "2200x2200",
-              "2000x2000",
-              "1000x1000",
-              "1024x1024",
-              "2048x2048",
-              "1200x1200",
-              "750x1000",
-              "1200x1600",
-              "1464x600",
-              "1600x1200"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Size",
-            "type": "string"
+            "title": "Size"
+          },
+          "source_conflicts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 24,
+            "title": "Source Conflicts",
+            "type": "array"
+          },
+          "target_buyer": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Buyer"
+          },
+          "verified_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Verified Facts",
+            "type": "array"
           }
         },
         "required": [
@@ -1577,6 +1616,10 @@
       },
       "DevelopmentProviderSettingsResponse": {
         "properties": {
+          "amazon_visual_suite_provider_enabled": {
+            "title": "Amazon Visual Suite Provider Enabled",
+            "type": "boolean"
+          },
           "available": {
             "title": "Available",
             "type": "boolean"
@@ -1587,6 +1630,14 @@
           },
           "configured": {
             "title": "Configured",
+            "type": "boolean"
+          },
+          "creative_image_provider_enabled": {
+            "title": "Creative Image Provider Enabled",
+            "type": "boolean"
+          },
+          "crossborder_detail_provider_enabled": {
+            "title": "Crossborder Detail Provider Enabled",
             "type": "boolean"
           },
           "domestic_main_image_provider_enabled": {
@@ -1600,6 +1651,18 @@
           "message": {
             "title": "Message",
             "type": "string"
+          },
+          "model_pose_transfer_provider_enabled": {
+            "title": "Model Pose Transfer Provider Enabled",
+            "type": "boolean"
+          },
+          "product_image_provider_enabled": {
+            "title": "Product Image Provider Enabled",
+            "type": "boolean"
+          },
+          "reference_remix_provider_enabled": {
+            "title": "Reference Remix Provider Enabled",
+            "type": "boolean"
           },
           "task_runner": {
             "enum": [
@@ -1618,6 +1681,12 @@
           "available",
           "configured",
           "task_runner",
+          "product_image_provider_enabled",
+          "reference_remix_provider_enabled",
+          "model_pose_transfer_provider_enabled",
+          "creative_image_provider_enabled",
+          "amazon_visual_suite_provider_enabled",
+          "crossborder_detail_provider_enabled",
           "domestic_main_image_provider_enabled",
           "base_url",
           "image_model",
@@ -3411,6 +3480,18 @@
       },
       "LocalEditConfiguration": {
         "properties": {
+          "execution_path": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "deterministic",
+              "hybrid",
+              "cropped",
+              "full"
+            ],
+            "title": "Execution Path",
+            "type": "string"
+          },
           "instruction": {
             "maxLength": 4000,
             "minLength": 1,
@@ -3428,7 +3509,8 @@
             "enum": [
               "preview",
               "balanced",
-              "final"
+              "final",
+              "auto"
             ],
             "title": "Quality",
             "type": "string"
@@ -3743,6 +3825,19 @@
       },
       "PlanConfirmRequest": {
         "properties": {
+          "approval_document_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Document Sha256"
+          },
           "approval_text": {
             "anyOf": [
               {
@@ -3755,6 +3850,31 @@
               }
             ],
             "title": "Approval Text"
+          },
+          "approved_module_count": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Module Count"
+          },
+          "approved_pair_canvas_aspect_ratio": {
+            "anyOf": [
+              {
+                "const": "3:8",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Pair Canvas Aspect Ratio"
           },
           "expected_revision": {
             "minimum": 1.0,

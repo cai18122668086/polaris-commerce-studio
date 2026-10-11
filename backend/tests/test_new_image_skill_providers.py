@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -264,6 +265,23 @@ def test_manifest_validator_runs_before_every_delegate_call() -> None:
         "xinghe-ecommerce-creative-image",
     ]
     assert len(delegate.requests) == 2
+
+
+def test_creative_instruction_is_sent_as_user_instruction_not_negative_constraint() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+    request = _request(
+        "creative_image",
+        input_config={"product_asset_ids": ["asset-product"]},
+        settings={"instruction": "突出轻量便携", "image_count": 1},
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    prompt_input = _adapter_request(delegate)["prompt_input"]
+    assert prompt_input["user_instruction"] == "突出轻量便携"
+    assert "negative_constraints" not in prompt_input
 
 
 def test_product_change_color_rejects_missing_target_color() -> None:
@@ -566,8 +584,31 @@ def test_creative_adapter_uses_competitor_reference_role_and_whitelist() -> None
         "platform_code": "tmall",
         "language": "zh-CN",
         "product_information": ["Premium finish"],
-        "negative_constraints": "No unverified claims.",
+        "user_instruction": "No unverified claims.",
+        "post_generation_review": "After generation, manually check product fidelity, SKU/packaging text, 3-second and mobile scan clarity, copy legibility, competitor leakage, and compliance. If a material defect is visible, use one explicit conservative retry; never enter an automatic redraw loop.",
+        "planning_mode": "reference",
     }
+
+
+def test_creative_competitor_reference_forces_reference_planning_even_without_flag() -> None:
+    """Direct API callers cannot bypass the competitor-reference planner."""
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "creative_image",
+                input_config={
+                    "product_asset_ids": ["asset-product"],
+                    "competitor_asset_ids": ["asset-competitor"],
+                },
+                settings={"image_count": 1},
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert _adapter_request(delegate)["prompt_input"]["planning_mode"] == "reference"
 
 
 def test_inspiration_creative_brief_is_first_class_user_instruction() -> None:
@@ -703,6 +744,61 @@ def test_reference_remix_defaults_to_follow_reference_wire_contract() -> None:
         "output_format": "png",
         "fit": "contain",
     }
+
+
+@pytest.mark.parametrize(
+    ("settings", "error_code"),
+    [
+        ({"image_count": 1, "execution_mode": "unknown"}, "EXECUTION_MODE_INVALID"),
+        (
+            {"image_count": 1, "inspiration_product_first": "yes"},
+            "INSPIRATION_PRODUCT_FIRST_INVALID",
+        ),
+    ],
+)
+def test_reference_contract_rejections_are_stable_results(
+    settings: dict[str, Any], error_code: str
+) -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = ReferenceRemixProvider(delegate, manifest_validator=ManifestSpy())
+
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "reference_remix",
+                input_config={
+                    "product_asset_ids": ["asset-product"],
+                    "reference_asset_ids": ["asset-reference"],
+                },
+                settings=settings,
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == error_code
+    assert delegate.requests == []
+
+
+def test_creative_contract_accepts_explicit_false_inspiration_flag() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "creative_image",
+                input_config={"product_asset_ids": ["asset-product"]},
+                settings={
+                    "image_count": 1,
+                    "inspiration_planning": False,
+                    "inspiration_reference_planning": False,
+                },
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
 
 
 def test_reference_visual_reverse_remix_preserves_portrait_composition_when_targeting_four_by_five(  # noqa: E501

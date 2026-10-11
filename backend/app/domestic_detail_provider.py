@@ -16,10 +16,14 @@ from app.new_detail_skill_provider import (
 )
 from app.provider import Provider
 
-DOMESTIC_DETAIL_SKILL_ID = "xinghe-ecommerce-detail-domestic-3"
+DOMESTIC_DETAIL_SKILL_ID = "aurora-domestic-ecommerce-detail-page"
 DOMESTIC_MARKET_REGION = "domestic"
 DOMESTIC_DEFAULT_PLATFORM = "taobao_tmall"
-DOMESTIC_DEFAULT_SIZE = "1200x1600"
+DOMESTIC_DEFAULT_SIZE = "1440x1920"
+DOMESTIC_PAIR_CANVAS_SIZE = "1440x3840"
+DOMESTIC_PAIR_CANVAS_ASPECT_RATIO = "3:8"
+DOMESTIC_SCREEN_ASPECT_RATIO = "3:4"
+DOMESTIC_ALLOWED_PAGE_COUNTS = frozenset({8, 10, 12})
 
 _DOMESTIC_SUPPORTED_SIZES = frozenset(
     {
@@ -54,7 +58,12 @@ _DOMESTIC_PLATFORM_ALIASES = {
 
 
 def resolve_domestic_detail_size(configuration: Mapping[str, Any]) -> str:
-    """Resolve the original Skill's strict 3:4 delivery canvas."""
+    """Resolve the internal 3:4 delivery slice profile.
+
+    Aurora renders each adjacent pair on one 3:8 canvas and deterministically
+    decomposes it into two slices.  The 3:4 value is therefore a delivery
+    slice, not the generation request.
+    """
 
     requested_size = configuration.get("size")
     if requested_size is None:
@@ -63,13 +72,13 @@ def resolve_domestic_detail_size(configuration: Mapping[str, Any]) -> str:
     if size not in _DOMESTIC_SUPPORTED_SIZES:
         raise AdapterValidationError(
             "DETAIL_SIZE_UNSUPPORTED",
-            "Domestic detail size must be an approved exact 3:4 canvas.",
+            "Domestic detail delivery slice must use an approved 3:4 profile.",
         )
     width_text, height_text = size.split("x", maxsplit=1)
     if int(width_text) * 4 != int(height_text) * 3:
         raise AdapterValidationError(
             "DETAIL_SIZE_ASPECT_RATIO_MISMATCH",
-            "Domestic detail size must use the strict 3:4 aspect ratio.",
+            "Domestic detail delivery slice must use the strict 3:4 aspect ratio.",
         )
     return size
 
@@ -89,14 +98,33 @@ def domestic_detail_prompt_configuration(
             f"Unsupported domestic platform: {requested_platform}.",
         )
     resolved_size = resolve_domestic_detail_size(configuration)
+    page_count = requested_page_count(configuration)
+    if page_count not in DOMESTIC_ALLOWED_PAGE_COUNTS:
+        raise AdapterValidationError(
+            "DETAIL_PAGE_COUNT_UNSUPPORTED",
+            "Aurora domestic detail pages must contain exactly 8, 10, or 12 screens.",
+        )
     width_text, height_text = resolved_size.split("x", maxsplit=1)
     return {
         "profile_id": f"domestic_{platform_code}_v1",
         "platform_code": platform_code,
         "language": requested_language(configuration, "zh-CN"),
-        "requested_page_count": requested_page_count(configuration),
+        "requested_page_count": page_count,
         "default_page_count": 8,
-        "aspect_ratio": "3:4",
+        "screen_aspect_ratio": DOMESTIC_SCREEN_ASPECT_RATIO,
+        "pair_aspect_ratio": DOMESTIC_PAIR_CANVAS_ASPECT_RATIO,
+        "pair_canvas_size": f"{int(width_text)}x{int(height_text) * 2}",
+        "platform_profile": {
+            "screen_width": int(width_text),
+            "screen_height": int(height_text),
+            "pair_canvas_width": int(width_text),
+            "pair_canvas_height": int(height_text) * 2,
+            "safe_margin": "profile_defined_by_platform",
+            "format": "PNG",
+            "color_space": "sRGB",
+            "verification_status": "BACKEND_CONFIRMATION_REQUIRED",
+            "source": "INTERNAL_REVIEW_PROFILE",
+        },
         "target_size": {
             "mode": "exact",
             "width": int(width_text),
@@ -104,9 +132,26 @@ def domestic_detail_prompt_configuration(
             "aspect_ratio": "3:4",
         },
         "resolved_size": resolved_size,
-        "module_rule": "one_buyer_demand_per_page",
-        "independent_page_generation": True,
-        "successful_page_auto_redraw_allowed": False,
+        "module_rule": "one_buyer_demand_per_screen",
+        "pair_rule": "adjacent_two_screen_pair_plan_merge",
+        "pair_count": page_count // 2,
+        "pair_generation": "one_3_8_canvas_then_deterministic_two_3_4_slices",
+        "independent_page_generation": False,
+        "reference_edit_concurrency": 1,
+        "prompt_only_concurrency": 4,
+        "batch_failure_policy": "fail_closed_serial_drain_once",
+        "pixel_audit": {
+            "entrypoint": "audit-pair",
+            "required": True,
+            "actual_pixels": True,
+            "max_automatic_repairs": 1,
+            "second_failure": "COMPLETE_WITH_RESIDUALS",
+        },
+        "approval_gate": {
+            "required": True,
+            "scope": "campaign_approval_group_to_screen_packet",
+            "auto_confirm_after_validation": False,
+        },
     }
 
 

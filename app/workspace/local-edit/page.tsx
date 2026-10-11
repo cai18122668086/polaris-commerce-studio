@@ -27,6 +27,8 @@ export default function LocalEditPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const maskEditor = useRef<MaskEditorHandle>(null);
   const [prompt, setPrompt] = useState("");
+  const [quality, setQuality] = useState<"preview" | "balanced" | "final" | "auto">("balanced");
+  const [executionPath, setExecutionPath] = useState<"auto" | "deterministic" | "hybrid" | "cropped" | "full">("auto");
   const [sourceAsset, setSourceAsset] = useState<Asset>();
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -98,7 +100,13 @@ export default function LocalEditPage() {
         intent: "submit",
         display_name: `一句话改图 · ${sourceAsset.original_filename}`,
         input: { source_asset_id: sourceAsset.id, selection_mask_asset_id: mask.id },
-        configuration: { instruction: prompt.trim(), output_format: "png", quality: "balanced" },
+        // Legacy contract shape: configuration: { instruction: prompt.trim(), output_format: "png", quality: "balanced" }
+        configuration: {
+          instruction: prompt.trim(),
+          output_format: "png",
+          quality,
+          execution_path: executionPath,
+        },
       });
       setJobId(created.id);
     } catch (error) {
@@ -160,6 +168,28 @@ export default function LocalEditPage() {
               <section className="control-card">
                 <div className="control-card__heading"><span>2</span><div><strong>修改要求</strong><p>蒙版外像素会由服务端锁定</p></div></div>
                 <div className="textarea-wrap"><textarea value={prompt} placeholder="例如：将授权选区改为深灰色磨砂金属，保留商品结构与光影。" maxLength={500} onChange={(event) => setPrompt(event.target.value)} aria-label="修改要求" /><span>{prompt.length} / 500</span></div>
+              </section>
+              <section className="control-card local-edit-options">
+                <div className="control-card__heading"><span>3</span><div><strong>生成路径</strong><p>按 Skill 选择速度与细节</p></div></div>
+                <div className="local-edit-option-grid">
+                  <label>质量
+                    <select value={quality} onChange={(event) => setQuality(event.target.value as typeof quality)} aria-label="生成质量">
+                      <option value="preview">快速预览</option>
+                      <option value="balanced">平衡</option>
+                      <option value="final">最终质量</option>
+                      <option value="auto">自动</option>
+                    </select>
+                  </label>
+                  <label>执行路径
+                    <select value={executionPath} onChange={(event) => setExecutionPath(event.target.value as typeof executionPath)} aria-label="执行路径">
+                      <option value="auto">自动选择</option>
+                      <option value="cropped">局部裁剪</option>
+                      <option value="hybrid">混合修复</option>
+                      <option value="deterministic">确定性修复</option>
+                      <option value="full">全画布模型</option>
+                    </select>
+                  </label>
+                </div>
               </section>
               <div className="cost-bar"><span>本次服务<Info size={14} /></span><strong>{workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "生成服务暂不可用"}</strong></div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}

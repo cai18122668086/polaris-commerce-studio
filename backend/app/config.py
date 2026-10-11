@@ -171,6 +171,15 @@ class Settings(BaseSettings):
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"
+    # Optional second OpenAI-compatible route. The primary analysis/image
+    # settings above remain intact; this route is only used when explicitly
+    # enabled and can be placed first through provider_rotation_order.
+    provider_failover_enabled: bool = False
+    provider_failover_api_key: SecretStr = SecretStr("")
+    provider_failover_base_url: str = "https://api.tengliapi.xyz"
+    provider_failover_model: str = "gpt-5.6-sol"
+    provider_failover_image_model: str = "gpt-image-2"
+    provider_rotation_order: str = "primary,failover"
     tengli_smoke_budget_usd: float = Field(
         default=200,
         gt=0,

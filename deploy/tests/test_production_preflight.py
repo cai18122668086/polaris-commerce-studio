@@ -375,7 +375,10 @@ class ProductionPreflightTests(unittest.TestCase):
         ):
             with self.subTest(dockerfile=dockerfile):
                 self.assertIn(dockerfile, ci)
-        self.assertIn("docker/build-push-action@v7", ci)
+        self.assertIn("docker build", ci)
+        self.assertIn('DOCKER_BUILDKIT: "1"', ci)
+        self.assertNotIn("docker/build-push-action", ci)
+        self.assertNotIn("docker/setup-buildx-action", ci)
         self.assertIn("POLARIS_CRAWL_WORKER_IMAGE: polaris/crawl-worker:ci", ci)
         self.assertIn(
             "docker compose -f deploy/compose.production.yml config --quiet", ci

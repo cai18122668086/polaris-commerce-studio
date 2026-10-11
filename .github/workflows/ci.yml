@@ -16,7 +16,7 @@ concurrency:
 jobs:
   frontend:
     name: Frontend quality
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -31,7 +31,7 @@ jobs:
 
   backend:
     name: Backend quality
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       postgres:
@@ -136,7 +136,7 @@ jobs:
 
   contract:
     name: API contract
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -155,7 +155,7 @@ jobs:
 
   containers:
     name: Container build (${{ matrix.name }})
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false

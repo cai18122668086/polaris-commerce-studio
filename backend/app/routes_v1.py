@@ -48,6 +48,7 @@ from .domain import (
     JobItemStatus,
     JobStatus,
     JobType,
+    MembershipRole,
     MembershipStatus,
     PlanValidationStatus,
     RetryScope,
@@ -778,7 +779,7 @@ def list_workspaces(
         WorkspaceResponse(
             id=workspace.id,
             name=workspace.name,
-            role=membership.role,
+            role=MembershipRole(membership.role),
         )
         for workspace, membership in rows
     ]

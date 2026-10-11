@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Request
 from sqlalchemy import func, select
@@ -57,7 +57,7 @@ def _status_counts(session: Session, model: Any, id_column: Any) -> dict[str, in
     rows = session.execute(
         select(model.status, func.count(id_column)).group_by(model.status)
     ).all()
-    return {str(value): int(count) for value, count in rows}
+    return {str(value): int(cast(int, count)) for value, count in rows}
 
 
 def _platform_sessions(

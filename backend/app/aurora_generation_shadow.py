@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Opt-in generation-side shadow transforms for Aurora v2.
 
 The production snapshot and Harness remain authoritative.  This module only
@@ -11,7 +12,6 @@ import json
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
-
 
 CONTRACT_FIRST_REBUILD_V1 = "contract_first_rebuild_v1"
 EXECUTION_SEMANTICS_V1 = "execution_semantics_v1"

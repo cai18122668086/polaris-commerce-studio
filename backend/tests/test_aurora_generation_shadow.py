@@ -3,8 +3,8 @@ from __future__ import annotations
 from app.aurora_generation_shadow import (
     CONTRACT_FIRST_REBUILD_V1,
     EXECUTION_SEMANTICS_V1,
-    build_execution_semantics_prompt,
     build_contract_first_prompt,
+    build_execution_semantics_prompt,
     prepare_shadow_generation_request,
 )
 
@@ -16,7 +16,9 @@ def _request(*, origin: str = "INITIAL", scope: str = "") -> dict[str, object]:
         "generation_origin": origin,
         "prompt": "the production prompt",
         "imagegen_reference_paths": ["/failed.png", "/product.jpg"],
-        "reference_allowlist": [{"path": "/product.jpg", "role": "PRODUCT_IDENTITY_AUTHORITY"}],
+        "reference_allowlist": [
+            {"path": "/product.jpg", "role": "PRODUCT_IDENTITY_AUTHORITY"}
+        ],
         "campaign_constitution": {
             "product_identity": {
                 "identity_summary": "黑色双座儿童电动车",
@@ -48,7 +50,9 @@ def _request(*, origin: str = "INITIAL", scope: str = "") -> dict[str, object]:
             },
             "reading_path": ["人物关系", "商品", "控制证据"],
             "visual_performance_contract": {"product_dominance": "center in use"},
-            "selling_point_visual_proof_contract": {"primary_physical_evidence": "真实驾驶"},
+            "selling_point_visual_proof_contract": {
+                "primary_physical_evidence": "真实驾驶"
+            },
             "commercial_closure": "安全与陪伴",
         },
     } | (

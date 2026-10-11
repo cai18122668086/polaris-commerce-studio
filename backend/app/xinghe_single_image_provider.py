@@ -293,6 +293,31 @@ class SingleImageEnvelope:
     prompt_input: dict[str, Any]
 
 
+_ANALYSIS_FIELD_MAX_CHARS = 1_200
+
+
+def _bounded_analysis_text(
+    raw: Any,
+    *,
+    fallback: str = "Not specified.",
+    limit: int = _ANALYSIS_FIELD_MAX_CHARS,
+) -> str:
+    """Keep one planner field concise enough for the image-model instruction."""
+
+    if raw is None or raw == "":
+        return fallback
+    text = raw.strip() if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False, sort_keys=True)
+    text = text.strip()
+    protocol_at = text.find("skill-protocol-v1")
+    if protocol_at >= 0:
+        text = text[:protocol_at].strip()
+    if not text:
+        return fallback
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
 def _source_inventory_is_authorized(
     envelope: SingleImageEnvelope,
     durable_inputs: Sequence[JobAssetRecord],
@@ -302,33 +327,41 @@ def _source_inventory_is_authorized(
     durable_inventory = sorted(
         (binding.asset_id, binding.role, binding.ordinal) for binding in durable_inputs
     )
-    durable_asset_roles = {
-        (binding.asset_id, binding.role) for binding in durable_inputs
-    }
     envelope_inventory = sorted(
         (spec.asset_id, spec.role, spec.ordinal) for spec in envelope.source_assets
     )
 
-    if (
-        envelope.skill_id == "xinghe-amazon-visual-suite"
-        and envelope.item_key == "MAIN-01"
-    ):
-        allowed_main_roles = {
+    if envelope.skill_id == "xinghe-amazon-visual-suite":
+        # Each screen may omit optional roles the plan did not request.
+        # A selected role must still carry every durable asset of that role.
+        # Ordinals are reassigned per role, so identity is asset plus role.
+        allowed_roles = {
             "white_background_product",
             "product_detail",
             "package_reference",
             "brand_reference",
         }
-        has_white_background_product = any(
-            spec.role == "white_background_product" for spec in envelope.source_assets
-        )
-        return (
-            has_white_background_product
-            and all(spec.role in allowed_main_roles for spec in envelope.source_assets)
-            and all(
-                (spec.asset_id, spec.role) in durable_asset_roles
-                for spec in envelope.source_assets
+        if envelope.item_key != "MAIN-01":
+            allowed_roles.update(
+                {
+                    "scene_reference",
+                    "style_reference",
+                    "competitor_reference",
+                }
             )
+        selected_roles = {spec.role for spec in envelope.source_assets}
+        selected_assets = {
+            (spec.asset_id, spec.role) for spec in envelope.source_assets
+        }
+        durable_selected_assets = {
+            (binding.asset_id, binding.role)
+            for binding in durable_inputs
+            if binding.role in selected_roles
+        }
+        return (
+            "white_background_product" in selected_roles
+            and selected_roles <= allowed_roles
+            and selected_assets == durable_selected_assets
         )
 
     return envelope_inventory == durable_inventory
@@ -615,7 +648,9 @@ class XingheSingleImageProvider:
                 "Follow the verified reference-visual-reverse-remix Skill protocol below. "
                 + image_role_instruction
                 + " This is analysis only; do not generate "
-                "an image or use any previous generated result.\nVERIFIED SKILL PROTOCOL:\n"
+                "an image or use any previous generated result. "
+                "Each string field must stay under 900 characters. "
+                "Do not echo the skill protocol text.\nVERIFIED SKILL PROTOCOL:\n"
                 + json.dumps(
                     protocol.prompt_payload(),
                     ensure_ascii=False,
@@ -733,8 +768,7 @@ class XingheSingleImageProvider:
         analysis: Mapping[str, Any],
     ) -> str:
         def field(name: str) -> str:
-            value = analysis.get(name, "")
-            return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True)
+            return _bounded_analysis_text(analysis.get(name, ""), fallback="")
 
         prompt = "\n\n".join(
             (
@@ -1427,12 +1461,7 @@ class XingheSingleImageProvider:
         """
 
         def field(name: str, fallback: str = "Not specified.") -> str:
-            raw = analysis.get(name)
-            if raw is None or raw == "":
-                return fallback
-            if isinstance(raw, str):
-                return raw.strip()
-            return json.dumps(raw, ensure_ascii=False, sort_keys=True)
+            return _bounded_analysis_text(analysis.get(name), fallback=fallback)
 
         width = envelope.target.width or 1024
         height = envelope.target.height or 1536

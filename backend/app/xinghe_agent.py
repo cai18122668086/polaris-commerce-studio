@@ -161,6 +161,11 @@ SUPPORTED_IMAGE_SIZES = frozenset(
 # request.  Request PNG explicitly so the provider response and our contract
 # agree instead of rejecting successful generations as format-invalid.
 IMAGE_FORMAT = "png"
+# The live relay returns 1536x864 for a 2048x1152 request. Ask for the canvas
+# it actually emits; delivery stays 2048x1152 through the resampler below.
+_GATEWAY_NATIVE_REQUEST_SIZE = {
+    "2048x1152": "1536x864",
+}
 JPEG_QUALITY = 92
 DEFAULT_MEDIUM_PRICE_MICROS = 45_000
 DEFAULT_HIGH_PRICE_MICROS = 90_000
@@ -1792,7 +1797,7 @@ class TengliOpenAICompatibleGateway:
             ("model", self.image_model),
             ("prompt", request.prompt),
             ("n", "1"),
-            ("size", request.size),
+            ("size", _gateway_request_size(request.size)),
             ("quality", request.quality),
             ("output_format", request.output_format),
             ("input_fidelity", request.input_fidelity),
@@ -5595,6 +5600,39 @@ def _validated_image_size(size: object) -> str:
     return str(size)
 
 
+# Live relays can return a 16:9 canvas a few pixels off the requested ratio
+# (observed 1672x941 for a 2048x1152 delivery). Cover-crop that sliver onto
+# the exact ratio, then resize. A real ratio change still fails closed.
+_NEAR_ASPECT_MAX_DISCARD = 0.02
+
+
+def _near_aspect_cover_crop(
+    width: int,
+    height: int,
+    expected_width: int,
+    expected_height: int,
+) -> tuple[int, int, int, int] | None:
+    divisor = math.gcd(expected_width, expected_height)
+    unit_width = expected_width // divisor
+    unit_height = expected_height // divisor
+    scale = min(width // unit_width, height // unit_height)
+    if scale < 1:
+        return None
+    crop_width = scale * unit_width
+    crop_height = scale * unit_height
+    if crop_width * crop_height < (1 - _NEAR_ASPECT_MAX_DISCARD) * width * height:
+        return None
+    left = (width - crop_width) // 2
+    top = (height - crop_height) // 2
+    return left, top, crop_width, crop_height
+
+
+def _gateway_request_size(size: str) -> str:
+    """Return the canvas the live relay actually emits for this delivery size."""
+
+    return _GATEWAY_NATIVE_REQUEST_SIZE.get(size, size)
+
+
 def _artifact_from_bytes(
     payload: bytes,
     *,
@@ -5656,9 +5694,21 @@ def _artifact_from_bytes(
     locally_resampled = width != expected_width or height != expected_height
     if image_format != requested_format or locally_resampled:
         if locally_resampled and width * expected_height != height * expected_width:
-            raise XingheAgentError(
-                "IMAGE_RESPONSE_SIZE_INVALID",
-                "Provider returned an image with an incompatible aspect ratio.",
+            crop = _near_aspect_cover_crop(
+                width,
+                height,
+                expected_width,
+                expected_height,
+            )
+            if crop is None:
+                raise XingheAgentError(
+                    "IMAGE_RESPONSE_SIZE_INVALID",
+                    "Provider returned an image with an incompatible aspect ratio "
+                    f"({width}x{height}, expected {expected_width}x{expected_height}).",
+                )
+            left, top, crop_width, crop_height = crop
+            materialized = materialized.crop(
+                (left, top, left + crop_width, top + crop_height)
             )
         materialized = materialized.convert("RGB")
         if locally_resampled:

@@ -455,7 +455,9 @@ class DomesticMainImageConfiguration(BaseModel):
     # Development-only opt-in. The production default remains the native
     # Aurora generation path; the shadow value is carried through the normal
     # job envelope so a local user submission can be reviewed end to end.
-    aurora_shadow_mode: Literal["off", "contract_first_rebuild_v1", "execution_semantics_v1"] = "off"
+    aurora_shadow_mode: Literal[
+        "off", "contract_first_rebuild_v1", "execution_semantics_v1"
+    ] = "off"
 
 
 class JobCreateBase(BaseModel):

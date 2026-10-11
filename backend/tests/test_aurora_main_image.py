@@ -24,17 +24,17 @@ from app.aurora_main_image_planner import (
 from app.aurora_main_image_provider import (
     _VISUAL_CHECKS,
     AuroraMainImageProvider,
+    _authorized_fact_pool_for_audit,
     _bounded_visual_audit_sources,
     _classify_transient_failure,
-    _is_shadow_composition_gate_failure,
     _generation_sources,
+    _is_shadow_composition_gate_failure,
     _merge_identity_coverage_judgment,
     _normalize_aurora_square_artifact,
     _normalize_parallel_set_audit_payload,
     _normalize_set_role_audit_payload,
     _normalize_style_calibration_payload,
     _normalize_visual_judgment_payload,
-    _authorized_fact_pool_for_audit,
     _required_audit_check_names,
     _safe_planner_diagnostics,
     _v20_audit_failure_message,
@@ -69,8 +69,16 @@ def test_v20_identity_coverage_merges_only_identity_failure() -> None:
     }
     coverage = {
         "checks": [
-            {"name": "product_identity_match", "passed": False, "evidence": "fourth source disagrees"},
-            {"name": "page_role_fit", "passed": False, "evidence": "coverage-only layout observation"},
+            {
+                "name": "product_identity_match",
+                "passed": False,
+                "evidence": "fourth source disagrees",
+            },
+            {
+                "name": "page_role_fit",
+                "passed": False,
+                "evidence": "coverage-only layout observation",
+            },
         ],
         "deficiencies": [
             {"check": "product_identity_match", "detail": "fourth source disagrees"},
@@ -1583,6 +1591,9 @@ def test_provider_completes_the_harness_controlled_six_page_loop(
         gateway=FakeXingheGateway(),
         storage=None,  # type: ignore[arg-type]
         work_root=tmp_path,
+        # This fixture drives the v0.1.17 six-page Harness contract below;
+        # the provider default is the native Aurora v2.0 mode.
+        execution_mode="sequential_v013",
     )
     for index in range(6):
         result = asyncio.run(
@@ -1775,7 +1786,9 @@ def test_sequential_v20_provider_keeps_native_harness_order(
     # Exercise the production set-audit persistence and final approval API with
     # the actual native Harness and offline gateway, including stale pixels.
     from uuid import uuid4
+
     from sqlalchemy import select
+
     from app.domain import JobItemStatus, JobStatus, JobType, PlanValidationStatus
     from app.models import JobItemRecord, JobPlanRecord, JobRecord
 
@@ -1806,7 +1819,10 @@ def test_sequential_v20_provider_keeps_native_harness_order(
     provider.session_factory = client.app.state.session_factory
     assert asyncio.run(provider.audit_sequential_v20_set(job_id)) is True
     coordinator = client.app.state.task_runner.coordinator
-    assert coordinator._mark_aurora_final_review_pending(job_id) == JobStatus.AWAITING_FINAL_REVIEW
+    assert (
+        coordinator._mark_aurora_final_review_pending(job_id)
+        == JobStatus.AWAITING_FINAL_REVIEW
+    )
     # Redelivery must not re-audit or complete a job awaiting human approval.
     assert asyncio.run(coordinator.run(job_id)) == JobStatus.AWAITING_FINAL_REVIEW
     client.app.state.settings.aurora_work_root = tmp_path
@@ -1826,12 +1842,16 @@ def test_sequential_v20_provider_keeps_native_harness_order(
     assert approved.json()["plan"]["payload"]["harness_state"] == "FINALIZED"
     replay = client.post(endpoint, json=approval, headers=headers)
     assert replay.status_code == 200, replay.text
-    changed = client.post(endpoint, json={"approval_text": "不同批准内容"}, headers=headers)
+    changed = client.post(
+        endpoint, json={"approval_text": "不同批准内容"}, headers=headers
+    )
     assert changed.status_code == 409
     assert changed.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
     with client.app.state.session_factory() as db:
         stored = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job_id))
-        manifest = json.loads(Path(stored.payload["final_manifest"]).read_text(encoding="utf-8"))
+        manifest = json.loads(
+            Path(stored.payload["final_manifest"]).read_text(encoding="utf-8")
+        )
     assert manifest["final_user_approval"]["text"] == approval["approval_text"]
     assert len(manifest["pages"]) == 6
 
@@ -2286,7 +2306,10 @@ def test_transient_classifier_ignores_a_non_transient_status() -> None:
 @pytest.mark.parametrize(
     "message, expected",
     [
-        ("selling-point dominance cannot pass when evidence is not a primary visual", True),
+        (
+            "selling-point dominance cannot pass when evidence is not a primary visual",
+            True,
+        ),
         ("layout-not-cloned needs a concrete visible difference", True),
         ("product identity mismatch requires rebuilding from product evidence", True),
         ("generated image is missing", False),

@@ -2073,28 +2073,37 @@ class TengliOpenAICompatibleGateway:
             image_model=self.image_model,
         )
         routes = {primary_route.name: primary_route}
-        if failover_enabled and (failover_api_key or "").strip():
+        failover_keys = [
+            part.strip()
+            for part in re.split(r"[\s,]+", failover_api_key or "")
+            if part.strip()
+        ]
+        if failover_enabled and failover_keys:
             alternate_base_url = (failover_base_url or base_url).strip()
             parsed_failover = urlparse(alternate_base_url)
             if parsed_failover.scheme not in {"http", "https"} or not parsed_failover.netloc:
                 raise ValueError("Failover provider base URL must be absolute HTTP(S).")
-            alternate_key = (failover_api_key or "").strip()
             alternate_model = (failover_model or self.planner_model).strip()
             alternate_image_model = (
                 failover_image_model or self.image_model
             ).strip()
             if not alternate_model or not alternate_image_model:
                 raise ValueError("Failover provider models are required.")
-            failover_route = _ProviderRoute(
-                name="failover",
-                planner_api_key=alternate_key,
-                planner_base_url=alternate_base_url.rstrip("/") + "/",
-                planner_model=alternate_model,
-                image_api_key=alternate_key,
-                image_base_url=alternate_base_url.rstrip("/") + "/",
-                image_model=alternate_image_model,
-            )
-            routes[failover_route.name] = failover_route
+            for index, alternate_key in enumerate(failover_keys, start=1):
+                # A single legacy key keeps the name "failover". Ordered lists
+                # become failover-1, failover-2, ... from top to bottom.
+                route_name = (
+                    "failover" if len(failover_keys) == 1 else f"failover-{index}"
+                )
+                routes[route_name] = _ProviderRoute(
+                    name=route_name,
+                    planner_api_key=alternate_key,
+                    planner_base_url=alternate_base_url.rstrip("/") + "/",
+                    planner_model=alternate_model,
+                    image_api_key=self._image_api_key,
+                    image_base_url=self._image_base_url,
+                    image_model=self.image_model,
+                )
         self._provider_routes = routes
         self._rotation_order = tuple(
             name.strip().lower()
@@ -2115,9 +2124,21 @@ class TengliOpenAICompatibleGateway:
                 ordered.append(route)
         return tuple(ordered)
 
+    def _image_routes(self) -> tuple[_ProviderRoute, ...]:
+        """Keep image generation on the primary image account.
+
+        Failover keys are planner accounts. Image calls must not walk them.
+        """
+
+        ordered = self._ordered_routes()
+        primary = tuple(route for route in ordered if route.name == "primary")
+        return primary or ordered[:1]
+
     @staticmethod
     def _should_failover_status(status: int) -> bool:
-        return status in {408, 409, 425, 429} or status >= 500
+        # 401/402/403 are account failures (invalid token, payment, balance).
+        # Try the next configured key instead of failing the job immediately.
+        return status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         started = time.perf_counter()
@@ -2348,7 +2369,7 @@ class TengliOpenAICompatibleGateway:
             for source in request.sources
         ]
         try:
-            routes = self._ordered_routes()
+            routes = self._image_routes()
             last_route_index = len(routes) - 1
             response: Mapping[str, Any] | None = None
             for route_index, route in enumerate(routes):
@@ -2497,7 +2518,7 @@ class TengliOpenAICompatibleGateway:
                         request.source_png,
                     ),
                 ]
-            routes = self._ordered_routes()
+            routes = self._image_routes()
             last_route_index = len(routes) - 1
             response: Mapping[str, Any] | None = None
             for route_index, route in enumerate(routes):
@@ -3037,7 +3058,9 @@ class XinghePlanningCoordinator:
                                     if module_index < len(repaired_modules)
                                     else None
                                 )
-                                if _aurora_compact_module_ready(current_module):
+                                if isinstance(current_module, Mapping) and (
+                                    _aurora_compact_module_ready(current_module)
+                                ):
                                     completed_module = _complete_aurora_module_structure(
                                         current_module
                                     )

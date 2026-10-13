@@ -3245,3 +3245,109 @@ def test_sensitive_agent_audits_store_no_prompt_source_or_key(
     assert "object_key" not in serialized
     assert attempts == 1
     assert plan is not None
+
+
+class _OrderedFailoverTransport:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def post_json(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        headers = kwargs["headers"]
+        self.calls.append((kwargs["url"], headers["Authorization"]))
+        if len(self.calls) < 3:
+            return 403, {"error": {"message": "Insufficient account balance"}}
+        return 200, {
+            "id": "req-ok",
+            "choices": [{"message": {"content": "{\"accepted\": true}"}}],
+            "usage": {
+                "prompt_tokens": 1,
+                "completion_tokens": 1,
+                "total_tokens": 2,
+            },
+        }
+
+    async def post_multipart(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        raise AssertionError("planner failover must not call the image API")
+
+
+def test_planner_walks_failover_keys_from_top_to_bottom() -> None:
+    transport = _OrderedFailoverTransport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="primary-key",
+        base_url="https://planner.example",
+        planner_model="gpt-5.6-sol",
+        image_model="gpt-image-2.5-flare",
+        image_api_key="image-key",
+        image_base_url="https://image.example",
+        failover_enabled=True,
+        failover_api_key="key-one,key-two,key-three",
+        failover_base_url="https://fallback.example",
+        failover_model="gpt-5.6-sol",
+        rotation_order="primary,failover",
+        transport=transport,
+    )
+
+    routes = gateway._ordered_routes()
+    assert [route.name for route in routes] == [
+        "primary",
+        "failover-1",
+        "failover-2",
+        "failover-3",
+    ]
+    assert [route.planner_api_key for route in routes] == [
+        "primary-key",
+        "key-one",
+        "key-two",
+        "key-three",
+    ]
+    assert [route.planner_base_url for route in routes] == [
+        "https://planner.example/",
+        "https://fallback.example/",
+        "https://fallback.example/",
+        "https://fallback.example/",
+    ]
+    assert [route.name for route in gateway._image_routes()] == ["primary"]
+    assert gateway._image_routes()[0].image_api_key == "image-key"
+    assert gateway._should_failover_status(401)
+    assert gateway._should_failover_status(402)
+    assert gateway._should_failover_status(403)
+    assert not gateway._should_failover_status(400)
+
+    single = TengliOpenAICompatibleGateway(
+        api_key="primary-key",
+        base_url="https://planner.example",
+        planner_model="gpt-5.6-sol",
+        image_model="gpt-image-2.5-flare",
+        failover_enabled=True,
+        failover_api_key="only-one",
+        failover_base_url="https://fallback.example",
+        transport=transport,
+    )
+    assert [route.name for route in single._ordered_routes()] == [
+        "primary",
+        "failover",
+    ]
+
+    result = asyncio.run(
+        gateway.plan(
+            PlannerRequest(
+                workspace_id="ws",
+                job_id="job",
+                group_key="group",
+                sources=(),
+                page_count=1,
+                language="zh",
+                product_name="cup",
+                product_information=(),
+                platform_code="taobao",
+                size="1024x1536",
+                idempotency_key="idem-failover",
+            )
+        )
+    )
+    assert result.payload == {"accepted": True}
+    assert transport.calls == [
+        ("https://planner.example/v1/chat/completions", "Bearer primary-key"),
+        ("https://fallback.example/v1/chat/completions", "Bearer key-one"),
+        ("https://fallback.example/v1/chat/completions", "Bearer key-two"),
+    ]

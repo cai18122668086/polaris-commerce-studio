@@ -98,7 +98,10 @@ class NewDetailSkillProvider:
             return rejected_result(self, exc.code, str(exc))
         except AdapterValidationError as exc:
             return rejected_result(self, exc.code, str(exc))
-        return await self.delegate.execute(routed_request)
+        result = await self.delegate.execute(routed_request)
+        if result.outcome != ProviderOutcome.SUCCEEDED:
+            return result
+        return self._validate_output_contract(result, routed_request)
 
     def prepare_request(
         self,
@@ -122,6 +125,7 @@ class NewDetailSkillProvider:
                 ),
             )
         prompt_configuration = self.route.configure_prompt(job_configuration)
+        delivery = _detail_delivery_contract(prompt_configuration)
         adapter_configuration = {
             "schema_version": PLANNER_CONTRACT_VERSION,
             "skill_id": self.route.skill_id,
@@ -130,11 +134,21 @@ class NewDetailSkillProvider:
             "planning": {
                 "required": True,
                 "persist_validated_plan": True,
-                "auto_confirm_after_validation": True,
+                # Aurora v4.3 requires one explicit campaign approval packet
+                # before the first pair can be generated.
+                "auto_confirm_after_validation": bool(
+                    prompt_configuration.get("approval_gate", {}).get(
+                        "auto_confirm_after_validation", True
+                    )
+                ),
                 "structure_repair_limit": 1,
                 "changes_existing_confirmation_gate": False,
+                "approval_scope": prompt_configuration.get("approval_gate", {}).get(
+                    "scope"
+                ),
             },
             "prompt": prompt_configuration,
+            "delivery": delivery,
         }
         return replace(
             request,
@@ -143,6 +157,72 @@ class NewDetailSkillProvider:
                 SKILL_ADAPTER_CONFIGURATION_KEY: adapter_configuration,
             },
         )
+
+    def _validate_output_contract(
+        self,
+        result: ProviderResult,
+        request: ProviderRequest,
+    ) -> ProviderResult:
+        """Validate dimensions/format when the delegate returned an artifact.
+
+        Some provider test doubles and asynchronous delegates return a successful
+        result before persistence attaches the artifact.  Preserve that boundary,
+        while rejecting a concrete artifact that violates the Skill's delivery
+        contract before it can be exposed as a deliverable.
+        """
+
+        artifact = result.persisted_artifact or result.artifact
+        if artifact is None:
+            return result
+        adapter = request.configuration.get(SKILL_ADAPTER_CONFIGURATION_KEY)
+        delivery = adapter.get("delivery") if isinstance(adapter, Mapping) else None
+        if not isinstance(delivery, Mapping):
+            return result
+        expected = delivery.get("expected_dimensions")
+        if isinstance(expected, Mapping):
+            width, height = expected.get("width"), expected.get("height")
+            if isinstance(width, int) and isinstance(height, int) and (
+                artifact.width,
+                artifact.height,
+            ) != (width, height):
+                # Pair canvases are normalized/sliced by the Aurora runtime;
+                # the gateway result is allowed to carry the pair dimensions
+                # while screen artifacts retain the delivery dimensions.
+                pair_expected = delivery.get("pair_canvas_dimensions")
+                if isinstance(pair_expected, Mapping) and (
+                    artifact.width,
+                    artifact.height,
+                ) == (pair_expected.get("width"), pair_expected.get("height")):
+                    return result
+                return replace(
+                    result,
+                    outcome=ProviderOutcome.FAILED,
+                    error_code="DETAIL_OUTPUT_DIMENSIONS_INVALID",
+                    error_message=(
+                        "Generated detail output does not match the requested "
+                        f"canvas {width}x{height}."
+                    ),
+                    retryable=False,
+                    artifact=None,
+                    persisted_artifact=None,
+                )
+        expected_type = delivery.get("content_type")
+        if (
+            isinstance(expected_type, str)
+            and artifact.content_type.lower() != expected_type
+        ):
+            return replace(
+                result,
+                outcome=ProviderOutcome.FAILED,
+                error_code="DETAIL_OUTPUT_FORMAT_INVALID",
+                error_message=(
+                    f"Generated detail output must use {expected_type}."
+                ),
+                retryable=False,
+                artifact=None,
+                persisted_artifact=None,
+            )
+        return result
 
 
 def job_configuration_from(configuration: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -215,3 +295,61 @@ def rejected_result(
         model_name=provider.model,
         pricing_version=provider.pricing_version,
     )
+
+
+def _detail_delivery_contract(prompt: Mapping[str, Any]) -> dict[str, Any]:
+    target = prompt.get("target_size")
+    expected: dict[str, int] | None = None
+    if isinstance(target, Mapping):
+        width, height = target.get("width"), target.get("height")
+        if isinstance(width, int) and isinstance(height, int):
+            expected = {"width": width, "height": height}
+    if expected is None:
+        resolved = prompt.get("resolved_size")
+        if isinstance(resolved, str) and "x" in resolved:
+            width_text, height_text = resolved.lower().split("x", maxsplit=1)
+            try:
+                expected = {"width": int(width_text), "height": int(height_text)}
+            except ValueError:
+                expected = None
+    pair_size = prompt.get("pair_canvas_size")
+    pair_expected: dict[str, int] | None = None
+    if isinstance(pair_size, str) and "x" in pair_size:
+        pair_width, pair_height = pair_size.lower().split("x", maxsplit=1)
+        try:
+            pair_expected = {"width": int(pair_width), "height": int(pair_height)}
+        except ValueError:
+            pair_expected = None
+    return {
+        "separate_module_images": not bool(pair_expected),
+        "same_size_across_set": True,
+        "expected_dimensions": expected,
+        "pair_canvas_dimensions": pair_expected,
+        "pair_canvas_aspect_ratio": prompt.get("pair_aspect_ratio"),
+        "decomposition_window_aspect_ratio": prompt.get("screen_aspect_ratio"),
+        "content_type": {
+            "jpeg": "image/jpeg",
+            "jpg": "image/jpeg",
+            "webp": "image/webp",
+            "png": "image/png",
+        }.get(str(prompt.get("output_format") or "png").lower(), "image/png"),
+        # The bundled domestic and cross-border detail Skills emit PNG module
+        # files by default.  Keep the contract fallback aligned with the
+        # content type fallback so a concrete artifact is not rejected merely
+        # because the planner omitted an optional format field.
+        "output_format": str(prompt.get("output_format") or "png"),
+        "qa_status_required": bool(
+            isinstance(prompt.get("delivery"), Mapping)
+            and prompt["delivery"].get("qa_status_required", False)
+        ),
+        "manual_review_required": bool(
+            isinstance(prompt.get("delivery"), Mapping)
+            and prompt["delivery"].get("manual_review_required", False)
+        ),
+        "qa_mode": (
+            str(prompt["delivery"].get("qa_mode"))
+            if isinstance(prompt.get("delivery"), Mapping)
+            and prompt["delivery"].get("qa_mode") is not None
+            else None
+        ),
+    }

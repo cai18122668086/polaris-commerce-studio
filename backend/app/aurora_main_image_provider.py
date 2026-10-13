@@ -20,6 +20,7 @@ from .aurora_execution_modes import (
     is_parallel_aurora_mode,
     is_v20_aurora_mode,
 )
+from .aurora_generation_shadow import prepare_shadow_generation_request
 from .aurora_main_image_planner import (
     AuroraPlanningError,
     _normalize_commercial_fact_pool,
@@ -32,7 +33,6 @@ from .aurora_main_image_runtime import (
     reset_v20_pending_generation_for_retry,
     write_contract,
 )
-from .aurora_generation_shadow import prepare_shadow_generation_request
 from .config import default_aurora_work_root
 from .domain import JobItemStatus
 from .models import (
@@ -699,16 +699,22 @@ class AuroraMainImageProvider:
                     coverage_usage: list[dict[str, Any]] = []
                     coverage_cost = 0
                     for batch_index in range(0, len(omitted_identity), 3):
-                        coverage_sources = omitted_identity[batch_index : batch_index + 3]
-                        coverage_judgment, coverage_call_usage, coverage_call_cost = (
-                            await self._audit_v20_candidate(
-                                request,
-                                generation_request,
-                                generated_path,
-                                artifact,
-                                identity_sources=coverage_sources,
-                                audit_suffix=f":identity-coverage-{batch_index // 3 + 1}",
-                            )
+                        coverage_sources = omitted_identity[
+                            batch_index : batch_index + 3
+                        ]
+                        (
+                            coverage_judgment,
+                            coverage_call_usage,
+                            coverage_call_cost,
+                        ) = await self._audit_v20_candidate(
+                            request,
+                            generation_request,
+                            generated_path,
+                            artifact,
+                            identity_sources=coverage_sources,
+                            audit_suffix=(
+                                f":identity-coverage-{batch_index // 3 + 1}"
+                            ),
                         )
                         coverage_usage.append(coverage_call_usage)
                         coverage_cost += coverage_call_cost
@@ -1106,7 +1112,7 @@ class AuroraMainImageProvider:
                 return
             existing = plan.payload.get("_parallel_v20_snapshots")
             existing_indexes = {
-                int(item.get("page_index"))
+                int(item["page_index"])
                 for item in existing or ()
                 if isinstance(item, Mapping) and item.get("page_index") is not None
             }
@@ -1675,7 +1681,9 @@ class AuroraMainImageProvider:
                 .order_by(JobItemRecord.ordinal)
             ).all()
             if plan is None or len(items) != 6:
-                raise AuroraPlanningError("Aurora v2.0 sequential set context is incomplete")
+                raise AuroraPlanningError(
+                    "Aurora v2.0 sequential set context is incomplete"
+                )
             session = _mapping(plan.payload.get("_harness_session"))
             if session.get("state") != "AWAITING_SET_AUDIT":
                 raise AuroraPlanningError(
@@ -2227,7 +2235,9 @@ def _merge_identity_coverage_judgment(
                     or "补充商品源图比较发现身份不一致。"
                 ),
                 "root_cause": "候选图没有保持全部原始商品视图共同锁定的同一 SKU 身份。",
-                "required_change": "从全部原始商品证据重建候选图，不能继续使用失败候选作为修复画布。",
+                "required_change": (
+                    "从全部原始商品证据重建候选图，不能继续使用失败候选作为修复画布。"
+                ),
             }
         )
     primary["all_material_deficiencies"] = deficiencies

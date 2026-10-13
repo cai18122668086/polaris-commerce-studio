@@ -10,6 +10,11 @@ import {
   FEATURE_REGISTRY,
   type FeatureCategory,
 } from "@/lib/feature-registry";
+import {
+  presentWorkflow,
+  resolveRuntimeCapability,
+  useRuntimeStatus,
+} from "@/features/runtime/api/runtime";
 import styles from "./tools.module.css";
 
 const categoryOrder: FeatureCategory[] = [
@@ -20,6 +25,7 @@ const categoryOrder: FeatureCategory[] = [
 
 export default function ToolsPage() {
   const [query, setQuery] = useState("");
+  const runtime = useRuntimeStatus();
   const normalizedQuery = query.trim().toLowerCase();
   const visibleFeatures = useMemo(
     () =>
@@ -101,6 +107,9 @@ export default function ToolsPage() {
                     {features.map((feature) => {
                       const Icon = feature.icon;
                       const badge = "badge" in feature ? feature.badge : undefined;
+                      const workflow = presentWorkflow(
+                        resolveRuntimeCapability(runtime.data, feature.runtimeCapability),
+                      );
                       return (
                         <article
                           className={styles.card}
@@ -127,9 +136,20 @@ export default function ToolsPage() {
                                 <dd>{feature.outputHint}</dd>
                               </div>
                             </dl>
-                            <Link href={feature.route} className={styles.primaryAction}>
-                              立即制作 <ArrowRight size={17} />
-                            </Link>
+                            {workflow.canSubmit ? (
+                              <Link href={feature.route} className={styles.primaryAction}>
+                                立即制作 <ArrowRight size={17} />
+                              </Link>
+                            ) : (
+                              <span
+                                className={styles.primaryAction}
+                                data-disabled="true"
+                                title={workflow.message}
+                                aria-disabled="true"
+                              >
+                                {runtime.isPending ? "检查服务状态…" : "当前不可用"}
+                              </span>
+                            )}
                           </div>
                         </article>
                       );

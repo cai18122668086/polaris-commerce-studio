@@ -2065,6 +2065,10 @@ export interface components {
             auto_start_after_plan: boolean;
             /** Category */
             category?: string | null;
+            /** Conflict Scan */
+            conflict_scan?: {
+                [key: string]: unknown;
+            };
             /**
              * Language
              * @default zh-CN
@@ -2080,16 +2084,26 @@ export interface components {
             page_count: number;
             /** Platform Code */
             platform_code: string;
+            /** Platform Profile */
+            platform_profile?: {
+                [key: string]: unknown;
+            };
             /** Product Name */
             product_name: string;
+            /** Reference Materials */
+            reference_materials?: string[];
             /** Selling Points */
             selling_points?: string[];
-            /**
-             * Size
-             * @default 1024x1536
-             * @enum {string}
-             */
-            size: "1024x1536" | "1600x1600" | "2200x2200" | "2000x2000" | "1000x1000" | "1024x1024" | "2048x2048" | "1200x1200" | "750x1000" | "1200x1600" | "1464x600" | "1600x1200";
+            /** Size */
+            size?: string | null;
+            /** Source Conflicts */
+            source_conflicts?: {
+                [key: string]: unknown;
+            }[];
+            /** Target Buyer */
+            target_buyer?: string | null;
+            /** Verified Facts */
+            verified_facts?: string[];
         };
         /** DetailPackInput */
         DetailPackInput: {
@@ -2120,18 +2134,30 @@ export interface components {
         };
         /** DevelopmentProviderSettingsResponse */
         DevelopmentProviderSettingsResponse: {
+            /** Amazon Visual Suite Provider Enabled */
+            amazon_visual_suite_provider_enabled: boolean;
             /** Available */
             available: boolean;
             /** Base Url */
             base_url: string;
             /** Configured */
             configured: boolean;
+            /** Creative Image Provider Enabled */
+            creative_image_provider_enabled: boolean;
+            /** Crossborder Detail Provider Enabled */
+            crossborder_detail_provider_enabled: boolean;
             /** Domestic Main Image Provider Enabled */
             domestic_main_image_provider_enabled: boolean;
             /** Image Model */
             image_model: string;
             /** Message */
             message: string;
+            /** Model Pose Transfer Provider Enabled */
+            model_pose_transfer_provider_enabled: boolean;
+            /** Product Image Provider Enabled */
+            product_image_provider_enabled: boolean;
+            /** Reference Remix Provider Enabled */
+            reference_remix_provider_enabled: boolean;
             /**
              * Task Runner
              * @enum {string}
@@ -2777,6 +2803,12 @@ export interface components {
         JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite" | "domestic_main_image";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
+            /**
+             * Execution Path
+             * @default auto
+             * @enum {string}
+             */
+            execution_path: "auto" | "deterministic" | "hybrid" | "cropped" | "full";
             /** Instruction */
             instruction: string;
             /**
@@ -2790,7 +2822,7 @@ export interface components {
              * @default balanced
              * @enum {string}
              */
-            quality: "preview" | "balanced" | "final";
+            quality: "preview" | "balanced" | "final" | "auto";
         };
         /** LocalEditInput */
         LocalEditInput: {
@@ -2920,8 +2952,14 @@ export interface components {
         };
         /** PlanConfirmRequest */
         PlanConfirmRequest: {
+            /** Approval Document Sha256 */
+            approval_document_sha256?: string | null;
             /** Approval Text */
             approval_text?: string | null;
+            /** Approved Module Count */
+            approved_module_count?: number | null;
+            /** Approved Pair Canvas Aspect Ratio */
+            approved_pair_canvas_aspect_ratio?: "3:8" | null;
             /** Expected Revision */
             expected_revision: number;
         };

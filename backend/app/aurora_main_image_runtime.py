@@ -209,10 +209,9 @@ def reset_v20_pending_generation_for_retry(
     reset["pending_generation"] = None
     reset["active_page_index"] = None
     reset["state"] = "AUTHORIZED"
+    current_authorization = session.get("authorization")
     authorization = dict(
-        session.get("authorization")
-        if isinstance(session.get("authorization"), Mapping)
-        else {}
+        current_authorization if isinstance(current_authorization, Mapping) else {}
     )
     authorization["retry_after_provider_failure"] = True
     reset["authorization"] = authorization

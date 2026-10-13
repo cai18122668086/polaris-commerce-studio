@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
@@ -86,6 +87,11 @@ class MaskedEditGatewayRequest:
     width: int
     height: int
     idempotency_key: str
+    # ``mask_png`` is the explicit OpenAI-compatible mask part.  It is
+    # optional only for backwards-compatible third-party gateways; the real
+    # provider path always supplies it and sends ``image`` + ``mask``.
+    mask_png: bytes | None = None
+    execution_path: str = "full"
 
 
 @dataclass(frozen=True)
@@ -122,6 +128,9 @@ class MaskedVisualReviewCallResult:
     estimated_cost_micros: int | None
     summary: str | None = None
     reason_codes: tuple[str, ...] = ()
+    retry_guidance: str | None = None
+    observable_defect: str | None = None
+    corrective_action: str | None = None
     error_code: str | None = None
     error_message: str | None = None
     retryable: bool = False
@@ -150,6 +159,7 @@ class _AuthorizedInputs:
     mask: AssetRecord
     instruction: str
     quality: str
+    execution_path: str
 
 
 @dataclass(frozen=True)
@@ -219,14 +229,56 @@ class MaskedRepairProvider:
             width=normalized.provider_canvas.width,
             height=normalized.provider_canvas.height,
             idempotency_key=request.idempotency_key,
+            # Keep the authority/API mask as a distinct multipart part.  The
+            # gateway may still retain its legacy transparent-hole adapter for
+            # old callers, but production local-edit calls use this field.
+            mask_png=normalized.provider_canvas.api_mask_png,
+            execution_path=_effective_execution_path(
+                authorized.execution_path,
+                instruction=authorized.instruction,
+                authority=normalized.authority,
+            ),
         )
+        execution_path = gateway_request.execution_path
         call_count = 0
         result: MaskedEditCallResult
-        while True:
-            call_count += 1
-            result = await self.gateway.edit_masked(gateway_request)
-            if not result.retryable or call_count >= 2:
-                break
+        if execution_path == "deterministic":
+            deterministic = _deterministic_repair(
+                normalized.source_image,
+                normalized.authority,
+                authorized.instruction,
+            )
+            if deterministic is None:
+                return self._rejected(
+                    MaskedRepairError(
+                        "LOCAL_EDIT_DETERMINISTIC_UNSUPPORTED",
+                        "The deterministic path only accepts an explicit "
+                        "flat-colour fill.",
+                    )
+                )
+            payload = _png_bytes(deterministic)
+            result = MaskedEditCallResult(
+                outcome=ProviderOutcome.SUCCEEDED,
+                provider_request_id="local-deterministic",
+                raw_usage={"path": "deterministic"},
+                normalized_usage={"reported": True},
+                actual_cost_micros=0,
+                estimated_cost_micros=0,
+                artifact=ProviderArtifact(
+                    payload=payload,
+                    filename="local-edit-deterministic.png",
+                    content_type="image/png",
+                    width=deterministic.width,
+                    height=deterministic.height,
+                    sha256=hashlib.sha256(payload).hexdigest(),
+                ),
+            )
+        else:
+            while True:
+                call_count += 1
+                result = await self.gateway.edit_masked(gateway_request)
+                if not result.retryable or call_count >= 2:
+                    break
 
         usage = _usage_record(
             result,
@@ -236,6 +288,7 @@ class MaskedRepairProvider:
             mask_sha256=authorized.mask.sha256,
             normalized_source_sha256=normalized.normalized_source_sha256,
             authority_sha256=normalized.authority_sha256,
+            execution_path=execution_path,
         )
         if result.outcome != ProviderOutcome.SUCCEEDED or result.artifact is None:
             return ProviderResult(
@@ -400,6 +453,7 @@ class MaskedRepairProvider:
             mask_sha256=authorized.mask.sha256,
             normalized_source_sha256=normalized.normalized_source_sha256,
             authority_sha256=normalized.authority_sha256,
+            execution_path=execution_path,
         )
         try:
             self._record_raw_visual_review(request, review)
@@ -419,20 +473,14 @@ class MaskedRepairProvider:
                 http_status=review.http_status,
             )
         review_estimated_cost = (
-            sum(
-                cast(int, attempt.estimated_cost_micros)
-                for attempt in review_attempts
-            )
+            sum(cast(int, attempt.estimated_cost_micros) for attempt in review_attempts)
             if all(
                 attempt.estimated_cost_micros is not None for attempt in review_attempts
             )
             else None
         )
         review_actual_cost = (
-            sum(
-                cast(int, attempt.actual_cost_micros)
-                for attempt in review_attempts
-            )
+            sum(cast(int, attempt.actual_cost_micros) for attempt in review_attempts)
             if all(
                 attempt.actual_cost_micros is not None for attempt in review_attempts
             )
@@ -460,6 +508,9 @@ class MaskedRepairProvider:
                 "visual_review_request_id": review.provider_request_id,
                 "visual_review_summary": review.summary,
                 "visual_review_reason_codes": list(review.reason_codes),
+                "visual_review_retry_guidance": review.retry_guidance,
+                "visual_review_observable_defect": review.observable_defect,
+                "visual_review_corrective_action": review.corrective_action,
                 "visual_review_version": MASKED_REPAIR_REVIEW_VERSION,
                 "strict_lock_success": None,
                 "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
@@ -690,6 +741,7 @@ class MaskedRepairProvider:
             configuration = edit_settings if isinstance(edit_settings, dict) else {}
             instruction = configuration.get("instruction")
             quality = configuration.get("quality", "balanced")
+            execution_path = configuration.get("execution_path", "auto")
             if not isinstance(instruction, str) or not instruction.strip():
                 raise MaskedRepairError(
                     "LOCAL_EDIT_INSTRUCTION_INVALID",
@@ -700,16 +752,28 @@ class MaskedRepairProvider:
                     "LOCAL_EDIT_INSTRUCTION_ENCODING_INVALID",
                     "The local-edit instruction appears to contain encoding damage.",
                 )
-            if quality not in {"preview", "balanced", "final"}:
+            if quality not in {"preview", "balanced", "final", "auto"}:
                 raise MaskedRepairError(
                     "LOCAL_EDIT_QUALITY_INVALID",
                     "Local-edit quality is invalid.",
+                )
+            if execution_path not in {
+                "auto",
+                "deterministic",
+                "hybrid",
+                "cropped",
+                "full",
+            }:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_EXECUTION_PATH_INVALID",
+                    "Local-edit execution path is invalid.",
                 )
             return _AuthorizedInputs(
                 source=source,
                 mask=mask,
                 instruction=instruction,
                 quality=str(quality),
+                execution_path=str(execution_path),
             )
 
     async def _load_and_normalize(
@@ -1052,6 +1116,9 @@ class MaskedRepairProvider:
                     "visual_review_request_id": review.provider_request_id,
                     "visual_review_summary": review.summary,
                     "visual_review_reason_codes": list(review.reason_codes),
+                    "visual_review_retry_guidance": review.retry_guidance,
+                    "visual_review_observable_defect": review.observable_defect,
+                    "visual_review_corrective_action": review.corrective_action,
                     "visual_review_version": MASKED_REPAIR_REVIEW_VERSION,
                     "visual_review_error_code": review.error_code,
                 }
@@ -1070,6 +1137,9 @@ class MaskedRepairProvider:
                     "visual_review_request_id": review.provider_request_id,
                     "visual_review_summary": review.summary,
                     "visual_review_reason_codes": list(review.reason_codes),
+                    "visual_review_retry_guidance": review.retry_guidance,
+                    "visual_review_observable_defect": review.observable_defect,
+                    "visual_review_corrective_action": review.corrective_action,
                     "visual_review_version": MASKED_REPAIR_REVIEW_VERSION,
                     "visual_review_error_code": review.error_code,
                 }
@@ -1086,6 +1156,9 @@ class MaskedRepairProvider:
                         "visual_success": review.visual_success,
                         "reason_codes": list(review.reason_codes),
                         "review_request_id": review.provider_request_id,
+                        "retry_guidance": review.retry_guidance,
+                        "observable_defect": review.observable_defect,
+                        "corrective_action": review.corrective_action,
                         "review_version": MASKED_REPAIR_REVIEW_VERSION,
                         "error_code": review.error_code,
                     },
@@ -1283,7 +1356,89 @@ def _provider_quality(quality: str) -> str:
         "preview": "low",
         "balanced": "medium",
         "final": "high",
+        "auto": "auto",
     }[quality]
+
+
+_HEX_COLOUR_RE = re.compile(r"(?<![0-9a-f])#?(?P<hex>[0-9a-f]{6})(?![0-9a-f])", re.I)
+_NAMED_COLOURS = {
+    "black": (0, 0, 0),
+    "white": (255, 255, 255),
+    "red": (220, 32, 32),
+    "green": (34, 150, 80),
+    "blue": (32, 96, 220),
+    "yellow": (245, 196, 32),
+    "黑色": (0, 0, 0),
+    "白色": (255, 255, 255),
+    "红色": (220, 32, 32),
+    "绿色": (34, 150, 80),
+    "蓝色": (32, 96, 220),
+    "黄色": (245, 196, 32),
+}
+
+
+def _deterministic_repair(
+    source: Image.Image,
+    authority: Image.Image,
+    instruction: str,
+) -> Image.Image | None:
+    """Apply a measured flat-colour fill without a model call.
+
+    This intentionally accepts only an explicit colour token.  Ambiguous
+    instructions stay on a model path instead of silently changing pixels.
+    """
+
+    lowered = instruction.casefold()
+    if not any(token in lowered for token in ("填充", "改为", "换成", "solid", "fill")):
+        return None
+    match = _HEX_COLOUR_RE.search(lowered)
+    colour: tuple[int, int, int] | None = None
+    if match:
+        token = match.group("hex")
+        colour = tuple(int(token[index : index + 2], 16) for index in (0, 2, 4))  # type: ignore[assignment]
+    else:
+        for name, value in _NAMED_COLOURS.items():
+            if name.casefold() in lowered:
+                colour = value
+                break
+    if colour is None:
+        return None
+    result = source.copy().convert("RGBA")
+    pixels = result.load()
+    for y in range(result.height):
+        for x in range(result.width):
+            if authority.getpixel((x, y)) > 0:  # type: ignore[operator]
+                pixels[x, y] = (*colour, pixels[x, y][3])  # type: ignore[index]
+    return result
+
+
+def _effective_execution_path(
+    requested: str,
+    *,
+    instruction: str,
+    authority: Image.Image,
+) -> str:
+    """Resolve the Skill's fast-path choice without changing user authority.
+
+    The deterministic/hybrid implementations remain provider-specific.  We
+    therefore record the requested path and use a conservative model path for
+    instructions that need synthesis.  ``auto`` chooses cropped context for a
+    small selection and full canvas otherwise; this is observable in usage
+    metrics and keeps retries on the normalized source.
+    """
+
+    if requested != "auto":
+        return requested
+    selected = sum(1 for value in authority.getdata() if value > 0)  # type: ignore[attr-defined,misc]
+    total = authority.width * authority.height
+    fraction = selected / total if total else 1.0
+    lowered = instruction.casefold()
+    # Flat colour/fill requests are eligible for a deterministic adapter in a
+    # future provider release.  Until that adapter is available, keep the
+    # model call explicit rather than silently claiming a local repair.
+    if any(token in lowered for token in ("纯色", "填充", "solid", "flat color")):
+        return "hybrid"
+    return "cropped" if fraction <= 0.35 else "full"
 
 
 def _master_prompt(user_request: str) -> str:
@@ -1363,6 +1518,7 @@ def _usage_record(
     mask_sha256: str,
     normalized_source_sha256: str,
     authority_sha256: str,
+    execution_path: str,
 ) -> dict[str, Any]:
     normalized = dict(result.normalized_usage)
     attempts = tuple(review_attempts)
@@ -1434,6 +1590,8 @@ def _usage_record(
                 for index, attempt in enumerate(attempts, start=1)
             ],
             "durable_idempotency_reused": call_count > 1 or len(attempts) > 1,
+            "execution_path": execution_path,
+            "mask_protocol": "source_plus_explicit_mask_v1",
             "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
         },
     }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Container
+from collections.abc import Iterable
 
 PARALLEL_V20 = "parallel_v20"
 PARALLEL_V20_CALIBRATED = "parallel_v20_calibrated"
@@ -23,5 +23,5 @@ def is_calibrated_parallel_aurora_mode(mode: object) -> bool:
     return mode == PARALLEL_V20_CALIBRATED
 
 
-def contains_parallel_aurora_mode(values: Container[object]) -> bool:
+def contains_parallel_aurora_mode(values: Iterable[object]) -> bool:
     return any(value in PARALLEL_AURORA_MODES for value in values)

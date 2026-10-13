@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -39,7 +40,7 @@ from app.models import (
     WorkspaceRecord,
 )
 from app.provider import ProviderArtifact, ProviderOutcome, ProviderRequest
-from app.skill_protocol import SkillProtocolError
+from app.skill_protocol import SkillProtocol, SkillProtocolError
 from app.xinghe_agent import (
     AmazonVisualReviewCallResult,
     AmazonVisualReviewRequest,
@@ -195,7 +196,12 @@ class RecordingGateway:
                     "normalized_anchors": ["x=.3.. .78, y=.32.. .88"],
                     "product_role_map": "one hero product",
                     "typography_zones": "upper title zone",
+                    "commercial_intent": "make the product the first visual and clarify its buyer value",
+                    "reusable_visual_strategy": "preserve the reference hierarchy and spatial relationships",
+                    "forbidden_transfer": "no source brand, watermark, exact copy, or unsupported claim",
+                    "post_generation_review": "check identity, role relationships, text zones, mobile scan, and leakage",
                     "original_remix_prompt": "preserve the reference composition",
+                    "original_execution_prompt": "preserve the product identity and the reference visual strategy",
                 },
             },
         )()
@@ -595,7 +601,7 @@ def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -
     assert result.raw_usage["skill_protocol_length"] > 0
     assert "documents" not in result.raw_usage
     assert "skill_protocol" not in result.raw_usage
-    assert "metrics" not in result.raw_usage
+    assert result.raw_usage["metrics"]["review_mode"] == "human_required"
     assert SECRET not in json.dumps(result.raw_usage)
     assert result.artifact is harness.gateway.result.artifact
     assert len(harness.gateway.requests) == 1
@@ -676,6 +682,16 @@ def test_model_pose_transfer_sends_both_images_once_in_fixed_role_order(
         "source_order": ["model_source", "pose_reference"],
         "reference_pixels_available": True,
         "appearance_authority": "model_source_only",
+        "review_mode": "human_required",
+        "automatic_pose_scoring": False,
+        "automatic_retry": False,
+        "review_checklist": [
+            "no_role_reversal_or_pose_reference_identity_leakage",
+            "source_identity_outfit_scene_and_proportions_preserved",
+            "torso_limbs_feet_and_weight_bearing_match_reference_geometry",
+            "no_stretched_limbs_broken_joints_or_extra_people",
+            "canvas_crop_and_background_remain_source_consistent",
+        ],
     }
 
 
@@ -900,6 +916,85 @@ def test_inspiration_follow_target_prefers_competitor_reference_canvas(
     assert resolved.target.aspect_ratio == "1280:1577"
 
 
+def test_inspiration_competitor_reference_runs_reference_planner_before_edit(
+    harness: Harness,
+) -> None:
+    """A competitor reference must enter the creative Skill planning stage."""
+    reference_payload = _image_bytes((1280, 1577), image_format="JPEG")
+    with harness.session_factory() as session:
+        job = session.get(JobRecord, "job_test")
+        attempt = session.get(JobAttemptRecord, "attempt_test")
+        product_binding = session.query(JobAssetRecord).one()
+        assert job is not None and attempt is not None
+        job.type = "creative_image"
+        attempt.operation = "creative_image"
+        product_binding.role = "product_reference"
+        session.add(
+            _asset_record(
+                asset_id="asset_competitor",
+                workspace_id="ws_test",
+                object_key="ws_test/competitor-reference",
+                payload=reference_payload,
+            )
+        )
+        session.add(
+            JobAssetRecord(
+                workspace_id="ws_test",
+                job_id="job_test",
+                asset_id="asset_competitor",
+                direction=JobAssetDirection.INPUT.value,
+                role="competitor_reference",
+                ordinal=0,
+                is_deliverable=False,
+                validation={},
+            )
+        )
+        session.commit()
+    harness.storage.objects["ws_test/competitor-reference"] = reference_payload
+
+    envelope = _envelope(
+        asset_ids=[
+            ("asset_product", "product_reference"),
+            ("asset_competitor", "competitor_reference"),
+        ],
+        prompt_input={
+            "language": "zh-CN",
+            "platform_code": "tmall",
+            "creative_direction": "premium",
+            "user_instruction": "突出轻量便携",
+            "planning_mode": "reference",
+        },
+    )
+    envelope.update(
+        {
+            "skill_id": "xinghe-ecommerce-creative-image",
+            "operation": "creative_image",
+        }
+    )
+    provider = harness.provider(
+        operation="creative_image",
+        skill_id="xinghe-ecommerce-creative-image",
+    )
+
+    result = asyncio.run(provider.execute(_request(envelope, operation="creative_image")))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert harness.gateway.plan_calls == 1
+    analysis_request = harness.gateway.plan_requests[0]
+    assert analysis_request.planning_profile == "creative_image"
+    assert [source.source_role for source in analysis_request.sources] == [
+        "product_reference",
+        "competitor_reference",
+    ]
+    image_request = harness.gateway.requests[0]
+    assert [source.source_role for source in image_request.sources] == [
+        "competitor_reference",
+        "product_reference",
+    ]
+    assert "HARD COMPOSITION SKELETON" in image_request.prompt
+    assert "EXECUTION PROMPT" in image_request.prompt
+
+
 def test_inspiration_follow_target_falls_back_to_first_product_canvas(
     harness: Harness,
 ) -> None:
@@ -971,6 +1066,54 @@ def test_reference_visual_reverse_remix_runs_analysis_before_image_edit(
     assert "hard skeleton" in prompt
     assert "NORMALIZED 0..1 ANCHORS" in prompt
     assert "preserve the reference composition" in prompt
+    assert len(prompt.encode("utf-8")) < 24_000
+
+
+def test_reference_execution_prompt_drops_echoed_skill_protocol(
+    harness: Harness,
+) -> None:
+    provider = harness.provider(
+        operation="reference_remix",
+        skill_id="reference-visual-reverse-remix",
+    )
+    envelope = SingleImageEnvelope(
+        skill_id="reference-visual-reverse-remix",
+        skill_content_hash=CONTENT_HASH,
+        operation="reference_remix",
+        item_key="image-001",
+        item_ordinal=1,
+        source_assets=(),
+        target=TargetSpec(1024, 1536, "2:3", "high", "png", "contain"),
+        prompt_input={"language": "zh-CN", "inspiration_product_first": True},
+    )
+    protocol = SkillProtocol(
+        skill_id="reference-visual-reverse-remix",
+        source_content_hash=CONTENT_HASH,
+        documents=(),
+        byte_length=0,
+        sha256=CONTENT_HASH,
+    )
+    analysis = {
+        "product_identity_lock": "fan identity",
+        "hard_composition_skeleton": "hard skeleton " + ("layout " * 4_000),
+        "reference_visual_analysis": (
+            "reference observations skill-protocol-v1 "
+            + ("document " * 8_000)
+        ),
+        "original_remix_prompt": "preserve the reference composition",
+    }
+
+    prompt = provider._compile_reference_visual_execution_prompt(
+        envelope,
+        protocol,
+        analysis,
+    )
+
+    assert "skill-protocol-v1" not in prompt
+    assert "hard skeleton" in prompt
+    assert "PRODUCT IDENTITY WINS ON CONFLICT" in prompt
+    assert "preserve the reference composition" in prompt
+    assert "reference observations" in prompt
     assert len(prompt.encode("utf-8")) < 24_000
 
 
@@ -1448,6 +1591,90 @@ def test_amazon_main_rejects_style_or_competitor_sources(
     assert not _source_inventory_is_authorized(envelope, durable_inputs)
 
 
+def test_amazon_secondary_can_omit_an_unrequested_optional_role() -> None:
+    durable_inputs = (
+        JobAssetRecord(
+            asset_id="asset_white",
+            role="white_background_product",
+            ordinal=0,
+        ),
+        JobAssetRecord(
+            asset_id="asset_detail",
+            role="product_detail",
+            ordinal=0,
+        ),
+        JobAssetRecord(
+            asset_id="asset_scene",
+            role="scene_reference",
+            ordinal=0,
+        ),
+    )
+    envelope = SingleImageEnvelope(
+        skill_id="xinghe-amazon-visual-suite",
+        skill_content_hash=CONTENT_HASH,
+        operation="amazon_visual_suite",
+        item_key="SECONDARY-01",
+        item_ordinal=1,
+        source_assets=(
+            SourceAssetSpec("asset_white", "white_background_product", 0),
+            SourceAssetSpec("asset_detail", "product_detail", 0),
+        ),
+        target=TargetSpec(
+            width=1200,
+            height=1600,
+            aspect_ratio="3:4",
+            quality="high",
+            output_format="jpeg",
+            fit="cover",
+        ),
+        prompt_input={},
+    )
+
+    assert _source_inventory_is_authorized(envelope, durable_inputs)
+
+
+def test_amazon_secondary_rejects_a_partial_selected_role() -> None:
+    durable_inputs = (
+        JobAssetRecord(
+            asset_id="asset_white",
+            role="white_background_product",
+            ordinal=0,
+        ),
+        JobAssetRecord(
+            asset_id="asset_detail_a",
+            role="product_detail",
+            ordinal=0,
+        ),
+        JobAssetRecord(
+            asset_id="asset_detail_b",
+            role="product_detail",
+            ordinal=1,
+        ),
+    )
+    envelope = SingleImageEnvelope(
+        skill_id="xinghe-amazon-visual-suite",
+        skill_content_hash=CONTENT_HASH,
+        operation="amazon_visual_suite",
+        item_key="SECONDARY-01",
+        item_ordinal=1,
+        source_assets=(
+            SourceAssetSpec("asset_white", "white_background_product", 0),
+            SourceAssetSpec("asset_detail_a", "product_detail", 0),
+        ),
+        target=TargetSpec(
+            width=1200,
+            height=1600,
+            aspect_ratio="3:4",
+            quality="high",
+            output_format="jpeg",
+            fit="cover",
+        ),
+        prompt_input={},
+    )
+
+    assert not _source_inventory_is_authorized(envelope, durable_inputs)
+
+
 def test_amazon_main_rejects_non_durable_selected_white_source(
     harness: Harness,
 ) -> None:
@@ -1692,6 +1919,40 @@ def test_each_single_image_skill_compiles_its_complete_protocol_into_prompt(
 
     assert decoded["skill_protocol"] == protocol.prompt_payload()
     assert decoded["skill_protocol"]["documents"][0]["path"] == "SKILL.md"
+
+
+def test_product_image_prompt_includes_progressive_reference_and_qa_contract(
+    harness: Harness,
+) -> None:
+    provider = harness.provider()
+    envelope = _envelope(
+        prompt_input={
+            "task_type": "change_color",
+            "platform_code": "tmall",
+            "target_color": "navy",
+            "reference_guidance": "Keep the logo unchanged.",
+        }
+    )
+    protocol = provider._load_protocol(CONTENT_HASH)
+    decoded = json.loads(
+        provider._compile_prompt(provider._parse_envelope(_request(envelope)), protocol)
+    )
+    instructions = decoded["instructions"]
+    for contract_field in (
+        "input_roles",
+        "reference_loading",
+        "product_identity_lock",
+        "task_recipe",
+        "platform_defaults",
+        "quality_lock",
+        "negative_constraints",
+        "qa_checklist",
+        "retry_strategy",
+    ):
+        assert instructions[contract_field]
+    assert "navy" in instructions["task_recipe"]
+    assert "Product fidelity" in instructions["product_identity_lock"]
+    assert "Post-generation QA" in instructions["qa_checklist"]
 
 
 def test_unknown_or_sensitive_prompt_fields_fail_closed(harness: Harness) -> None:

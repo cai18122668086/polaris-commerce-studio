@@ -418,7 +418,9 @@ def public_aurora_plan_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
             "residual_issues": [
                 {
                     "page_index": issue.get("page_index"),
-                    "decision_summary": str(issue.get("decision_summary") or "当前页仍有未解决的审计问题。"),
+                    "decision_summary": str(
+                        issue.get("decision_summary") or "当前页仍有未解决的审计问题。"
+                    ),
                 }
                 for issue in _mapping_list(final_session.get("residual_issues"))
             ],
@@ -469,14 +471,20 @@ def _persist_parallel_v20_snapshots(
         source_hashes[str(row.get("evidence_id"))] = hashlib.sha256(
             source_path.read_bytes()
         ).hexdigest()
-    job_configuration = job.configuration if isinstance(job.configuration, Mapping) else {}
+    job_configuration = (
+        job.configuration if isinstance(job.configuration, Mapping) else {}
+    )
     job_settings = job_configuration.get("settings", {})
     shadow_mode = (
         str(job_settings.get("aurora_shadow_mode") or "").strip()
         if isinstance(job_settings, Mapping)
         else ""
     )
-    authorized_facts = _normalize_commercial_fact_pool(job_settings) if isinstance(job_settings, Mapping) else {}
+    authorized_facts = (
+        _normalize_commercial_fact_pool(job_settings)
+        if isinstance(job_settings, Mapping)
+        else {}
+    )
     if shadow_mode not in {
         "",
         "off",

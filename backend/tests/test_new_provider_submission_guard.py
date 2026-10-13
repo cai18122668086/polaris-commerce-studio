@@ -8,7 +8,10 @@ import pytest
 import app.routes_v1 as routes_v1
 from app.domain import JobType
 from app.errors import ApiError
-from app.routes_v1 import _reserve_real_provider_job_if_enabled
+from app.routes_v1 import (
+    _ensure_detail_skill_provider_enabled,
+    _reserve_real_provider_job_if_enabled,
+)
 
 NEW_PROVIDER_FLAGS = {
     JobType.PRODUCT_IMAGE.value: "product_image_provider_enabled",
@@ -140,6 +143,7 @@ def test_enabled_single_image_provider_reserves_expected_provider_requests(
         (
             JobType.DETAIL_PACK.value,
             {
+                "settings": {"market_region": "domestic"},
                 "input": {
                     "product_groups": [
                         {"group_key": "front", "asset_ids": ["asset-1"]},
@@ -210,3 +214,81 @@ def test_mock_keeps_new_skill_submission_available(
     )
 
     assert quota_calls == []
+
+
+def test_tengli_rejects_international_detail_without_crossborder_skill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quota_calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        routes_v1,
+        "reserve_provider_job_quota",
+        lambda *args, **kwargs: quota_calls.append(kwargs),
+    )
+    job = SimpleNamespace(
+        type=JobType.DETAIL_PACK.value,
+        configuration={"settings": {"market_region": "international"}},
+        expected_item_count=1,
+        estimated_cost_max_micros=90_000,
+    )
+
+    with pytest.raises(ApiError) as captured:
+        _reserve_real_provider_job_if_enabled(
+            SimpleNamespace(),
+            _request(_tengli_settings(crossborder_detail_provider_enabled=False)),
+            job,
+            "user_test",
+        )
+
+    assert captured.value.status_code == 503
+    assert captured.value.code == "REAL_PROVIDER_NOT_REGISTERED"
+    assert captured.value.details == {
+        "job_type": JobType.DETAIL_PACK.value,
+        "capability": "crossborder_detail",
+        "provider_called": False,
+    }
+    assert quota_calls == []
+
+
+def test_tengli_allows_domestic_detail_without_crossborder_skill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quota_calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        routes_v1,
+        "reserve_provider_job_quota",
+        lambda _session, **kwargs: quota_calls.append(kwargs),
+    )
+    job = SimpleNamespace(
+        type=JobType.DETAIL_PACK.value,
+        configuration={
+            "settings": {"market_region": "domestic"},
+            "input": {"product_groups": [{"group_key": "front"}]},
+        },
+        expected_item_count=1,
+        estimated_cost_max_micros=90_000,
+    )
+
+    _reserve_real_provider_job_if_enabled(
+        SimpleNamespace(),
+        _request(_tengli_settings(crossborder_detail_provider_enabled=False)),
+        job,
+        "user_test",
+    )
+
+    assert len(quota_calls) == 1
+
+
+def test_confirm_boundary_guard_uses_same_crossborder_capability_gate() -> None:
+    job = SimpleNamespace(
+        type=JobType.DETAIL_PACK.value,
+        configuration={"settings": {"market_region": "international"}},
+    )
+
+    with pytest.raises(ApiError) as captured:
+        _ensure_detail_skill_provider_enabled(
+            _request(_tengli_settings(crossborder_detail_provider_enabled=False)),
+            job,
+        )
+
+    assert captured.value.code == "REAL_PROVIDER_NOT_REGISTERED"

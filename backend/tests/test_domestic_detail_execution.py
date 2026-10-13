@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -20,6 +21,7 @@ from app.xinghe_agent import (
     IMAGE_SIZE,
     FakeXingheGateway,
     PlannerRequest,
+    _accept_aurora_completion_module,
     _fake_plan,
     _planner_prompt,
     build_resume_signature,
@@ -37,7 +39,7 @@ def _create_detail_job(
     *,
     market_region: str,
     auto_start_after_plan: bool,
-    page_count: int = 1,
+    page_count: int = 8,
     platform_code: str | None = None,
     reference_asset_ids: list[str] | None = None,
 ) -> dict[str, object]:
@@ -93,7 +95,27 @@ def _auto_confirm_audit_count(client: TestClient, job_id: str) -> int:
         )
 
 
-def test_domestic_valid_plan_auto_confirms_generates_and_reentry_is_idempotent(
+def _aurora_approval_payload(planned: dict[str, object]) -> dict[str, object]:
+    """Return the exact native Aurora v4.3 approval packet for a planned job."""
+
+    plan = planned.get("plan")
+    assert isinstance(plan, dict)
+    payload = plan.get("payload")
+    assert isinstance(payload, dict)
+    aurora = payload.get("aurora_v4_3")
+    assert isinstance(aurora, dict)
+    return {
+        "expected_revision": plan["revision"],
+        "approval_text": "我已审阅完整 group→screen 审批包，并批准按 3:8 pair 画布生成。",
+        "approval_document_sha256": aurora["approval_document_sha256"],
+        "approved_module_count": aurora["approved_module_count"],
+        "approved_pair_canvas_aspect_ratio": aurora[
+            "approved_pair_canvas_aspect_ratio"
+        ],
+    }
+
+
+def test_domestic_valid_plan_requires_approval_then_waits_for_final_review(
     client: TestClient,
 ) -> None:
     source = upload_asset(client, filename="domestic-auto-confirm.png")
@@ -104,20 +126,41 @@ def test_domestic_valid_plan_auto_confirms_generates_and_reentry_is_idempotent(
         auto_start_after_plan=True,
     )
     gateway = _gateway(client)
+    # Aurora's native pair canvas is 1440×3840 (5.53 MP); keep the test
+    # harness limit above that Skill contract before approving generation.
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
 
-    assert dispatch_pending(client) == 1
-    completed = client.get(
+    dispatch_count = dispatch_pending(client)
+    assert dispatch_count in (0, 1)
+    planned = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
     ).json()
 
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert planned["plan"]["confirmed_at"] is None
     assert len(gateway.planner_calls) == 1
-    assert len(gateway.image_calls) == 1
-    assert gateway.planner_calls[0].size == "1200x1600"
-    assert gateway.image_calls[0].size == "1200x1600"
-    assert gateway.image_calls[0].prompt.startswith(
-        "e-commerce detail page image; exact canvas 1200x1600 (3:4)"
+    assert gateway.image_calls == []
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json=_aurora_approval_payload(planned),
     )
+    assert confirmed.status_code == 202, confirmed.text
+    assert confirmed.json()["status"] == JobStatus.PROCESSING.value
+    # The test fixture uses inline dispatch, so the route's background
+    # outbox publisher may already have completed generation before the
+    # response is observed.  A second publish is therefore optional.
+    dispatch_count = dispatch_pending(client)
+    awaiting_review = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert awaiting_review["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
+    assert awaiting_review["stage"] == "awaiting_user_final_review"
+    assert all(item["status"] == "succeeded" for item in awaiting_review["items"])
+    assert len(gateway.image_calls) == 4
+    assert all(call.size == "1440x3840" for call in gateway.image_calls)
+    assert all("PAIR_PLAN_MERGE" in call.prompt for call in gateway.image_calls)
     with client.app.state.session_factory() as session:
         plan = session.scalar(
             select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"])
@@ -134,22 +177,16 @@ def test_domestic_valid_plan_auto_confirms_generates_and_reentry_is_idempotent(
             .where(JobAttemptRecord.job_id == job["id"])
         )
     assert plan is not None and plan.confirmed_at is not None
-    assert audit is not None
-    assert audit.resource_type == "job_plan"
-    assert audit.resource_id == plan.id
-    assert audit.details["job_id"] == job["id"]
-    assert audit.details["plan_revision"] == plan.revision
-    assert audit.details["market_region"] == "domestic"
-    assert audit.details["auto_start_after_plan"] is True
-    assert attempt_count == 1
+    assert audit is None
+    assert attempt_count == 8
 
     assert (
         asyncio.run(client.app.state.task_runner.run(str(job["id"])))
-        == JobStatus.COMPLETED
+        == JobStatus.AWAITING_FINAL_REVIEW
     )
     assert len(gateway.planner_calls) == 1
-    assert len(gateway.image_calls) == 1
-    assert _auto_confirm_audit_count(client, str(job["id"])) == 1
+    assert len(gateway.image_calls) == 4
+    assert _auto_confirm_audit_count(client, str(job["id"])) == 0
     with client.app.state.session_factory() as session:
         assert (
             session.scalar(
@@ -157,11 +194,11 @@ def test_domestic_valid_plan_auto_confirms_generates_and_reentry_is_idempotent(
                 .select_from(JobAttemptRecord)
                 .where(JobAttemptRecord.job_id == job["id"])
             )
-            == 1
+            == 8
         )
 
 
-def test_domestic_auto_confirm_recovers_after_planner_commit_before_confirmation(
+def test_domestic_plan_commit_recovery_preserves_confirmation_gate(
     client: TestClient,
 ) -> None:
     source = upload_asset(client, filename="domestic-auto-confirm-recovery.png")
@@ -191,15 +228,26 @@ def test_domestic_auto_confirm_recovers_after_planner_commit_before_confirmation
     assert len(gateway.planner_calls) == 1
     assert gateway.image_calls == []
 
-    assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.COMPLETED
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    planned = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json=_aurora_approval_payload(planned),
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.AWAITING_FINAL_REVIEW
     assert len(gateway.planner_calls) == 1
-    assert len(gateway.image_calls) == 1
-    assert _auto_confirm_audit_count(client, str(job["id"])) == 1
+    assert len(gateway.image_calls) == 4
+    assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
-    assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.COMPLETED
+    assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.AWAITING_FINAL_REVIEW
     assert len(gateway.planner_calls) == 1
-    assert len(gateway.image_calls) == 1
-    assert _auto_confirm_audit_count(client, str(job["id"])) == 1
+    assert len(gateway.image_calls) == 4
+    assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
 
 def test_domestic_unsupported_platform_fails_before_planner_provider_call(
@@ -271,8 +319,10 @@ def test_domestic_invalid_plan_never_reaches_image_provider(
     ).json()
 
     assert failed["status"] == JobStatus.FAILED.value
-    assert failed["error_code"] == "PLANNER_SCHEMA_INVALID"
-    assert len(gateway.planner_calls) == 1
+    assert failed["error_code"] == "AURORA_PLAN_SCHEMA_INVALID"
+    # Native Aurora emits one initial planning request and eight bounded
+    # module-completion requests before the final schema gate.
+    assert len(gateway.planner_calls) == 9
     assert gateway.image_calls == []
     assert failed["plan"]["validation_status"] == PlanValidationStatus.INVALID.value
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
@@ -294,24 +344,38 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
 
     assert dispatch_pending(client) == 1
     assert len(gateway.planner_calls) == 1
-    assert len(gateway.image_calls) == 1
+    planned = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json=_aurora_approval_payload(planned),
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    assert dispatch_pending(client) == 1
+    reviewed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert reviewed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
+    assert len(gateway.image_calls) == 4
     assert [
         source.source_role for source in gateway.planner_calls[0].sources
     ] == ["product_reference", "style_reference"]
-    assert [
-        source.source_role for source in gateway.image_calls[0].sources
-    ] == ["product_reference", "style_reference"]
+    image_roles = [source.source_role for source in gateway.image_calls[0].sources]
+    assert image_roles[0] == "format_canvas"
+    assert image_roles[1:] == ["product_reference", "style_reference"]
     planner_prompt = _planner_prompt(gateway.planner_calls[0])
-    assert (
-        "only images allowed to establish product identity or facts"
-        in planner_prompt
-    )
-    assert "Never infer the user's product" in planner_prompt
-    assert "style_reference image(s) may provide only layout" in planner_prompt
+    assert "aurora-domestic-ecommerce-detail-page v4.3.0" in planner_prompt
+    assert "product_reference" in planner_prompt
+    assert "style_reference" in planner_prompt
     image_prompt = gateway.image_calls[0].prompt
-    assert "Only product_reference images define product identity" in image_prompt
-    assert "style_reference images provide layout" in image_prompt
-    assert "never treat their depicted product" in image_prompt
+    assert image_prompt.startswith("CONTINUOUS_PAIR_RENDERING_LOCKED")
+    assert "3:8" in image_prompt
+    assert "PAIR_OUTPUT_LOCK" in image_prompt
 
     with client.app.state.session_factory() as session:
         item = session.scalar(
@@ -339,6 +403,7 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     }
     assert reservation is not None
     assert reservation.details["source_role_counts"] == {
+        "format_canvas": 1,
         "product_reference": 1,
         "style_reference": 1,
     }
@@ -434,17 +499,8 @@ def test_domestic_protocol_fields_survive_planning_and_reach_generation(
     async def plan_with_protocol(request):
         result = await original_plan(request)
         payload = deepcopy(result.payload)
-        payload["analysis"]["buyer_demand_map"] = {"priority": ["trust"]}
-        payload["plan"]["reference_visual_style_lock"] = {
-            "hierarchy": "editorial"
-        }
-        payload["plan"]["screens"][0].update(
-            {
-                "buyer_demand": "Can I trust what I see?",
-                "visual_proof": {"method": "visible structure"},
-                "risk_reminder": "Do not infer hidden material",
-            }
-        )
+        payload["campaign_thesis"] = "以真实可见结构回答买家信任问题。"
+        payload["modules"][0]["visual_proof_direction"] = "展示可见结构证据"
         return replace(result, payload=payload)
 
     monkeypatch.setattr(gateway, "plan", plan_with_protocol)
@@ -460,20 +516,19 @@ def test_domestic_protocol_fields_survive_planning_and_reach_generation(
     assert plan is not None
     assert item is not None
     group = plan.payload["groups"][0]
-    assert group["analysis"]["buyer_demand_map"] == {"priority": ["trust"]}
-    assert group["plan_protocol_fields"]["reference_visual_style_lock"] == {
-        "hierarchy": "editorial"
-    }
-    assert plan.payload["pages"][0]["visual_proof"] == {
-        "method": "visible structure"
-    }
-    assert '"buyer_demand_map":{"priority":["trust"]}' in item.configuration[
-        "prompt"
-    ]
-    assert '"reference_visual_style_lock"' in item.configuration["prompt"]
-    assert '"risk_reminder":"Do not infer hidden material"' in (
-        item.configuration["prompt"]
+    assert "aurora_plan" in group["plan_protocol_fields"], sorted(group["plan_protocol_fields"])
+    assert "campaign_thesis" in group["plan_protocol_fields"]["aurora_plan"], sorted(group["plan_protocol_fields"]["aurora_plan"])
+    assert group["plan_protocol_fields"]["aurora_plan"]["campaign_thesis"] == (
+        "以真实可见结构回答买家信任问题。"
     )
+    assert "aurora_module" in plan.payload["pages"][0], sorted(
+        plan.payload["pages"][0]
+    )
+    assert plan.payload["pages"][0]["aurora_module"]["visual_proof_direction"] == (
+        "展示可见结构证据"
+    )
+    assert "真实可见结构回答买家信任问题" in item.configuration["prompt"]
+    assert "展示可见结构证据" in item.configuration["prompt"]
 
 
 def test_domestic_resume_signature_includes_source_role() -> None:
@@ -490,7 +545,7 @@ def test_domestic_resume_signature_includes_source_role() -> None:
         "base_url": "https://api.example.test",
         "planner_model": "planner",
         "image_model": "image",
-        "page_count": 1,
+        "page_count": 8,
         "language": "zh-CN",
         "product_name": "visible",
         "product_information": [],
@@ -529,13 +584,30 @@ def test_domestic_internal_empty_product_name_uses_visible_product_fallback(
 
     assert dispatch_pending(client) == 1
     gateway = _gateway(client)
+    planned = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json=_aurora_approval_payload(planned),
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    assert dispatch_pending(client) == 1
+    reviewed = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    assert reviewed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert gateway.planner_calls[0].product_name == (
         "visible product from supplied images"
     )
     assert "visible product from supplied images" in gateway.image_calls[0].prompt
 
 
-def test_international_plan_still_waits_and_legacy_confirmation_api_generates(
+def test_international_plan_requires_confirmation_then_waits_for_manual_qa(
     client: TestClient,
 ) -> None:
     source = upload_asset(client, filename="international-manual-confirm.png")
@@ -577,7 +649,59 @@ def test_international_plan_still_waits_and_legacy_confirmation_api_generates(
     completed = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
     ).json()
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
+    assert completed["stage"] == "awaiting_user_final_review"
+    assert len(gateway.image_calls) == 8
     assert len(gateway.planner_calls) == 1
-    assert len(gateway.image_calls) == 1
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
+
+
+def test_compact_completion_module_merges_without_runtime_derived_fields() -> None:
+    request = PlannerRequest(
+        workspace_id="ws_development",
+        job_id="job_plan_contract",
+        group_key="primary",
+        sources=(),
+        page_count=8,
+        language="zh-CN",
+        product_name="路斯冻干猫粮",
+        product_information=("全价冻干多拼猫粮",),
+        platform_code="tmall",
+        size=IMAGE_SIZE,
+        idempotency_key="plan-contract",
+        planning_profile="aurora_domestic_detail",
+    )
+    module = _fake_plan(request)["modules"][0]
+    for key in (
+        "order",
+        "visual_proof_contract",
+        "module_spatial_structure_contract",
+        "copy_intent",
+        "text_system",
+        "reading_path",
+        "copy_density",
+        "visual_payload_density",
+        "proof_relation_strength",
+        "commercial_energy",
+        "breathing_screen",
+        "brand_anchor",
+        "independent_logo_policy",
+        "independent_logo_source_id",
+        "inherited_dna_tokens",
+        "output",
+    ):
+        module.pop(key, None)
+    accepted = _accept_aurora_completion_module({"modules": [module]}, "M01")
+    bare = _accept_aurora_completion_module(dict(module), "M01")
+    foreign = dict(module)
+    foreign["id"] = "M09"
+    assert accepted is not None and accepted["id"] == "M01"
+    assert bare is not None and bare["lead_conclusion"] == module["lead_conclusion"]
+    assert _accept_aurora_completion_module({"modules": [foreign]}, "M01") is None
+    assert _accept_aurora_completion_module(
+        {"analysis": {}, "plan": {"screens": []}},
+        "M01",
+    ) is None
+    prompt = _planner_prompt(request)
+    assert "plan_format=COMPACT_V1_3" in prompt
+    assert "Do not emit runtime-derived" in prompt

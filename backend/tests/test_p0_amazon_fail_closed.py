@@ -555,10 +555,11 @@ def test_confirmed_amazon_plan_drives_all_prompts_and_retry_reuses_plan(
         (item["item_key"], item["status"], item.get("error_code"))
         for item in completed["items"]
     ]
-    assert completed["api_request_count"] == 22
+    # The production path now includes one bounded suite-quality review call.
+    assert completed["api_request_count"] == 23
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
-    assert gateway.amazon_review_calls == []
+    assert len(gateway.amazon_review_calls) == 1
     assert {call.group_key for call in gateway.image_calls} == set(AMAZON_ITEM_KEYS)
     for call in gateway.image_calls:
         assert "Product Master Description:" in call.prompt
@@ -567,10 +568,10 @@ def test_confirmed_amazon_plan_drives_all_prompts_and_retry_reuses_plan(
         assert "Layout Diversity Lock:" in call.prompt
 
     business_quality = completed["plan"]["payload"]["business_quality"]
-    assert business_quality["status"] == "pending_generation"
-    assert business_quality["review_round"] == 0
-    assert business_quality["visual_review"] is None
-    assert business_quality["generation_routes"] == []
+    assert business_quality["status"] == "passed"
+    assert business_quality["review_round"] == 1
+    assert business_quality["visual_review"]["visual_success"] is True
+    assert len(business_quality["generation_routes"]) == AMAZON_EXPECTED_ITEM_COUNT
 
     calls_before_redelivery = (
         len(gateway.planner_calls),
@@ -615,7 +616,7 @@ def test_amazon_transient_failure_retries_in_place_without_second_planner_call(
     assert completed["failed_item_count"] == 0
 
 
-def test_amazon_default_path_does_not_call_review_protocol_gateway(
+def test_amazon_review_protocol_failure_requires_manual_review(
     client: TestClient,
 ) -> None:
     gateway = _install_counting_runner(
@@ -635,11 +636,15 @@ def test_amazon_default_path_does_not_call_review_protocol_gateway(
 
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
+    assert completed["stage"] == "awaiting_suite_review"
     assert completed["succeeded_item_count"] == AMAZON_EXPECTED_ITEM_COUNT
     assert completed["failed_item_count"] == 0
     assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
-    assert gateway.amazon_review_calls == []
+    assert len(gateway.amazon_review_calls) == 1
+    assert completed["plan"]["payload"]["business_quality"]["status"] == (
+        "review_infrastructure_failed"
+    )
     assert all(item["status"] == "succeeded" for item in completed["items"])
 
     with client.app.state.session_factory() as session:
@@ -658,7 +663,7 @@ def test_amazon_default_path_does_not_call_review_protocol_gateway(
     )
 
 
-def test_amazon_default_path_does_not_apply_external_quality_redraw(
+def test_amazon_quality_failure_redraws_failed_item_and_blocks_after_two_rounds(
     client: TestClient,
 ) -> None:
     gateway = _install_counting_runner(
@@ -678,19 +683,22 @@ def test_amazon_default_path_does_not_apply_external_quality_redraw(
 
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
-    assert completed["status"] == JobStatus.COMPLETED.value
-    assert completed["succeeded_item_count"] == AMAZON_EXPECTED_ITEM_COUNT
-    assert completed["failed_item_count"] == 0
-    assert gateway.amazon_review_calls == []
-    assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
+    assert completed["status"] == JobStatus.PARTIAL.value
+    assert completed["succeeded_item_count"] == AMAZON_EXPECTED_ITEM_COUNT - 1
+    assert completed["failed_item_count"] == 1
+    assert len(gateway.amazon_review_calls) == 2
+    assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT + 1
     assert all(
-        sum(call.group_key == item_key for call in gateway.image_calls) == 1
+        sum(call.group_key == item_key for call in gateway.image_calls)
+        == (2 if item_key == "SECONDARY-01" else 1)
         for item_key in AMAZON_ITEM_KEYS
     )
-    assert all(item["status"] == "succeeded" for item in completed["items"])
+    assert next(
+        item for item in completed["items"] if item["item_key"] == "SECONDARY-01"
+    )["error_code"] == "AMAZON_QA_QUALITY_FAILED"
 
 
-def test_amazon_default_path_does_not_redraw_duplicate_outputs(
+def test_amazon_quality_review_accepts_duplicate_outputs_without_redraw(
     client: TestClient,
 ) -> None:
     gateway = _install_counting_runner(
@@ -721,7 +729,32 @@ def test_amazon_default_path_does_not_redraw_duplicate_outputs(
     assert completed["failed_item_count"] == 0
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == AMAZON_EXPECTED_ITEM_COUNT
-    assert gateway.amazon_review_calls == []
+    assert len(gateway.amazon_review_calls) == 1
+
+
+def test_duplicate_amazon_dispatch_does_not_close_an_unfinished_suite(
+    client: TestClient,
+) -> None:
+    _install_counting_runner(client)
+    source = upload_asset(client, filename="amazon-inflight-white.png")
+    job = _create_amazon_job(client, source["id"])
+    assert dispatch_pending(client) == 1
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(),
+        json={"expected_revision": 1},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+
+    coordinator = client.app.state.task_runner.coordinator
+    coordinator.claim_next_item = lambda job_id: None
+    status = asyncio.run(coordinator.run(job["id"]))
+
+    observed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert status == JobStatus.PROCESSING
+    assert observed["status"] == JobStatus.PROCESSING.value
+    assert observed["succeeded_item_count"] == 0
+    assert any(item["status"] == "pending" for item in observed["items"])
 
 
 def test_valid_amazon_payload_is_not_mutated_by_validation() -> None:

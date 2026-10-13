@@ -535,6 +535,7 @@ class ExecutionCoordinator:
         max_concurrency: int = 1,
         max_detail_retries: int = 0,
         max_amazon_retries: int = 0,
+        max_product_image_retries: int = 1,
         max_aurora_retries: int = 2,
         aurora_retry_backoff_base_seconds: float = 2,
         aurora_retry_backoff_max_seconds: float = 30,
@@ -551,6 +552,8 @@ class ExecutionCoordinator:
             raise ValueError("max_detail_retries must be from 0 through 2")
         if max_amazon_retries < 0 or max_amazon_retries > 2:
             raise ValueError("max_amazon_retries must be from 0 through 2")
+        if max_product_image_retries < 0 or max_product_image_retries > 1:
+            raise ValueError("max_product_image_retries must be from 0 through 1")
         if max_aurora_retries < 0 or max_aurora_retries > 2:
             raise ValueError("max_aurora_retries must be from 0 through 2")
         self.session_factory = session_factory
@@ -564,6 +567,7 @@ class ExecutionCoordinator:
         self.max_concurrency = max_concurrency
         self.max_detail_retries = max_detail_retries
         self.max_amazon_retries = max_amazon_retries
+        self.max_product_image_retries = max_product_image_retries
         self.max_aurora_retries = max_aurora_retries
         self.aurora_retry_backoff_base_seconds = max(
             0.0, aurora_retry_backoff_base_seconds
@@ -615,9 +619,14 @@ class ExecutionCoordinator:
         )
         claim_width = (
             1
-            if self._is_domestic_main_image_job(job_id) and not is_parallel_aurora
+            if (
+                self._is_domestic_main_image_job(job_id)
+                or self._is_aurora_domestic_detail_job(job_id)
+            )
+            and not is_parallel_aurora
             else self.max_concurrency
         )
+        is_amazon = self._is_amazon_job(job_id)
         while True:
             leases: list[AttemptLease] = []
             for _ in range(claim_width):
@@ -626,6 +635,39 @@ class ExecutionCoordinator:
                     break
                 leases.append(lease)
             if not leases:
+                if (
+                    is_amazon
+                    and self.amazon_suite_reviewer is not None
+                    and getattr(self.amazon_suite_reviewer, "enforce_delivery", False)
+                ):
+                    # A duplicate dispatch can arrive while the first worker
+                    # still holds every concurrency slot.  An unfinished suite
+                    # is not a review.  Closing it here leaves the remaining
+                    # items permanently unclaimable.
+                    if self._amazon_generation_outstanding(job_id):
+                        return JobStatus.PROCESSING
+                    review = await self.amazon_suite_reviewer.review(job_id)
+                    action = getattr(review, "action", None)
+                    enforce_delivery = True
+                    if action == "retry_items":
+                        # The quality service has fenced old deliverables and
+                        # returned only failed items to PENDING.  Claim those
+                        # items through the normal idempotent execution path.
+                        continue
+                    if action == "failed" and enforce_delivery:
+                        # A reviewer transport/protocol failure is a manual
+                        # review handoff, not a visual-quality rejection. The
+                        # generated files remain deliverable after explicit
+                        # user approval; only a completed visual failure is
+                        # fenced into partial/blocked.
+                        if self._amazon_review_needs_manual_review(job_id):
+                            return self._mark_amazon_review_pending(job_id)
+                        return self._mark_amazon_quality_blocked(job_id)
+                    if (
+                        enforce_delivery
+                        and action in {"in_progress", "incomplete", "not_applicable"}
+                    ):
+                        return self._mark_amazon_review_pending(job_id)
                 retry_delay = (
                     self._seconds_until_aurora_retry(job_id)
                     if is_v20_aurora
@@ -647,10 +689,6 @@ class ExecutionCoordinator:
             ):
                 self._skip_calibrated_parallel_dependents(job_id, leases)
 
-        # The bundled Amazon Skill owns creative QA. Do not add a second Provider
-        # review call to the default execution path: even a read-only review would
-        # add latency and alter the original one-pass delivery protocol. The durable
-        # review service remains available for an explicitly requested diagnostic run.
         if is_v20_aurora:
             set_audit, set_audit_error = await self._run_parallel_aurora_set_audit(
                 job_id
@@ -663,6 +701,76 @@ class ExecutionCoordinator:
                 # is disclosed and the user can explicitly approve the set.
                 return self._mark_aurora_final_review_pending(job_id)
         return self.finalize_job(job_id)
+
+    def _mark_amazon_quality_blocked(self, job_id: str) -> JobStatus | None:
+        """Keep a failed visual QA set out of the completed delivery state."""
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
+                return JobStatus(job.status)
+            _synchronize_job_item_aggregates(session, job)
+            transition_job(
+                job,
+                JobStatus.PARTIAL,
+                stage="suite_quality_blocked",
+                progress=99,
+            )
+            session.commit()
+            return JobStatus.PARTIAL
+
+    def _amazon_review_needs_manual_review(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            if plan is None or not isinstance(plan.payload, Mapping):
+                return False
+            quality = plan.payload.get("business_quality")
+            return bool(
+                isinstance(quality, Mapping)
+                and quality.get("status") == "review_infrastructure_failed"
+            )
+
+    def _amazon_generation_outstanding(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            outstanding = session.scalar(
+                select(func.count())
+                .select_from(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status.in_(
+                        (
+                            JobItemStatus.PENDING.value,
+                            JobItemStatus.QUEUED.value,
+                            JobItemStatus.RUNNING.value,
+                            JobItemStatus.RETRY_WAIT.value,
+                        )
+                    ),
+                )
+            )
+        return int(outstanding or 0) > 0
+
+    def _mark_amazon_review_pending(self, job_id: str) -> JobStatus | None:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
+                return JobStatus(job.status)
+            transition_job(
+                job,
+                JobStatus.AWAITING_FINAL_REVIEW,
+                stage="awaiting_suite_review",
+                progress=min(99, job.progress),
+            )
+            session.commit()
+            return JobStatus.AWAITING_FINAL_REVIEW
 
     def _skip_parallel_pages_after_style_failure(self, job_id: str) -> None:
         """Retained as a compatibility hook; parallel pages are never gated.
@@ -800,6 +908,21 @@ class ExecutionCoordinator:
             )
             return job_type == JobType.DOMESTIC_MAIN_IMAGE.value
 
+    def _is_aurora_domestic_detail_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            if job is None or job.type != JobType.DETAIL_PACK.value:
+                return False
+            settings = (
+                job.configuration.get("settings")
+                if isinstance(job.configuration, Mapping)
+                else None
+            )
+            return (
+                isinstance(settings, Mapping)
+                and settings.get("market_region") == "domestic"
+            )
+
     def _is_parallel_aurora_job(self, job_id: str) -> bool:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id)
@@ -814,9 +937,8 @@ class ExecutionCoordinator:
             if plan is None or not isinstance(plan.payload, Mapping):
                 return False
             policy = plan.payload.get("execution_policy")
-            return (
-                isinstance(policy, Mapping)
-                and is_parallel_aurora_mode(policy.get("execution_mode"))
+            return isinstance(policy, Mapping) and is_parallel_aurora_mode(
+                policy.get("execution_mode")
             )
 
     def _is_v20_aurora_job(self, job_id: str) -> bool:
@@ -1001,53 +1123,12 @@ class ExecutionCoordinator:
             if (
                 job.type != JobType.DETAIL_PACK.value
                 or settings.get("market_region") != "domestic"
-                or settings.get("auto_start_after_plan") is not True
                 or JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION
             ):
                 return JobStatus(job.status)
-            plan = session.scalar(
-                select(JobPlanRecord)
-                .where(JobPlanRecord.job_id == job.id)
-                .order_by(JobPlanRecord.revision.desc())
-                .limit(1)
-                .with_for_update()
-            )
-            if (
-                plan is None
-                or plan.validation_status != PlanValidationStatus.VALID.value
-            ):
-                return JobStatus(job.status)
-
-            from .xinghe_agent import synchronize_confirmed_plan
-
-            synchronize_confirmed_plan(session, job, plan)
-            confirmed_at = plan.confirmed_at or utc_now()
-            plan.confirmed_at = confirmed_at
-            session.add(
-                AuditEventRecord(
-                    workspace_id=job.workspace_id,
-                    actor_user_id=None,
-                    action="detail_plan.auto_confirmed",
-                    resource_type="job_plan",
-                    resource_id=plan.id,
-                    request_id=job.id,
-                    details={
-                        "job_id": job.id,
-                        "plan_revision": plan.revision,
-                        "market_region": "domestic",
-                        "auto_start_after_plan": True,
-                        "confirmed_at": confirmed_at.isoformat(),
-                    },
-                )
-            )
-            transition_job(
-                job,
-                JobStatus.PROCESSING,
-                stage="generating",
-                progress=20,
-            )
-            session.commit()
-            return JobStatus.PROCESSING
+            # Aurora v4.3 has one explicit campaign-approval checkpoint; never
+            # bypass it through the legacy domestic auto-start flag.
+            return JobStatus(job.status)
 
     def fail_missing_detail_planner(self, job_id: str) -> JobStatus | None:
         """Fail closed; static/template planning fallback is forbidden."""
@@ -1193,9 +1274,7 @@ class ExecutionCoordinator:
                         JobItemStatus.RETRY_WAIT.value,
                     ]
                 ),
-                (
-                    JobItemRecord.status != JobItemStatus.RETRY_WAIT.value
-                )
+                (JobItemRecord.status != JobItemStatus.RETRY_WAIT.value)
                 | (JobItemRecord.next_attempt_at.is_(None))
                 | (JobItemRecord.next_attempt_at <= utc_now()),
             )
@@ -1233,6 +1312,80 @@ class ExecutionCoordinator:
                 item_query = item_query.where(
                     JobItemRecord.ordinal == int(succeeded_pages or 0)
                 )
+            elif self._is_domestic_detail_job_record(job):
+                # Aurora detail pages are rendered as one pair canvas followed
+                # by its deterministic second slice.  Enforce this dependency
+                # while claiming rows so separate Celery workers cannot race
+                # the second screen ahead of the persisted pair canvas.
+                active_pair_row = session.execute(
+                    select(
+                        JobItemRecord.configuration["pair_id"].as_string(),
+                        JobItemRecord.configuration["pair_position"].as_string(),
+                    )
+                    .where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status == JobItemStatus.RUNNING.value,
+                    )
+                    .limit(1)
+                ).first()
+                active_pair = active_pair_row[0] if active_pair_row else None
+                active_pair_position = active_pair_row[1] if active_pair_row else None
+                if active_pair is not None and str(active_pair_position) == "1":
+                    # The pair canvas must finish and be persisted before its
+                    # second slice is eligible for a claim.
+                    return None
+                if active_pair is not None:
+                    next_pair = active_pair
+                else:
+                    # Pick the earliest pair that is not fully successful. A
+                    # later pair must never leap over a failed or unknown
+                    # predecessor; bounded pair retries are requeued below.
+                    pair_rows = session.scalars(
+                        select(JobItemRecord)
+                        .where(JobItemRecord.job_id == job.id)
+                        .order_by(JobItemRecord.ordinal)
+                    ).all()
+                    next_pair = None
+                    recoverable_pair_errors = {
+                        "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
+                        "AURORA_PAIR_CACHE_MISSING",
+                        "IMAGE_RESPONSE_SIZE_INVALID",
+                        "PROVIDER_OUTCOME_UNKNOWN",
+                        "USAGE_RECORD_FAILED",
+                    }
+                    for candidate in pair_rows:
+                        candidate_pair = (
+                            candidate.configuration.get("pair_id")
+                            if isinstance(candidate.configuration, Mapping)
+                            else None
+                        )
+                        if not candidate_pair:
+                            continue
+                        if candidate.status in {
+                            JobItemStatus.SUCCEEDED.value,
+                            JobItemStatus.REUSED.value,
+                            JobItemStatus.SKIPPED.value,
+                            JobItemStatus.CANCELLED.value,
+                        }:
+                            continue
+                        next_pair = str(candidate_pair)
+                        if (
+                            candidate.status == JobItemStatus.FAILED.value
+                            and candidate.attempt_count < 2
+                            and candidate.error_code in recoverable_pair_errors
+                        ):
+                            candidate.status = JobItemStatus.PENDING.value
+                            candidate.stage = "retrying"
+                            candidate.finished_at = None
+                            candidate.next_attempt_at = None
+                            candidate.error_message = None
+                            candidate.error_details = None
+                            candidate.state_version += 1
+                        break
+                if next_pair is not None:
+                    item_query = item_query.where(
+                        JobItemRecord.configuration["pair_id"].as_string() == next_pair
+                    )
             elif job.type == JobType.AMAZON_VISUAL_SUITE.value:
                 active_ordinal = session.scalar(
                     select(func.min(JobItemRecord.ordinal)).where(
@@ -1318,9 +1471,7 @@ class ExecutionCoordinator:
             return self._lease_from_records(job, item, lease)
 
     @staticmethod
-    def _job_uses_parallel_aurora(
-        session: Session, job_id: str
-    ) -> bool:
+    def _job_uses_parallel_aurora(session: Session, job_id: str) -> bool:
         plan = session.scalar(
             select(JobPlanRecord)
             .where(JobPlanRecord.job_id == job_id)
@@ -1330,9 +1481,21 @@ class ExecutionCoordinator:
         if plan is None or not isinstance(plan.payload, Mapping):
             return False
         policy = plan.payload.get("execution_policy")
+        return isinstance(policy, Mapping) and is_parallel_aurora_mode(
+            policy.get("execution_mode")
+        )
+
+    @staticmethod
+    def _is_domestic_detail_job_record(job: JobRecord) -> bool:
+        settings = (
+            job.configuration.get("settings")
+            if isinstance(job.configuration, Mapping)
+            else None
+        )
         return (
-            isinstance(policy, Mapping)
-            and is_parallel_aurora_mode(policy.get("execution_mode"))
+            job.type == JobType.DETAIL_PACK.value
+            and isinstance(settings, Mapping)
+            and settings.get("market_region") == "domestic"
         )
 
     @staticmethod
@@ -1385,6 +1548,30 @@ class ExecutionCoordinator:
         attempt.error_code = "PROVIDER_OUTCOME_UNKNOWN"
         attempt.error_message = "Worker lease expired after provider invocation."
         attempt.finished_at = now
+        pair_reconcile = (
+            job.type == JobType.DETAIL_PACK.value
+            and isinstance(item.configuration, Mapping)
+            and bool(item.configuration.get("pair_id"))
+            and attempt.attempt_no <= 2
+        )
+        if pair_reconcile:
+            # Pair requests use a stable idempotency key, so a worker restart
+            # can safely reconcile the same provider call once more.
+            item.status = JobItemStatus.PENDING.value
+            item.stage = "retrying_outcome_reconciliation"
+            item.error_code = "PROVIDER_OUTCOME_UNKNOWN"
+            item.error_message = (
+                "Worker lease expired; reconciling the same pair request."
+            )
+            item.error_details = {
+                "retryable": True,
+                "outcome_unknown": True,
+                "provider_idempotency_key": attempt.provider_idempotency_key,
+            }
+            item.next_attempt_at = now
+            item.finished_at = None
+            item.state_version += 1
+            return None, True
         if (
             job.type == JobType.DOMESTIC_MAIN_IMAGE.value
             and self._job_uses_v20_aurora(session, job.id)
@@ -1426,13 +1613,22 @@ class ExecutionCoordinator:
             if isinstance(item.configuration, Mapping)
             else None
         )
-        if (
-            job.type == JobType.DOMESTIC_MAIN_IMAGE.value
-            and isinstance(snapshot, Mapping)
+        if job.type == JobType.DOMESTIC_MAIN_IMAGE.value and isinstance(
+            snapshot, Mapping
         ):
             provider_idempotency_key = (
                 f"{job.id}:{item.id}:plan-{snapshot.get('plan_revision', 1)}:"
                 f"page-{snapshot.get('page_revision', 0)}"
+            )
+        elif (
+            job.type == JobType.DETAIL_PACK.value
+            and isinstance(item.configuration, Mapping)
+            and item.configuration.get("pair_id")
+        ):
+            # A pair canvas is one logical provider request. If a worker dies
+            # after the upstream call, retry with the same key for reconciliation.
+            provider_idempotency_key = (
+                f"{job.id}:{item.id}:pair-{item.configuration['pair_id']}"
             )
         return JobAttemptRecord(
             id=new_id("attempt"),
@@ -1783,14 +1979,40 @@ class ExecutionCoordinator:
                 item.error_details = None
             elif result.outcome == ProviderOutcome.FAILED:
                 attempt.status = AttemptStatus.FAILED.value
+                # Aurora domestic detail pairs are the one detail workflow
+                # whose adjacent screens may be leased by different workers.
+                # Give transient provider errors and pair-canvas rehydration a
+                # bounded two-attempt recovery window without changing the
+                # legacy explicit-retry contract for ordinary detail jobs.
+                pair_retry = (
+                    job.type == JobType.DETAIL_PACK.value
+                    and isinstance(item.configuration, Mapping)
+                    and bool(item.configuration.get("pair_id"))
+                    and attempt.attempt_no <= 2
+                    and (
+                        bool(result.retryable)
+                        or result.error_code
+                        in {
+                            "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
+                            "AURORA_PAIR_CACHE_MISSING",
+                            "IMAGE_RESPONSE_SIZE_INVALID",
+                            "USAGE_RECORD_FAILED",
+                        }
+                    )
+                )
                 should_retry = bool(result.retryable) and (
                     (
                         job.type == JobType.DETAIL_PACK.value
                         and attempt.attempt_no <= self.max_detail_retries
                     )
+                    or pair_retry
                     or (
                         job.type == JobType.AMAZON_VISUAL_SUITE.value
                         and attempt.attempt_no <= self.max_amazon_retries
+                    )
+                    or (
+                        job.type == JobType.PRODUCT_IMAGE.value
+                        and attempt.attempt_no <= self.max_product_image_retries
                     )
                     or (
                         job.type == JobType.DOMESTIC_MAIN_IMAGE.value
@@ -1828,17 +2050,32 @@ class ExecutionCoordinator:
                     jitter = 1.0 + (jitter_seed / 2550.0)
                     retry_delay = min(
                         self.aurora_retry_backoff_max_seconds,
-                        self.aurora_retry_backoff_base_seconds
-                        * multiplier
-                        * jitter,
+                        self.aurora_retry_backoff_base_seconds * multiplier * jitter,
                     )
                     item.next_attempt_at = now + timedelta(seconds=retry_delay)
                 else:
                     item.next_attempt_at = None
             else:
                 attempt.status = AttemptStatus.OUTCOME_UNKNOWN.value
-                item.status = JobItemStatus.FAILED.value
+                pair_reconcile = (
+                    job.type == JobType.DETAIL_PACK.value
+                    and isinstance(item.configuration, Mapping)
+                    and bool(item.configuration.get("pair_id"))
+                    and attempt.attempt_no <= 2
+                )
+                item.status = (
+                    JobItemStatus.PENDING.value
+                    if pair_reconcile
+                    else JobItemStatus.FAILED.value
+                )
+                item.stage = "retrying" if pair_reconcile else "failed"
                 item.error_code = "PROVIDER_OUTCOME_UNKNOWN"
+                item.error_message = (
+                    "Provider outcome is being reconciled with the same pair request."
+                    if pair_reconcile
+                    else None
+                )
+                item.next_attempt_at = None
             if result.outcome != ProviderOutcome.SUCCEEDED:
                 item.error_code = item.error_code or result.error_code
                 item.error_message = result.error_message
@@ -1852,9 +2089,7 @@ class ExecutionCoordinator:
                     "provider_request_id": result.provider_request_id,
                     "provider_outcome": result.outcome.value,
                 }
-                gateway_diagnostics = failure_metrics.get(
-                    "aurora_gateway_diagnostics"
-                )
+                gateway_diagnostics = failure_metrics.get("aurora_gateway_diagnostics")
                 if isinstance(gateway_diagnostics, Mapping):
                     failure_details["aurora_gateway_diagnostics"] = dict(
                         gateway_diagnostics
@@ -1921,58 +2156,101 @@ class ExecutionCoordinator:
                         },
                     )
                 )
-                session.add(
-                    JobAssetRecord(
-                        workspace_id=job.workspace_id,
-                        job_id=job.id,
-                        job_item_id=item.id,
-                        asset_id=asset_id,
-                        direction=JobAssetDirection.OUTPUT.value,
-                        role=_output_asset_role(job.type),
-                        ordinal=item.ordinal,
-                        is_deliverable=True,
-                        validation={
-                            "sha256": stored.sha256,
-                            "actual_width": stored.width,
-                            "actual_height": stored.height,
-                            "requested_size": item.configuration.get("size"),
-                            "canonical_width": (
-                                canonical_dimensions[0]
-                                if canonical_dimensions is not None
-                                else None
-                            ),
-                            "canonical_height": (
-                                canonical_dimensions[1]
-                                if canonical_dimensions is not None
-                                else None
-                            ),
-                            "locally_resampled": bool(
-                                result_metrics.get("locally_resampled", False)
-                            ),
-                            "provider_width": result_metrics.get("provider_width"),
-                            "provider_height": result_metrics.get("provider_height"),
-                            "outside_changed_pixels": result_metrics.get(
-                                "outside_changed_pixels"
-                            ),
-                            "raw_visual_success": result_metrics.get(
-                                "raw_visual_success"
-                            ),
-                            "visual_review_summary": result_metrics.get(
-                                "visual_review_summary"
-                            ),
-                            "visual_review_reason_codes": result_metrics.get(
-                                "visual_review_reason_codes"
-                            ),
-                            "visual_review_version": result_metrics.get(
-                                "visual_review_version"
-                            ),
-                            "delivery_status": result_metrics.get("delivery_status"),
-                            "perceptual_dhash": result.raw_usage.get(
-                                "perceptual_dhash"
-                            ),
-                        },
+                output_role = _output_asset_role(job.type)
+                output_validation = {
+                    "sha256": stored.sha256,
+                    "actual_width": stored.width,
+                    "actual_height": stored.height,
+                    "requested_size": item.configuration.get("size"),
+                    "canonical_width": (
+                        canonical_dimensions[0]
+                        if canonical_dimensions is not None
+                        else None
+                    ),
+                    "canonical_height": (
+                        canonical_dimensions[1]
+                        if canonical_dimensions is not None
+                        else None
+                    ),
+                    "locally_resampled": bool(
+                        result_metrics.get("locally_resampled", False)
+                    ),
+                    "provider_width": result_metrics.get("provider_width"),
+                    "provider_height": result_metrics.get("provider_height"),
+                    "outside_changed_pixels": result_metrics.get(
+                        "outside_changed_pixels"
+                    ),
+                    "raw_visual_success": result_metrics.get("raw_visual_success"),
+                    "visual_review_summary": result_metrics.get(
+                        "visual_review_summary"
+                    ),
+                    "visual_review_reason_codes": result_metrics.get(
+                        "visual_review_reason_codes"
+                    ),
+                    "visual_review_version": result_metrics.get(
+                        "visual_review_version"
+                    ),
+                    "delivery_status": result_metrics.get("delivery_status"),
+                    "perceptual_dhash": result.raw_usage.get("perceptual_dhash"),
+                    "aurora_pair_id": result_metrics.get("aurora_pair_id"),
+                    "aurora_pair_canvas_dimensions": result_metrics.get(
+                        "aurora_pair_canvas_dimensions"
+                    ),
+                    "aurora_pair_canvas_object_key": result_metrics.get(
+                        "aurora_pair_canvas_object_key"
+                    ),
+                    "aurora_pair_canvas_sha256": result_metrics.get(
+                        "aurora_pair_canvas_sha256"
+                    ),
+                    "aurora_pair_canvas_storage": result_metrics.get(
+                        "aurora_pair_canvas_storage"
+                    ),
+                    "aurora_pair_slice_dimensions": result_metrics.get(
+                        "aurora_pair_slice_dimensions"
+                    ),
+                    "audit_entrypoint": result_metrics.get("audit_entrypoint"),
+                    "pair_audit": result_metrics.get("pair_audit"),
+                    "semantic_audit_required": bool(
+                        result_metrics.get("pair_audit", {}).get(
+                            "semantic_audit_required", False
+                        )
+                        if isinstance(result_metrics.get("pair_audit"), Mapping)
+                        else False
+                    ),
+                }
+                # A bounded QA redraw reuses the same durable JobItem.  The
+                # output-link uniqueness key is (job, item, direction, role,
+                # ordinal), so replace the fenced link in place rather than
+                # inserting a second row that can never be delivered.
+                output_link = session.scalar(
+                    select(JobAssetRecord)
+                    .where(
+                        JobAssetRecord.job_id == job.id,
+                        JobAssetRecord.job_item_id == item.id,
+                        JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                        JobAssetRecord.role == output_role,
+                        JobAssetRecord.ordinal == item.ordinal,
                     )
+                    .with_for_update()
                 )
+                if output_link is None:
+                    session.add(
+                        JobAssetRecord(
+                            workspace_id=job.workspace_id,
+                            job_id=job.id,
+                            job_item_id=item.id,
+                            asset_id=asset_id,
+                            direction=JobAssetDirection.OUTPUT.value,
+                            role=output_role,
+                            ordinal=item.ordinal,
+                            is_deliverable=True,
+                            validation=output_validation,
+                        )
+                    )
+                else:
+                    output_link.asset_id = asset_id
+                    output_link.is_deliverable = True
+                    output_link.validation = output_validation
 
             usage_provider = effective_provider
             usage_model = result.model_name or self.provider.model
@@ -2214,14 +2492,25 @@ class ExecutionCoordinator:
             if current == JobStatus.CANCELLING:
                 target = JobStatus.CANCELLED
             elif succeeded == job.expected_item_count:
-                target = JobStatus.COMPLETED
+                if job.type == JobType.DETAIL_PACK.value:
+                    # Domestic Aurora and cross-border Skill detail pages both
+                    # require an explicit human delivery decision after all
+                    # modules are generated. Cross-border QA is disclosure and
+                    # selection only; it never triggers automatic redraw.
+                    target = JobStatus.AWAITING_FINAL_REVIEW
+                else:
+                    target = JobStatus.COMPLETED
             elif succeeded:
                 target = JobStatus.PARTIAL
             elif cancelled == job.expected_item_count:
                 target = JobStatus.CANCELLED
             else:
                 target = JobStatus.FAILED
-            terminal_stage = target.value
+            terminal_stage = (
+                "awaiting_user_final_review"
+                if target == JobStatus.AWAITING_FINAL_REVIEW
+                else target.value
+            )
             transition_job(job, target, stage=terminal_stage, progress=100)
             if job.type in {
                 JobType.DETAIL_PACK.value,
@@ -2441,7 +2730,12 @@ def build_fake_coordinator(
             skill_id=CROSSBORDER_DETAIL_SKILL_ID,
         )
         detail_provider = CrossborderDetailProvider(crossborder_detail_delegate)
-    domestic_skill_id = "xinghe-ecommerce-detail-domestic-3"
+    # Aurora v4.3 is the installed domestic detail runtime.  Its pair workflow
+    # is intentionally serialized because reference-bearing edits are measured
+    # to fail above one concurrent request (HTTP 413).
+    from .domestic_detail_provider import DOMESTIC_DETAIL_SKILL_ID
+
+    domestic_skill_id = DOMESTIC_DETAIL_SKILL_ID
     domestic_skill_root = default_skill_root(domestic_skill_id)
     domestic_planner = XinghePlanningCoordinator(
         session_factory,
@@ -2459,7 +2753,7 @@ def build_fake_coordinator(
         gateway,
         storage=storage,
         skill_root=domestic_skill_root,
-        max_concurrency=xinghe_concurrency,
+        max_concurrency=1,
         budget_limit_micros=budget_limit_micros,
         skill_id=domestic_skill_id,
     )
@@ -2622,7 +2916,8 @@ def build_fake_coordinator(
             storage,
             skill_root=amazon_skill_root,
             manifest_validator=manifest_validator.validate,
-            max_review_rounds=1,
+            max_review_rounds=2,
+            enforce_delivery=True,
         )
     return ExecutionCoordinator(
         session_factory,
@@ -2640,6 +2935,9 @@ def build_fake_coordinator(
         # incomplete-execution and regenerate-on-invalid-output contract.
         max_detail_retries=0,
         max_amazon_retries=2,
+        # Universal product images use one conservative retry for transient
+        # gateway/output failures; semantic QA remains visible for review.
+        max_product_image_retries=1,
         max_aurora_retries=aurora_max_transient_retries,
         aurora_retry_backoff_base_seconds=aurora_retry_backoff_base_seconds,
         aurora_retry_backoff_max_seconds=aurora_retry_backoff_max_seconds,

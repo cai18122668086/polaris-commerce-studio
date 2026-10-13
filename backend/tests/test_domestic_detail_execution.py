@@ -21,6 +21,7 @@ from app.xinghe_agent import (
     IMAGE_SIZE,
     FakeXingheGateway,
     PlannerRequest,
+    _accept_aurora_completion_module,
     _fake_plan,
     _planner_prompt,
     build_resume_signature,
@@ -653,3 +654,54 @@ def test_international_plan_requires_confirmation_then_waits_for_manual_qa(
     assert len(gateway.image_calls) == 8
     assert len(gateway.planner_calls) == 1
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
+
+
+def test_compact_completion_module_merges_without_runtime_derived_fields() -> None:
+    request = PlannerRequest(
+        workspace_id="ws_development",
+        job_id="job_plan_contract",
+        group_key="primary",
+        sources=(),
+        page_count=8,
+        language="zh-CN",
+        product_name="路斯冻干猫粮",
+        product_information=("全价冻干多拼猫粮",),
+        platform_code="tmall",
+        size=IMAGE_SIZE,
+        idempotency_key="plan-contract",
+        planning_profile="aurora_domestic_detail",
+    )
+    module = _fake_plan(request)["modules"][0]
+    for key in (
+        "order",
+        "visual_proof_contract",
+        "module_spatial_structure_contract",
+        "copy_intent",
+        "text_system",
+        "reading_path",
+        "copy_density",
+        "visual_payload_density",
+        "proof_relation_strength",
+        "commercial_energy",
+        "breathing_screen",
+        "brand_anchor",
+        "independent_logo_policy",
+        "independent_logo_source_id",
+        "inherited_dna_tokens",
+        "output",
+    ):
+        module.pop(key, None)
+    accepted = _accept_aurora_completion_module({"modules": [module]}, "M01")
+    bare = _accept_aurora_completion_module(dict(module), "M01")
+    foreign = dict(module)
+    foreign["id"] = "M09"
+    assert accepted is not None and accepted["id"] == "M01"
+    assert bare is not None and bare["lead_conclusion"] == module["lead_conclusion"]
+    assert _accept_aurora_completion_module({"modules": [foreign]}, "M01") is None
+    assert _accept_aurora_completion_module(
+        {"analysis": {}, "plan": {"screens": []}},
+        "M01",
+    ) is None
+    prompt = _planner_prompt(request)
+    assert "plan_format=COMPACT_V1_3" in prompt
+    assert "Do not emit runtime-derived" in prompt

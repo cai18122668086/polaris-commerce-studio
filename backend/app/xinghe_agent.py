@@ -2073,28 +2073,37 @@ class TengliOpenAICompatibleGateway:
             image_model=self.image_model,
         )
         routes = {primary_route.name: primary_route}
-        if failover_enabled and (failover_api_key or "").strip():
+        failover_keys = [
+            part.strip()
+            for part in re.split(r"[\s,]+", failover_api_key or "")
+            if part.strip()
+        ]
+        if failover_enabled and failover_keys:
             alternate_base_url = (failover_base_url or base_url).strip()
             parsed_failover = urlparse(alternate_base_url)
             if parsed_failover.scheme not in {"http", "https"} or not parsed_failover.netloc:
                 raise ValueError("Failover provider base URL must be absolute HTTP(S).")
-            alternate_key = (failover_api_key or "").strip()
             alternate_model = (failover_model or self.planner_model).strip()
             alternate_image_model = (
                 failover_image_model or self.image_model
             ).strip()
             if not alternate_model or not alternate_image_model:
                 raise ValueError("Failover provider models are required.")
-            failover_route = _ProviderRoute(
-                name="failover",
-                planner_api_key=alternate_key,
-                planner_base_url=alternate_base_url.rstrip("/") + "/",
-                planner_model=alternate_model,
-                image_api_key=alternate_key,
-                image_base_url=alternate_base_url.rstrip("/") + "/",
-                image_model=alternate_image_model,
-            )
-            routes[failover_route.name] = failover_route
+            for index, alternate_key in enumerate(failover_keys, start=1):
+                # A single legacy key keeps the name "failover". Ordered lists
+                # become failover-1, failover-2, ... from top to bottom.
+                route_name = (
+                    "failover" if len(failover_keys) == 1 else f"failover-{index}"
+                )
+                routes[route_name] = _ProviderRoute(
+                    name=route_name,
+                    planner_api_key=alternate_key,
+                    planner_base_url=alternate_base_url.rstrip("/") + "/",
+                    planner_model=alternate_model,
+                    image_api_key=self._image_api_key,
+                    image_base_url=self._image_base_url,
+                    image_model=self.image_model,
+                )
         self._provider_routes = routes
         self._rotation_order = tuple(
             name.strip().lower()
@@ -2115,9 +2124,21 @@ class TengliOpenAICompatibleGateway:
                 ordered.append(route)
         return tuple(ordered)
 
+    def _image_routes(self) -> tuple[_ProviderRoute, ...]:
+        """Keep image generation on the primary image account.
+
+        Failover keys are planner accounts. Image calls must not walk them.
+        """
+
+        ordered = self._ordered_routes()
+        primary = tuple(route for route in ordered if route.name == "primary")
+        return primary or ordered[:1]
+
     @staticmethod
     def _should_failover_status(status: int) -> bool:
-        return status in {408, 409, 425, 429} or status >= 500
+        # 401/402/403 are account failures (invalid token, payment, balance).
+        # Try the next configured key instead of failing the job immediately.
+        return status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         started = time.perf_counter()
@@ -2348,7 +2369,7 @@ class TengliOpenAICompatibleGateway:
             for source in request.sources
         ]
         try:
-            routes = self._ordered_routes()
+            routes = self._image_routes()
             last_route_index = len(routes) - 1
             response: Mapping[str, Any] | None = None
             for route_index, route in enumerate(routes):
@@ -2497,7 +2518,7 @@ class TengliOpenAICompatibleGateway:
                         request.source_png,
                     ),
                 ]
-            routes = self._ordered_routes()
+            routes = self._image_routes()
             last_route_index = len(routes) - 1
             response: Mapping[str, Any] | None = None
             for route_index, route in enumerate(routes):
@@ -3005,59 +3026,12 @@ class XinghePlanningCoordinator:
                         # merged into the original result so accounting keeps
                         # one planner result per request.
                         aurora_payload = result.payload
-                        module_required_keys = {
-                            "id",
-                            "order",
-                            "duty",
-                            "buyer_question",
-                            "lead_conclusion",
-                            "lead_claim_id",
-                            "selling_point_cluster_ids",
-                            "story_function",
-                            "pain_ids",
-                            "value_bridge_ids",
-                            "visual_proof_direction",
-                            "visual_evidence",
-                            "proof",
-                            "expression",
-                            "structure",
-                            "visual_archetype",
-                            "visible_copy",
-                            "typography",
-                            "composition_family",
-                            "camera_scale",
-                            "variation_from_previous",
-                            "transition_contract",
-                            "primary_subject_class",
-                            "secondary_subject_classes",
-                            "presentation_form",
-                            "complete_product_role",
-                            "expression_signature",
-                            "visual_cast",
-                            "content_unit_contract",
-                            "visual_proof_contract",
-                            "module_spatial_structure_contract",
-                            "copy_intent",
-                            "text_system",
-                            "reading_path",
-                            "copy_density",
-                            "visual_payload_density",
-                            "proof_relation_strength",
-                            "commercial_energy",
-                            "breathing_screen",
-                            "brand_anchor",
-                            "independent_logo_policy",
-                            "independent_logo_source_id",
-                            "inherited_dna_tokens",
-                            "output",
-                        }
                         modules_need_completion = (
                             not isinstance(aurora_payload, Mapping)
                             or not isinstance(aurora_payload.get("modules"), list)
                             or len(aurora_payload["modules"]) != request.page_count
                             or any(
-                                not isinstance(module, Mapping)
-                                or not module_required_keys.issubset(module)
+                                not _aurora_compact_module_ready(module)
                                 for module in aurora_payload["modules"]
                             )
                         )
@@ -3084,10 +3058,14 @@ class XinghePlanningCoordinator:
                                     if module_index < len(repaired_modules)
                                     else None
                                 )
-                                if (
-                                    isinstance(current_module, Mapping)
-                                    and module_required_keys.issubset(current_module)
+                                if isinstance(current_module, Mapping) and (
+                                    _aurora_compact_module_ready(current_module)
                                 ):
+                                    completed_module = _complete_aurora_module_structure(
+                                        current_module
+                                    )
+                                    completed_module["id"] = module_id
+                                    repaired_modules[module_index] = completed_module
                                     continue
                                 completion_context = json.dumps(
                                     {
@@ -3149,29 +3127,19 @@ class XinghePlanningCoordinator:
                                 completion_result = _with_planner_observability(
                                     completion_result
                                 )
-                                completion_modules = (
-                                    completion_result.payload.get("modules")
-                                    if isinstance(completion_result.payload, Mapping)
+                                accepted_module = (
+                                    _accept_aurora_completion_module(
+                                        completion_result.payload,
+                                        module_id,
+                                    )
+                                    if completion_result.error_code is None
                                     else None
                                 )
-                                if (
-                                    completion_result.error_code is None
-                                    and isinstance(completion_modules, list)
-                                    and len(completion_modules) == 1
-                                    and isinstance(completion_modules[0], Mapping)
-                                    and module_required_keys.issubset(
-                                        completion_modules[0]
-                                    )
-                                ):
-                                    repaired_module = (
-                                        _complete_aurora_module_structure(
-                                            completion_modules[0]
-                                        )
-                                    )
+                                if accepted_module is not None:
                                     if module_index < len(repaired_modules):
-                                        repaired_modules[module_index] = repaired_module
+                                        repaired_modules[module_index] = accepted_module
                                     else:
-                                        repaired_modules.append(repaired_module)
+                                        repaired_modules.append(accepted_module)
                             merged_payload = dict(aurora_payload)
                             merged_payload["modules"] = repaired_modules
                             result = replace(result, payload=merged_payload)
@@ -9215,7 +9183,7 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                             "items": {
                                 "type": "object",
                                 "additionalProperties": True,
-                                "required": list(module_fields),
+                                "required": list(_AURORA_COMPACT_MODULE_REQUIRED),
                                 "properties": module_fields,
                             },
                         }
@@ -9544,30 +9512,23 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "has minimum_subject_classes, minimum_presentation_forms, "
             "maximum_complete_product_dominant_screens, "
             "maximum_consecutive_same_signature, required_when_evidence_available. "
-            "Each module must include id, duty, buyer_question, lead_conclusion, "
+            "Set plan_format=COMPACT_V1_3. Each module must include the compact "
+            "schema fields only: id, duty, buyer_question, lead_conclusion, "
             "lead_claim_id, selling_point_cluster_ids, story_function, pain_ids, "
             "value_bridge_ids, visual_proof_direction, visual_evidence, proof, "
             "expression, structure, visual_archetype, visible_copy, typography, "
             "composition_family, camera_scale, variation_from_previous, "
             "transition_contract, primary_subject_class, secondary_subject_classes, "
             "presentation_form, complete_product_role, expression_signature, "
-            "visual_cast, content_unit_contract, visual_proof_contract, "
-            "module_spatial_structure_contract, copy_intent, text_system, "
-            "reading_path, copy_density, visual_payload_density, "
-            "proof_relation_strength, commercial_energy, breathing_screen, "
-            "brand_anchor, independent_logo_policy, independent_logo_source_id, "
-            "inherited_dna_tokens, and output. The native preflight contract is "
-            "authoritative: visual_proof_contract must include buyer_takeaway, "
-            "visual_verb, primary_subject, supporting_subjects, required_relations, "
-            "minimum_visual_payload, visual_specificity_anchor, allowed_metaphor, "
-            "hidden_copy_test; copy_intent must bind every visible_copy text to a "
-            "visible object or relation; text_system must include primary_mode, "
-            "anchor_target, anchor_zone, reading_direction, placement_logic, "
-            "hierarchy, max_lines, container_style, negative_space_reservation, "
-            "image_text_relationship, composition_flexibility, neighbor_difference "
-            "and supporting_mode; output must declare width_px, height_px, format "
-            "and color_space. Do not omit these fields or substitute legacy screen "
-            "objects. JSON only."
+            "visual_cast, and content_unit_contract. Do not emit runtime-derived "
+            "fields such as visual_proof_contract, text_system, copy_intent, "
+            "output, independent_logo_policy, or module_spatial_structure_contract; "
+            "the installed plan normalizer derives them from the compact module. "
+            "modules must contain exactly the requested screens and must not be "
+            "an empty array. formula_split_contract.entries[].dedicated_module_id "
+            "must match ^M[0-9]{2,}$ when an entry is present; leave entries "
+            "empty instead of writing an empty module id. Do not substitute "
+            "legacy screen objects. JSON only."
             % (
                 request.page_count,
                 request.page_count // 2,
@@ -10118,6 +10079,156 @@ def _planner_structure_profile(payload: object) -> dict[str, Any]:
     return profile
 
 
+# Compact authoring fields from compact-detail-plan.schema.json. The bundled
+# plan normalizer derives visual_proof_contract, text_system, copy_intent,
+# output, and logo policy from these fields. Requiring the derived fields
+# here drops a skill-valid module before that normalizer can run.
+_AURORA_COMPACT_MODULE_REQUIRED = (
+    "id",
+    "duty",
+    "buyer_question",
+    "lead_conclusion",
+    "lead_claim_id",
+    "selling_point_cluster_ids",
+    "story_function",
+    "pain_ids",
+    "value_bridge_ids",
+    "visual_proof_direction",
+    "visual_evidence",
+    "proof",
+    "expression",
+    "structure",
+    "visual_archetype",
+    "visible_copy",
+    "typography",
+    "composition_family",
+    "camera_scale",
+    "variation_from_previous",
+    "transition_contract",
+    "primary_subject_class",
+    "secondary_subject_classes",
+    "presentation_form",
+    "complete_product_role",
+    "expression_signature",
+    "visual_cast",
+    "content_unit_contract",
+)
+# Spine the model must author. Structural nests can be completed from the
+# module's own conclusion; these fields cannot, or the adapter would invent
+# the selling story.
+_AURORA_COMPACT_MODULE_SPINE = (
+    "duty",
+    "buyer_question",
+    "lead_conclusion",
+    "lead_claim_id",
+    "selling_point_cluster_ids",
+    "story_function",
+    "pain_ids",
+    "value_bridge_ids",
+    "visual_proof_direction",
+    "visual_evidence",
+    "visual_archetype",
+    "composition_family",
+    "camera_scale",
+    "primary_subject_class",
+    "secondary_subject_classes",
+    "presentation_form",
+    "complete_product_role",
+)
+
+
+def _aurora_module_id_matches(value: object, module_id: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    token = value.strip().upper()
+    if token == module_id:
+        return True
+    if (
+        token.startswith("M")
+        and token[1:].isdigit()
+        and module_id.startswith("M")
+        and module_id[1:].isdigit()
+    ):
+        return int(token[1:]) == int(module_id[1:])
+    return False
+
+
+def _aurora_compact_spine_present(module: Mapping[str, Any]) -> bool:
+    for key in _AURORA_COMPACT_MODULE_SPINE:
+        if key not in module or module[key] is None:
+            return False
+        value = module[key]
+        if isinstance(value, str) and not value.strip():
+            return False
+        if key in {
+            "selling_point_cluster_ids",
+            "pain_ids",
+            "value_bridge_ids",
+            "visual_evidence",
+            "secondary_subject_classes",
+        } and not isinstance(value, list):
+            return False
+    return True
+
+
+def _aurora_compact_module_ready(module: object) -> bool:
+    if not isinstance(module, Mapping) or not _aurora_compact_spine_present(module):
+        return False
+    completed = _complete_aurora_module_structure(module)
+    return set(_AURORA_COMPACT_MODULE_REQUIRED).issubset(completed)
+
+
+def _accept_aurora_completion_module(
+    payload: object,
+    module_id: str,
+) -> dict[str, Any] | None:
+    """Return one skill-valid compact module, or None when the body is not one.
+
+    Accepts ``{modules: [...]}``, ``{module: {...}}``, or a bare module object.
+    Runtime-derived harness fields are not required. A response that lacks the
+    authored selling spine is left unmerged so the adapter does not invent it.
+    """
+
+    if not isinstance(payload, Mapping):
+        return None
+    candidates: list[Mapping[str, Any]] = []
+    modules = payload.get("modules")
+    if isinstance(modules, list):
+        candidates.extend(item for item in modules if isinstance(item, Mapping))
+    nested = payload.get("module")
+    if isinstance(nested, Mapping):
+        candidates.append(nested)
+    if not any(
+        key in payload
+        for key in ("plan_format", "output_strategy", "modules", "formula_split_contract")
+    ) and ("duty" in payload or "lead_conclusion" in payload):
+        candidates.append(payload)
+    if not candidates:
+        return None
+    chosen = next(
+        (
+            item
+            for item in candidates
+            if _aurora_module_id_matches(item.get("id"), module_id)
+        ),
+        None,
+    )
+    if chosen is None and len(candidates) == 1:
+        existing = candidates[0].get("id")
+        if isinstance(existing, str) and existing.strip() and not _aurora_module_id_matches(
+            existing, module_id
+        ):
+            return None
+        chosen = candidates[0]
+    if chosen is None or not _aurora_compact_spine_present(chosen):
+        return None
+    completed = _complete_aurora_module_structure(chosen)
+    completed["id"] = module_id
+    if not set(_AURORA_COMPACT_MODULE_REQUIRED).issubset(completed):
+        return None
+    return completed
+
+
 def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, Any]:
     """Fill only absent structural fields from the module's own conclusion.
 
@@ -10549,6 +10660,12 @@ def validate_aurora_domestic_plan(
             "Aurora domestic detail requires 8, 10, or 12 modules.",
         )
     root = dict(_require_mapping(payload, "AURORA_PLAN_SCHEMA_INVALID", path="/"))
+    # These three values are protocol constants owned by the installed skill,
+    # not product claims. Fill them only when the planner omits them. A wrong
+    # explicit value still fails schema validation.
+    root.setdefault("plan_format", "COMPACT_V1_3")
+    root.setdefault("information_contract_version", "4.1")
+    root.setdefault("expression_contract_version", "4.3")
     # Compatible planning gateways occasionally omit the hero contract even
     # when they return a complete module storyboard.  Rehydrate only the
     # structural fields from M01 and its declared evidence; never invent a

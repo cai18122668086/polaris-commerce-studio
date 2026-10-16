@@ -308,6 +308,9 @@ _AURORA_PLANNER_PROTOCOL_FILES = (
     "references/series-visual-dna.md",
     "references/compliance-and-platform.md",
     "references/retry-and-feedback-control.md",
+    # Keep the planner aware of the v4.3 commercial-comfort contract. It
+    # requires a non-empty forbidden_visual_details policy on every module.
+    "references/commercial-aversion-control.md",
 )
 _DOMESTIC_DETAIL_SKILL_IDS = frozenset(
     {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID}

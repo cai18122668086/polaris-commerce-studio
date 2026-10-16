@@ -3102,7 +3102,7 @@ def _reserve_real_provider_job_if_enabled(
             )
             provider_requests = job.expected_item_count * 2 + group_count
     else:
-        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 2
         # Masked repair can make up to two edit calls and two visual-review
         # calls. Reserve the full fail-closed request envelope.
         provider_requests = 4

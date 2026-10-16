@@ -3085,10 +3085,11 @@ def _reserve_real_provider_job_if_enabled(
         ):
             # Initial campaign + one root repair + one completion per module +
             # one Harness preflight repair; each pair has at most two images
-            # and two actual-pixel reviews. Reserve the full bounded envelope.
+            # and two actual-pixel reviews, each with at most one targeted
+            # same-image identity-envelope review. Reserve the full bound.
             page_count = int(detail_settings.get("page_count") or 8)
             authoring_requests = group_count * (page_count + 3)
-            review_requests = job.expected_item_count
+            review_requests = job.expected_item_count * 2
             planner_requests = authoring_requests + review_requests
             estimated_cost = (
                 image_cost * 2

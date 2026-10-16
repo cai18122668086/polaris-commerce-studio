@@ -1030,7 +1030,7 @@ def test_compact_completion_module_merges_without_runtime_derived_fields() -> No
     assert "Do not emit runtime-derived" in prompt
 
 
-@pytest.mark.parametrize("region, expected_requests", [("domestic", 27), ("international", 17)])
+@pytest.mark.parametrize("region, expected_requests", [("domestic", 35), ("international", 17)])
 def test_detail_provider_reservation_covers_bounded_authoring_and_pixel_reviews(monkeypatch, region, expected_requests):
     import app.routes_v1 as routes
 

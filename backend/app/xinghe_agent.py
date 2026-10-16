@@ -6180,8 +6180,32 @@ class XingheImageProvider:
             "approved_module_contracts": list(native_request.get("approved_module_contracts") or []),
             "audit_context_version": "aurora-v4.3-pair-audit-v2",
         }
-        result = await self.gateway.plan(
-            PlannerRequest(
+
+        async def review(audit_request: PlannerRequest, phase: str) -> PlannerCallResult:
+            result = replace(_with_planner_observability(await self.gateway.plan(audit_request)), phase=phase + ":" + str(native_request.get("pair_id") or ""))
+            # Persist every real vision request even if its envelope or pixels
+            # fail. Keep the raw observation before structural normalization.
+            with self.session_factory() as db:
+                plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == request.job_id).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                if plan is not None:
+                    payload = dict(plan.payload)
+                    usage = dict(payload.get("usage") or {})
+                    usage["planner"] = [*(usage.get("planner") or []), _planner_usage_record(result)]
+                    payload["usage"] = usage
+                    payload["planner_diagnostics"] = [*(payload.get("planner_diagnostics") or []), _planner_diagnostics_record(result)]
+                    plan.payload = payload
+                    plan.payload_hash = canonical_hash(payload)
+                    db.commit()
+            write_detail_contract(
+                detail_workspace(request.job_id) / f"{phase}-{request.attempt_id}-{artifact.sha256[:16]}.json",
+                {"candidate_sha256": artifact.sha256, "phase": result.phase,
+                 "source_sha256": [source.sha256 for source in audit_request.sources],
+                 "response": result.payload, "error_code": result.error_code,
+                 "error_message": result.error_message, "usage": _planner_usage_record(result)},
+            )
+            return result
+
+        audit_request = PlannerRequest(
                 workspace_id=request.workspace_id,
                 job_id=request.job_id,
                 group_key=str(request.configuration.get("group_key") or request.job_id),
@@ -6196,28 +6220,34 @@ class XingheImageProvider:
                 domestic_protocol=True,
                 planning_profile="aurora_detail_pair_audit",
             )
-        )
-        result = replace(_with_planner_observability(result), phase="aurora_detail_pair_audit:" + str(native_request.get("pair_id") or ""))
-        # Vision review is a real provider request even when the schema or
-        # pixels fail. Persist it independently of the image outcome so cost,
-        # request limits and diagnostics include every review attempt.
-        with self.session_factory() as db:
-            plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == request.job_id).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
-            if plan is not None:
-                payload = dict(plan.payload)
-                usage = dict(payload.get("usage") or {})
-                usage["planner"] = [*(usage.get("planner") or []), _planner_usage_record(result)]
-                payload["usage"] = usage
-                payload["planner_diagnostics"] = [*(payload.get("planner_diagnostics") or []), _planner_diagnostics_record(result)]
-                plan.payload = payload
-                plan.payload_hash = canonical_hash(payload)
-                db.commit()
+        result = await review(audit_request, "aurora_detail_pair_audit")
         if result.error_code or not isinstance(result.payload, Mapping):
             raise XingheAgentError(
                 "AURORA_NATIVE_SEMANTIC_AUDIT_FAILED",
                 result.error_message or "Native detail semantic audit returned no judgment.",
             )
         judgment = dict(result.payload)
+        identity = judgment.get("identity_silhouette")
+        identity = dict(identity) if isinstance(identity, Mapping) else {}
+        identity_keys = ("shape_consistent", "colorway_consistent", "texture_consistent")
+        if not all(isinstance(identity.get(key), bool) for key in identity_keys) or not isinstance(identity.get("visible_evidence"), str) or len(identity["visible_evidence"].strip()) < 8:
+            # A missing positive comparison is not a negative pixel finding.
+            # Ask once about these same pixels; never regenerate the image or
+            # infer a silhouette pass from a generic identity check.
+            identity_result = await review(
+                replace(audit_request, planning_profile="aurora_detail_identity_audit",
+                    idempotency_key=audit_request.idempotency_key + ":identity",
+                    product_information=(json.dumps({"pair_id": contract["pair_id"],
+                        "product_name": contract["product_name"], "candidate_sha256": artifact.sha256}, ensure_ascii=False),)),
+                "aurora_detail_identity_audit",
+            )
+            observed = identity_result.payload
+            if identity_result.error_code or not isinstance(observed, Mapping) or not all(isinstance(observed.get(key), bool) for key in identity_keys) or not isinstance(observed.get("visible_evidence"), str) or len(observed["visible_evidence"].strip()) < 8:
+                raise XingheAgentError("AURORA_NATIVE_IDENTITY_AUDIT_INVALID", identity_result.error_message or "The bounded identity review did not return a complete direct-pixel comparison.")
+            judgment["identity_silhouette"] = {
+                **{key: observed[key] and identity.get(key) is not False for key in identity_keys},
+                "visible_evidence": " ".join(str(value).strip() for value in (identity.get("visible_evidence"), observed["visible_evidence"]) if value),
+            }
         binding = judgment.get("artifact_binding")
         binding = dict(binding) if isinstance(binding, Mapping) else {}
         binding.update({
@@ -9245,17 +9275,19 @@ def _inline_aurora_schema_refs(value: Any, resolver: Any) -> Any:
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
-    if request.planning_profile == "aurora_detail_pair_audit":
+    if request.planning_profile in {"aurora_detail_pair_audit", "aurora_detail_identity_audit"}:
         schema_path = (
             AuroraDetailHarnessRunner().skill_root
             / "schemas"
             / "pair-judgment.schema.json"
         )
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        if request.planning_profile == "aurora_detail_identity_audit":
+            schema = schema["properties"]["identity_silhouette"]
         return {
             "type": "json_schema",
             "json_schema": {
-                "name": "aurora_detail_pair_judgment",
+                "name": request.planning_profile,
                 "strict": False,
                 "schema": schema,
             },
@@ -9535,6 +9567,20 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "multiple related selling points. The first product_information entry "
             "contains the current approved proof contract and required field names."
         )
+    if request.planning_profile == "aurora_detail_identity_audit":
+        return (
+            "Directly inspect the last attached image as the generated pair candidate. "
+            "Compare its product silhouette, camera and port opening geometry, colorway, "
+            "printed artwork and surface texture to every earlier product reference. "
+            "Ignore geometry-only format canvases and reference backgrounds/watermarks. "
+            "Return only one JSON object with boolean shape_consistent, boolean "
+            "colorway_consistent, boolean texture_consistent, and visible_evidence "
+            "describing concrete observations in these actual pixels. Use false for "
+            "observed drift or insufficient evidence; never infer success from a prompt "
+            "or a generic prior identity verdict. Do not judge or change any other "
+            "pair audit finding.\n\nproduct_information="
+            + json.dumps(list(request.product_information), ensure_ascii=False)
+        )
     if request.planning_profile == "aurora_detail_pair_audit":
         return (
             "Directly inspect the last attached image as the generated continuous "
@@ -9558,6 +9604,10 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "method_specific_pass, and concrete visible_evidence. Compare to the "
             "supplied pair_render method; never substitute a string verdict or "
             "omit these fields. Report a real failed observation as false. "
+            "identity_silhouette is mandatory for both PASS and MATERIAL_FAIL: "
+            "include boolean shape_consistent, colorway_consistent, "
+            "texture_consistent and concrete visible_evidence, separately from "
+            "checks.identity. Never omit the positive reference comparison on failure. "
             "Return JSON only.\n\nproduct_information="
             + json.dumps(list(request.product_information), ensure_ascii=False)
         )

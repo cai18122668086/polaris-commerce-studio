@@ -23,6 +23,7 @@ from app.models import (
     JobItemRecord,
     JobPlanRecord,
     JobRecord,
+    utc_now,
 )
 from app.services import canonical_hash
 from app.xinghe_agent import (
@@ -544,6 +545,38 @@ def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_scr
     assert all(m["status"] == "COMPLETE_WITH_RESIDUALS" for m in session["modules"][:2])
     assert all(m["cycle_attempt_count"] == 2 for m in session["modules"][:2])
     assert "笔画粘连" in str(session["modules"][0]["residual_issues"])
+
+
+def test_failed_detail_retry_restores_all_halted_screens_and_reuses_approved_plan(client):
+    source = upload_asset(client, filename="halted-detail-retry.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    confirmed = client.post(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(), json=_aurora_approval_payload(planned))
+    assert confirmed.status_code == 202
+    with client.app.state.session_factory() as db:
+        original = db.get(JobRecord, job["id"])
+        original.status, original.stage = "failed", "failed"
+        original.finished_at = utc_now()
+        items = db.scalars(select(JobItemRecord).where(JobItemRecord.job_id == job["id"]).order_by(JobItemRecord.ordinal)).all()
+        for index, item in enumerate(items):
+            item.status = "failed" if index == 0 else "skipped"
+            item.error_code = "AURORA_NATIVE_PAIR_AUDIT_FAILED" if index == 0 else "AURORA_DETAIL_SEQUENCE_HALTED"
+        db.commit()
+    retried = client.post(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/retry", headers=idem(), json={"scope": "failed"})
+    assert retried.status_code == 201, retried.text
+    target = retried.json()
+    assert [item["status"] for item in target["items"]] == ["pending"] * 8
+    assert target["plan"]["confirmed_at"] is not None
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target['id']}").json()
+    assert result["status"] == "awaiting_final_review", result
+    assert all(item["status"] == "succeeded" for item in result["items"])
+    assert len(_gateway(client).image_calls) == 4
+    assert len(_gateway(client).planner_calls) == 1
 
 
 def test_missing_middle_module_completes_only_that_id_without_reordering(

@@ -1032,4 +1032,20 @@ def retry_item_ids(
                 and item.id not in blocker_ids
                 and item.id not in selected
             )
+    elif (
+        source.type == JobType.DETAIL_PACK.value
+        and isinstance(source.configuration, Mapping)
+        and isinstance(source.configuration.get("settings"), Mapping)
+        and source.configuration["settings"].get("market_region") == "domestic"
+    ):
+        # A failed pair closes the remaining sequence without generating it.
+        # Recover those dependent screens together with the failed page;
+        # unrelated skips and user cancellations retain their own semantics.
+        selected.extend(
+            item.id
+            for item in items
+            if item.status == JobItemStatus.SKIPPED.value
+            and item.error_code == "AURORA_DETAIL_SEQUENCE_HALTED"
+            and item.id not in selected
+        )
     return selected

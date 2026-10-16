@@ -10439,6 +10439,12 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
         "copy_responsibility": "说明购买结论",
     }.items():
         expression_output[key] = as_text(expression_output.get(key), fallback)
+    # ``pain_expression`` is optional. Compatible planners sometimes encode
+    # an intentional omission as JSON null, which is invalid for the schema's
+    # optional object but carries no claim to preserve. Drop only that null so
+    # the absence remains explicit without inventing a buyer pain.
+    if expression_output.get("pain_expression") is None:
+        expression_output.pop("pain_expression", None)
     # The bundled schema requires this optional aversion-control object to keep
     # its replacement expression at minLength=10. Compatible planners
     # occasionally return a semantically valid but one-character-short phrase;

@@ -129,6 +129,17 @@ def test_malformed_commercial_comfort_details_are_filtered_without_rewriting_val
     ] == ["保留的安全边界"]
 
 
+def test_null_optional_pain_expression_is_removed_without_inventing_a_pain() -> None:
+    repaired = _complete_aurora_module_structure(
+        {
+            "lead_conclusion": "商品结构清晰易于理解",
+            "expression": {"pain_expression": None},
+        }
+    )
+
+    assert "pain_expression" not in repaired["expression"]
+
+
 def test_missing_style_constitution_gets_neutral_structural_defaults() -> None:
     root: dict[str, object] = {}
     _normalize_aurora_style_constitution(root)

@@ -169,4 +169,10 @@ def test_provider_schemas_are_self_contained_and_match_each_repair_phase() -> No
     module = _planner_response_format(replace(request, planning_profile="aurora_domestic_modules_completion"))["json_schema"]["schema"]
     assert module["required"] == ["modules"]
     assert module["properties"]["modules"]["maxItems"] == 1
+    evidence = module["properties"]["modules"]["items"]["properties"]["visual_evidence"]
+    assert evidence["type"] == "object"
+    assert evidence["required"] == ["evidence_class", "proof_device", "visible_content", "forbidden_inventions"]
+    clusters = campaign["properties"]["output_strategy"]["properties"]["selling_point_clusters"]
+    assert "fact_ids" in clusters["items"]["required"]
+    assert "assigned_module_ids" in clusters["items"]["required"]
 

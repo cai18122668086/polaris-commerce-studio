@@ -486,6 +486,8 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
                     lowered = {"medium_high": "high", "low_medium": "medium"}.get(lowered, lowered)
                 module[field] = lowered
         evidence = module.get("visual_evidence")
+        if isinstance(evidence, str) and evidence.strip():
+            evidence = [evidence]
         if isinstance(evidence, list):
             module["visual_evidence"] = {
                 "evidence_class": "DIRECT_OBSERVATION",

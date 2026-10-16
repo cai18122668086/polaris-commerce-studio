@@ -3244,6 +3244,7 @@ class XinghePlanningCoordinator:
             modules = aligned_modules
             payload["modules"] = modules
             invalid_indexes: set[int] = set()
+            module_issues: dict[int, list[Mapping[str, Any]]] = {}
             try:
                 validate_aurora_domestic_plan(
                     payload, request.page_count, skill_root=self.skill_root
@@ -3256,7 +3257,9 @@ class XinghePlanningCoordinator:
                         and tokens[1] == "modules"
                         and tokens[2].isdigit()
                     ):
-                        invalid_indexes.add(int(tokens[2]))
+                        invalid_index = int(tokens[2])
+                        invalid_indexes.add(invalid_index)
+                        module_issues.setdefault(invalid_index, []).append(issue)
             for module_index in range(request.page_count):
                 module_id = f"M{module_index + 1:02d}"
                 module = modules[module_index] if module_index < len(modules) else None
@@ -3268,7 +3271,7 @@ class XinghePlanningCoordinator:
                 payload["modules"] = modules
                 response = await repair(
                     "aurora_domestic_modules_completion",
-                    [
+                    module_issues.get(module_index) or [
                         {
                             "message": "Missing or invalid compact module",
                             "module_id": module_id,
@@ -9231,6 +9234,19 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             from jsonschema import RefResolver
 
             schema = _inline_aurora_schema_refs(schema, RefResolver(schema_path.as_uri(), schema))
+            # Compact authoring requires visual_evidence but leaves its shape
+            # open. Give the remote planner the actual runtime contract instead
+            # of asking it to guess between prose, arrays and evidence objects.
+            runtime_schema = json.loads(
+                schema_path.with_name("detail-plan.schema.json").read_text(encoding="utf-8")
+            )
+            schema["properties"]["modules"]["items"]["properties"]["visual_evidence"] = (
+                runtime_schema["properties"]["modules"]["items"]["properties"]["visual_evidence"]
+            )
+            for field in ("selling_point_clusters", "claim_coverage"):
+                schema["properties"]["output_strategy"]["properties"][field] = (
+                    runtime_schema["properties"]["output_strategy"]["properties"][field]
+                )
         except (OSError, UnicodeError, json.JSONDecodeError):
             # Manifest/runtime validation will report a missing schema with a
             # precise fail-closed error; do not hide it behind a transport
@@ -10231,9 +10247,12 @@ def _aurora_compact_spine_present(module: Mapping[str, Any]) -> bool:
             "selling_point_cluster_ids",
             "pain_ids",
             "value_bridge_ids",
-            "visual_evidence",
             "secondary_subject_classes",
         } and not isinstance(value, list):
+            return False
+        if key == "visual_evidence" and (
+            not isinstance(value, (str, list, Mapping)) or not value
+        ):
             return False
     return True
 
@@ -10897,14 +10916,7 @@ def validate_aurora_domestic_plan(
                 repaired_candidates.append(entry)
             output_strategy["module_count_candidates"] = repaired_candidates
         output_strategy.setdefault(
-            "selling_point_clusters",
-            [{"id": "SP-COVERAGE", "label": "已批准卖点覆盖"}],
-        )
-        output_strategy.setdefault(
             "merge_decisions", ["按相邻模块保留独立购买决策信息"],
-        )
-        output_strategy.setdefault(
-            "claim_coverage", [{"status": "ACTIVE", "planned_modules": []}],
         )
         output_strategy.setdefault(
             "module_count_formula",

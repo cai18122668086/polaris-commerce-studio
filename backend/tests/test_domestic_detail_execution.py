@@ -11,7 +11,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from app.aurora_detail_runtime import detail_workspace
+from app.aurora_detail_runtime import (
+    detail_workspace,
+    normalize_native_plan_for_harness,
+)
 from app.domain import JobStatus, PlanValidationStatus
 from app.models import (
     AuditEventRecord,
@@ -346,6 +349,8 @@ def test_domestic_missing_campaign_contracts_repair_before_modules_and_preserve_
         if request.planning_profile == "aurora_domestic_detail":
             payload.pop("reference_expression_system")
             payload.pop("selling_point_depth_contract")
+            payload["output_strategy"].pop("selling_point_clusters")
+            payload["output_strategy"].pop("claim_coverage")
             payload["campaign_thesis"] = "保留原始有效的商品购买叙事。"
         elif request.planning_profile == "aurora_domestic_campaign_completion":
             payload["campaign_thesis"] = "修复响应不应覆盖这个已有效的字段。"
@@ -456,6 +461,77 @@ def test_missing_middle_module_completes_only_that_id_without_reordering(
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_modules_completion"]
     assert len(planned["plan"]["payload"]["usage"]["planner"]) == 2
+
+
+@pytest.mark.parametrize("evidence_shape", ["text", "list", "object"])
+def test_authored_visual_evidence_reaches_real_harness_without_replanning(
+    client: TestClient, monkeypatch, evidence_shape: str,
+) -> None:
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+    note = "商品参考图中可见的主体轮廓、边缘关系与局部结构。"
+    authored = {}
+    evidence = {
+        "text": note,
+        "list": [note],
+        "object": {
+            "evidence_class": "DIRECT_VERIFIED",
+            "proof_device": "商品参考图中的可见关系",
+            "visible_content": [note],
+            "forbidden_inventions": ["不得增加来源图中不存在的结构"],
+        },
+    }[evidence_shape]
+
+    async def authored_evidence(request):
+        result = await original_plan(request)
+        payload = deepcopy(result.payload)
+        for module in payload["modules"]:
+            module["visual_evidence"] = deepcopy(evidence)
+        authored.update(payload)
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", authored_evidence)
+    source = upload_asset(client, filename=f"evidence-{evidence_shape}.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert len(gateway.planner_calls) == 1
+    native = normalize_native_plan_for_harness(authored)
+    assert all(m["visual_evidence"]["visible_content"] == [note] for m in native["modules"])
+    assert gateway.image_calls == []
+
+
+def test_module_repair_receives_the_actual_invalid_enum_and_path(
+    client: TestClient, monkeypatch,
+) -> None:
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+    healthy_module = {}
+
+    async def invalid_enum(request):
+        result = await original_plan(request)
+        payload = deepcopy(result.payload)
+        if request.planning_profile == "aurora_domestic_detail":
+            healthy_module.update(deepcopy(payload["modules"][1]))
+            payload["modules"][1]["secondary_subject_classes"] = ["MATERIAL_OR_INGREDIENT"]
+        elif request.planning_profile == "aurora_domestic_modules_completion":
+            issues = next(v for v in request.product_information if v.startswith("VALIDATION_ERRORS_JSON="))
+            assert "/modules/1/secondary_subject_classes/0" in issues
+            assert "MATERIAL_OR_INGREDIENT" in issues
+            assert "INGREDIENT_OR_MATERIAL" in issues
+            payload = {"modules": [healthy_module]}
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", invalid_enum)
+    source = upload_asset(client, filename="enum-error-context.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_modules_completion"]
+    assert "TARGET_MODULE_ID=M02" in gateway.planner_calls[-1].product_information
+    assert gateway.image_calls == []
 
 
 def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
@@ -802,6 +878,12 @@ def test_compact_completion_module_merges_without_runtime_derived_fields() -> No
         planning_profile="aurora_domestic_detail",
     )
     module = _fake_plan(request)["modules"][0]
+    module["visual_evidence"] = {
+        "evidence_class": "DIRECT_VERIFIED",
+        "proof_device": "用户商品照片",
+        "visible_content": ["照片中的商品轮廓与结构"],
+        "forbidden_inventions": ["不得增加未提供的结构"],
+    }
     for key in (
         "order",
         "visual_proof_contract",

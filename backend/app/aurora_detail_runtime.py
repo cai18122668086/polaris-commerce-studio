@@ -138,11 +138,17 @@ def write_contract(path: Path, value: Mapping[str, Any] | Sequence[Any]) -> None
 def detail_workspace(job_id: str, *, root: Path | None = None) -> Path:
     if not job_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in job_id):
         raise AuroraDetailHarnessError("INVALID_JOB_ID", "Invalid detail job identifier")
-    base = (root or (default_aurora_work_root().parent / "aurora-domestic-detail")).resolve()
+    base = (root or (default_aurora_work_root() / "domestic-detail")).resolve()
     workspace = (base / job_id).resolve()
     if base != workspace and base not in workspace.parents:
         raise AuroraDetailHarnessError("WORKSPACE_ESCAPE", "Detail workspace escaped its root")
-    workspace.mkdir(parents=True, exist_ok=True)
+    try:
+        workspace.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise AuroraDetailHarnessError(
+            "WORKSPACE_NOT_WRITABLE",
+            "Aurora detail workspace is not writable (%s)." % (exc.strerror or type(exc).__name__),
+        ) from exc
     return workspace
 
 

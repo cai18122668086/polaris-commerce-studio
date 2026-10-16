@@ -13,6 +13,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 import math
 import re
 import secrets
@@ -98,6 +99,7 @@ PROMPT_POLICY_VERSION = "xinghe-skill-parity-prompt-v2"
 RESUME_SIGNATURE_VERSION = "xinghe-resume-v2"
 PLAN_SCHEMA_VERSION = "xinghe-plan-v2"
 PLANNER_OBSERVABILITY_VERSION = "xinghe-planner-observability-v3"
+logger = logging.getLogger(__name__)
 
 # This is the native Aurora v2 visual-judgment check order.  Keep the gateway
 # response contract in the same order as the Skill/runtime contract; the
@@ -340,11 +342,13 @@ class XingheAgentError(RuntimeError):
         *,
         retryable: bool = False,
         json_pointer: str | None = None,
+        validation_errors: Sequence[Mapping[str, Any]] = (),
     ) -> None:
         super().__init__(message)
         self.code = code
         self.retryable = retryable
         self.json_pointer = json_pointer
+        self.validation_errors = tuple(dict(error) for error in validation_errors)
 
 
 @dataclass(frozen=True)
@@ -503,6 +507,8 @@ class PlannerCallResult:
     # response could not be decoded into an object and diagnostics sampling is
     # enabled.  Off by default; raw prompts and secrets are never included.
     content_sample: str | None = None
+    phase: str | None = None
+    supplemental_results: tuple[PlannerCallResult, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2196,14 +2202,17 @@ class TengliOpenAICompatibleGateway:
                     "max_completion_tokens": 16_000,
                 }
             )
-        elif request.planning_profile == "aurora_domestic_detail":
+        elif request.planning_profile in {
+            "aurora_domestic_detail", "aurora_domestic_plan_repair"
+        }:
             # The gateway becomes unstable when asked for a complete 8-screen
             # campaign and every nested contract in one 32k response.  The
             # coordinator already performs bounded per-module completion, so
             # keep the first pass within the relay's reliable response window.
             payload.update({"max_completion_tokens": 16_000})
         elif request.planning_profile in {
-            "aurora_domestic_modules_completion", "aurora_detail_pair_audit"
+            "aurora_domestic_modules_completion", "aurora_detail_pair_audit",
+            "aurora_domestic_campaign_completion",
         }:
             payload.update({"max_completion_tokens": 16_000})
         response: Mapping[str, Any] | None = None
@@ -3022,152 +3031,8 @@ class XinghePlanningCoordinator:
                     )
                 else:
                     if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
-                        # Some compatible gateways honour the campaign-level
-                        # schema but omit the large modules array. Make one
-                        # bounded, auditable module-only completion request
-                        # before local validation. The completion response is
-                        # merged into the original result so accounting keeps
-                        # one planner result per request.
-                        aurora_payload = result.payload
-                        modules_need_completion = (
-                            not isinstance(aurora_payload, Mapping)
-                            or not isinstance(aurora_payload.get("modules"), list)
-                            or len(aurora_payload["modules"]) != request.page_count
-                            or any(
-                                not _aurora_compact_module_ready(module)
-                                for module in aurora_payload["modules"]
-                            )
-                        )
-                        if (
-                            modules_need_completion
-                            and isinstance(aurora_payload, Mapping)
-                        ):
-                            # A full eight-module completion is usually
-                            # truncated by compatible gateways. Repair only
-                            # the modules that are structurally incomplete,
-                            # one bounded call per module, then validate the
-                            # merged campaign locally.
-                            current_modules = aurora_payload.get("modules")
-                            if not isinstance(current_modules, list):
-                                current_modules = []
-                            repaired_modules = list(current_modules)
-                            module_ids = [
-                                f"M{index:02d}"
-                                for index in range(1, request.page_count + 1)
-                            ]
-                            for module_index, module_id in enumerate(module_ids):
-                                current_module = (
-                                    repaired_modules[module_index]
-                                    if module_index < len(repaired_modules)
-                                    else None
-                                )
-                                if isinstance(current_module, Mapping) and (
-                                    _aurora_compact_module_ready(current_module)
-                                ):
-                                    completed_module = _complete_aurora_module_structure(
-                                        current_module
-                                    )
-                                    completed_module["id"] = module_id
-                                    repaired_modules[module_index] = completed_module
-                                    continue
-                                completion_context = json.dumps(
-                                    {
-                                        "campaign": {
-                                            key: value
-                                            for key, value in aurora_payload.items()
-                                            if key != "modules"
-                                        },
-                                        "current_module": current_module,
-                                    },
-                                    ensure_ascii=False,
-                                    separators=(",", ":"),
-                                )
-                                completion_request = replace(
-                                    request,
-                                    system_prompt=(
-                                        "You are the Aurora domestic ecommerce detail "
-                                        "v4.3 module repair planner. Return JSON only. "
-                                        "Use only the approved facts and campaign "
-                                        "contracts in the user message; never invent "
-                                        "claims, assets, specifications, or evidence. "
-                                        "The response must contain one complete module "
-                                        "inside a non-empty modules array and must "
-                                        "follow every field and enum named in the "
-                                        "user message."
-                                    ),
-                                    planning_profile=(
-                                        "aurora_domestic_modules_completion"
-                                    ),
-                                    page_count=1,
-                                    sources=(),
-                                    product_information=(
-                                        *request.product_information,
-                                        f"TARGET_MODULE_ID={module_id}",
-                                        f"CURRENT_AURORA_PLAN_JSON={completion_context}",
-                                    ),
-                                )
-                                completion_started = time.perf_counter()
-                                try:
-                                    completion_result = await self.gateway.plan(
-                                        completion_request
-                                    )
-                                except Exception as completion_exc:
-                                    completion_result = PlannerCallResult(
-                                        payload=None,
-                                        provider_request_id=None,
-                                        raw_usage=None,
-                                        normalized_usage=normalize_usage(None),
-                                        api_latency_seconds=(
-                                            time.perf_counter() - completion_started
-                                        ),
-                                        actual_cost_micros=None,
-                                        error_code="PLANNER_PROVIDER_FAILED",
-                                        error_message=(
-                                            "Aurora module completion provider failed "
-                                            f"({type(completion_exc).__name__})."
-                                        ),
-                                    )
-                                completion_result = _with_planner_observability(
-                                    completion_result
-                                )
-                                accepted_module = (
-                                    _accept_aurora_completion_module(
-                                        completion_result.payload,
-                                        module_id,
-                                    )
-                                    if completion_result.error_code is None
-                                    else None
-                                )
-                                if accepted_module is not None:
-                                    if module_index < len(repaired_modules):
-                                        repaired_modules[module_index] = accepted_module
-                                    else:
-                                        repaired_modules.append(accepted_module)
-                            merged_payload = dict(aurora_payload)
-                            merged_payload["modules"] = repaired_modules
-                            result = replace(result, payload=merged_payload)
-                            results[-1] = result
-                        if isinstance(result.payload, Mapping):
-                            normalized_payload = dict(result.payload)
-                            modules_value = normalized_payload.get("modules")
-                            if isinstance(modules_value, list):
-                                normalized_payload["modules"] = [
-                                    _complete_aurora_module_structure(module)
-                                    if isinstance(module, Mapping)
-                                    else module
-                                    for module in modules_value
-                                ]
-                                result = replace(
-                                    result,
-                                    payload=normalized_payload,
-                                )
-                                results[-1] = result
                         validated.append(
-                            validate_aurora_domestic_plan(
-                                result.payload,
-                                request.page_count,
-                                skill_root=self.skill_root,
-                            )
+                            await self._complete_aurora_contract(request, result, results)
                         )
                         if _aurora_plan_has_unresolved_conflict(validated[-1]):
                             raise XingheAgentError(
@@ -3197,6 +3062,7 @@ class XinghePlanningCoordinator:
                     str(exc),
                     results,
                     error_path=exc.json_pointer,
+                    validation_errors=exc.validation_errors,
                 )
         return self._complete_planning(
             job_id,
@@ -3205,6 +3071,311 @@ class XinghePlanningCoordinator:
             results,
             validated,
         )
+
+    async def _complete_aurora_contract(
+        self,
+        request: PlannerRequest,
+        result: PlannerCallResult,
+        results: list[PlannerCallResult],
+    ) -> dict[str, Any]:
+        """Validate campaign contracts before spending calls on screen completion."""
+
+        index = len(results) - 1
+        payload = dict(_require_mapping(result.payload, "AURORA_PLAN_SCHEMA_INVALID"))
+        extra: list[PlannerCallResult] = []
+
+        async def repair(
+            profile: str, issues: object, *, module_id: str | None = None
+        ) -> PlannerCallResult:
+            context = dict(payload)
+            if module_id:
+                context = {
+                    "campaign": {k: v for k, v in payload.items() if k != "modules"},
+                    "current_module": next(
+                        (
+                            m
+                            for m in payload.get("modules", [])
+                            if isinstance(m, Mapping) and m.get("id") == module_id
+                        ),
+                        None,
+                    ),
+                }
+            information = (
+                *request.product_information,
+                "CURRENT_AURORA_PLAN_JSON=" + json.dumps(context, ensure_ascii=False),
+                "VALIDATION_ERRORS_JSON=" + json.dumps(issues, ensure_ascii=False),
+                *((f"TARGET_MODULE_ID={module_id}",) if module_id else ()),
+            )
+            repair_request = replace(
+                request,
+                system_prompt="You repair Aurora v4.3 JSON contracts using approved product facts. Preserve all valid facts and decisions. Return JSON only.",
+                planning_profile=profile,
+                page_count=1 if module_id else request.page_count,
+                sources=(),
+                product_information=information,
+                idempotency_key=f"{request.idempotency_key}:{profile}:{module_id or 'campaign'}",
+            )
+            logger.info(
+                "aurora planning phase started: job_id=%s phase=%s module=%s",
+                request.job_id,
+                profile,
+                module_id,
+            )
+            started = time.perf_counter()
+            try:
+                response = await self.gateway.plan(repair_request)
+            except Exception as exc:
+                response = PlannerCallResult(
+                    payload=None,
+                    provider_request_id=None,
+                    raw_usage=None,
+                    normalized_usage=normalize_usage(None),
+                    api_latency_seconds=time.perf_counter() - started,
+                    actual_cost_micros=None,
+                    error_code="PLANNER_PROVIDER_FAILED",
+                    error_message=f"Aurora completion provider failed ({type(exc).__name__}).",
+                )
+            response = replace(
+                _with_planner_observability(response),
+                phase=f"{profile}:{module_id}" if module_id else profile,
+            )
+            extra.append(response)
+            logger.info(
+                "aurora planning phase finished: job_id=%s phase=%s seconds=%.2f error=%s",
+                request.job_id,
+                response.phase,
+                response.api_latency_seconds,
+                response.error_code,
+            )
+            if response.error_code:
+                raise XingheAgentError(
+                    response.error_code,
+                    response.error_message or "Aurora contract repair failed.",
+                )
+            return response
+
+        def normalized() -> None:
+            modules = payload.get("modules")
+            if isinstance(modules, list):
+                payload["modules"] = [
+                    _complete_aurora_module_structure(m)
+                    if isinstance(m, Mapping)
+                    else m
+                    for m in modules
+                ]
+
+        try:
+            normalized()
+            try:
+                validate_aurora_domestic_plan(
+                    payload,
+                    request.page_count,
+                    skill_root=self.skill_root,
+                    campaign_only=True,
+                )
+            except XingheAgentError as exc:
+                if exc.code not in {
+                    "AURORA_PLAN_SCHEMA_INVALID",
+                    "AURORA_PAIR_CONTRACT_INVALID",
+                    "AURORA_MODULE_COUNT_MISMATCH",
+                }:
+                    raise
+                response = await repair(
+                    "aurora_domestic_campaign_completion",
+                    exc.validation_errors
+                    or [{"path": exc.json_pointer, "message": str(exc)}],
+                )
+                campaign = _require_mapping(
+                    response.payload, "AURORA_PLAN_SCHEMA_INVALID"
+                )
+                # A campaign-only response cannot replace any authored module.
+                repair_keys: set[str] = set()
+                for issue in exc.validation_errors:
+                    tokens = str(issue.get("path") or "").strip("/").split("/")
+                    if tokens[0]:
+                        repair_keys.add(tokens[0])
+                    else:
+                        repair_keys.update(
+                            str(key) for key in issue.get("missing_fields", [])
+                        )
+                if exc.json_pointer and exc.json_pointer != "/":
+                    repair_keys.add(exc.json_pointer.strip("/").split("/")[0])
+                payload.update(
+                    {
+                        k: v
+                        for k, v in campaign.items()
+                        if k in repair_keys and k != "modules"
+                    }
+                )
+                validate_aurora_domestic_plan(
+                    payload,
+                    request.page_count,
+                    skill_root=self.skill_root,
+                    campaign_only=True,
+                )
+            # Only after the root contracts pass may individual modules incur
+            # completion calls. Each target gets at most one such call.
+            modules = payload.get("modules")
+            modules = list(modules) if isinstance(modules, list) else []
+            if len(modules) > request.page_count:
+                raise XingheAgentError(
+                    "AURORA_MODULE_COUNT_MISMATCH",
+                    "Aurora returned more modules than requested.",
+                )
+            # Match authored IDs, not list offsets: omitting M03 must not move
+            # M04 into its slot and trigger a duplicate M08 completion.
+            aligned_modules: list[Any] = []
+            for target_index in range(request.page_count):
+                target_id = f"M{target_index + 1:02d}"
+                matches = [
+                    m
+                    for m in modules
+                    if isinstance(m, Mapping)
+                    and _aurora_module_id_matches(m.get("id"), target_id)
+                ]
+                if len(matches) > 1:
+                    raise XingheAgentError(
+                        "AURORA_MODULE_ORDER_INVALID",
+                        f"Aurora returned duplicate {target_id} modules.",
+                    )
+                aligned_modules.append(
+                    {**matches[0], "id": target_id} if matches else None
+                )
+            modules = aligned_modules
+            payload["modules"] = modules
+            invalid_indexes: set[int] = set()
+            try:
+                validate_aurora_domestic_plan(
+                    payload, request.page_count, skill_root=self.skill_root
+                )
+            except XingheAgentError as exc:
+                for issue in exc.validation_errors:
+                    tokens = str(issue.get("path") or "").split("/")
+                    if (
+                        len(tokens) > 2
+                        and tokens[1] == "modules"
+                        and tokens[2].isdigit()
+                    ):
+                        invalid_indexes.add(int(tokens[2]))
+            for module_index in range(request.page_count):
+                module_id = f"M{module_index + 1:02d}"
+                module = modules[module_index] if module_index < len(modules) else None
+                if (
+                    _aurora_compact_module_ready(module)
+                    and module_index not in invalid_indexes
+                ):
+                    continue
+                payload["modules"] = modules
+                response = await repair(
+                    "aurora_domestic_modules_completion",
+                    [
+                        {
+                            "message": "Missing or invalid compact module",
+                            "module_id": module_id,
+                        }
+                    ],
+                    module_id=module_id,
+                )
+                accepted = _accept_aurora_completion_module(response.payload, module_id)
+                if accepted is None:
+                    raise XingheAgentError(
+                        "AURORA_PLAN_SCHEMA_INVALID",
+                        f"Aurora completion did not return a complete {module_id}.",
+                        json_pointer=f"/modules/{module_index}",
+                    )
+                if module_index < len(modules):
+                    modules[module_index] = accepted
+                else:
+                    modules.append(accepted)
+            payload["modules"] = modules
+            normalized()
+            structured = validate_aurora_domestic_plan(
+                payload, request.page_count, skill_root=self.skill_root
+            )
+            if _aurora_plan_has_unresolved_conflict(structured):
+                return structured
+            try:
+                await asyncio.to_thread(
+                    self._preflight_aurora_plan, request, structured["aurora_plan"]
+                )
+            except AuroraDetailHarnessError as exc:
+                response = await repair(
+                    "aurora_domestic_plan_repair",
+                    [{"message": str(exc), "stage": "harness_preflight"}],
+                )
+                payload = dict(
+                    _require_mapping(response.payload, "AURORA_PLAN_SCHEMA_INVALID")
+                )
+                normalized()
+                structured = validate_aurora_domestic_plan(
+                    payload, request.page_count, skill_root=self.skill_root
+                )
+                await asyncio.to_thread(
+                    self._preflight_aurora_plan, request, structured["aurora_plan"]
+                )
+            return structured
+        except AuroraDetailHarnessError as exc:
+            raise XingheAgentError("AURORA_PLAN_PREFLIGHT_INVALID", str(exc)) from exc
+        finally:
+            results[index] = replace(
+                result,
+                payload=payload,
+                phase="aurora_domestic_detail",
+                supplemental_results=tuple(extra),
+            )
+
+    def _preflight_aurora_plan(
+        self, request: PlannerRequest, plan: Mapping[str, Any]
+    ) -> None:
+        """Run the real Skill compiler before presenting a plan for approval."""
+
+        from tempfile import TemporaryDirectory
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, request.job_id)
+            settings = (
+                dict((job.configuration or {}).get("settings") or {}) if job else {}
+            )
+        base = detail_workspace(request.job_id)
+        with TemporaryDirectory(prefix="planning-preflight-", dir=base) as path:
+            workspace = Path(path)
+            sources = [
+                {
+                    "id": source.asset_id,
+                    "role": source.source_role,
+                    "filename": source.filename,
+                }
+                for source in request.sources
+            ]
+            paths = [
+                str(source_path_for(workspace, index, source.filename, source.payload))
+                for index, source in enumerate(request.sources, start=1)
+            ]
+            input_path, identity_path, plan_path, session_path = [
+                workspace / name
+                for name in ("input.json", "identity.json", "plan.json", "session.json")
+            ]
+            write_detail_contract(
+                input_path,
+                build_native_input(settings, product_images=sources, image_paths=paths),
+            )
+            write_detail_contract(
+                identity_path,
+                build_native_identity(settings, [source["id"] for source in sources]),
+            )
+            write_detail_contract(plan_path, normalize_native_plan_for_harness(plan))
+            runner = AuroraDetailHarnessRunner(skill_root=self.skill_root)
+            runner.run(
+                "start", workspace, {"input": input_path, "session": session_path}
+            )
+            runner.run(
+                "lock-identity",
+                workspace,
+                {"session": session_path, "identity": identity_path},
+            )
+            runner.run(
+                "compile-plan", workspace, {"session": session_path, "plan": plan_path}
+            )
 
     async def _with_source_payloads(
         self,
@@ -3899,6 +4070,7 @@ class XinghePlanningCoordinator:
         results: Sequence[PlannerCallResult],
         *,
         error_path: str | None = None,
+        validation_errors: Sequence[Mapping[str, Any]] = (),
     ) -> JobStatus:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
@@ -3913,6 +4085,7 @@ class XinghePlanningCoordinator:
                 error_message,
                 results,
                 error_path=error_path,
+                validation_errors=validation_errors,
             )
             session.commit()
         return JobStatus.FAILED
@@ -3927,7 +4100,9 @@ class XinghePlanningCoordinator:
         results: Sequence[PlannerCallResult],
         *,
         error_path: str | None = None,
+        validation_errors: Sequence[Mapping[str, Any]] = (),
     ) -> None:
+        results = _planner_call_results(results)
         planner_usage = [_planner_usage_record(result) for result in results]
         planner_diagnostics = [
             _planner_diagnostics_record(result) for result in results
@@ -3946,13 +4121,18 @@ class XinghePlanningCoordinator:
             "planner_request_count": len(results),
             "image_request_count": 0,
         }
+        rejected = next((result.payload for result in results if result.phase == "aurora_domestic_detail" and isinstance(result.payload, Mapping)), None)
+        if rejected is not None:
+            failed_payload["rejected_aurora_plan"] = rejected
         plan.payload = failed_payload
         plan.payload_hash = canonical_hash(failed_payload)
         plan.validation_status = PlanValidationStatus.INVALID.value
         validation_error = {"code": error_code, "message": error_message}
         if error_path is not None:
             validation_error["path"] = error_path
-        plan.validation_errors = [validation_error]
+        plan.validation_errors = [
+            {**dict(error), "code": error_code} for error in validation_errors
+        ] or [validation_error]
         plan.validated_at = utc_now()
         job.error_code = error_code
         job.error_message = error_message
@@ -4020,6 +4200,7 @@ class XinghePlanningCoordinator:
         results: Sequence[PlannerCallResult],
         validated: Sequence[dict[str, Any]],
     ) -> JobStatus:
+        all_results = _planner_call_results(results)
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
             plan = session.get(JobPlanRecord, plan_id, with_for_update=True)
@@ -4032,7 +4213,7 @@ class XinghePlanningCoordinator:
                     "state": current.value,
                     "usage": {
                         "planner": [
-                            _planner_usage_record(result) for result in results
+                            _planner_usage_record(result) for result in all_results
                         ],
                         "image": {
                             "reported_requests": 0,
@@ -4040,7 +4221,7 @@ class XinghePlanningCoordinator:
                         },
                     },
                     "planner_diagnostics": [
-                        _planner_diagnostics_record(result) for result in results
+                        _planner_diagnostics_record(result) for result in all_results
                     ],
                     "image_request_count": 0,
                 }
@@ -4310,7 +4491,7 @@ class XinghePlanningCoordinator:
                         "planner_usage": _planner_usage_record(
                             results[group_index - 1]
                         ),
-                        "planning_time": results[group_index - 1].api_latency_seconds,
+                        "planning_time": sum(call.api_latency_seconds for call in _planner_call_results([results[group_index - 1]])),
                     }
                 )
             items = session.scalars(
@@ -4405,18 +4586,18 @@ class XinghePlanningCoordinator:
                     "budget_limit_micros": self.budget_limit_micros,
                 },
                 "usage": {
-                    "planner": [_planner_usage_record(result) for result in results],
+                    "planner": [_planner_usage_record(result) for result in all_results],
                     "image": {
                         "reported_requests": 0,
                         "unreported_requests": 0,
                     },
                 },
                 "planner_diagnostics": [
-                    _planner_diagnostics_record(result) for result in results
+                    _planner_diagnostics_record(result) for result in all_results
                 ],
                 "metrics": {
                     "planning_time": sum(
-                        result.api_latency_seconds for result in results
+                        result.api_latency_seconds for result in all_results
                     ),
                     "image_wall_time": None,
                     "average_api_latency": None,
@@ -4428,7 +4609,7 @@ class XinghePlanningCoordinator:
                     "rate_limit_429_count": 0,
                     "actual_concurrency": 0,
                     "usage_missing_count": sum(
-                        not result.normalized_usage["reported"] for result in results
+                        not result.normalized_usage["reported"] for result in all_results
                     ),
                 },
             }
@@ -5834,9 +6015,12 @@ class XingheImageProvider:
         }
 
         status = "PASS" if str(raw.get("status") or "").upper() == "PASS" else "MATERIAL_FAIL"
-        material_failures = raw.get("material_failures")
-        if not isinstance(material_failures, list):
-            material_failures = []
+        raw_failures = raw.get("material_failures")
+        material_failures = [
+            dict(value) if isinstance(value, Mapping) else {"visible_evidence": str(value).strip()}
+            for value in raw_failures
+            if isinstance(value, Mapping) or (isinstance(value, str) and value.strip())
+        ] if isinstance(raw_failures, list) else []
         if status == "MATERIAL_FAIL" and not material_failures:
             material_failures = [{"check": name, "visible_evidence": value["visible_evidence"]} for name, value in checks.items() if not value["pass"]]
         normalized = dict(raw)
@@ -5925,6 +6109,21 @@ class XingheImageProvider:
                 planning_profile="aurora_detail_pair_audit",
             )
         )
+        result = replace(_with_planner_observability(result), phase="aurora_detail_pair_audit:" + str(native_request.get("pair_id") or ""))
+        # Vision review is a real provider request even when the schema or
+        # pixels fail. Persist it independently of the image outcome so cost,
+        # request limits and diagnostics include every review attempt.
+        with self.session_factory() as db:
+            plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == request.job_id).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+            if plan is not None:
+                payload = dict(plan.payload)
+                usage = dict(payload.get("usage") or {})
+                usage["planner"] = [*(usage.get("planner") or []), _planner_usage_record(result)]
+                payload["usage"] = usage
+                payload["planner_diagnostics"] = [*(payload.get("planner_diagnostics") or []), _planner_diagnostics_record(result)]
+                plan.payload = payload
+                plan.payload_hash = canonical_hash(payload)
+                db.commit()
         if result.error_code or not isinstance(result.payload, Mapping):
             raise XingheAgentError(
                 "AURORA_NATIVE_SEMANTIC_AUDIT_FAILED",
@@ -7099,8 +7298,19 @@ def _provider_rejection(
     )
 
 
+def _planner_call_results(
+    results: Sequence[PlannerCallResult],
+) -> tuple[PlannerCallResult, ...]:
+    return tuple(
+        call
+        for result in results
+        for call in (result, *_planner_call_results(result.supplemental_results))
+    )
+
+
 def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
     return {
+        **({"phase": result.phase} if result.phase else {}),
         "raw": result.raw_usage,
         "normalized": result.normalized_usage,
         "reported": bool(result.normalized_usage["reported"]),
@@ -7113,6 +7323,7 @@ def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
 
 def _planner_diagnostics_record(result: PlannerCallResult) -> dict[str, Any]:
     return {
+        **({"phase": result.phase} if result.phase else {}),
         "schema": PLANNER_DIAGNOSTICS_SCHEMA,
         "version": PLANNER_OBSERVABILITY_VERSION,
         "parse_trace": list(result.parse_trace),
@@ -7449,7 +7660,10 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
         }
     if request.planning_profile == "amazon_visual_suite":
         return _fake_amazon_plan(request)
-    if request.planning_profile == "aurora_domestic_detail":
+    if request.planning_profile in {
+        "aurora_domestic_detail", "aurora_domestic_campaign_completion",
+        "aurora_domestic_plan_repair", "aurora_domestic_modules_completion",
+    }:
         # The mock gateway must speak the native Aurora v4.3 contract too.
         # Keeping this fixture native prevents tests from accidentally
         # exercising the legacy detail schema on the Aurora route.
@@ -8925,6 +9139,21 @@ def _aurora_v20_visual_judgment_json_schema(
     }
 
 
+def _inline_aurora_schema_refs(value: Any, resolver: Any) -> Any:
+    """Resolve Skill-local references before sending a schema to a remote API."""
+
+    if isinstance(value, list):
+        return [_inline_aurora_schema_refs(item, resolver) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if "$ref" in value:
+        with resolver.resolving(value["$ref"]) as referenced:
+            return _inline_aurora_schema_refs(
+                {**referenced, **{key: item for key, item in value.items() if key != "$ref"}}, resolver
+            )
+    return {key: _inline_aurora_schema_refs(item, resolver) for key, item in value.items()}
+
+
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
     if request.planning_profile == "aurora_detail_pair_audit":
         schema_path = (
@@ -8977,224 +9206,10 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 ),
             },
         }
-    if request.planning_profile == "aurora_domestic_modules_completion":
-        module_fields = {
-            "id": {"type": "string", "pattern": "^M[0-9]{2,}$"},
-            "order": {"type": "integer", "minimum": 1},
-            "duty": {"type": "string"},
-            "buyer_question": {"type": "string"},
-            "lead_conclusion": {"type": "string"},
-            "lead_claim_id": {"type": "string"},
-            "selling_point_cluster_ids": {"type": "array"},
-            "story_function": {
-                "enum": [
-                    "HOOK",
-                    "PAIN_ARTICULATION",
-                    "PAIN_SOLUTION_COMBINED",
-                    "SOLUTION_PROOF",
-                    "MECHANISM_PROOF",
-                    "MATERIAL_PROOF",
-                    "USE_OR_RESULT",
-                    "TRUST_OR_RISK_REMOVAL",
-                    "SELECTION_OR_SPECIFICATION",
-                    "PURCHASE_CLOSURE",
-                    "OTHER",
-                ]
-            },
-            "pain_ids": {"type": "array"},
-            "value_bridge_ids": {"type": "array"},
-            "visual_proof_direction": {"type": "string"},
-            "visual_evidence": {"type": "array"},
-            "proof": {
-                "type": "object",
-                "required": [
-                    "buyer_takeaway",
-                    "visual_verb",
-                    "primary_subject",
-                    "supporting_subjects",
-                    "required_relations",
-                    "minimum_visual_payload",
-                    "visual_specificity_anchor",
-                    "hidden_copy_test",
-                ],
-            },
-            "expression": {
-                "type": "object",
-                "required": [
-                    "expression_mode",
-                    "claim_visualizability",
-                    "primary_visual_carrier",
-                    "visual_scene_sentence",
-                    "copy_responsibility",
-                ],
-            },
-            "structure": {
-                "type": "object",
-                "required": [
-                    "structure_family",
-                    "zone_briefs",
-                    "structure_difference_from_previous",
-                    "forbidden_fallbacks",
-                ],
-            },
-            "visual_archetype": {
-                "enum": [
-                    "PAIN_SCENE",
-                    "PAIN_TO_SOLUTION_BRIDGE",
-                    "BENEFIT_OVERVIEW",
-                    "DEDICATED_BENEFIT_PROOF",
-                    "SOURCE_ACTION_RESULT",
-                    "WHOLE_PLUS_MACRO",
-                    "ACTION_SEQUENCE",
-                    "USE_SCOPE_MATRIX",
-                    "STATE_CONTRAST",
-                    "SENSORY_WORLD",
-                    "SELECTION_COMPARISON",
-                    "TRUST_EVIDENCE",
-                    "PURCHASE_CLOSURE",
-                ]
-            },
-            "visible_copy": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "required": ["text", "role", "anchor"],
-                },
-            },
-            "typography": {
-                "type": "object",
-                "required": ["primary_mode", "anchor_target", "anchor_zone"],
-            },
-            "composition_family": {"type": "string"},
-            "camera_scale": {
-                "enum": ["wide", "medium", "close", "macro", "mixed"]
-            },
-            "variation_from_previous": {"type": "string"},
-            "transition_contract": {
-                "type": "object",
-                "required": [
-                    "method_id",
-                    "selection_basis",
-                    "incoming_anchor",
-                    "outgoing_anchor",
-                    "source_region_previous",
-                    "target_region_current",
-                    "handoff_geometry",
-                    "visible_overlap_required",
-                    "continuity_strength",
-                    "seam_carrier",
-                ],
-            },
-            "primary_subject_class": {
-                "enum": [
-                    "COMPLETE_PRODUCT",
-                    "PRODUCT_DETAIL",
-                    "HUMAN",
-                    "BODY_OR_SKIN",
-                    "INGREDIENT_OR_MATERIAL",
-                    "MECHANISM",
-                    "ACTION",
-                    "RESULT_STATE",
-                    "DOCUMENT_EVIDENCE",
-                    "SPECIFICATION_INFORMATION",
-                    "ENVIRONMENT_SCENE",
-                ]
-            },
-            "secondary_subject_classes": {"type": "array"},
-            "presentation_form": {
-                "enum": [
-                    "HERO_POSTER",
-                    "MULTI_PAIN_ARRAY",
-                    "WHOLE_PLUS_MACRO",
-                    "EXPLODED_STRUCTURE",
-                    "PROCESS_SEQUENCE",
-                    "SOURCE_ACTION_RESULT",
-                    "STATE_CONTRAST",
-                    "USE_SCOPE_MATRIX",
-                    "DOCUMENTARY_EVIDENCE",
-                    "SPECIFICATION_BOARD",
-                    "FAQ_BOARD",
-                    "ASYMMETRIC_EDITORIAL",
-                ]
-            },
-            "complete_product_role": {
-                "enum": [
-                    "DOMINANT",
-                    "SUPPORTING",
-                    "IDENTITY_TOKEN_ONLY",
-                    "ABSENT",
-                ]
-            },
-            "expression_signature": {"type": "string"},
-            "visual_cast": {
-                "type": "object",
-                "required": [
-                    "hero_subject",
-                    "claim_object",
-                    "action_subject",
-                    "result_subject",
-                    "context_subject",
-                    "product_identity_anchor",
-                ],
-            },
-            "content_unit_contract": {
-                "type": "object",
-                "required": ["units", "density_class", "unit_count"],
-                "properties": {
-                    "density_class": {
-                        "enum": [
-                            "BREATHING",
-                            "COMPACT",
-                            "DETAIL",
-                            "DENSE_INFORMATION",
-                        ]
-                    },
-                    "unit_count": {"type": "integer", "minimum": 0, "maximum": 5},
-                    "units": {"type": "array", "maxItems": 5},
-                },
-            },
-            "visual_proof_contract": {"type": "object"},
-            "module_spatial_structure_contract": {"type": "object"},
-            "copy_intent": {"type": "object"},
-            "text_system": {"type": "object"},
-            "reading_path": {"type": "array"},
-            "copy_density": {"enum": ["none", "low", "medium", "high"]},
-            "visual_payload_density": {"enum": ["low", "medium", "high"]},
-            "proof_relation_strength": {"enum": ["weak", "moderate", "strong"]},
-            "commercial_energy": {"enum": ["restrained", "balanced", "high"]},
-            "breathing_screen": {"type": "boolean"},
-            "brand_anchor": {"type": "string"},
-            "independent_logo_policy": {"type": "string"},
-            "independent_logo_source_id": {"type": "string"},
-            "inherited_dna_tokens": {"type": "array"},
-            "output": {"type": "object"},
-        }
-        return {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "aurora_domestic_modules_completion",
-                "strict": False,
-                "schema": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["modules"],
-                    "properties": {
-                        "modules": {
-                            "type": "array",
-                            "minItems": request.page_count,
-                            "maxItems": request.page_count,
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": True,
-                                "required": list(_AURORA_COMPACT_MODULE_REQUIRED),
-                                "properties": module_fields,
-                            },
-                        }
-                    },
-                },
-            },
-        }
-    if request.planning_profile == "aurora_domestic_detail":
+    if request.planning_profile in {
+        "aurora_domestic_detail", "aurora_domestic_campaign_completion",
+        "aurora_domestic_plan_repair", "aurora_domestic_modules_completion",
+    }:
         # Keep the gateway's structured-output contract aligned with the
         # installed Aurora Skill. A generic json_object response lets the
         # planner fall back to the legacy seven-field plan shape, which is
@@ -9211,11 +9226,29 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
         )
         try:
             schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            # A remote gateway cannot resolve a relative reference into our
+            # installed Skill directory. Send the actual referenced contract.
+            from jsonschema import RefResolver
+
+            schema = _inline_aurora_schema_refs(schema, RefResolver(schema_path.as_uri(), schema))
         except (OSError, UnicodeError, json.JSONDecodeError):
             # Manifest/runtime validation will report a missing schema with a
             # precise fail-closed error; do not hide it behind a transport
             # exception while constructing the request.
             return {"type": "json_object"}
+        if request.planning_profile == "aurora_domestic_campaign_completion":
+            schema = {
+                **schema,
+                "required": [key for key in schema["required"] if key != "modules"],
+                "properties": {key: value for key, value in schema["properties"].items() if key != "modules"},
+            }
+        elif request.planning_profile == "aurora_domestic_modules_completion":
+            schema = {
+                "type": "object", "required": ["modules"],
+                "properties": {"modules": {
+                    **schema["properties"]["modules"], "minItems": 1, "maxItems": 1,
+                }},
+            }
         return {
             "type": "json_schema",
             "json_schema": {
@@ -9237,6 +9270,23 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile in {
+        "aurora_domestic_campaign_completion", "aurora_domestic_plan_repair"
+    }:
+        campaign_only = request.planning_profile == "aurora_domestic_campaign_completion"
+        return (
+            "Repair the supplied Aurora v4.3 compact plan using the supplied "
+            "validation errors. Preserve all valid decisions, module IDs, approved "
+            "facts, fact IDs, product identity and visual evidence. Never invent "
+            "claims or drop a relevant user selling point to satisfy validation. "
+            "Return one complete JSON object matching the supplied response schema. "
+            + ("Return campaign-level contracts only; omit modules entirely. " if campaign_only else
+               "Return the full repaired campaign and all ordered modules. Fix cross-ledger "
+               "claim/module mappings consistently; selected claims must have actual modules. ")
+            + "Use literal schema types and enum values, not explanatory aliases. "
+            "Do not wrap the response in analysis, plan or screens.\n\n"
+            + json.dumps({"product_name": request.product_name, "context": request.product_information}, ensure_ascii=False)
+        )
     if request.planning_profile == "reference_visual_remix":
         ordered_roles = tuple(source.source_role for source in request.sources)
         if ordered_roles and ordered_roles[0] == "product_reference":
@@ -10714,6 +10764,7 @@ def validate_aurora_domestic_plan(
     page_count: int,
     *,
     skill_root: Path | None = None,
+    campaign_only: bool = False,
 ) -> dict[str, Any]:
     """Validate and project the bundled Aurora v4.3 compact plan.
 
@@ -10976,6 +11027,12 @@ def validate_aurora_domestic_plan(
             "AURORA_SCHEMA_UNAVAILABLE",
             "Aurora compact-detail-plan.schema.json could not be loaded.",
         ) from exc
+    if campaign_only:
+        schema = {
+            **schema,
+            "required": [key for key in schema.get("required", []) if key != "modules"],
+            "properties": {key: value for key, value in schema.get("properties", {}).items() if key != "modules"},
+        }
     root = {
         key: value
         for key, value in root.items()
@@ -10989,10 +11046,20 @@ def validate_aurora_domestic_plan(
     if errors:
         first = errors[0]
         pointer = "/" + "/".join(str(token) for token in first.absolute_path)
+        issues = []
+        for error in errors:
+            path = "/" + "/".join(str(token) for token in error.absolute_path)
+            missing = (
+                [key for key in error.validator_value if key not in error.instance]
+                if error.validator == "required" and isinstance(error.instance, Mapping)
+                else []
+            )
+            issues.append({"path": path, "message": error.message, "missing_fields": missing})
         raise XingheAgentError(
             "AURORA_PLAN_SCHEMA_INVALID",
             f"Aurora plan failed v4.3 schema validation: {first.message}",
             json_pointer=pointer or "/",
+            validation_errors=issues,
         )
     output_strategy = _require_mapping(root.get("output_strategy"), "AURORA_PLAN_SCHEMA_INVALID")
     if output_strategy.get("module_count") != page_count:
@@ -11019,6 +11086,8 @@ def validate_aurora_domestic_plan(
             "Aurora plan must use adjacent 2-screen 3:8 PAIR_PLAN_MERGE rendering.",
             json_pointer="/output_strategy/continuous_pair_rendering",
         )
+    if campaign_only:
+        return {"aurora_plan": root}
     modules = root.get("modules")
     if not isinstance(modules, list) or len(modules) != page_count:
         raise XingheAgentError(

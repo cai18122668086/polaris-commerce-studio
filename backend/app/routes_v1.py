@@ -3078,10 +3078,28 @@ def _reserve_real_provider_job_if_enabled(
             else job.expected_item_count
         )
     elif job.type == JobType.DETAIL_PACK.value:
-        estimated_cost = (
-            image_cost * 2 + group_count * settings.tengli_planner_reserve_micros
-        )
-        provider_requests = job.expected_item_count * 2 + group_count
+        detail_settings = configuration.get("settings") or {}
+        if (
+            isinstance(detail_settings, Mapping)
+            and detail_settings.get("market_region") == "domestic"
+        ):
+            # Initial campaign + one root repair + one completion per module +
+            # one Harness preflight repair; each pair has at most two images
+            # and two actual-pixel reviews. Reserve the full bounded envelope.
+            page_count = int(detail_settings.get("page_count") or 8)
+            authoring_requests = group_count * (page_count + 3)
+            review_requests = job.expected_item_count
+            planner_requests = authoring_requests + review_requests
+            estimated_cost = (
+                image_cost * 2
+                + planner_requests * settings.tengli_planner_reserve_micros
+            )
+            provider_requests = planner_requests + job.expected_item_count
+        else:
+            estimated_cost = (
+                image_cost * 2 + group_count * settings.tengli_planner_reserve_micros
+            )
+            provider_requests = job.expected_item_count * 2 + group_count
     else:
         estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros
         # Masked repair can make up to two edit calls and two visual-review
@@ -3280,6 +3298,13 @@ def _copy_job_relations_for_retry(
         .where(JobItemRecord.job_id == source.id)
         .order_by(JobItemRecord.ordinal)
     ).all()
+    regenerated_pairs = {
+        item.configuration.get("pair_id")
+        for item in source_items
+        if item.id in selected
+        and isinstance(item.configuration, Mapping)
+        and str(item.configuration.get("pair_position")) == "1"
+    }
     item_map: dict[str, str] = {}
     preserved_set_audit_ids = {
         item_id
@@ -3320,7 +3345,11 @@ def _copy_job_relations_for_retry(
             # A retry may reuse the first slice of an already successful pair.
             # Let the second slice rehydrate that exact source-job canvas before
             # generating any new pair canvas in the retry job.
-            copied_configuration["aurora_pair_source_job_id"] = source.id
+            if copied_configuration.get("pair_id") in regenerated_pairs:
+                # Both slices belong to the new job's freshly generated canvas.
+                copied_configuration.pop("aurora_pair_source_job_id", None)
+            else:
+                copied_configuration["aurora_pair_source_job_id"] = source.id
         session.add(
             JobItemRecord(
                 id=new_item_id,

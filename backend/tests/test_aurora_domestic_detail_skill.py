@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from dataclasses import replace
 from io import BytesIO
 
 import pytest
@@ -13,9 +15,11 @@ from app.domestic_detail_provider import (
 )
 from app.provider import ProviderArtifact
 from app.xinghe_agent import (
+    PlannerRequest,
     XingheImageProvider,
     _complete_aurora_module_structure,
     _normalize_aurora_style_constitution,
+    _planner_response_format,
     _split_aurora_pair_artifact,
     _validated_image_size,
 )
@@ -148,4 +152,21 @@ def test_missing_style_constitution_gets_neutral_structural_defaults() -> None:
     assert isinstance(style, dict)
     assert style["visual_world"] == "基于已批准商品素材的清晰电商展示空间"
     assert style["product_rendering"] == "保持商品外观、结构和比例以已批准素材为准"
+
+
+def test_provider_schemas_are_self_contained_and_match_each_repair_phase() -> None:
+    request = PlannerRequest(
+        workspace_id="ws_schema", job_id="job_schema", group_key="primary",
+        sources=(), page_count=8, language="zh-CN", product_name="商品",
+        product_information=(), platform_code="tmall", size="1440x1920",
+        idempotency_key="schema", planning_profile="aurora_domestic_detail",
+    )
+    schema = _planner_response_format(request)["json_schema"]["schema"]
+    assert '"$ref"' not in json.dumps(schema)
+    campaign = _planner_response_format(replace(request, planning_profile="aurora_domestic_campaign_completion"))["json_schema"]["schema"]
+    assert "modules" not in campaign["required"]
+    assert "selling_point_depth_contract" in campaign["required"]
+    module = _planner_response_format(replace(request, planning_profile="aurora_domestic_modules_completion"))["json_schema"]["schema"]
+    assert module["required"] == ["modules"]
+    assert module["properties"]["modules"]["maxItems"] == 1
 

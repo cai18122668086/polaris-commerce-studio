@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from copy import deepcopy
 from dataclasses import replace
+from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.aurora_detail_runtime import detail_workspace
 from app.domain import JobStatus, PlanValidationStatus
 from app.models import (
     AuditEventRecord,
@@ -21,6 +25,7 @@ from app.xinghe_agent import (
     IMAGE_SIZE,
     FakeXingheGateway,
     PlannerRequest,
+    XingheImageProvider,
     _accept_aurora_completion_module,
     _fake_plan,
     _planner_prompt,
@@ -320,12 +325,137 @@ def test_domestic_invalid_plan_never_reaches_image_provider(
 
     assert failed["status"] == JobStatus.FAILED.value
     assert failed["error_code"] == "AURORA_PLAN_SCHEMA_INVALID"
-    # Native Aurora emits one initial planning request and eight bounded
-    # module-completion requests before the final schema gate.
-    assert len(gateway.planner_calls) == 9
+    # Invalid root contracts stop after one targeted campaign repair, before
+    # any of the eight module-completion calls or image generation can start.
+    assert len(gateway.planner_calls) == 2
+    assert gateway.planner_calls[-1].planning_profile == "aurora_domestic_campaign_completion"
     assert gateway.image_calls == []
     assert failed["plan"]["validation_status"] == PlanValidationStatus.INVALID.value
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
+
+
+def test_domestic_missing_campaign_contracts_repair_before_modules_and_preserve_valid_values(
+    client: TestClient, monkeypatch,
+) -> None:
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+
+    async def incomplete_plan(request):
+        result = await original_plan(request)
+        payload = deepcopy(result.payload)
+        if request.planning_profile == "aurora_domestic_detail":
+            payload.pop("reference_expression_system")
+            payload.pop("selling_point_depth_contract")
+            payload["campaign_thesis"] = "保留原始有效的商品购买叙事。"
+        elif request.planning_profile == "aurora_domestic_campaign_completion":
+            payload["campaign_thesis"] = "修复响应不应覆盖这个已有效的字段。"
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", incomplete_plan)
+    source = upload_asset(client, filename="missing-campaign.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_campaign_completion"]
+    payload = planned["plan"]["payload"]
+    assert len(payload["usage"]["planner"]) == 2
+    assert payload["usage"]["planner"][1]["phase"] == "aurora_domestic_campaign_completion"
+    assert payload["groups"][0]["plan_protocol_fields"]["aurora_plan"]["campaign_thesis"] == "保留原始有效的商品购买叙事。"
+    assert gateway.image_calls == []
+
+
+def test_domestic_harness_preflight_repairs_bad_claim_mapping_before_approval(
+    client: TestClient, monkeypatch,
+) -> None:
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+
+    async def unmapped_plan(request):
+        result = await original_plan(request)
+        payload = deepcopy(result.payload)
+        if request.planning_profile == "aurora_domestic_detail":
+            payload["output_strategy"]["claim_coverage"].append({
+                "claim_id": "F99", "disposition": "LEAD", "module_ids": [],
+                "rationale": "无商品证据和已批准事实的错误声明", "defer_reason_code": "NOT_DEFERRED",
+            })
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", unmapped_plan)
+    source = upload_asset(client, filename="mapping-preflight.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_plan_repair"]
+    assert "selected claim F99 needs at least one assigned module" in str(gateway.planner_calls[-1].product_information)
+    assert gateway.image_calls == []
+
+
+def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_screens(
+    client: TestClient, monkeypatch,
+) -> None:
+    async def review(self, request, native_request, sources, artifact):
+        del request, sources
+        judgment = self._native_detail_judgment(native_request, artifact)
+        if native_request["pair_id"] == "P01":
+            judgment["status"] = "MATERIAL_FAIL"
+            judgment["checks"]["legibility"] = {
+                "pass": False, "visible_evidence": "首对图片右侧的小字有一处笔画粘连，需要保留为审计问题。",
+            }
+            judgment["material_failures"] = ["首对图片右侧的小字有一处笔画粘连，需要保留为审计问题。"]
+        return self._normalize_native_pair_judgment(judgment, native_request, artifact)
+
+    monkeypatch.setattr(XingheImageProvider, "_native_detail_judgment_with_review", review)
+    source = upload_asset(client, filename="string-audit-failures.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(), json=_aurora_approval_payload(planned),
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert result["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
+    assert all(item["status"] == "succeeded" for item in result["items"])
+    assert len(_gateway(client).image_calls) == 5
+    session = json.loads((detail_workspace(str(job["id"])) / "session.json").read_text(encoding="utf-8"))
+    assert all(m["status"] == "COMPLETE_WITH_RESIDUALS" for m in session["modules"][:2])
+    assert all(m["cycle_attempt_count"] == 2 for m in session["modules"][:2])
+    assert "笔画粘连" in str(session["modules"][0]["residual_issues"])
+
+
+def test_missing_middle_module_completes_only_that_id_without_reordering(
+    client: TestClient, monkeypatch,
+) -> None:
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+    authored = {}
+
+    async def missing_middle(request):
+        result = await original_plan(request)
+        payload = deepcopy(result.payload)
+        if request.planning_profile == "aurora_domestic_detail":
+            authored["M03"] = deepcopy(payload["modules"][2])
+            payload["modules"].pop(2)
+        elif request.planning_profile == "aurora_domestic_modules_completion":
+            assert "TARGET_MODULE_ID=M03" in request.product_information
+            payload = {"modules": [authored["M03"]]}
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", missing_middle)
+    source = upload_asset(client, filename="middle-module.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_modules_completion"]
+    assert len(planned["plan"]["payload"]["usage"]["planner"]) == 2
 
 
 def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
@@ -705,3 +835,48 @@ def test_compact_completion_module_merges_without_runtime_derived_fields() -> No
     prompt = _planner_prompt(request)
     assert "plan_format=COMPACT_V1_3" in prompt
     assert "Do not emit runtime-derived" in prompt
+
+
+@pytest.mark.parametrize("region, expected_requests", [("domestic", 27), ("international", 17)])
+def test_detail_provider_reservation_covers_bounded_authoring_and_pixel_reviews(monkeypatch, region, expected_requests):
+    import app.routes_v1 as routes
+
+    captured = {}
+    monkeypatch.setattr(routes, "_ensure_detail_skill_provider_enabled", lambda *args: None)
+    monkeypatch.setattr(routes, "reserve_provider_job_quota", lambda session, **kwargs: captured.update(kwargs))
+    settings = SimpleNamespace(task_runner="tengli", tengli_planner_reserve_micros=250000,
+        tengli_daily_budget_usd=100, tengli_monthly_budget_usd=1000, tengli_daily_request_limit=1000)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=settings)))
+    job = JobRecord(id="job_reservation", type="detail_pack", expected_item_count=8,
+        estimated_cost_max_micros=720000,
+        configuration={"input": {"product_groups": [{"group_key": "primary"}]},
+                       "settings": {"market_region": region, "page_count": 8}})
+    routes._reserve_real_provider_job_if_enabled(None, request, job, "user_test")
+    assert captured["provider_request_count"] == expected_requests
+    if region == "domestic":
+        assert captured["estimated_cost_micros"] >= 19 * 250000 + 8 * 90000
+
+
+def test_full_pair_retry_uses_new_canvas_while_second_slice_only_retry_uses_source_canvas(client):
+    from app.domain import RetryScope
+    from app.routes_v1 import _copy_job_for_retry, _copy_job_relations_for_retry
+
+    source = upload_asset(client, filename="retry-canvas-source.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    with client.app.state.session_factory() as session:
+        source_job = session.get(JobRecord, job["id"])
+        items = session.scalars(select(JobItemRecord).where(JobItemRecord.job_id == job["id"]).order_by(JobItemRecord.ordinal)).all()
+        full = _copy_job_for_retry(session, source_job, RetryScope.FULL, [i.id for i in items])
+        session.add(full)
+        session.flush()
+        _copy_job_relations_for_retry(session, source_job, full, [i.id for i in items])
+        second = _copy_job_for_retry(session, source_job, RetryScope.SELECTED, [items[1].id])
+        session.add(second)
+        session.flush()
+        _copy_job_relations_for_retry(session, source_job, second, [items[1].id])
+        session.flush()
+        full_items = session.scalars(select(JobItemRecord).where(JobItemRecord.job_id == full.id)).all()
+        second_item = session.scalar(select(JobItemRecord).where(JobItemRecord.job_id == second.id, JobItemRecord.ordinal == 1))
+        assert all("aurora_pair_source_job_id" not in i.configuration for i in full_items)
+        assert second_item.configuration["aurora_pair_source_job_id"] == source_job.id

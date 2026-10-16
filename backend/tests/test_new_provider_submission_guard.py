@@ -106,15 +106,17 @@ def test_enabled_single_image_provider_reserves_expected_provider_requests(
     amazon_suite = job_type == JobType.AMAZON_VISUAL_SUITE.value
     reference_remix = job_type == JobType.REFERENCE_REMIX.value
     expected_cost = (
-        360_000 * 2 + settings.tengli_planner_reserve_micros * 3
+        360_000 * 2 + settings.tengli_planner_reserve_micros * 9
         if amazon_suite
-        else 360_000 + settings.tengli_planner_reserve_micros
-        if reference_remix
-        else 360_000
+        else 360_000 * 2 + settings.tengli_planner_reserve_micros * 2
+        if reference_remix or job_type == JobType.CREATIVE_IMAGE.value
+        else 360_000 * 2
     )
     assert reservation["estimated_cost_micros"] == expected_cost
     assert reservation["provider_request_count"] == (
-        45 if amazon_suite else 5 if reference_remix else 4
+        51 if amazon_suite
+        else 10 if reference_remix or job_type == JobType.CREATIVE_IMAGE.value
+        else 8
     )
     assert reservation["image_budget_micros"] == 360_000
     assert reservation["group_count"] == int(amazon_suite or reference_remix)
@@ -136,8 +138,8 @@ def test_enabled_single_image_provider_reserves_expected_provider_requests(
             {"input": {}},
             1,
             90_000,
-            430_000,
-            4,
+            1_180_000,
+            6,
             0,
         ),
         (
@@ -153,8 +155,8 @@ def test_enabled_single_image_provider_reserves_expected_provider_requests(
             },
             3,
             270_000,
-            1_040_000,
-            8,
+            7_540_000,
+            31,
             2,
         ),
     ],

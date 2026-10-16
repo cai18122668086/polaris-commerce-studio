@@ -688,7 +688,7 @@ def test_amazon_real_provider_reserves_complete_automation_envelope(
     settings.amazon_visual_suite_provider_enabled = True
     settings.tengli_daily_budget_usd = 10
     settings.tengli_monthly_budget_usd = 20
-    settings.tengli_daily_request_limit = 45
+    settings.tengli_daily_request_limit = 51
     settings.tengli_planner_reserve_micros = 250_000
     asset = upload_asset(client, filename="amazon-source.png")
 
@@ -709,8 +709,8 @@ def test_amazon_real_provider_reserves_complete_automation_envelope(
             )
         )
     assert reservation is not None
-    assert reservation.details["provider_request_count"] == 45
-    assert reservation.details["estimated_cost_micros"] == 4_530_000
+    assert reservation.details["provider_request_count"] == 51
+    assert reservation.details["estimated_cost_micros"] == 6_030_000
     assert reservation.details["image_budget_micros"] == 1_890_000
     assert reservation.details["planner_reserve_micros"] == 250_000
 
@@ -2091,7 +2091,7 @@ def test_clone_real_provider_job_reserves_quota_before_dispatch(
             )
         )
     assert reservation is not None
-    assert reservation.details["provider_request_count"] == 4
+    assert reservation.details["provider_request_count"] == 6
 
 
 def test_detail_pack_stops_for_validated_plan_confirmation(

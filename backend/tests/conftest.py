@@ -21,6 +21,7 @@ def settings(tmp_path) -> Settings:
         auto_create_schema=True,
         storage_backend="local",
         storage_dir=tmp_path / "storage",
+        aurora_work_root=tmp_path / "aurora-main-image",
         # Never let route tests read, overwrite, or delete the workstation's
         # human-authorized ecommerce browser profiles.
         ecommerce_session_dir=(

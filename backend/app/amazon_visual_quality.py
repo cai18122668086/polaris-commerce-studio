@@ -7,7 +7,7 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -45,7 +45,12 @@ from .models import (
     JobRecord,
     utc_now,
 )
-from .services import canonical_hash, fence_amazon_suite_review_attempts, new_id
+from .services import (
+    canonical_hash,
+    fence_amazon_suite_review_attempts,
+    new_id,
+    transition_job,
+)
 from .skill_protocol import SkillProtocolError, load_skill_protocol
 from .storage import ImageStorage, ValidatedImage
 from .xinghe_agent import (
@@ -273,7 +278,7 @@ class AmazonSuiteQualityService:
             )
 
         try:
-            result = await self.gateway.review_amazon(
+            result = await self._review_with_recovery(
                 AmazonVisualReviewRequest(
                     workspace_id=snapshot.workspace_id,
                     job_id=snapshot.job_id,
@@ -292,7 +297,10 @@ class AmazonSuiteQualityService:
                     skill_protocol=protocol.prompt_payload(),
                     idempotency_key=cast(str, claim.idempotency_key),
                     review_item_keys=AMAZON_ITEM_KEYS,
-                )
+                ),
+                snapshot=snapshot,
+                attempt_id=attempt_id,
+                lease_token=lease_token,
             )
         except Exception as exc:
             return self._unavailable(
@@ -338,6 +346,65 @@ class AmazonSuiteQualityService:
             result,
             attempt_id=attempt_id,
             lease_token=lease_token,
+        )
+
+    async def _review_with_recovery(
+        self,
+        request: AmazonVisualReviewRequest,
+        *,
+        snapshot: _Snapshot,
+        attempt_id: str,
+        lease_token: str,
+    ) -> AmazonVisualReviewCallResult:
+        attempts: list[AmazonVisualReviewCallResult] = []
+        route_limit = min(
+            4, max(2, int(getattr(self.gateway, "visual_review_route_count", 2)))
+        )
+        for index in range(route_limit):
+            if index and self._provider_call_allowed(
+                snapshot, attempt_id, lease_token
+            ) in {"lost", "expired"}:
+                break
+            result = await self.gateway.review_amazon(
+                replace(request, route_attempt=index)
+            )
+            attempts.append(result)
+            if result.visual_success is not None or not result.retryable:
+                break
+        if len(attempts) == 1:
+            return result
+        normalized: dict[str, Any] = {
+            "reported": all(a.normalized_usage.get("reported") for a in attempts),
+            "network_requests": len(attempts),
+        }
+        for key in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+            values = [a.normalized_usage.get(key) for a in attempts]
+            normalized[key] = (
+                sum(values) if all(isinstance(v, int) for v in values) else None
+            )
+        actual = [a.actual_cost_micros for a in attempts]
+        estimates = [a.estimated_cost_micros for a in attempts]
+        return replace(
+            result,
+            normalized_usage=normalized,
+            raw_usage={
+                "network_requests": len(attempts),
+                "attempts": [
+                    {
+                        "raw": a.raw_usage,
+                        "error_code": a.error_code,
+                        "http_status": a.http_status,
+                        "provider_request_id": a.provider_request_id,
+                    }
+                    for a in attempts
+                ],
+            },
+            actual_cost_micros=sum(v for v in actual if v is not None)
+            if all(v is not None for v in actual)
+            else None,
+            estimated_cost_micros=sum(v for v in estimates if v is not None)
+            if all(v is not None for v in estimates)
+            else None,
         )
 
     def _claim_review(self, snapshot: _Snapshot) -> _ReviewClaim:
@@ -1025,6 +1092,22 @@ class AmazonSuiteQualityService:
                     next_review_round=review_round + 1,
                 )
                 plan.payload, plan.payload_hash = payload, canonical_hash(payload)
+                # The next image attempts require an active generation job,
+                # including when this review started from a manual-review state.
+                transition_job(job, JobStatus.PROCESSING)
+                job.finished_at = None
+                job.succeeded_item_count = (
+                    session.scalar(
+                        select(func.count())
+                        .select_from(JobItemRecord)
+                        .where(
+                            JobItemRecord.job_id == job.id,
+                            JobItemRecord.status.in_(("succeeded", "reused")),
+                        )
+                    )
+                    or 0
+                )
+                job.failed_item_count = 0
                 job.stage = "suite_quality_redraw_pending"
                 job.state_version += 1
                 session.commit()
@@ -1475,11 +1558,7 @@ def _next_review_round(
         if isinstance(controls, Mapping)
         else 1
     )
-    if (
-        status == "redraw_pending"
-        and current_round > 0
-        and current_round < max_rounds
-    ):
+    if status == "redraw_pending" and current_round > 0 and current_round < max_rounds:
         # A deterministic/mock generator may return the same bytes after a
         # redraw.  Completion of the fenced pending item set, rather than a
         # hash change alone, is the durable round transition.

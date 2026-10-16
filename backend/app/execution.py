@@ -114,6 +114,7 @@ class _AmazonReviewCall:
     provider_call_started: bool
     source: str
     durable_attempt_id: str | None = None
+    network_requests: int = 1
 
 
 @dataclass(frozen=True)
@@ -217,6 +218,7 @@ def _amazon_review_calls(
                 provider_call_started=attempt.provider_call_started_at is not None,
                 source="durable",
                 durable_attempt_id=attempt.id,
+                network_requests=_positive_int(normalized.get("network_requests")) or 1,
             )
         )
 
@@ -268,18 +270,23 @@ def _amazon_review_accounting(
     calls: tuple[_AmazonReviewCall, ...],
 ) -> _AmazonReviewAccounting:
     called = [call for call in calls if call.provider_call_started]
-    reported_count = sum(call.reported for call in called)
+    reported_count = sum(call.network_requests for call in called if call.reported)
     known_costs = [
         call.actual_cost_micros
         for call in called
         if call.actual_cost_micros is not None
     ]
     return _AmazonReviewAccounting(
-        request_count=len(called),
+        request_count=sum(call.network_requests for call in called),
         reported_count=reported_count,
-        known_actual_cost_count=len(known_costs),
+        known_actual_cost_count=sum(
+            call.network_requests for call in called
+            if call.actual_cost_micros is not None
+        ),
         actual_cost_micros=sum(known_costs),
-        real_request_count=sum(call.provider != "mock" for call in called),
+        real_request_count=sum(
+            call.network_requests for call in called if call.provider != "mock"
+        ),
     )
 
 
@@ -396,7 +403,7 @@ def _settle_amazon_provider_quota(
         if not call.provider_call_started or call.provider == "mock":
             continue
         review_charge, basis = _review_charge(call, review_reserve)
-        requests += 1
+        requests += call.network_requests
         charge += review_charge
         actual_cost_count += int(basis == "actual")
         fallback_count += int(basis != "actual")
@@ -407,7 +414,7 @@ def _settle_amazon_provider_quota(
                 "attempt_identity": call.attempt_identity,
                 "durable_attempt_id": call.durable_attempt_id,
                 "provider_request_id": call.provider_request_id,
-                "provider_request_count": 1,
+                "provider_request_count": call.network_requests,
                 "charged_cost_micros": review_charge,
                 "cost_basis": basis,
                 "actual_cost_reported": basis == "actual",
@@ -585,6 +592,16 @@ class ExecutionCoordinator:
         if current is None or current in TERMINAL_JOB_STATUSES:
             return current
         if current == JobStatus.AWAITING_FINAL_REVIEW:
+            if self._is_amazon_job(job_id) and not (
+                self._amazon_generation_outstanding(job_id)
+            ):
+                with self.session_factory() as session:
+                    failed = session.scalar(select(JobItemRecord.id).where(
+                        JobItemRecord.job_id == job_id,
+                        JobItemRecord.status == JobItemStatus.FAILED.value,
+                    ).limit(1))
+                if failed is not None:
+                    return self._mark_amazon_quality_blocked(job_id)
             return current
         if current == JobStatus.CANCELLING:
             return self.cancel(job_id)
@@ -710,8 +727,7 @@ class ExecutionCoordinator:
         return self.finalize_job(job_id)
 
     def _mark_amazon_quality_blocked(self, job_id: str) -> JobStatus | None:
-        """Keep a failed visual QA set out of the completed delivery state."""
-
+        """Fence rejected outputs and finalize through normal usage settlement."""
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
             if job is None:
@@ -719,14 +735,33 @@ class ExecutionCoordinator:
             if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
                 return JobStatus(job.status)
             _synchronize_job_item_aggregates(session, job)
-            transition_job(
-                job,
-                JobStatus.PARTIAL,
-                stage="suite_quality_blocked",
-                progress=99,
+            failed_ids = select(JobItemRecord.id).where(
+                JobItemRecord.job_id == job.id,
+                JobItemRecord.status == JobItemStatus.FAILED.value,
             )
+            session.query(JobAssetRecord).filter(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.job_item_id.in_(failed_ids),
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+            ).update({"is_deliverable": False}, synchronize_session=False)
+            if job.status == JobStatus.AWAITING_FINAL_REVIEW.value:
+                session.add(AuditEventRecord(
+                    workspace_id=job.workspace_id,
+                    action="job.review_state_recovered", resource_type="job",
+                    resource_id=job.id,
+                    details={"from": "awaiting_final_review",
+                             "to": "partial" if job.succeeded_item_count else "failed",
+                             "failed_item_count": job.failed_item_count},
+                ))
             session.commit()
-            return JobStatus.PARTIAL
+        result = self.finalize_job(job_id)
+        if result in {JobStatus.PARTIAL, JobStatus.FAILED}:
+            with self.session_factory() as session:
+                job = session.get(JobRecord, job_id)
+                if job is not None:
+                    job.stage = "suite_quality_blocked"
+                    session.commit()
+        return result
 
     def _amazon_review_needs_manual_review(self, job_id: str) -> bool:
         with self.session_factory() as session:
@@ -770,6 +805,15 @@ class ExecutionCoordinator:
                 return None
             if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
                 return JobStatus(job.status)
+            if session.scalar(
+                select(JobItemRecord.id).where(
+                    JobItemRecord.job_id == job.id,
+                    JobItemRecord.status.in_(
+                        ("pending", "queued", "running", "retry_wait")
+                    ),
+                ).limit(1)
+            ) is not None:
+                return JobStatus.PROCESSING
             transition_job(
                 job,
                 JobStatus.AWAITING_FINAL_REVIEW,
@@ -1134,14 +1178,15 @@ class ExecutionCoordinator:
             )
             if int(active or 0) > 0:
                 return False
-            return session.scalar(
+            failed_count = session.scalar(
                 select(func.count())
                 .select_from(JobItemRecord)
                 .where(
                     JobItemRecord.job_id == job_id,
                     JobItemRecord.status == JobItemStatus.FAILED.value,
                 )
-            ) > 0
+            )
+            return int(failed_count or 0) > 0
 
     def _domestic_detail_batch_has_failure(
         self, job_id: str, leases: Sequence[AttemptLease]
@@ -2143,6 +2188,21 @@ class ExecutionCoordinator:
                 )
                 should_retry = bool(result.retryable) and (
                     (
+                        job.type in {
+                            JobType.REFERENCE_REMIX.value,
+                            JobType.MODEL_POSE_TRANSFER.value,
+                            JobType.CREATIVE_IMAGE.value,
+                        }
+                        and attempt.attempt_no <= 1
+                    )
+                    or (
+                        job.type == JobType.LOCAL_EDIT.value
+                        and (result.error_code or "").startswith(
+                            "LOCAL_EDIT_VISUAL_REVIEW"
+                        )
+                        and attempt.attempt_no <= 1
+                    )
+                    or (
                         job.type == JobType.DETAIL_PACK.value
                         and attempt.attempt_no <= self.max_detail_retries
                     )
@@ -2218,7 +2278,11 @@ class ExecutionCoordinator:
                 )
                 item.next_attempt_at = None
             if result.outcome != ProviderOutcome.SUCCEEDED:
-                item.error_code = item.error_code or result.error_code
+                item.error_code = (
+                    "PROVIDER_OUTCOME_UNKNOWN"
+                    if result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+                    else result.error_code or item.error_code
+                )
                 item.error_message = result.error_message
                 metrics_value = result.raw_usage.get("metrics")
                 failure_metrics = (

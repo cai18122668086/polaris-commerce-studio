@@ -119,6 +119,8 @@ JOB_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.FAILED,
     },
     JobStatus.AWAITING_FINAL_REVIEW: {
+        JobStatus.PROCESSING,
+        JobStatus.PARTIAL,
         JobStatus.COMPLETED,
         JobStatus.CANCELLING,
         JobStatus.FAILED,

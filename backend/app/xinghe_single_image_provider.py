@@ -897,7 +897,7 @@ class XingheSingleImageProvider:
         )
         raw_usage = dict(result.raw_usage)
         raw_usage["metrics"] = _direct_pose_transfer_metrics()
-        return replace(result, raw_usage=raw_usage, retryable=False)
+        return replace(result, raw_usage=raw_usage)
 
     def _compile_direct_model_pose_prompt(
         self,

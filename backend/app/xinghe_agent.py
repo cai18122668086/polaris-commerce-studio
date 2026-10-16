@@ -5585,7 +5585,7 @@ class XingheImageProvider:
                     "material_failures": list(last_judgment.get("material_failures") or [{"visible_evidence": "像素审计发现需要修正的可见问题"}]),
                     "passed_layers": list(last_judgment.get("passed_layers") or ["identity"]),
                     "root_cause": "按原生 pair 像素审计结果修正可见问题并保持商品身份锁定。",
-                    "unified_strategy": "保留已通过身份与接缝层，只修正审计标出的材料性问题。",
+                    "unified_strategy": "仅保留 passed_layers 明确列出的通过层；修正 material_failures 中的全部问题，不得保留被判失败的接缝或文案。",
                     "expected_visible_change": "下一次 3:8 画布应使全部材料性检查通过。",
                 },
             )

@@ -2932,7 +2932,7 @@ _REAL_PROVIDER_ENABLE_FLAGS = {
 _AMAZON_INITIAL_IMAGE_REQUESTS = AMAZON_EXPECTED_ITEM_COUNT
 _AMAZON_MAX_REDRAW_REQUESTS = AMAZON_EXPECTED_ITEM_COUNT
 _AMAZON_PLANNER_REQUESTS = 1
-_AMAZON_MAX_SUITE_REVIEW_REQUESTS = 2
+_AMAZON_MAX_SUITE_REVIEW_REQUESTS = 8
 _AMAZON_PROVIDER_REQUEST_ENVELOPE = (
     _AMAZON_INITIAL_IMAGE_REQUESTS
     + _AMAZON_MAX_REDRAW_REQUESTS
@@ -3063,20 +3063,23 @@ def _reserve_real_provider_job_if_enabled(
         # Reference remix now performs one bounded vision-analysis call before
         # the image edit so the Skill's composition skeleton reaches the image
         # model. Reserve both calls before dispatching the job.
-        estimated_cost = image_cost + settings.tengli_planner_reserve_micros
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 2
         provider_requests = (
             runnable_item_count
             if runnable_item_count is not None
             else job.expected_item_count
-        ) + 1
+        ) * 2 + 2
         group_count = 1
     elif enable_flag is not None:
-        estimated_cost = image_cost
+        estimated_cost = image_cost * 2
         provider_requests = (
             runnable_item_count
             if runnable_item_count is not None
             else job.expected_item_count
-        )
+        ) * 2
+        if job.type == JobType.CREATIVE_IMAGE.value:
+            estimated_cost += settings.tengli_planner_reserve_micros * 2
+            provider_requests += 2
     elif job.type == JobType.DETAIL_PACK.value:
         detail_settings = configuration.get("settings") or {}
         if (
@@ -3102,10 +3105,10 @@ def _reserve_real_provider_job_if_enabled(
             )
             provider_requests = job.expected_item_count * 2 + group_count
     else:
-        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 2
-        # Masked repair can make up to two edit calls and two visual-review
-        # calls. Reserve the full fail-closed request envelope.
-        provider_requests = 4
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 4
+        # Two edit calls plus up to four reviews, including same-candidate
+        # recovery. Review recovery never regenerates the saved image.
+        provider_requests = 6
     reserve_provider_job_quota(
         session,
         job=job,

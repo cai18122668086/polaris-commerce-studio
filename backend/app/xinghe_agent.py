@@ -571,6 +571,7 @@ class AmazonVisualReviewRequest:
     skill_protocol: Mapping[str, Any]
     idempotency_key: str
     review_item_keys: tuple[str, ...] = ()
+    route_attempt: int = 0
 
 
 @dataclass(frozen=True)
@@ -2030,6 +2031,7 @@ class TengliOpenAICompatibleGateway:
         base_url: str,
         planner_model: str,
         image_model: str,
+        vision_model: str | None = None,
         planner_api_key: str | None = None,
         planner_base_url: str | None = None,
         image_api_key: str | None = None,
@@ -2067,6 +2069,9 @@ class TengliOpenAICompatibleGateway:
         self._planner_base_url = (planner_base_url or base_url).rstrip("/") + "/"
         self._image_base_url = (image_base_url or base_url).rstrip("/") + "/"
         self.planner_model = planner_model.strip()
+        self.vision_model = (vision_model or planner_model).strip()
+        if not self.vision_model:
+            raise ValueError("A vision model is required.")
         self.image_model = image_model.strip()
         self.medium_price_micros = medium_price_micros
         self.high_price_micros = high_price_micros
@@ -2145,6 +2150,14 @@ class TengliOpenAICompatibleGateway:
         ordered = self._ordered_routes()
         primary = tuple(route for route in ordered if route.name == "primary")
         return primary or ordered[:1]
+
+    def _visual_review_route(self, attempt: int = 0) -> _ProviderRoute:
+        routes = self._ordered_routes()
+        return routes[min(max(0, attempt), len(routes) - 1)]
+
+    @property
+    def visual_review_route_count(self) -> int:
+        return min(4, len(self._ordered_routes()))
 
     @staticmethod
     def _should_failover_status(status: int) -> bool:
@@ -2235,7 +2248,9 @@ class TengliOpenAICompatibleGateway:
                         timeout_seconds=self.timeout_seconds,
                     )
                 except XingheAgentError as exc:
-                    if exc.retryable and route_index < last_route_index:
+                    if (
+                        exc.retryable or exc.code == "PROVIDER_RESPONSE_INVALID"
+                    ) and route_index < last_route_index:
                         continue
                     raise
                 if (
@@ -2243,6 +2258,14 @@ class TengliOpenAICompatibleGateway:
                     and route_index < last_route_index
                 ):
                     continue
+                if status < 400 and route_index < last_route_index:
+                    try:
+                        candidate = _planner_content_payload(_planner_message_text(response))
+                        required = _single_image_analysis_fields(request.planning_profile)
+                        if not isinstance(candidate, Mapping) or not required <= candidate.keys():
+                            continue
+                    except XingheAgentError:
+                        continue
                 break
             if status >= 400:
                 envelope_diagnostics = _planner_envelope_diagnostics(response)  # type: ignore[arg-type]
@@ -2459,8 +2482,13 @@ class TengliOpenAICompatibleGateway:
                 http_status=status,
             )
         except XingheAgentError as exc:
+            unknown = exc.code in {
+                "PROVIDER_TRANSPORT_FAILED", "PROVIDER_RESPONSE_INVALID"
+            }
             return ImageCallResult(
-                outcome=ProviderOutcome.FAILED,
+                outcome=(
+                    ProviderOutcome.OUTCOME_UNKNOWN if unknown else ProviderOutcome.FAILED
+                ),
                 provider_request_id=None,
                 raw_usage=None,
                 normalized_usage=normalize_usage(None),
@@ -2473,7 +2501,7 @@ class TengliOpenAICompatibleGateway:
                 ),
                 error_code=exc.code,
                 error_message=str(exc),
-                retryable=exc.retryable,
+                retryable=exc.retryable and not unknown,
             )
 
     async def edit_masked(
@@ -2593,8 +2621,13 @@ class TengliOpenAICompatibleGateway:
                 http_status=status,
             )
         except XingheAgentError as exc:
+            unknown = exc.code in {
+                "PROVIDER_TRANSPORT_FAILED", "PROVIDER_RESPONSE_INVALID"
+            }
             return MaskedEditCallResult(
-                outcome=ProviderOutcome.FAILED,
+                outcome=(
+                    ProviderOutcome.OUTCOME_UNKNOWN if unknown else ProviderOutcome.FAILED
+                ),
                 provider_request_id=None,
                 raw_usage=None,
                 normalized_usage=normalize_usage(None),
@@ -2602,7 +2635,7 @@ class TengliOpenAICompatibleGateway:
                 estimated_cost_micros=estimated_cost,
                 error_code=exc.code,
                 error_message=str(exc),
-                retryable=exc.retryable,
+                retryable=exc.retryable and not unknown,
             )
 
     async def review_amazon(
@@ -2675,8 +2708,9 @@ class TengliOpenAICompatibleGateway:
                     },
                 }
             )
+        route = self._visual_review_route(request.route_attempt)
         payload = {
-            "model": self.planner_model,
+            "model": self.vision_model if route.name == "primary" else route.planner_model,
             "messages": [
                 {
                     "role": "system",
@@ -2696,8 +2730,8 @@ class TengliOpenAICompatibleGateway:
         try:
             self.external_network_request_count += 1
             status, response = await self.transport.post_json(
-                url=urljoin(self._planner_base_url, "v1/chat/completions"),
-                headers=self._headers(request.idempotency_key, self._planner_api_key),
+                url=urljoin(route.planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, route.planner_api_key),
                 payload=payload,
                 timeout_seconds=self.timeout_seconds,
             )
@@ -2717,7 +2751,7 @@ class TengliOpenAICompatibleGateway:
                         else "AMAZON_VISUAL_REVIEW_REQUEST_FAILED"
                     ),
                     error_message=f"Amazon visual review failed with HTTP {status}.",
-                    retryable=status == 429 or status >= 500,
+                    retryable=(status == 429 or status >= 500 or (self._should_failover_status(status) and request.route_attempt < self.visual_review_route_count - 1)),
                     http_status=status,
                 )
             review_payload = _planner_content_payload(_planner_message_text(response))
@@ -2773,7 +2807,7 @@ class TengliOpenAICompatibleGateway:
                     else "AMAZON_VISUAL_REVIEW_INVALID"
                 ),
                 error_message=str(exc),
-                retryable=exc.retryable,
+                retryable=exc.retryable or exc.code in {"PLANNER_SCHEMA_INVALID", "PROVIDER_RESPONSE_INVALID"},
             )
 
     async def review_masked(
@@ -2803,8 +2837,9 @@ class TengliOpenAICompatibleGateway:
                     },
                 }
             )
+        route = self._visual_review_route(request.route_attempt)
         payload = {
-            "model": self.planner_model,
+            "model": self.vision_model if route.name == "primary" else route.planner_model,
             "messages": [
                 {
                     "role": "system",
@@ -2822,8 +2857,8 @@ class TengliOpenAICompatibleGateway:
         try:
             self.external_network_request_count += 1
             status, response = await self.transport.post_json(
-                url=urljoin(self._planner_base_url, "v1/chat/completions"),
-                headers=self._headers(request.idempotency_key, self._planner_api_key),
+                url=urljoin(route.planner_base_url, "v1/chat/completions"),
+                headers=self._headers(request.idempotency_key, route.planner_api_key),
                 payload=payload,
                 timeout_seconds=self.timeout_seconds,
             )
@@ -2845,7 +2880,7 @@ class TengliOpenAICompatibleGateway:
                     error_message=(
                         f"Local-edit visual review failed with HTTP {status}."
                     ),
-                    retryable=status == 429 or status >= 500,
+                    retryable=(status == 429 or status >= 500 or (self._should_failover_status(status) and request.route_attempt < self.visual_review_route_count - 1)),
                     http_status=status,
                 )
             review_payload = _planner_content_payload(_planner_message_text(response))
@@ -2897,7 +2932,7 @@ class TengliOpenAICompatibleGateway:
                     else "LOCAL_EDIT_VISUAL_REVIEW_INVALID"
                 ),
                 error_message=str(exc),
-                retryable=exc.retryable,
+                retryable=exc.retryable or exc.code in {"PLANNER_SCHEMA_INVALID", "PROVIDER_RESPONSE_INVALID"},
             )
 
     def _headers(self, idempotency_key: str, api_key: str) -> dict[str, str]:
@@ -2920,6 +2955,7 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         image_base_url=settings.image_base_url,
         planner_model=settings.analysis_model,
         image_model=settings.image_model,
+        vision_model=settings.tengli_vision_model,
         medium_price_micros=settings.xinghe_medium_price_micros,
         high_price_micros=settings.xinghe_high_price_micros,
         review_price_micros=settings.tengli_planner_reserve_micros,
@@ -5523,7 +5559,9 @@ class XingheImageProvider:
             return
         with self.session_factory() as db:
             job = db.get(JobRecord, request.job_id)
-            source = db.get(JobRecord, job.retry_of_job_id) if job and job.retry_of_job_id else None
+            if job is None:
+                return
+            source = db.get(JobRecord, job.retry_of_job_id) if job.retry_of_job_id else None
             previous = db.scalars(select(JobItemRecord).where(
                 JobItemRecord.job_id == request.job_id,
                 JobItemRecord.ordinal < page - 1,
@@ -5571,7 +5609,7 @@ class XingheImageProvider:
         pair_id = str(configuration.get("pair_id") or "")
         if len(modules) != 2 or any(module.get("status") not in {"COMPLETE", "COMPLETE_WITH_RESIDUALS"} for module in modules):
             return None
-        attempts = [next((attempt for attempt in reversed(module.get("attempts") or []) if attempt.get("image") == module.get("accepted_asset")), {}) for module in modules]
+        attempts: list[dict[str, Any]] = [next((attempt for attempt in reversed(module.get("attempts") or []) if attempt.get("image") == module.get("accepted_asset")), {}) for module in modules]
         hashes = {attempt.get("normalized_image_sha256") for attempt in attempts}
         if len(hashes) != 1 or None in hashes or any(attempt.get("pair_id") != pair_id or (attempt.get("judgment") or {}).get("artifact_binding", {}).get("image_sha256") not in hashes for attempt in attempts):
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_BINDING_INVALID", "Accepted pair checkpoint lacks its original pixel audit binding")
@@ -9386,7 +9424,24 @@ def _inline_aurora_schema_refs(value: Any, resolver: Any) -> Any:
     return {key: _inline_aurora_schema_refs(item, resolver) for key, item in value.items()}
 
 
+def _single_image_analysis_fields(profile: str) -> set[str]:
+    common = {"product_identity_lock", "hard_composition_skeleton", "normalized_anchors",
+              "product_role_map", "typography_zones", "commercial_intent", "forbidden_transfer"}
+    if profile == "creative_image":
+        return common | {"post_generation_review", "original_execution_prompt"}
+    if profile == "reference_visual_remix":
+        return common | {"reference_visual_analysis", "reusable_visual_strategy", "original_remix_prompt"}
+    return set()
+
+
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "creative_image":
+        required = sorted(_single_image_analysis_fields(request.planning_profile))
+        return {"type": "json_schema", "json_schema": {
+            "name": "creative_image_analysis", "strict": False,
+            "schema": {"type": "object", "required": required,
+                       "properties": {key: {} for key in required}},
+        }}
     if request.planning_profile in {"aurora_detail_pair_audit", "aurora_detail_identity_audit"}:
         schema_path = (
             AuroraDetailHarnessRunner().skill_root
@@ -9555,6 +9610,17 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "creative_image":
+        return (
+            "Analyze the uploaded product and user brief for ONE creative ecommerce image. "
+            "Follow the supplied Skill system protocol. Return the creative analysis JSON object "
+            "with every required field; original_execution_prompt must contain the user's "
+            "instruction faithfully. Do not return a detail-page campaign or page list.\n"
+            + json.dumps({"user_brief": request.product_information,
+                          "size": request.size, "language": request.language,
+                          "required_fields": sorted(_single_image_analysis_fields(request.planning_profile))},
+                         ensure_ascii=False)
+        )
     if request.planning_profile in {
         "aurora_domestic_campaign_completion", "aurora_domestic_plan_repair"
     }:

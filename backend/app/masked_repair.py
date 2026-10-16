@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from math import ceil, sqrt
 from pathlib import Path
@@ -116,6 +116,7 @@ class MaskedVisualReviewRequest:
     candidate_png: bytes
     instruction: str
     idempotency_key: str
+    route_attempt: int = 0
 
 
 @dataclass(frozen=True)
@@ -160,6 +161,7 @@ class _AuthorizedInputs:
     instruction: str
     quality: str
     execution_path: str
+    attempt_no: int = 1
 
 
 @dataclass(frozen=True)
@@ -218,6 +220,7 @@ class MaskedRepairProvider:
             authorized = self._authorize(request)
             normalized = await self._load_and_normalize(authorized)
             self._reserve_call_budget(request, authorized.quality)
+            reusable = await self._load_reusable_raw(request, normalized)
         except MaskedRepairError as exc:
             return self._rejected(exc)
 
@@ -242,7 +245,9 @@ class MaskedRepairProvider:
         execution_path = gateway_request.execution_path
         call_count = 0
         result: MaskedEditCallResult
-        if execution_path == "deterministic":
+        if reusable is not None:
+            result = reusable
+        elif execution_path == "deterministic":
             deterministic = _deterministic_repair(
                 normalized.source_image,
                 normalized.authority,
@@ -312,17 +317,22 @@ class MaskedRepairProvider:
             result.provider_request_id,
             result.artifact.sha256,
         )
-        try:
-            await self._persist_raw_artifact(
-                request,
-                result.artifact,
-                generation_id=generation_id,
-                provider_request_id=result.provider_request_id,
-                source_sha256=authorized.source.sha256,
-                mask_sha256=authorized.mask.sha256,
-                normalized_source_sha256=normalized.normalized_source_sha256,
-                authority_sha256=normalized.authority_sha256,
+        if reusable is not None:
+            generation_id = str(
+                (result.raw_usage or {}).get("generation_id") or generation_id
             )
+        try:
+            if reusable is None:
+                await self._persist_raw_artifact(
+                    request,
+                    result.artifact,
+                    generation_id=generation_id,
+                    provider_request_id=result.provider_request_id,
+                    source_sha256=authorized.source.sha256,
+                    mask_sha256=authorized.mask.sha256,
+                    normalized_source_sha256=normalized.normalized_source_sha256,
+                    authority_sha256=normalized.authority_sha256,
+                )
         except Exception as error:
             failure = (
                 error
@@ -423,7 +433,14 @@ class MaskedRepairProvider:
         review_attempts: list[MaskedVisualReviewCallResult] = []
         while len(review_attempts) < _VISUAL_REVIEW_MAX_ATTEMPTS:
             try:
-                review = await self.gateway.review_masked(review_request)
+                review = await self.gateway.review_masked(
+                    replace(
+                        review_request,
+                        route_attempt=(authorized.attempt_no - 1)
+                        * _VISUAL_REVIEW_MAX_ATTEMPTS
+                        + len(review_attempts),
+                    )
+                )
             except Exception as exc:
                 review = MaskedVisualReviewCallResult(
                     visual_success=None,
@@ -774,6 +791,7 @@ class MaskedRepairProvider:
                 instruction=instruction,
                 quality=str(quality),
                 execution_path=str(execution_path),
+                attempt_no=attempt.attempt_no,
             )
 
     async def _load_and_normalize(
@@ -844,6 +862,149 @@ class MaskedRepairProvider:
             provider_canvas=provider_canvas,
         )
 
+    async def _load_reusable_raw(
+        self, request: ProviderRequest, normalized: _NormalizedInputs
+    ) -> MaskedEditCallResult | None:
+        """Resume review from a hash-bound candidate in this retry's lineage."""
+        with self.session_factory() as session:
+            current_job = session.get(JobRecord, request.job_id)
+            item = session.get(JobItemRecord, request.job_item_id)
+            if current_job is None or item is None:
+                return None
+            found: dict[str, Any] | None = None
+            seen: set[str] = set()
+            for _ in range(16):
+                if item.id in seen:
+                    break
+                seen.add(item.id)
+                source_job = session.get(JobRecord, item.job_id)
+                if (
+                    source_job is None
+                    or item.workspace_id != request.workspace_id
+                    or source_job.workspace_id != request.workspace_id
+                    or source_job.type != "local_edit"
+                    or source_job.configuration != current_job.configuration
+                ):
+                    break
+                relation = session.scalar(
+                    select(JobAssetRecord).where(
+                        JobAssetRecord.job_id == item.job_id,
+                        JobAssetRecord.job_item_id == item.id,
+                        JobAssetRecord.direction == "intermediate",
+                        JobAssetRecord.role == _RAW_ROLE,
+                    )
+                )
+                if relation is not None:
+                    asset = session.get(AssetRecord, relation.asset_id)
+                    if asset is None or asset.workspace_id != request.workspace_id:
+                        break
+                    metadata = asset.asset_metadata or {}
+                    if relation.validation.get("raw_visual_success") is False:
+                        return None
+                    # A rejected image must be regenerated on an explicit retry.
+                    if item.error_code == "LOCAL_EDIT_VISUAL_REVIEW_REJECTED":
+                        return None
+                    if (
+                        asset.lifecycle_status != AssetLifecycleStatus.READY.value
+                        or asset.deleted_at is not None
+                        or metadata.get("immutable_provider_raw") is not True
+                        or metadata.get("workflow_version")
+                        != MASKED_REPAIR_WORKFLOW_VERSION
+                        or metadata.get("normalized_source_sha256")
+                        != normalized.normalized_source_sha256
+                        or metadata.get("authority_sha256")
+                        != normalized.authority_sha256
+                    ):
+                        raise MaskedRepairError(
+                            "LOCAL_EDIT_RAW_BINDING_INVALID",
+                            "The saved candidate no longer matches this edit's "
+                            "authority.",
+                        )
+                    found = {
+                        "id": asset.id,
+                        "key": asset.object_key,
+                        "sha256": asset.sha256,
+                        "bytes": asset.byte_size,
+                        "width": asset.width,
+                        "height": asset.height,
+                        "validation": dict(relation.validation),
+                    }
+                    break
+                if not item.source_job_item_id:
+                    break
+                ancestor = session.get(JobItemRecord, item.source_job_item_id)
+                if ancestor is None:
+                    break
+                item = ancestor
+        if found is None:
+            return None
+        try:
+            payload = await self.storage.read_bytes(str(found["key"]))
+            if (
+                hashlib.sha256(payload).hexdigest() != found["sha256"]
+                or len(payload) != found["bytes"]
+            ):
+                raise ValueError("candidate hash mismatch")
+            with Image.open(BytesIO(payload)) as image:
+                if image.size != (found["width"], found["height"]):
+                    raise ValueError("candidate dimensions mismatch")
+                image.verify()
+        except Exception as exc:
+            raise MaskedRepairError(
+                "LOCAL_EDIT_RAW_INVALID",
+                "The saved candidate could not be verified; "
+                "upload again or start a new edit.",
+            ) from exc
+        with self.session_factory() as session:
+            existing = session.scalar(
+                select(JobAssetRecord.id).where(
+                    JobAssetRecord.job_id == request.job_id,
+                    JobAssetRecord.job_item_id == request.job_item_id,
+                    JobAssetRecord.direction == "intermediate",
+                    JobAssetRecord.role == _RAW_ROLE,
+                )
+            )
+            if existing is None:
+                session.add(
+                    JobAssetRecord(
+                        workspace_id=request.workspace_id,
+                        job_id=request.job_id,
+                        job_item_id=request.job_item_id,
+                        asset_id=str(found["id"]),
+                        direction="intermediate",
+                        role=_RAW_ROLE,
+                        ordinal=0,
+                        is_deliverable=False,
+                        validation={**found["validation"], "candidate_reused": True},
+                    )
+                )
+                session.commit()
+        return MaskedEditCallResult(
+            outcome=ProviderOutcome.SUCCEEDED,
+            provider_request_id=None,
+            raw_usage={
+                "candidate_reused": True,
+                "generation_id": found["validation"].get("generation_id"),
+            },
+            normalized_usage={
+                "reported": True,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cached_tokens": 0,
+            },
+            actual_cost_micros=0,
+            estimated_cost_micros=0,
+            http_status=200,
+            artifact=ProviderArtifact(
+                payload=payload,
+                filename="resumed-candidate.png",
+                content_type="image/png",
+                width=int(found["width"]),
+                height=int(found["height"]),
+                sha256=str(found["sha256"]),
+            ),
+        )
+
     def _reserve_call_budget(
         self,
         request: ProviderRequest,
@@ -909,14 +1070,29 @@ class MaskedRepairProvider:
                     "This durable attempt already reserved its provider call.",
                 )
             review_exposure = int(getattr(self.gateway, "review_price_micros", 0) or 0)
-            exposure = int(job.estimated_cost_max_micros or 0) + review_exposure
-            if exposure <= 0 or exposure > self.budget_limit_micros:
+            saved_candidate = session.scalar(
+                select(JobAssetRecord.id).where(
+                    JobAssetRecord.job_id == job.id,
+                    JobAssetRecord.job_item_id == item.id,
+                    JobAssetRecord.direction == "intermediate",
+                    JobAssetRecord.role == _RAW_ROLE,
+                )
+            )
+            image_exposure = (
+                0
+                if saved_candidate is not None
+                else int(job.estimated_cost_max_micros or 0) * 2
+            )
+            exposure = image_exposure + review_exposure * _VISUAL_REVIEW_MAX_ATTEMPTS
+            if (
+                exposure <= 0 and saved_candidate is None
+            ) or exposure > self.budget_limit_micros:
                 raise MaskedRepairError(
                     "BUDGET_LIMIT_EXCEEDED",
                     "The local-edit maximum cost is outside the runner budget.",
                 )
-            prior = session.scalar(
-                select(func.count())
+            prior = session.scalars(
+                select(AuditEventRecord.details)
                 .select_from(AuditEventRecord)
                 .join(
                     JobAttemptRecord,
@@ -927,8 +1103,11 @@ class MaskedRepairProvider:
                     AuditEventRecord.workspace_id == request.workspace_id,
                     AuditEventRecord.action == "masked_repair.image_reserved",
                 )
+            ).all()
+            prior_exposure = sum(
+                int(value.get("estimated_cost_micros") or 0) for value in prior
             )
-            if int(prior or 0) * exposure + exposure > self.budget_limit_micros:
+            if prior_exposure + exposure > self.budget_limit_micros:
                 raise MaskedRepairError(
                     "BUDGET_LIMIT_EXCEEDED",
                     "Cumulative local-edit exposure exceeds the runner budget.",
@@ -1550,8 +1729,8 @@ def _usage_record(
             review_cached_tokens,
             review_performed=review_performed,
         ),
-        "input_images": 2 + (3 * len(attempts)),
-        "output_images": 1 if result.artifact is not None else 0,
+        "input_images": (2 if call_count else 0) + (3 * len(attempts)),
+        "output_images": 1 if result.artifact is not None and call_count else 0,
         "network_requests": call_count + len(attempts),
         "raw": {
             "image_edit": dict(result.raw_usage or {}),
@@ -1575,6 +1754,7 @@ def _usage_record(
             "normalized_source_sha256": normalized_source_sha256,
             "authority_sha256": authority_sha256,
             "transport_attempts": call_count,
+            "candidate_reused": bool((result.raw_usage or {}).get("candidate_reused")),
             "visual_review_requests": len(attempts),
             "visual_review_attempts": [
                 {

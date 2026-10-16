@@ -2,6 +2,7 @@ import asyncio
 from collections import defaultdict
 from datetime import timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -1264,6 +1265,42 @@ def test_published_outbox_delivery_is_recovered_from_postgres(
         assert job.status == JobStatus.COMPLETED.value
         assert event.status == OutboxStatus.PUBLISHED.value
     assert _counts(client, job_id) == (1, 1)
+
+
+@pytest.mark.parametrize("state", ["active", "reserved", "unknown", "lost"])
+def test_celery_delivery_recovery_does_not_redispatch_live_provider_calls(
+    client, monkeypatch, state,
+):
+    from app.celery_app import celery_app
+
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        event = session.scalar(select(OutboxEventRecord).where(
+            OutboxEventRecord.aggregate_id == job_id,
+        ))
+        event.status = OutboxStatus.PUBLISHED.value
+        event.published_at = utc_now() - timedelta(minutes=10)
+        session.commit()
+    task = {"name": "polaris.process_job", "args": [job_id]}
+    inspector = SimpleNamespace(
+        active=lambda: None if state == "unknown" else {
+            "worker": [task] if state == "active" else [],
+        },
+        reserved=lambda: {"worker": [task] if state == "reserved" else []},
+    )
+    monkeypatch.setattr(celery_app.control, "inspect", lambda **kwargs: inspector)
+    dispatched = []
+    monkeypatch.setattr(
+        "app.outbox._dispatch", lambda *args, **kwargs: dispatched.append(kwargs),
+    )
+    settings = client.app.state.settings.model_copy(
+        update={"task_dispatcher": "celery"},
+    )
+    published = publish_pending_events(
+        settings, client.app.state.session_factory, client.app.state.task_runner,
+    )
+    assert published == (1 if state == "lost" else 0)
+    assert len(dispatched) == published
 
 
 def test_finalize_amazon_review_uses_terminal_attempts_without_payload_double_count(

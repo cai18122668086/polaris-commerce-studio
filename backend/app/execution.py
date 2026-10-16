@@ -635,6 +635,9 @@ class ExecutionCoordinator:
                     break
                 leases.append(lease)
             if not leases:
+                if self._domestic_detail_has_blocking_failure(job_id):
+                    self._skip_domestic_detail_pages_after_execution_failure(job_id)
+                    break
                 if (
                     is_amazon
                     and self.amazon_suite_reviewer is not None
@@ -682,6 +685,9 @@ class ExecutionCoordinator:
                 job_id, leases
             ):
                 self._skip_domestic_pages_after_execution_failure(job_id)
+                break
+            if self._domestic_detail_batch_has_failure(job_id, leases):
+                self._skip_domestic_detail_pages_after_execution_failure(job_id)
                 break
             if (
                 is_calibrated_parallel_aurora_mode(parallel_mode)
@@ -1074,6 +1080,83 @@ class ExecutionCoordinator:
                 item.finished_at = now
                 item.state_version += 1
             session.commit()
+
+    def _skip_domestic_detail_pages_after_execution_failure(self, job_id: str) -> None:
+        """Close a domestic detail pair sequence after an unrecoverable page failure."""
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None or not self._is_domestic_detail_job_record(job):
+                return
+            pending = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status.in_(
+                        [
+                            JobItemStatus.PENDING.value,
+                            JobItemStatus.QUEUED.value,
+                            JobItemStatus.RETRY_WAIT.value,
+                        ]
+                    ),
+                )
+                .with_for_update()
+            ).all()
+            now = utc_now()
+            for item in pending:
+                item.status = JobItemStatus.SKIPPED.value
+                item.stage = "blocked_by_previous_pair"
+                item.error_code = "AURORA_DETAIL_SEQUENCE_HALTED"
+                item.error_message = (
+                    "因前置 pair 页面失败，后续详情页面未启动。"
+                )
+                item.finished_at = now
+                item.next_attempt_at = None
+                item.state_version += 1
+            session.commit()
+
+    def _domestic_detail_has_blocking_failure(self, job_id: str) -> bool:
+        """Detect a failed pair that would otherwise leave later pages pending."""
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            if job is None or not self._is_domestic_detail_job_record(job):
+                return False
+            active = session.scalar(
+                select(func.count())
+                .select_from(JobAttemptRecord)
+                .where(
+                    JobAttemptRecord.job_id == job_id,
+                    JobAttemptRecord.status.in_(ACTIVE_ATTEMPT_STATUSES),
+                    JobAttemptRecord.lease_expires_at > utc_now(),
+                )
+            )
+            if int(active or 0) > 0:
+                return False
+            return session.scalar(
+                select(func.count())
+                .select_from(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.status == JobItemStatus.FAILED.value,
+                )
+            ) > 0
+
+    def _domestic_detail_batch_has_failure(
+        self, job_id: str, leases: Sequence[AttemptLease]
+    ) -> bool:
+        if not leases:
+            return False
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            if job is None or not self._is_domestic_detail_job_record(job):
+                return False
+            statuses = session.scalars(
+                select(JobItemRecord.status).where(
+                    JobItemRecord.id.in_([lease.item_id for lease in leases])
+                )
+            ).all()
+            return any(status == JobItemStatus.FAILED.value for status in statuses)
 
     def _domestic_batch_has_failure(
         self, job_id: str, leases: Sequence[AttemptLease]

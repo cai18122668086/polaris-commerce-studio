@@ -10113,6 +10113,20 @@ _AURORA_COMPACT_MODULE_REQUIRED = (
     "visual_cast",
     "content_unit_contract",
 )
+# The bundled Aurora Harness owns the cross-field rule that a hard-continuity
+# seam method must be declared with HARD strength and visible overlap
+# (skill_sources/.../plan_normalizer.py). Compatible planners occasionally
+# pair a hard method with SOFT, which fails the render with
+# HARNESS_INVALID_OUTPUT. Align the two companion fields to the method the
+# planner actually chose instead of discarding the seam decision.
+_AURORA_HARD_CONTINUITY_METHODS = frozenset(
+    {
+        "EDGE_BLEED",
+        "PRODUCT_OVERFLOW",
+        "PERSPECTIVE_TURN",
+        "SUBJECT_STATE_HANDOFF",
+    }
+)
 # Spine the model must author. Structural nests can be completed from the
 # module's own conclusion; these fields cannot, or the adapter would invent
 # the selling story.
@@ -10556,6 +10570,13 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
             )
         else:
             transition_output[key] = as_text(transition_output.get(key), fallback)  # type: ignore[arg-type]
+    # Cross-field consistency for the Harness seam contract: a hard-continuity
+    # method must carry HARD strength and visible overlap. `method_id` is
+    # normalised first in the loop above, so this only aligns the two
+    # companion fields to the planner's own method choice.
+    if transition_output.get("method_id") in _AURORA_HARD_CONTINUITY_METHODS:
+        transition_output["continuity_strength"] = "HARD"
+        transition_output["visible_overlap_required"] = True
     output["transition_contract"] = transition_output
 
     enum_fallbacks = {

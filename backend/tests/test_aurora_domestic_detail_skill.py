@@ -175,4 +175,8 @@ def test_provider_schemas_are_self_contained_and_match_each_repair_phase() -> No
     clusters = campaign["properties"]["output_strategy"]["properties"]["selling_point_clusters"]
     assert "fact_ids" in clusters["items"]["required"]
     assert "assigned_module_ids" in clusters["items"]["required"]
+    patch = _planner_response_format(replace(request, planning_profile="aurora_domestic_plan_repair"))["json_schema"]["schema"]
+    assert not patch.get("required")
+    assert patch["properties"]["modules"]["items"]["required"] == ["id"]
+    assert not patch["properties"]["modules"]["items"]["properties"]["proof"].get("required")
 

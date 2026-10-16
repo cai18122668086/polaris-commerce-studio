@@ -19,6 +19,7 @@ import re
 import secrets
 import time
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -3084,6 +3085,17 @@ class XinghePlanningCoordinator:
         payload = dict(_require_mapping(result.payload, "AURORA_PLAN_SCHEMA_INVALID"))
         extra: list[PlannerCallResult] = []
 
+        def snapshot(name: str, value: Mapping[str, Any]) -> None:
+            try:
+                write_detail_contract(
+                    detail_workspace(request.job_id) / "planning" / f"{name}.json",
+                    value,
+                )
+            except OSError:
+                logger.warning("aurora planning snapshot could not be saved: job_id=%s phase=%s", request.job_id, name)
+
+        snapshot("initial-plan", payload)
+
         async def repair(
             profile: str, issues: object, *, module_id: str | None = None
         ) -> PlannerCallResult:
@@ -3115,6 +3127,7 @@ class XinghePlanningCoordinator:
                 product_information=information,
                 idempotency_key=f"{request.idempotency_key}:{profile}:{module_id or 'campaign'}",
             )
+            snapshot(f"{profile}-{module_id or 'campaign'}-request", {"plan": payload, "validation_errors": issues})
             logger.info(
                 "aurora planning phase started: job_id=%s phase=%s module=%s",
                 request.job_id,
@@ -3140,6 +3153,8 @@ class XinghePlanningCoordinator:
                 phase=f"{profile}:{module_id}" if module_id else profile,
             )
             extra.append(response)
+            if isinstance(response.payload, Mapping):
+                snapshot(f"{profile}-{module_id or 'campaign'}-response", response.payload)
             logger.info(
                 "aurora planning phase finished: job_id=%s phase=%s seconds=%.2f error=%s",
                 request.job_id,
@@ -3302,13 +3317,16 @@ class XinghePlanningCoordinator:
                     self._preflight_aurora_plan, request, structured["aurora_plan"]
                 )
             except AuroraDetailHarnessError as exc:
+                logger.info("aurora planning preflight failed: job_id=%s error=%s", request.job_id, exc)
                 response = await repair(
                     "aurora_domestic_plan_repair",
                     [{"message": str(exc), "stage": "harness_preflight"}],
                 )
-                payload = dict(
-                    _require_mapping(response.payload, "AURORA_PLAN_SCHEMA_INVALID")
+                payload = _merge_aurora_plan_repair(
+                    payload,
+                    _require_mapping(response.payload, "AURORA_PLAN_SCHEMA_INVALID"),
                 )
+                snapshot("merged-plan-repair", payload)
                 normalized()
                 structured = validate_aurora_domestic_plan(
                     payload, request.page_count, skill_root=self.skill_root
@@ -9265,6 +9283,25 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                     **schema["properties"]["modules"], "minItems": 1, "maxItems": 1,
                 }},
             }
+        elif request.planning_profile == "aurora_domestic_plan_repair":
+            schema = deepcopy(schema)
+            # Repair is an explicit partial correction, applied to the saved
+            # full candidate before ordinary validation. Rewriting every
+            # screen made compatible planners drop previously authored fields.
+            def optional_object_fields(node: dict[str, Any]) -> None:
+                if node.get("type") != "object":
+                    return
+                node.pop("required", None)
+                for value in node.get("properties", {}).values():
+                    if isinstance(value, dict):
+                        optional_object_fields(value)
+
+            optional_object_fields(schema)
+            modules = schema["properties"]["modules"]
+            modules["minItems"] = 0
+            modules["maxItems"] = request.page_count
+            optional_object_fields(modules["items"])
+            modules["items"]["required"] = ["id"]
         return {
             "type": "json_schema",
             "json_schema": {
@@ -9290,6 +9327,7 @@ def _planner_prompt(request: PlannerRequest) -> str:
         "aurora_domestic_campaign_completion", "aurora_domestic_plan_repair"
     }:
         campaign_only = request.planning_profile == "aurora_domestic_campaign_completion"
+        repair_schema = _planner_response_format(request)["json_schema"]["schema"]
         return (
             "Repair the supplied Aurora v4.3 compact plan using the supplied "
             "validation errors. Preserve all valid decisions, module IDs, approved "
@@ -9297,11 +9335,20 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "claims or drop a relevant user selling point to satisfy validation. "
             "Return one complete JSON object matching the supplied response schema. "
             + ("Return campaign-level contracts only; omit modules entirely. " if campaign_only else
-               "Return the full repaired campaign and all ordered modules. Fix cross-ledger "
-               "claim/module mappings consistently; selected claims must have actual modules. ")
+               "Return only fields that need correction, as a partial JSON update to "
+               "CURRENT_AURORA_PLAN_JSON. Omitted fields and omitted modules are preserved. "
+               "For changed modules include their existing id and only changed fields; "
+               "never rename duty, buyer_question, lead_conclusion, lead_claim_id, "
+               "selling_point_cluster_ids, visual_proof_direction or composition_family. "
+               "Object fields merge recursively. A supplied list replaces that whole "
+               "list, so include all entries needed by its existing valid mappings. "
+               "Fix cross-ledger claim/module mappings consistently and preserve verified "
+               "fact IDs exactly. Do not rewrite unrelated modules, facts or visual choices. ")
             + "Use literal schema types and enum values, not explanatory aliases. "
             "Do not wrap the response in analysis, plan or screens.\n\n"
             + json.dumps({"product_name": request.product_name, "context": request.product_information}, ensure_ascii=False)
+            + "\n\nRESPONSE_CONTRACT_JSON="
+            + json.dumps(repair_schema, ensure_ascii=False, separators=(",", ":"))
         )
     if request.planning_profile == "reference_visual_remix":
         ordered_roles = tuple(source.source_role for source in request.sources)
@@ -10234,6 +10281,46 @@ def _aurora_module_id_matches(value: object, module_id: str) -> bool:
     ):
         return int(token[1:]) == int(module_id[1:])
     return False
+
+
+def _merge_aurora_plan_repair(
+    original: Mapping[str, Any], repaired: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Apply authored corrections without deleting an omitted existing field.
+
+    A compatible planner can return a partial correction even when asked for
+    a full plan. Match modules by their stable ID; lists inside a module are
+    replaced explicitly, never merged by position. All supplied values still
+    undergo the ordinary schema and real Harness checks after this merge.
+    """
+
+    def merge_fields(base: Mapping[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
+        output = deepcopy(dict(base))
+        for key, value in patch.items():
+            if isinstance(value, Mapping) and isinstance(output.get(key), Mapping):
+                output[key] = merge_fields(output[key], value)
+            else:
+                output[key] = deepcopy(value)
+        return output
+
+    merged = merge_fields(original, {k: v for k, v in repaired.items() if k != "modules"})
+    if "modules" not in repaired:
+        return merged
+    modules = deepcopy(original.get("modules"))
+    patches = repaired["modules"]
+    if not isinstance(modules, list) or not isinstance(patches, list):
+        raise XingheAgentError("AURORA_PLAN_SCHEMA_INVALID", "Aurora repair modules must be an array.")
+    positions = {str(m.get("id")): i for i, m in enumerate(modules) if isinstance(m, Mapping)}
+    seen: set[str] = set()
+    for patch in patches:
+        module_id = str(patch.get("id") or "") if isinstance(patch, Mapping) else ""
+        if module_id not in positions or module_id in seen:
+            raise XingheAgentError("AURORA_MODULE_ORDER_INVALID", f"Aurora repair has an unknown or duplicate module ID: {module_id}.")
+        seen.add(module_id)
+        index = positions[module_id]
+        modules[index] = merge_fields(modules[index], patch)
+    merged["modules"] = modules
+    return merged
 
 
 def _aurora_compact_spine_present(module: Mapping[str, Any]) -> bool:

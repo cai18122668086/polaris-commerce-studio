@@ -28,9 +28,11 @@ from app.xinghe_agent import (
     IMAGE_SIZE,
     FakeXingheGateway,
     PlannerRequest,
+    XingheAgentError,
     XingheImageProvider,
     _accept_aurora_completion_module,
     _fake_plan,
+    _merge_aurora_plan_repair,
     _planner_prompt,
     build_resume_signature,
     compile_page_prompt,
@@ -384,6 +386,10 @@ def test_domestic_harness_preflight_repairs_bad_claim_mapping_before_approval(
                 "claim_id": "F99", "disposition": "LEAD", "module_ids": [],
                 "rationale": "无商品证据和已批准事实的错误声明", "defer_reason_code": "NOT_DEFERRED",
             })
+        elif request.planning_profile == "aurora_domestic_plan_repair":
+            # The actual error needs only a corrected coverage list; the
+            # already authored eight screens must survive a partial response.
+            payload = {"output_strategy": {"claim_coverage": payload["output_strategy"]["claim_coverage"]}}
         return replace(result, payload=payload)
 
     monkeypatch.setattr(gateway, "plan", unmapped_plan)
@@ -394,7 +400,27 @@ def test_domestic_harness_preflight_repairs_bad_claim_mapping_before_approval(
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_plan_repair"]
     assert "selected claim F99 needs at least one assigned module" in str(gateway.planner_calls[-1].product_information)
+    original_snapshot = detail_workspace(str(job["id"])) / "planning" / "aurora_domestic_plan_repair-campaign-request.json"
+    before = json.loads(original_snapshot.read_text(encoding="utf-8"))
+    assert before["plan"]["modules"][0]["duty"]
+    assert "F99" in str(before["validation_errors"])
+    assert "partial JSON update" in _planner_prompt(gateway.planner_calls[-1])
+    assert "RESPONSE_CONTRACT_JSON=" in _planner_prompt(gateway.planner_calls[-1])
     assert gateway.image_calls == []
+
+
+def test_partial_plan_repair_preserves_other_modules_and_matches_stable_ids() -> None:
+    original = {"modules": [
+        {"id": "M01", "duty": "首屏", "proof": {"visible": "原图外观", "relation": "完整产品"}},
+        {"id": "M02", "duty": "细节", "proof": {"visible": "开孔", "relation": "局部"}},
+    ]}
+    repaired = _merge_aurora_plan_repair(original, {"modules": [{"id": "M02", "proof": {"relation": "开孔与接口对应"}}]})
+    assert repaired["modules"][0] == original["modules"][0]
+    assert repaired["modules"][1] == {"id": "M02", "duty": "细节", "proof": {"visible": "开孔", "relation": "开孔与接口对应"}}
+    assert original["modules"][1]["proof"]["relation"] == "局部"
+    for patches in ([{"id": "M99"}], [{"id": "M02"}, {"id": "M02"}]):
+        with pytest.raises(XingheAgentError, match="unknown or duplicate module ID"):
+            _merge_aurora_plan_repair(original, {"modules": patches})
 
 
 def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_screens(

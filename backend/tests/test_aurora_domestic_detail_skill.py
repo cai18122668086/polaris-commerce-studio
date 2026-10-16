@@ -15,6 +15,7 @@ from app.provider import ProviderArtifact
 from app.xinghe_agent import (
     XingheImageProvider,
     _complete_aurora_module_structure,
+    _normalize_aurora_style_constitution,
     _split_aurora_pair_artifact,
     _validated_image_size,
 )
@@ -126,4 +127,14 @@ def test_malformed_commercial_comfort_details_are_filtered_without_rewriting_val
     assert repaired["expression"]["commercial_comfort"][
         "forbidden_visual_details"
     ] == ["保留的安全边界"]
+
+
+def test_missing_style_constitution_gets_neutral_structural_defaults() -> None:
+    root: dict[str, object] = {}
+    _normalize_aurora_style_constitution(root)
+
+    style = root["style_constitution"]
+    assert isinstance(style, dict)
+    assert style["visual_world"] == "基于已批准商品素材的清晰电商展示空间"
+    assert style["product_rendering"] == "保持商品外观、结构和比例以已批准素材为准"
 

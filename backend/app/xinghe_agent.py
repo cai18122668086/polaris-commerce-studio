@@ -10683,6 +10683,26 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
     return output
 
 
+def _normalize_aurora_style_constitution(root: dict[str, Any]) -> None:
+    """Restore missing style contract fields without changing explicit values."""
+
+    defaults = {
+        "visual_world": "基于已批准商品素材的清晰电商展示空间",
+        "color_and_light": "以商品真实颜色和材质为准，使用稳定、克制的光线",
+        "typography_and_graphics": "信息层级清晰，文字服务于可见商品证据",
+        "product_rendering": "保持商品外观、结构和比例以已批准素材为准",
+        "rhythm": "通过景别、信息密度和空间关系形成连续但不重复的阅读节奏",
+    }
+    style_value = root.get("style_constitution")
+    if style_value is None:
+        root["style_constitution"] = defaults
+    elif isinstance(style_value, Mapping):
+        style = dict(style_value)
+        for key, value in defaults.items():
+            style.setdefault(key, value)
+        root["style_constitution"] = style
+
+
 def validate_aurora_domestic_plan(
     payload: object,
     page_count: int,
@@ -10709,6 +10729,11 @@ def validate_aurora_domestic_plan(
     root.setdefault("plan_format", "COMPACT_V1_3")
     root.setdefault("information_contract_version", "4.1")
     root.setdefault("expression_contract_version", "4.3")
+    # Some planner responses omit the style constitution when the prompt is
+    # truncated or the model prioritizes the module storyboard.  Restore only
+    # the contract's missing structural fields with neutral, product-safe
+    # defaults; explicit values remain subject to schema validation below.
+    _normalize_aurora_style_constitution(root)
     # Compatible planning gateways occasionally omit the hero contract even
     # when they return a complete module storyboard.  Rehydrate only the
     # structural fields from M01 and its declared evidence; never invent a

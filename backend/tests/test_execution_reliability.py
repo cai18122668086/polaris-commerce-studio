@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import time
 from collections import defaultdict
 from datetime import timedelta
 from io import BytesIO
@@ -96,6 +98,52 @@ def _coordinator(
         lease_seconds=2,
         heartbeat_seconds=0.2,
     )
+
+
+@pytest.mark.parametrize("blocking_phase", ["provider", "storage"])
+def test_heartbeat_survives_blocking_provider_and_slow_artifact_save(
+    client, blocking_phase,
+):
+    from app.provider import ProviderArtifact
+
+    class BlockingProvider(FakeProvider):
+        name = "real-test"
+
+        async def execute(self, request):
+            if blocking_phase == "provider":
+                time.sleep(0.7)
+            payload = _image_payload((10, 20, 30))
+            return ProviderResult(
+                outcome=ProviderOutcome.SUCCEEDED,
+                provider_name=self.name,
+                artifact=ProviderArtifact(
+                    payload=payload, filename="saved.png", content_type="image/png",
+                    width=32, height=32, sha256=hashlib.sha256(payload).hexdigest(),
+                ),
+            )
+
+    class SlowStorage:
+        async def save_validated(self, image):
+            if blocking_phase == "storage":
+                await asyncio.sleep(0.7)
+            return SimpleNamespace(
+                **image.__dict__, byte_size=len(image.payload), storage_provider="test",
+                storage_bucket="test", object_version="", etag=None,
+            )
+
+        async def delete_object(self, *args):
+            pass
+
+    job_id = _create_job(client)
+    coordinator = ExecutionCoordinator(client.app.state.session_factory,
+        BlockingProvider(), worker_id="blocking-test", lease_seconds=0.4,
+        heartbeat_seconds=0.05, artifact_storage=SlowStorage())
+    coordinator.prepare(job_id)
+    lease = coordinator.claim_next_item(job_id)
+    assert lease is not None
+    assert asyncio.run(coordinator.execute_lease(lease)) is True
+    with client.app.state.session_factory() as session:
+        assert session.get(JobAttemptRecord, lease.attempt_id).status == "succeeded"
 
 
 class _FailingDomesticPlanner:

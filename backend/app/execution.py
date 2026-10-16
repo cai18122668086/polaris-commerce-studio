@@ -7,6 +7,7 @@ import hashlib
 import logging
 import re
 import socket
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -1792,32 +1793,57 @@ class ExecutionCoordinator:
             idempotency_key=lease.provider_idempotency_key,
             configuration=lease.configuration,
         )
+        stopped = threading.Event()
+        lease_lost = threading.Event()
+
+        def heartbeat() -> None:
+            # Native Harness subprocesses and PNG compression can block the
+            # provider's event loop longer than the lease. Keep ownership alive
+            # independently, including while the final artifact is being saved.
+            while not stopped.wait(self.heartbeat_seconds):
+                try:
+                    renewed = self.renew_lease(lease)
+                except Exception:
+                    logger.exception("Attempt heartbeat failed: %s", lease.attempt_id)
+                    renewed = False
+                if not renewed:
+                    lease_lost.set()
+                    return
+
+        keeper = threading.Thread(target=heartbeat, daemon=True)
+        keeper.start()
         provider_task = asyncio.create_task(self.provider.execute(request))
-        while not provider_task.done():
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(provider_task),
-                    timeout=self.heartbeat_seconds,
-                )
-            except TimeoutError:
-                if not self.renew_lease(lease):
-                    provider_task.cancel()
-                    return False
-        result = await provider_task
-        effective_provider = self._effective_provider_name(result)
-        if effective_provider == "mock":
-            if result.persisted_artifact is not None:
+        try:
+            while not provider_task.done():
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(provider_task),
+                        timeout=self.heartbeat_seconds,
+                    )
+                except TimeoutError:
+                    if lease_lost.is_set():
+                        provider_task.cancel()
+                        return False
+            result = await provider_task
+            if lease_lost.is_set():
+                return False
+            effective_provider = self._effective_provider_name(result)
+            if effective_provider == "mock":
+                if result.persisted_artifact is not None:
+                    await self._delete_persisted_artifact(result.persisted_artifact)
+                result = self._without_mock_artifacts(result)
+            elif result.artifact is not None:
+                result = await self._persist_provider_artifact(lease, result)
+            finished = self.finish_attempt(lease, result)
+            if result.persisted_artifact is not None and not self._artifact_linked(
+                lease,
+                result.persisted_artifact,
+            ):
                 await self._delete_persisted_artifact(result.persisted_artifact)
-            result = self._without_mock_artifacts(result)
-        elif result.artifact is not None:
-            result = await self._persist_provider_artifact(lease, result)
-        finished = self.finish_attempt(lease, result)
-        if result.persisted_artifact is not None and not self._artifact_linked(
-            lease,
-            result.persisted_artifact,
-        ):
-            await self._delete_persisted_artifact(result.persisted_artifact)
-        return finished
+            return finished
+        finally:
+            stopped.set()
+            keeper.join(timeout=1)
 
     def _effective_provider_name(self, result: ProviderResult) -> str:
         return result.provider_name or self.provider.name

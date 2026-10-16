@@ -29,6 +29,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
+from botocore.exceptions import ClientError
 from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -5053,6 +5054,10 @@ class XingheImageProvider:
         native_detail_session: Path | None = None
         if pair_mode and pair_position == 1 and self._native_detail_runner is not None:
             try:
+                self._restore_native_detail_retry_checkpoint(request, configuration)
+                recovered = await self._recover_native_detail_pair(request, configuration)
+                if recovered is not None:
+                    return recovered
                 native_detail_session, native_detail_request, sources = await self._prepare_native_detail_generation(
                     request,
                     configuration,
@@ -5507,6 +5512,107 @@ class XingheImageProvider:
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             return
 
+    def _restore_native_detail_retry_checkpoint(
+        self, request: ProviderRequest, configuration: Mapping[str, Any]
+    ) -> None:
+        """Carry an audited prefix into a normal failed-only retry."""
+
+        page = int(configuration.get("page") or 1)
+        workspace = detail_workspace(request.job_id)
+        if page <= 1 or (workspace / "session.json").exists():
+            return
+        with self.session_factory() as db:
+            job = db.get(JobRecord, request.job_id)
+            source = db.get(JobRecord, job.retry_of_job_id) if job and job.retry_of_job_id else None
+            previous = db.scalars(select(JobItemRecord).where(
+                JobItemRecord.job_id == request.job_id,
+                JobItemRecord.ordinal < page - 1,
+            )).all()
+            if source is None or source.workspace_id != request.workspace_id:
+                return
+            if len(previous) != page - 1 or any(item.status not in {"succeeded", "reused"} for item in previous):
+                return
+            plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job.id).order_by(JobPlanRecord.revision.desc()).limit(1))
+            native_plan = extract_native_plan(plan.payload) if plan else None
+            source_id = source.id
+        source_workspace = detail_workspace(source_id)
+        source_path = source_workspace / "session.json"
+        if not source_path.exists() or native_plan is None:
+            return
+        source_plan = json.loads((source_workspace / "plan.json").read_text(encoding="utf-8"))
+        if canonical_hash(source_plan) != canonical_hash(normalize_native_plan_for_harness(native_plan)):
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_PLAN_MISMATCH", "Retry checkpoint does not match the confirmed plan")
+        checkpoint = json.loads(source_path.read_text(encoding="utf-8"))
+        if checkpoint.get("state") not in {"AUTHORIZED", "REPAIR_REQUIRED", "AWAITING_USER_FINAL_REVIEW"}:
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_BUSY", "Source checkpoint has an unfinished generation or audit")
+        modules = checkpoint.get("modules") or []
+        if len(modules) < page or any(module.get("status") not in {"COMPLETE", "COMPLETE_WITH_RESIDUALS"} for module in modules[:page - 1]):
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_INCOMPLETE", "Source checkpoint does not contain the reused prefix")
+        for name in ("input.json", "identity.json", "plan.json"):
+            (workspace / name).write_bytes((source_workspace / name).read_bytes())
+        # Historical accepted assets and receipts remain immutable in their
+        # original workspace. New Harness output belongs to the retry workspace.
+        checkpoint["session_dir"] = str(workspace)
+        checkpoint["checkpoint_source_job_id"] = source_id
+        checkpoint.setdefault("events", []).append({"event": "retry_checkpoint_restored", "source_job_id": source_id, "at": datetime.now(UTC).isoformat()})
+        write_detail_contract(workspace / "session.json", checkpoint)
+
+    async def _recover_native_detail_pair(
+        self, request: ProviderRequest, configuration: Mapping[str, Any]
+    ) -> ProviderResult | None:
+        """Replay an audited canvas if its database completion lost its lease."""
+
+        session_path = detail_workspace(request.job_id) / "session.json"
+        if not session_path.exists():
+            return None
+        checkpoint = json.loads(session_path.read_text(encoding="utf-8"))
+        page = int(configuration.get("page") or 1)
+        modules = (checkpoint.get("modules") or [])[page - 1:page + 1]
+        pair_id = str(configuration.get("pair_id") or "")
+        if len(modules) != 2 or any(module.get("status") not in {"COMPLETE", "COMPLETE_WITH_RESIDUALS"} for module in modules):
+            return None
+        attempts = [next((attempt for attempt in reversed(module.get("attempts") or []) if attempt.get("image") == module.get("accepted_asset")), {}) for module in modules]
+        hashes = {attempt.get("normalized_image_sha256") for attempt in attempts}
+        if len(hashes) != 1 or None in hashes or any(attempt.get("pair_id") != pair_id or (attempt.get("judgment") or {}).get("artifact_binding", {}).get("image_sha256") not in hashes for attempt in attempts):
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_BINDING_INVALID", "Accepted pair checkpoint lacks its original pixel audit binding")
+        if self.storage is None:
+            raise AuroraDetailHarnessError("AURORA_PAIR_CANVAS_STORAGE_UNAVAILABLE", "Checkpoint recovery requires durable storage")
+        source_id = str(checkpoint.get("checkpoint_source_job_id") or request.job_id)
+        group_key = str(configuration["group_key"])
+        for candidate_id in dict.fromkeys((request.job_id, source_id)):
+            source_key = self._aurora_pair_canvas_object_key(request.workspace_id, candidate_id, group_key, pair_id)
+            try:
+                payload = await self.storage.read_bytes(source_key)
+            except FileNotFoundError:
+                continue
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") not in {"404", "NoSuchKey", "NotFound"}:
+                    raise
+                continue
+            source_id = candidate_id
+            break
+        else:
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_CANVAS_MISSING", "Accepted canvas is missing from durable storage")
+        if hashlib.sha256(payload).hexdigest() not in hashes:
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Stored canvas does not match its accepted audit")
+        canvas = _artifact_from_bytes(payload, filename=f"{group_key}-{pair_id}-canvas.png", expected_size=str(configuration["pair_canvas_size"]), preserve_provider_artifact=True)
+        first, second = await asyncio.to_thread(_split_aurora_pair_artifact, canvas, screen_size=str(configuration["size"]), pair_id=pair_id, group_key=group_key)
+        target_key = self._aurora_pair_canvas_object_key(request.workspace_id, request.job_id, group_key, pair_id)
+        if source_key != target_key:
+            await self.storage.save_validated(ValidatedImage(payload=payload, filename=canvas.filename, content_type=canvas.content_type, width=canvas.width, height=canvas.height, object_key=target_key, sha256=canvas.sha256))
+        self._aurora_pair_slice_cache[(request.job_id, group_key, pair_id)] = second
+        return ProviderResult(outcome=ProviderOutcome.SUCCEEDED,
+            provider_request_id=f"aurora_pair_checkpoint_{request.job_id}_{pair_id}",
+            usage_reported=False, estimated_cost_micros=0, actual_cost_micros=0,
+            raw_usage={"reported": False, "metrics": {
+                "native_checkpoint_reused_from_job_id": source_id,
+                "aurora_pair_canvas_object_key": target_key,
+                "aurora_pair_canvas_sha256": canvas.sha256,
+                "pair_audit": _aurora_pair_pixel_audit(canvas, pair_id=pair_id),
+                "audit_entrypoint": "audit-pair"}},
+            artifact=first, http_status=200, provider_name=self.gateway.provider_name,
+            model_name=self.gateway.image_model, pricing_version=self.gateway.pricing_version)
+
     async def _prepare_native_detail_generation(
         self,
         request: ProviderRequest,
@@ -5573,6 +5679,9 @@ class XingheImageProvider:
             )
         native_session_value = json.loads(session_path.read_text(encoding="utf-8"))
         state = native_session_value.get("state")
+        expected_index = int(configuration.get("page") or 1) - 1
+        if native_session_value.get("current_index", 0) != expected_index:
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_PAIR_MISMATCH", "Native cursor does not match the requested database pair")
         if state == "REPAIR_REQUIRED":
             current_index = int(native_session_value.get("current_index") or 0)
             current_module = (native_session_value.get("modules") or [])[current_index]
@@ -5596,6 +5705,9 @@ class XingheImageProvider:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_STATE_INVALID", f"Native detail session is not ready: {state}")
         runner.run("generate-next", workspace, {"session": session_path, "out": request_path})
         native_request = json.loads(request_path.read_text(encoding="utf-8"))
+        if str(native_request.get("pair_id") or "") != str(configuration.get("pair_id") or ""):
+            self._reset_native_detail_generation(session_path)
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_PAIR_MISMATCH", "Native generation request does not match the database pair")
         # The generation request deliberately carries the full compiled prompt,
         # but the pair auditor must receive the approved screen contracts as a
         # structured, machine-readable object as well.  Without this binding a

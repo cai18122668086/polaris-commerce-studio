@@ -547,6 +547,54 @@ def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_scr
     assert "笔画粘连" in str(session["modules"][0]["residual_issues"])
 
 
+def test_failed_detail_retry_recovers_audited_prefix_and_native_pair_without_new_calls(client, monkeypatch):
+    from botocore.exceptions import ClientError
+
+    source = upload_asset(client, filename="checkpoint-detail-retry.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    confirmed = client.post(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm", headers=idem(), json=_aurora_approval_payload(planned))
+    assert confirmed.status_code == 202
+    dispatch_pending(client)
+    checkpoint_path = detail_workspace(job["id"]) / "session.json"
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    checkpoint["state"], checkpoint["current_index"] = "AUTHORIZED", 6
+    for module in checkpoint["modules"][6:]:
+        module.update(status="PENDING", accepted_asset=None, attempts=[], cycle_attempt_count=0)
+    checkpoint_path.write_text(json.dumps(checkpoint, ensure_ascii=False), encoding="utf-8")
+    with client.app.state.session_factory() as db:
+        original = db.get(JobRecord, job["id"])
+        original.status, original.stage = "partial", "partial"
+        original.succeeded_item_count, original.failed_item_count = 4, 1
+        original.finished_at = utc_now()
+        items = db.scalars(select(JobItemRecord).where(JobItemRecord.job_id == job["id"]).order_by(JobItemRecord.ordinal)).all()
+        for index, item in enumerate(items[4:], start=4):
+            item.status = "failed" if index == 4 else "skipped"
+            item.error_code = "PROVIDER_OUTCOME_UNKNOWN" if index == 4 else "AURORA_DETAIL_SEQUENCE_HALTED"
+        db.commit()
+    before = len(_gateway(client).image_calls)
+    retried = client.post(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/retry", headers=idem(), json={"scope": "failed"})
+    assert retried.status_code == 201, retried.text
+    target = retried.json()
+    original_read = client.app.state.storage.read_bytes
+    async def s3_missing_response(key):
+        try:
+            return await original_read(key)
+        except FileNotFoundError as exc:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject") from exc
+    monkeypatch.setattr(client.app.state.storage, "read_bytes", s3_missing_response)
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target['id']}").json()
+    assert result["status"] == "awaiting_final_review", result
+    assert [item["status"] for item in result["items"]] == ["reused"] * 4 + ["succeeded"] * 4
+    assert len(_gateway(client).image_calls) - before == 1
+    assert len(_gateway(client).planner_calls) == 1
+    assert json.loads(checkpoint_path.read_text(encoding="utf-8")) == checkpoint
+
+
 def test_failed_detail_retry_restores_all_halted_screens_and_reuses_approved_plan(client):
     source = upload_asset(client, filename="halted-detail-retry.png")
     job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)

@@ -510,6 +510,7 @@ class PlannerCallResult:
     content_sample: str | None = None
     phase: str | None = None
     supplemental_results: tuple[PlannerCallResult, ...] = ()
+    external_request: bool = True
 
 
 @dataclass(frozen=True)
@@ -2995,7 +2996,9 @@ class XinghePlanningCoordinator:
         for request in requests:
             started = time.perf_counter()
             try:
-                result = await self.gateway.plan(request)
+                result = self._recover_aurora_candidate(request)
+                if result is None:
+                    result = await self.gateway.plan(request)
             except Exception as exc:
                 result = PlannerCallResult(
                     payload=None,
@@ -3072,6 +3075,60 @@ class XinghePlanningCoordinator:
             results,
             validated,
         )
+
+    def _recover_aurora_candidate(self, request: PlannerRequest) -> PlannerCallResult | None:
+        """Resume a failed-only retry from its verified, unapproved candidate.
+
+        This is saved authored input, never a new provider receipt. Full retries
+        still plan afresh; changed inputs, incomplete candidates and unrelated
+        workspaces cannot enter this path.
+        """
+        if self.skill_id != _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+            return None
+        with self.session_factory() as db:
+            job = db.get(JobRecord, request.job_id)
+            if job is None or job.retry_scope != "failed" or not job.retry_of_job_id:
+                return None
+            source = db.get(JobRecord, job.retry_of_job_id)
+            if (
+                source is None or source.workspace_id != job.workspace_id
+                or source.status != JobStatus.FAILED.value or source.stage != "planning_failed"
+                or canonical_hash(source.configuration) != canonical_hash(job.configuration)
+            ):
+                return None
+            prior = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == source.id)
+                .order_by(JobPlanRecord.revision.desc()).limit(1))
+            if prior is None or prior.confirmed_at is not None or prior.validation_status != PlanValidationStatus.INVALID.value:
+                return None
+            data = prior.payload
+            if not isinstance(data, Mapping) or data.get("workflow_version") != WORKFLOW_VERSION or canonical_hash(data) != prior.payload_hash:
+                return None
+            groups = data.get("groups")
+            if not isinstance(groups, list) or len(groups) != 1 or groups[0].get("group_key") != request.group_key:
+                return None
+            prior_sources = [(s.get("asset_id"), s.get("sha256")) for s in groups[0].get("ordered_sources", [])]
+            if prior_sources != [(s.asset_id, s.sha256) for s in request.sources]:
+                return None
+            candidate = data.get("rejected_aurora_plan")
+            modules = candidate.get("modules") if isinstance(candidate, Mapping) else None
+            if not isinstance(modules, list) or len(modules) != request.page_count or not all(_aurora_compact_module_ready(m) for m in modules):
+                return None
+            plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job.id)
+                .order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+            if plan is None:
+                return None
+            provenance = {"source_job_id": source.id, "source_plan_id": prior.id,
+                "source_payload_hash": prior.payload_hash, "provider_request_count": 0}
+            plan.payload = {**dict(plan.payload), "planning_recovery": provenance}
+            plan.payload_hash = canonical_hash(plan.payload)
+            db.add(AuditEventRecord(workspace_id=job.workspace_id,
+                action="aurora.planning_candidate_recovered", resource_type="job",
+                resource_id=job.id, request_id=plan.id, details=provenance))
+            db.commit()
+            logger.info("aurora recovered complete planning candidate: job_id=%s source_job_id=%s", request.job_id, source.id)
+            return PlannerCallResult(payload=deepcopy(candidate), provider_request_id=None,
+                raw_usage=None, normalized_usage=normalize_usage(None), api_latency_seconds=0,
+                actual_cost_micros=0, phase="aurora_recovered_candidate", external_request=False)
 
     async def _complete_aurora_contract(
         self,
@@ -3280,7 +3337,7 @@ class XinghePlanningCoordinator:
                 module = modules[module_index] if module_index < len(modules) else None
                 if (
                     _aurora_compact_module_ready(module)
-                    and module_index not in invalid_indexes
+                    and (module_index not in invalid_indexes or not result.external_request)
                 ):
                     continue
                 payload["modules"] = modules
@@ -3307,20 +3364,27 @@ class XinghePlanningCoordinator:
                     modules.append(accepted)
             payload["modules"] = modules
             normalized()
-            structured = validate_aurora_domestic_plan(
-                payload, request.page_count, skill_root=self.skill_root
-            )
-            if _aurora_plan_has_unresolved_conflict(structured):
+            issues: list[Mapping[str, Any]] = []
+            structured = None
+            try:
+                structured = validate_aurora_domestic_plan(payload, request.page_count, skill_root=self.skill_root)
+            except XingheAgentError as exc:
+                if exc.code not in {"AURORA_PLAN_SCHEMA_INVALID", "AURORA_PAIR_CONTRACT_INVALID", "AURORA_PAIR_ORDER_INVALID", "AURORA_MODULE_COUNT_MISMATCH", "AURORA_MODULE_ORDER_INVALID"}:
+                    raise
+                issues.extend(exc.validation_errors or [{"message": str(exc), "path": exc.json_pointer}])
+            if structured is not None and _aurora_plan_has_unresolved_conflict(structured):
                 return structured
             try:
                 await asyncio.to_thread(
-                    self._preflight_aurora_plan, request, structured["aurora_plan"]
+                    self._preflight_aurora_plan, request, structured["aurora_plan"] if structured else payload
                 )
             except AuroraDetailHarnessError as exc:
                 logger.info("aurora planning preflight failed: job_id=%s error=%s", request.job_id, exc)
+                issues.append({"message": str(exc), "stage": "harness_preflight"})
+            if issues:
                 response = await repair(
                     "aurora_domestic_plan_repair",
-                    [{"message": str(exc), "stage": "harness_preflight"}],
+                    issues,
                 )
                 payload = _merge_aurora_plan_repair(
                     payload,
@@ -3334,6 +3398,7 @@ class XinghePlanningCoordinator:
                 await asyncio.to_thread(
                     self._preflight_aurora_plan, request, structured["aurora_plan"]
                 )
+            assert structured is not None
             return structured
         except AuroraDetailHarnessError as exc:
             raise XingheAgentError("AURORA_PLAN_PREFLIGHT_INVALID", str(exc)) from exc
@@ -3341,7 +3406,7 @@ class XinghePlanningCoordinator:
             results[index] = replace(
                 result,
                 payload=payload,
-                phase="aurora_domestic_detail",
+                phase="aurora_domestic_detail" if result.external_request else "aurora_recovered_candidate",
                 supplemental_results=tuple(extra),
             )
 
@@ -4123,6 +4188,7 @@ class XinghePlanningCoordinator:
         error_path: str | None = None,
         validation_errors: Sequence[Mapping[str, Any]] = (),
     ) -> None:
+        rejected = next((result.payload for result in results if result.phase in {"aurora_domestic_detail", "aurora_recovered_candidate"} and isinstance(result.payload, Mapping)), None)
         results = _planner_call_results(results)
         planner_usage = [_planner_usage_record(result) for result in results]
         planner_diagnostics = [
@@ -4142,7 +4208,6 @@ class XinghePlanningCoordinator:
             "planner_request_count": len(results),
             "image_request_count": 0,
         }
-        rejected = next((result.payload for result in results if result.phase == "aurora_domestic_detail" and isinstance(result.payload, Mapping)), None)
         if rejected is not None:
             failed_payload["rejected_aurora_plan"] = rejected
         plan.payload = failed_payload
@@ -4672,6 +4737,8 @@ class XinghePlanningCoordinator:
                     "max_automatic_repairs": 1,
                     "second_failure": "COMPLETE_WITH_RESIDUALS",
                 }
+            if isinstance(plan.payload.get("planning_recovery"), Mapping):
+                payload["planning_recovery"] = plan.payload["planning_recovery"]
             plan.payload = payload
             plan.payload_hash = canonical_hash(payload)
             plan.validation_status = PlanValidationStatus.VALID.value
@@ -7322,11 +7389,12 @@ def _provider_rejection(
 def _planner_call_results(
     results: Sequence[PlannerCallResult],
 ) -> tuple[PlannerCallResult, ...]:
-    return tuple(
-        call
-        for result in results
-        for call in (result, *_planner_call_results(result.supplemental_results))
-    )
+    calls: list[PlannerCallResult] = []
+    for result in results:
+        if result.external_request:
+            calls.append(result)
+        calls.extend(_planner_call_results(result.supplemental_results))
+    return tuple(calls)
 
 
 def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
@@ -7345,6 +7413,7 @@ def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
 def _planner_diagnostics_record(result: PlannerCallResult) -> dict[str, Any]:
     return {
         **({"phase": result.phase} if result.phase else {}),
+        **({"external_request": False, "source": "saved_candidate"} if not result.external_request else {}),
         "schema": PLANNER_DIAGNOSTICS_SCHEMA,
         "version": PLANNER_OBSERVABILITY_VERSION,
         "parse_trace": list(result.parse_trace),
@@ -9258,9 +9327,28 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             runtime_schema = json.loads(
                 schema_path.with_name("detail-plan.schema.json").read_text(encoding="utf-8")
             )
-            schema["properties"]["modules"]["items"]["properties"]["visual_evidence"] = (
-                runtime_schema["properties"]["modules"]["items"]["properties"]["visual_evidence"]
-            )
+            module_schema = schema["properties"]["modules"]["items"]
+            runtime_module = runtime_schema["properties"]["modules"]["items"]
+            # The pinned compact schema lists the authored selling spine in
+            # required but omits its property definitions. Compatible remote
+            # structured-output adapters consequently emit the newer optional
+            # information fields and omit the actual required selling spine.
+            # Describe those fields using the installed runtime's definitions.
+            for field in module_schema["required"]:
+                if field not in module_schema["properties"]:
+                    module_schema["properties"][field] = deepcopy(runtime_module["properties"][field])
+            for compact_field, expanded_field in (
+                ("proof", "visual_proof_contract"),
+                ("expression", "module_visual_expression_contract"),
+                ("structure", "module_spatial_structure_contract"),
+                ("typography", "text_system"),
+            ):
+                compact = module_schema["properties"][compact_field]
+                expanded = runtime_module["properties"][expanded_field]
+                properties = compact.setdefault("properties", {})
+                for field in compact["required"]:
+                    if field not in properties:
+                        properties[field] = deepcopy(expanded["properties"][field])
             for field in ("selling_point_clusters", "claim_coverage"):
                 schema["properties"]["output_strategy"]["properties"][field] = (
                     runtime_schema["properties"]["output_strategy"]["properties"][field]
@@ -10587,6 +10675,8 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
 
     expression = output.get("expression")
     expression_output = dict(expression) if isinstance(expression, Mapping) else {}
+    if expression_output.get("evidence_subject_policy") == "PRODUCT_DETAIL_DOMINANT":
+        expression_output["evidence_subject_policy"] = "CLAIM_OBJECT_DOMINANT"
     for key, fallback in {
         "expression_mode": "DIRECT_OBSERVATION",
         "claim_visualizability": conclusion,
@@ -11216,9 +11306,15 @@ def validate_aurora_domestic_plan(
                 f"Aurora pair ids must be ordered P01..P{page_count // 2:02d}.",
             )
         if pair.get("module_ids") != [f"M{index * 2 - 1:02d}", f"M{index * 2:02d}"]:
+            expected = [f"M{index * 2 - 1:02d}", f"M{index * 2:02d}"]
+            pointer = f"/output_strategy/continuous_pair_rendering/pair_ids/{index - 1}"
             raise XingheAgentError(
                 "AURORA_PAIR_ORDER_INVALID",
                 "Aurora pairs must group adjacent modules without reordering.",
+                json_pointer=pointer,
+                validation_errors=[{"path": pointer, "expected_module_ids": expected,
+                    "actual_module_ids": pair.get("module_ids"),
+                    "message": f"P{index:02d} must use {expected}; align its seam carrier, source/target regions and geometry with these two authored module duties."}],
             )
     projected_screens: list[dict[str, Any]] = []
     for module in modules:

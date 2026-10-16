@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -332,10 +331,58 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
     modules = normalized.get("modules")
     if not isinstance(modules, list):
         return normalized
+    # Claim aliases are not fact IDs. In a real plan C02 referred to F04,
+    # while C01 grouped F01/F02/F03. Mapping their numeric suffixes silently
+    # rebound fitting claims to an unrelated style fact. Use only the source
+    # fact IDs explicitly authored in the plan; unknown aliases stay unknown
+    # for the Harness to reject instead of guessing product truth.
+    depth_source = normalized.get("selling_point_depth_contract")
+    entries = depth_source.get("primary_claims", []) if isinstance(depth_source, dict) else []
+    claim_sources: dict[str, list[str]] = {}
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or not entry.get("claim_id"):
+            continue
+        source_ids = entry.get("source_fact_ids") or entry.get("fact_ids")
+        if isinstance(source_ids, list):
+            source_ids = list(dict.fromkeys(v for v in source_ids if isinstance(v, str) and v.strip()))
+            if source_ids:
+                claim_sources[str(entry["claim_id"])] = source_ids
+
+    def fact_id_for_claim(value: object) -> str:
+        claim_id = str(value or "")
+        return claim_sources.get(claim_id, [claim_id])[0]
+
+    for module in modules:
+        if not isinstance(module, dict):
+            continue
+        lead = str(module.get("lead_claim_id") or "")
+        if lead in claim_sources:
+            sources = claim_sources[lead]
+            module["lead_claim_id"] = sources[0]
+            support = module.get("supporting_claim_ids", [])
+            if isinstance(support, list):
+                resolved_support = [fact_id_for_claim(v) for v in support]
+                module["supporting_claim_ids"] = list(dict.fromkeys(
+                    v for v in [*resolved_support, *sources[1:]] if v != sources[0]
+                ))
     strategy = normalized.get("output_strategy")
     if not isinstance(strategy, dict):
         strategy = {}
         normalized["output_strategy"] = strategy
+    coverage = strategy.get("claim_coverage")
+    if isinstance(coverage, list):
+        expanded_coverage = []
+        for entry in coverage:
+            source_ids = claim_sources.get(str(entry.get("claim_id") or "")) if isinstance(entry, dict) else None
+            if not source_ids:
+                expanded_coverage.append(entry)
+                continue
+            for index, fact_id in enumerate(source_ids):
+                item = {**entry, "claim_id": fact_id}
+                if index and item.get("disposition") == "LEAD":
+                    item["disposition"] = "SUPPORT"
+                expanded_coverage.append(item)
+        strategy["claim_coverage"] = expanded_coverage
     # The bundled v4.3 Harness intentionally accepts one resolved count
     # derivation.  Compact authoring responses may expose alternatives even
     # though the approved plan already has a fixed module list.
@@ -351,10 +398,6 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
         "evidence_boundary_fit": "不增加用户未提供的事实或主张",
         "decision": "SELECTED",
     }]
-    def fact_id_for_claim(value: object) -> str:
-        text = str(value or "")
-        match = re.fullmatch(r"C(\d+)", text)
-        return f"F{match.group(1)}" if match else text
     dna = normalized.get("series_visual_dna")
     if isinstance(dna, dict):
         constitution = normalized.get("style_constitution")
@@ -514,11 +557,6 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
                     str(briefs[0]),
                     "；".join(str(item) for item in briefs[1:] if str(item).strip()),
                 ]
-
-    def fact_id_for_claim(value: object) -> str:  # type: ignore[no-redef]
-        text = str(value or "")
-        match = re.fullmatch(r"C(\d+)", text)
-        return f"F{match.group(1)}" if match else text
 
     for module in modules:
         if not isinstance(module, dict):

@@ -9,6 +9,7 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
+from app.aurora_detail_runtime import normalize_native_plan_for_harness
 from app.domestic_detail_provider import (
     DOMESTIC_DETAIL_SKILL_ID,
     domestic_detail_prompt_configuration,
@@ -163,6 +164,13 @@ def test_provider_schemas_are_self_contained_and_match_each_repair_phase() -> No
     )
     schema = _planner_response_format(request)["json_schema"]["schema"]
     assert '"$ref"' not in json.dumps(schema)
+    module_fields = schema["properties"]["modules"]["items"]
+    assert set(module_fields["required"]).issubset(module_fields["properties"])
+    for field in ("proof", "expression", "structure", "typography"):
+        nested = module_fields["properties"][field]
+        assert set(nested["required"]).issubset(nested["properties"])
+    assert module_fields["properties"]["lead_claim_id"]["type"] == "string"
+    assert module_fields["properties"]["selling_point_cluster_ids"]["type"] == "array"
     campaign = _planner_response_format(replace(request, planning_profile="aurora_domestic_campaign_completion"))["json_schema"]["schema"]
     assert "modules" not in campaign["required"]
     assert "selling_point_depth_contract" in campaign["required"]
@@ -179,4 +187,31 @@ def test_provider_schemas_are_self_contained_and_match_each_repair_phase() -> No
     assert not patch.get("required")
     assert patch["properties"]["modules"]["items"]["required"] == ["id"]
     assert not patch["properties"]["modules"]["items"]["properties"]["proof"].get("required")
+
+
+def test_claim_aliases_follow_explicit_sources_and_preserve_grouped_facts() -> None:
+    plan = {
+        "selling_point_depth_contract": {"primary_claims": [
+            {"claim_id": "C01", "fact_ids": ["F01", "F02", "F03"]},
+            {"claim_id": "C02", "fact_ids": ["F04"]},
+            {"claim_id": "C03", "source_fact_ids": ["F05"]},
+        ]},
+        "output_strategy": {"claim_coverage": [
+            {"claim_id": "C01", "disposition": "LEAD", "module_ids": ["M01"]},
+            {"claim_id": "C02", "disposition": "LEAD", "module_ids": ["M02"]},
+            {"claim_id": "C03", "disposition": "LEAD", "module_ids": ["M03"]},
+        ]},
+        "modules": [
+            {"id": "M01", "lead_claim_id": "C01"},
+            {"id": "M02", "lead_claim_id": "C02"},
+            {"id": "M03", "lead_claim_id": "C03"},
+            {"id": "M04", "lead_claim_id": "C99"},
+        ],
+    }
+    normalized = normalize_native_plan_for_harness(plan)
+    assert [m["lead_claim_id"] for m in normalized["modules"]] == ["F01", "F04", "F05", "C99"]
+    assert normalized["modules"][0]["supporting_claim_ids"] == ["F02", "F03"]
+    assert {c["claim_id"] for c in normalized["output_strategy"]["claim_coverage"]} == {"F01", "F02", "F03", "F04", "F05"}
+    assert normalized["selling_point_depth_contract"]["primary_claim_ids"] == ["F01", "F04", "F05"]
+    assert plan["modules"][1]["lead_claim_id"] == "C02"
 

@@ -24,6 +24,7 @@ from app.models import (
     JobPlanRecord,
     JobRecord,
 )
+from app.services import canonical_hash
 from app.xinghe_agent import (
     IMAGE_SIZE,
     FakeXingheGateway,
@@ -421,6 +422,90 @@ def test_partial_plan_repair_preserves_other_modules_and_matches_stable_ids() ->
     for patches in ([{"id": "M99"}], [{"id": "M02"}, {"id": "M02"}]):
         with pytest.raises(XingheAgentError, match="unknown or duplicate module ID"):
             _merge_aurora_plan_repair(original, {"modules": patches})
+
+
+@pytest.mark.parametrize("mode", ["patch", "zero_calls", "full", "stale_source", "pair_order"])
+def test_failed_planning_retry_recovers_verified_candidate_without_rebilling_old_calls(
+    client: TestClient, monkeypatch, mode: str,
+) -> None:
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+    authored_module = {}
+
+    async def invalid_policy(request):
+        result = await original_plan(request)
+        payload = deepcopy(result.payload)
+        if request.planning_profile == "aurora_domestic_detail":
+            authored_module.update(deepcopy(payload["modules"][2]))
+            if mode == "pair_order":
+                payload["output_strategy"]["continuous_pair_rendering"]["pair_ids"][2]["module_ids"] = ["M04", "M05"]
+        elif request.planning_profile == "aurora_domestic_modules_completion":
+            payload = {"modules": [deepcopy(authored_module)]}
+        elif request.planning_profile == "aurora_domestic_plan_repair":
+            payload = {"modules": [{"id": "M03", "expression": {}}]}
+        for module in payload["modules"]:
+            if module.get("id") == "M03":
+                module["expression"]["evidence_subject_policy"] = "UNKNOWN_EVIDENCE_POLICY"
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", invalid_policy)
+    asset = upload_asset(client, filename=f"planning-recovery-{mode}.png")
+    job = _create_detail_job(client, asset["id"], market_region="domestic", auto_start_after_plan=False)
+    dispatch_pending(client)
+    failed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "AURORA_PLAN_SCHEMA_INVALID"
+    assert gateway.planner_calls[-1].planning_profile == "aurora_domestic_plan_repair"
+    with client.app.state.session_factory() as session:
+        prior = session.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"]))
+        if mode in {"zero_calls", "stale_source", "pair_order"}:
+            payload = deepcopy(prior.payload)
+            if mode in {"zero_calls", "pair_order"}:
+                payload["rejected_aurora_plan"]["modules"][2]["expression"]["evidence_subject_policy"] = "PRODUCT_DETAIL_DOMINANT"
+            else:
+                payload["groups"][0]["ordered_sources"][0]["sha256"] = "stale-source-hash"
+            prior.payload = payload
+            prior.payload_hash = canonical_hash(payload)
+            session.commit()
+    old_call_count = len(gateway.planner_calls)
+
+    async def recover(request):
+        assert mode != "zero_calls", "A migrated valid checkpoint must make no provider call"
+        if mode in {"patch", "pair_order"}:
+            assert request.planning_profile == "aurora_domestic_plan_repair"
+            if mode == "patch":
+                assert "UNKNOWN_EVIDENCE_POLICY" in str(request.product_information)
+            else:
+                assert "/pair_ids/2" in str(request.product_information)
+                assert "expected_module_ids" in str(request.product_information)
+                assert "align its seam carrier" in str(request.product_information)
+        else:
+            assert request.planning_profile == "aurora_domestic_detail"
+        result = await original_plan(request)
+        if mode == "patch":
+            result = replace(result, payload={"modules": [{"id": "M03", "expression": {"evidence_subject_policy": "CLAIM_OBJECT_DOMINANT"}}]})
+        elif mode == "pair_order":
+            result = replace(result, payload={"output_strategy": {"continuous_pair_rendering": {"pair_ids": result.payload["output_strategy"]["continuous_pair_rendering"]["pair_ids"]}}})
+        return result
+
+    monkeypatch.setattr(gateway, "plan", recover)
+    response = client.post(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/retry",
+        headers=idem(), json={"scope": "full" if mode == "full" else "failed"})
+    assert response.status_code == 201, response.text
+    target_id = response.json()["id"]
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target_id}").json()
+    assert planned["status"] == "awaiting_confirmation", planned
+    payload = planned["plan"]["payload"]
+    expected_new_calls = 0 if mode == "zero_calls" else 1
+    assert len(gateway.planner_calls) - old_call_count == expected_new_calls
+    assert len(payload["usage"]["planner"]) == expected_new_calls
+    assert payload["metrics"]["usage_missing_count"] == 0
+    assert ("planning_recovery" in payload) == (mode in {"patch", "zero_calls", "pair_order"})
+    if mode in {"patch", "zero_calls", "pair_order"}:
+        assert payload["planning_recovery"]["source_job_id"] == job["id"]
+        assert payload["planning_recovery"]["provider_request_count"] == 0
+    assert gateway.image_calls == []
 
 
 def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_screens(

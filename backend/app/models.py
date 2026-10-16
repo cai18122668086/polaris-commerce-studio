@@ -463,7 +463,7 @@ class CrawlTaskRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(32), default=CrawlTaskStatus.CREATED.value, nullable=False
     )
-    stage: Mapped[str | None] = mapped_column(String(32))
+    stage: Mapped[str | None] = mapped_column(String(64))
     progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_message_safe: Mapped[str | None] = mapped_column(Text)
@@ -730,7 +730,7 @@ class JobRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(32), default=JobStatus.DRAFT.value, nullable=False
     )
-    stage: Mapped[str | None] = mapped_column(String(32))
+    stage: Mapped[str | None] = mapped_column(String(64))
     display_name: Mapped[str | None] = mapped_column(String(160))
     progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     configuration: Mapped[dict[str, Any]] = mapped_column(
@@ -812,7 +812,7 @@ class JobItemRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(24), default=JobItemStatus.PENDING.value, nullable=False
     )
-    stage: Mapped[str | None] = mapped_column(String(32))
+    stage: Mapped[str | None] = mapped_column(String(64))
     quality: Mapped[str | None] = mapped_column(String(16))
     configuration: Mapped[dict[str, Any]] = mapped_column(
         MutableDict.as_mutable(json_type()),

@@ -1091,7 +1091,7 @@ class MaskedRepairProvider:
                     "BUDGET_LIMIT_EXCEEDED",
                     "The local-edit maximum cost is outside the runner budget.",
                 )
-            prior = session.scalars(
+            prior: Sequence[dict[str, Any]] = session.scalars(
                 select(AuditEventRecord.details)
                 .select_from(AuditEventRecord)
                 .join(

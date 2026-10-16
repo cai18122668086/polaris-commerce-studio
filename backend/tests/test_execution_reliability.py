@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
 
+import app.execution as execution_module
 from app.aurora_main_image_planner import AuroraPlanningError
 from app.domain import (
     AttemptStatus,
@@ -120,6 +121,19 @@ class _ExplodingSetAuditProvider(FakeProvider):
         raise error
 
 
+class _TransientSetAuditProvider(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.set_audit_calls = 0
+
+    async def audit_parallel_set(self, job_id: str) -> bool:
+        del job_id
+        self.set_audit_calls += 1
+        if self.set_audit_calls < 3:
+            raise AuroraPlanningError("temporary set-audit response failure")
+        return True
+
+
 class _BlockedSetAuditProvider(FakeProvider):
     async def audit_parallel_set(self, job_id: str) -> bool:
         del job_id
@@ -199,10 +213,14 @@ def _six_succeeded_aurora_pages(client: TestClient) -> str:
 
 
 def test_parallel_aurora_set_audit_failure_records_its_reason(
-    client: TestClient,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """RC-4: a swallowed set-audit exception made 32 failures undiagnosable."""
 
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(execution_module.asyncio, "sleep", no_sleep)
     job_id = _six_succeeded_aurora_pages(client)
     coordinator = ExecutionCoordinator(
         client.app.state.session_factory,
@@ -232,6 +250,53 @@ def test_parallel_aurora_set_audit_failure_records_its_reason(
     assert item.error_details["reason"] == "AuroraPlanningError"
     assert item.error_details["http_status"] == 502
     assert "HTTP 502" in item.error_details["message"]
+
+
+def test_parallel_aurora_set_audit_retries_transient_failure(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(execution_module.asyncio, "sleep", no_sleep)
+    job_id = _six_succeeded_aurora_pages(client)
+    provider = _TransientSetAuditProvider()
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-audit-retry",
+    )
+
+    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) == (
+        True,
+        None,
+    )
+    assert provider.set_audit_calls == 3
+
+
+def test_parallel_aurora_set_audit_is_idle_after_final_review(
+    client: TestClient,
+) -> None:
+    job_id = _six_succeeded_aurora_pages(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        job.status = JobStatus.AWAITING_FINAL_REVIEW.value
+        job.stage = "awaiting_final_review"
+        session.commit()
+
+    provider = _SetAuditTrackingProvider()
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-audit-final-review-idle",
+    )
+
+    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) == (
+        None,
+        None,
+    )
+    assert provider.set_audit_calls == 0
 
 
 def test_v20_blocked_set_audit_waits_for_user_final_review(

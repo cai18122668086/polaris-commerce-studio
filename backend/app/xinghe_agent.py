@@ -10444,6 +10444,25 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
     commercial_comfort = expression_output.get("commercial_comfort")
     if isinstance(commercial_comfort, Mapping):
         comfort_output = dict(commercial_comfort)
+        forbidden_visual_details = comfort_output.get("forbidden_visual_details")
+        if isinstance(forbidden_visual_details, list):
+            retained_forbidden_details = [
+                item.strip()
+                for item in forbidden_visual_details
+                if isinstance(item, str) and item.strip()
+            ]
+        else:
+            retained_forbidden_details = []
+        if retained_forbidden_details:
+            comfort_output["forbidden_visual_details"] = retained_forbidden_details
+        else:
+            # The field is a presentation-safety policy, not a product claim.
+            # Keep a non-empty neutral guard when a compatible planner emits an
+            # empty or malformed array, so schema validation cannot discard an
+            # otherwise fact-grounded module before rendering.
+            comfort_output["forbidden_visual_details"] = [
+                "不展示不适或刺激性特写"
+            ]
         replacement = as_text(
             comfort_output.get("replacement_expression"),
             "保持自然距离的舒适表达",

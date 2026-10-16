@@ -14,6 +14,7 @@ from app.domestic_detail_provider import (
 from app.provider import ProviderArtifact
 from app.xinghe_agent import (
     XingheImageProvider,
+    _complete_aurora_module_structure,
     _split_aurora_pair_artifact,
     _validated_image_size,
 )
@@ -86,4 +87,43 @@ def test_aurora_1440_screen_and_pair_sizes_are_supported() -> None:
 
     assert _validated_image_size("1440x1920") == "1440x1920"
     assert _validated_image_size("1440x3840") == "1440x3840"
+
+
+def test_empty_commercial_comfort_forbidden_details_get_safe_default() -> None:
+    repaired = _complete_aurora_module_structure(
+        {
+            "lead_conclusion": "商品结构清晰易于理解",
+            "expression": {
+                "commercial_comfort": {
+                    "aversion_risk": "LOW",
+                    "discomfort_target": "LOW",
+                    "sanitization_strategy": "DIRECT_BUT_CLEAN",
+                    "detail_dominance_policy": "SUPPORTING_ONLY",
+                    "forbidden_visual_details": [],
+                    "replacement_expression": "用干净的使用结果表达购买结论。",
+                }
+            },
+        }
+    )
+
+    assert repaired["expression"]["commercial_comfort"][
+        "forbidden_visual_details"
+    ] == ["不展示不适或刺激性特写"]
+
+
+def test_malformed_commercial_comfort_details_are_filtered_without_rewriting_valid_items() -> None:
+    repaired = _complete_aurora_module_structure(
+        {
+            "lead_conclusion": "商品结构清晰易于理解",
+            "expression": {
+                "commercial_comfort": {
+                    "forbidden_visual_details": ["", "保留的安全边界", 3],
+                }
+            },
+        }
+    )
+
+    assert repaired["expression"]["commercial_comfort"][
+        "forbidden_visual_details"
+    ] == ["保留的安全边界"]
 

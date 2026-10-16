@@ -794,6 +794,17 @@ class ExecutionCoordinator:
         """
 
         with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            if job is None:
+                return None, None
+            current_status = JobStatus(job.status)
+            if current_status in TERMINAL_JOB_STATUSES or current_status == (
+                JobStatus.AWAITING_FINAL_REVIEW
+            ):
+                # A heartbeat can revisit a job after the set audit has already
+                # handed it to the user. Do not spend another provider call on a
+                # verdict that is waiting for explicit final approval.
+                return None, None
             statuses = session.scalars(
                 select(JobItemRecord.status).where(JobItemRecord.job_id == job_id)
             ).all()
@@ -823,11 +834,32 @@ class ExecutionCoordinator:
         )
         if not callable(audit):
             return None, None
-        try:
-            return bool(await audit(job_id)), None
-        except Exception as exc:
-            logger.exception("aurora set audit failed: job_id=%s", job_id)
-            return False, exc
+        attempts = 3
+        retry_delay_seconds = 5.0
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return bool(await audit(job_id)), None
+            except Exception as exc:
+                last_error = exc
+                if attempt >= attempts:
+                    logger.exception(
+                        "aurora set audit failed after %d attempt(s): job_id=%s",
+                        attempt,
+                        job_id,
+                    )
+                    break
+                logger.warning(
+                    "aurora set audit attempt %d/%d failed, retrying in %.1fs:"
+                    " job_id=%s error=%s",
+                    attempt,
+                    attempts,
+                    retry_delay_seconds,
+                    job_id,
+                    exc,
+                )
+                await asyncio.sleep(retry_delay_seconds)
+        return False, last_error
 
     def _mark_aurora_final_review_pending(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:

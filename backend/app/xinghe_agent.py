@@ -6730,6 +6730,20 @@ class XingheImageProvider:
         native_request["product_name"] = review_authority["product_name"]
         # Keep the blank format canvas local, as required by the Skill provider protocol.
         ordered: list[SourceImage] = []
+        from .domestic_detail.edit_canvas import resolve_native_edit_canvas
+
+        edit_canvas = resolve_native_edit_canvas(
+            runner, workspace, native_session_value, native_request, generation_scope,
+        )
+        if edit_canvas is not None:
+            canvas, evidence = edit_canvas
+            native_request["edit_canvas_evidence"] = evidence
+            ordered.append(SourceImage(
+                asset_id="native-edit-canvas:" + canvas.sha256,
+                group_key=str(configuration["group_key"]), filename=canvas.filename,
+                content_type=canvas.content_type, sha256=canvas.sha256,
+                payload=canvas.payload, source_role="generated_edit_canvas",
+            ))
         source_by_path = {
             str(Path(path).resolve()): source
             for path, source in zip(source_paths, sources, strict=True)

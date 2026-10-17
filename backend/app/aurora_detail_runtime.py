@@ -79,6 +79,9 @@ class AuroraDetailHarnessRunner:
             "inspect-pair-review-evidence": {"session", "pair-id"},
             "inspect-final-manifest": {"session", "manifest"},
             "inspect-campaign-review-contract": {"session"},
+            "fork-local-revision": {
+                "session", "source-session", "source-session-sha256", "revision-intent",
+            },
             "fork-campaign-review": {
                 "session",
                 "source-session",

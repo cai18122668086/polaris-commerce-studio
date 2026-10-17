@@ -446,7 +446,9 @@
     "inspect",
     "inspect-pair-artifacts",
     "inspect-pair-review-contracts",
-    "preflight-plan"
+    "preflight-plan",
+    "fork-local-revision (new owned workspace only)",
+    "apply-user-adjustment (internal owned revision only; original task immutable)"
   ],
   "protected": {
     "production_queue": true,
@@ -582,5 +584,22 @@
     "actual_supplier_calls": 0,
     "actual_visual_acceptance": false,
     "persistent_stack_verified": false
+  },
+  "local_owned_revision_and_edit_canvas_candidate": {
+    "overall_completion": "unproven",
+    "parent": "fbf503adb2ea6a5cf138687ba8e751e303612045",
+    "report": "domestic-detail-owned-revision-2026-10-18.md",
+    "scope": "Atomic owned native local revision; no inheritedAUTO; separate sibling preservation scope; exact first-draft edit canvas reaches actual gateway; signed requests survive history rollback and reserve at most2 potential calls. Website revision task/API/quota/UI not implemented.",
+    "final_native_green": 109,
+    "final_full_chain_green": 5,
+    "main_shared_green_same_adapter_python": 86,
+    "mypy_sources": 104,
+    "native_content_hash": "4c65f700372e08f30020ca4a8961bd85c4ebb44fc3ff09c3b7cc039966d5b68d",
+    "other_native_files_raw_unchanged": 78,
+    "other_website_app_python_unchanged": 101,
+    "actual_supplier_calls": 0,
+    "actual_visual_acceptance": false,
+    "persistent_stack_verified": false,
+    "browser_full_flow_verified": false
   }
 }

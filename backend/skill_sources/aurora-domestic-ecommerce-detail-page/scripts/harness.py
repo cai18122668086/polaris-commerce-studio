@@ -1579,6 +1579,48 @@ def cmd_authorize(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def _local_revision_request_count(session: dict) -> int | None:
+    fork = session.get("revision_fork")
+    if fork is None:
+        return None
+    if fork.get("version") != "owned-local-revision-fork-v1":
+        raise HarnessError("Unknown local revision authority")
+    source = Path(fork["source_session"])
+    if source.resolve().parent != Path(session["session_dir"]).resolve() or source.name != "source-session.json":
+        raise HarnessError("Local revision source snapshot escaped its owner")
+    if file_sha256(source) != fork["source_session_sha256"]:
+        raise HarnessError("Original local revision snapshot changed")
+    original = load_json(source).get("generation_requests", [])
+    requests = session.get("generation_requests", [])
+    if (not isinstance(original, list) or not isinstance(requests, list)
+            or any(not isinstance(r, dict) for r in requests)
+            or requests[:len(original)] != original):
+        raise HarnessError("Local revision changed its original signed request history")
+    fresh = requests[len(original):]
+    if (len(fresh) > 2 or len({r.get("token") for r in fresh}) != len(fresh)
+            or any(not r.get("token") or r.get("pair_id") != fork["pair_id"]
+                   or r.get("module_ids") != fork["module_ids"]
+                   or not Path(r["request"]).resolve().is_relative_to(Path(session["session_dir"]).resolve()) for r in fresh)):
+        raise HarnessError("Local revision request history violates its two-request budget")
+    signed = Path(session["session_dir"]) / "signed-requests"
+    if signed.is_symlink() or signed.is_junction():
+        raise HarnessError("Local revision signed requests cannot traverse links")
+    actual_files = {p.resolve() for p in signed.glob("*.json")}
+    expected_files = {Path(r["request"]).resolve() for r in fresh}
+    if actual_files != expected_files:
+        raise HarnessError("Local revision signed request history differs from its session; reconcile original requests")
+    for row in fresh:
+        path = Path(row["request"])
+        if path.is_symlink() or file_sha256(path) != row.get("request_sha256"):
+            raise HarnessError("Local revision original signed request bytes changed")
+        value = load_json(path)
+        if (value.get("token") != row["token"] or value.get("pair_id") != fork["pair_id"]
+                or value.get("module_ids") != fork["module_ids"]
+                or value.get("request_fingerprint") != fingerprint({k: v for k, v in value.items() if k != "request_fingerprint"})):
+            raise HarnessError("Local revision original signed request scope changed")
+    return len(fresh)
+
+
 def cmd_generate_next(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     if session.get("version") not in COMPATIBLE_SESSION_VERSIONS:
@@ -1586,6 +1628,9 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
             f"Session version {session.get('version')} is not compatible with harness {VERSION}; restart and recompile the approved storyboard matrix"
         )
     require_state(session, "AUTHORIZED")
+    revision_requests = _local_revision_request_count(session)
+    if revision_requests is not None and revision_requests >= 2:
+        raise HarnessError("Local revision request budget exhausted; reconcile the original two requests without reopening the cycle")
     _require_pair_generation_contract(session)
     module = current_module(session)
     pair = _pair_for_index(session, session.get("current_index", 0))
@@ -2094,6 +2139,19 @@ def cmd_prepare_repair(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def _sibling_preservation_adjustment(module_id: str) -> dict:
+    return {
+        "module_id": module_id,
+        "verbatim_instruction": "Preserve sibling screen while regenerating the approved continuous pair.",
+        "change_scope": "local", "change_kind": "OTHER_LOCAL",
+        "change_only": ["Preserve this sibling screen; only reconnect its approved continuous-pair seam."],
+        "preserve": ["Keep this sibling's accepted composition, product geometry, wording and visual proof."],
+        "must_not_regress": ["Keep this sibling's identity, verified facts, readability and approved seam."],
+        "changes_identity": False, "changes_facts": False, "changes_target_buyer": False,
+        "changes_campaign_style": False, "changes_module_sequence": False,
+    }
+
+
 def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     require_state(session, "AUTHORIZED", "REPAIR_EXHAUSTED", "AWAITING_ASSEMBLY", "AWAITING_USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED", "FINALIZED")
@@ -2146,7 +2204,7 @@ def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
             sibling["cycle_attempt_count"] = 0
             sibling["cycle_base_asset"] = pair_base
             sibling["repair_plan"] = None
-            sibling["user_adjustment"] = {**adjustment, "module_id": sibling["id"], "verbatim_instruction": "Preserve sibling screen while regenerating the approved continuous pair."}
+            sibling["user_adjustment"] = _sibling_preservation_adjustment(sibling["id"])
             sibling["status"] = "USER_ADJUSTMENT"
     ledger = session.setdefault("feedback_constraints", {"global": {"preserve": [], "must_not_regress": []}, "by_module": {}})
     module_ledger = ledger.setdefault("by_module", {}).setdefault(module["id"], {"preserve": [], "must_not_regress": []})
@@ -2162,6 +2220,129 @@ def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
     session["state"] = "AUTHORIZED"
     save(args.session, session, f"user_adjustment_applied:{module['id']}")
     return summary(session)
+
+
+def cmd_fork_local_revision(args: argparse.Namespace) -> dict:
+    """Open one owned local cycle; never reopen or mutate the source session."""
+    import os
+
+    source_path, target = Path(args.source_session), Path(args.session)
+    for path in (source_path, target, Path(args.revision_intent)):
+        if any(p.is_symlink() or p.is_junction() for p in (path, *path.parents)):
+            raise HarnessError("Local revision cannot traverse links")
+    root = target.resolve().parent
+    if (target.name != "session.json" or source_path.name != "source-session.json"
+            or source_path.resolve().parent != root
+            or Path(args.revision_intent).resolve().parent != root):
+        raise HarnessError("Local revision inputs must belong to the new owned workspace")
+    source_bytes = source_path.read_bytes()
+    if file_sha256(source_path) != args.source_session_sha256:
+        raise HarnessError("Original local revision source bytes changed")
+    source = load_json(source_path)
+    original_root = Path(source.get("session_dir") or "")
+    if (not original_root.is_absolute() or not original_root.is_dir()
+            or root.is_relative_to(original_root.resolve())
+            or original_root.resolve().is_relative_to(root)):
+        raise HarnessError("Local revision requires a separate source and target workspace")
+    cmd_inspect_campaign_review_contract(argparse.Namespace(session=str(source_path)))
+    if source.get("pending") or source.get("active_token"):
+        raise HarnessError("Reconcile the source's unfinished generation before revising it")
+    intent = load_json(args.revision_intent)
+    def fingerprint(value: dict) -> str:
+        return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+    if (intent.get("version") != "domestic-detail-local-revision-v1"
+            or intent.get("sha256") != fingerprint({k: v for k, v in intent.items() if k != "sha256"})
+            or intent.get("job_id") != root.name
+            or intent.get("source_job_id") != original_root.name
+            or intent.get("job_id") == intent.get("source_job_id")
+            or intent.get("source_session_sha256") != args.source_session_sha256
+            or not all(isinstance(intent.get(k), str) and len(intent[k].strip()) >= 2
+                       for k in ("workspace_id", "actor_id", "approval_text"))):
+        raise HarnessError("A complete original local revision authority is required")
+    adjustment = intent.get("adjustment")
+    if not isinstance(adjustment, dict):
+        raise HarnessError("Explicit original local change instructions are required")
+    validate_schema(adjustment, "user-adjustment.schema.json", "user adjustment")
+    flags = ("changes_identity", "changes_facts", "changes_target_buyer", "changes_campaign_style", "changes_module_sequence")
+    if (adjustment.get("change_scope") != "local" or any(adjustment.get(k) is not False for k in flags)
+            or not str(adjustment.get("verbatim_instruction") or "").strip()
+            or str(adjustment.get("verbatim_instruction")).strip().lower() in {"continue", "retry", "继续", "重试", "重新生成"}
+            or any(not values or any(not isinstance(v, str) or not v.strip() for v in values)
+                   for values in (adjustment.get("change_only"), adjustment.get("preserve"), adjustment.get("must_not_regress")))):
+        raise HarnessError("Global or unspecified changes require replanning and new approval")
+    modules = source["modules"]
+    index = next((i for i, m in enumerate(modules) if m["id"] == adjustment["module_id"]), None)
+    if index is None:
+        raise HarnessError("Unknown module in local revision")
+    pair = _pair_for_index(source, index)
+    if pair is None or len(pair["module_ids"]) != 2:
+        raise HarnessError("Local revision requires its exact approved continuous pair")
+    fork = {"version": "owned-local-revision-fork-v1", "intent_sha256": intent["sha256"],
+            "source_session": str(source_path.resolve()), "source_session_sha256": args.source_session_sha256,
+            "source_job_id": intent["source_job_id"], "job_id": intent["job_id"],
+            "source_approval": source["approval"], "source_revision_fork": source.get("revision_fork"),
+            "adjustment": adjustment, "pair_id": pair["pair_id"], "module_ids": pair["module_ids"],
+            "maximum_new_image_requests": 2, "delivery_mode": "USER_FINAL_REVIEW"}
+    approval = {**source["approval"], "delivery_mode": "USER_FINAL_REVIEW",
+                "text": intent["approval_text"], "local_revision_intent_sha256": intent["sha256"]}
+    feedback = json.loads(json.dumps(source.get("feedback_constraints") or {"global": {"preserve": [], "must_not_regress": []}, "by_module": {}}))
+    local_feedback = feedback.setdefault("by_module", {}).setdefault(adjustment["module_id"], {"preserve": [], "must_not_regress": []})
+    for key in ("preserve", "must_not_regress"):
+        local_feedback[key] = _unique_strings(local_feedback.get(key, []) + adjustment[key])
+    def verify_existing() -> dict:
+        existing = load_json(target)
+        if (existing.get("revision_fork") != fork or existing.get("approval") != approval
+                or existing.get("session_dir") != str(root) or len(existing.get("modules", [])) != len(modules)):
+            raise HarnessError("Existing local revision differs from its original authority")
+        controls = {"state", "events", "updated_at", "final", "assembly", "long_page_audit", "session_dir", "revision_fork", "modules", "approval", "pending", "active_token", "active_render_container", "current_index", "feedback_constraints", "generation_requests"}
+        _local_revision_request_count(existing)
+        if existing.get("feedback_constraints") != feedback:
+            raise HarnessError("Existing local revision changed its feedback scope")
+        if {k: v for k, v in existing.items() if k not in controls} != {k: v for k, v in source.items() if k not in controls}:
+            raise HarnessError("Existing local revision changed its approved source contract")
+        for prior, current in zip(modules, existing["modules"]):
+            if prior["id"] not in pair["module_ids"]:
+                if current != prior:
+                    raise HarnessError("A local revision changed another accepted pair")
+                continue
+            old_attempts, attempts = prior.get("attempts", []), current.get("attempts", [])
+            if (current.get("id") != prior["id"] or current.get("cycle_id") != prior.get("cycle_id", 1) + 1
+                    or type(current.get("cycle_attempt_count")) is not int or not 0 <= current["cycle_attempt_count"] <= 2
+                    or attempts[:len(old_attempts)] != old_attempts or not 0 <= len(attempts) - len(old_attempts) <= 2
+                    or current["cycle_attempt_count"] != len(attempts) - len(old_attempts)
+                    or any(a.get("cycle_id") != current["cycle_id"] or a.get("cycle_attempt") != i
+                           for i, a in enumerate(attempts[len(old_attempts):], 1))
+                    or current.get("user_adjustment") != (adjustment if prior["id"] == adjustment["module_id"] else _sibling_preservation_adjustment(prior["id"]))
+                    or current.get("plan") != prior.get("plan")):
+                raise HarnessError("Existing local revision changed its original cycle or image ceiling")
+        return {"session": str(target.resolve()), "revision_fork": fork, "reused": True}
+    if target.exists():
+        return verify_existing()
+    clone = json.loads(source_bytes)
+    clone["session_dir"] = str(root)
+    clone["approval"] = approval
+    clone["revision_fork"] = fork
+    staging = root / (".local-revision-" + uuid.uuid4().hex + ".json")
+    adjustment_path = root / (".local-adjustment-" + uuid.uuid4().hex + ".json")
+    atomic_write_json(staging, clone)
+    atomic_write_json(adjustment_path, adjustment)
+    cmd_apply_user_adjustment(argparse.Namespace(session=str(staging), adjustment=str(adjustment_path)))
+    # Publish the complete new session exclusively. A retry cannot overwrite a
+    # session that already advanced, reopen its cycle or touch source artifacts.
+    with staging.open("rb+") as handle:
+        os.fsync(handle.fileno())
+    try:
+        os.link(staging, target)
+    except FileExistsError:
+        result = verify_existing()
+    else:
+        result = {"session": str(target.resolve()), "revision_fork": fork, "reused": False}
+    if source_path.read_bytes() != source_bytes:
+        raise HarnessError("Original source snapshot changed while creating a revision")
+    staging.unlink()
+    adjustment_path.unlink()
+    return result
 
 
 def cmd_fork_campaign_review(args: argparse.Namespace) -> dict:
@@ -2874,7 +3055,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest", "inspect-campaign-review-contract", "fork-campaign-review"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest", "inspect-campaign-review-contract", "fork-campaign-review", "fork-local-revision"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2898,6 +3079,9 @@ def parser() -> argparse.ArgumentParser:
     commands["inspect-pair-review-contracts"].add_argument("--pair-id", required=True)
     commands["inspect-pair-review-evidence"].add_argument("--pair-id", required=True)
     commands["inspect-final-manifest"].add_argument("--manifest", required=True)
+    commands["fork-local-revision"].add_argument("--source-session", required=True)
+    commands["fork-local-revision"].add_argument("--source-session-sha256", required=True)
+    commands["fork-local-revision"].add_argument("--revision-intent", required=True)
     commands["fork-campaign-review"].add_argument("--source-session", required=True)
     commands["fork-campaign-review"].add_argument("--source-session-sha256", required=True)
     commands["inspect-pair-artifacts"].add_argument("--selection", choices=("LATEST_RECORDED", "ACCEPTED"), default="LATEST_RECORDED")
@@ -2920,6 +3104,7 @@ HANDLERS = {
     "inspect-final-manifest": cmd_inspect_final_manifest,
     "inspect-campaign-review-contract": cmd_inspect_campaign_review_contract,
     "fork-campaign-review": cmd_fork_campaign_review,
+    "fork-local-revision": cmd_fork_local_revision,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 

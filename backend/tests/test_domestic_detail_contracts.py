@@ -50,3 +50,11 @@ def test_explicit_selected_claims_preserve_their_contract(
     }
     normalized = normalize_native_plan_for_harness(claim_plan(claim))
     assert normalized["output_strategy"]["claim_coverage"] == [claim]
+
+
+def test_public_runtime_path_reexports_detail_contract() -> None:
+    from app.domestic_detail.contracts import (
+        normalize_native_plan_for_harness as detail_adapter,
+    )
+
+    assert normalize_native_plan_for_harness is detail_adapter

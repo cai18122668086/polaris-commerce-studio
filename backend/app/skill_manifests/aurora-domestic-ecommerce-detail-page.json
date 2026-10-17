@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-detail-page",
-  "content_hash": "31c6eb2e56ab13f90a8783420137d8934ca249b6a03f0f70fb04c7cc7969131a",
+  "content_hash": "177ee87d891d83b1e5b0b5e7b2c58f596b752c384c34486a2758dd10913d4478",
   "capability": "ecommerce_detail_pack",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-detail-page.input.v4.3",
@@ -53,7 +53,7 @@
     },
     {
       "path": "SKILL.md",
-      "sha256": "fc3e19a9e9bb2553eebb6988f28482e78ade6ca2d571d727282dd3646e9ed655"
+      "sha256": "720ed8e5b4889b0278a6be224aa99ae0c5b4e0a3289e6d9961c8fb04204620bc"
     },
     {
       "path": "VERSION",
@@ -265,7 +265,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "dbd17827a16b1d6963126b310cfc382cdce04b8dc9dec96eec4a29603b18bf5f"
+      "sha256": "aa0291c87fa011c4403a5e0406be94b8b358834a5cda2902c66f2e62d5059f16"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -301,7 +301,7 @@
     },
     {
       "path": "scripts/runtime/prompt_compiler.py",
-      "sha256": "c45ae50c30da39d59e43187a28713d83bbdd336c4e5be9747672bfb03c4b62db"
+      "sha256": "60a47b5fac82272dc6925305944f0318d991b56a3adc4736e04310c745fcb31c"
     },
     {
       "path": "scripts/runtime/sales_architecture.py",
@@ -337,7 +337,7 @@
     },
     {
       "path": "tests/test_regressions.py",
-      "sha256": "bd80da307327efa6ab82d258270d294efec673cc78346341c0d01500b3d7b3a4"
+      "sha256": "e325194e17f7e2dde5c3969e6f7aec4884dacc465d4268f2a220040542698d32"
     }
   ],
   "rename_only": false,

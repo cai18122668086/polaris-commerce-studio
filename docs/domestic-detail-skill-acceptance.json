@@ -1,0 +1,271 @@
+{
+  "objective": "详情图 Skill 完整接入并修复；必要时安全清理 C/D 盘",
+  "branch": "codex/domestic-detail-contract-repair-20261017",
+  "baseline_main": "785ff55",
+  "native_patch_version": "4.3.1",
+  "requirements": [
+    {
+      "id": "G01",
+      "requirement": "Conflict scan before identity/full planning; batch only material SKU conflicts",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G02",
+      "requirement": "Derive one fact-grounded 8/10/12 screen count without alternatives",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G03",
+      "requirement": "Visual proof plus useful concise copy, no slogan-only screens",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G04",
+      "requirement": "Analyze every style reference; adopt/reject and schedule with provenance",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G05",
+      "requirement": "Approved atomic module is the exact rendering contract",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G06",
+      "requirement": "At most initial render plus one repair; preserve residuals, no hidden third render",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G07",
+      "requirement": "Readable authentic brand or explicitly confirmed brandless mode; logo gates",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G08",
+      "requirement": "Approved per-screen typography and campaign rhythm",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G09",
+      "requirement": "Visible pain-to-solution obligation based on verified value bridges",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G10",
+      "requirement": "Meaningful visual carriers; no generic packshot/icon substitutions",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G11",
+      "requirement": "Atomic primary claims receive proof depth, distinct buyer jobs and recall",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G12",
+      "requirement": "Respect authored spatial blueprints and reject repetition/collapse",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G13",
+      "requirement": "Immutable user-point ledger; hypotheses stay separate from verified facts",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G14",
+      "requirement": "Depth-based screen-count formula and justified shared-proof savings",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G15",
+      "requirement": "Internal evidence/risk/approval language does not become sales copy",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G16",
+      "requirement": "Raw per-screen/pair/page observations describe actual pixels, OCR and relations",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G17",
+      "requirement": "Category-neutral pain expression routed by information structure",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G18",
+      "requirement": "Commercial comfort avoids aversion dominating the image",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G19",
+      "requirement": "Product presence is intentional campaign rhythm; no concealed extra packshots",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G20",
+      "requirement": "Planned and observed v4.3 subject/form diversity and dominance budgets",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G21",
+      "requirement": "Content-unit counts are meaningful, nonrepeating, fact/copy/anchor bound",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "G22",
+      "requirement": "Named ingredient/formula/component facts evaluated deterministically",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I01",
+      "requirement": "At least three concrete geometry invariants and post-render source comparison",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I02",
+      "requirement": "One authoritative input/plan; root/nested/views consistent; approval invalidates on change",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I03",
+      "requirement": "Pair order/coverage/seams stay inside adjacent approved windows; deterministic slices",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I04",
+      "requirement": "Generation binds source/Skill/approval/assets/request/candidate hashes; stale recovery rejected",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I05",
+      "requirement": "Unknown supplier outcome stops automatic resubmission and duplicate charge",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I06",
+      "requirement": "Raw audit evidence preserved; missing/unknown observations never count as pass",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I07",
+      "requirement": "Technical completion, residuals, human review and quality pass remain separate",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "I08",
+      "requirement": "Old approved tasks/assets use compatible frozen pipeline; no silent migration",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "V01",
+      "requirement": "Independent persistent PostgreSQL/user/volume, Redis/queue, MinIO/account/bucket",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "V02",
+      "requirement": "Environment whitelist rejects production DB/broker/assets and live local Worker consumer",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "V03",
+      "requirement": "New isolated real supplier tasks with bounded cost/usage evidence",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "V04",
+      "requirement": "Actual screen/pair/full-campaign visual acceptance with immutable artifact hashes",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "V05",
+      "requirement": "Domestic main image and affected shared paths regression, unchanged production behavior",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "R01",
+      "requirement": "Concrete candidate/source locks/images/dependencies/migration/compatibility/rollback proposal",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    },
+    {
+      "id": "R02",
+      "requirement": "User confirmation remains required separately for formal main merge and server deployment",
+      "completion": "unproven",
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+    }
+  ],
+  "progress": {
+    "confirmed_commits": {
+      "5e268a9": "whole identity/photography tokens, 65 checks",
+      "d79f5f7": "input/plan/view/Skill approval binding, 62 checks and 80-file mypy",
+      "269a990": "authored screen geometry/roles, all 8/10/12 compile; 78 checks",
+      "f22a1ed": "native lower-screen seam patch; 9 API/compiler checks and native 49 pass/56 historical skip",
+      "afcff06": "restore original vendored newline styles; source hash 177ee87d891d83b1e5b0b5e7b2c58f596b752c384c34486a2758dd10913d4478"
+    },
+    "not_complete": [
+      "intake identity/fact/reference provenance beyond token fix",
+      "persist and expose the exact compiler approval before generation",
+      "source/asset/request/recovery bindings and old-task version routing",
+      "remove optimistic/fabricated review normalization; apply native per-screen pixel gates",
+      "delivery/native finalization/residual quality states",
+      "persistent independent integration stack and actual supplier generation",
+      "actual visual acceptance and release/rollback readiness"
+    ]
+  },
+  "commands_to_cover": [
+    "start",
+    "resolve-conflicts",
+    "lock-identity",
+    "compile-plan",
+    "authorize",
+    "generate-next",
+    "record-generation",
+    "audit-pair",
+    "prepare-repair",
+    "assemble (optional preview)",
+    "audit-long-page (optional preview, full campaign still reviewed)",
+    "finalize",
+    "auto-finalize (only separately authorized delivery mode)",
+    "inspect"
+  ],
+  "protected": {
+    "production_queue": true,
+    "original_user_jobs_and_assets": true,
+    "live_local_worker": true,
+    "domestic_main_image": true,
+    "formal_main_merge_and_deploy_need_confirmation": true
+  }
+}

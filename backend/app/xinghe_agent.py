@@ -4431,7 +4431,7 @@ class XinghePlanningCoordinator:
                                 "decomposition_window_aspect_ratio": "3:4",
                                 "pair_merge_type": "PAIR_PLAN_MERGE",
                                 "reference_edit_concurrency": 1,
-                                "skill_version": "4.3.0",
+                                "skill_version": "4.3.1",
                             }
                         }
                         if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
@@ -8114,11 +8114,11 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "module_ids": [f"M{index * 2 - 1:02d}", f"M{index * 2:02d}"],
                 "pair_merge_type": "PAIR_PLAN_MERGE",
                 "internal_seam_zone": {"start_y": 1910, "end_y": 1930},
-                "internal_seam_method_id": "BACKGROUND_STRINGING",
-                "internal_seam_carrier": "连续背景光线与色彩",
-                "internal_seam_source_region": "上屏底部视觉锚点",
-                "internal_seam_target_region": "下屏顶部视觉锚点",
-                "internal_seam_geometry": "共享背景场软过渡",
+                "internal_seam_method_id": modules[index * 2 - 1]["transition_contract"]["method_id"],
+                "internal_seam_carrier": modules[index * 2 - 1]["transition_contract"]["seam_carrier"],
+                "internal_seam_source_region": modules[index * 2 - 1]["transition_contract"]["source_region_previous"],
+                "internal_seam_target_region": modules[index * 2 - 1]["transition_contract"]["target_region_current"],
+                "internal_seam_geometry": modules[index * 2 - 1]["transition_contract"]["handoff_geometry"],
             }
             for index in range(1, request.page_count // 2 + 1)
         ]
@@ -9909,7 +9909,7 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "screen_size": request.size,
         }
         return (
-            "The bundled aurora-domestic-ecommerce-detail-page v4.3.0 Skill is "  # noqa: UP031
+            "The bundled aurora-domestic-ecommerce-detail-page v4.3.1 Skill is "  # noqa: UP031
             "the sole authority. Return exactly one JSON object that validates "
             "against schemas/compact-detail-plan.schema.json. Do not return the "
             "legacy analysis/plan/screens contract. First perform the conflict "

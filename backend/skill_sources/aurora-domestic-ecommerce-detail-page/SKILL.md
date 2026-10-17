@@ -3,7 +3,22 @@ name: aurora-domestic-ecommerce-detail-page
 description: Plan, generate, inspect, repair, assemble, and deliver fact-grounded domestic Chinese e-commerce detail pages with a product-driven 8, 10, or 12-screen storyboard rendered in mandatory adjacent two-screen 3:8 continuous pairs and deterministically decomposed into single-screen deliveries. Use for creating or revising 淘宝、天猫、京东、拼多多等国内电商详情页、详情长图、商品卖点长页、分组策划、逐组生图、切图或详情页验收. Also use when resuming after user feedback or interruption; the workflow rehydrates product identity, approved story, series visual DNA, and current-pair constraints before continuing.
 ---
 
-# 极光国内电商详情图（v4.3）
+# 极光国内电商详情图（v4.3.1）
+
+## v4.3.1 internal seam correction
+
+An atomic screen's `transition_contract` describes the incoming handoff from its
+previous screen to itself. For an adjacent pair `(upper, lower)`, the internal
+seam therefore uses the **lower screen's incoming transition**, from the upper
+screen's bottom region to the lower screen's top region. Validation, approval,
+generation requests, prompt compilation and pixel audit must bind that same
+contract. Explicit screen references outside that pair are rejected. The upper
+screen's own incoming handoff belongs to the previous pair and must not replace
+the current pair's internal seam.
+
+This patch preserves the v4.3 story, product, fact, geometry, repair and audit
+gates. Existing v4.3.0 sessions remain historical state; do not rewrite or
+automatically reauthorize them under this patch.
 
 ## v4.3 expression diversity and anti-posterization
 

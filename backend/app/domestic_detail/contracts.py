@@ -318,15 +318,15 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
             if not isinstance(pair, dict):
                 continue
             module_ids = pair.get("module_ids")
-            upper = modules_by_id.get(str(module_ids[0])) if isinstance(module_ids, list) and module_ids else None
-            transition = upper.get("transition_contract") if isinstance(upper, dict) else None
+            lower = modules_by_id.get(str(module_ids[1])) if isinstance(module_ids, list) and len(module_ids) == 2 else None
+            transition = lower.get("transition_contract") if isinstance(lower, dict) else None
             if not isinstance(transition, dict):
                 continue
-            pair["internal_seam_method_id"] = transition.get("method_id")
-            pair["internal_seam_carrier"] = transition.get("seam_carrier")
-            pair["internal_seam_source_region"] = transition.get("source_region_previous")
-            pair["internal_seam_target_region"] = transition.get("target_region_current")
-            pair["internal_seam_geometry"] = transition.get("handoff_geometry")
+            pair.setdefault("internal_seam_method_id", transition.get("method_id"))
+            pair.setdefault("internal_seam_carrier", transition.get("seam_carrier"))
+            pair.setdefault("internal_seam_source_region", transition.get("source_region_previous"))
+            pair.setdefault("internal_seam_target_region", transition.get("target_region_current"))
+            pair.setdefault("internal_seam_geometry", transition.get("handoff_geometry"))
     for module in modules:
         if not isinstance(module, dict):
             continue

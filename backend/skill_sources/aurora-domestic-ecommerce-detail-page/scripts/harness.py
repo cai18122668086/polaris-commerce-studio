@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import sys
 import time
 import uuid
@@ -51,7 +52,7 @@ from runtime.information_contract import validate_information_contract
 from runtime.schema_validation import validate_schema
 
 
-VERSION = "4.3.0"
+VERSION = "4.3.1"
 COMPATIBLE_SESSION_VERSIONS = {VERSION}
 
 INTERNAL_REVIEW_PROFILE_NAME = "INTERNAL_REVIEW_1440_3_4"
@@ -974,17 +975,24 @@ def validate_plan(session: dict, plan: dict) -> None:
                 raise HarnessError(f"Continuous render pair {pair['pair_id']} must use pair_merge_type=PAIR_PLAN_MERGE")
             if pair["module_ids"] != expected_ids[(index - 1) * 2:index * 2]:
                 raise HarnessError("Continuous render pair module_ids must match storyboard order")
-            upper_transition = plan_module_by_id[pair["module_ids"][0]].get("transition_contract") or {}
+            lower_transition = plan_module_by_id[pair["module_ids"][1]].get("transition_contract") or {}
             expected_seam_fields = {
-                "internal_seam_method_id": upper_transition.get("method_id"),
-                "internal_seam_carrier": upper_transition.get("seam_carrier"),
-                "internal_seam_source_region": upper_transition.get("source_region_previous"),
-                "internal_seam_target_region": upper_transition.get("target_region_current"),
-                "internal_seam_geometry": upper_transition.get("handoff_geometry"),
+                "internal_seam_method_id": lower_transition.get("method_id"),
+                "internal_seam_carrier": lower_transition.get("seam_carrier"),
+                "internal_seam_source_region": lower_transition.get("source_region_previous"),
+                "internal_seam_target_region": lower_transition.get("target_region_current"),
+                "internal_seam_geometry": lower_transition.get("handoff_geometry"),
             }
             for field, expected in expected_seam_fields.items():
                 if pair.get(field) != expected:
-                    raise HarnessError(f"Continuous render pair {pair['pair_id']} {field} must mirror its upper-screen transition contract")
+                    raise HarnessError(f"Continuous render pair {pair['pair_id']} {field} must mirror its lower-screen incoming transition contract")
+            for field, expected_module in (
+                ("internal_seam_source_region", pair["module_ids"][0]),
+                ("internal_seam_target_region", pair["module_ids"][1]),
+            ):
+                explicit = set(re.findall(r"(?<![A-Za-z0-9])M\d{2}(?![A-Za-z0-9])", str(pair.get(field) or "")))
+                if explicit - {expected_module}:
+                    raise HarnessError(f"Pair {pair['pair_id']} {field} must reference only {expected_module}")
             seen.extend(pair["module_ids"])
             seam = pair.get("internal_seam_zone", {})
             require_fields(seam, ("start_y", "end_y"), "continuous pair internal seam zone")
@@ -1702,7 +1710,7 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
         pair_config = _pair_rendering(session) or {}
         pair_index = next((index for index, item in enumerate(pair_config.get("pair_ids", [])) if item.get("pair_id") == pair["pair_id"]), 0)
         bridges = pair_config.get("pair_to_pair_transition_tokens", [])
-        pair_transition = pair_modules[0]["plan"].get("transition_contract") or {}
+        pair_transition = pair_modules[1]["plan"].get("transition_contract") or {}
         request["pair_render"] = {
             "mode": "CONTINUOUS_PAIR",
             "pair_merge_type": "PAIR_PLAN_MERGE",
@@ -1982,9 +1990,9 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         ("method_id", "source_region", "target_region", "carrier", "geometry", "hard_cut_absent", "method_specific_pass", "visible_evidence"),
         "pair internal seam evidence",
     )
-    planned = pair_modules[0]["plan"].get("transition_contract") or {}
+    planned = pair_modules[1]["plan"].get("transition_contract") or {}
     if seam["method_id"] != planned.get("method_id"):
-        raise HarnessError("Pair seam evidence method does not match the approved upper-screen transition contract")
+        raise HarnessError("Pair seam evidence method does not match the approved lower-screen incoming transition contract")
     if seam["hard_cut_absent"] is not True or seam["method_specific_pass"] is not True:
         raise HarnessError("Pair seam evidence must pass the declared method and contain no hard cut")
     checks = judgment["checks"]
@@ -2556,7 +2564,7 @@ def _pair_grouping_markdown(session: dict) -> str:
         upper_id, lower_id = pair["module_ids"]
         upper = modules[upper_id]
         lower = modules[lower_id]
-        transition = upper.get("transition_contract") or {}
+        transition = lower.get("transition_contract") or {}
         lines.extend([
             "",
             f"## {pair['pair_id']}｜{upper_id} + {lower_id}",

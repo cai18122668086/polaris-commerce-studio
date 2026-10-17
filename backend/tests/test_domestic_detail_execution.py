@@ -767,7 +767,7 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     assert image_roles[0] == "format_canvas"
     assert image_roles[1:] == ["product_reference", "style_reference"]
     planner_prompt = _planner_prompt(gateway.planner_calls[0])
-    assert "aurora-domestic-ecommerce-detail-page v4.3.0" in planner_prompt
+    assert "aurora-domestic-ecommerce-detail-page v4.3.1" in planner_prompt
     assert "product_reference" in planner_prompt
     assert "style_reference" in planner_prompt
     image_prompt = gateway.image_calls[0].prompt

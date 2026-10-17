@@ -26,7 +26,7 @@ from .domestic_detail.plans import resolve_native_plan
 from .skill_runtime import SkillManifestRegistry
 
 DETAIL_SKILL_ID = "aurora-domestic-ecommerce-detail-page"
-DETAIL_VERSION = "4.3.0"
+DETAIL_VERSION = "4.3.1"
 
 
 class AuroraDetailHarnessError(RuntimeError):

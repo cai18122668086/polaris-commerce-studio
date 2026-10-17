@@ -1558,7 +1558,7 @@ class RegressionTests(unittest.TestCase):
 
 class V4ContractTests(unittest.TestCase):
     def test_v4_version_and_state_machine_remove_independent_pair_approval(self):
-        self.assertEqual(harness.VERSION, "4.3.0")
+        self.assertEqual(harness.VERSION, "4.3.1")
         self.assertNotIn("AWAITING_PAIR_GROUPING_APPROVAL", STATES)
         self.assertNotIn("AWAITING_PAIR_GROUPING_APPROVAL", harness.allowed_actions("AWAITING_PLAN_APPROVAL"))
         self.assertNotIn("authorize-grouping", harness.HANDLERS)
@@ -1581,18 +1581,50 @@ class V4ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(HarnessError, "8, 10, or 12"):
             normalize_plan(session(), invalid)
 
-    def test_v4_plan_has_one_direct_derivation_and_no_ratio_candidates(self):
-        plan_path = Path(r"E:\详情\plan-v4.json")
-        self.assertTrue(plan_path.exists())
-        value = json.loads(plan_path.read_text(encoding="utf-8-sig"))
-        candidates = value["output_strategy"]["module_count_candidates"]
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["candidate_mode"], "DIRECT_DERIVATION")
-        self.assertNotIn("ratio_candidates", value["output_strategy"])
-        self.assertNotIn("ratio_rationale", value["output_strategy"])
+    def _portable_approval_session(self):
+        current = session()
+        value = plan()
+        value["modules"] = []
+        for index in range(1, 9):
+            item = copy.deepcopy(module(min(index, 3)))
+            item.update({"id": f"M{index:02d}", "order": index})
+            item["transition_contract"] = {
+                "method_id": "BACKGROUND_STRINGING", "seam_carrier": "本组连续光带",
+                "source_region_previous": f"M{max(1, index-1):02d} 底部",
+                "target_region_current": f"M{index:02d} 顶部",
+                "handoff_geometry": "上屏底部向下屏顶部连续交接",
+            }
+            value["modules"].append(item)
+        strategy = value["output_strategy"]
+        strategy["module_count"] = 8
+        strategy["module_count_candidates"] = [{
+            "candidate_mode": "DIRECT_DERIVATION", "count": 8,
+            "coverage_tradeoff": "每项商品证据对应明确买家判断并保持八屏递进",
+            "selling_point_fit": "测试商品证据覆盖", "story_obligation_fit": "身份到购买收尾",
+            "decision": "SELECTED",
+        }]
+        strategy["continuous_pair_rendering"] = {
+            "enabled": True, "pair_merge_type": "PAIR_PLAN_MERGE",
+            "pair_count": 4, "pair_canvas_height_px": 3840,
+            "pair_ids": [{"pair_id": f"P{index:02d}",
+                          "module_ids": [f"M{index*2-1:02d}", f"M{index*2:02d}"]}
+                         for index in range(1, 5)],
+        }
+        current["plan"] = value
+        return current
+
+    def test_v4_compiler_rejects_alternative_count_records(self):
+        current = self._portable_approval_session()
+        value = current["plan"]
+        value["output_strategy"]["module_count_candidates"].append(
+            copy.deepcopy(value["output_strategy"]["module_count_candidates"][0])
+        )
+        with self.assertRaisesRegex(HarnessError, "one direct derivation"):
+            harness.validate_plan(current, value)
 
     def test_v4_approval_is_single_hierarchical_packet(self):
-        value = Path(r"E:\详情\campaign-approval.md").read_text(encoding="utf-8-sig")
+        current = self._portable_approval_session()
+        value = harness._approval_markdown(current) + harness._pair_grouping_markdown(current)
         self.assertIn("第一层：单屏原子规划", value)
         self.assertIn("第二层：", value)
         self.assertIn("组内两屏衔接", value)
@@ -2170,7 +2202,10 @@ class V43ExpressionDiversityTests(unittest.TestCase):
         })
         upper["plan"]["module_visual_expression_contract"]["product_presence_policy"] = "REQUIRED_DOMINANT"
         transition = {"method_id": "BACKGROUND_STRINGING", "source_region_previous": "上屏底部雾带", "target_region_current": "下屏顶部雾带", "seam_carrier": "连续冷白雾带", "handoff_geometry": "由左向右下延续", "outgoing_carrier": "冷白雾带", "allowed_change": "由商品舞台转为动作路径", "shared_invariants": ["日光黄", "冷白雾带"]}
-        upper["plan"]["transition_contract"] = transition
+        upper["plan"]["transition_contract"] = {
+            **transition, "method_id": "CHAPTER_BAND",
+            "source_region_previous": "OUTSIDE_PAIR_SOURCE",
+        }
         lower["plan"]["transition_contract"] = {**transition, "incoming_carrier": "冷白雾带"}
         current["plan"]["modules"] = [upper["plan"], lower["plan"]]
         current["plan"]["output_strategy"] = {"continuous_pair_rendering": {"pair_merge_type": "PAIR_PLAN_MERGE", "pair_ids": [{"pair_id": "P01", "module_ids": ["M01", "M02"]}]}}
@@ -2178,6 +2213,9 @@ class V43ExpressionDiversityTests(unittest.TestCase):
         prompt, _ = harness.compile_pair_prompt(current, [upper, lower])
         self.assertIn("上方=DOMINANT；下方=ABSENT", prompt)
         self.assertIn("上方需要商品绝不自动授权下方出现商品", prompt)
+        self.assertIn("内部接缝方法=BACKGROUND_STRINGING", prompt)
+        self.assertIn("来源区域=上屏底部雾带", prompt)
+        self.assertNotIn("OUTSIDE_PAIR_SOURCE", prompt)
 
     def test_v43_adopted_reference_pattern_schema_requires_scheduling(self):
         schema = json.loads((ROOT / "schemas" / "compact-detail-plan.schema.json").read_text(encoding="utf-8"))

@@ -516,7 +516,7 @@ def test_partial_retry_reserves_only_runnable_provider_requests(
     # Amazon retries reserve the complete automation envelope even when only a
     # subset of image items is runnable; settlement releases unused allowance.
     expected_requests = (
-        45 if job_type == JobType.AMAZON_VISUAL_SUITE else selected_count
+        51 if job_type == JobType.AMAZON_VISUAL_SUITE else selected_count * 2
     )
     assert reservation["provider_request_count"] == expected_requests
     assert reservation["job"].expected_item_count == total_items

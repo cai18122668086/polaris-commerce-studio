@@ -19,10 +19,11 @@ import { useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
+import { SkillReviewChecklist } from "@/components/skill-review-checklist";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useUploadAsset } from "@/features/assets/api/assets";
-import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
+import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
@@ -32,6 +33,7 @@ import {
   getProductImageFeatureByPresetSlug
 } from "@/lib/feature-registry";
 import { selectJobResultAssets } from "@/lib/jobs/results";
+import { allowsJobAction } from "@/lib/jobs/actions";
 import {
   presentWorkflow,
   resolveRuntimeCapability,
@@ -145,13 +147,15 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const [targetColor, setTargetColor] = useState("");
   const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
+  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
   const runtime = useRuntimeStatus();
   const capability = resolveRuntimeCapability(runtime.data, feature?.runtimeCapability ?? "product_image");
   const workflow = presentWorkflow(capability);
   const createJob = useCreateJob(workspace?.id);
+  const retryJob = useRetryJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
   const resultAssets = selectJobResultAssets(job.data);
-  const requestError = workspaceError ?? upload.error ?? job.error;
+  const requestError = workspaceError ?? upload.error ?? job.error ?? retryJob.error;
 
   const progressText = useMemo(() => {
     if (!job.data) return "正在准备生成";
@@ -207,6 +211,22 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
     !createJob.isPending,
   );
 
+  const retryFailedImages = async () => {
+    if (!job.data || !allowsJobAction(job.data.allowed_actions, "retry")) return;
+    setUiError(undefined);
+    setHumanReviewComplete(false);
+    try {
+      const retried = await retryJob.mutateAsync({
+        jobId: job.data.id,
+        allowedActions: job.data.allowed_actions,
+        scope: "failed",
+      });
+      setJobId(retried.id);
+    } catch (error) {
+      setUiError(errorMessage(error));
+    }
+  };
+
   const submit = async () => {
     if (!canSubmit) return;
     setUiError(undefined);
@@ -231,6 +251,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
     };
     try {
       const created = await createJob.mutateAsync(body);
+      setHumanReviewComplete(false);
       setJobId(created.id);
     } catch (error) {
       setUiError(errorMessage(error));
@@ -240,7 +261,9 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const resetTask = () => {
     setJobId(undefined);
     setUiError(undefined);
+    setHumanReviewComplete(false);
     createJob.reset();
+    retryJob.reset();
   };
 
   return (
@@ -420,7 +443,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                     <span>03</span>
                     <div><h2>生成进度</h2><p>生成进度会自动更新。</p></div>
                   </div>
-                  {job.data ? <StatusBadge status={job.data.status} stage={job.data.stage} /> : null}
+                  {job.data ? <StatusBadge status={job.data.status} /> : null}
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" />正在读取任务…</div>
@@ -448,6 +471,18 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                     {job.data.error_message ? (
                       <div className={styles.jobError} role="alert">{job.data.error_message}</div>
                     ) : null}
+                    {allowsJobAction(job.data.allowed_actions, "retry") &&
+                    ["failed", "partial", "completed"].includes(job.data.status) ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryAction}
+                        onClick={() => void retryFailedImages()}
+                        disabled={retryJob.isPending}
+                      >
+                        {retryJob.isPending ? <LoaderCircle className="spin" size={16} /> : <RefreshCcw size={16} />}
+                        保留原素材与 Skill 约束重试失败项
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </section>
@@ -459,6 +494,22 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               expectedCount={job.data?.expected_item_count ?? imageCount}
               title={`${feature.title}结果`}
             />
+            {job.data && ["completed", "partial"].includes(job.data.status) && resultAssets.length > 0 ? (
+              <SkillReviewChecklist
+                items={[
+                  { key: "fidelity", label: "商品仍是同一 SKU，轮廓、结构、颜色、材质、包装、Logo 和关键细节没有跑偏。" },
+                  { key: "composition", label: "商品比例、透视和场景关系自然，背景或道具没有遮挡主体。" },
+                  { key: "legibility", label: "缩略图和移动端首屏仍看得清商品，没有乱码、密集小字或低清伪影。" },
+                  { key: "compliance", label: "没有虚假认证、销量、评价、功效、价格、徽章、水印或未授权额外元素。" },
+                ]}
+                description={
+                  humanReviewComplete
+                    ? "已完成当前 Skill 的人工检查；如需更稳上架，仍可再做一版保守白底/灰底图。"
+                    : undefined
+                }
+                onCompleteChange={setHumanReviewComplete}
+              />
+            ) : null}
           </main>
 
         </div>

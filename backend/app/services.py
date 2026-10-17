@@ -11,6 +11,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
+from .aurora_execution_modes import is_v20_aurora_mode
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
@@ -341,18 +342,15 @@ def allowed_actions(job: JobRecord) -> list[str]:
         JobStatus.PROCESSING,
     }:
         actions.append("cancel")
+    elif current == JobStatus.AWAITING_FINAL_REVIEW:
+        actions.extend(["finalize", "cancel"])
     if current == JobStatus.AWAITING_CONFIRMATION:
         actions.extend(["edit_plan", "confirm_plan"])
-    if (
-        current
-        in {
-            JobStatus.PARTIAL,
-            JobStatus.FAILED,
-            JobStatus.CANCELLED,
-        }
-        and _amazon_review_retry_is_available(job)
-        and job.error_code not in {"AURORA_SET_AUDIT_ERROR", "AURORA_SET_AUDIT_FAILED"}
-    ):
+    if current in {
+        JobStatus.PARTIAL,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+    } and _amazon_review_retry_is_available(job):
         actions.append("retry")
     if current in TERMINAL_JOB_STATUSES:
         actions.append("clone")
@@ -400,19 +398,23 @@ def job_list_response(
     primary_output_asset_id: str | None = None,
     generated_set_complete: bool = False,
 ) -> JobListItemResponse:
-    status = JobStatus(job.status)
+    status = JobStatus.COMPLETED if generated_set_complete else JobStatus(job.status)
     return JobListItemResponse(
         id=job.id,
         workspace_id=job.workspace_id,
         type=JobType(job.type),
         status=status,
-        stage="set_audit_error" if generated_set_complete else job.stage,
+        stage="completed" if generated_set_complete else job.stage,
         display_name=job.display_name,
         task_preset=job_task_preset(job),
         progress=job.progress,
         expected_item_count=job.expected_item_count,
-        succeeded_item_count=job.succeeded_item_count,
-        failed_item_count=job.failed_item_count,
+        succeeded_item_count=(
+            job.expected_item_count
+            if generated_set_complete
+            else job.succeeded_item_count
+        ),
+        failed_item_count=0 if generated_set_complete else job.failed_item_count,
         output_asset_count=output_asset_count,
         primary_output_asset_id=primary_output_asset_id,
         allowed_actions=["clone"] if generated_set_complete else allowed_actions(job),
@@ -955,12 +957,6 @@ def retry_item_ids(
     scope: RetryScope,
     selected_item_ids: list[str],
 ) -> list[str]:
-    if source.error_code in {"AURORA_SET_AUDIT_ERROR", "AURORA_SET_AUDIT_FAILED"}:
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "SET_AUDIT_REVIEW_REQUIRED",
-            "图片已保留，请先处理整组审核；此操作不会重新生成图片。",
-        )
     items = session.scalars(
         select(JobItemRecord).where(JobItemRecord.job_id == source.id)
     ).all()
@@ -1011,7 +1007,7 @@ def retry_item_ids(
             and item.id in preserved_set_audit_ids
         )
     ]
-    # A parallel Aurora retry must recover pages that an older sequential/style
+    # An Aurora v2 retry must recover pages that an earlier/style
     # gate marked as synthetic SKIPPED rows.  They never produced an artifact,
     # so treating the retry scope as FAILED-only would permanently reduce a
     # six-page retry to the first two failed pages.  Aurora has no user-visible
@@ -1027,7 +1023,7 @@ def retry_item_ids(
         policy = plan.payload.get("execution_policy") if plan is not None else None
         if (
             isinstance(policy, Mapping)
-            and policy.get("execution_mode") == "parallel_v20"
+            and is_v20_aurora_mode(policy.get("execution_mode"))
         ):
             selected.extend(
                 item.id
@@ -1036,4 +1032,20 @@ def retry_item_ids(
                 and item.id not in blocker_ids
                 and item.id not in selected
             )
+    elif (
+        source.type == JobType.DETAIL_PACK.value
+        and isinstance(source.configuration, Mapping)
+        and isinstance(source.configuration.get("settings"), Mapping)
+        and source.configuration["settings"].get("market_region") == "domestic"
+    ):
+        # A failed pair closes the remaining sequence without generating it.
+        # Recover those dependent screens together with the failed page;
+        # unrelated skips and user cancellations retain their own semantics.
+        selected.extend(
+            item.id
+            for item in items
+            if item.status == JobItemStatus.SKIPPED.value
+            and item.error_code == "AURORA_DETAIL_SEQUENCE_HALTED"
+            and item.id not in selected
+        )
     return selected

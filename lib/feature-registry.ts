@@ -20,6 +20,7 @@ export type FeatureJobType =
   | "local_edit"
   | "product_image"
   | "reference_remix"
+  | "model_pose_transfer"
   | "creative_image"
   | "detail_pack"
   | "domestic_main_image"
@@ -406,7 +407,7 @@ export const FEATURE_REGISTRY = [
     badge: "高清姿势库",
     skillId: "ecommerce-model-pose-transfer",
     // Remove this assertion after the main integration pass refreshes generated OpenAPI JobType.
-    jobType: "model_pose_transfer" as FeatureJobType,
+    jobType: "model_pose_transfer",
     runtimeCapability: "model_pose_transfer",
     workspaceTemplate: "product_image",
     inputRoles: ["model_source", "pose_reference"],

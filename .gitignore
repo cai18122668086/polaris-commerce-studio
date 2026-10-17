@@ -65,3 +65,17 @@ next-env.d.ts
 /.decompiled/
 /.recovered-routes.py
 /polaris.patch
+
+# Codex local runtime artifacts
+/.venv-codex/
+/backend/backend/.data/
+/0
+/feishu_payload.json
+/make_feishu.py
+/make_update.py
+/update.json
+
+# Local package-manager lockfiles generated during verification
+/pnpm-lock.yaml
+/backend/uv.lock
+

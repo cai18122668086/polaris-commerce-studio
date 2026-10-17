@@ -302,7 +302,7 @@ def test_domestic_adapter_attaches_auto_plan_contract_and_defaults() -> None:
             "job": {
                 "market_region": "domestic",
                 "platform_code": "jd",
-                "page_count": 6,
+                "page_count": 8,
             },
             "item": {"item_key": "page-001"},
         },
@@ -322,21 +322,23 @@ def test_domestic_adapter_attaches_auto_plan_contract_and_defaults() -> None:
     assert adapter["planning"] == {
         "required": True,
         "persist_validated_plan": True,
-        "auto_confirm_after_validation": True,
+        "auto_confirm_after_validation": False,
         "structure_repair_limit": 1,
         "changes_existing_confirmation_gate": False,
+        "approval_scope": "campaign_approval_group_to_screen_packet",
     }
     assert adapter["prompt"]["platform_code"] == "jd"
     assert adapter["prompt"]["language"] == "zh-CN"
-    assert adapter["prompt"]["aspect_ratio"] == "3:4"
+    assert adapter["prompt"]["screen_aspect_ratio"] == "3:4"
+    assert adapter["prompt"]["pair_aspect_ratio"] == "3:8"
     assert adapter["prompt"]["resolved_size"] == DOMESTIC_DEFAULT_SIZE
     assert adapter["prompt"]["target_size"] == {
         "mode": "exact",
-        "width": 1200,
-        "height": 1600,
+        "width": 1440,
+        "height": 1920,
         "aspect_ratio": "3:4",
     }
-    assert adapter["prompt"]["requested_page_count"] == 6
+    assert adapter["prompt"]["requested_page_count"] == 8
 
 
 def test_domestic_adapter_normalizes_pdd_to_pinduoduo() -> None:
@@ -437,6 +439,48 @@ def test_crossborder_generic_prompt_uses_2k_english_defaults() -> None:
         "quality": "2K",
         "aspect_ratio": "16:9",
     }
+    assert prompt["resolved_size"] == "2048x1152"
+    assert prompt["output_format"] == "png"
+    delivery = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY][
+        "delivery"
+    ]
+    assert delivery["expected_dimensions"] == {"width": 2048, "height": 1152}
+    assert delivery["content_type"] == "image/png"
+    assert delivery["qa_status_required"] is False
+    assert delivery["manual_review_required"] is True
+    assert delivery["qa_mode"] == "disclosure_and_selection"
+
+
+def test_detail_adapter_rejects_concrete_output_contract_drift() -> None:
+    payload = b"detail-output"
+    digest = hashlib.sha256(payload).hexdigest()
+    delegate = RecordingDelegate(
+        ProviderResult(
+            outcome=ProviderOutcome.SUCCEEDED,
+            artifact=ProviderArtifact(
+                payload=payload,
+                filename="result.png",
+                content_type="image/png",
+                width=900,
+                height=900,
+                sha256=digest,
+            ),
+        )
+    )
+    provider = CrossborderDetailProvider(
+        delegate,
+        manifest_validator=RecordingManifestValidator(),
+    )
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "detail_pack",
+                {"job": {"market_region": "international", "platform_code": "amazon"}},
+            )
+        )
+    )
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == "DETAIL_OUTPUT_DIMENSIONS_INVALID"
 
 
 def test_domestic_rejects_explicit_non_three_by_four_size() -> None:
@@ -1144,7 +1188,7 @@ def test_domestic_detail_accepts_execution_coordinator_envelope() -> None:
                 "settings": {
                     "market_region": "domestic",
                     "platform_code": "jd",
-                    "page_count": 6,
+                    "page_count": 8,
                     "language": "zh-CN",
                 },
             },
@@ -1159,4 +1203,4 @@ def test_domestic_detail_accepts_execution_coordinator_envelope() -> None:
     adapter = delegate.requests[0].configuration[SKILL_ADAPTER_CONFIGURATION_KEY]
     assert adapter["market_region"] == "domestic"
     assert adapter["prompt"]["platform_code"] == "jd"
-    assert adapter["prompt"]["requested_page_count"] == 6
+    assert adapter["prompt"]["requested_page_count"] == 8

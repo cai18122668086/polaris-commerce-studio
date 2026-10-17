@@ -77,6 +77,31 @@ class ProviderCompatibilityTransport(CapturingTransport):
         }
 
 
+class ExplicitMaskTransport(ProviderCompatibilityTransport):
+    async def post_multipart(
+        self,
+        *,
+        url: str,
+        headers: Mapping[str, str],
+        fields: Sequence[tuple[str, str]],
+        files: Sequence[tuple[str, str, str, bytes]],
+        timeout_seconds: float,
+    ) -> tuple[int, dict[str, Any]]:
+        assert url.endswith("/v1/images/edits")
+        assert timeout_seconds > 0
+        self.headers = headers
+        self.fields = fields
+        self.files = files
+        if [file[0] for file in files] != ["image", "mask"]:
+            return 400, {"error": {"code": "invalid_mask"}}
+        return 200, {
+            "id": "request_explicit_mask",
+            "data": [
+                {"b64_json": base64.b64encode(self.result_png).decode("ascii")}
+            ],
+        }
+
+
 def _png(image: Image.Image) -> bytes:
     output = BytesIO()
     image.save(output, format="PNG")
@@ -140,6 +165,39 @@ def test_masked_edit_uses_provider_compatible_identity_reference() -> None:
     assert result.error_code is None
     assert result.artifact is not None
 
+
+def test_masked_edit_uses_explicit_source_and_mask_parts_when_supplied() -> None:
+    transport = ExplicitMaskTransport(
+        _png(Image.new("RGBA", (4, 4), (12, 34, 56, 255)))
+    )
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://provider.invalid",
+        planner_model="planner-test",
+        image_model="configured-local-edit-model",
+        transport=transport,
+    )
+    source = _png(Image.new("RGBA", (4, 4), (12, 34, 56, 255)))
+    mask = _png(Image.new("RGBA", (4, 4), (255, 255, 255, 255)))
+    result = asyncio.run(
+        gateway.edit_masked(
+            MaskedEditGatewayRequest(
+                source_png=source,
+                api_mask_png=mask,
+                mask_png=mask,
+                prompt="master prompt",
+                quality="medium",
+                width=4,
+                height=4,
+                idempotency_key="explicit-mask-idem",
+                execution_path="cropped",
+            )
+        )
+    )
+    assert result.outcome.value == "succeeded"
+    assert [file[0] for file in transport.files] == ["image", "mask"]
+    assert [file[1] for file in transport.files] == ["source.png", "mask_api.png"]
+    assert transport.headers["Idempotency-Key"] == "explicit-mask-idem"
 
 
 class VisualReviewTransport:

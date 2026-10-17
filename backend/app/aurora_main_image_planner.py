@@ -12,6 +12,15 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session, sessionmaker
 
+from .aurora_execution_modes import (
+    is_calibrated_parallel_aurora_mode,
+    is_parallel_aurora_mode,
+    is_v20_aurora_mode,
+)
+from .aurora_generation_shadow import (
+    CONTRACT_FIRST_REBUILD_V1,
+    EXECUTION_SEMANTICS_V1,
+)
 from .aurora_main_image_runtime import (
     AURORA_MAIN_IMAGE_V20_VERSION,
     AURORA_MAIN_IMAGE_VERSION,
@@ -79,13 +88,13 @@ class AuroraMainImagePlanner:
         storage: ImageStorage | None = None,
         gateway: XingheGateway | _PlannerGateway | None = None,
         work_root: Path | None = None,
-        execution_mode: str = "sequential_v017",
+        execution_mode: str = "sequential_v20",
     ) -> None:
         self.session_factory = session_factory
         self.execution_mode = execution_mode
         self.harness = harness or (
             AuroraV20HarnessRunner()
-            if execution_mode == "parallel_v20"
+            if is_v20_aurora_mode(execution_mode)
             else AuroraHarnessRunner()
         )
         self.storage = storage
@@ -134,7 +143,7 @@ class AuroraMainImagePlanner:
         raw = _build_raw(job_id, settings, evidence_paths)
         identity = await self._inspect_identity(job_id, workspace_id, settings, sources)
         identity = _bind_identity_evidence(identity, sources, evidence_paths)
-        if self.execution_mode == "parallel_v20":
+        if is_v20_aurora_mode(self.execution_mode):
             identity.pop("profile01_semantics_read", None)
         workspace = self.job_workspace(job_id)
         input_path = workspace / "input.json"
@@ -142,7 +151,7 @@ class AuroraMainImagePlanner:
         session_path = workspace / "session.json"
         compiled_path = workspace / (
             "compiled-v20.json"
-            if self.execution_mode == "parallel_v20"
+            if is_v20_aurora_mode(self.execution_mode)
             else "compiled-v013.json"
         )
         write_contract(input_path, raw)
@@ -163,7 +172,7 @@ class AuroraMainImagePlanner:
             )
             harness_session = _load_json(session_path)
         if harness_session.get("state") == "IDENTITY_LOCKED":
-            if self.execution_mode == "parallel_v20":
+            if is_v20_aurora_mode(self.execution_mode):
                 self.harness.run(
                     "compile",
                     workspace,
@@ -182,8 +191,13 @@ class AuroraMainImagePlanner:
             )
 
         payload = (
-            _public_v20_plan_payload(settings, identity, harness_session)
-            if self.execution_mode == "parallel_v20"
+            _public_v20_plan_payload(
+                settings,
+                identity,
+                harness_session,
+                execution_mode=self.execution_mode,
+            )
+            if is_v20_aurora_mode(self.execution_mode)
             else _public_plan_payload(settings, identity, harness_session)
         )
         payload["_harness_session"] = harness_session
@@ -208,7 +222,7 @@ class AuroraMainImagePlanner:
                 validation_errors=[],
                 validator_version=(
                     f"aurora-harness-{AURORA_MAIN_IMAGE_V20_VERSION}"
-                    if self.execution_mode == "parallel_v20"
+                    if is_v20_aurora_mode(self.execution_mode)
                     else f"aurora-harness-{AURORA_MAIN_IMAGE_VERSION}"
                 ),
                 validated_at=utc_now(),
@@ -219,7 +233,7 @@ class AuroraMainImagePlanner:
                     workspace_id=job.workspace_id,
                     action=(
                         "aurora.plan_compiled_v20"
-                        if self.execution_mode == "parallel_v20"
+                        if is_v20_aurora_mode(self.execution_mode)
                         else "aurora.plan_compiled_v013"
                     ),
                     resource_type="job",
@@ -353,10 +367,10 @@ def authorize_aurora_plan(
     stored_mode = (
         policy.get("execution_mode") if isinstance(policy, Mapping) else None
     )
-    mode = execution_mode or str(stored_mode or "sequential_v017")
+    mode = execution_mode or str(stored_mode or "sequential_v20")
     runner = harness or (
         AuroraV20HarnessRunner()
-        if mode == "parallel_v20"
+        if is_v20_aurora_mode(mode)
         else AuroraHarnessRunner()
     )
     runner.run(
@@ -370,26 +384,48 @@ def authorize_aurora_plan(
     payload["harness_state"] = harness_session["state"]
     plan.payload = payload
     plan.payload_hash = canonical_hash(payload)
-    if mode == "parallel_v20":
+    if is_parallel_aurora_mode(mode):
         _persist_parallel_v20_snapshots(
             plan,
             job,
             workspace,
             harness_session,
             runner,
-            # Parallel mode freezes every page request before any provider
-            # call.  The native sequential harness still performs the search
-            # and Campaign Style calibration stages in the page-local workers,
-            # but those post-generation observations cannot be used to gate
-            # requests that are already in flight.
-            page_indexes=tuple(range(6)),
+            page_indexes=(
+                (0,)
+                if is_calibrated_parallel_aurora_mode(mode)
+                else tuple(range(6))
+            ),
+            execution_mode=mode,
         )
 
 
 def public_aurora_plan_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Keep internal execution contracts durable without returning them to browsers."""
 
-    return {key: value for key, value in payload.items() if not key.startswith("_")}
+    public = {key: value for key, value in payload.items() if not key.startswith("_")}
+    final_session = next(
+        (
+            value
+            for key in ("_sequential_v20_set_session", "_parallel_v20_set_session")
+            if isinstance(value := payload.get(key), Mapping)
+        ),
+        None,
+    )
+    if final_session is not None:
+        public["final_review"] = {
+            "set_audit_passed": final_session.get("set_audit_passed") is True,
+            "residual_issues": [
+                {
+                    "page_index": issue.get("page_index"),
+                    "decision_summary": str(
+                        issue.get("decision_summary") or "当前页仍有未解决的审计问题。"
+                    ),
+                }
+                for issue in _mapping_list(final_session.get("residual_issues"))
+            ],
+        }
+    return public
 
 
 def _persist_parallel_v20_snapshots(
@@ -400,12 +436,13 @@ def _persist_parallel_v20_snapshots(
     runner: AuroraHarnessRunner,
     *,
     page_indexes: Sequence[int] = tuple(range(6)),
+    execution_mode: str = "parallel_v20",
 ) -> None:
-    """Freeze all page requests before the first provider call.
+    """Freeze the requested page batch without changing native page contracts.
 
-    Each raw v2.0 session clone is page-local.  The adapter only changes the
-    outer sequencing fields needed to select that page; the v2.0 harness still
-    compiles the request, token, references, prompt and page contract.
+    Each raw v2.0 session clone is page-local. The calibrated shadow mode calls
+    this helper for one barrier release at a time, while the legacy parallel
+    mode still passes all six indexes at authorization.
     """
 
     db = object_session(plan)
@@ -434,6 +471,27 @@ def _persist_parallel_v20_snapshots(
         source_hashes[str(row.get("evidence_id"))] = hashlib.sha256(
             source_path.read_bytes()
         ).hexdigest()
+    job_configuration = (
+        job.configuration if isinstance(job.configuration, Mapping) else {}
+    )
+    job_settings = job_configuration.get("settings", {})
+    shadow_mode = (
+        str(job_settings.get("aurora_shadow_mode") or "").strip()
+        if isinstance(job_settings, Mapping)
+        else ""
+    )
+    authorized_facts = (
+        _normalize_commercial_fact_pool(job_settings)
+        if isinstance(job_settings, Mapping)
+        else {}
+    )
+    if shadow_mode not in {
+        "",
+        "off",
+        CONTRACT_FIRST_REBUILD_V1,
+        EXECUTION_SEMANTICS_V1,
+    }:
+        raise AuroraPlanningError("Unsupported Aurora generation shadow mode")
     requested_indexes = set(page_indexes)
     if not requested_indexes.issubset(set(range(6))):
         raise AuroraPlanningError("Aurora parallel snapshot page index is invalid")
@@ -474,9 +532,13 @@ def _persist_parallel_v20_snapshots(
         )
         if int(request_payload.get("page_index", -1)) != item.ordinal:
             raise AuroraPlanningError("Aurora page snapshot ordinal mismatch")
+        # Carry the user-entered fact buckets into the ephemeral generation request.
+        # The image model may render only these exact copy seeds; planner prose is
+        # a layout hint, never a new commercial fact authority.
+        request_payload["authorized_facts"] = dict(authorized_facts)
         snapshot = {
             "schema_version": "aurora-parallel-page-snapshot-v1",
-            "execution_mode": "parallel_v20",
+            "execution_mode": execution_mode,
             "page_index": item.ordinal,
             "group_key": job.id,
             "prompt": request_payload["prompt"],
@@ -502,11 +564,13 @@ def _persist_parallel_v20_snapshots(
         configuration = dict(item.configuration or {})
         configuration.update(
             {
-                "aurora_execution_mode": "parallel_v20",
+                "aurora_execution_mode": execution_mode,
                 "aurora_snapshot": snapshot,
                 "size": "1024x1024",
             }
         )
+        if shadow_mode in {CONTRACT_FIRST_REBUILD_V1, EXECUTION_SEMANTICS_V1}:
+            configuration["aurora_shadow_mode"] = shadow_mode
         item.configuration = configuration
         snapshots.append(snapshot)
     payload = dict(plan.payload)
@@ -868,6 +932,8 @@ def _public_v20_plan_payload(
     settings: Mapping[str, Any],
     identity: Mapping[str, Any],
     harness_session: Mapping[str, Any],
+    *,
+    execution_mode: str = "parallel_v20",
 ) -> dict[str, Any]:
     """Expose the native v2.0 plan without passing through v013 rewrites."""
 
@@ -912,9 +978,17 @@ def _public_v20_plan_payload(
         "campaign_style": native_plan.get("campaign_style", {}),
         "pages": pages,
         "execution_policy": {
-            "execution_mode": "parallel_v20",
-            "sequence": "parallel_frozen_snapshots",
-            "max_parallel_pages": 6,
+            "execution_mode": execution_mode,
+            "sequence": (
+                "strictly_sequential"
+                if execution_mode == "sequential_v20"
+                else (
+                "parallel_calibrated_barrier"
+                if is_calibrated_parallel_aurora_mode(execution_mode)
+                else "parallel_frozen_snapshots"
+                )
+            ),
+            "max_parallel_pages": 1 if execution_mode == "sequential_v20" else 6,
             "max_automatic_repairs_per_page": 1,
             "plan_authorization_required": True,
             "final_set_approval_required": True,

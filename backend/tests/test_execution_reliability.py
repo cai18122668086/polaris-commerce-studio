@@ -1,7 +1,10 @@
 import asyncio
+import hashlib
+import time
 from collections import defaultdict
 from datetime import timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -9,6 +12,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import func, select
 
+import app.execution as execution_module
 from app.aurora_main_image_planner import AuroraPlanningError
 from app.domain import (
     AttemptStatus,
@@ -96,6 +100,52 @@ def _coordinator(
     )
 
 
+@pytest.mark.parametrize("blocking_phase", ["provider", "storage"])
+def test_heartbeat_survives_blocking_provider_and_slow_artifact_save(
+    client, blocking_phase,
+):
+    from app.provider import ProviderArtifact
+
+    class BlockingProvider(FakeProvider):
+        name = "real-test"
+
+        async def execute(self, request):
+            if blocking_phase == "provider":
+                time.sleep(0.7)
+            payload = _image_payload((10, 20, 30))
+            return ProviderResult(
+                outcome=ProviderOutcome.SUCCEEDED,
+                provider_name=self.name,
+                artifact=ProviderArtifact(
+                    payload=payload, filename="saved.png", content_type="image/png",
+                    width=32, height=32, sha256=hashlib.sha256(payload).hexdigest(),
+                ),
+            )
+
+    class SlowStorage:
+        async def save_validated(self, image):
+            if blocking_phase == "storage":
+                await asyncio.sleep(0.7)
+            return SimpleNamespace(
+                **image.__dict__, byte_size=len(image.payload), storage_provider="test",
+                storage_bucket="test", object_version="", etag=None,
+            )
+
+        async def delete_object(self, *args):
+            pass
+
+    job_id = _create_job(client)
+    coordinator = ExecutionCoordinator(client.app.state.session_factory,
+        BlockingProvider(), worker_id="blocking-test", lease_seconds=0.4,
+        heartbeat_seconds=0.05, artifact_storage=SlowStorage())
+    coordinator.prepare(job_id)
+    lease = coordinator.claim_next_item(job_id)
+    assert lease is not None
+    assert asyncio.run(coordinator.execute_lease(lease)) is True
+    with client.app.state.session_factory() as session:
+        assert session.get(JobAttemptRecord, lease.attempt_id).status == "succeeded"
+
+
 class _FailingDomesticPlanner:
     async def plan(self, job_id: str) -> JobStatus:
         raise OSError(f"workspace unavailable for {job_id}")
@@ -118,6 +168,25 @@ class _ExplodingSetAuditProvider(FakeProvider):
         )
         error.http_status = 502
         raise error
+
+
+class _TransientSetAuditProvider(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.set_audit_calls = 0
+
+    async def audit_parallel_set(self, job_id: str) -> bool:
+        del job_id
+        self.set_audit_calls += 1
+        if self.set_audit_calls < 3:
+            raise AuroraPlanningError("temporary set-audit response failure")
+        return True
+
+
+class _BlockedSetAuditProvider(FakeProvider):
+    async def audit_parallel_set(self, job_id: str) -> bool:
+        del job_id
+        return False
 
 
 def test_parallel_aurora_skips_set_audit_when_any_page_failed(
@@ -174,17 +243,6 @@ def _six_succeeded_aurora_pages(client: TestClient) -> str:
         )
         assert job is not None and first is not None
         job.type = JobType.DOMESTIC_MAIN_IMAGE.value
-        job.status = JobStatus.PROCESSING.value
-        session.add(
-            JobPlanRecord(
-                id=f"plan_{uuid4().hex}",
-                workspace_id=WORKSPACE_ID,
-                job_id=job_id,
-                revision=1,
-                payload={"execution_policy": {"execution_mode": "parallel_v20"}},
-                payload_hash="fixture",
-            )
-        )
         job.expected_item_count = 6
         first.status = JobItemStatus.SUCCEEDED.value
         for ordinal in range(1, 6):
@@ -204,10 +262,14 @@ def _six_succeeded_aurora_pages(client: TestClient) -> str:
 
 
 def test_parallel_aurora_set_audit_failure_records_its_reason(
-    client: TestClient,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """RC-4: a swallowed set-audit exception made 32 failures undiagnosable."""
 
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(execution_module.asyncio, "sleep", no_sleep)
     job_id = _six_succeeded_aurora_pages(client)
     coordinator = ExecutionCoordinator(
         client.app.state.session_factory,
@@ -222,59 +284,104 @@ def test_parallel_aurora_set_audit_failure_records_its_reason(
     assert applicable is False
     assert isinstance(error, AuroraPlanningError)
 
-    assert coordinator.finalize_job(job_id) == JobStatus.PARTIAL
+    coordinator._mark_parallel_aurora_set_audit_failed(job_id, error)
+
+    with client.app.state.session_factory() as session:
+        item = session.scalar(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id == job_id,
+                JobItemRecord.error_code == "AURORA_SET_AUDIT_FAILED",
+            )
+        )
+
+    assert item is not None
+    assert item.error_details["scope"] == "set_audit"
+    assert item.error_details["reason"] == "AuroraPlanningError"
+    assert item.error_details["http_status"] == 502
+    assert "HTTP 502" in item.error_details["message"]
+
+
+def test_parallel_aurora_set_audit_retries_transient_failure(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(execution_module.asyncio, "sleep", no_sleep)
+    job_id = _six_succeeded_aurora_pages(client)
+    provider = _TransientSetAuditProvider()
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-audit-retry",
+    )
+
+    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) == (
+        True,
+        None,
+    )
+    assert provider.set_audit_calls == 3
+
+
+def test_parallel_aurora_set_audit_is_idle_after_final_review(
+    client: TestClient,
+) -> None:
+    job_id = _six_succeeded_aurora_pages(client)
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)
-        items = session.scalars(
-            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
-        ).all()
-        assert job.succeeded_item_count == 6
-        assert job.failed_item_count == 0
-        assert all(item.status == "succeeded" for item in items)
-        assert job.error_details["scope"] == "set_audit"
-        assert job.error_details["reason"] == "AuroraPlanningError"
-        assert job.error_details["http_status"] == 502
-        assert job.stage == "set_audit_error"
+        assert job is not None
+        job.status = JobStatus.AWAITING_FINAL_REVIEW.value
+        job.stage = "awaiting_final_review"
+        session.commit()
 
-    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
-    assert detail["status"] == "partial"
-    assert detail["succeeded_item_count"] == 6
-    assert detail["failed_item_count"] == 0
-    assert "retry" not in detail["allowed_actions"]
-    assert all(item["status"] == "succeeded" for item in detail["items"])
-    retry = client.post(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
-        headers={"Idempotency-Key": str(uuid4())},
-        json={"scope": "full"},
+    provider = _SetAuditTrackingProvider()
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-audit-final-review-idle",
     )
-    assert retry.status_code == 409
 
-
-def test_legacy_set_error_is_not_presented_as_completed() -> None:
-    from app.services import job_list_response
-
-    now = utc_now()
-    job = JobRecord(
-        id="job_legacy",
-        workspace_id=WORKSPACE_ID,
-        type="domestic_main_image",
-        status="partial",
-        stage="partial",
-        progress=100,
-        expected_item_count=6,
-        succeeded_item_count=5,
-        failed_item_count=1,
-        configuration={},
-        api_request_count=0,
-        usage_completeness="none",
-        created_at=now,
-        updated_at=now,
+    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) == (
+        None,
+        None,
     )
-    response = job_list_response(job, output_asset_count=6, generated_set_complete=True)
-    assert response.status == "partial"
-    assert response.stage == "set_audit_error"
-    assert (response.succeeded_item_count, response.failed_item_count) == (5, 1)
-    assert response.allowed_actions == ["clone"]
+    assert provider.set_audit_calls == 0
+
+
+def test_v20_blocked_set_audit_waits_for_user_final_review(
+    client: TestClient,
+) -> None:
+    job_id = _six_succeeded_aurora_pages(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        job.status = JobStatus.PROCESSING.value
+        job.stage = "generating"
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                payload={"execution_policy": {"execution_mode": "parallel_v20"}},
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+            )
+        )
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        _BlockedSetAuditProvider(),
+        worker_id="parallel-audit-blocked",
+    )
+
+    assert asyncio.run(coordinator.run(job_id)) == JobStatus.AWAITING_FINAL_REVIEW
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job is not None
+        assert job.status == JobStatus.AWAITING_FINAL_REVIEW.value
+        assert job.stage == "awaiting_final_review"
 
 
 def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) -> None:
@@ -312,9 +419,6 @@ def test_domestic_planning_error_reaches_terminal_failure(client: TestClient) ->
 
 
 class _ParallelAuroraFakeProvider:
-    async def audit_parallel_set(self, job_id: str) -> bool:
-        return True
-
     name = "aurora-fake"
     model = "none"
     pricing_version = "test"
@@ -579,6 +683,74 @@ def test_parallel_aurora_claims_all_pages_before_style_calibration(
     ] == list(range(6))
 
 
+def test_calibrated_parallel_aurora_claims_only_released_snapshots(
+    client: TestClient,
+) -> None:
+    """The shadow mode cannot dispatch page 1 before page 0 calibration."""
+
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        first = session.scalar(
+            select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+        )
+        assert job is not None and first is not None
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.expected_item_count = 6
+        first.ordinal = 0
+        first.configuration = {
+            "aurora_execution_mode": "parallel_v20_calibrated",
+            "aurora_snapshot": {"page_index": 0},
+        }
+        for ordinal in range(1, 6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"page-{ordinal + 1:03d}",
+                    ordinal=ordinal,
+                    status=JobItemStatus.PENDING.value,
+                    configuration={
+                        "aurora_execution_mode": "parallel_v20_calibrated",
+                    },
+                )
+            )
+        now = utc_now()
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {
+                        "execution_mode": "parallel_v20_calibrated"
+                    }
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="parallel-calibrated-gate",
+        max_concurrency=6,
+    )
+    first_lease = coordinator.claim_next_item(job_id)
+    assert first_lease is not None
+    assert first_lease.configuration["item"]["aurora_snapshot"]["page_index"] == 0
+    assert coordinator.claim_next_item(job_id) is None
+
+
 def _expand_job_to_three_items(client: TestClient, job_id: str) -> None:
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)
@@ -831,6 +1003,45 @@ def test_domestic_pages_wait_for_predecessor_across_duplicate_deliveries(
     assert second_page is not None
     with client.app.state.session_factory() as session:
         claimed = session.get(JobItemRecord, second_page.item_id)
+        assert claimed is not None
+        assert claimed.ordinal == 1
+
+
+def test_domestic_retry_with_reused_prefix_claims_next_pending_page(
+    client: TestClient,
+) -> None:
+    """REUSED pages count as completed for sequential retry ordering."""
+
+    job_id = _create_job(client)
+    _expand_job_to_three_items(client, job_id)
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job_id)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        assert job is not None and len(items) == 3
+        job.type = JobType.DOMESTIC_MAIN_IMAGE.value
+        job.status = JobStatus.PROCESSING.value
+        job.stage = "processing"
+        items[0].status = JobItemStatus.REUSED.value
+        items[1].status = JobItemStatus.PENDING.value
+        items[2].status = JobItemStatus.PENDING.value
+        session.commit()
+
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        FakeProvider(),
+        worker_id="aurora-retry-order",
+        lease_seconds=2,
+        heartbeat_seconds=0.2,
+        max_concurrency=6,
+    )
+    lease = coordinator.claim_next_item(job_id)
+    assert lease is not None
+    with client.app.state.session_factory() as session:
+        claimed = session.get(JobItemRecord, lease.item_id)
         assert claimed is not None
         assert claimed.ordinal == 1
 
@@ -1102,6 +1313,42 @@ def test_published_outbox_delivery_is_recovered_from_postgres(
         assert job.status == JobStatus.COMPLETED.value
         assert event.status == OutboxStatus.PUBLISHED.value
     assert _counts(client, job_id) == (1, 1)
+
+
+@pytest.mark.parametrize("state", ["active", "reserved", "unknown", "lost"])
+def test_celery_delivery_recovery_does_not_redispatch_live_provider_calls(
+    client, monkeypatch, state,
+):
+    from app.celery_app import celery_app
+
+    job_id = _create_job(client)
+    with client.app.state.session_factory() as session:
+        event = session.scalar(select(OutboxEventRecord).where(
+            OutboxEventRecord.aggregate_id == job_id,
+        ))
+        event.status = OutboxStatus.PUBLISHED.value
+        event.published_at = utc_now() - timedelta(minutes=10)
+        session.commit()
+    task = {"name": "polaris.process_job", "args": [job_id]}
+    inspector = SimpleNamespace(
+        active=lambda: None if state == "unknown" else {
+            "worker": [task] if state == "active" else [],
+        },
+        reserved=lambda: {"worker": [task] if state == "reserved" else []},
+    )
+    monkeypatch.setattr(celery_app.control, "inspect", lambda **kwargs: inspector)
+    dispatched = []
+    monkeypatch.setattr(
+        "app.outbox._dispatch", lambda *args, **kwargs: dispatched.append(kwargs),
+    )
+    settings = client.app.state.settings.model_copy(
+        update={"task_dispatcher": "celery"},
+    )
+    published = publish_pending_events(
+        settings, client.app.state.session_factory, client.app.state.task_runner,
+    )
+    assert published == (1 if state == "lost" else 0)
+    assert len(dispatched) == published
 
 
 def test_finalize_amazon_review_uses_terminal_attempts_without_payload_double_count(

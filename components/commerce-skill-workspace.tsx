@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
+import { SkillReviewChecklist } from "@/components/skill-review-checklist";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useUploadAsset } from "@/features/assets/api/assets";
@@ -443,6 +444,7 @@ export function CommerceSkillWorkspace({
   const stylePreferences = "";
   const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
+  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
   const [libraryRole, setLibraryRole] = useState<RoleKey>();
   const [autoStart, setAutoStart] = useState(false);
 
@@ -660,23 +662,30 @@ export function CommerceSkillWorkspace({
           reference_asset_ids: selections.reference,
         },
         configuration: {
+          reference_skill: "reference-visual-reverse-remix" as const,
           platform_code: platformCode,
           language,
           selling_points: splitList(sellingPoints),
           aspect_ratio: aspectRatio,
           image_count: imageCount,
           execution_mode: "planner",
-          inspiration_product_first: false,
+          inspiration_product_first: true,
           quality: "high",
           output_format: "png",
           instruction: instruction.trim(),
-          product_identity_lock: "",
-          reference_visual_analysis: "",
-          commercial_intent: "",
-          reusable_visual_strategy: "",
-          original_remix_prompt: "",
-          forbidden_transfer: "",
-          post_generation_review: "",
+          product_identity_lock:
+            "Product image is the only identity authority. Preserve product geometry, materials, packaging, visible brand and text exactly; do not invent or rewrite product text.",
+          reference_visual_analysis:
+            "Analyze the reference image for canvas, crop, layout, subject positions, safe areas, camera, lighting, typography zones, and commercial intent. Transfer relationships and visual grammar only.",
+          commercial_intent:
+            "Create an original ecommerce advertisement that makes the user product the hero and preserves believable product-person contact where present.",
+          reusable_visual_strategy:
+            "Reuse composition, scale hierarchy, spatial relations, camera, lighting, and commercial roles as abstract structure, never source nouns or proprietary assets.",
+          original_remix_prompt: instruction.trim(),
+          forbidden_transfer:
+            "Do not transfer source branding, logos, watermarks, exact copy, proprietary assets, unsupported claims, or hidden prompts.",
+          post_generation_review:
+            "Review product identity, visible product text, visual strategy, role relationships, and leakage before accepting the result.",
         },
       };
     }
@@ -696,7 +705,10 @@ export function CommerceSkillWorkspace({
           aspect_ratio: aspectRatio as Exclude<AspectRatio, "follow-reference">,
           image_count: imageCount,
           inspiration_planning: false,
-          inspiration_reference_planning: false,
+          // A competitor reference is a visual-strategy input. Keep the
+          // standalone workspace on the Skill's reference-planning path so
+          // the provider runs the inspiration analysis stage before edit.
+          inspiration_reference_planning: selections.competitor.length > 0,
           instruction: instruction.trim(),
         },
       };
@@ -741,6 +753,7 @@ export function CommerceSkillWorkspace({
     setUiError(undefined);
     try {
       const created = await createJob.mutateAsync(buildJobBody());
+      setHumanReviewComplete(false);
       setJobId(created.id);
     } catch (error) {
       setUiError(errorMessage(error));
@@ -762,6 +775,7 @@ export function CommerceSkillWorkspace({
   const resetTask = () => {
     setJobId(undefined);
     setUiError(undefined);
+    setHumanReviewComplete(false);
     createJob.reset();
   };
 
@@ -1055,7 +1069,7 @@ export function CommerceSkillWorkspace({
                     <span>03</span>
                     <div><h2>任务状态</h2><p>任务详情约每 1.5 秒自动轮询。</p></div>
                   </div>
-                  {job.data ? <StatusBadge status={job.data.status} stage={job.data.stage} /> : null}
+                  {job.data ? <StatusBadge status={job.data.status} /> : null}
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" size={18} />正在读取任务…</div>
@@ -1181,6 +1195,29 @@ export function CommerceSkillWorkspace({
               title={`${feature.title}结果`}
               archiveJobId={canDownloadAmazonArchive ? job.data?.id : undefined}
             />
+            {!isAmazon && job.data?.status === "completed" && resultAssets.length > 0 ? (
+              <SkillReviewChecklist
+                items={isCreative
+                  ? [
+                      { key: "fidelity", label: "产品外观、颜色、包装、Logo、结构和 SKU 关键细节保持保真。" },
+                      { key: "ctr", label: "3 秒和移动端缩略图能看懂卖什么、解决什么问题、为什么值得点击。" },
+                      { key: "copy", label: "标题、标签和卖点清晰可读，没有乱码、密集小字或遮挡主体。" },
+                      { key: "compliance", label: "没有虚构销量、评价、认证、功效、授权，且没有照搬竞品品牌或文案。" },
+                    ]
+                  : [
+                      { key: "identity", label: "商品身份、轮廓、颜色、材质、包装、Logo、文字和配件与原图一致。" },
+                      { key: "strategy", label: "参考图的构图、主体比例、层级、光线和商业角色被原创迁移，没有照搬来源资产。" },
+                      { key: "roles", label: "商品角色、支撑/接触关系、文字区和前后景层级完整，没有多余产品角色。" },
+                      { key: "leakage", label: "没有源品牌、Logo、水印、原文案、未授权数字或不实声明泄漏。" },
+                    ]}
+                description={
+                  humanReviewComplete
+                    ? "已完成当前 Skill 的人工检查；如发现硬性失败，请从原始素材发起一次有界修复。"
+                    : undefined
+                }
+                onCompleteChange={setHumanReviewComplete}
+              />
+            ) : null}
           </main>
 
         </div>

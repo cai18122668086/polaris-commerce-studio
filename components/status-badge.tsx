@@ -17,6 +17,7 @@ const statusMap: Record<
   planning: { label: "正在规划", className: "status-planning", icon: LoaderCircle },
   awaiting_confirmation: { label: "等待确认", className: "status-warning", icon: Clock3 },
   processing: { label: "正在生成", className: "status-processing", icon: LoaderCircle },
+  awaiting_final_review: { label: "等待整组确认", className: "status-warning", icon: Clock3 },
   cancelling: { label: "取消中", className: "status-neutral", icon: LoaderCircle },
   partial: { label: "部分完成", className: "status-warning", icon: TriangleAlert },
   completed: { label: "已完成", className: "status-success", icon: CheckCircle2 },
@@ -24,19 +25,14 @@ const statusMap: Record<
   cancelled: { label: "已取消", className: "status-neutral", icon: Ban },
 };
 
-export function StatusBadge({ status, stage }: { status: JobStatus; stage?: string | null }) {
-  const auditLabels: Record<string, string> = {
-    set_auditing: "整组审核中",
-    set_audit_error: "审核异常待确认",
-    set_audit_failed: "整组审核未通过",
-  };
+export function StatusBadge({ status }: { status: JobStatus }) {
   const config = statusMap[status];
   const Icon = config.icon;
 
   return (
     <span className={`status-badge ${config.className}`}>
       <Icon size={13} className={["processing", "planning", "cancelling"].includes(status) ? "spin" : ""} />
-      {(stage && auditLabels[stage]) || config.label}
+      {config.label}
     </span>
   );
 }

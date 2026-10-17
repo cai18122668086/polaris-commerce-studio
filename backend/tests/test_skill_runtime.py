@@ -320,11 +320,12 @@ def _create_local_edit_job(client: TestClient) -> str:
 def test_bundled_manifests_load_with_frozen_policies() -> None:
     registry = SkillManifestRegistry.bundled()
     assert registry.skill_ids == (
+        "aurora-domestic-ecommerce-detail-page",
         "aurora-domestic-ecommerce-main-image",
         "ecommerce-model-pose-transfer",
-            "masked-image-repair",
-            "reference-visual-reverse-remix",
-            "xinghe-amazon-visual-suite",
+        "masked-image-repair",
+        "reference-visual-reverse-remix",
+        "xinghe-amazon-visual-suite",
         "xinghe-crossborder-detail-3",
         "xinghe-ecommerce-creative-image",
         "xinghe-ecommerce-detail",

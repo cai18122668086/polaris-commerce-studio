@@ -609,8 +609,7 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
         if re.search(r"\b(?:python\s+-m\s+)?pip\s+install\b", line)
     ]
     required_pip_install = (
-        "RUN --mount=type=cache,id=polaris-pip,target=/root/.cache/pip,sharing=locked "
-        "python -m pip install --require-hashes "
+        "RUN python -m pip install --require-hashes "
         "--only-binary=:all: -r requirements.lock"
     )
     if pip_install_lines != [required_pip_install]:
@@ -651,10 +650,7 @@ def validate_source(repo_root: Path) -> tuple[list[str], tuple[int, float]]:
         for line in frontend_dockerfile.splitlines()
         if re.search(r"\bnpm\s+(?:ci|install)\b", line)
     ]
-    required_npm_ci = (
-        "RUN --mount=type=cache,id=polaris-npm,target=/root/.npm,sharing=locked "
-        "npm ci --ignore-scripts --no-audit --fund=false"
-    )
+    required_npm_ci = "RUN npm ci --ignore-scripts --no-audit --fund=false"
     if npm_install_lines != [required_npm_ci]:
         errors.append(
             "frontend image must use exactly one npm ci with --ignore-scripts"

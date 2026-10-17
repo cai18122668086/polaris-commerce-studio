@@ -132,8 +132,13 @@ class Settings(BaseSettings):
     creative_image_provider_enabled: bool = Field(default=False)
     amazon_visual_suite_provider_enabled: bool = Field(default=False)
     domestic_main_image_provider_enabled: bool = Field(default=False)
-    aurora_execution_mode: Literal["sequential_v017", "parallel_v20"] = (
-        "sequential_v017"
+    aurora_execution_mode: Literal[
+        "sequential_v017",
+        "sequential_v20",
+        "parallel_v20",
+        "parallel_v20_calibrated",
+    ] = (
+        "sequential_v20"
     )
     aurora_max_transient_retries: int = Field(default=2, ge=0, le=2)
     aurora_retry_backoff_base_seconds: float = Field(default=2, ge=0, le=30)
@@ -156,7 +161,6 @@ class Settings(BaseSettings):
     tengli_vision_model: str = "gpt-5.6-terra"
     analysis_api_key: SecretStr = SecretStr("")
     analysis_base_url: str = "https://api.ooapi.cc"
-    analysis_api_mode: Literal["chat_completions", "responses"] = "chat_completions"
     # `gpt-5.5` stopped serving on this relay (HTTP 502 "Upstream access
     # forbidden"), and `gpt-5.6-luna` now answers 503 or not at all.  A live
     # probe against the production relay on 2026-09-16 returned a healthy
@@ -167,6 +171,15 @@ class Settings(BaseSettings):
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"
+    # Optional second OpenAI-compatible route. The primary analysis/image
+    # settings above remain intact; this route is only used when explicitly
+    # enabled and can be placed first through provider_rotation_order.
+    provider_failover_enabled: bool = False
+    provider_failover_api_key: SecretStr = SecretStr("")
+    provider_failover_base_url: str = "https://api.tengliapi.xyz"
+    provider_failover_model: str = "gpt-5.6-sol"
+    provider_failover_image_model: str = "gpt-image-2"
+    provider_rotation_order: str = "primary,failover"
     tengli_smoke_budget_usd: float = Field(
         default=200,
         gt=0,

@@ -54,6 +54,17 @@ def test_product_image_presets_share_one_job_type(preset: str) -> None:
     assert roles == [("asset-product", "product_reference", 0)]
 
 
+def test_product_image_items_preserve_independent_output_identity() -> None:
+    assert [
+        _job_item_configuration(JobType.PRODUCT_IMAGE.value, ordinal)
+        for ordinal in range(3)
+    ] == [
+        {"item_key": "image-001", "ordinal": 0},
+        {"item_key": "image-002", "ordinal": 1},
+        {"item_key": "image-003", "ordinal": 2},
+    ]
+
+
 def test_change_color_requires_target_color() -> None:
     with pytest.raises(ValidationError, match="target_color is required"):
         ProductImageJobCreate(
@@ -173,14 +184,14 @@ def test_detail_market_region_is_stored_without_changing_job_type() -> None:
             "product_name": "????",
             "platform_code": "tmall",
             "market_region": "domestic",
-            "page_count": 3,
+            "page_count": 8,
         },
     )
     job, roles = _new_job_from_payload("ws-contract", payload)
     assert job.type == JobType.DETAIL_PACK.value
     assert job.configuration["settings"]["market_region"] == "domestic"
-    assert job.configuration["settings"]["auto_start_after_plan"] is True
-    assert job.expected_item_count == 3
+    assert job.configuration["settings"]["auto_start_after_plan"] is False
+    assert job.expected_item_count == 8
     assert roles == [
         ("product", "product_reference", 0),
         ("style", "style_reference", 0),
@@ -301,9 +312,14 @@ def test_amazon_item_configuration_matches_canonical_sizes() -> None:
 
 
 @pytest.mark.parametrize(
-    "job_type", (JobType.REFERENCE_REMIX.value, JobType.CREATIVE_IMAGE.value)
+    "job_type",
+    (
+        JobType.PRODUCT_IMAGE.value,
+        JobType.REFERENCE_REMIX.value,
+        JobType.CREATIVE_IMAGE.value,
+    ),
 )
-def test_inspiration_item_configuration_preserves_output_identity(
+def test_single_image_item_configuration_preserves_output_identity(
     job_type: str,
 ) -> None:
     assert _job_item_configuration(job_type, 0, inspiration_workflow=True) == {
@@ -316,8 +332,12 @@ def test_inspiration_item_configuration_preserves_output_identity(
     }
 
 
-def test_non_inspiration_item_configuration_keeps_existing_contract() -> None:
-    assert _job_item_configuration(JobType.CREATIVE_IMAGE.value, 0) == {}
+def test_inspiration_flag_does_not_change_single_image_identity_contract() -> None:
+    assert _job_item_configuration(
+        JobType.CREATIVE_IMAGE.value, 0, inspiration_workflow=False
+    ) == _job_item_configuration(
+        JobType.CREATIVE_IMAGE.value, 0, inspiration_workflow=True
+    )
 
 
 @pytest.mark.parametrize(

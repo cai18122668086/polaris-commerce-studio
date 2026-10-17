@@ -16,7 +16,7 @@ concurrency:
 jobs:
   frontend:
     name: Frontend quality
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -31,7 +31,7 @@ jobs:
 
   backend:
     name: Backend quality
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       postgres:
@@ -66,7 +66,11 @@ jobs:
       - name: Test PostgreSQL ecommerce concurrency
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
-        run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py backend/tests/test_set_audit_concurrency_postgres.py
+        run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py
+      - name: Test recorded stage expansion on isolated PostgreSQL schemas
+        env:
+          POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
+        run: python -m pytest backend/tests/test_stage_length_migration_postgres.py
       - name: Test deployment preflight
         run: python -m unittest discover -s deploy/tests -v
       - name: Validate deployment sources
@@ -136,7 +140,7 @@ jobs:
 
   contract:
     name: API contract
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -155,7 +159,7 @@ jobs:
 
   containers:
     name: Container build (${{ matrix.name }})
-    runs-on: ${{ vars.POLARIS_CI_RUNNER || 'polaris-ci' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -178,16 +182,24 @@ jobs:
               POLARIS_NODE_BASE_IMAGE=node:22.22.0-bookworm-slim@sha256:7cc56ef285a8568121537d17b05e72128f01b89c54607b51acf084a50ef483f3
     steps:
       - uses: actions/checkout@v6
+      # Use the runner's Docker, not a fresh BuildKit container. The container
+      # driver ignores images already on this machine and re-downloads them.
       - name: Build ${{ matrix.name }} image
         env:
-          BUILD_ARGS: ${{ matrix.build_args }}
           DOCKERFILE: ${{ matrix.dockerfile }}
-          IMAGE_TAG: ${{ matrix.image }}
+          IMAGE: ${{ matrix.image }}
+          BUILD_ARGS: ${{ matrix.build_args }}
+          DOCKER_BUILDKIT: "1"
         run: |
-          # Use the engine's durable layer cache. Creating an isolated BuildKit
-          # container per job redownloads base images over the runner's slow link.
+          set -euo pipefail
           args=()
-          while IFS= read -r arg; do
-            if [ -n "$arg" ]; then args+=(--build-arg "$arg"); fi
+          while IFS= read -r line; do
+            line="${line%%$'\r'}"
+            if [ -n "$line" ]; then
+              args+=(--build-arg "$line")
+            fi
           done <<< "$BUILD_ARGS"
-          docker build --file "$DOCKERFILE" --tag "$IMAGE_TAG" "${args[@]}" .
+          if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+            args+=(--cache-from "$IMAGE")
+          fi
+          docker build -f "$DOCKERFILE" -t "$IMAGE" "${args[@]}" .

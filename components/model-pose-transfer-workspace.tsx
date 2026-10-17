@@ -21,6 +21,7 @@ import { useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
+import { SkillReviewChecklist } from "@/components/skill-review-checklist";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
@@ -298,6 +299,7 @@ export function ModelPoseTransferWorkspace() {
   const [instruction, setInstruction] = useState("");
   const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
+  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
   const submissionLock = useRef(false);
 
   const job = useJob(workspace?.id, jobId);
@@ -390,6 +392,7 @@ export function ModelPoseTransferWorkspace() {
     submissionLock.current = true;
     let submitted = false;
     setUiError(undefined);
+    setHumanReviewComplete(false);
 
     try {
       let poseReferenceAsset: Asset;
@@ -455,6 +458,7 @@ export function ModelPoseTransferWorkspace() {
     setMaterializedPose(undefined);
     setInstruction("");
     setUiError(undefined);
+    setHumanReviewComplete(false);
     sourceUpload.reset();
     customPoseUpload.reset();
     createJob.reset();
@@ -649,7 +653,24 @@ export function ModelPoseTransferWorkspace() {
               assets={resultAssets}
               expectedCount={1}
               title="模特换姿势结果"
+              archiveJobId={
+                job.data?.status === "completed" && humanReviewComplete
+                  ? job.data.id
+                  : undefined
+              }
             />
+            {job.data?.status === "completed" && resultAssets.length > 0 ? (
+              <SkillReviewChecklist
+                items={[
+                  { key: "roles", label: "没有发生人物身份、服装或场景串位，姿势参考图没有泄漏外观。" },
+                  { key: "identity", label: "原图人物、自然比例、服装、鞋饰、背景和光线仍保持可识别。" },
+                  { key: "geometry", label: "头、躯干、四肢、脚部、承重腿、跨步和左右关系符合目标姿势。" },
+                  { key: "anatomy", label: "没有拉伸肢体、断裂关节、重复肢体、悬空脚或多余人物。" },
+                  { key: "canvas", label: "画布、裁切和背景保持源图一致，并已记录仍可见的偏差。" },
+                ]}
+                onCompleteChange={setHumanReviewComplete}
+              />
+            ) : null}
           </main>
 
           <aside className={styles.previewColumn}>

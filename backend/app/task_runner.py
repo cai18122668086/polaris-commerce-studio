@@ -36,7 +36,7 @@ class MockTaskRunner:
         crossborder_detail_provider_enabled: bool = False,
         domestic_main_image_provider_enabled: bool = False,
         aurora_work_root: Path | None = None,
-        aurora_execution_mode: str = "sequential_v017",
+        aurora_execution_mode: str = "sequential_v20",
         aurora_max_transient_retries: int = 2,
         aurora_retry_backoff_base_seconds: float = 2,
         aurora_retry_backoff_max_seconds: float = 30,

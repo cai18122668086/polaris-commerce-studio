@@ -42,6 +42,7 @@ from app.reference_remix_provider import ReferenceRemixProvider
 from app.skill_runtime import SkillRuntimeProvider
 from app.task_runner import build_tengli_task_runner
 from app.xinghe_agent import (
+    _AURORA_PLANNER_PROTOCOL_FILES,
     FakeXingheGateway,
     XingheImageProvider,
     XinghePlanningCoordinator,
@@ -123,7 +124,7 @@ def _create_detail_job(
                 or ("tmall" if market_region == "domestic" else "amazon"),
                 "market_region": market_region,
                 "language": "zh-CN" if market_region == "domestic" else "en",
-                "page_count": 1,
+                "page_count": 8 if market_region == "domestic" else 1,
             },
         },
     )
@@ -481,10 +482,11 @@ def test_crossborder_planner_loads_its_pinned_protocol() -> None:
 def test_domestic_planner_loads_every_pinned_reference_in_stable_order() -> None:
     skill_root = default_skill_root(DOMESTIC_DETAIL_SKILL_ID)
     prompt = load_planner_system_prompt(skill_root, DOMESTIC_DETAIL_SKILL_ID)
-    expected_references = sorted(
-        path.relative_to(skill_root).as_posix()
-        for path in (skill_root / "references").glob("*.md")
-    )
+    expected_references = [
+        path
+        for path in _AURORA_PLANNER_PROTOCOL_FILES
+        if path.startswith("references/")
+    ]
 
     markers = [f"--- BEGIN {relative} ---" for relative in expected_references]
     assert "--- BEGIN SKILL.md ---" in prompt
@@ -492,6 +494,9 @@ def test_domestic_planner_loads_every_pinned_reference_in_stable_order() -> None
     assert [prompt.index(marker) for marker in markers] == sorted(
         prompt.index(marker) for marker in markers
     )
+    # The planner prompt is intentionally bounded. The executor independently
+    # verifies the complete Skill source/manifest before issuing a gateway call.
+    assert "--- BEGIN references/category-router.md ---" not in prompt
 
 
 def test_crossborder_detail_flag_switches_only_the_international_real_route(

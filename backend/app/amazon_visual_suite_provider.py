@@ -863,7 +863,12 @@ class AmazonVisualSuiteProvider:
             plan_context=plan_context,
         )
         item_ordinal = AMAZON_ITEM_KEYS.index(spec.item_key)
-        prompt_input = _amazon_prompt_input(job_configuration, spec, plan_context)
+        prompt_input = _amazon_prompt_input(
+            job_configuration,
+            spec,
+            plan_context,
+            qa_redraw=item_configuration.get("qa_redraw"),
+        )
         aspect_ratio = _aspect_ratio(spec.width, spec.height)
         adapter_configuration = {
             "schema_version": AMAZON_ADAPTER_CONTRACT_VERSION,
@@ -1107,6 +1112,8 @@ def _amazon_prompt_input(
     job_configuration: Mapping[str, Any],
     spec: AmazonItemSpec,
     plan_context: Mapping[str, Any],
+    *,
+    qa_redraw: object = None,
 ) -> dict[str, Any]:
     """Compile one standalone prompt using only the original Skill contract."""
 
@@ -1171,6 +1178,19 @@ def _amazon_prompt_input(
             "Do not return an empty or pure-color canvas and do not remove the product.",
             "Do not add lifestyle context, props, badges, ratings, claims, icons, new text, fake packaging, or accessories not shown or provided.",
         ]
+    if isinstance(qa_redraw, Mapping):
+        retry_guidance = qa_redraw.get("retry_guidance")
+        summary = qa_redraw.get("summary")
+        if isinstance(retry_guidance, str) and retry_guidance.strip():
+            main_constraints.append(
+                "QA redraw correction (follow this targeted fix): "
+                + retry_guidance.strip()[:500]
+            )
+        if isinstance(summary, str) and summary.strip():
+            main_constraints.append(
+                "QA redraw context (preserve all other approved requirements): "
+                + summary.strip()[:500]
+            )
     return compact_prompt_input(
         {
             "marketplace": optional_string(

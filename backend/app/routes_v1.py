@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
+from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
 from .auth import (
     Principal,
     WorkspaceDependency,
@@ -47,6 +48,7 @@ from .domain import (
     JobItemStatus,
     JobStatus,
     JobType,
+    MembershipRole,
     MembershipStatus,
     PlanValidationStatus,
     RetryScope,
@@ -91,6 +93,7 @@ from .schemas_v1 import (
     DomesticMainImageJobCreate,
     DraftJobUpdate,
     ErrorResponse,
+    FinalizeJobRequest,
     JobCreate,
     JobDetailResponse,
     JobListResponse,
@@ -591,6 +594,18 @@ def _development_provider_response(
         and settings.auth_mode == "development",
         configured=configured,
         task_runner=settings.task_runner,
+        product_image_provider_enabled=settings.product_image_provider_enabled,
+        reference_remix_provider_enabled=settings.reference_remix_provider_enabled,
+        model_pose_transfer_provider_enabled=(
+            settings.model_pose_transfer_provider_enabled
+        ),
+        creative_image_provider_enabled=settings.creative_image_provider_enabled,
+        amazon_visual_suite_provider_enabled=(
+            settings.amazon_visual_suite_provider_enabled
+        ),
+        crossborder_detail_provider_enabled=(
+            settings.crossborder_detail_provider_enabled
+        ),
         domestic_main_image_provider_enabled=(
             settings.domestic_main_image_provider_enabled
         ),
@@ -656,6 +671,19 @@ def update_development_provider_settings(
             "DEVELOPMENT_PROVIDER_SETTINGS_UNAVAILABLE",
             "开发者生图配置入口不可用。",
         )
+    # The API and a Celery worker are separate processes. Mutating only
+    # ``request.app.state`` would make the API advertise provider readiness
+    # while the already-started worker continued using its old runner and
+    # flags. Require an inline runner for this in-process developer switch;
+    # Celery deployments must update the shared compose environment and
+    # restart API + worker together.
+    if settings.task_dispatcher != "inline":
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DEVELOPMENT_PROVIDER_SETTINGS_REQUIRES_WORKER_RESTART",
+            "当前使用异步 worker，不能只在 API 进程内启用生图。"
+            "请更新 API 与 worker 共用的环境配置后一起重启。",
+        )
     values = (
         payload.api_key,
         payload.base_url,
@@ -671,12 +699,17 @@ def update_development_provider_settings(
     candidate = settings.model_copy(deep=True)
     candidate.task_runner = "tengli"
     # The development provider settings endpoint is the single local entry
-    # point for enabling the Tengli-backed image workflows. Keep the existing
-    # domestic-main-image capability enabled, and also enable the two image
-    # workflows exposed by the standalone Inspiration tab. This does not
-    # change any job contracts or production configuration.
+    # point for enabling the Tengli-backed image workflows. Keep all Skill
+    # provider switches in the same candidate so an inline development runner
+    # cannot report a partially enabled surface. Celery deployments are
+    # rejected above until the shared environment is changed and both
+    # processes are restarted.
+    candidate.product_image_provider_enabled = True
     candidate.reference_remix_provider_enabled = True
+    candidate.model_pose_transfer_provider_enabled = True
     candidate.creative_image_provider_enabled = True
+    candidate.amazon_visual_suite_provider_enabled = True
+    candidate.crossborder_detail_provider_enabled = True
     candidate.domestic_main_image_provider_enabled = True
     candidate.tengli_api_key = SecretStr(payload.api_key.strip())
     candidate.tengli_base_url = payload.base_url.strip()
@@ -696,8 +729,12 @@ def update_development_provider_settings(
             candidate.development_provider_env_file,
             {
                 "POLARIS_TASK_RUNNER": "tengli",
+                "POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED": "true",
                 "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED": "true",
+                "POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED": "true",
                 "POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED": "true",
+                "POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED": "true",
+                "POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED": "true",
                 "POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED": "true",
                 "POLARIS_TENGLI_API_KEY": payload.api_key.strip(),
                 "POLARIS_TENGLI_BASE_URL": candidate.tengli_base_url,
@@ -717,7 +754,7 @@ def update_development_provider_settings(
     request.app.state.task_runner = runner
     return _development_provider_response(
         candidate,
-        "真实六图 Provider 已在本机启用；请重新运行原 Mock 任务。",
+        "全部 Skill Provider 已在当前 inline runner 启用；请重新提交真实素材任务。",
     )
 
 
@@ -742,7 +779,7 @@ def list_workspaces(
         WorkspaceResponse(
             id=workspace.id,
             name=workspace.name,
-            role=membership.role,
+            role=MembershipRole(membership.role),
         )
         for workspace, membership in rows
     ]
@@ -2127,15 +2164,46 @@ def update_plan(
             "PLAN_REVISION_CONFLICT",
             "计划已更新，请刷新后重试。",
         )
-    validation_errors = _validate_plan_payload(job, payload.payload)
+    editable_payload = dict(payload.payload)
+    settings = (
+        job.configuration.get("settings")
+        if isinstance(job.configuration, Mapping)
+        else None
+    )
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and isinstance(settings, Mapping)
+        and settings.get("market_region") == "domestic"
+    ):
+        # Rebind the campaign approval document whenever the plan is edited;
+        # an old approval fingerprint may never authorize changed pages.
+        from .xinghe_agent import compile_aurora_campaign_approval_document
+
+        groups = editable_payload.get("groups")
+        pages = editable_payload.get("pages")
+        if isinstance(groups, list) and isinstance(pages, list):
+            approval_document = compile_aurora_campaign_approval_document(
+                group_plans=[group for group in groups if isinstance(group, Mapping)],
+                pages=[page for page in pages if isinstance(page, Mapping)],
+                page_count=int(settings.get("page_count", 0)),
+            )
+            aurora = editable_payload.get("aurora_v4_3")
+            if isinstance(aurora, dict):
+                aurora = dict(aurora)
+                aurora["approval_document_markdown"] = approval_document
+                aurora["approval_document_sha256"] = hashlib.sha256(
+                    approval_document.encode("utf-8")
+                ).hexdigest()
+                editable_payload["aurora_v4_3"] = aurora
+    validation_errors = _validate_plan_payload(job, editable_payload)
     plan = JobPlanRecord(
         id=new_id("plan"),
         workspace_id=workspace.workspace_id,
         job_id=job.id,
         revision=current.revision + 1,
         schema_version="v1",
-        payload=payload.payload,
-        payload_hash=canonical_hash(payload.payload),
+        payload=editable_payload,
+        payload_hash=canonical_hash(editable_payload),
         validation_status=(
             PlanValidationStatus.INVALID.value
             if validation_errors
@@ -2210,6 +2278,41 @@ def confirm_plan(
             "JOB_NOT_AWAITING_CONFIRMATION",
             "任务当前状态不允许确认计划。",
         )
+    _ensure_detail_skill_provider_enabled(request, job)
+    if job.type == JobType.DETAIL_PACK.value:
+        settings = job.configuration.get("settings")
+        if isinstance(settings, dict) and settings.get("market_region") == "domestic":
+            aurora = plan.payload.get("aurora_v4_3")
+            if (
+                not isinstance(payload.approval_text, str)
+                or len(payload.approval_text.strip()) < 2
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "AURORA_APPROVAL_TEXT_REQUIRED",
+                    "请明确确认已审阅完整的 group→screen 审批包。",
+                )
+            if (
+                not isinstance(aurora, dict)
+                or aurora.get("approval_required") is not True
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "AURORA_APPROVAL_PACKET_MISSING",
+                    "Aurora 详情图必须先生成完整的 group→screen 审批包。",
+                )
+            if (
+                payload.approval_document_sha256
+                != aurora.get("approval_document_sha256")
+                or payload.approved_module_count != aurora.get("approved_module_count")
+                or payload.approved_pair_canvas_aspect_ratio
+                != aurora.get("approved_pair_canvas_aspect_ratio")
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "AURORA_APPROVAL_PACKET_MISMATCH",
+                    "审批包指纹、屏数或 3:8 pair 画布比例不匹配。",
+                )
     if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
         settings = request.app.state.settings
         if (
@@ -2233,6 +2336,11 @@ def confirm_plan(
                 "job_id": job.id,
                 "expected_revision": payload.expected_revision,
                 "approval_text": payload.approval_text,
+                "approval_document_sha256": payload.approval_document_sha256,
+                "approved_module_count": payload.approved_module_count,
+                "approved_pair_canvas_aspect_ratio": (
+                    payload.approved_pair_canvas_aspect_ratio
+                ),
             }
         ),
     )
@@ -2305,6 +2413,342 @@ def confirm_plan(
     session.commit()
     _schedule_outbox(request, background_tasks)
     return job_detail_response(session, job)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+    response_model=JobDetailResponse,
+    tags=["jobs"],
+)
+def finalize_domestic_main_image(
+    job_id: str,
+    payload: FinalizeJobRequest,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    """Record the user's complete-set approval through the native v2 Harness."""
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    detail_settings = (
+        job.configuration.get("settings")
+        if isinstance(job.configuration, Mapping)
+        else None
+    )
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and isinstance(detail_settings, Mapping)
+        and detail_settings.get("market_region") == "domestic"
+    ):
+        if JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "JOB_NOT_AWAITING_FINAL_REVIEW",
+                "国内详情图尚未进入最终审核阶段。",
+            )
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        links = session.scalars(
+            select(JobAssetRecord)
+            .where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                JobAssetRecord.is_deliverable.is_(True),
+            )
+            .order_by(JobAssetRecord.ordinal)
+        ).all()
+        if plan is None or len(links) != job.expected_item_count:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "AURORA_DETAIL_AUDIT_INCOMPLETE",
+                "详情图 pair 审计产物尚未完整，不能最终交付。",
+            )
+        if (
+            not isinstance(payload.approval_text, str)
+            or len(payload.approval_text.strip()) < 2
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "AURORA_FINAL_APPROVAL_TEXT_REQUIRED",
+                "请明确确认已完成详情图最终审核。",
+            )
+        idem, replay = claim_idempotency(
+            session,
+            workspace_id=workspace.workspace_id,
+            actor_user_id=workspace.principal.user_id,
+            method="POST",
+            route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+            idempotency_key=key,
+            request_hash=canonical_hash(
+                {"job_id": job.id, "approval_text": payload.approval_text}
+            ),
+        )
+        if replay:
+            return job_detail_response(session, job)
+        pair_audits_by_id: dict[str, Mapping[str, Any]] = {}
+        pair_canvas_refs_by_id: dict[str, dict[str, Any]] = {}
+        for link in links:
+            validation = link.validation
+            if not isinstance(validation, Mapping):
+                continue
+            audit = validation.get("pair_audit")
+            if not isinstance(audit, Mapping):
+                continue
+            pair_id = str(
+                audit.get("pair_id") or validation.get("aurora_pair_id") or ""
+            )
+            if not pair_id:
+                continue
+            pair_audits_by_id.setdefault(pair_id, audit)
+            pair_canvas_refs_by_id.setdefault(
+                pair_id,
+                {
+                    "pair_id": pair_id,
+                    "object_key": validation.get("aurora_pair_canvas_object_key"),
+                    "sha256": validation.get("aurora_pair_canvas_sha256"),
+                    "storage": validation.get("aurora_pair_canvas_storage"),
+                },
+            )
+        pair_audits = list(pair_audits_by_id.values())
+        pair_canvas_asset_refs = list(pair_canvas_refs_by_id.values())
+        expected_pair_count = max(1, job.expected_item_count // 2)
+        if (
+            len(pair_audits) != expected_pair_count
+            or len(pair_canvas_asset_refs) != expected_pair_count
+            or any(
+                not ref["object_key"] or not ref["sha256"]
+                for ref in pair_canvas_asset_refs
+            )
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "AURORA_DETAIL_AUDIT_INCOMPLETE",
+                "详情图 pair 画布引用或审计记录尚未完整，不能最终交付。",
+            )
+        plan_payload = dict(plan.payload)
+        aurora = dict(plan_payload.get("aurora_v4_3") or {})
+        final_manifest = {
+            "skill_id": "aurora-domestic-ecommerce-detail-page",
+            "version": "4.3.0",
+            "state": "FINALIZED",
+            "approval_text": payload.approval_text,
+            "pair_canvas_aspect_ratio": "3:8",
+            "decomposition_window_aspect_ratio": "3:4",
+            "pair_audits": pair_audits,
+            "pair_canvas_asset_refs": pair_canvas_asset_refs,
+            "page_asset_refs": [link.asset_id for link in links],
+            "delivery": "USER_FINAL_REVIEW",
+            "semantic_audit_disclosure": (
+                "STRUCTURAL_PIXEL_GATE_ONLY; semantic review accepted by user"
+            ),
+        }
+        aurora["delivery"] = final_manifest
+        plan_payload["aurora_v4_3"] = aurora
+        plan_payload["final_manifest"] = final_manifest
+        plan.payload = plan_payload
+        plan.payload_hash = canonical_hash(plan_payload)
+        complete_idempotency(
+            idem, resource_type="job", resource_id=job.id, response_status=200
+        )
+        transition_job(job, JobStatus.COMPLETED, stage="completed", progress=100)
+        session.commit()
+        return job_detail_response(session, job)
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and isinstance(detail_settings, Mapping)
+        and detail_settings.get("market_region") == "international"
+    ):
+        if JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "JOB_NOT_AWAITING_FINAL_REVIEW",
+                "跨境详情图尚未进入人工 QA 审核阶段。",
+            )
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        links = session.scalars(
+            select(JobAssetRecord)
+            .where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                JobAssetRecord.is_deliverable.is_(True),
+            )
+            .order_by(JobAssetRecord.ordinal)
+        ).all()
+        if plan is None or len(links) != job.expected_item_count:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "CROSSBORDER_DETAIL_QA_INCOMPLETE",
+                "跨境详情图产物尚未完整，不能确认人工 QA。",
+            )
+        if (
+            not isinstance(payload.approval_text, str)
+            or len(payload.approval_text.strip()) < 2
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "CROSSBORDER_DETAIL_QA_APPROVAL_REQUIRED",
+                "请明确确认已完成跨境详情图 QA 审阅。",
+            )
+        idem, replay = claim_idempotency(
+            session,
+            workspace_id=workspace.workspace_id,
+            actor_user_id=workspace.principal.user_id,
+            method="POST",
+            route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+            idempotency_key=key,
+            request_hash=canonical_hash(
+                {"job_id": job.id, "approval_text": payload.approval_text}
+            ),
+        )
+        if replay:
+            return job_detail_response(session, job)
+        plan_payload = dict(plan.payload)
+        qa_review = {
+            "status": "approved",
+            "mode": "disclosure_and_selection",
+            "manual_review_required": False,
+            "approval_text": payload.approval_text.strip(),
+            "reviewed_asset_ids": [link.asset_id for link in links],
+        }
+        final_manifest = {
+            "skill_id": "xinghe-crossborder-detail-3",
+            "platform_code": detail_settings.get("platform_code"),  # type: ignore[dict-item]
+            "page_asset_refs": [link.asset_id for link in links],
+            "delivery": "USER_MANUAL_QA_APPROVAL",
+            "qa_review": qa_review,  # type: ignore[dict-item]
+        }
+        plan_payload["crossborder_quality_review"] = qa_review
+        plan_payload["crossborder_final_manifest"] = final_manifest
+        plan.payload = plan_payload
+        plan.payload_hash = canonical_hash(plan_payload)
+        complete_idempotency(
+            idem, resource_type="job", resource_id=job.id, response_status=200
+        )
+        transition_job(job, JobStatus.COMPLETED, stage="completed", progress=100)
+        session.commit()
+        return job_detail_response(session, job)
+    if job.type != JobType.DOMESTIC_MAIN_IMAGE.value:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_FINALIZE_UNSUPPORTED",
+            "只有国内主图六图任务支持 Aurora 最终批准。",
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    policy = plan.payload.get("execution_policy") if plan else None
+    mode = policy.get("execution_mode") if isinstance(policy, Mapping) else None
+    if plan is None or not is_v20_aurora_mode(mode):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_FINALIZE_REQUIRES_V20",
+            "只有 Aurora v2.0 执行链支持最终批准。",
+        )
+
+    from .aurora_main_image_runtime import (
+        AuroraHarnessError,
+        AuroraV20HarnessRunner,
+        write_contract,
+    )
+
+    set_session = plan.payload.get(
+        "_parallel_v20_set_session"
+        if is_parallel_aurora_mode(mode)
+        else "_sequential_v20_set_session"
+    )
+    if not isinstance(set_session, Mapping):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_SET_AUDIT_MISSING",
+            "完整六图审计尚未完成，不能最终批准。",
+        )
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+        idempotency_key=key,
+        request_hash=canonical_hash(
+            {"job_id": job.id, "approval_text": payload.approval_text}
+        ),
+    )
+    if replay:
+        # Approval is durably recorded before cost settlement; a retry can
+        # complete settlement if the first response was interrupted.
+        coordinator = getattr(request.app.state.task_runner, "coordinator", None)
+        if JobStatus(job.status) == JobStatus.AWAITING_FINAL_REVIEW and coordinator:
+            session.commit()
+            coordinator.finalize_job(job.id)
+            session.expire_all()
+        return job_detail_response(session, job)
+    if JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "JOB_NOT_AWAITING_FINAL_REVIEW",
+            "任务当前状态不允许最终批准。",
+        )
+    coordinator = getattr(request.app.state.task_runner, "coordinator", None)
+    if coordinator is None:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "AURORA_FINALIZE_COORDINATOR_UNAVAILABLE",
+            "任务执行协调器当前不可用，暂不能完成最终批准。",
+        )
+    workspace_root = (request.app.state.settings.aurora_work_root / job.id).resolve()
+    set_dir = "parallel-v20" if is_parallel_aurora_mode(mode) else "sequential-v20"
+    finalize_workspace = workspace_root / set_dir / "set-audit"
+    finalize_workspace.mkdir(parents=True, exist_ok=True)
+    session_path = finalize_workspace / "session.json"
+    output_path = finalize_workspace / "final-manifest.json"
+    write_contract(session_path, dict(set_session))
+    try:
+        AuroraV20HarnessRunner().run(
+            "finalize",
+            finalize_workspace,
+            {
+                "session": session_path,
+                "output": output_path,
+                "approval-text": payload.approval_text,
+            },
+        )
+    except (AuroraHarnessError, OSError, ValueError) as exc:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "AURORA_FINALIZE_FAILED",
+            "Aurora 最终批准未能写入 Harness。",
+            {"reason": getattr(exc, "code", type(exc).__name__)},
+        ) from exc
+
+    plan_payload = dict(plan.payload)
+    finalized_session = json.loads(session_path.read_text(encoding="utf-8"))
+    plan_payload["_harness_session"] = finalized_session
+    plan_payload["final_manifest"] = str(output_path)
+    plan_payload["harness_state"] = finalized_session.get("state")
+    plan.payload = plan_payload
+    plan.payload_hash = canonical_hash(plan_payload)
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=200
+    )
+    session.commit()
+    coordinator.finalize_job(job.id)
+    session.expire_all()
+    finalized_job = get_workspace_job(session, workspace.workspace_id, job.id)
+    return job_detail_response(session, finalized_job)
 
 
 def _validate_model_pose_transfer_assets(
@@ -2488,7 +2932,7 @@ _REAL_PROVIDER_ENABLE_FLAGS = {
 _AMAZON_INITIAL_IMAGE_REQUESTS = AMAZON_EXPECTED_ITEM_COUNT
 _AMAZON_MAX_REDRAW_REQUESTS = AMAZON_EXPECTED_ITEM_COUNT
 _AMAZON_PLANNER_REQUESTS = 1
-_AMAZON_MAX_SUITE_REVIEW_REQUESTS = 2
+_AMAZON_MAX_SUITE_REVIEW_REQUESTS = 8
 _AMAZON_PROVIDER_REQUEST_ENVELOPE = (
     _AMAZON_INITIAL_IMAGE_REQUESTS
     + _AMAZON_MAX_REDRAW_REQUESTS
@@ -2512,6 +2956,38 @@ _AURORA_PROVIDER_REQUEST_ENVELOPE = (
 )
 
 
+def _ensure_detail_skill_provider_enabled(request: Request, job: JobRecord) -> None:
+    """Prevent international detail jobs from falling back to the legacy Skill."""
+
+    settings = request.app.state.settings
+    if settings.task_runner != "tengli" or job.type != JobType.DETAIL_PACK.value:
+        return
+    configuration = job.configuration if isinstance(job.configuration, dict) else {}
+    detail_settings = configuration.get("settings")
+    market_region = (
+        str(detail_settings.get("market_region", "international"))
+        .strip()
+        .lower()
+        .replace("-", "_")
+        if isinstance(detail_settings, Mapping)
+        else "international"
+    )
+    if market_region == "domestic" or bool(
+        getattr(settings, "crossborder_detail_provider_enabled", False)
+    ):
+        return
+    raise ApiError(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        "REAL_PROVIDER_NOT_REGISTERED",
+        "The cross-border detail Skill Provider is not enabled.",
+        {
+            "job_type": job.type,
+            "capability": "crossborder_detail",
+            "provider_called": False,
+        },
+    )
+
+
 def _reserve_real_provider_job_if_enabled(
     session: Session,
     request: Request,
@@ -2532,6 +3008,7 @@ def _reserve_real_provider_job_if_enabled(
             {"job_type": job.type, "provider_called": False},
         )
     configuration = job.configuration if isinstance(job.configuration, dict) else {}
+    _ensure_detail_skill_provider_enabled(request, job)
     input_configuration = configuration.get("input")
     group_count = 0
     if job.type == JobType.DETAIL_PACK.value and isinstance(input_configuration, dict):
@@ -2570,7 +3047,7 @@ def _reserve_real_provider_job_if_enabled(
         # one audit per attempt, first-pair style calibration and final set audit.
         transient_retry_count = (
             settings.aurora_max_transient_retries
-            if settings.aurora_execution_mode == "parallel_v20"
+            if is_parallel_aurora_mode(settings.aurora_execution_mode)
             else 0
         )
         estimated_cost = (
@@ -2586,30 +3063,52 @@ def _reserve_real_provider_job_if_enabled(
         # Reference remix now performs one bounded vision-analysis call before
         # the image edit so the Skill's composition skeleton reaches the image
         # model. Reserve both calls before dispatching the job.
-        estimated_cost = image_cost + settings.tengli_planner_reserve_micros
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 2
         provider_requests = (
             runnable_item_count
             if runnable_item_count is not None
             else job.expected_item_count
-        ) + 1
+        ) * 2 + 2
         group_count = 1
     elif enable_flag is not None:
-        estimated_cost = image_cost
+        estimated_cost = image_cost * 2
         provider_requests = (
             runnable_item_count
             if runnable_item_count is not None
             else job.expected_item_count
-        )
+        ) * 2
+        if job.type == JobType.CREATIVE_IMAGE.value:
+            estimated_cost += settings.tengli_planner_reserve_micros * 2
+            provider_requests += 2
     elif job.type == JobType.DETAIL_PACK.value:
-        estimated_cost = (
-            image_cost * 2 + group_count * settings.tengli_planner_reserve_micros
-        )
-        provider_requests = job.expected_item_count * 2 + group_count
+        detail_settings = configuration.get("settings") or {}
+        if (
+            isinstance(detail_settings, Mapping)
+            and detail_settings.get("market_region") == "domestic"
+        ):
+            # Initial campaign + one root repair + one completion per module +
+            # one Harness preflight repair; each pair has at most two images
+            # and two actual-pixel reviews, each with at most one targeted
+            # same-image identity-envelope review. Reserve the full bound.
+            page_count = int(detail_settings.get("page_count") or 8)
+            authoring_requests = group_count * (page_count + 3)
+            review_requests = job.expected_item_count * 2
+            planner_requests = authoring_requests + review_requests
+            estimated_cost = (
+                image_cost * 2
+                + planner_requests * settings.tengli_planner_reserve_micros
+            )
+            provider_requests = planner_requests + job.expected_item_count
+        else:
+            estimated_cost = (
+                image_cost * 2 + group_count * settings.tengli_planner_reserve_micros
+            )
+            provider_requests = job.expected_item_count * 2 + group_count
     else:
-        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros
-        # Masked repair can make up to two edit calls and two visual-review
-        # calls. Reserve the full fail-closed request envelope.
-        provider_requests = 4
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 4
+        # Two edit calls plus up to four reviews, including same-candidate
+        # recovery. Review recovery never regenerates the saved image.
+        provider_requests = 6
     reserve_provider_job_quota(
         session,
         job=job,
@@ -2654,17 +3153,17 @@ def _job_item_configuration(
     *,
     inspiration_workflow: bool = False,
 ) -> dict[str, object]:
-    # Inspiration's single-image providers execute one durable JobItem per
-    # requested output. Preserve the durable identity in the item envelope so
-    # image_count=N does not make every adapter request look like image-001.
-    # The caller gates this by the Inspiration-only configuration markers;
-    # other tabs retain their existing item configuration contract.
-    if job_type == JobType.REFERENCE_REMIX.value and inspiration_workflow:
-        return {
-            "item_key": _job_item_key(job_type, ordinal),
-            "ordinal": ordinal,
-        }
-    if job_type == JobType.CREATIVE_IMAGE.value and inspiration_workflow:
+    # Every independent single-image provider executes one durable JobItem per
+    # requested output. Preserve that identity in the item envelope so
+    # image_count=N never makes every adapter request look like image-001. The
+    # inspiration_workflow flag remains part of the signature for compatibility
+    # with callers that use it to select the page-level contract.
+    if job_type in {
+        JobType.PRODUCT_IMAGE.value,
+        JobType.REFERENCE_REMIX.value,
+        JobType.MODEL_POSE_TRANSFER.value,
+        JobType.CREATIVE_IMAGE.value,
+    }:
         return {
             "item_key": _job_item_key(job_type, ordinal),
             "ordinal": ordinal,
@@ -2803,6 +3302,13 @@ def _copy_job_relations_for_retry(
         .where(JobItemRecord.job_id == source.id)
         .order_by(JobItemRecord.ordinal)
     ).all()
+    regenerated_pairs = {
+        item.configuration.get("pair_id")
+        for item in source_items
+        if item.id in selected
+        and isinstance(item.configuration, Mapping)
+        and str(item.configuration.get("pair_position")) == "1"
+    }
     item_map: dict[str, str] = {}
     preserved_set_audit_ids = {
         item_id
@@ -2833,6 +3339,21 @@ def _copy_job_relations_for_retry(
         # session/artifact without regenerating the reused page.
         if source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
             copied_configuration["aurora_parallel_source_job_id"] = source.id
+        elif (
+            source.type == JobType.DETAIL_PACK.value
+            and isinstance(source.configuration, Mapping)
+            and isinstance(source.configuration.get("settings"), Mapping)
+            and source.configuration["settings"].get("market_region") == "domestic"
+            and copied_configuration.get("pair_id")
+        ):
+            # A retry may reuse the first slice of an already successful pair.
+            # Let the second slice rehydrate that exact source-job canvas before
+            # generating any new pair canvas in the retry job.
+            if copied_configuration.get("pair_id") in regenerated_pairs:
+                # Both slices belong to the new job's freshly generated canvas.
+                copied_configuration.pop("aurora_pair_source_job_id", None)
+            else:
+                copied_configuration["aurora_pair_source_job_id"] = source.id
         session.add(
             JobItemRecord(
                 id=new_item_id,
@@ -2901,6 +3422,42 @@ def _copy_job_relations_for_retry(
         if source_plan is not None and source_plan.confirmed_at is not None:
             copied_payload = dict(source_plan.payload)
             copied_payload["state"] = "confirmed"
+            # A transient provider failure can happen after the native v2
+            # harness has issued ``generate-next`` but before an image is
+            # bound.  The source session is then intentionally left in
+            # ``AWAITING_GENERATED_ASSET``.  A user-requested retry has a new
+            # provider idempotency scope, so clear only that unbound pending
+            # call and return to the already authorized page cursor.  This
+            # preserves accepted pages and the immutable plan while ensuring
+            # the retry enters the Skill through a fresh ``generate-next``.
+            provider_failed_source_items = [
+                item
+                for item in source_items
+                if item.id in selected
+                and item.id not in preserved_set_audit_ids
+                and isinstance(item.error_details, dict)
+                and item.error_details.get("provider_outcome") == "failed"
+            ]
+            copied_session = copied_payload.get("_harness_session")
+            execution_policy = copied_payload.get("execution_policy")
+            if (
+                source.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                and is_v20_aurora_mode(
+                    execution_policy.get("execution_mode")
+                    if isinstance(execution_policy, Mapping)
+                    else None
+                )
+                and provider_failed_source_items
+                and isinstance(copied_session, Mapping)
+                and copied_session.get("state") == "AWAITING_GENERATED_ASSET"
+            ):
+                from .aurora_main_image_runtime import (
+                    reset_v20_pending_generation_for_retry,
+                )
+
+                retry_session = reset_v20_pending_generation_for_retry(copied_session)
+                copied_payload["_harness_session"] = retry_session
+                copied_payload["harness_state"] = "AUTHORIZED"
             cost_value = copied_payload.get("cost")
             cost = dict(cost_value) if isinstance(cost_value, dict) else {}
             pending_items = [item for item in source_items if item.id in selected]
@@ -2995,7 +3552,8 @@ def _ensure_parallel_aurora_retry_snapshots(
         return
     policy = plan.payload.get("execution_policy")
     if not (
-        isinstance(policy, dict) and policy.get("execution_mode") == "parallel_v20"
+        isinstance(policy, dict)
+        and is_parallel_aurora_mode(policy.get("execution_mode"))
     ):
         return
     items = session.scalars(
@@ -3010,6 +3568,7 @@ def _ensure_parallel_aurora_retry_snapshots(
             "AURORA_RETRY_SNAPSHOT_INCOMPLETE",
             "Aurora 并发重试缺少完整六页条目，无法安全恢复。",
         )
+    calibrated = policy.get("execution_mode") == "parallel_v20_calibrated"
     if all(
         isinstance(item.configuration, dict)
         and isinstance(item.configuration.get("aurora_snapshot"), dict)
@@ -3027,13 +3586,31 @@ def _ensure_parallel_aurora_retry_snapshots(
     from .aurora_main_image_runtime import AuroraV20HarnessRunner
 
     workspace = (work_root / job.id).resolve()
+    missing_indexes = tuple(
+        item.ordinal
+        for item in items
+        if not (
+            isinstance(item.configuration, dict)
+            and isinstance(item.configuration.get("aurora_snapshot"), dict)
+        )
+    )
+    if calibrated:
+        if plan.payload.get("_parallel_v20_style_calibrated") is True:
+            allowed_indexes = missing_indexes
+        elif plan.payload.get("_parallel_v20_search_calibrated") is True:
+            allowed_indexes = tuple(index for index in missing_indexes if index == 1)
+        else:
+            allowed_indexes = tuple(index for index in missing_indexes if index == 0)
+    else:
+        allowed_indexes = tuple(range(6))
     _persist_parallel_v20_snapshots(
         plan,
         job,
         workspace,
         authorized_session,
         AuroraV20HarnessRunner(),
-        page_indexes=tuple(range(6)),
+        page_indexes=allowed_indexes,
+        execution_mode=str(policy.get("execution_mode") or "parallel_v20"),
     )
 
 
@@ -3055,7 +3632,56 @@ def _validate_plan_payload(
     if job.type == JobType.DETAIL_PACK.value:
         from .xinghe_agent import validate_editable_plan_payload
 
-        return validate_editable_plan_payload(payload, job.expected_item_count)
+        errors = validate_editable_plan_payload(payload, job.expected_item_count)
+        settings = (
+            job.configuration.get("settings")
+            if isinstance(job.configuration, Mapping)
+            else None
+        )
+        if (
+            isinstance(settings, Mapping)
+            and settings.get("market_region") == "domestic"
+        ):
+            aurora = payload.get("aurora_v4_3")
+            if not isinstance(aurora, Mapping):
+                errors.append(
+                    {
+                        "field": "aurora_v4_3",
+                        "message": "Aurora approval packet is required.",
+                    }
+                )
+            elif (
+                aurora.get("approved_module_count") != settings.get("page_count")
+                or aurora.get("approved_pair_canvas_aspect_ratio") != "3:8"
+                or not isinstance(aurora.get("approval_document_sha256"), str)
+            ):
+                errors.append(
+                    {
+                        "field": "aurora_v4_3",
+                        "message": "Aurora pair approval contract is invalid.",
+                    }
+                )
+            groups = payload.get("groups")
+            plan_protocol = (
+                groups[0].get("plan_protocol_fields")
+                if isinstance(groups, list)
+                and groups
+                and isinstance(groups[0], Mapping)
+                else None
+            )
+            aurora_plan = (
+                plan_protocol.get("aurora_plan")
+                if isinstance(plan_protocol, Mapping)
+                else None
+            )
+            if not isinstance(aurora_plan, Mapping):
+                errors.append(
+                    {
+                        "field": "groups.0.plan_protocol_fields.aurora_plan",
+                        "message": "Full Aurora compact plan is required.",
+                    }
+                )
+        return errors
     if job.type == JobType.AMAZON_VISUAL_SUITE.value:
         from .amazon_visual_suite_provider import (
             validate_editable_amazon_plan_payload,

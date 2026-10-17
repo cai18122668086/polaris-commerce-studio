@@ -39,6 +39,7 @@ KNOWN_SKILLS = {
     "ecommerce-model-pose-transfer",
     "xinghe-ecommerce-creative-image",
     "xinghe-ecommerce-detail-domestic-3",
+    "aurora-domestic-ecommerce-detail-page",
     "xinghe-crossborder-detail-3",
     "xinghe-amazon-visual-suite",
     "aurora-domestic-ecommerce-main-image",

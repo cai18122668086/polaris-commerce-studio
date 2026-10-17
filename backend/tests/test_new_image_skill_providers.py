@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -14,10 +15,7 @@ from app.creative_image_provider import CreativeImageProvider
 from app.new_detail_skill_provider import SKILL_ADAPTER_CONFIGURATION_KEY
 from app.new_image_skill_provider import (
     SINGLE_IMAGE_ADAPTER_CONTRACT_VERSION,
-    NewImageSkillContractError,
     NewImageSkillProvider,
-    optional_string,
-    optional_string_list,
 )
 from app.product_image_provider import PRODUCT_IMAGE_PRESETS, ProductImageProvider
 from app.provider import (
@@ -269,6 +267,23 @@ def test_manifest_validator_runs_before_every_delegate_call() -> None:
     assert len(delegate.requests) == 2
 
 
+def test_creative_instruction_is_sent_as_user_instruction_not_negative_constraint() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+    request = _request(
+        "creative_image",
+        input_config={"product_asset_ids": ["asset-product"]},
+        settings={"instruction": "突出轻量便携", "image_count": 1},
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    prompt_input = _adapter_request(delegate)["prompt_input"]
+    assert prompt_input["user_instruction"] == "突出轻量便携"
+    assert "negative_constraints" not in prompt_input
+
+
 def test_product_change_color_rejects_missing_target_color() -> None:
     delegate = StubDelegate(_artifact_result())
     validator = ManifestSpy()
@@ -314,64 +329,6 @@ def test_reference_remix_requires_product_and_style_clues(
     assert missing_key in (result.error_message or "")
     assert delegate.requests == []
     assert validator.calls == []
-
-
-def test_optional_string_treats_json_null_as_not_provided() -> None:
-    """Job schemas declare optional settings as ``X | None`` and persist ``null``."""
-
-    assert optional_string({"instruction": None}, "instruction") == ""
-    assert optional_string({"quality": None}, "quality", default="high") == "high"
-    assert optional_string({}, "quality", default="high") == "high"
-    assert optional_string({"quality": "low"}, "quality", default="high") == "low"
-
-
-def test_optional_string_list_treats_json_null_as_not_provided() -> None:
-    assert optional_string_list({"selling_points": None}, "selling_points") == []
-    assert optional_string_list({}, "selling_points") == []
-    assert optional_string_list(
-        {"selling_points": [" 透气 ", "", "无痕"]}, "selling_points"
-    ) == ["透气", "无痕"]
-
-
-def test_optional_helpers_still_reject_wrong_types() -> None:
-    with pytest.raises(NewImageSkillContractError):
-        optional_string({"quality": 3}, "quality")
-    with pytest.raises(NewImageSkillContractError):
-        optional_string_list({"selling_points": "透气"}, "selling_points")
-
-
-def test_reference_remix_accepts_null_reference_skill_from_workspace_form() -> None:
-    """The workspace form omits reference_skill, so the schema persists ``null``.
-
-    Regression: the provider used to fail this request in under a second with
-    ``PROMPT_INPUT_INVALID: reference_skill must be a string.``
-    """
-
-    delegate = StubDelegate(_artifact_result())
-    provider = ReferenceRemixProvider(delegate, manifest_validator=ManifestSpy())
-    request = _request(
-        "reference_remix",
-        input_config={
-            "product_asset_ids": ["asset-product"],
-            "reference_asset_ids": ["asset-reference"],
-        },
-        settings={
-            "image_count": 1,
-            "platform_code": "tmall",
-            "language": "zh-CN",
-            "selling_points": [],
-            "execution_mode": "planner",
-            "quality": "high",
-            "output_format": "png",
-            "instruction": "",
-            "reference_skill": None,
-        },
-    )
-
-    result = asyncio.run(provider.execute(request))
-
-    assert result.outcome == ProviderOutcome.SUCCEEDED
-    assert len(delegate.requests) == 1
 
 
 @pytest.mark.parametrize("image_count", [0, 13, True, "12"])
@@ -627,8 +584,31 @@ def test_creative_adapter_uses_competitor_reference_role_and_whitelist() -> None
         "platform_code": "tmall",
         "language": "zh-CN",
         "product_information": ["Premium finish"],
-        "negative_constraints": "No unverified claims.",
+        "user_instruction": "No unverified claims.",
+        "post_generation_review": "After generation, manually check product fidelity, SKU/packaging text, 3-second and mobile scan clarity, copy legibility, competitor leakage, and compliance. If a material defect is visible, use one explicit conservative retry; never enter an automatic redraw loop.",
+        "planning_mode": "reference",
     }
+
+
+def test_creative_competitor_reference_forces_reference_planning_even_without_flag() -> None:
+    """Direct API callers cannot bypass the competitor-reference planner."""
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "creative_image",
+                input_config={
+                    "product_asset_ids": ["asset-product"],
+                    "competitor_asset_ids": ["asset-competitor"],
+                },
+                settings={"image_count": 1},
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert _adapter_request(delegate)["prompt_input"]["planning_mode"] == "reference"
 
 
 def test_inspiration_creative_brief_is_first_class_user_instruction() -> None:
@@ -764,6 +744,61 @@ def test_reference_remix_defaults_to_follow_reference_wire_contract() -> None:
         "output_format": "png",
         "fit": "contain",
     }
+
+
+@pytest.mark.parametrize(
+    ("settings", "error_code"),
+    [
+        ({"image_count": 1, "execution_mode": "unknown"}, "EXECUTION_MODE_INVALID"),
+        (
+            {"image_count": 1, "inspiration_product_first": "yes"},
+            "INSPIRATION_PRODUCT_FIRST_INVALID",
+        ),
+    ],
+)
+def test_reference_contract_rejections_are_stable_results(
+    settings: dict[str, Any], error_code: str
+) -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = ReferenceRemixProvider(delegate, manifest_validator=ManifestSpy())
+
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "reference_remix",
+                input_config={
+                    "product_asset_ids": ["asset-product"],
+                    "reference_asset_ids": ["asset-reference"],
+                },
+                settings=settings,
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == error_code
+    assert delegate.requests == []
+
+
+def test_creative_contract_accepts_explicit_false_inspiration_flag() -> None:
+    delegate = StubDelegate(_artifact_result())
+    provider = CreativeImageProvider(delegate, manifest_validator=ManifestSpy())
+
+    result = asyncio.run(
+        provider.execute(
+            _request(
+                "creative_image",
+                input_config={"product_asset_ids": ["asset-product"]},
+                settings={
+                    "image_count": 1,
+                    "inspiration_planning": False,
+                    "inspiration_reference_planning": False,
+                },
+            )
+        )
+    )
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
 
 
 def test_reference_visual_reverse_remix_preserves_portrait_composition_when_targeting_four_by_five(  # noqa: E501

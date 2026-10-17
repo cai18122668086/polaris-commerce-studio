@@ -4,7 +4,8 @@ export type IdempotentOperation =
   | "cancel-job"
   | "retry-job"
   | "clone-job"
-  | "confirm-plan";
+  | "confirm-plan"
+  | "finalize-job";
 
 export class IdempotencyIntentRegistry {
   private readonly keys = new Map<string, string>();

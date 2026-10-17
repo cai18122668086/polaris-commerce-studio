@@ -36,7 +36,7 @@ class ProductionEnvGeneratorTests(unittest.TestCase):
                 "POLARIS_ANNOUNCEMENT_ADMIN_EMAILS": '["admin@example.com"]',
                 "POLARIS_S3_BUCKET": "existing-assets",
                 "POLARIS_TASK_RUNNER": "tengli",
-                "POLARIS_AURORA_EXECUTION_MODE": "parallel_v20",
+                "POLARIS_AURORA_EXECUTION_MODE": "sequential_v20",
                 "POLARIS_AURORA_MAX_TRANSIENT_RETRIES": "2",
                 "POLARIS_AURORA_RETRY_BACKOFF_BASE_SECONDS": "2",
                 "POLARIS_AURORA_RETRY_BACKOFF_MAX_SECONDS": "30",
@@ -65,7 +65,7 @@ class ProductionEnvGeneratorTests(unittest.TestCase):
             values["POLARIS_POSTGRES_PASSWORD"], base["POLARIS_POSTGRES_PASSWORD"]
         )
         self.assertEqual(values["POLARIS_TASK_RUNNER"], "tengli")
-        self.assertEqual(values["POLARIS_AURORA_EXECUTION_MODE"], "parallel_v20")
+        self.assertEqual(values["POLARIS_AURORA_EXECUTION_MODE"], "sequential_v20")
         self.assertEqual(values["POLARIS_AURORA_MAX_TRANSIENT_RETRIES"], "2")
         self.assertEqual(values["POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED"], "true")
         self.assertEqual(values["POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED"], "true")

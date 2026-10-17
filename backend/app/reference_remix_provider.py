@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.new_image_skill_provider import (
+    NewImageSkillContractError,
     NewImageSkillProvider,
     compact_prompt_input,
     configuration_sections,
@@ -51,10 +52,16 @@ class ReferenceRemixProvider(NewImageSkillProvider):
         optional_string(settings, "reference_skill")
         execution_mode = settings.get("execution_mode", "planner")
         if execution_mode not in {"planner", "direct_prompt"}:
-            raise ValueError("execution_mode must be planner or direct_prompt")
+            raise NewImageSkillContractError(
+                "EXECUTION_MODE_INVALID",
+                "execution_mode must be planner or direct_prompt.",
+            )
         inspiration_product_first = settings.get("inspiration_product_first", False)
         if not isinstance(inspiration_product_first, bool):
-            raise ValueError("inspiration_product_first must be a boolean")
+            raise NewImageSkillContractError(
+                "INSPIRATION_PRODUCT_FIRST_INVALID",
+                "inspiration_product_first must be a boolean.",
+            )
         optional_string(settings, "quality", default="high")
         optional_string(settings, "output_format", default="png")
         for field in (

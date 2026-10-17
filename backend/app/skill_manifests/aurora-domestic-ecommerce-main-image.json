@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-main-image",
-  "content_hash": "f2f028dd455393676bc428943360c7e9f4ee143cc1d9e716eb63b98e7ea35181",
+  "content_hash": "8800dd73961a4e3ff92bdf3e7c91adc6899629dc123564f867bc63168c0e65c5",
   "capability": "domestic_main_image",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-main-image.input.v1",
@@ -382,7 +382,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "715d221ee0ceb77cb3df13526f01762c5562c30b2a0ca853bd7e62c47c68e4ec"
+      "sha256": "144cc53369b1f1ff95671707b7ab998ad9c1eee84a4d380ba793c9e8fd24c2bc"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -394,7 +394,7 @@
     },
     {
       "path": "scripts/runtime/quality_engine.py",
-      "sha256": "bfe7b52cdf27e4aa4bc08cd10f924409e451bceb5b45014c77d6526b667ee8c1"
+      "sha256": "c3d2fda47b6b4b37272a72d48101f331a48e340dcd2b3f390f78a5121369607b"
     },
     {
       "path": "scripts/runtime/v013_bridge.py",
@@ -402,7 +402,7 @@
     },
     {
       "path": "scripts/runtime/visual_gate.py",
-      "sha256": "69bc689398c7d1c81cb3dec20f48bca6ad7fb729394bb3df10c555e76e9b0a7c"
+      "sha256": "d12e020c5a1056a775c8ddb57786c2a77edd3d9a778d76c86cdd8e6ec403a136"
     },
     {
       "path": "vendor/attr/__init__.py",

@@ -9,7 +9,7 @@ import {
 } from "../lib/home-feature-visuals.ts";
 
 const root = process.cwd();
-const assetDirectory = path.join(root, "public", "images", "homepage-features", "native-v2-webp");
+const assetDirectory = path.join(root, "public", "images", "homepage-features", "native-v2");
 const utf8 = (file) => readFile(path.join(root, file), "utf8");
 
 const EXPECTED_FEATURE_IDS = [
@@ -31,15 +31,15 @@ const EXPECTED_PRIMARY_PREFIXES = [
 ];
 
 const EXPECTED_FILES = EXPECTED_PRIMARY_PREFIXES.flatMap((prefix) => [
-  `${prefix}-primary-desktop.webp`,
-  `${prefix}-primary-tablet.webp`,
-  `${prefix}-primary-mobile.webp`,
+  `${prefix}-primary-desktop.png`,
+  `${prefix}-primary-tablet.png`,
+  `${prefix}-primary-mobile.png`,
 ]);
 
 const EXPECTED_INPUT_FILES = ["01", "02", "03", "04", "05", "06"].flatMap((prefix) => [
-  `${prefix}-input-desktop.webp`,
-  `${prefix}-input-tablet.webp`,
-  `${prefix}-input-mobile.webp`,
+  `${prefix}-input-desktop.png`,
+  `${prefix}-input-tablet.png`,
+  `${prefix}-input-mobile.png`,
 ]);
 
 function imageDimensions(buffer, file) {

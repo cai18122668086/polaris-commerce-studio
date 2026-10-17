@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from .identity_scope import scope_for_presence, validate_identity_observation
 from .performance_contract import resolve_performance_contract
 from .spatial_contract import resolve_spatial_contract
 from .state import HarnessError, require_fields
@@ -340,45 +341,14 @@ def _eligible_advisory_visual_marks(observations: dict) -> list[str]:
     return eligible
 
 
-def require_identity_silhouette(judgment: dict, context: str, *, allow_material_failure: bool = False) -> None:
-    """Positive identity lock: the rendered product must match the original.
-
-    The 2026-09-17 trash-bin campaign passed screens whose product had drifted
-    into a round-bodied, wood-textured look, because the `identity` check only
-    enumerated forbidden features (no lid, no pedal) and never verified what
-    the product *is*. Every judgment must now carry an explicit positive
-    comparison against the user's original product images: silhouette shape,
-    colorway and surface texture. Any "no" is a material failure, not an
-    advisory note — shape drift compounds screen by screen and cannot be
-    repaired after the long page is assembled.
-    """
+def require_identity_silhouette(judgment: dict, context: str, *, allow_material_failure: bool = False, expected_scope: str | None = None) -> None:
     silhouette = judgment.get("identity_silhouette")
     if not isinstance(silhouette, dict):
-        raise HarnessError(
-            f"{context}: judgment must carry an identity_silhouette block "
-            "(shape_consistent / colorway_consistent / texture_consistent / visible_evidence)"
-        )
-    require_fields(
-        silhouette,
-        ("shape_consistent", "colorway_consistent", "texture_consistent", "visible_evidence"),
-        f"{context}: identity_silhouette",
-    )
-    if len(str(silhouette.get("visible_evidence", "")).strip()) < 8:
-        raise HarnessError(
-            f"{context}: identity_silhouette.visible_evidence must describe the "
-            "observed silhouette, colorway and texture against the product original"
-        )
-    identity_keys = ("shape_consistent", "colorway_consistent", "texture_consistent")
-    for name in identity_keys:
-        if not isinstance(silhouette[name], bool):
-            raise HarnessError(f"{context}: identity_silhouette.{name} must be a boolean pixel observation")
-    drifted = [name for name in identity_keys if silhouette[name] is False]
+        raise HarnessError(context + ": explicit identity_silhouette is required")
+    validate_identity_observation(silhouette, context, expected_scope)
+    drifted = [key for key in ("shape_consistent", "colorway_consistent", "texture_consistent") if silhouette[key] is False]
     if drifted and not (allow_material_failure and judgment.get("status") == "MATERIAL_FAIL"):
-        raise HarnessError(
-            f"{context}: product identity drift detected in identity_silhouette "
-            f"({', '.join(drifted)}) — the rendered product does not match the "
-            "original product images; repair before acceptance"
-        )
+        raise HarnessError(context + ": observed product identity drift: " + ", ".join(drifted))
 
 
 def validate_module_judgment(value: dict, module: dict, *, pair_canvas_audit: bool = False) -> list[dict]:
@@ -394,7 +364,8 @@ def validate_module_judgment(value: dict, module: dict, *, pair_canvas_audit: bo
     missing = [name for name in CHECKS if name not in value["checks"]]
     if missing:
         raise HarnessError("Judgment missing checks: " + ", ".join(missing))
-    require_identity_silhouette(value, f"module {module_id} judgment", allow_material_failure=True)
+    observed_scope = scope_for_presence((value.get("observations") or {}).get("product_presence_observed"))
+    require_identity_silhouette(value, f"module {module_id} judgment", allow_material_failure=True, expected_scope=observed_scope)
     failures = value.get("material_failures", [])
     if module.get("plan", {}).get("authoring_plan_format") == "COMPACT_V1_3":
         _validate_concrete_check_evidence(value["checks"], f"module {module_id}")

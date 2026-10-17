@@ -1372,29 +1372,7 @@
       }
     },
     "identity_silhouette": {
-      "type": "object",
-      "required": [
-        "shape_consistent",
-        "colorway_consistent",
-        "texture_consistent",
-        "visible_evidence"
-      ],
-      "properties": {
-        "shape_consistent": {
-          "type": "boolean"
-        },
-        "colorway_consistent": {
-          "type": "boolean"
-        },
-        "texture_consistent": {
-          "type": "boolean"
-        },
-        "visible_evidence": {
-          "type": "string",
-          "minLength": 8
-        }
-      },
-      "additionalProperties": false
+      "$ref": "identity-observation.schema.json"
     },
     "approved_contract_sha256": {
       "type": "string",
@@ -1423,5 +1401,149 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "observations": {
+            "properties": {
+              "product_presence_observed": {
+                "const": "DOMINANT"
+              }
+            },
+            "required": [
+              "product_presence_observed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "identity_silhouette": {
+            "properties": {
+              "comparison_scope": {
+                "const": "VISIBLE_COMPLETE_PRODUCT"
+              }
+            }
+          },
+          "observations": {
+            "properties": {
+              "observed_complete_product_role": {
+                "const": "DOMINANT"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "observations": {
+            "properties": {
+              "product_presence_observed": {
+                "const": "SUPPORTING"
+              }
+            },
+            "required": [
+              "product_presence_observed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "identity_silhouette": {
+            "properties": {
+              "comparison_scope": {
+                "const": "VISIBLE_COMPLETE_PRODUCT"
+              }
+            }
+          },
+          "observations": {
+            "properties": {
+              "observed_complete_product_role": {
+                "const": "SUPPORTING"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "observations": {
+            "properties": {
+              "product_presence_observed": {
+                "const": "IDENTITY_TOKEN_ONLY"
+              }
+            },
+            "required": [
+              "product_presence_observed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "identity_silhouette": {
+            "properties": {
+              "comparison_scope": {
+                "const": "VISIBLE_IDENTITY_TOKEN"
+              }
+            }
+          },
+          "observations": {
+            "properties": {
+              "unplanned_full_product_seen": {
+                "const": false
+              },
+              "observed_complete_product_role": {
+                "const": "IDENTITY_TOKEN_ONLY"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "observations": {
+            "properties": {
+              "product_presence_observed": {
+                "const": "ABSENT"
+              }
+            },
+            "required": [
+              "product_presence_observed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "identity_silhouette": {
+            "properties": {
+              "comparison_scope": {
+                "const": "NO_VISIBLE_PRODUCT"
+              }
+            }
+          },
+          "observations": {
+            "properties": {
+              "unplanned_full_product_seen": {
+                "const": false
+              },
+              "observed_complete_product_role": {
+                "const": "ABSENT"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

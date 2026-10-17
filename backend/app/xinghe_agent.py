@@ -58,7 +58,11 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
-from .domestic_detail.atomic_review import atomic_context, synthetic_module_judgments
+from .domestic_detail.atomic_review import (
+    atomic_context,
+    synthetic_identity,
+    synthetic_module_judgments,
+)
 from .domestic_detail.facts import DetailIntakeError, _schema, validate_intake
 from .domestic_detail.generation import (
     DetailGenerationError,
@@ -70,6 +74,11 @@ from .domestic_detail.generation import (
     require_current_pipeline,
     verify_accepted_canvas,
     wire_idempotency_key,
+)
+from .domestic_detail.identity_review import (
+    identity_complete,
+    merge_identity_followup,
+    observed_pair_scope,
 )
 from .domestic_detail.intake import (
     INTAKE_PROFILE,
@@ -97,6 +106,7 @@ from .domestic_detail.review import (
     approved_review_authority,
     normalize_pair_observation,
     require_review_authority,
+    validate_pair_before_identity,
 )
 from .masked_repair import (
     MaskedEditCallResult,
@@ -6437,10 +6447,13 @@ class XingheImageProvider:
             key: {"pass": True, "visible_evidence": evidence}
             for key in ("identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression")
         }
+        reports = synthetic_module_judgments(native_request, artifact.sha256, datetime.now(UTC).isoformat())
+        scope = observed_pair_scope(reports)
+        presence_for_scope = {"VISIBLE_COMPLETE_PRODUCT": "DOMINANT", "VISIBLE_IDENTITY_TOKEN": "IDENTITY_TOKEN_ONLY", "NO_VISIBLE_PRODUCT": "ABSENT"}
         return {
             "pair_id": pair_id,
             "module_ids": module_ids,
-            "module_judgments": synthetic_module_judgments(native_request, artifact.sha256, datetime.now(UTC).isoformat()),
+            "module_judgments": reports,
             "status": "PASS",
             "audit_complete": True,
             "artifact_binding": {
@@ -6464,7 +6477,7 @@ class XingheImageProvider:
             "material_failures": [],
             "passed_layers": ["identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression"],
             "residual_issues": [],
-            "identity_silhouette": {"shape_consistent": True, "colorway_consistent": True, "texture_consistent": True, "visible_evidence": evidence},
+            "identity_silhouette": synthetic_identity(presence_for_scope[scope], evidence),
         }
 
     @staticmethod
@@ -6637,27 +6650,29 @@ class XingheImageProvider:
         judgment = dict(result.payload)
         identity = judgment.get("identity_silhouette")
         identity = dict(identity) if isinstance(identity, Mapping) else {}
-        identity_keys = ("shape_consistent", "colorway_consistent", "texture_consistent")
-        if not all(isinstance(identity.get(key), bool) for key in identity_keys) or not isinstance(identity.get("visible_evidence"), str) or len(identity["visible_evidence"].strip()) < 8:
-            # A missing positive comparison is not a negative pixel finding.
-            # Ask once about these same pixels; never regenerate the image or
-            # infer a silhouette pass from a generic identity check.
+        try:
+            validate_pair_before_identity(judgment, native_request, image_sha256=artifact.sha256, width=artifact.width, height=artifact.height)
+            expected_identity_scope = observed_pair_scope(judgment.get("module_judgments"))
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
+        if not identity_complete(identity, expected_identity_scope):
             identity_result = await review(
                 replace(audit_request, planning_profile="aurora_detail_identity_audit",
                     idempotency_key=audit_request.idempotency_key + ":identity",
                     product_information=(json.dumps({"pair_id": contract["pair_id"],
                         "product_name": contract["product_name"], "candidate_sha256": artifact.sha256,
                         "source_inventory": source_inventory, "locked_identity": authority["locked_identity"],
-                        "review_authority_sha256": authority["sha256"]}, ensure_ascii=False),)),
+                        "review_authority_sha256": authority["sha256"],
+                        "expected_observed_comparison_scope": expected_identity_scope,
+                        "module_identity_observations": [{"module_id": row["module_id"], "observed_presence": row["observations"]["product_presence_observed"], "identity_silhouette": row["identity_silhouette"]} for row in judgment["module_judgments"]]}, ensure_ascii=False),)),
                 "aurora_detail_identity_audit",
             )
-            observed = identity_result.payload
-            if identity_result.error_code or not isinstance(observed, Mapping) or observed.get("audit_complete") is not True or not all(isinstance(observed.get(key), bool) for key in identity_keys) or not isinstance(observed.get("visible_evidence"), str) or len(observed["visible_evidence"].strip()) < 8:
-                raise XingheAgentError("AURORA_NATIVE_IDENTITY_AUDIT_INVALID", identity_result.error_message or "The bounded identity review did not return a complete direct-pixel comparison.")
-            judgment["identity_silhouette"] = {
-                **{key: observed[key] and identity.get(key) is not False for key in identity_keys},
-                "visible_evidence": " ".join(str(value).strip() for value in (identity.get("visible_evidence"), observed["visible_evidence"]) if value),
-            }
+            if identity_result.error_code or not isinstance(identity_result.payload, Mapping):
+                raise XingheAgentError("AURORA_NATIVE_IDENTITY_AUDIT_INVALID", identity_result.error_message or "The bounded identity review returned no scoped observations")
+            try:
+                judgment["identity_silhouette"] = merge_identity_followup(identity, identity_result.payload, expected_identity_scope)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
         normalized = self._normalize_native_pair_judgment(judgment, native_request, artifact)
         normalized["review_provenance"] = audit_receipts
         return normalized
@@ -9810,13 +9825,18 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             / "pair-judgment.schema.json"
         )
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        from jsonschema import RefResolver
+        schema = _inline_aurora_schema_refs(schema, RefResolver(schema_path.as_uri(), schema))
         if request.planning_profile == "aurora_detail_identity_audit":
             schema = deepcopy(schema["properties"]["identity_silhouette"])
             schema["required"].append("audit_complete")
             schema["properties"]["audit_complete"] = {"type": "boolean"}
             schema["properties"]["uncertainty"] = {"type": "string"}
+            complete_rules = schema.pop("allOf")
+            schema["allOf"] = [{"if": {"properties": {"audit_complete": {"const": True}}}, "then": {"allOf": complete_rules, "properties": {"visible_evidence": {"type": "string", "minLength": 8}}}}]
+            schema["properties"]["visible_evidence"] = {"type": "string"}
             for name in ("shape_consistent", "colorway_consistent", "texture_consistent"):
-                schema["properties"][name] = {"type": ["boolean", "null"]}
+                schema["properties"][name] = {"oneOf": [{"type": ["boolean", "null"]}, {"const": "NOT_APPLICABLE"}]}
         return {
             "type": "json_schema",
             "json_schema": {
@@ -10132,9 +10152,17 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "Compare silhouette, structural segments, openings, colorway, printed "
             "artwork and surface texture to the original product references. "
             "Ignore geometry-only format canvases and reference backgrounds/watermarks. "
-            "Return audit_complete plus one JSON object with boolean shape_consistent, boolean "
-            "colorway_consistent, boolean texture_consistent, and visible_evidence "
-            "describing concrete observations in these actual pixels. Use false only for "
+            "Return audit_complete, comparison_scope, visible_features, shape_consistent, "
+            "colorway_consistent, texture_consistent and concrete visible_evidence. "
+            "Use expected_observed_comparison_scope, derived only from the two actual "
+            "module reports: VISIBLE_COMPLETE_PRODUCT requires three boolean comparisons "
+            "and at least one visible original feature; VISIBLE_IDENTITY_TOKEN compares "
+            "only the visible features and uses NOT_APPLICABLE for unobservable complete "
+            "silhouette/surface properties; NO_VISIBLE_PRODUCT requires NOT_APPLICABLE "
+            "for all three and an empty visible_features list. Actual product absence "
+            "is distinct from unknown visibility. Never infer a complete product pass "
+            "from a plan permitting absence or from an approved identity token. "
+            "Describe concrete observations in these actual pixels. Use false only for "
             "observed drift. If uncertain, return audit_complete=false, null for unknown "
             "observations and an uncertainty description; never infer success from a prompt "
             "or a generic prior identity verdict. Do not judge or change any other "
@@ -10188,9 +10216,18 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "supplied pair_render method; never substitute a string verdict or "
             "omit these fields. Report a real failed observation as false. "
             "identity_silhouette is mandatory for both PASS and MATERIAL_FAIL: "
-            "include boolean shape_consistent, colorway_consistent, "
-            "texture_consistent and concrete visible_evidence, separately from "
-            "checks.identity. Never omit the positive reference comparison on failure. "
+            "report comparison_scope, visible_features, shape_consistent, "
+            "colorway_consistent, texture_consistent and concrete visible_evidence, "
+            "separately from checks.identity. Match scope to actual observed presence: "
+            "DOMINANT/SUPPORTING -> VISIBLE_COMPLETE_PRODUCT (three booleans and visible "
+            "features); IDENTITY_TOKEN_ONLY -> VISIBLE_IDENTITY_TOKEN (visible features "
+            "required, unobservable properties explicitly NOT_APPLICABLE); ABSENT -> "
+            "NO_VISIBLE_PRODUCT (all three NOT_APPLICABLE, visible_features empty). "
+            "Never copy planned presence into actual observations. Unexpected absence "
+            "or an unplanned full product is a real material failure, not permission "
+            "to invent a silhouette comparison. Aggregate scope is the strongest actual "
+            "scope in the two reports: full product, then token, then no visible product. "
+            "Unknown comparisons are null with audit_complete=false and stop processing. "
             "Return JSON only.\n\nproduct_information="
             + json.dumps(list(request.product_information), ensure_ascii=False)
         )
@@ -11284,20 +11321,23 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
 
     presence = output.get("product_presence_decision")
     presence_output = dict(presence) if isinstance(presence, Mapping) else {}
-    policy = presence_output.get("policy")
-    if policy not in {
-        "REQUIRED_DOMINANT",
-        "REQUIRED_SUPPORTING",
-        "IDENTITY_TOKEN_ONLY",
-        "OPTIONAL",
-        "ABSENT_ALLOWED",
-        "ABSENT_PREFERRED",
-    }:
-        policy = (
-            "REQUIRED_DOMINANT"
-            if output.get("complete_product_role") == "DOMINANT"
-            else "REQUIRED_SUPPORTING"
-        )
+    # Preserve authored policies, including invalid values for strict validation.
+    # Absence/token roles must never be coerced into a supporting full product.
+    if "policy" in presence_output:
+        policy = presence_output["policy"]
+    elif isinstance(output.get("expression"), Mapping) and (
+        "product_presence_policy" in output["expression"]
+    ):
+        policy = output["expression"]["product_presence_policy"]
+    else:
+        role = output.get("complete_product_role")
+        role_policies = {
+            "DOMINANT": "REQUIRED_DOMINANT",
+            "SUPPORTING": "REQUIRED_SUPPORTING",
+            "IDENTITY_TOKEN_ONLY": "IDENTITY_TOKEN_ONLY",
+            "ABSENT": "ABSENT_PREFERRED",
+        }
+        policy = role_policies.get(role) if isinstance(role, str) else None
     presence_output["policy"] = policy
     presence_output["unique_job_if_present"] = as_text(
         presence_output.get("unique_job_if_present"), conclusion

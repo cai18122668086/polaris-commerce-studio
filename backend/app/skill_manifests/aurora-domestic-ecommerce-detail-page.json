@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-detail-page",
-  "content_hash": "0007e952773352f7286b788b3254be191a773b2bddb833bab9f7b391adf6b567",
+  "content_hash": "53064035537c1286b8b608e05c77e0002d65b8d4be2c0e7addd09570205ea48e",
   "capability": "ecommerce_detail_pack",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-detail-page.input.v4.3",
@@ -53,7 +53,7 @@
     },
     {
       "path": "SKILL.md",
-      "sha256": "0c62a7cd9d3b369a2f506d621b041a9e332eea58869d4276477a4736258e521a"
+      "sha256": "f8504639719e66879beaaecfa7bfea2903b196a48bcf233913d72dcb425d796e"
     },
     {
       "path": "VERSION",
@@ -145,7 +145,7 @@
     },
     {
       "path": "references/product-presence-rhythm.md",
-      "sha256": "49140d73a398a8d171a4f1be29fd30dff1419d8e1ee36ab6fe7ece9e381ea237"
+      "sha256": "261c50bac7155dba538234d48956aa3571cc99635177c0e323cf7b11320f7d15"
     },
     {
       "path": "references/proportional-audit.md",
@@ -220,6 +220,10 @@
       "sha256": "cd750da82f44b24ca53a5116e87f16cca5d0cace2cb28bdcc6ee00b8c1de164c"
     },
     {
+      "path": "schemas/identity-observation.schema.json",
+      "sha256": "e4c733b6a579344aeab69829966dad691edae4266e02d0e57f61dfa9ab043122"
+    },
+    {
       "path": "schemas/identity.schema.json",
       "sha256": "b8a9ceba811d77b44c67bc4f141809f5b440495de7f90837f9245b47c068d878"
     },
@@ -233,11 +237,11 @@
     },
     {
       "path": "schemas/module-judgment.schema.json",
-      "sha256": "9d0130f6c1626559befb0424c866f98300bfe1e82016ea64192bbecd99efd454"
+      "sha256": "bf2f3d59e5b119b7b02c7b2cdac14e5cd513f42e93d5fee5553267c2f400f3be"
     },
     {
       "path": "schemas/pair-judgment.schema.json",
-      "sha256": "44fbda2985232849b06d3fb1cd1b0e547fb4f3c6501078f36b209d9128002c86"
+      "sha256": "8795b15a368770d5ff4911a44dfcfaca01731a12cce2697174c5fe8c30c12ce4"
     },
     {
       "path": "schemas/repair-plan.schema.json",
@@ -265,7 +269,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "769f489a5a2631febc60d2e13b91bd3875d973210a8b959dc0ae6748e051b58d"
+      "sha256": "510975c6a04f7e7ef63a77ff5a10a8e8eeb810ebcbe8b229b441274a95decbf0"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -281,11 +285,15 @@
     },
     {
       "path": "scripts/runtime/atomic_review.py",
-      "sha256": "0afaea6a7724ca00add2c90532fa0a77d4340f518c441ca5630d566d22cc6dc3"
+      "sha256": "1a72e415a5c364f8169c2740f11a5740c652f46e881957786b9d1a571fa95010"
     },
     {
       "path": "scripts/runtime/compliance_contract.py",
       "sha256": "9fa22846646ede99df2bc855d4d6dc6d7a6c393f967279472857c748f3848237"
+    },
+    {
+      "path": "scripts/runtime/identity_scope.py",
+      "sha256": "6e3242bffffa3b32e0b43d2af329ccb0f03b4f48b773d754271c4ef186450758"
     },
     {
       "path": "scripts/runtime/image_format.py",
@@ -341,7 +349,7 @@
     },
     {
       "path": "scripts/runtime/visual_gate.py",
-      "sha256": "95c5200b6deefdab3091af9aa2dbf002ec7482f6b480f3c23efc2352cdecc764"
+      "sha256": "19074c75160d95982b3f3f166f9d62290a942a436efa6759266535fc1cb70441"
     },
     {
       "path": "tests/test_regressions.py",

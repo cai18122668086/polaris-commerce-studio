@@ -170,12 +170,9 @@ def synthetic_module_judgments(
                 "material_failures": [],
                 "passed_layers": list(atomic_check_names()),
                 "residual_issues": [],
-                "identity_silhouette": {
-                    "shape_consistent": True,
-                    "colorway_consistent": True,
-                    "texture_consistent": True,
-                    "visible_evidence": evidence,
-                },
+                "identity_silhouette": synthetic_identity(
+                    plan["complete_product_role"], evidence
+                ),
             }
         )
     return deepcopy(result)
@@ -194,3 +191,27 @@ def atomic_check_names() -> tuple[str, ...]:
         ).read_bytes()
     )
     return tuple(schema["properties"]["checks"]["required"])
+
+
+def synthetic_identity(observed_presence: str, evidence: str) -> dict[str, Any]:
+    from .identity_review import identity_schema
+
+    scope = identity_schema()["x-presence-to-scope"][observed_presence]
+    values: dict[str, Any] = {
+        "shape_consistent": True,
+        "colorway_consistent": True,
+        "texture_consistent": True,
+    }
+    if scope == "NO_VISIBLE_PRODUCT":
+        values = {key: "NOT_APPLICABLE" for key in values}
+    elif scope == "VISIBLE_IDENTITY_TOKEN":
+        values["shape_consistent"] = "NOT_APPLICABLE"
+        values["texture_consistent"] = "NOT_APPLICABLE"
+    return {
+        **values,
+        "comparison_scope": scope,
+        "visible_features": []
+        if scope == "NO_VISIBLE_PRODUCT"
+        else [evidence + ": synthetic visible feature"],
+        "visible_evidence": evidence,
+    }

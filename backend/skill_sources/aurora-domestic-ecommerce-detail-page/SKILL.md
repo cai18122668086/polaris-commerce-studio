@@ -20,6 +20,10 @@ This patch preserves the v4.3 story, product, fact, geometry, repair and audit
 gates. Existing v4.3.0 sessions remain historical state; do not rewrite or
 automatically reauthorize them under this patch.
 
+## Truthful identity observation scope
+
+The canonical `schemas/identity-observation.schema.json` distinguishes actual full product, identity token and no visible product. Derive scope from each slice's observed presence, never from planned permission: `VISIBLE_COMPLETE_PRODUCT` requires three boolean comparisons and concrete visible features; `VISIBLE_IDENTITY_TOKEN` compares only visible features and marks unobservable comparisons `NOT_APPLICABLE`; `NO_VISIBLE_PRODUCT` requires three `NOT_APPLICABLE` values and no claimed visible product features. Unknown visibility/comparisons remain incomplete and stop processing. Aggregate pair scope is the strongest actual scope of its two slice reports. Explicit false observations survive bounded identity follow-up. Unexpected full product or unexpected absence is still a role/presence failure, with the existing single whole-pair repair budget and preserved residuals. See [product-presence-rhythm.md](references/product-presence-rhythm.md).
+
 ## v4.3 expression diversity and anti-posterization
 
 v4.3 keeps the v4.2 state machine and `information_contract_version=4.1`, and adds a separate `expression_contract_version=4.3`. A plan must now declare the first visual subject, presentation form, complete-product role, expression signature, visual cast and structured content units for every screen. Campaign-level diversity budgets are checked before approval and again from observed pixels after generation, so a correct plan cannot silently collapse into ten packshot posters.
@@ -600,7 +604,7 @@ Two rules that are not negotiable:
 
 可直接粘贴的 prompt 段落模板见该 skill `references/hard-lock-template.md`。
 
-> **状态：已启用硬门禁（B 层）** 本 skill 的 `harness.py` 在 `cmd_lock_identity` 强制 `invariant_features` / `allowed_states` 至少含 3 条具体几何描述（截面/宽高比/结构分段，命中 `GEOMETRY_FACETS` 或数字比例），否则 BLOCKED。出图后由 `visual_gate.py` 里已有的 `require_identity_silhouette` 强制 `identity_silhouette` 块（shape/colorway/texture_consistent 三者必须为 True）兜底。两环合起来 = 出图前锁几何 + 出图后锁形态，产品一致性不再依赖模型自觉。
+> **状态：已启用硬门禁（B 层）** 本 skill 的 `harness.py` 在 `cmd_lock_identity` 强制 `invariant_features` / `allowed_states` 至少含 3 条具体几何描述（截面/宽高比/结构分段，命中 `GEOMETRY_FACETS` 或数字比例），否则 BLOCKED。出图后由 `visual_gate.py` 里已有的 `require_identity_silhouette` 强制 `identity_silhouette` 块（依据实际可见范围比较：完整商品三项布尔值；身份线索仅比较可见特征；商品缺席三项为 NOT_APPLICABLE，未知不能通过）兜底。两环合起来 = 出图前锁几何 + 出图后锁形态，产品一致性不再依赖模型自觉。
 
 <!-- IDENTITY-CONSISTENCY-LOCK:END -->
 

@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator, FormatChecker, RefResolver
 
 from ..config import default_skill_root
 from .plans import canonical_hash
@@ -204,15 +204,16 @@ def require_review_authority(value: object) -> dict[str, Any]:
     return value
 
 
-def normalize_pair_observation(
+def _pair_observation(
     raw: Mapping[str, Any],
     request: Mapping[str, Any],
     *,
     image_sha256: str,
     width: int,
     height: int,
+    identity_pending: bool = False,
 ) -> dict[str, Any]:
-    """Keep explicit observations; a legacy failure string is a lossless wrapper."""
+    """Keep explicit observations; never invent a missing identity comparison."""
     value = deepcopy(dict(raw))
     failures = value.get("material_failures")
     if isinstance(failures, list):
@@ -220,14 +221,22 @@ def normalize_pair_observation(
             {"visible_evidence": item} if isinstance(item, str) else item
             for item in failures
         ]
-    schema = json.loads(
-        (
-            default_skill_root("aurora-domestic-ecommerce-detail-page")
-            / "schemas/pair-judgment.schema.json"
-        ).read_bytes()
+    schema_path = (
+        default_skill_root("aurora-domestic-ecommerce-detail-page")
+        / "schemas/pair-judgment.schema.json"
     )
+    schema = json.loads(schema_path.read_bytes())
+    if identity_pending:
+        # This phase validates all actual module evidence and bindings, but is
+        # never returned as an accepted judgment. Only aggregate identity may
+        # still be asked once about the same pixels.
+        schema["required"].remove("identity_silhouette")
+        schema["properties"].pop("identity_silhouette")
+    resolver = RefResolver(schema_path.as_uri(), schema)
     errors = sorted(
-        Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(value),
+        Draft202012Validator(
+            schema, resolver=resolver, format_checker=FormatChecker()
+        ).iter_errors(value),
         key=lambda error: str(list(error.absolute_path)),
     )
     if errors:
@@ -329,7 +338,10 @@ def normalize_pair_observation(
         _invalid("/information_audit", "explicit information observations are required")
     negative = (
         any(checks[name]["pass"] is False for name in PAIR_CHECKS)
-        or any(value["identity_silhouette"][name] is False for name in IDENTITY_KEYS)
+        or any(
+            (value.get("identity_silhouette") or {}).get(name) is False
+            for name in IDENTITY_KEYS
+        )
         or seam["hard_cut_absent"] is False
         or seam["method_specific_pass"] is False
         or any(
@@ -360,6 +372,38 @@ def normalize_pair_observation(
             "/material_failures", "a paid image repair needs a visible material finding"
         )
     return value
+
+
+def normalize_pair_observation(
+    raw: Mapping[str, Any],
+    request: Mapping[str, Any],
+    *,
+    image_sha256: str,
+    width: int,
+    height: int,
+) -> dict[str, Any]:
+    return _pair_observation(
+        raw, request, image_sha256=image_sha256, width=width, height=height
+    )
+
+
+def validate_pair_before_identity(
+    raw: Mapping[str, Any],
+    request: Mapping[str, Any],
+    *,
+    image_sha256: str,
+    width: int,
+    height: int,
+) -> None:
+    """Validate the non-aggregate evidence; this grants no acceptance or repair."""
+    _pair_observation(
+        raw,
+        request,
+        image_sha256=image_sha256,
+        width=width,
+        height=height,
+        identity_pending=True,
+    )
 
 
 def _write_once(path: Path, value: Mapping[str, Any]) -> None:

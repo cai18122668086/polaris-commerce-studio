@@ -69,7 +69,7 @@ The runtime derives `campaign_product_presence_rhythm` from module decisions. Ev
 
 Do not enforce mechanical alternation or a universal maximum gap. The failure is purposeless repetition or lost attribution, not a fixed count. v4.3 does enforce one campaign-level ceiling for the strongest role: at most 3 dominant complete-product screens in an 8- or 10-screen page and at most 4 in a 12-screen page. This is an anti-collapse budget, not a requirement to reach the maximum.
 
-`complete_product_role` must agree with the presence policy: `DOMINANT` with `REQUIRED_DOMINANT`, `SUPPORTING` with `REQUIRED_SUPPORTING`, `TOKEN_ONLY` with `IDENTITY_TOKEN_ONLY`, and `ABSENT` with `ABSENT_PREFERRED` or `ABSENT_ALLOWED`. Only the opening and closure may combine `DOMINANT + HERO_POSTER`.
+`complete_product_role` must agree with the presence policy: `DOMINANT` with `REQUIRED_DOMINANT`, `SUPPORTING` with `REQUIRED_SUPPORTING`, `IDENTITY_TOKEN_ONLY` with `IDENTITY_TOKEN_ONLY`, and `ABSENT` with `ABSENT_PREFERRED` or `ABSENT_ALLOWED`. Only the opening and closure may combine `DOMINANT + HERO_POSTER`.
 
 ## Prompt and audit consequences
 
@@ -89,3 +89,9 @@ At long-page level, inspect repetitive product occupancy, the strength of absenc
 Analyze every reference screen separately. Record whether the complete product is dominant, supporting, token-only or absent; name the actual primary subject; explain why attribution survives without a product; and extract only that transferable rhythm. Never copy another brand, asset, copy, watermark or proprietary layout.
 
 
+
+## Truthful per-slice identity observations
+
+Use `identity-observation.schema.json` as the only schema authority. Actual `DOMINANT` or `SUPPORTING` presence uses `VISIBLE_COMPLETE_PRODUCT`: shape, colorway and texture are explicit boolean comparisons with named visible features. Actual `IDENTITY_TOKEN_ONLY` uses `VISIBLE_IDENTITY_TOKEN`: name the visible product-bound features and use `NOT_APPLICABLE` for unobservable whole-product properties. Actual `ABSENT` uses `NO_VISIBLE_PRODUCT`: all three comparison fields are `NOT_APPLICABLE` and `visible_features` is empty. This does not declare the planned role satisfied; unexpected absence still fails the exact role and expression gates.
+
+A pair with any observed full product uses the full comparison scope; otherwise any visible token uses token scope; otherwise it uses no-visible-product scope. Do not infer observations from the plan or call an unknown comparison not applicable. A full product seen on a planned absence/token screen must explicitly set `unplanned_full_product_seen=true` and retain the material failure. A bounded identity follow-up cannot turn a known false into true, change known applicability, repair missing atomic observations, or authorize another image render.

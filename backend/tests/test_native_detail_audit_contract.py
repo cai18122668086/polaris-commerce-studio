@@ -106,6 +106,10 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
                 assert "shape_consistent" in schema["required"]
                 payload = {
                     "audit_complete": True,
+                    "comparison_scope": "VISIBLE_COMPLETE_PRODUCT",
+                    "visible_features": [
+                        "Observed rounded black frame matches the original edge"
+                    ],
                     "shape_consistent": True,
                     "colorway_consistent": True,
                     "texture_consistent": True,

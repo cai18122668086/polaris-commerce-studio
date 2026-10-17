@@ -454,5 +454,12 @@
     "live_local_worker": true,
     "domestic_main_image": true,
     "formal_main_merge_and_deploy_need_confirmation": true
+  },
+  "local_identity_scope_candidate": {
+    "status": "technical offline only; overall unproven",
+    "documentation": "domestic-detail-identity-scope-2026-10-17.md",
+    "native_content_hash": "53064035537c1286b8b608e05c77e0002d65b8d4be2c0e7addd09570205ea48e",
+    "unique_offline_cases": 459,
+    "actual_supplier_calls": 0
   }
 }

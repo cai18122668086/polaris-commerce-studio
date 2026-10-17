@@ -49,6 +49,10 @@ def validate_atomic_reports(judgment: dict, modules: list[dict], lineage: dict) 
                 raise HarnessError("Atomic expression observations are internally contradictory")
             if observed.get("product_presence_observed") != observed["observed_complete_product_role"]:
                 raise HarnessError("Atomic product role and presence observations disagree")
+        actual_full_product = observed.get("product_presence_observed") in ("DOMINANT", "SUPPORTING")
+        planned_role = module["plan"].get("complete_product_role")
+        if actual_full_product and planned_role in ("ABSENT", "IDENTITY_TOKEN_ONLY") and observed.get("unplanned_full_product_seen") is not True:
+            raise HarnessError("A full product in an absence/token-only contract must be explicitly observed as unplanned")
         derived = validate_module_judgment(report, module, pair_canvas_audit=True)
         if judgment["status"] == "PASS" and report["status"] != "PASS":
             raise HarnessError("PASS pair contradicts a failing atomic module")

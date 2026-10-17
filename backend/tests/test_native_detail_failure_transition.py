@@ -160,6 +160,8 @@ def pair_audit(tmp_path):
             }
         ],
         "identity_silhouette": {
+            "comparison_scope": "VISIBLE_COMPLETE_PRODUCT",
+            "visible_features": ["Synthetic fixture visible original product feature"],
             "shape_consistent": True,
             "colorway_consistent": True,
             "texture_consistent": True,

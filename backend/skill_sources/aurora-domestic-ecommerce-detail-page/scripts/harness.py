@@ -17,6 +17,7 @@ from PIL import Image, UnidentifiedImageError
 from runtime.assembly import assemble_vertical
 from runtime.artifact_binding import file_sha256, validate_artifact_binding
 from runtime.compliance_contract import validate_high_risk_cosmetic_claims, validate_high_risk_plan_copy
+from runtime.identity_scope import pair_observed_scope
 from runtime.image_format import ensure_format_canvas, image_dimensions, normalize_generated_image
 from runtime.prompt_compiler import compile_pair_prompt, compile_prompt
 from runtime.performance_contract import resolve_performance_contract
@@ -1982,7 +1983,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     missing = [name for name in required_checks if name not in checks]
     if missing:
         raise HarnessError("Pair judgment missing checks: " + ", ".join(missing))
-    require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment", allow_material_failure=True)
+    require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment", allow_material_failure=True, expected_scope=pair_observed_scope(judgment["module_judgments"]))
     failures = list(judgment["material_failures"])
     failures.extend(validate_atomic_reports(judgment, pair_modules, lineage))
     if judgment["status"] == "MATERIAL_FAIL" and not failures:
@@ -2031,7 +2032,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     effective_passed = [name for name in judgment.get("passed_layers", []) if name in checks and checks[name]["pass"] is True]
     if any(report["status"] != "PASS" for report in judgment["module_judgments"]):
         effective_passed = []
-    if any(silhouette[name] is False for name in ("shape_consistent", "colorway_consistent", "texture_consistent")):
+    if silhouette["comparison_scope"] != "VISIBLE_COMPLETE_PRODUCT" or any(silhouette[name] is False for name in ("shape_consistent", "colorway_consistent", "texture_consistent")):
         effective_passed = [name for name in effective_passed if name != "identity"]
     if seam["hard_cut_absent"] is False or seam["method_specific_pass"] is False:
         effective_passed = [name for name in effective_passed if name != "internal_seam"]

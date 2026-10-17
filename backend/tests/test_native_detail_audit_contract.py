@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from io import BytesIO
 
 import pytest
@@ -29,7 +30,16 @@ from tests.test_domestic_detail_execution import _create_detail_job
 
 
 @pytest.mark.parametrize(
-    "mode", ["missing", "partial_failed", "invalid_followup", "complete_failed"]
+    "mode",
+    [
+        "missing",
+        "partial_failed",
+        "invalid_followup",
+        "complete_failed",
+        "uncertain_followup",
+        "raw_missing",
+        "raw_mismatch",
+    ],
 )
 def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
     client, monkeypatch, tmp_path, mode
@@ -76,6 +86,7 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
                 schema = _planner_response_format(request)["json_schema"]["schema"]
                 assert "shape_consistent" in schema["required"]
                 payload = {
+                    "audit_complete": True,
                     "shape_consistent": True,
                     "colorway_consistent": True,
                     "texture_consistent": True,
@@ -86,6 +97,12 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
                 }
                 if mode == "invalid_followup":
                     del payload["texture_consistent"]
+                elif mode == "uncertain_followup":
+                    payload["audit_complete"] = False
+                    payload["shape_consistent"] = None
+                    payload["uncertainty"] = (
+                        "The reference angle does not show the opening."
+                    )
             return PlannerCallResult(
                 payload=payload,
                 provider_request_id=f"audit-{len(self.planner_calls)}",
@@ -93,6 +110,16 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
                 normalized_usage=normalize_usage({"total_tokens": 10}),
                 api_latency_seconds=0.01,
                 actual_cost_micros=1,
+                audit_raw_content=(
+                    None
+                    if mode == "raw_missing"
+                    else json.dumps(
+                        {"status": "different"} if mode == "raw_mismatch" else payload,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n"
+                ),
             )
 
     gateway = AuditGateway()
@@ -138,10 +165,16 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
     coroutine = provider._native_detail_judgment_with_review(
         request, native, (source,), artifact
     )
-    if mode == "invalid_followup":
+    expected_error = {
+        "invalid_followup": "AURORA_NATIVE_IDENTITY_AUDIT_INVALID",
+        "uncertain_followup": "AURORA_NATIVE_IDENTITY_AUDIT_INVALID",
+        "raw_missing": "AURORA_NATIVE_REVIEW_RAW_REPLY_MISSING",
+        "raw_mismatch": "AURORA_NATIVE_REVIEW_RAW_REPLY_MISMATCH",
+    }.get(mode)
+    if expected_error:
         with pytest.raises(XingheAgentError) as error:
             asyncio.run(coroutine)
-        assert error.value.code == "AURORA_NATIVE_IDENTITY_AUDIT_INVALID"
+        assert error.value.code == expected_error
     else:
         judgment = asyncio.run(coroutine)
         assert judgment["identity_silhouette"]["shape_consistent"] is (
@@ -149,7 +182,7 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         )
         assert judgment["checks"]["internal_seam"]["pass"] is False
         assert judgment["status"] == "MATERIAL_FAIL"
-    calls = 1 if mode == "complete_failed" else 2
+    calls = 1 if mode in {"complete_failed", "raw_missing", "raw_mismatch"} else 2
     assert len(gateway.planner_calls) == calls
     assert gateway.image_calls == []
     assert all(
@@ -158,10 +191,37 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
     with client.app.state.session_factory() as db:
         plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"]))
         assert len(plan.payload["usage"]["planner"]) == prior_planner_calls + calls
-    evidence = list((tmp_path / job["id"]).glob("*.json"))
+    repeat = provider._native_detail_judgment_with_review(
+        replace(request, attempt_id="reclaimed-execution"), native, (source,), artifact
+    )
+    if expected_error:
+        with pytest.raises(XingheAgentError) as repeated_error:
+            asyncio.run(repeat)
+        assert repeated_error.value.code == expected_error
+    else:
+        assert asyncio.run(repeat) == judgment
+    assert len(gateway.planner_calls) == calls
+    with client.app.state.session_factory() as db:
+        plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"]))
+        assert len(plan.payload["usage"]["planner"]) == prior_planner_calls + calls
+    evidence = list((tmp_path / job["id"] / "reviews").glob("*.response.json"))
     assert len(evidence) == calls
+    for path in evidence:
+        saved = json.loads(path.read_bytes())
+        raw_path = path.with_name(path.name.replace(".response.json", ".reply.txt"))
+        if mode == "raw_missing":
+            assert saved["raw_reply_state"] == "predecoded_only"
+            assert not raw_path.exists()
+        else:
+            assert raw_path.read_bytes() == saved["result"]["audit_raw_content"].encode(
+                "utf-8"
+            )
     original = next(
-        p for p in evidence if p.name.startswith("aurora_detail_pair_audit-")
+        p
+        for p in evidence
+        if json.loads(p.read_bytes())["result"]["phase"].startswith(
+            "aurora_detail_pair_audit:"
+        )
     )
     if mode in {"missing", "invalid_followup"}:
         assert (

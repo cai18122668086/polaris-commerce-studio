@@ -175,7 +175,8 @@
       "id": "I06",
       "requirement": "Raw audit evidence preserved; missing/unknown observations never count as pass",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "Strict raw observation adapter, original model message byte preservation/parse equality, immutable review receipts, bounded identity uncertainty and no duplicate paid review/usage verified offline. Actual canonical fact context, native canvas/slices, all per-screen gates and real visual evidence remain unproven."
     },
     {
       "id": "I07",
@@ -217,7 +218,8 @@
       "id": "V05",
       "requirement": "Domestic main image and affected shared paths regression, unchanged production behavior",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "Current review candidate: four main-image Harness paths plus full execution reliability and task runner selection 86/86 pass offline. Production has not been modified by this task."
     },
     {
       "id": "R01",
@@ -239,14 +241,16 @@
       "269a990": "authored screen geometry/roles, all 8/10/12 compile; 78 checks",
       "f22a1ed": "native lower-screen seam patch; 9 API/compiler checks and native 49 pass/56 historical skip",
       "afcff06": "restore original vendored newline styles; source hash 177ee87d891d83b1e5b0b5e7b2c58f596b752c384c34486a2758dd10913d4478",
-      "2f8aae0": "native reference adopt/reject and screen schedule semantics; both new native regressions execute in active suite"
+      "2f8aae0": "native reference adopt/reject and screen schedule semantics; both new native regressions execute in active suite",
+      "ce63237": "native compiler visible identity/brand/fact dispositions, exact CLI bytes;92 pass/56 historical skip",
+      "697c179": "native known negative observation transitions; canonical bounded repair and residuals; application seam bridge removed"
     },
     "not_complete": [
       "real supplier intake/identity/fact/reference provenance and visual acceptance",
-      "complete native approval identity visibility and active/deferred/excluded fact presentation",
-      "source/asset/request/recovery bindings and old-task version routing",
-      "remove optimistic/fabricated review normalization; apply native per-screen pixel gates",
-      "delivery/native finalization/residual quality states",
+      "canonical approved review identity/fact authority instead of raw settings",
+      "actual original/normalized-canvas/fixed-slice pixel lineage and per-screen gates",
+      "accepted recovery validates raw review provenance; old-task version routing",
+      "cross-pair/full-campaign quality gates; delivery/native finalization/residual quality states",
       "persistent independent integration stack and actual supplier generation",
       "actual visual acceptance and release/rollback readiness"
     ],
@@ -287,7 +291,7 @@
       "skill_content_hash": "b322f65b001cccf0b7243c18d705a3f194878e8499bc3161548f5303e2c65f18"
     },
     "native_approval_candidate": {
-      "status": "wired_local_technical_paths_verified_visual_and_document_identity_content_pending",
+      "status": "wired_with_visible_identity_brand_and_fact_dispositions_local_technical_verified_real_visual_unproven",
       "approval_binding": "domestic-detail-approval-v4",
       "native_protocol": "domestic-native-approval-v1",
       "report": "domestic-detail-native-approval-2026-10-17.md",
@@ -317,6 +321,34 @@
           "failures": 0
         }
       }
+    },
+    "native_review_candidate": {
+      "status": "strict_raw_observation_and_bounded_native_failure_technical_paths_verified_full_pixel_and_real_visual_pending",
+      "report": "domestic-detail-native-review-2026-10-17.md",
+      "regression": {
+        "native-review-integrated-v3": {
+          "tests": 184,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 184
+        },
+        "native-review-protected-main-v3": {
+          "tests": 86,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 86
+        },
+        "native-review-integrity-v2": {
+          "tests": 45,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 45
+        }
+      },
+      "skill_content_hash": "7766eff69a8b5501eb7b186707f01a080b92260c65c7a0b7fd6516f60793f42b"
     }
   },
   "commands_to_cover": [

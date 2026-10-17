@@ -1239,3 +1239,35 @@ def test_deferred_reason_passes_real_compiler_without_replanning_or_generation(
     assert claim["disposition"] == "DEFERRED"
     assert claim["defer_reason_code"] == reason
     assert claim["module_ids"] == []
+
+
+@pytest.mark.parametrize("missing_observation", ["checks", "screen_coverage", "information_audit"])
+def test_unknown_native_review_stops_after_one_image_without_paid_repair(
+    client: TestClient, monkeypatch, missing_observation,
+) -> None:
+    async def incomplete(self, request, native_request, sources, artifact):
+        del request, sources
+        raw = self._native_detail_judgment(native_request, artifact)
+        del raw[missing_observation]
+        return self._normalize_native_pair_judgment(raw, native_request, artifact)
+
+    monkeypatch.setattr(XingheImageProvider, "_native_detail_judgment_with_review", incomplete)
+    source = upload_asset(client, filename="unknown-audit.png")
+    job = _create_detail_job(client, source["id"], market_region="domestic", auto_start_after_plan=False)
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(), json=_aurora_approval_payload(planned),
+    )
+    assert response.status_code == 202, response.text
+    dispatch_pending(client)
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert current["status"] == "failed"
+    assert current["items"][0]["error_code"] == "AURORA_NATIVE_AUDIT_INVALID"
+    assert len(_gateway(client).image_calls) == 1
+    native = json.loads((detail_workspace(job["id"]) / "session.json").read_text(encoding="utf-8"))
+    assert native["state"] == "AWAITING_PIXEL_AUDIT"
+    assert all(len(module["attempts"]) == 1 and not module.get("accepted_asset") for module in native["modules"][:2])

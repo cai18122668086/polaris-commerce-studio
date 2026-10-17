@@ -84,6 +84,12 @@ from .domestic_detail.native_approval import (
     write_native_json,
 )
 from .domestic_detail.plans import DetailPlanError, approval_binding
+from .domestic_detail.review import (
+    AUDIT_PROFILES,
+    DetailReviewError,
+    ReviewStore,
+    normalize_pair_observation,
+)
 from .masked_repair import (
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
@@ -541,6 +547,7 @@ class PlannerCallResult:
     phase: str | None = None
     supplemental_results: tuple[PlannerCallResult, ...] = ()
     external_request: bool = True
+    audit_raw_content: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2391,6 +2398,7 @@ class TengliOpenAICompatibleGateway:
                     provider_envelope=envelope_diagnostics["provider_envelope"],
                     content_utf8_bytes=len(content_bytes),
                     content_sha256=content_sha256,
+                audit_raw_content=text if request.planning_profile in AUDIT_PROFILES else None,
                     request_id_presence=envelope_diagnostics["request_id_presence"],
                     usage_presence=envelope_diagnostics["usage_presence"],
                     usage_completeness=envelope_diagnostics["usage_completeness"],
@@ -2408,6 +2416,7 @@ class TengliOpenAICompatibleGateway:
                 provider_envelope=envelope_diagnostics["provider_envelope"],
                 content_utf8_bytes=len(content_bytes),
                 content_sha256=content_sha256,
+                audit_raw_content=text if request.planning_profile in AUDIT_PROFILES else None,
                 request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
                 usage_completeness=envelope_diagnostics["usage_completeness"],
@@ -2453,6 +2462,7 @@ class TengliOpenAICompatibleGateway:
                 request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
                 usage_completeness=envelope_diagnostics["usage_completeness"],
+                audit_raw_content=(raw_content if isinstance(raw_content, str) and request.planning_profile in AUDIT_PROFILES else None),
             )
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
@@ -6439,206 +6449,17 @@ class XingheImageProvider:
 
     @staticmethod
     def _normalize_native_pair_judgment(
-        raw_judgment: Mapping[str, Any],
+        raw: Mapping[str, Any],
         native_request: Mapping[str, Any],
         artifact: ProviderArtifact,
     ) -> dict[str, Any]:
-        """Adapt legacy/provider audit JSON to the v4.3 pair contract.
-
-        Some OpenAI-compatible gateways still return the earlier compact pair
-        audit shape (string-valued checks, keyed screen coverage, and the old
-        identity block).  The Skill Harness intentionally rejects that shape.
-        This adapter is structural only: it carries forward the provider's
-        observed failures and never changes a failed observation into a pass.
-        """
-
-        raw = dict(raw_judgment)
-        pair_id = str(native_request.get("pair_id") or raw.get("pair_id") or "")
-        module_ids = [
-            str(value)
-            for value in (native_request.get("module_ids") or raw.get("module_ids") or [])
-        ]
-        fallback_evidence = "审计响应未提供足够的可见证据，按 Skill 规则保守记录。"
-
-        def evidence(value: Any, fallback: str = fallback_evidence) -> str:
-            if isinstance(value, Mapping):
-                for key in (
-                    "visible_evidence",
-                    "evidence",
-                    "detail",
-                    "visible_problem",
-                    "reason",
-                    "fail_closed_reason",
-                ):
-                    text = value.get(key)
-                    if isinstance(text, str) and len(text.strip()) >= 8:
-                        return text.strip()
-            if isinstance(value, str) and len(value.strip()) >= 8:
-                return value.strip()
-            return fallback
-
-        def as_pass(value: Any) -> bool:
-            if isinstance(value, Mapping):
-                if isinstance(value.get("pass"), bool):
-                    return bool(value["pass"])
-                if isinstance(value.get("passed"), bool):
-                    return bool(value["passed"])
-                value = value.get("status") or value.get("result")
-            if isinstance(value, bool):
-                return value
-            token = str(value or "").strip().lower()
-            return token in {"pass", "passed", "true", "ok", "complete", "complete_for_legible_copy"}
-
-        def normalize_check(value: Any, label: str) -> dict[str, Any]:
-            return {
-                "pass": as_pass(value),
-                "visible_evidence": evidence(value, f"{label}：未通过或缺少可核验的像素证据。"),
-            }
-
-        old_checks = raw.get("checks") if isinstance(raw.get("checks"), Mapping) else {}
-        aliases = {
-            "identity": ("identity", "identity_consistency", "product_reference_binding"),
-            "facts": ("facts", "unsupported_copy"),
-            "pair_duties": ("pair_duties", "screen_duties", "repeated_screens"),
-            "visual_proof": ("visual_proof",),
-            "legibility": ("legibility", "copy_legibility"),
-            "copy_binding": ("copy_binding", "copy_transcription"),
-            "internal_seam": ("internal_seam",),
-            "spatial_integrity": ("spatial_integrity", "posterized_layout"),
-            "commercial_expression": ("commercial_expression", "approved_module_contract"),
-        }
-        checks: dict[str, dict[str, Any]] = {}
-        for canonical, candidates in aliases.items():
-            source = next((old_checks[name] for name in candidates if name in old_checks), None)  # type: ignore[index,operator]
-            checks[canonical] = normalize_check(source, canonical)
-
-        raw_coverage = raw.get("screen_coverage")
-        if isinstance(raw_coverage, Mapping):
-            coverage_values = [raw_coverage.get(f"screen_{index}") for index in range(1, len(module_ids) + 1)]
-        elif isinstance(raw_coverage, list):
-            coverage_values = list(raw_coverage)
-        else:
-            coverage_values = []
-        approved = native_request.get("approved_module_contracts")
-        approved_by_id = {
-            str(item.get("module_id")): item.get("contract")
-            for item in (approved if isinstance(approved, list) else [])
-            if isinstance(item, Mapping) and item.get("module_id")
-        }
-        screen_coverage: list[dict[str, Any]] = []
-        for index, module_id in enumerate(module_ids):
-            source = coverage_values[index] if index < len(coverage_values) else {}
-            source = source if isinstance(source, Mapping) else {}
-            contract = approved_by_id.get(module_id)
-            visible_copy = contract.get("visible_copy") if isinstance(contract, Mapping) else []
-            selling_points = []
-            if isinstance(visible_copy, list):
-                selling_points = [
-                    str(item.get("text") or item)  # type: ignore[union-attr]
-                    for item in visible_copy
-                    if isinstance(item, (Mapping, str)) and str(item.get("text") if isinstance(item, Mapping) else item).strip()
-                ][:8]
-            if not selling_points:
-                selling_points = ["已批准模块职责"]
-            screen_coverage.append(
-                {
-                    "module_id": module_id,
-                    # The v4.3 schema uses this field to assert that the
-                    # screen-duty record exists.  Whether the duty actually
-                    # passed belongs in checks/material_failures; keeping the
-                    # structural assertion true lets the Harness evaluate the
-                    # real pixel failure instead of rejecting the envelope.
-                    "duty_visible": True,
-                    "selling_points_visible": selling_points,
-                    "visible_evidence": evidence(source, f"{module_id}：未提供足够的屏幕职责证据。"),
-                }
+        try:
+            return normalize_pair_observation(
+                raw, native_request, image_sha256=artifact.sha256,
+                width=artifact.width, height=artifact.height,
             )
-
-        pair_render = native_request.get("pair_render")
-        pair_render = pair_render if isinstance(pair_render, Mapping) else {}
-        canvas = raw.get("pair_canvas") if isinstance(raw.get("pair_canvas"), Mapping) else {}
-        width = int(canvas.get("width_px") or canvas.get("observed_width_px") or artifact.width)  # type: ignore[union-attr]
-        height = int(canvas.get("height_px") or canvas.get("observed_height_px") or artifact.height)  # type: ignore[union-attr]
-        seam_raw = raw.get("internal_seam_evidence") if isinstance(raw.get("internal_seam_evidence"), Mapping) else {}
-        seam_result = seam_raw.get("method_specific_pass", seam_raw.get("result"))  # type: ignore[union-attr]
-        seam = {
-            "method_id": str(pair_render.get("internal_seam_method_id") or seam_raw.get("method_id") or "BACKGROUND_STRINGING"),  # type: ignore[union-attr]
-            "source_region": str(pair_render.get("internal_seam_source_region") or seam_raw.get("source_region") or "上屏底部"),  # type: ignore[union-attr]
-            "target_region": str(pair_render.get("internal_seam_target_region") or seam_raw.get("target_region") or "下屏顶部"),  # type: ignore[union-attr]
-            "carrier": str(pair_render.get("internal_seam_carrier") or seam_raw.get("carrier") or "连续背景场"),  # type: ignore[union-attr]
-            "geometry": str(pair_render.get("internal_seam_geometry") or seam_raw.get("geometry") or "接缝两侧共享连续背景"),  # type: ignore[union-attr]
-            "hard_cut_absent": bool(seam_raw.get("hard_cut_absent", as_pass(seam_result))),  # type: ignore[union-attr]
-            "method_specific_pass": as_pass(seam_result),
-            "visible_evidence": evidence(seam_raw),
-        }
-
-        raw_info = raw.get("information_audit") if isinstance(raw.get("information_audit"), Mapping) else {}
-        repeated = raw_info.get("repetition_without_progression")  # type: ignore[union-attr]
-        if not isinstance(repeated, bool):
-            repeated = not bool((raw_coverage or {}).get("repeated_screen_evidence", {}).get("repeated", False)) if isinstance(raw_coverage, Mapping) else False
-        information = {
-            "upper_buyer_question": str(raw_info.get("upper_buyer_question") or (approved_by_id.get(module_ids[0], {}) or {}).get("buyer_question") or "上屏购买问题"),  # type: ignore[union-attr]
-            "lower_buyer_question": str(raw_info.get("lower_buyer_question") or (approved_by_id.get(module_ids[1], {}) or {}).get("buyer_question") or "下屏购买问题"),  # type: ignore[union-attr]
-            "new_information_visible": bool(raw_info.get("new_information_visible", not repeated)),  # type: ignore[union-attr]
-            "new_information_evidence": evidence(raw_info, "上下屏承担不同职责并形成信息递进。"),
-            "repetition_without_progression": bool(repeated),
-            "hero_subject_clear": bool(raw_info.get("hero_subject_clear", True)),  # type: ignore[union-attr]
-            "co_equal_hero_detected": bool(raw_info.get("co_equal_hero_detected", False)),  # type: ignore[union-attr]
-            "purchase_judgment_enabled": bool(raw_info.get("purchase_judgment_enabled", not repeated)),  # type: ignore[union-attr]
-            "detail_page_not_posterized": bool(raw_info.get("detail_page_not_posterized", checks["spatial_integrity"]["pass"])),  # type: ignore[union-attr]
-        }
-
-        old_identity = raw.get("identity_silhouette") if isinstance(raw.get("identity_silhouette"), Mapping) else {}
-        drift = " ".join(str(item) for item in old_identity.get("drift_evidence") or [])  # type: ignore[union-attr]
-        identity_evidence = evidence(old_identity, "未提供足够的商品轮廓、配色和材质可见证据。")
-        identity = {
-            "shape_consistent": bool(old_identity.get("shape_consistent", str(old_identity.get("overall_vehicle_match") or "").lower().startswith(("strong", "match")))),  # type: ignore[union-attr]
-            "colorway_consistent": bool(old_identity.get("colorway_consistent", any(token in (" ".join(str(item) for item in old_identity.get("matching_traits") or [])).lower() for token in ("red", "black", "红", "黑")))),  # type: ignore[union-attr]
-            "texture_consistent": bool(old_identity.get("texture_consistent", not any(token in drift.lower() for token in ("texture", "surface", "材质", "纹理")))),  # type: ignore[union-attr]
-            "visible_evidence": identity_evidence + ((" " + drift) if drift else ""),
-        }
-
-        status = "PASS" if str(raw.get("status") or "").upper() == "PASS" else "MATERIAL_FAIL"
-        raw_failures = raw.get("material_failures")
-        material_failures = [
-            dict(value) if isinstance(value, Mapping) else {"visible_evidence": str(value).strip()}
-            for value in raw_failures
-            if isinstance(value, Mapping) or (isinstance(value, str) and value.strip())
-        ] if isinstance(raw_failures, list) else []
-        if status == "MATERIAL_FAIL" and not material_failures:
-            material_failures = [{"check": name, "visible_evidence": value["visible_evidence"]} for name, value in checks.items() if not value["pass"]]
-        normalized = dict(raw)
-        normalized.update(
-            {
-                "pair_id": pair_id,
-                "module_ids": module_ids,
-                "status": status,
-                "audit_complete": True,
-                "pair_canvas": {"aspect_ratio": "3:8", "width_px": width, "height_px": height, "decomposition": "TWO_FIXED_SINGLE_SCREEN_WINDOWS"},
-                "checks": checks,
-                "screen_coverage": screen_coverage,
-                "internal_seam_evidence": seam,
-                "information_audit": information,
-                "material_failures": material_failures,
-                "identity_silhouette": identity,
-                "ocr_text": list(raw.get("ocr_text") or []),
-                "unauthorized_ocr_text": list(raw.get("unauthorized_ocr_text") or []),
-                "forbidden_text_hits": list(raw.get("forbidden_text_hits") or []),
-            }
-        )
-        binding = normalized.get("artifact_binding") if isinstance(normalized.get("artifact_binding"), Mapping) else {}
-        binding = dict(binding)  # type: ignore[arg-type]
-        binding.update(
-            {
-                "image_sha256": artifact.sha256,
-                "auditor": "polaris-vision-planner",
-                "audited_at": datetime.now(UTC).isoformat(),
-                "ocr_text": list(normalized.get("ocr_text") or []),
-                "visual_inspection_output": binding.get("visual_inspection_output") or {"mode": "DIRECT_PIXEL_REVIEW"},
-            }
-        )
-        normalized["artifact_binding"] = binding
-        return normalized
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
 
     async def _native_detail_judgment_with_review(
         self,
@@ -6666,6 +6487,12 @@ class XingheImageProvider:
             source_role="generated_pair_candidate",
         )
         audit_sources = tuple(sources) + (candidate,)
+        if any(hashlib.sha256(source.payload).hexdigest() != source.sha256 for source in audit_sources):
+            raise XingheAgentError("AURORA_NATIVE_REVIEW_SOURCE_CHANGED", "Review source bytes differ from their manifest")
+        source_inventory = [
+            {"asset_id": source.asset_id, "role": source.source_role, "sha256": source.sha256}
+            for source in audit_sources
+        ]
         contract = {
             "pair_id": native_request.get("pair_id"),
             "module_ids": native_request.get("module_ids"),
@@ -6674,32 +6501,81 @@ class XingheImageProvider:
             "product_name": native_request.get("product_name") or request.configuration.get("product_name") or "当前商品",
             "product_information": list(native_request.get("product_information") or []),
             "approved_module_contracts": list(native_request.get("approved_module_contracts") or []),
-            "audit_context_version": "aurora-v4.3-pair-audit-v2",
+            "audit_context_version": "aurora-v4.3-pair-audit-v3",
+            "candidate_sha256": artifact.sha256,
+            "candidate_dimensions": [artifact.width, artifact.height],
+            "source_inventory": source_inventory,
+            "native_request_sha256": canonical_hash(native_request),
+            "approved_module_contracts_sha256": canonical_hash(native_request.get("approved_module_contracts")),
         }
 
+        audit_receipts: list[dict[str, Any]] = []
+
         async def review(audit_request: PlannerRequest, phase: str) -> PlannerCallResult:
-            result = replace(_with_planner_observability(await self.gateway.plan(audit_request)), phase=phase + ":" + str(native_request.get("pair_id") or ""))
-            # Persist every real vision request even if its envelope or pixels
-            # fail. Keep the raw observation before structural normalization.
+            binding = {
+                "version": "native-pixel-review-v1", "phase": phase,
+                "render_token": native_request.get("token") or canonical_hash(native_request),
+                "candidate_sha256": artifact.sha256,
+                "native_request_sha256": canonical_hash(native_request),
+                "approved_module_contracts_sha256": contract["approved_module_contracts_sha256"],
+                "source_inventory": source_inventory,
+                "provider": self.gateway.provider_name,
+                "model": self.gateway.planner_model,
+                "prompt_sha256": hashlib.sha256(_planner_prompt(audit_request).encode()).hexdigest(),
+                "response_schema_sha256": canonical_hash(_planner_response_format(audit_request)),
+                "skill_content_hash": SkillManifestRegistry.bundled().get(self.skill_id).content_hash,
+                "review_runtime_sha256": canonical_hash({
+                    "adapter": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                    "review": hashlib.sha256((Path(__file__).parent / "domestic_detail/review.py").read_bytes()).hexdigest(),
+                }),
+            }
+            store = ReviewStore(detail_workspace(request.job_id) / "reviews", binding)
+            try:
+                saved = store.completed()
+                reused = saved is not None
+                if saved is None:
+                    store.begin()
+                    result = replace(_with_planner_observability(await self.gateway.plan(audit_request)), phase=phase + ":" + str(native_request.get("pair_id") or ""))
+                    store.finish(asdict(result))
+                else:
+                    result = PlannerCallResult(**saved)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                raise XingheAgentError("AURORA_NATIVE_REVIEW_RECEIPT_INVALID", "The immutable review evidence is missing or unreadable") from exc
+            # A recovered original response contributes its original usage once.
+            # Neither a duplicate execution nor a lost DB write grants a new call.
             with self.session_factory() as db:
                 plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == request.job_id).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
                 if plan is not None:
                     payload = dict(plan.payload)
                     usage = dict(payload.get("usage") or {})
-                    usage["planner"] = [*(usage.get("planner") or []), _planner_usage_record(result)]
-                    payload["usage"] = usage
-                    payload["planner_diagnostics"] = [*(payload.get("planner_diagnostics") or []), _planner_diagnostics_record(result)]
-                    plan.payload = payload
-                    plan.payload_hash = canonical_hash(payload)
-                    db.commit()
-            write_detail_contract(
-                detail_workspace(request.job_id) / f"{phase}-{request.attempt_id}-{artifact.sha256[:16]}.json",
-                {"candidate_sha256": artifact.sha256, "phase": result.phase,
-                 "source_sha256": [source.sha256 for source in audit_request.sources],
-                 "response": result.payload, "error_code": result.error_code,
-                 "error_message": result.error_message, "usage": _planner_usage_record(result)},
-            )
-            return result
+                    existing = list(usage.get("planner") or [])
+                    if not any(item.get("review_binding_sha256") == store.sha256 for item in existing):
+                        usage["planner"] = [*existing, {**_planner_usage_record(result), "review_binding_sha256": store.sha256}]
+                        payload["usage"] = usage
+                        payload["planner_diagnostics"] = [*(payload.get("planner_diagnostics") or []), {**_planner_diagnostics_record(result), "review_binding_sha256": store.sha256}]
+                        plan.payload = payload
+                        plan.payload_hash = canonical_hash(payload)
+                        db.commit()
+            if result.error_code is None:
+                if not isinstance(result.audit_raw_content, str) or not result.audit_raw_content.strip():
+                    raise XingheAgentError("AURORA_NATIVE_REVIEW_RAW_REPLY_MISSING", "A successful pixel review must preserve its original model message")
+                try:
+                    decoded = _planner_content_payload(result.audit_raw_content)
+                except XingheAgentError as exc:
+                    raise XingheAgentError("AURORA_NATIVE_REVIEW_RAW_REPLY_MISMATCH", "Original model text does not contain the reported pixel observation") from exc
+                if canonical_hash(decoded) != canonical_hash(result.payload):
+                    raise XingheAgentError("AURORA_NATIVE_REVIEW_RAW_REPLY_MISMATCH", "Original model text differs from the parsed pixel observation")
+            audit_receipts.append({
+                "phase": phase, "binding_sha256": store.sha256,
+                "request_file": "reviews/" + store.request_path.name,
+                "request_file_sha256": hashlib.sha256(store.request_path.read_bytes()).hexdigest(),
+                "response_file": "reviews/" + store.response_path.name,
+                "response_file_sha256": hashlib.sha256(store.response_path.read_bytes()).hexdigest(),
+                "original_message_sha256": hashlib.sha256(result.audit_raw_content.encode()).hexdigest() if isinstance(result.audit_raw_content, str) else None,
+            })
+            return replace(result, external_request=False) if reused else result
 
         audit_request = PlannerRequest(
                 workspace_id=request.workspace_id,
@@ -6734,29 +6610,20 @@ class XingheImageProvider:
                 replace(audit_request, planning_profile="aurora_detail_identity_audit",
                     idempotency_key=audit_request.idempotency_key + ":identity",
                     product_information=(json.dumps({"pair_id": contract["pair_id"],
-                        "product_name": contract["product_name"], "candidate_sha256": artifact.sha256}, ensure_ascii=False),)),
+                        "product_name": contract["product_name"], "candidate_sha256": artifact.sha256,
+                        "source_inventory": source_inventory}, ensure_ascii=False),)),
                 "aurora_detail_identity_audit",
             )
             observed = identity_result.payload
-            if identity_result.error_code or not isinstance(observed, Mapping) or not all(isinstance(observed.get(key), bool) for key in identity_keys) or not isinstance(observed.get("visible_evidence"), str) or len(observed["visible_evidence"].strip()) < 8:
+            if identity_result.error_code or not isinstance(observed, Mapping) or observed.get("audit_complete") is not True or not all(isinstance(observed.get(key), bool) for key in identity_keys) or not isinstance(observed.get("visible_evidence"), str) or len(observed["visible_evidence"].strip()) < 8:
                 raise XingheAgentError("AURORA_NATIVE_IDENTITY_AUDIT_INVALID", identity_result.error_message or "The bounded identity review did not return a complete direct-pixel comparison.")
             judgment["identity_silhouette"] = {
                 **{key: observed[key] and identity.get(key) is not False for key in identity_keys},
                 "visible_evidence": " ".join(str(value).strip() for value in (identity.get("visible_evidence"), observed["visible_evidence"]) if value),
             }
-        binding = judgment.get("artifact_binding")
-        binding = dict(binding) if isinstance(binding, Mapping) else {}
-        binding.update({
-            "image_sha256": artifact.sha256,
-            "auditor": "polaris-vision-planner",
-            "audited_at": datetime.now(UTC).isoformat(),
-        })
-        binding.setdefault("ocr_text", judgment.get("ocr_text") or [])
-        binding.setdefault("visual_inspection_output", {"mode": "DIRECT_PIXEL_REVIEW"})
-        judgment["artifact_binding"] = binding
-        judgment["pair_id"] = str(native_request.get("pair_id") or judgment.get("pair_id") or "")
-        judgment["module_ids"] = list(native_request.get("module_ids") or judgment.get("module_ids") or [])
-        return self._normalize_native_pair_judgment(judgment, native_request, artifact)
+        normalized = self._normalize_native_pair_judgment(judgment, native_request, artifact)
+        normalized["review_provenance"] = audit_receipts
+        return normalized
 
     @staticmethod
     def _aurora_pair_canvas_object_key(
@@ -9907,7 +9774,12 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
         )
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         if request.planning_profile == "aurora_detail_identity_audit":
-            schema = schema["properties"]["identity_silhouette"]
+            schema = deepcopy(schema["properties"]["identity_silhouette"])
+            schema["required"].append("audit_complete")
+            schema["properties"]["audit_complete"] = {"type": "boolean"}
+            schema["properties"]["uncertainty"] = {"type": "string"}
+            for name in ("shape_consistent", "colorway_consistent", "texture_consistent"):
+                schema["properties"][name] = {"type": ["boolean", "null"]}
         return {
             "type": "json_schema",
             "json_schema": {
@@ -10218,13 +10090,16 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_detail_identity_audit":
         return (
             "Directly inspect the last attached image as the generated pair candidate. "
-            "Compare its product silhouette, camera and port opening geometry, colorway, "
-            "printed artwork and surface texture to every earlier product reference. "
+            "Use source_inventory roles: only product_reference images establish identity; "
+            "style_reference, continuity and geometry images never supply product facts. "
+            "Compare silhouette, structural segments, openings, colorway, printed "
+            "artwork and surface texture to the original product references. "
             "Ignore geometry-only format canvases and reference backgrounds/watermarks. "
-            "Return only one JSON object with boolean shape_consistent, boolean "
+            "Return audit_complete plus one JSON object with boolean shape_consistent, boolean "
             "colorway_consistent, boolean texture_consistent, and visible_evidence "
-            "describing concrete observations in these actual pixels. Use false for "
-            "observed drift or insufficient evidence; never infer success from a prompt "
+            "describing concrete observations in these actual pixels. Use false only for "
+            "observed drift. If uncertain, return audit_complete=false, null for unknown "
+            "observations and an uncertainty description; never infer success from a prompt "
             "or a generic prior identity verdict. Do not judge or change any other "
             "pair audit finding.\n\nproduct_information="
             + json.dumps(list(request.product_information), ensure_ascii=False)
@@ -10232,8 +10107,9 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_detail_pair_audit":
         return (
             "Directly inspect the last attached image as the generated continuous "
-            "3:8 pair canvas. Earlier attached images are the ordered product "
-            "references; a format canvas is geometry-only and never supplies facts. "
+            "3:8 pair canvas. source_inventory binds every attached image to its role "
+            "and hash. Only product_reference images establish product identity/facts; "
+            "style_reference, continuity and format canvases never supply product facts. "
             "Return one JSON object matching the Aurora domestic detail v4.3 "
             "pair-judgment schema: pair_id, module_ids, status, audit_complete, "
             "artifact_binding, pair_canvas, checks, screen_coverage, "
@@ -10246,7 +10122,13 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "the first product_information entry below. checks must contain all "
             "nine objects identity, facts, pair_duties, visual_proof, legibility, "
             "copy_binding, internal_seam, spatial_integrity, commercial_expression; "
-            "each uses boolean pass and concrete visible_evidence. "
+            "each uses boolean pass and concrete visible_evidence. Copy pair/module IDs, "
+            "candidate dimensions and candidate_sha256 from the attached evidence context. "
+            "Report observed OCR as explicit ocr_text, unauthorized_ocr_text and "
+            "forbidden_text_hits lists; artifact_binding.ocr_text must be identical. "
+            "Do not fill selling_points_visible or seam observations from the plan. "
+            "If any required observation is unknown, return audit_complete=false and "
+            "describe uncertainty; unknown evidence never authorizes image regeneration. "
             "internal_seam_evidence must report method_id, source_region, "
             "target_region, carrier, geometry, boolean hard_cut_absent, boolean "
             "method_specific_pass, and concrete visible_evidence. Compare to the "

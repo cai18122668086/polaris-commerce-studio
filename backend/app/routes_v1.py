@@ -106,6 +106,8 @@ from .schemas_v1 import (
     DetailPackJobCreate,
     DevelopmentProviderSettingsResponse,
     DevelopmentProviderSettingsUpdate,
+    DomesticCampaignRecoveryQuote,
+    DomesticCampaignRecoveryRequest,
     DomesticCampaignReviewQuote,
     DomesticCampaignReviewReport,
     DomesticCampaignReviewRequest,
@@ -2916,6 +2918,119 @@ def get_domestic_campaign_preview(
             "Content-Disposition": 'inline; filename="campaign-preview.png"',
         },
     )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recovery-quote",
+    response_model=DomesticCampaignRecoveryQuote,
+    tags=["jobs"],
+)
+def quote_domestic_campaign_recovery(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> DomesticCampaignRecoveryQuote:
+    from .domestic_detail.campaign_recovery import recovery_quote, recovery_source
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    parent = get_workspace_job(session, workspace.workspace_id, job_id)
+    try:
+        evidence = asyncio.run(
+            recovery_source(session, parent, request.app.state.storage)
+        )
+        return DomesticCampaignRecoveryQuote.model_validate(
+            recovery_quote(parent, evidence)
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_SAVED_RESULT_UNAVAILABLE"),
+            str(exc),
+        ) from exc
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def recover_domestic_campaign_result(
+    job_id: str,
+    payload: DomesticCampaignRecoveryRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.campaign_recovery import create_recovery_job
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    key = require_idempotency_key(idempotency_header)
+    parent = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(
+            session,
+            get_workspace_job(
+                session, workspace.workspace_id, cast(str, idem.resource_id)
+            ),
+        )
+    try:
+        recovery = asyncio.run(
+            create_recovery_job(
+                session,
+                parent,
+                request.app.state.storage,
+                actor_id=workspace.principal.user_id,
+                journal_sha256=payload.original_result_journal_sha256,
+                quote_sha256=payload.quote_sha256,
+            )
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_SAVED_RESULT_UNAVAILABLE"),
+            str(exc),
+        ) from exc
+    if recovery.status == "queued":
+        add_outbox_event(
+            session,
+            workspace_id=workspace.workspace_id,
+            job_id=recovery.id,
+            event_type="job.dispatch_requested",
+            suffix="saved-original-result",
+        )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=recovery.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, recovery)
 
 
 def _campaign_review_provider(request: Request) -> Any:

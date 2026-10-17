@@ -1795,6 +1795,90 @@
         "title": "DevelopmentProviderSettingsUpdate",
         "type": "object"
       },
+      "DomesticCampaignRecoveryQuote": {
+        "properties": {
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "image_requests": {
+            "const": 0,
+            "title": "Image Requests",
+            "type": "integer"
+          },
+          "model_requests": {
+            "const": 0,
+            "title": "Model Requests",
+            "type": "integer"
+          },
+          "original_request_context_sha256": {
+            "title": "Original Request Context Sha256",
+            "type": "string"
+          },
+          "original_result_journal_sha256": {
+            "title": "Original Result Journal Sha256",
+            "type": "string"
+          },
+          "original_review_job_id": {
+            "title": "Original Review Job Id",
+            "type": "string"
+          },
+          "reserve_micros": {
+            "const": 0,
+            "title": "Reserve Micros",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          },
+          "version": {
+            "const": "campaign-saved-result-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "original_review_job_id",
+          "source_job_id",
+          "original_result_journal_sha256",
+          "original_request_context_sha256",
+          "model_requests",
+          "image_requests",
+          "reserve_micros",
+          "currency",
+          "sha256"
+        ],
+        "title": "DomesticCampaignRecoveryQuote",
+        "type": "object"
+      },
+      "DomesticCampaignRecoveryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "original_result_journal_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Original Result Journal Sha256",
+            "type": "string"
+          },
+          "quote_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Quote Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "original_result_journal_sha256",
+          "quote_sha256"
+        ],
+        "title": "DomesticCampaignRecoveryRequest",
+        "type": "object"
+      },
       "DomesticCampaignReviewQuote": {
         "properties": {
           "currency": {
@@ -11687,6 +11771,144 @@
           }
         ],
         "summary": "Quote Domestic Campaign Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover": {
+      "post": {
+        "operationId": "recover_domestic_campaign_result_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticCampaignRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Recover Domestic Campaign Result",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recovery-quote": {
+      "get": {
+        "operationId": "quote_domestic_campaign_recovery_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recovery_quote_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticCampaignRecoveryQuote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Quote Domestic Campaign Recovery",
         "tags": [
           "jobs"
         ]

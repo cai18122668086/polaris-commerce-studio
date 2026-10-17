@@ -2919,7 +2919,7 @@ def main() -> int:
         print(json.dumps(HANDLERS[args.command](args), ensure_ascii=False, indent=2))
         return 0
     except (HarnessError, KeyError, ValueError, OSError) as exc:
-        print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({"error": str(exc), "error_type": type(exc).__name__, "failure_kind": "LOCAL_IO" if isinstance(exc, OSError) else "CONTRACT_REJECTION"}, ensure_ascii=False), file=sys.stderr)
         return 2
 
 

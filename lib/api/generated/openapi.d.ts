@@ -1422,6 +1422,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Domestic Campaign Result */
+        post: operations["recover_domestic_campaign_result_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recovery-quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quote Domestic Campaign Recovery */
+        get: operations["quote_domestic_campaign_recovery_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recovery_quote_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/report": {
         parameters: {
             query?: never;
@@ -2293,6 +2327,51 @@ export interface components {
             image_model: string;
             /** Vision Model */
             vision_model: string;
+        };
+        /** DomesticCampaignRecoveryQuote */
+        DomesticCampaignRecoveryQuote: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /**
+             * Image Requests
+             * @constant
+             */
+            image_requests: 0;
+            /**
+             * Model Requests
+             * @constant
+             */
+            model_requests: 0;
+            /** Original Request Context Sha256 */
+            original_request_context_sha256: string;
+            /** Original Result Journal Sha256 */
+            original_result_journal_sha256: string;
+            /** Original Review Job Id */
+            original_review_job_id: string;
+            /**
+             * Reserve Micros
+             * @constant
+             */
+            reserve_micros: 0;
+            /** Sha256 */
+            sha256: string;
+            /** Source Job Id */
+            source_job_id: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "campaign-saved-result-v1";
+        };
+        /** DomesticCampaignRecoveryRequest */
+        DomesticCampaignRecoveryRequest: {
+            /** Original Result Journal Sha256 */
+            original_result_journal_sha256: string;
+            /** Quote Sha256 */
+            quote_sha256: string;
         };
         /** DomesticCampaignReviewQuote */
         DomesticCampaignReviewQuote: {
@@ -6791,6 +6870,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomesticCampaignReviewQuote"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_domestic_campaign_result_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recover_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticCampaignRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_domestic_campaign_recovery_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recovery_quote_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticCampaignRecoveryQuote"];
                 };
             };
             /** @description Validation Error */

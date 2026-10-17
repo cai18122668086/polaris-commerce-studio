@@ -376,6 +376,11 @@ def test_unknown_campaign_request_cannot_be_rebilled(client, monkeypatch):
     assert report.status_code == 200, report.text
     assert report.json()["report"]["native_gate_accepted"] is False
     assert report.json()["original_message_state"] == "UNAVAILABLE"
+    recovery_quote = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{review_id}/campaign-review/recovery-quote"
+    )
+    assert recovery_quote.status_code == 409, recovery_quote.text
+    assert len(calls) == 1
     repeated = request_review(client, source)
     assert repeated.status_code == 409, repeated.text
     assert repeated.json()["error"]["code"] == "NATIVE_DETAIL_CAMPAIGN_OUTCOME_UNKNOWN"

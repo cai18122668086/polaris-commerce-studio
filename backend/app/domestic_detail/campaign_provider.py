@@ -4,19 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-from collections.abc import Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..aurora_detail_runtime import (
-    AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
     detail_workspace,
 )
@@ -24,9 +19,21 @@ from ..models import AssetRecord, JobRecord
 from ..provider import ProviderOutcome, ProviderRequest, ProviderResult
 from ..provider_quota import require_provider_job_quota
 from ..storage import ImageStorage
+from .campaign_durability import (
+    JOURNAL,
+    bytes_once,
+    json_once,
+    load_result,
+    recover_response,
+    save_result,
+)
 from .campaign_jobs import CAMPAIGN_JOB_VERSION, CAMPAIGN_PROFILE, source_scope
-from .campaign_protocol import CampaignObservationError, validate_campaign_observation
-from .delivery import _json, _once
+from .campaign_materialization import (
+    materialize_campaign_review,
+    validate_campaign_preview,
+)
+from .campaign_protocol import CampaignObservationError
+from .delivery import _json
 from .generation import runtime_source_hash
 from .planner_dispatch import (
     result_with_dispatch,
@@ -43,43 +50,11 @@ def _sha(payload: bytes) -> str:
 
 
 def _bytes_once(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.is_symlink() or path.parent.is_symlink() or path.parent.is_junction():
-        raise ValueError("Review evidence cannot traverse a link")
-    if path.exists():
-        if path.read_bytes() != payload:
-            raise ValueError("Original review snapshot bytes changed")
-        return
-    with path.open("xb") as stream:
-        stream.write(payload)
-        stream.flush()
-        os.fsync(stream.fileno())
+    bytes_once(path, payload)
 
 
-def validate_campaign_preview(preview: bytes, screens: Sequence[bytes]) -> None:
-    """An optional preview must contain the exact accepted RGB windows in order."""
-    if not screens:
-        raise ValueError("Campaign preview needs its accepted screens")
-    with Image.open(BytesIO(preview)) as canvas:
-        canvas.load()
-        if canvas.format != "PNG" or canvas.mode != "RGB":
-            raise ValueError("Campaign preview must preserve native RGB PNG pixels")
-        top = 0
-        for payload in screens:
-            with Image.open(BytesIO(payload)) as screen:
-                screen.load()
-                width, height = screen.size
-                if screen.mode != "RGB" or width != canvas.width:
-                    raise ValueError("Preview differs from the accepted screen profile")
-                if (
-                    top + height > canvas.height
-                    or canvas.crop((0, top, width, top + height)).tobytes()
-                    != screen.tobytes()
-                ):
-                    raise ValueError("Preview pixels differ from accepted screen order")
-                top += height
-        if top != canvas.height:
-            raise ValueError("Preview contains additional unaccepted pixels")
+def _once(path: Path, value: dict[str, Any]) -> None:
+    json_once(path, value)
 
 
 class DomesticCampaignReviewProvider:
@@ -100,6 +75,15 @@ class DomesticCampaignReviewProvider:
         return select_route(self.gateway)
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
+        if (
+            request.configuration.get("job", {}).get("version")
+            == "campaign-saved-result-v1"
+        ):
+            from .campaign_recovery import SavedCampaignReviewProvider
+
+            return await SavedCampaignReviewProvider(
+                self.session_factory, self.storage
+            ).execute(request)
         from ..xinghe_agent import PlannerCallResult, PlannerRequest, SourceImage
 
         root = detail_workspace(request.job_id)
@@ -109,6 +93,8 @@ class DomesticCampaignReviewProvider:
         route: dict[str, Any] | None = None
         reserve = 0
         report_available = False
+        journal_sha256: str | None = None
+        model_call_pending = False
         started = any(
             (detail_workspace(request.job_id) / "reviews").glob("*.request.json")
         )
@@ -384,11 +370,19 @@ class DomesticCampaignReviewProvider:
                 },
             )
             started = started or store.request_path.exists()
-            completed = store.completed()
+            completed: dict[str, Any] | None
+            if (root / JOURNAL).exists():
+                load_result(store)
+                journal_sha256 = _sha((root / JOURNAL).read_bytes())
+                completed = recover_response(store)
+            else:
+                completed = store.completed()
             if completed is None:
                 store.begin()
                 started = True
+                model_call_pending = True
                 result = await self.gateway.plan(call)
+                model_call_pending = False
                 result = replace(result, phase=CAMPAIGN_PROFILE)
                 try:
                     checked = result_with_dispatch(asdict(result), route)
@@ -396,6 +390,7 @@ class DomesticCampaignReviewProvider:
                     store.finish(asdict(result))
                     raise
                 result = replace(result, provider_envelope=checked["provider_envelope"])
+                journal_sha256 = save_result(store, asdict(result))
                 store.finish(asdict(result))
             else:
                 started = True
@@ -405,101 +400,71 @@ class DomesticCampaignReviewProvider:
                 raise CampaignObservationError(
                     result.error_message or result.error_code
                 )
-            judgment = validate_campaign_observation(
-                result.payload, model_context, original_text=result.audit_raw_content
+            _, gate_error = materialize_campaign_review(
+                root,
+                request.job_id,
+                intent,
+                model_context,
+                result,
+                store,
+                journal_sha256,
+                publish=_once,
+                publish_bytes=_bytes_once,
             )
-            judgment_path = root / "campaign-judgment.json"
-            if judgment_path.exists():
-                if canonical_hash(_json(judgment_path)) != canonical_hash(judgment):
-                    raise ValueError("Original campaign judgment changed")
-            else:
-                _once(judgment_path, judgment)
-            gate_error = None
-            target = _json(root / "session.json")
-            if target.get("long_page_audit"):
-                if canonical_hash(target["long_page_audit"]) != canonical_hash(
-                    judgment
-                ):
-                    raise ValueError(
-                        "Native campaign audit differs from original observations"
-                    )
-            else:
-                try:
-                    runner.run(
-                        "audit-long-page",
-                        root,
-                        {"session": root / "session.json", "judgment": judgment_path},
-                    )
-                except AuroraDetailHarnessError as exc:
-                    gate_error = str(exc)
-            _bytes_once(
-                root / "audited-session.json", (root / "session.json").read_bytes()
-            )
-            report = {
-                "version": CAMPAIGN_JOB_VERSION,
-                "review_job_id": request.job_id,
-                "source_job_id": intent["source_job_id"],
-                "intent_sha256": intent["intent_sha256"],
-                "source_context_sha256": intent["source_context_sha256"],
-                "request_context_sha256": canonical_hash(model_context),
-                "request_file_sha256": _sha(store.request_path.read_bytes()),
-                "response_file_sha256": _sha(store.response_path.read_bytes()),
-                "native_session_sha256": _sha(
-                    (root / "audited-session.json").read_bytes()
-                ),
-                "native_session_file": "audited-session.json",
-                "preview_sha256": _sha(preview),
-                "judgment": judgment,
-                "native_gate_accepted": gate_error is None,
-                "native_gate_error": gate_error,
-                "residual_checks": [
-                    name
-                    for name, row in judgment["checks"].items()
-                    if row["pass"] is False
-                ],
-            }
-            sealed = {**report, "sha256": canonical_hash(report)}
-            path = root / "campaign-report.json"
-            if path.exists():
-                if canonical_hash(_json(path)) != canonical_hash(sealed):
-                    raise ValueError("Original campaign report changed")
-            else:
-                _once(path, sealed)
             return self._result(
-                result, route, reserve, error=gate_error, report_available=True
+                result,
+                route,
+                reserve,
+                error=gate_error,
+                report_available=True,
+                journal_sha256=journal_sha256,
             )
         except Exception as exc:
             if store is not None and store.request_path.exists():
-                failure = {
-                    "version": CAMPAIGN_JOB_VERSION,
-                    "review_job_id": request.job_id,
-                    "source_job_id": intent.get("source_job_id"),
-                    "intent_sha256": intent.get("intent_sha256"),
-                    "source_context_sha256": intent.get("source_context_sha256"),
-                    "native_gate_accepted": False,
-                    "stage": "REVIEW_NOT_ACCEPTED",
-                    "request_context_sha256": store.binding["request_context_sha256"],
-                    "preview_sha256": store.binding["candidate_sha256"],
-                    "error_code": str(
-                        getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_REVIEW_INVALID")
-                    ),
-                    "error_message": str(exc),
-                    "request_file_sha256": _sha(store.request_path.read_bytes()),
-                    "response_file_sha256": _sha(store.response_path.read_bytes())
-                    if store.response_path.exists()
-                    else None,
-                    "original_message_sha256": _sha(
-                        result.audit_raw_content.encode("utf-8")
-                    )
-                    if result is not None and isinstance(result.audit_raw_content, str)
-                    else None,
-                    "judgment": result.payload if result is not None else None,
-                }
                 try:
-                    path = root / "campaign-report.json"
-                    if not path.exists():
-                        _once(path, {**failure, "sha256": canonical_hash(failure)})
-                        report_available = True
+                    failure = {
+                        "version": CAMPAIGN_JOB_VERSION,
+                        "review_job_id": request.job_id,
+                        "source_job_id": intent.get("source_job_id"),
+                        "intent_sha256": intent.get("intent_sha256"),
+                        "source_context_sha256": intent.get("source_context_sha256"),
+                        "native_gate_accepted": False,
+                        "stage": "REVIEW_NOT_ACCEPTED",
+                        "request_context_sha256": store.binding[
+                            "request_context_sha256"
+                        ],
+                        "preview_sha256": store.binding["candidate_sha256"],
+                        "error_code": str(
+                            getattr(
+                                exc, "code", "NATIVE_DETAIL_CAMPAIGN_REVIEW_INVALID"
+                            )
+                        ),
+                        "error_message": str(exc),
+                        "request_file_sha256": _sha(store.request_path.read_bytes()),
+                        "response_file_sha256": _sha(store.response_path.read_bytes())
+                        if store.response_path.exists()
+                        else None,
+                        "original_message_sha256": _sha(
+                            result.audit_raw_content.encode("utf-8")
+                        )
+                        if result is not None
+                        and isinstance(result.audit_raw_content, str)
+                        else None,
+                        "judgment": result.payload if result is not None else None,
+                    }
+                    if isinstance(exc, OSError) and not model_call_pending:
+                        interrupted = {**failure, "stage": "LOCAL_WRITE_INTERRUPTION"}
+                        _once(
+                            root
+                            / "interruptions"
+                            / (canonical_hash(interrupted) + ".json"),
+                            {**interrupted, "sha256": canonical_hash(interrupted)},
+                        )
+                    else:
+                        path = root / "campaign-report.json"
+                        if not path.exists():
+                            _once(path, {**failure, "sha256": canonical_hash(failure)})
+                            report_available = True
                 except (OSError, ValueError, TypeError):
                     pass
             return self._result(
@@ -510,6 +475,7 @@ class DomesticCampaignReviewProvider:
                 code=str(getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_REVIEW_INVALID")),
                 started=started,
                 report_available=report_available,
+                journal_sha256=journal_sha256,
             )
 
     def _result(
@@ -522,6 +488,7 @@ class DomesticCampaignReviewProvider:
         code: str = "NATIVE_DETAIL_CAMPAIGN_GATE_REJECTED",
         started: bool = True,
         report_available: bool = False,
+        journal_sha256: str | None = None,
     ) -> ProviderResult:
         dispatch = (
             (result.provider_envelope or {}).get("native_planner_dispatch")
@@ -551,6 +518,7 @@ class DomesticCampaignReviewProvider:
             "campaign_review": {
                 "report_available": report_available,
                 "failure": error,
+                "original_result_journal_sha256": journal_sha256,
             },
         }
         uncertain = bool(

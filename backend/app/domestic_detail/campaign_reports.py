@@ -8,7 +8,8 @@ from typing import Any
 
 from ..aurora_detail_runtime import detail_workspace
 from ..models import JobRecord
-from .campaign_provider import validate_campaign_preview
+from .campaign_durability import JOURNAL, load_result
+from .campaign_materialization import validate_campaign_preview
 from .delivery import _json, _reject, _stable_session
 from .planner_dispatch import validate_dispatch_result
 from .plans import canonical_hash
@@ -77,13 +78,30 @@ def load_campaign_report(job: JobRecord) -> tuple[dict[str, Any], bytes]:
         store.request_path != path
         or hashlib.sha256(path.read_bytes()).hexdigest()
         != report["request_file_sha256"]
-        or binding.get("render_token") != job.id
-        or binding.get("native_request_sha256") != intent["intent_sha256"]
+        or binding.get("render_token") != intent.get("original_review_job_id", job.id)
+        or binding.get("native_request_sha256")
+        != intent.get("original_review_intent_sha256", intent["intent_sha256"])
         or binding.get("candidate_sha256") != report["preview_sha256"]
         or binding.get("request_context_sha256") != canonical_hash(context)
         or binding["dispatch_route"]["sha256"] != intent["dispatch_route_sha256"]
     ):
         _reject("Original campaign request or selected dispatch changed")
+    journal_sha = report.get("model_result_journal_sha256")
+    if intent.get("original_review_job_id"):
+        expected_origin = {
+            "job_id": intent["original_review_job_id"],
+            "intent_sha256": intent["original_review_intent_sha256"],
+            "journal_file_sha256": intent["original_result_journal_sha256"],
+        }
+        if (
+            report.get("original_review") != expected_origin
+            or journal_sha != intent["original_result_journal_sha256"]
+        ):
+            _reject("Recovered report lost its exact original paid-request provenance")
+    if journal_sha is not None:
+        if hashlib.sha256((root / JOURNAL).read_bytes()).hexdigest() != journal_sha:
+            _reject("Original model result journal changed")
+        load_result(store)
     result = None
     if store.response_path.exists():
         if (

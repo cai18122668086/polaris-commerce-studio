@@ -25,6 +25,7 @@ from .review_packet import validate_final_review
 
 CAMPAIGN_JOB_VERSION = "domestic-campaign-review-v1"
 CAMPAIGN_PROFILE = "aurora_detail_campaign_audit"
+CAMPAIGN_RECOVERY_VERSION = "campaign-saved-result-v1"
 
 
 async def source_scope(
@@ -103,6 +104,10 @@ def require_campaign_review_reconciled(db: Session, source: JobRecord) -> None:
                 "An optional campaign review is already active: " + review.id,
                 "NATIVE_DETAIL_CAMPAIGN_ALREADY_ACTIVE",
             )
+        if review.configuration.get("version") == CAMPAIGN_RECOVERY_VERSION:
+            # A local zero-model recovery has no uncertain supplier dispatch.
+            # Its report is verified separately when resolving its parent.
+            continue
         uncertain_attempt = db.scalar(
             select(JobAttemptRecord.id)
             .where(
@@ -127,6 +132,47 @@ def require_campaign_review_reconciled(db: Session, source: JobRecord) -> None:
                 "before another paid call",
                 "NATIVE_DETAIL_CAMPAIGN_OUTCOME_UNKNOWN",
             )
+        if review.configuration.get("version") == CAMPAIGN_JOB_VERSION:
+            from .campaign_durability import JOURNAL, sha
+
+            root = detail_workspace(review.id)
+            original_report_valid = False
+            if (root / "campaign-report.json").exists():
+                from .campaign_reports import load_campaign_report
+
+                try:
+                    load_campaign_report(review)
+                    original_report_valid = True
+                except (ValueError, OSError, KeyError):
+                    pass
+            if (root / JOURNAL).exists() and not original_report_valid:
+                resolved = False
+                from .campaign_reports import load_campaign_report
+
+                for candidate in prior:
+                    if (
+                        candidate.configuration.get("original_review_job_id")
+                        != review.id
+                    ):
+                        continue
+                    if candidate.status not in {"completed", "failed"}:
+                        continue
+                    try:
+                        report, _ = load_campaign_report(candidate)
+                        resolved = report["report"]["original_review"][
+                            "journal_file_sha256"
+                        ] == sha((root / JOURNAL).read_bytes())
+                    except (ValueError, OSError, KeyError):
+                        continue
+                    if resolved:
+                        break
+                if resolved:
+                    continue
+                if not resolved:
+                    _reject(
+                        "Recover the saved original result before another paid review",
+                        "NATIVE_DETAIL_CAMPAIGN_SAVED_RESULT_AVAILABLE",
+                    )
         directory = detail_workspace(review.id) / "reviews"
         for path in directory.glob("*.request.json"):
             try:

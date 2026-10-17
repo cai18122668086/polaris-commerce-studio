@@ -728,6 +728,25 @@ class PlanConfirmRequest(BaseModel):
     approved_pair_canvas_aspect_ratio: Literal["3:8"] | None = None
 
 
+class DomesticCampaignRecoveryQuote(BaseModel):
+    version: Literal["campaign-saved-result-v1"]
+    original_review_job_id: str
+    source_job_id: str
+    original_result_journal_sha256: str
+    original_request_context_sha256: str
+    model_requests: Literal[0]
+    image_requests: Literal[0]
+    reserve_micros: Literal[0]
+    currency: Literal["USD"]
+    sha256: str
+
+
+class DomesticCampaignRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    original_result_journal_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class DomesticCampaignReviewReport(BaseModel):
     report: dict[str, Any]
     request_context: dict[str, Any]

@@ -30,9 +30,12 @@ DETAIL_VERSION = "4.3.1"
 
 
 class AuroraDetailHarnessError(RuntimeError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self, code: str, message: str, *, native_failure_kind: str | None = None
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.native_failure_kind = native_failure_kind
 
 
 @dataclass(frozen=True)
@@ -133,14 +136,21 @@ class AuroraDetailHarnessRunner:
             result = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
             detail = completed.stderr.strip()[-1000:]
+            native_kind = None
             try:
                 error_payload = json.loads(completed.stderr)
                 detail = str(error_payload.get("error") or detail)
+                if error_payload.get("failure_kind") in {
+                    "LOCAL_IO",
+                    "CONTRACT_REJECTION",
+                }:
+                    native_kind = error_payload["failure_kind"]
             except json.JSONDecodeError:
                 pass
             raise AuroraDetailHarnessError(
                 "HARNESS_INVALID_OUTPUT",
                 f"Aurora detail Harness did not return JSON (exit={completed.returncode}; stderr={detail})",
+                native_failure_kind=native_kind,
             ) from exc
         if completed.returncode != 0 or result.get("status") == "BLOCKED":
             raise AuroraDetailHarnessError(
@@ -148,6 +158,11 @@ class AuroraDetailHarnessRunner:
                 str(
                     result.get("error")
                     or "Aurora detail Harness blocked the transition"
+                ),
+                native_failure_kind=(
+                    result.get("failure_kind")
+                    if result.get("failure_kind") in {"LOCAL_IO", "CONTRACT_REJECTION"}
+                    else None
                 ),
             )
         return result

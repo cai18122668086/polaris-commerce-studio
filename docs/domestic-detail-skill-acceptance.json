@@ -512,5 +512,21 @@
     "actual_supplier_calls": 0,
     "missing_native_binding_already_rejects_without_recreation": true,
     "native_sources_unchanged": true
+  },
+  "local_optional_campaign_recovery_candidate": {
+    "overall_completion": "unproven",
+    "parent": "7cfac1209d1e740aac4e1f22c3f2344a242a906e",
+    "report": "domestic-detail-campaign-recovery-2026-10-18.md",
+    "scope": "Durable original model result journal, immutable raw bytes, local interruption classification and separate zero-model queued recovery. Original source, paid task and accounting unchanged.",
+    "current_source_error_cases": 4,
+    "final_source_recovery_cases": 7,
+    "mypy_sources": 100,
+    "detail_content_hash": "46f3b72741bd4f62c0838bc70f8032caffd258866002f67501cbf12de4f984f9",
+    "native_gate_rules_unchanged": true,
+    "actual_supplier_calls": 0,
+    "persistent_stack_verified": false,
+    "actual_visual_acceptance": false,
+    "UI_selection_and_final_binding": "pending",
+    "distinct_final_source_cases": 11
   }
 }

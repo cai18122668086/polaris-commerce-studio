@@ -278,7 +278,8 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
                     for module_id in assigned
                 ) else "SUPPORT",
             )
-            claim["defer_reason_code"] = "NOT_DEFERRED"
+            # Disposition reasons are authored evidence, not structural defaults.
+            # Preserve valid, unknown and missing values for strict Harness validation.
             claim.setdefault("rationale", "核心事实直接进入已批准屏幕")
             for module_id in assigned:
                 module = by_id[module_id]

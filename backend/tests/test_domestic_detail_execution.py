@@ -1154,3 +1154,76 @@ def test_full_pair_retry_uses_new_canvas_while_second_slice_only_retry_uses_sour
         second_item = session.scalar(select(JobItemRecord).where(JobItemRecord.job_id == second.id, JobItemRecord.ordinal == 1))
         assert all("aurora_pair_source_job_id" not in i.configuration for i in full_items)
         assert second_item.configuration["aurora_pair_source_job_id"] == source_job.id
+
+
+@pytest.mark.parametrize("page_count", [8, 10, 12])
+@pytest.mark.parametrize("reason", ["UNSUPPORTED_INVENTION", "HIGH_RISK_UNDOCUMENTED"])
+def test_deferred_reason_passes_real_compiler_without_replanning_or_generation(
+    client: TestClient, monkeypatch, page_count: int, reason: str,
+) -> None:
+    """Exercise the same compiler boundary as production with synthetic inputs."""
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+
+    async def with_deferred_claim(request):
+        result = await original_plan(request)
+        payload = deepcopy(result.payload)
+        if request.planning_profile == "aurora_domestic_detail":
+            strategy = payload["output_strategy"]
+            strategy["selling_point_clusters"][0]["fact_ids"].append("F02")
+            strategy["claim_coverage"].append({
+                "claim_id": "F02", "disposition": "DEFERRED", "module_ids": [],
+                "rationale": "This unsupported performance claim must remain deferred.",
+                "defer_reason_code": reason,
+            })
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", with_deferred_claim)
+    source = upload_asset(client, filename="synthetic-deferred-claim.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic",
+        auto_start_after_plan=False, page_count=page_count,
+    )
+    with client.app.state.session_factory() as session:
+        record = session.get(JobRecord, job["id"])
+        configuration = deepcopy(record.configuration)
+        configuration["settings"]["verified_facts"] = [
+            {"id": "F01", "text": "Visible product identity from the test source."},
+            {"id": "F02", "text": "Unsupported performance claim held out of all screens."},
+        ]
+        record.configuration = configuration
+        session.commit()
+    dispatch_pending(client)
+    planned = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    ).json()
+    if page_count == 12 and planned["status"] == JobStatus.FAILED.value:
+        # The baseline assigns one spatial family to M09..M12. Do not weaken
+        # the locked validator or disguise that separate structural defect.
+        snapshots = detail_workspace(str(job["id"])) / "planning"
+        repair = json.loads(
+            (snapshots / "aurora_domestic_plan_repair-campaign-request.json")
+            .read_text(encoding="utf-8")
+        )
+        errors = str(repair["validation_errors"])
+        if "A rolling three-module window lacks structural relationship variation" in errors:
+            original = json.loads(
+                (snapshots / "initial-plan.json").read_text(encoding="utf-8")
+            )
+            normalized = normalize_native_plan_for_harness(original)
+            deferred = normalized["output_strategy"]["claim_coverage"][-1]
+            assert deferred["defer_reason_code"] == reason
+            assert deferred["disposition"] == "DEFERRED"
+            assert deferred["module_ids"] == []
+            assert gateway.image_calls == []
+            pytest.xfail("Pre-existing 12-screen spatial repetition; stage 3 repair")
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert planned["plan"]["confirmed_at"] is None
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail"]
+    assert gateway.image_calls == []
+    native = planned["plan"]["payload"]["groups"][0]["plan_protocol_fields"]["aurora_plan"]
+    coverage = native["output_strategy"]["claim_coverage"]
+    claim = next(item for item in coverage if item["claim_id"] == "F02")
+    assert claim["disposition"] == "DEFERRED"
+    assert claim["defer_reason_code"] == reason
+    assert claim["module_ids"] == []

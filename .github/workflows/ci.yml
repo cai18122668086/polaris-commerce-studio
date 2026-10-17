@@ -67,6 +67,10 @@ jobs:
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
         run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py
+      - name: Test recorded stage expansion on isolated PostgreSQL schemas
+        env:
+          POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
+        run: python -m pytest backend/tests/test_stage_length_migration_postgres.py
       - name: Test deployment preflight
         run: python -m unittest discover -s deploy/tests -v
       - name: Validate deployment sources

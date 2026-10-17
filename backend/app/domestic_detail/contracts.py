@@ -189,13 +189,24 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
                 "module_jobs": module_jobs,
             })
         depth["claim_depth"] = claim_depth
-    information_roles = ["IDENTITY", "PAIN", "DEDICATED_PROOF", "DEDICATED_PROOF", "DEDICATED_PROOF", "RESULT_OR_EXPERIENCE", "SELECTION_OR_USE", "CLOSURE"]
+    information_roles = {
+        "HOOK": "IDENTITY",
+        "PAIN_ARTICULATION": "PAIN",
+        "PAIN_SOLUTION_COMBINED": "PAIN",
+        "SOLUTION_PROOF": "DEDICATED_PROOF",
+        "MECHANISM_PROOF": "MECHANISM_OR_STRUCTURE",
+        "MATERIAL_PROOF": "DEDICATED_PROOF",
+        "USE_OR_RESULT": "RESULT_OR_EXPERIENCE",
+        "SELECTION_OR_SPECIFICATION": "SELECTION_OR_USE",
+        "TRUST_OR_RISK_REMOVAL": "TRUST",
+        "PURCHASE_CLOSURE": "CLOSURE",
+    }
     for index, module in enumerate(modules):
         if isinstance(module, dict):
-            module["information_role"] = information_roles[index] if index < len(information_roles) else "OTHER"
+            module.setdefault("information_role", information_roles.get(module.get("story_function"), "OTHER"))
             if index == 0:
-                module["hero_entity_id"] = str((hero_contract or {}).get("hero_entity_id") or "E_PRODUCT_WHOLE")
-                module["co_equal_hero_entity_ids"] = []
+                module.setdefault("hero_entity_id", str((hero_contract or {}).get("hero_entity_id") or "E_PRODUCT_WHOLE"))
+                module.setdefault("co_equal_hero_entity_ids", [])
     forbidden_inventions = []
     if isinstance(dna, dict) and isinstance(dna.get("forbidden_mutations"), list):
         forbidden_inventions = [str(item) for item in dna["forbidden_mutations"] if str(item).strip()]
@@ -233,22 +244,6 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
         elif isinstance(evidence, dict):
             evidence.setdefault("evidence_class", "DIRECT_OBSERVATION")
             evidence.setdefault("proof_device", "CONCRETE_PRODUCT_EVIDENCE")
-        spatial = module.get("module_spatial_structure_contract")
-        if isinstance(spatial, dict):
-            briefs = spatial.get("zone_briefs")
-            if isinstance(briefs, list) and len(briefs) > 2:
-                spatial["zone_briefs"] = [
-                    str(briefs[0]),
-                    "；".join(str(item) for item in briefs[1:] if str(item).strip()),
-                ]
-        authored_structure = module.get("structure")
-        if isinstance(authored_structure, dict):
-            briefs = authored_structure.get("zone_briefs")
-            if isinstance(briefs, list) and len(briefs) > 2:
-                authored_structure["zone_briefs"] = [
-                    str(briefs[0]),
-                    "；".join(str(item) for item in briefs[1:] if str(item).strip()),
-                ]
 
     for module in modules:
         if not isinstance(module, dict):
@@ -312,35 +307,6 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
                     if isinstance(module, dict) and cluster_id in (module.get("selling_point_cluster_ids") or [])
                 ]
             cluster["fact_ids"] = [fact_id_for_claim(item) for item in cluster.get("fact_ids", [])]
-    spatial_families = {
-        1: ("FULL_BLEED_HERO", 1),
-        2: ("ASYMMETRIC_EDITORIAL", 2),
-        3: ("STACKED_BANDS", 2),
-        4: ("MACRO_DIAGRAM", 2),
-        5: ("MACRO_DIAGRAM", 2),
-        6: ("STACKED_BANDS", 2),
-        7: ("ASYMMETRIC_EDITORIAL", 2),
-        8: ("FULL_BLEED_HERO", 1),
-    }
-    for index, module in enumerate(modules, start=1):
-        if not isinstance(module, dict):
-            continue
-        family, expected_zone_count = spatial_families.get(index, ("ASYMMETRIC_EDITORIAL", 2))
-        for key in ("structure", "module_spatial_structure_contract"):
-            spatial = module.get(key)
-            if not isinstance(spatial, dict):
-                continue
-            spatial["structure_family"] = family
-            briefs = [str(item) for item in spatial.get("zone_briefs", []) if str(item).strip()]
-            if not briefs:
-                briefs = ["主导证据区"]
-            if expected_zone_count == 1:
-                briefs = ["；".join(briefs)]
-            elif len(briefs) < expected_zone_count:
-                briefs.extend([f"补充证据区{n}" for n in range(len(briefs) + 1, expected_zone_count + 1)])
-            elif len(briefs) > expected_zone_count:
-                briefs = briefs[:expected_zone_count - 1] + ["；".join(briefs[expected_zone_count - 1:])]
-            spatial["zone_briefs"] = briefs
     pair_rendering = strategy.get("continuous_pair_rendering")
     if isinstance(pair_rendering, dict) and isinstance(pair_rendering.get("pair_ids"), list):
         modules_by_id = {

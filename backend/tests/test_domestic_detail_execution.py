@@ -1197,26 +1197,6 @@ def test_deferred_reason_passes_real_compiler_without_replanning_or_generation(
     planned = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
     ).json()
-    if page_count == 12 and planned["status"] == JobStatus.FAILED.value:
-        # The baseline assigns one spatial family to M09..M12. Do not weaken
-        # the locked validator or disguise that separate structural defect.
-        snapshots = detail_workspace(str(job["id"])) / "planning"
-        repair = json.loads(
-            (snapshots / "aurora_domestic_plan_repair-campaign-request.json")
-            .read_text(encoding="utf-8")
-        )
-        errors = str(repair["validation_errors"])
-        if "A rolling three-module window lacks structural relationship variation" in errors:
-            original = json.loads(
-                (snapshots / "initial-plan.json").read_text(encoding="utf-8")
-            )
-            normalized = normalize_native_plan_for_harness(original)
-            deferred = normalized["output_strategy"]["claim_coverage"][-1]
-            assert deferred["defer_reason_code"] == reason
-            assert deferred["disposition"] == "DEFERRED"
-            assert deferred["module_ids"] == []
-            assert gateway.image_calls == []
-            pytest.xfail("Pre-existing 12-screen spatial repetition; stage 3 repair")
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert planned["plan"]["confirmed_at"] is None
     assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail"]

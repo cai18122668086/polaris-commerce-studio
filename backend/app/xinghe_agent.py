@@ -7983,6 +7983,19 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
             number = index + 1
             module_id = f"M{number:02d}"
             conclusion = f"{product}的第{number}项可见购买证据"
+            spatial_sequence = (
+                "FULL_BLEED_HERO", "ASYMMETRIC_EDITORIAL", "STACKED_BANDS",
+                "MACRO_DIAGRAM", "MACRO_DIAGRAM", "STACKED_BANDS",
+                "ASYMMETRIC_EDITORIAL", "SPECIFICATION_BOARD", "MACRO_DIAGRAM",
+                "STACKED_BANDS", "ASYMMETRIC_EDITORIAL", "FULL_BLEED_HERO",
+            )
+            spatial_family = "FULL_BLEED_HERO" if number == request.page_count else spatial_sequence[index]
+            spatial_briefs = ["商品主体与卖点证明区"] if spatial_family == "FULL_BLEED_HERO" else ["主导商品证据区", "辅助判断与结果区"]
+            story_function = "PURCHASE_CLOSURE" if number == request.page_count else story_functions[index % len(story_functions)]
+            if number > 8 and number != request.page_count:
+                story_function = "MECHANISM_PROOF" if number % 2 else "USE_OR_RESULT"
+            if number != request.page_count and story_function == "PURCHASE_CLOSURE":
+                story_function = "USE_OR_RESULT"
             modules.append(
                 {
                     "id": module_id,
@@ -7992,7 +8005,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                     "lead_conclusion": conclusion,
                     "lead_claim_id": "F01",
                     "selling_point_cluster_ids": ["SP-COVERAGE"],
-                    "story_function": story_functions[index % len(story_functions)],
+                    "story_function": story_function,
                     "pain_ids": [f"PAIN-{number:02d}"],
                     "value_bridge_ids": [f"VALUE-{number:02d}"],
                     "visual_proof_direction": f"用真实商品可见结构证明第{number}项",
@@ -8021,8 +8034,8 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                         "copy_responsibility": "说明购买结论",
                     },
                     "structure": {
-                        "structure_family": "ASYMMETRIC_EDITORIAL",
-                        "zone_briefs": ["商品主体与卖点证明区"],
+                        "structure_family": spatial_family,
+                        "zone_briefs": spatial_briefs,
                         "structure_difference_from_previous": "改变信息结构与证据关系",
                         "forbidden_fallbacks": ["通用白底", "空泛口号", "装饰性图标"],
                     },

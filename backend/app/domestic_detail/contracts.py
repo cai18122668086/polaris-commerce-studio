@@ -7,6 +7,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from .facts import text_tokens
+
 
 def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]:
     """Bridge valid compact-plan values to the Harness' stricter list contract.
@@ -97,7 +99,7 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
         dna.setdefault("typography_tokens", constitution.get("typography_and_graphics") or "简洁中文无衬线字体，标题与对象标签分层")
         dna.setdefault("graphic_tokens", constitution.get("typography_and_graphics") or "细线标注与克制辅助图形")
         dna.setdefault("photography_tokens", constitution.get("product_rendering") or "真实商品材质与统一主光")
-        dna.setdefault("product_tokens", list(dna.get("identity_geometry") or []) + list(dna.get("photography_tokens") or []))
+        dna.setdefault("product_tokens", text_tokens(dna.get("identity_geometry"), field="series_visual_dna/identity_geometry") + text_tokens(dna.get("photography_tokens"), field="series_visual_dna/photography_tokens"))
         dna.setdefault("spatial_tokens", [
             "纵向连续展台",
             "非对称证据分区",
@@ -105,7 +107,7 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
         ])
         invariants = dna.get("invariants")
         if not isinstance(invariants, list) or len(invariants) < 2:
-            identity = [str(item) for item in (dna.get("identity_geometry") or []) if str(item).strip()]
+            identity = text_tokens(dna.get("identity_geometry"), field="series_visual_dna/identity_geometry")
             dna["invariants"] = (identity + ["统一主光方向与商品材质真实感", "连续 pair 画布使用固定切片坐标"])[:]
     typography_rhythm = normalized.get("typography_rhythm")
     if not isinstance(typography_rhythm, dict):

@@ -564,5 +564,23 @@
       "Persistent independent PostgreSQL/Redis/MinIO/API/Worker",
       "Browser complete business flow, actual supplier cost and actual pixel acceptance"
     ]
+  },
+  "local_native_adjustment_order_candidate": {
+    "overall_completion": "unproven",
+    "parent": "086eafaabd20a7da47b947adbd28139d4a00ac8b",
+    "report": "domestic-detail-local-adjustment-order-2026-10-18.md",
+    "scope": "Native local adjustment pair-upper cursor and both-cycle history; website source-mutating command stays blocked. Independent owned revision job/API/provider/UI not implemented.",
+    "final_native_regression_green": 75,
+    "new_native_cases": 15,
+    "valid_pre_fix_baseline": {
+      "failed": 8,
+      "passed": 7
+    },
+    "native_content_hash": "93c3d630bef607d01bcbf82c7354dcd937ed36fca40e4e7245a89e49b5297f38",
+    "other_native_files_raw_unchanged": 78,
+    "website_app_python_files_unchanged": 103,
+    "actual_supplier_calls": 0,
+    "actual_visual_acceptance": false,
+    "persistent_stack_verified": false
   }
 }

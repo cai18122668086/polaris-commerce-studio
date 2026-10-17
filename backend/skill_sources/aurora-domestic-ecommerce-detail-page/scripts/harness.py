@@ -2134,6 +2134,14 @@ def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
                 continue
             sibling["prior_accepted_asset"] = sibling.get("accepted_asset")
             sibling["accepted_asset"] = None
+            sibling.setdefault("revision_history", []).append({
+                "cycle_id": sibling.get("cycle_id", 1),
+                "instruction": "Preserve sibling screen while regenerating the approved continuous pair.",
+                "source_module_id": module["id"],
+                "verbatim_user_instruction": adjustment["verbatim_instruction"],
+                "attempt_count": sibling.get("cycle_attempt_count", 0),
+                "closed_at": now(),
+            })
             sibling["cycle_id"] = sibling.get("cycle_id", 1) + 1
             sibling["cycle_attempt_count"] = 0
             sibling["cycle_base_asset"] = pair_base
@@ -2144,7 +2152,10 @@ def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
     module_ledger = ledger.setdefault("by_module", {}).setdefault(module["id"], {"preserve": [], "must_not_regress": []})
     for key in ("preserve", "must_not_regress"):
         module_ledger[key] = _unique_strings(module_ledger.get(key, []) + adjustment[key])
-    session["current_index"] = index
+    session["current_index"] = (
+        min(i for i, item in enumerate(session["modules"]) if item["id"] in pair["module_ids"])
+        if pair else index
+    )
     session["assembly"] = None
     session["long_page_audit"] = None
     session["final"] = None

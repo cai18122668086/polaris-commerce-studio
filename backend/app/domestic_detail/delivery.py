@@ -449,9 +449,7 @@ async def finalize_native_delivery(
                 "manifest_file_sha256"
             ],
             "native_delivery_receipt_sha256": completed["sha256"],
-            "quality_state": "WITH_RESIDUALS"
-            if manifest["residual_issues"]
-            else "PAIR_REVIEW_PASSED",
+            "quality_state": review["quality_state"],
             "campaign_audit_status": "NOT_REQUESTED",
             "page_asset_refs": [row["asset_id"] for row in context["screens"]],
             "pair_canvas_asset_refs": review["pair_canvases"],

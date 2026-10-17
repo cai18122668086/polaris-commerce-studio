@@ -6,7 +6,9 @@ export type IdempotentOperation =
   | "clone-job"
   | "resolve-intake"
   | "confirm-plan"
-  | "finalize-job";
+  | "finalize-job"
+  | "campaign-review"
+  | "recover-campaign-review";
 
 export class IdempotencyIntentRegistry {
   private readonly keys = new Map<string, string>();

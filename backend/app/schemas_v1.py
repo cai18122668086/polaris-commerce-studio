@@ -780,6 +780,12 @@ class DomesticCampaignReviewRequest(BaseModel):
     quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class DomesticCampaignReviewSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    review_job_id: str = Field(min_length=1, max_length=40)
+    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class DomesticDetailFinalReviewResponse(BaseModel):
     version: Literal["domestic-detail-final-review-v1"]
     job_id: str
@@ -792,6 +798,7 @@ class DomesticDetailFinalReviewResponse(BaseModel):
     document_markdown: str
     quality_state: Literal["PAIR_REVIEW_PASSED", "WITH_RESIDUALS"]
     campaign_audit_status: Literal["NOT_REQUESTED"]
+    supplementary_campaign_review: dict[str, Any] | None = None
     screens: list[dict[str, Any]]
     pair_canvases: list[dict[str, Any]]
     residual_issues: list[dict[str, Any]]

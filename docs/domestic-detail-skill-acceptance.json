@@ -528,5 +528,20 @@
     "actual_visual_acceptance": false,
     "UI_selection_and_final_binding": "pending",
     "distinct_final_source_cases": 11
+  },
+  "local_optional_campaign_selection_candidate": {
+    "overall_completion": "unproven",
+    "parent": "08c389e168fef6b13810e3491337d1ca6e6d5655",
+    "report": "domestic-detail-campaign-selection-2026-10-18.md",
+    "scope": "Source-scoped history, unticked exact quote authorization, raw/preview/recovery UI, explicit report+SHA selection into immutable human packet, own frozen original evidence, completed receipt anchor and ZIP bytes. Original native scope remains truthful.",
+    "final_source_backend_cases": 5,
+    "frontend_green": 12,
+    "native_detail_files_unchanged": 79,
+    "all12_source_locks_unchanged": true,
+    "actual_supplier_calls": 0,
+    "browser_full_flow_verified": false,
+    "persistent_stack_verified": false,
+    "actual_visual_acceptance": false,
+    "mypy_sources": 101
   }
 }

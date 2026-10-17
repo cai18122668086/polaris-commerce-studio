@@ -12,6 +12,8 @@ import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
 import { BRANDLESS_CONFIRMATION, DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
 import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
+import { DomesticDetailCampaignReview } from "@/components/domestic-detail-campaign-review";
+import type { CampaignSelection } from "@/features/jobs/api/campaign-reviews";
 import { DomesticDetailFinalReview, isCurrentFinalReview, NATIVE_DETAIL_FINAL_REVIEW_TEXT } from "@/components/domestic-detail-final-review";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
@@ -110,6 +112,7 @@ export default function DetailPackPage() {
   const [brandlessConfirmed, setBrandlessConfirmed] = useState(false);
   const [reviewedApprovalKey, setReviewedApprovalKey] = useState("");
   const [reviewedFinalKey, setReviewedFinalKey] = useState("");
+  const [campaignChoice, setCampaignChoice] = useState<{ workspaceId?: string; sourceId: string; selection: CampaignSelection }>();
   const [sources, setSources] = useState<UploadedSource[]>([]);
   const [uploadError, setUploadError] = useState<string>();
   // Prefer the task-center URL when present; the local value covers jobs
@@ -125,7 +128,8 @@ export default function DetailPackPage() {
   const finalizeJob = useFinalizeJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
   const isNativeDetail = job.data?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1";
-  const finalReview = useDomesticDetailFinalReview(workspace?.id, job.data);
+  const activeCampaignChoice = campaignChoice?.workspaceId === workspace?.id && campaignChoice?.sourceId === jobId && job.data?.status !== "completed" ? campaignChoice.selection : undefined;
+  const finalReview = useDomesticDetailFinalReview(workspace?.id, job.data, activeCampaignChoice);
   const currentFinalReview = isCurrentFinalReview(finalReview.data, jobId, job.data?.expected_item_count ?? 0) ? finalReview.data : undefined;
   const finalKey = currentFinalReview ? `${jobId}:${currentFinalReview.sha256}` : "";
   const finalReviewed = Boolean(finalKey && reviewedFinalKey === finalKey && !finalReview.isError);
@@ -346,6 +350,10 @@ export default function DetailPackPage() {
           {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>
             {finalReview.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在核对当前成图和审核记录…</p></div>}
             {finalReview.error && <div className="api-state api-state--error" role="alert"><p>{errorMessage(finalReview.error)}</p><button onClick={() => void finalReview.refetch()}>重新核对审阅内容</button></div>}
+            {job.data && <DomesticDetailCampaignReview key={`${workspace?.id}:${jobId}`} workspaceId={workspace?.id} source={job.data} fingerprint={currentFinalReview?.sha256} selected={activeCampaignChoice} onSelection={selection => {
+              setReviewedFinalKey("");
+              setCampaignChoice(selection ? { workspaceId: workspace?.id, sourceId: jobId, selection } : undefined);
+            }} />}
             {currentFinalReview && <DomesticDetailFinalReview key={finalKey} review={currentFinalReview} workspaceId={workspace?.id} reviewed={finalReviewed} onReviewed={checked => setReviewedFinalKey(checked ? finalKey : "")} completed={job.data?.status === "completed"} />}
           </>}
           {job.data?.status === "completed" && workflow.mode === "mock" && resultAssets.length === 0 && <div className="api-state"><ImagePlus size={22} /><p>任务流程已完成，当前生成服务未返回图片结果。</p></div>}

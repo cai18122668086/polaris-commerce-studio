@@ -2043,6 +2043,28 @@
         "title": "DomesticCampaignReviewRequest",
         "type": "object"
       },
+      "DomesticCampaignReviewSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "report_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Report Sha256",
+            "type": "string"
+          },
+          "review_job_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Review Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_job_id",
+          "report_sha256"
+        ],
+        "title": "DomesticCampaignReviewSelection",
+        "type": "object"
+      },
       "DomesticDetailFinalReviewResponse": {
         "properties": {
           "campaign_audit_status": {
@@ -2113,6 +2135,18 @@
           "skill_version": {
             "title": "Skill Version",
             "type": "string"
+          },
+          "supplementary_campaign_review": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplementary Campaign Review"
           },
           "version": {
             "const": "domestic-detail-final-review-v1",
@@ -11970,6 +12004,90 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-reviews": {
+      "get": {
+        "operationId": "list_domestic_campaign_reviews_api_v1_workspaces__workspace_id__jobs__job_id__campaign_reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Domestic Campaign Reviews",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel": {
       "post": {
         "operationId": "cancel_job_api_v1_workspaces__workspace_id__jobs__job_id__cancel_post",
@@ -12204,6 +12322,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DomesticCampaignReviewSelection"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

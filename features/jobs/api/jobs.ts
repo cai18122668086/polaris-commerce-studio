@@ -329,15 +329,15 @@ export function useConfirmPlan(workspaceId: string | undefined) {
   );
 }
 
-export function useDomesticDetailFinalReview(workspaceId: string | undefined, job: JobDetail | undefined) {
+export function useDomesticDetailFinalReview(workspaceId: string | undefined, job: JobDetail | undefined, selection?: { review_job_id: string; report_sha256: string }) {
   return useQuery<DomesticDetailFinalReview>({
-    queryKey: [...jobKeys.detail(workspaceId ?? "pending", job?.id ?? "pending"), "final-review", job?.plan?.revision, job?.status],
+    queryKey: [...jobKeys.detail(workspaceId ?? "pending", job?.id ?? "pending"), "final-review", job?.plan?.revision, job?.status, selection ?? null],
     enabled: Boolean(workspaceId && job?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1" && ["awaiting_final_review", "completed"].includes(job.status)),
     retry: false,
     queryFn: async ({ signal }) => {
       const result = await apiClient.POST(
         "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review",
-        { params: { path: { workspace_id: workspaceId!, job_id: job!.id } }, signal },
+        { params: { path: { workspace_id: workspaceId!, job_id: job!.id } }, ...(selection ? { body: selection } : {}), signal },
       );
       return unwrapApiResponse(result);
     },

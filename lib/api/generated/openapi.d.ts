@@ -1473,6 +1473,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Domestic Campaign Reviews */
+        get: operations["list_domestic_campaign_reviews_api_v1_workspaces__workspace_id__jobs__job_id__campaign_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -2450,6 +2467,13 @@ export interface components {
             /** Quote Sha256 */
             quote_sha256: string;
         };
+        /** DomesticCampaignReviewSelection */
+        DomesticCampaignReviewSelection: {
+            /** Report Sha256 */
+            report_sha256: string;
+            /** Review Job Id */
+            review_job_id: string;
+        };
         /** DomesticDetailFinalReviewResponse */
         DomesticDetailFinalReviewResponse: {
             /**
@@ -2490,6 +2514,10 @@ export interface components {
             sha256: string;
             /** Skill Version */
             skill_version: string;
+            /** Supplementary Campaign Review */
+            supplementary_campaign_review?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Version
              * @constant
@@ -6985,6 +7013,41 @@ export interface operations {
             };
         };
     };
+    list_domestic_campaign_reviews_api_v1_workspaces__workspace_id__jobs__job_id__campaign_reviews_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_job_api_v1_workspaces__workspace_id__jobs__job_id__cancel_post: {
         parameters: {
             query?: never;
@@ -7099,7 +7162,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DomesticCampaignReviewSelection"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

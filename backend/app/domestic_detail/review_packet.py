@@ -203,6 +203,23 @@ def _document(packet: Mapping[str, Any]) -> str:
             )
     else:
         lines.append("接受的逐屏记录未列出材料残差。这不表示已完成整页质量审核。")
+    supplement = packet.get("supplementary_campaign_review")
+    if supplement:
+        report = supplement["report"]
+        lines.extend(
+            [
+                "",
+                "## 独立整页审核补充记录",
+                "",
+                "上述整页未审核描述仅指原详情会话；以下为明确选择的独立审核记录，不改写原生会话的审核范围。",
+                f"审核任务：{supplement['review_job_id']}；报告指纹：{supplement['report_sha256']}",
+                f"原始回复状态：{supplement['original_message_state']}；"
+                f"原生审核接受：{report.get('native_gate_accepted') is True}",
+                "原始观察、校验拒绝原因及残差：",
+                json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
+                "可用原文、请求证据和实际所见图片随交付包保存；该报告不改变原任务的费用状态。",
+            ]
+        )
     lines.extend(["", "最终确认表示接受以上图片、审核范围及所列残差。", ""])
     return "\n".join(lines)
 
@@ -216,7 +233,14 @@ async def _packet(
     state: Mapping[str, Any],
     *,
     register: bool,
+    selection: Mapping[str, Any] | None = None,
+    frozen: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    supplement = frozen
+    if selection is not None:
+        from .campaign_selection import select_campaign_review
+
+        supplement, _ = select_campaign_review(db, job, plan, context, state, selection)
     masters = []
     for ordinal, row in enumerate(context["pair_canvases"]):
         pair = {**row, "ordinal": ordinal}
@@ -263,6 +287,13 @@ async def _packet(
         "pair_canvases": masters,
         "residual_issues": residuals,
     }
+    if supplement is not None:
+        value["supplementary_campaign_review"] = dict(supplement)
+        report = supplement["report"]
+        if report.get("native_gate_accepted") is not True or report.get(
+            "residual_checks"
+        ):
+            value["quality_state"] = "WITH_RESIDUALS"
     value["document_markdown"] = _document(value)
     return {**value, "sha256": canonical_hash(value)}
 
@@ -272,10 +303,31 @@ async def prepare_final_review(
     job: JobRecord,
     plan: JobPlanRecord,
     storage: ImageStorage,
+    selection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Register existing masters and persist an immutable human-review packet."""
     context, state, root = await _verified_context(db, job, plan, storage)
-    packet = await _packet(db, job, plan, storage, context, state, register=True)
+    if job.status == "completed":
+        if selection is not None:
+            _reject("A completed delivery keeps its originally accepted review")
+        fingerprint = plan.payload["final_manifest"]["final_review"]["sha256"]
+        return await validate_final_review(
+            db, job, plan, storage, context, state, root, fingerprint
+        )
+    packet = await _packet(
+        db, job, plan, storage, context, state, register=True, selection=selection
+    )
+    if selection is not None:
+        from .campaign_selection import preserve_selection, select_campaign_review
+
+        checked, files = select_campaign_review(
+            db, job, plan, context, state, selection
+        )
+        if canonical_hash(checked) != canonical_hash(
+            packet["supplementary_campaign_review"]
+        ):
+            _reject("Selected evidence changed during snapshot creation")
+        preserve_selection(root / "final-review" / packet["sha256"], files)
     path = root / "final-review" / packet["sha256"] / "packet.json"
     if path.exists():
         if canonical_hash(_json(path)) != canonical_hash(packet):
@@ -304,8 +356,35 @@ async def validate_final_review(
             "Review the current final packet before confirming delivery",
             "NATIVE_DETAIL_FINAL_REVIEW_REQUIRED",
         )
+    if job.status == "completed":
+        from .campaign_selection import verify_accepted_review_anchor
+
+        verify_accepted_review_anchor(root, job, plan, context, state, fingerprint)
     packet = _json(root / "final-review" / fingerprint / "packet.json")
-    expected = await _packet(db, job, plan, storage, context, state, register=False)
+    if (
+        packet.get("sha256") != fingerprint
+        or canonical_hash({k: v for k, v in packet.items() if k != "sha256"})
+        != fingerprint
+    ):
+        _reject("The original final-review packet changed")
+    supplement = packet.get("supplementary_campaign_review")
+    if supplement is not None:
+        from .campaign_selection import frozen_selection
+
+        frozen_selection(
+            root / "final-review" / fingerprint, supplement, job.id, context
+        )
+    expected = await _packet(
+        db,
+        job,
+        plan,
+        storage,
+        context,
+        state,
+        register=False,
+        selection=supplement if job.status != "completed" else None,
+        frozen=supplement if job.status == "completed" else None,
+    )
     if (
         canonical_hash(packet) != canonical_hash(expected)
         or expected["sha256"] != fingerprint
@@ -368,5 +447,16 @@ async def delivery_archive(
             "final-review.json",
             json.dumps(packet, ensure_ascii=False, indent=2).encode("utf-8"),
         )
+        if packet.get("supplementary_campaign_review") is not None:
+            from .campaign_selection import frozen_selection
+
+            files = frozen_selection(
+                root / "final-review" / packet["sha256"],
+                packet["supplementary_campaign_review"],
+                job.id,
+                context,
+            )
+            for name, data in files.items():
+                archive.writestr("supplementary-review/" + name, data)
         archive.writestr("native-final-manifest.json", original_path.read_bytes())
     return output.getvalue()

@@ -111,6 +111,7 @@ from .schemas_v1 import (
     DomesticCampaignReviewQuote,
     DomesticCampaignReviewReport,
     DomesticCampaignReviewRequest,
+    DomesticCampaignReviewSelection,
     DomesticDetailFinalReviewResponse,
     DomesticMainImageJobCreate,
     DraftJobUpdate,
@@ -3033,6 +3034,66 @@ def recover_domestic_campaign_result(
     return job_detail_response(session, recovery)
 
 
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-reviews",
+    response_model=JobListResponse,
+    tags=["jobs"],
+)
+def list_domestic_campaign_reviews(
+    job_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: str | None = None,
+) -> JobListResponse:
+    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    if (
+        source.type != JobType.DETAIL_PACK.value
+        or source.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_CAMPAIGN_SOURCE_NOT_READY",
+            "当前任务不是可用的国内详情来源。",
+        )
+    scope = canonical_hash(
+        {
+            "workspace_id": workspace.workspace_id,
+            "source_job_id": source.id,
+            "kind": "domestic-campaign-history-v1",
+        }
+    )
+    filters = [
+        JobRecord.workspace_id == workspace.workspace_id,
+        JobRecord.type == JobType.DOMESTIC_DETAIL_REVIEW.value,
+        JobRecord.configuration["source_job_id"].as_string() == source.id,
+        job_history_is_available(),
+    ]
+    if cursor:
+        created_raw, review_id = decode_cursor(cursor, scope)
+        created = datetime.fromisoformat(created_raw)
+        filters.append(
+            or_(
+                JobRecord.created_at < created,
+                and_(JobRecord.created_at == created, JobRecord.id < review_id),
+            )
+        )
+    rows = session.scalars(
+        select(JobRecord)
+        .where(*filters)
+        .order_by(JobRecord.created_at.desc(), JobRecord.id.desc())
+        .limit(limit + 1)
+    ).all()
+    items = rows[:limit]
+    return JobListResponse(
+        items=[job_list_response(item) for item in items],
+        next_cursor=encode_cursor(items[-1].created_at, items[-1].id, scope)
+        if len(rows) > limit and items
+        else None,
+        has_more=len(rows) > limit,
+    )
+
+
 def _campaign_review_provider(request: Request) -> Any:
     provider = request.app.state.task_runner.coordinator.provider.routes.get(
         JobType.DOMESTIC_DETAIL_REVIEW.value
@@ -3175,6 +3236,7 @@ def create_domestic_campaign_review(
 @router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review",
     response_model=DomesticDetailFinalReviewResponse,
+    response_model_exclude_none=True,
     tags=["jobs"],
 )
 def prepare_domestic_detail_final_review(
@@ -3182,6 +3244,7 @@ def prepare_domestic_detail_final_review(
     request: Request,
     workspace: WorkspaceWriteDependency,
     session: SessionDependency,
+    payload: DomesticCampaignReviewSelection | None = None,
 ) -> DomesticDetailFinalReviewResponse:
     from .domestic_detail.delivery import DetailDeliveryError
     from .domestic_detail.review_packet import prepare_final_review
@@ -3207,7 +3270,13 @@ def prepare_domestic_detail_final_review(
         raise ApiError(409, "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING", "原始方案缺失。")
     try:
         packet = asyncio.run(
-            prepare_final_review(session, job, plan, request.app.state.storage)
+            prepare_final_review(
+                session,
+                job,
+                plan,
+                request.app.state.storage,
+                payload.model_dump() if payload is not None else None,
+            )
         )
     except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
         raise ApiError(

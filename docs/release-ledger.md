@@ -7,11 +7,13 @@
 | GitHub 正式目标 | main，当前 d19fd33；默认分支本来就是 main，本轮未更改 |
 | 生产应用源码 | 812a1f7（API/Worker/Dispatcher/Frontend） |
 | 生产爬虫源码 | c5eb50e（crawl worker / maintenance） |
-| 生产数据库 | 20260930_0025 + 三个 stage 字段 64 的历史手工 DDL；迁移待补 |
+| 生产数据库 | 20260930_0025 + 三个 stage 字段 64 的历史手工 DDL；生产未升级；候选已补 20261017_0026，CI 隔离验证 |
 | 本地待审基线 | codex/main-reconciliation-20261017，位于 D:\Codex\worktrees\polaris-generation-recovery |
 | 主目录过渡归档 | codex/workspace-preserved-20261017；本机 Worker 正在使用此目录的启动环境，禁止在此继续业务开发 |
 | 未验收工作 | 9 条 codex/preserve-*-20261017 分支；用途/文件/提交见基线报告 |
 | 当前业务优先级 | 国内详情规划与画面质量；国内主图用户实测正常，保护现有路径 |
+
+候选审查：[PR #73](https://github.com/cai18122668086/polaris-commerce-studio/pull/73)，目标 main，草稿状态。它包含已观察的生产历史、两项 Skill 打包完整性修正和单独的历史扩列迁移；国内详情业务修复未混入。合并与上线均未批准。
 
 ## 固定流程
 

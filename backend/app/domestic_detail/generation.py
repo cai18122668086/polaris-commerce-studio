@@ -275,13 +275,16 @@ def finish_invocation(
     )
 
 
-def verify_accepted_canvas(
+def verify_original_invocation(
     workspaces: Sequence[Path],
     binding: Mapping[str, Any],
     *,
     pair_id: str,
     artifact_sha256: str,
+    token: str | None = None,
+    signed_request_sha256: str | None = None,
 ) -> None:
+    """Verify the original paid response, before any native normalization."""
     for workspace in workspaces:
         bind_workspace(workspace, binding)
         for path in (workspace / "generation-calls").glob("*.json"):
@@ -303,6 +306,12 @@ def verify_accepted_canvas(
                 or receipt.get("pair_id") != pair_id
             ):
                 continue
+            native = receipt.get("native_request") or {}
+            if (token is not None and native.get("token") != token) or (
+                signed_request_sha256 is not None
+                and native.get("signed_request_sha256") != signed_request_sha256
+            ):
+                continue
             completion = path.with_suffix(".completion.json")
             if not completion.exists():
                 continue
@@ -312,10 +321,73 @@ def verify_accepted_canvas(
                 and result.get("outcome") == "succeeded"
                 and result.get("artifact_sha256") == artifact_sha256
             ):
+                original = path.with_suffix(".artifact")
+                if (
+                    not original.is_file()
+                    or hashlib.sha256(original.read_bytes()).hexdigest()
+                    != artifact_sha256
+                ):
+                    raise DetailGenerationError(
+                        "NATIVE_DETAIL_ORIGINAL_ARTIFACT_CHANGED",
+                        "The exact original paid response is missing or changed",
+                    )
                 return
     raise DetailGenerationError(
         "NATIVE_DETAIL_CANVAS_RECEIPT_MISSING",
         "An accepted canvas needs its exact original successful invocation receipt",
+    )
+
+
+def verify_accepted_canvas(
+    workspaces: Sequence[Path],
+    binding: Mapping[str, Any],
+    *,
+    pair_id: str,
+    artifact_sha256: str,
+) -> dict[str, Any]:
+    """Verify accepted native pixels and their unchanged original paid response."""
+    from ..aurora_detail_runtime import (
+        AuroraDetailHarnessError,
+        AuroraDetailHarnessRunner,
+    )
+    from .pixels import DetailPixelError, load_native_pair_pixels
+
+    for workspace in workspaces:
+        bind_workspace(workspace, binding)
+        if not (workspace / "session.json").is_file():
+            continue
+        try:
+            bundle = AuroraDetailHarnessRunner().run(
+                "inspect-pair-artifacts",
+                workspace,
+                {
+                    "session": workspace / "session.json",
+                    "pair-id": pair_id,
+                    "selection": "ACCEPTED",
+                },
+            )
+            pixels = load_native_pair_pixels(bundle, workspaces, group_key="verified")
+        except (AuroraDetailHarnessError, DetailPixelError) as exc:
+            raise DetailGenerationError(
+                "NATIVE_DETAIL_PIXEL_LINEAGE_INVALID", str(exc)
+            ) from exc
+        if pixels.canvas.sha256 != artifact_sha256:
+            raise DetailGenerationError(
+                "NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH",
+                "Stored canvas differs from its exact accepted native pixels",
+            )
+        verify_original_invocation(
+            workspaces,
+            binding,
+            pair_id=pair_id,
+            artifact_sha256=bundle["source"]["sha256"],
+            token=bundle["token"],
+            signed_request_sha256=bundle["signed_request_sha256"],
+        )
+        return bundle
+    raise DetailGenerationError(
+        "NATIVE_DETAIL_PIXEL_LINEAGE_MISSING",
+        "The original accepted native pixel lineage is required",
     )
 
 

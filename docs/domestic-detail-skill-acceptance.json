@@ -157,7 +157,8 @@
       "id": "I03",
       "requirement": "Pair order/coverage/seams stay inside adjacent approved windows; deterministic slices",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "C2 exact original/native-normalized/fixed-crop byte and pixel lineage, candidate output equality, immutable signed requests and zero-new-call recovery verified with synthetic jobs; see domestic-detail-native-pixels-2026-10-17.md. Actual semantic coverage/seam/quality acceptance remains unproven."
     },
     {
       "id": "I04",
@@ -247,7 +248,7 @@
     },
     "not_complete": [
       "real supplier intake/identity/fact/reference provenance and visual acceptance",
-      "actual original/normalized-canvas/fixed-slice pixel lineage and per-screen gates",
+      "all per-screen semantic gates and actual supplier/visual lineage acceptance",
       "accepted recovery validates raw review provenance; old-task version routing",
       "cross-pair/full-campaign quality gates; delivery/native finalization/residual quality states",
       "persistent independent integration stack and actual supplier generation",
@@ -357,6 +358,29 @@
       },
       "skill_content_hash": "7766eff69a8b5501eb7b186707f01a080b92260c65c7a0b7fd6516f60793f42b",
       "review_protocol": "native-pixel-review-v2"
+    },
+    "native_pixels_candidate": {
+      "status": "C2_mechanical_lineage_and_candidate_bytes_verified_offline_real_visual_unproven",
+      "report": "domestic-detail-native-pixels-2026-10-17.md",
+      "regression": {
+        "native-pixels-acceptance-v1": {
+          "tests": 65,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 65
+        },
+        "native-pixels-contract-regression-v1": {
+          "tests": 121,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 121
+        }
+      },
+      "skill_content_hash": "0851223049da6d0c49a92ce0d83c3ecccc4ead076e6ed714920e65c031328309",
+      "lineage_protocol": "native-pixel-lineage-v1",
+      "real_supplier_calls": 0
     }
   },
   "commands_to_cover": [
@@ -373,7 +397,8 @@
     "audit-long-page (optional preview, full campaign still reviewed)",
     "finalize",
     "auto-finalize (only separately authorized delivery mode)",
-    "inspect"
+    "inspect",
+    "inspect-pair-artifacts"
   ],
   "protected": {
     "production_queue": true,

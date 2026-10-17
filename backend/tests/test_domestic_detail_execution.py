@@ -568,6 +568,20 @@ def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_scr
     assert all(m["status"] == "COMPLETE_WITH_RESIDUALS" for m in session["modules"][:2])
     assert all(m["cycle_attempt_count"] == 2 for m in session["modules"][:2])
     assert "笔画粘连" in str(session["modules"][0]["residual_issues"])
+    # The mutable current request may be replaced during repair; original
+    # request bytes and both provider originals must remain independently read.
+    import hashlib
+    from pathlib import Path
+
+    requests = session["generation_requests"]
+    assert len({row["request"] for row in requests}) == 5
+    for row in requests:
+        assert hashlib.sha256(Path(row["request"]).read_bytes()).hexdigest() == row["request_sha256"]
+    first_attempts = session["modules"][0]["attempts"]
+    assert len({row["source_image"] for row in first_attempts}) == 2
+    for row in first_attempts:
+        assert hashlib.sha256(Path(row["source_image"]).read_bytes()).hexdigest() == row["source_image_sha256"]
+
 
 
 def test_failed_detail_retry_recovers_audited_prefix_and_native_pair_without_new_calls(client, monkeypatch):

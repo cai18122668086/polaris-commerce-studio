@@ -12,6 +12,40 @@ from app.aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
 )
+from app.domestic_detail.plans import canonical_hash
+
+
+def record_fixture(root, current, candidate, token):
+    request = {
+        "token": token,
+        "pair_id": "P01",
+        "module_ids": ["M01", "M02"],
+        "output_surface": {
+            "width_px": current["plan"]["output_strategy"]["canvas_width_px"],
+            "height_px": 2 * current["plan"]["output_strategy"]["module_height_px"],
+        },
+    }
+    request["request_fingerprint"] = canonical_hash(request)
+    request_path = root / (token + ".json")
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    current.setdefault("generation_requests", []).append(
+        {
+            "token": token,
+            "request": str(request_path),
+            "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
+            "request_fingerprint": request["request_fingerprint"],
+        }
+    )
+    current["state"] = "AWAITING_GENERATED_MODULE"
+    current["active_token"] = token
+    session = root / "session.json"
+    session.write_text(json.dumps(current), encoding="utf-8")
+    AuroraDetailHarnessRunner().run(
+        "record-generation",
+        root,
+        {"session": session, "token": token, "image": candidate},
+    )
+    return json.loads(session.read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -23,15 +57,20 @@ def pair_audit(tmp_path):
         {
             "id": module_id,
             "status": "AWAITING_AUDIT",
-            "cycle_attempt_count": 1,
-            "plan": {"transition_contract": {"method_id": method}},
-            "attempts": [{"image": str(candidate), "pair_canvas": str(candidate)}],
+            "cycle_attempt_count": 0,
+            "plan": {
+                "output": {"width_px": 3, "height_px": 4},
+                "transition_contract": {"method_id": method},
+            },
+            "attempts": [],
         }
         for module_id, method in (("M01", "EDGE_BLEED"), ("M02", "GRAPHIC_OVERLAY"))
     ]
     current = {
         "version": "4.3.1",
-        "state": "AWAITING_PIXEL_AUDIT",
+        "state": "AWAITING_GENERATED_MODULE",
+        "active_token": "fixture-token-1",
+        "session_dir": str(tmp_path),
         "current_index": 0,
         "plan": {
             "information_contract_version": "4.1",
@@ -43,6 +82,7 @@ def pair_audit(tmp_path):
                 "verification_status": "BACKEND_CONFIRMATION_REQUIRED",
                 "continuous_pair_rendering": {
                     "enabled": True,
+                    "pair_merge_type": "PAIR_PLAN_MERGE",
                     "pair_ids": [pair],
                     "pair_canvas_height_px": 8,
                 },
@@ -50,6 +90,7 @@ def pair_audit(tmp_path):
         },
         "modules": modules,
     }
+    current = record_fixture(tmp_path, current, candidate, "fixture-token-1")
     checks = (
         "identity",
         "facts",

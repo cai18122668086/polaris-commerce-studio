@@ -15,7 +15,7 @@ from app.domestic_detail.generation import (
     begin_invocation,
     bind_workspace,
     finish_invocation,
-    verify_accepted_canvas,
+    verify_original_invocation,
 )
 from app.models import (
     JobAttemptRecord,
@@ -69,22 +69,27 @@ def test_unknown_or_failed_receipts_cannot_authorize_canvas_recovery(tmp_path, o
             artifact_sha256="b" * 64,
         )
     with pytest.raises(DetailGenerationError, match="exact original successful"):
-        verify_accepted_canvas(
+        verify_original_invocation(
             [tmp_path], scope(), pair_id="P01", artifact_sha256="b" * 64
         )
 
 
 def test_recovery_requires_exact_scope_request_and_canvas_bytes(tmp_path):
+    import hashlib
+
+    payload = b"exact original supplier response"
+    sha = hashlib.sha256(payload).hexdigest()
     receipt = call(tmp_path, scope())
     finish_invocation(
         receipt,
         outcome="succeeded",
         provider_request_id="req",
-        artifact_sha256="b" * 64,
+        artifact_sha256=sha,
+        artifact_payload=payload,
     )
-    verify_accepted_canvas([tmp_path], scope(), pair_id="P01", artifact_sha256="b" * 64)
+    verify_original_invocation([tmp_path], scope(), pair_id="P01", artifact_sha256=sha)
     with pytest.raises(DetailGenerationError):
-        verify_accepted_canvas(
+        verify_original_invocation(
             [tmp_path], scope(), pair_id="P01", artifact_sha256="c" * 64
         )
     with pytest.raises(DetailGenerationError, match="differ"):
@@ -93,8 +98,8 @@ def test_recovery_requires_exact_scope_request_and_canvas_bytes(tmp_path):
     changed["model"] = "different-model"
     receipt.write_text(json.dumps(changed))
     with pytest.raises(DetailGenerationError, match="receipt changed"):
-        verify_accepted_canvas(
-            [tmp_path], scope(), pair_id="P01", artifact_sha256="b" * 64
+        verify_original_invocation(
+            [tmp_path], scope(), pair_id="P01", artifact_sha256=sha
         )
 
 

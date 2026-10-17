@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
 from pathlib import Path
 
@@ -56,18 +57,23 @@ def image_dimensions(path: str | Path) -> tuple[int, int]:
         raise HarnessError(f"Generated image is not a readable raster image: {path}") from exc
 
 
-def normalize_generated_image(
+def normalized_pixels(
     source: str | Path,
     target_width: int,
     target_height: int,
-) -> dict:
-    """Return an exact-size raster without ever stretching width and height independently."""
+) -> tuple[Image.Image, dict]:
+    """Render the deterministic approved surface in memory; never overwrite source."""
     source_path = Path(source).resolve()
     if target_width <= 0 or target_height <= 0:
         raise HarnessError("Approved output dimensions must be positive integers")
 
     try:
         with Image.open(source_path) as opened:
+            encoded_width, encoded_height = opened.size
+            source_mode = opened.mode
+            source_format = str(opened.format)
+            orientation = opened.getexif().get(274, 1)
+            frames = getattr(opened, "n_frames", 1)
             image = ImageOps.exif_transpose(opened).convert("RGB")
     except (OSError, UnidentifiedImageError) as exc:
         raise HarnessError(f"Generated image is not a readable raster image: {source_path}") from exc
@@ -77,24 +83,28 @@ def normalize_generated_image(
     target_ratio = target_width / target_height
     ratio_error = abs(source_ratio - target_ratio) / target_ratio
 
+    info = {
+        "source_path": str(source_path),
+        "source_width_px": source_width,
+        "source_height_px": source_height,
+        "source_encoded_width_px": encoded_width,
+        "source_encoded_height_px": encoded_height,
+        "source_mode": source_mode,
+        "source_format": source_format,
+        "source_exif_orientation": orientation,
+        "source_frame_count": frames,
+        "width_px": target_width,
+        "height_px": target_height,
+        "relative_ratio_error": ratio_error,
+        "bounded_crop_fraction": 0.0,
+    }
     if image.size == (target_width, target_height):
-        image.close()
-        return {
-            "path": str(source_path),
-            "source_path": str(source_path),
-            "source_width_px": source_width,
-            "source_height_px": source_height,
-            "width_px": target_width,
-            "height_px": target_height,
-            "mode": "EXACT",
-            "relative_ratio_error": ratio_error,
-            "bounded_crop_fraction": 0.0,
-        }
-
-    output = source_path.with_name(
-        f"{source_path.stem}-normalized-{uuid.uuid4().hex[:8]}.png"
-    )
-    output.parent.mkdir(parents=True, exist_ok=True)
+        exact_source = orientation in (None, 1) and source_mode == "RGB" and frames == 1
+        info.update({
+            "mode": "EXACT" if exact_source else "ORIENTATION_COLOR_FRAME_NORMALIZE",
+            "normalized_format": source_format if exact_source else "PNG",
+        })
+        return image, info
 
     if ratio_error <= NEAR_RATIO_TOLERANCE:
         normalized = ImageOps.fit(
@@ -140,19 +150,52 @@ def normalize_generated_image(
             normalized = background
             mode = "HYBRID_CROP_WITH_BLURRED_EDGE_EXTENSION"
 
-    normalized.save(output, format="PNG", optimize=True)
-    normalized.close()
     image.close()
-    return {
-        "path": str(output.resolve()),
-        "source_path": str(source_path),
-        "source_width_px": source_width,
-        "source_height_px": source_height,
-        "width_px": target_width,
-        "height_px": target_height,
-        "mode": mode,
-        "relative_ratio_error": ratio_error,
+    info.update({
+        "mode": mode, "normalized_format": "PNG",
         "bounded_crop_fraction": 0.0 if ratio_error <= NEAR_RATIO_TOLERANCE else crop_fraction,
-    }
+    })
+    return normalized, info
 
 
+def normalize_generated_image(source: str | Path, target_width: int, target_height: int) -> dict:
+    image, info = normalized_pixels(source, target_width, target_height)
+    source_path = Path(info["source_path"])
+    try:
+        if info["mode"] == "EXACT":
+            target = source_path
+        else:
+            target = source_path.with_name(f"{source_path.stem}-normalized-{uuid.uuid4().hex[:8]}.png")
+            image.save(target, format="PNG", optimize=True)
+        return {"path": str(target.resolve()), **info}
+    finally:
+        image.close()
+
+
+def pixel_sha256(image: Image.Image) -> str:
+    rgb = image.convert("RGB")
+    try:
+        header = f"RGB:{rgb.width}x{rgb.height}".encode("ascii") + bytes([0])
+        return hashlib.sha256(header + rgb.tobytes()).hexdigest()
+    finally:
+        rgb.close()
+
+
+def verify_normalized_image(source: str | Path, target: str | Path, width: int, height: int, metadata: dict) -> str:
+    """Verify the stored raster is exactly this source's deterministic normalization."""
+    expected, info = normalized_pixels(source, width, height)
+    try:
+        if info != metadata:
+            raise HarnessError("Normalization metadata differs from the original source")
+        with Image.open(target) as actual:
+            actual.load()
+            if actual.size != (width, height) or actual.mode != "RGB" or actual.format != info["normalized_format"]:
+                raise HarnessError("Normalized raster format, mode or dimensions changed")
+            actual_hash = pixel_sha256(actual)
+        if actual_hash != pixel_sha256(expected):
+            raise HarnessError("Normalized raster pixels do not match the original source policy")
+        return actual_hash
+    except (OSError, UnidentifiedImageError) as exc:
+        raise HarnessError("The normalized raster is missing or unreadable") from exc
+    finally:
+        expected.close()

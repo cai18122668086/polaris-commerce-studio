@@ -20,6 +20,7 @@ from runtime.compliance_contract import validate_high_risk_cosmetic_claims, vali
 from runtime.image_format import ensure_format_canvas, image_dimensions, normalize_generated_image
 from runtime.prompt_compiler import compile_pair_prompt, compile_prompt
 from runtime.performance_contract import resolve_performance_contract
+from runtime.pixel_lineage import create_fixed_slices, pair_artifacts, preserve_provider_original, preserve_signed_request
 from runtime.plan_normalizer import (
     COMPACT_PLAN_FORMAT,
     normalize_plan,
@@ -175,62 +176,10 @@ def _pair_modules(session: dict, index: int) -> list[dict]:
 
 def _pair_canvas_slices(source: str | Path, session: dict, pair: dict, attempt: int) -> list[dict]:
     strategy = session["plan"]["output_strategy"]
-    width = int(strategy["canvas_width_px"])
-    height = int(strategy["module_height_px"])
-    target = Path(source).resolve()
-    output_dir = Path(session["session_dir"]) / "pair-slices" / pair["pair_id"]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    result = []
-    try:
-        with Image.open(target) as opened:
-            image = opened.convert("RGB")
-            if image.size != (width, height * 2):
-                raise HarnessError(
-                    f"Continuous pair canvas must be {width}x{height * 2}px after normalization; found {image.size[0]}x{image.size[1]}"
-                )
-            for offset, module_id in enumerate(pair["module_ids"]):
-                path = output_dir / f"{module_id}-attempt-{attempt:02d}.png"
-                crop = image.crop((0, offset * height, width, (offset + 1) * height))
-                crop.save(path, format="PNG", optimize=True)
-                crop.close()
-                result.append({
-                    "module_id": module_id,
-                    "path": str(path.resolve()),
-                    "start_y": offset * height,
-                    "end_y": (offset + 1) * height,
-                })
-            image.close()
-    except (OSError, UnidentifiedImageError) as exc:
-        raise HarnessError(f"Continuous pair canvas is not a readable raster image: {target}") from exc
-    return result
-
-
-def _verify_pair_slice_integrity(slices: list[dict], session: dict) -> None:
-    """Verify both derived 3:4 delivery files are readable and exact-sized.
-
-    Pair slicing is deterministic, but the resulting files are still delivery
-    artifacts and must be checked independently before they are accepted.
-    """
-    strategy = session["plan"]["output_strategy"]
-    expected = (int(strategy["canvas_width_px"]), int(strategy["module_height_px"]))
-    if len(slices) != 2:
-        raise HarnessError("A continuous pair must derive exactly two single-screen delivery files")
-    for item in slices:
-        path = Path(item["path"])
-        if not path.is_file():
-            raise HarnessError(f"Derived pair slice is missing: {path}")
-        try:
-            with Image.open(path) as opened:
-                opened.verify()
-            with Image.open(path) as opened:
-                actual = opened.size
-        except (OSError, UnidentifiedImageError) as exc:
-            raise HarnessError(f"Derived pair slice is not a readable raster image: {path}") from exc
-        if actual != expected:
-            raise HarnessError(
-                f"Derived pair slice must be {expected[0]}x{expected[1]}px; "
-                f"found {actual[0]}x{actual[1]} for {path.name}"
-            )
+    return create_fixed_slices(
+        Path(source), Path(session["session_dir"]), pair["pair_id"], pair["module_ids"],
+        int(strategy["canvas_width_px"]), int(strategy["module_height_px"]), attempt,
+    )
 
 
 def _pair_prompt(session: dict, modules: list[dict], *, repair: bool, format_canvas_lock: bool) -> tuple[str, list[str]]:
@@ -1760,11 +1709,13 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
         }
     request["request_fingerprint"] = fingerprint(request)
     atomic_write_json(args.out, request)
+    signed_request = preserve_signed_request(Path(args.out), Path(args.session).resolve().parent, token)
     session.setdefault("generation_requests", []).append({
         "token": token,
         "pair_id": request.get("pair_id"),
         "module_ids": request["module_ids"],
-        "request": str(Path(args.out).resolve()),
+        "request": str(signed_request),
+        "request_sha256": file_sha256(signed_request),
         "request_fingerprint": request["request_fingerprint"],
         "issued_at": now(),
     })
@@ -1780,7 +1731,10 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
 def cmd_record_generation(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     _require_pair_generation_contract(session)
-    session.setdefault("session_dir", str(Path(args.session).resolve().parent))
+    workspace = Path(args.session).resolve().parent
+    if Path(session.get("session_dir", workspace)).resolve() != workspace:
+        raise HarnessError("Generation session directory changed")
+    session["session_dir"] = str(workspace)
     require_state(session, "AWAITING_GENERATED_MODULE")
     if args.token != session.get("active_token"):
         raise HarnessError("Stale or incorrect generation token")
@@ -1792,15 +1746,14 @@ def cmd_record_generation(args: argparse.Namespace) -> dict:
     pair_modules = _pair_modules(session, session.get("current_index", 0)) if pair else [module]
     output = module["plan"]["output"]
     target_height = int(output["height_px"]) * (2 if pair else 1)
+    original = preserve_provider_original(image, workspace, args.token)
     normalized = normalize_generated_image(
-        image,
+        original,
         int(output["width_px"]),
         target_height,
     )
     attempt_number = len(pair_modules[0]["attempts"]) + 1
     slices = _pair_canvas_slices(normalized["path"], session, pair, attempt_number) if pair else []
-    if pair:
-        _verify_pair_slice_integrity(slices, session)
     slice_by_id = {item["module_id"]: item for item in slices}
     for item in pair_modules:
         item["cycle_attempt_count"] = item.get("cycle_attempt_count", 0) + 1
@@ -1821,6 +1774,8 @@ def cmd_record_generation(args: argparse.Namespace) -> dict:
             },
             "token": args.token,
             "source_image": normalized["source_path"],
+            "provider_output_path": str(image.resolve()),
+            "normalization": {key: value for key, value in normalized.items() if key != "path"},
             "source_image_sha256": file_sha256(normalized["source_path"]),
             "normalized_image_sha256": file_sha256(normalized["path"]),
             "source_width_px": normalized["source_width_px"],
@@ -1969,6 +1924,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     if not pair or pair.get("module_ids", [None])[0] != upper["id"]:
         raise HarnessError("The current render container is not an ordered two-screen pair")
     pair_modules = _pair_modules(session, session.get("current_index", 0))
+    lineage = pair_artifacts(session, pair["pair_id"])
     judgment = load_json(args.judgment)
     validate_schema(judgment, "pair-judgment.schema.json", "pair judgment")
     require_fields(
@@ -2062,19 +2018,13 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         raise HarnessError("PASS pair judgment violates group audit gates: " + "; ".join(hard_failures or failed_checks))
     if judgment["status"] == "MATERIAL_FAIL" and not failures:
         raise HarnessError("MATERIAL_FAIL pair judgment requires visible material failures")
-    latest_slices = [
-        (item.get("attempts") or [])[-1].get("pair_slice")
-        for item in pair_modules
-        if (item.get("attempts") or []) and (item.get("attempts") or [])[-1].get("pair_slice")
-    ]
-    if latest_slices:
-        _verify_pair_slice_integrity(latest_slices, session)
     cycle_counts = [item.get("cycle_attempt_count") for item in pair_modules]
     if any(type(count) is not int for count in cycle_counts) or cycle_counts[0] not in (1, 2) or cycle_counts != [cycle_counts[0]] * len(pair_modules):
         raise HarnessError("Pair audit requires the same first or second cycle attempt on both screens")
     for item in pair_modules:
         attempt = item["attempts"][-1]
         attempt["judgment"] = {**judgment, "material_failures": failures}
+        attempt["artifact_lineage_sha256"] = lineage["sha256"]
         if judgment["status"] == "PASS":
             item["accepted_asset"] = attempt["image"]
             item["status"] = "COMPLETE"
@@ -2776,6 +2726,10 @@ def summary(session: dict) -> dict:
     return result
 
 
+def cmd_inspect_pair_artifacts(args: argparse.Namespace) -> dict:
+    return pair_artifacts(load_json(args.session), args.pair_id, args.selection)
+
+
 def cmd_inspect(args: argparse.Namespace) -> dict:
     return summary(load_json(args.session))
 
@@ -2784,7 +2738,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2804,6 +2758,8 @@ def parser() -> argparse.ArgumentParser:
     commands["record-generation-batch"].add_argument("--manifest", required=True)
     commands["audit-current"].add_argument("--judgment", required=True)
     commands["audit-pair"].add_argument("--judgment", required=True)
+    commands["inspect-pair-artifacts"].add_argument("--pair-id", required=True)
+    commands["inspect-pair-artifacts"].add_argument("--selection", choices=("LATEST_RECORDED", "ACCEPTED"), default="LATEST_RECORDED")
     commands["prepare-repair"].add_argument("--repair-plan", required=True)
     commands["apply-user-adjustment"].add_argument("--adjustment", required=True)
     commands["assemble"].add_argument("--output", required=True)
@@ -2819,7 +2775,7 @@ HANDLERS = {
     "authorize": cmd_authorize, "generate-next": cmd_generate_next, "record-generation": cmd_record_generation,
     "record-generation-batch": cmd_record_generation_batch,
     "audit-current": cmd_audit_current, "prepare-repair": cmd_prepare_repair,
-    "audit-pair": cmd_audit_pair, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
+    "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 

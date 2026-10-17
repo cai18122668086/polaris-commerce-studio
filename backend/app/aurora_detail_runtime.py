@@ -66,6 +66,7 @@ class AuroraDetailHarnessRunner:
             "generate-next": {"session", "out"},
             "record-generation": {"session", "token", "image"},
             "audit-pair": {"session", "judgment"},
+            "inspect-pair-artifacts": {"session", "pair-id", "selection"},
             "prepare-repair": {"session", "repair-plan"},
             "assemble": {"session", "output"},
             "audit-long-page": {"session", "judgment"},
@@ -85,7 +86,7 @@ class AuroraDetailHarnessRunner:
         argv = [sys.executable, str(self.harness_path), command]
         for name, raw in arguments.items():
             value = str(raw)
-            if name not in {"approval-text", "token", "delivery-mode", "approved-module-count", "approved-pair-canvas-aspect-ratio", "approval-document-sha256"}:
+            if name not in {"approval-text", "token", "delivery-mode", "approved-module-count", "approved-pair-canvas-aspect-ratio", "approval-document-sha256", "pair-id", "selection"}:
                 value = str(self._workspace_path(root, Path(value)))
             argv.extend((f"--{name}", value))
         try:

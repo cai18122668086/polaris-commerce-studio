@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-detail-page",
-  "content_hash": "7766eff69a8b5501eb7b186707f01a080b92260c65c7a0b7fd6516f60793f42b",
+  "content_hash": "0851223049da6d0c49a92ce0d83c3ecccc4ead076e6ed714920e65c031328309",
   "capability": "ecommerce_detail_pack",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-detail-page.input.v4.3",
@@ -265,7 +265,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "397d6af90070d4a2650333ea5e2e04d83b39a9b2c56bd4692ec47aa9bd29e563"
+      "sha256": "989da6528b0a2f3fec1e0ee158059342ffadd4c683ca0928bba5df40009bd186"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -285,7 +285,7 @@
     },
     {
       "path": "scripts/runtime/image_format.py",
-      "sha256": "f772511ea9a8d7afdac20e53f50e73fd16c0a230a60508c4763d4b50a6f24e95"
+      "sha256": "d0fca8548a0b6eebfd5e91ba0dd353678f8b23b199f454819732369147f28dda"
     },
     {
       "path": "scripts/runtime/information_contract.py",
@@ -294,6 +294,10 @@
     {
       "path": "scripts/runtime/performance_contract.py",
       "sha256": "faf4115ff3934fcf21441f87d01fcc810c331f0b6dea0ae5bed66cb93a1165a0"
+    },
+    {
+      "path": "scripts/runtime/pixel_lineage.py",
+      "sha256": "a82b0b2c59667716908adb51f3dca4348451a5c731127e4278fe29a570a981c5"
     },
     {
       "path": "scripts/runtime/plan_normalizer.py",

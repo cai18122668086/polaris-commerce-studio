@@ -83,6 +83,11 @@ from .domestic_detail.native_approval import (
     verify_compiled_native_approval,
     write_native_json,
 )
+from .domestic_detail.pixels import (
+    DetailPixelError,
+    load_native_pair_pixels,
+    pixel_review_context,
+)
 from .domestic_detail.plans import DetailPlanError, approval_binding
 from .domestic_detail.review import (
     AUDIT_PROFILES,
@@ -5763,9 +5768,12 @@ class XingheImageProvider:
             and result.artifact is not None
         ):
             try:
+                canvas_artifact = result.artifact
+                native_pixels = None
                 if native_detail_session is not None and native_detail_request is not None:
-                    native_canvas = native_detail_session.parent / f"generated-{pair_id}.png"
-                    native_canvas.write_bytes(result.artifact.payload)
+                    if invocation_path is None:
+                        raise DetailPixelError("The original provider invocation receipt is required")
+                    native_canvas = invocation_path.with_suffix(".artifact")
                     self._native_detail_runner.run(  # type: ignore[union-attr]
                         "record-generation",
                         native_detail_session.parent,
@@ -5775,6 +5783,15 @@ class XingheImageProvider:
                             "image": native_canvas,
                         },
                     )
+                    lineage = self._native_detail_runner.run(  # type: ignore[union-attr]
+                        "inspect-pair-artifacts", native_detail_session.parent,
+                        {"session": native_detail_session, "pair-id": pair_id, "selection": "LATEST_RECORDED"},
+                    )
+                    native_pixels = load_native_pair_pixels(lineage, [native_detail_session.parent], group_key=str(configuration["group_key"]))
+                    if lineage["source"]["sha256"] != result.artifact.sha256 or lineage["signed_request_sha256"] != native_detail_request["signed_request_sha256"]:
+                        raise DetailPixelError("Native pixels differ from their original provider invocation")
+                    native_detail_request["pixel_lineage"] = pixel_review_context(lineage)
+                    canvas_artifact = native_pixels.canvas
                     native_judgment_path = native_detail_session.parent / f"judgment-{pair_id}.json"
                     write_detail_contract(
                         native_judgment_path,
@@ -5782,7 +5799,7 @@ class XingheImageProvider:
                             request,
                             native_detail_request,
                             sources,
-                            result.artifact,
+                            canvas_artifact,
                         ),
                     )
                     native_audit_summary = self._native_detail_runner.run(  # type: ignore[union-attr]
@@ -5803,11 +5820,11 @@ class XingheImageProvider:
                             "AURORA_NATIVE_PAIR_AUDIT_FAILED",
                             "Native pair pixel audit requires one bounded repair.",
                         )
-                pair_canvas_width = result.artifact.width  # type: ignore[union-attr]
-                pair_canvas_height = result.artifact.height  # type: ignore[union-attr]
-                pair_canvas_sha256 = result.artifact.sha256  # type: ignore[union-attr]
+                pair_canvas_width = canvas_artifact.width
+                pair_canvas_height = canvas_artifact.height
+                pair_canvas_sha256 = canvas_artifact.sha256
                 pair_audit = _aurora_pair_pixel_audit(
-                    result.artifact,  # type: ignore[arg-type]
+                    canvas_artifact,
                     pair_id=pair_id,
                 )
                 if self.storage is None:
@@ -5823,22 +5840,23 @@ class XingheImageProvider:
                 )
                 await self.storage.save_validated(
                     ValidatedImage(
-                        payload=result.artifact.payload,  # type: ignore[union-attr]
-                        filename=f"{configuration['group_key']}-{pair_id}-canvas.png",
-                        content_type=result.artifact.content_type,  # type: ignore[union-attr]
-                        width=result.artifact.width,  # type: ignore[union-attr]
-                        height=result.artifact.height,  # type: ignore[union-attr]
+                        payload=canvas_artifact.payload,
+                        filename=canvas_artifact.filename,
+                        content_type=canvas_artifact.content_type,
+                        width=canvas_artifact.width,
+                        height=canvas_artifact.height,
                         object_key=pair_canvas_key,
-                        sha256=result.artifact.sha256,  # type: ignore[union-attr]
+                        sha256=canvas_artifact.sha256,
                     )
                 )
-                first_slice, second_slice = _split_aurora_pair_artifact(
-                    result.artifact,  # type: ignore[arg-type]
-                    screen_size=str(configuration["size"]),
-                    pair_id=pair_id,
-                    group_key=str(configuration["group_key"]),
-                )
-            except (XingheAgentError, AuroraDetailHarnessError) as exc:
+                if native_pixels is not None:
+                    first_slice, second_slice = native_pixels.screens
+                else:
+                    first_slice, second_slice = _split_aurora_pair_artifact(
+                        canvas_artifact, screen_size=str(configuration["size"]),
+                        pair_id=pair_id, group_key=str(configuration["group_key"]),
+                    )
+            except (XingheAgentError, AuroraDetailHarnessError, DetailPixelError) as exc:
                 result = replace(
                     result,
                     outcome=ProviderOutcome.FAILED,
@@ -5880,6 +5898,10 @@ class XingheImageProvider:
                             "audit_entrypoint": "audit-pair",
                             "max_automatic_repairs": 1,
                             "pair_audit": pair_audit,
+                            **({"native_pixel_lineage_sha256": native_pixels.lineage["sha256"],
+                                "native_original_image_sha256": native_pixels.lineage["source"]["sha256"],
+                                "native_normalization_mode": native_pixels.lineage["normalization"]["mode"]}
+                               if native_pixels is not None else {}),
                         },
                     },
                 )
@@ -6089,7 +6111,7 @@ class XingheImageProvider:
         origin_workspace = detail_workspace(
             str(checkpoint.get("checkpoint_source_job_id") or request.job_id)
         )
-        verify_accepted_canvas(
+        lineage = verify_accepted_canvas(
             list(dict.fromkeys((session_path.parent, origin_workspace))),
             generation_scope,
             pair_id=pair_id,
@@ -6098,7 +6120,13 @@ class XingheImageProvider:
         if hashlib.sha256(payload).hexdigest() not in hashes:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Stored canvas does not match its accepted audit")
         canvas = _artifact_from_bytes(payload, filename=f"{group_key}-{pair_id}-canvas.png", expected_size=str(configuration["pair_canvas_size"]), preserve_provider_artifact=True)
-        first, second = await asyncio.to_thread(_split_aurora_pair_artifact, canvas, screen_size=str(configuration["size"]), pair_id=pair_id, group_key=group_key)
+        try:
+            native_pixels = load_native_pair_pixels(lineage, list(dict.fromkeys((session_path.parent, origin_workspace))), group_key=group_key)
+        except DetailPixelError as exc:
+            raise AuroraDetailHarnessError(exc.code, str(exc)) from exc
+        if native_pixels.canvas.payload != payload:
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Durable canvas differs from exact native accepted bytes")
+        first, second = native_pixels.screens
         target_key = self._aurora_pair_canvas_object_key(request.workspace_id, request.job_id, group_key, pair_id)
         if source_key != target_key:
             await self.storage.save_validated(ValidatedImage(payload=payload, filename=canvas.filename, content_type=canvas.content_type, width=canvas.width, height=canvas.height, object_key=target_key, sha256=canvas.sha256))
@@ -6503,6 +6531,7 @@ class XingheImageProvider:
             "product_information": authority["product_information"],
             "review_authority": authority,
             "approved_module_contracts": list(native_request.get("approved_module_contracts") or []),
+            "pixel_lineage": native_request.get("pixel_lineage"),
             "audit_context_version": "aurora-v4.3-pair-audit-v4",
             "candidate_sha256": artifact.sha256,
             "candidate_dimensions": [artifact.width, artifact.height],

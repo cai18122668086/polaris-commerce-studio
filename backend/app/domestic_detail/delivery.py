@@ -1,0 +1,468 @@
+"""Verify original native delivery and keep filesystem finalization recoverable."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import os
+from collections.abc import Mapping
+from copy import deepcopy
+from pathlib import Path
+from typing import Any, NoReturn
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..aurora_detail_runtime import (
+    AuroraDetailHarnessError,
+    AuroraDetailHarnessRunner,
+    detail_workspace,
+)
+from ..models import (
+    AssetRecord,
+    JobAssetRecord,
+    JobItemRecord,
+    JobPlanRecord,
+    JobRecord,
+)
+from ..storage import ImageStorage
+from .generation import (
+    DetailGenerationError,
+    bind_native_contract,
+    generation_binding,
+    require_current_pipeline,
+    verify_accepted_canvas,
+)
+from .pixels import DetailPixelError, load_native_pair_pixels
+from .plans import DetailPlanError, canonical_hash
+
+DELIVERY_VERSION = "native-delivery-v1"
+
+
+class DetailDeliveryError(ValueError):
+    def __init__(self, code: str, message: str, status_code: int = 409) -> None:
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
+def _reject(message: str, code: str = "NATIVE_DETAIL_DELIVERY_INVALID") -> NoReturn:
+    raise DetailDeliveryError(code, message)
+
+
+def _json(path: Path) -> dict[str, Any]:
+    if path.is_symlink() or path.parent.is_symlink() or path.parent.is_junction():
+        _reject("Original delivery evidence cannot traverse a link")
+    value = json.loads(path.read_bytes())
+    if not isinstance(value, dict):
+        _reject("Original delivery evidence must be an object")
+    return value
+
+
+def _once(path: Path, value: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink() or path.parent.is_junction():
+        _reject("Delivery evidence cannot be written through a link")
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(value, stream, ensure_ascii=False, indent=2, allow_nan=False)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _accepted(module: Mapping[str, Any]) -> dict[str, Any]:
+    attempts = [
+        row
+        for row in module.get("attempts", [])
+        if row.get("image") == module.get("accepted_asset")
+    ]
+    if not attempts or module.get("status") not in {
+        "COMPLETE",
+        "COMPLETE_WITH_RESIDUALS",
+    }:
+        _reject("Every delivered screen needs its original accepted native attempt")
+    return dict(attempts[-1])
+
+
+def _stable_session(state: Mapping[str, Any]) -> str:
+    return canonical_hash(
+        {
+            key: value
+            for key, value in state.items()
+            if key not in {"state", "events", "updated_at", "final"}
+        }
+    )
+
+
+def _workspaces(
+    db: Session, job: JobRecord, binding: Mapping[str, Any]
+) -> tuple[Path, ...]:
+    roots = [detail_workspace(job.id)]
+    current = job
+    seen = {job.id}
+    while current.retry_of_job_id:
+        prior = db.get(JobRecord, current.retry_of_job_id)
+        if (
+            prior is None
+            or prior.workspace_id != job.workspace_id
+            or canonical_hash(prior.configuration) != canonical_hash(job.configuration)
+        ):
+            break
+        if prior.id in seen:
+            _reject("Native delivery retry ancestry contains a cycle")
+        seen.add(prior.id)
+        root = detail_workspace(prior.id)
+        original = root / "generation-binding.json"
+        if original.is_file() and canonical_hash(_json(original)) == canonical_hash(
+            binding
+        ):
+            roots.append(root)
+        current = prior
+    return tuple(roots)
+
+
+async def _stored(
+    storage: ImageStorage, workspace_id: str, key: str, payload: bytes
+) -> None:
+    if not isinstance(key, str) or not key.startswith(workspace_id + "/"):
+        _reject("A delivery object escaped its workspace")
+    try:
+        actual = await storage.read_bytes(key)
+    except Exception as exc:
+        raise DetailDeliveryError(
+            "NATIVE_DETAIL_DELIVERY_STORAGE_UNAVAILABLE",
+            "Original delivery storage is unavailable; preserve the accepted result",
+            503,
+        ) from exc
+    if actual != payload:
+        _reject(
+            "Durable delivery bytes differ from the exact accepted native raster",
+            "NATIVE_DETAIL_DELIVERY_ASSET_CHANGED",
+        )
+
+
+async def _verified_context(
+    db: Session, job: JobRecord, plan: JobPlanRecord, storage: ImageStorage
+) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    require_current_pipeline(job.configuration)
+    payload = plan.payload
+    groups = payload["source_asset_manifest"]
+    if (
+        len(groups) != 1
+        or type(payload.get("group_count")) is not int
+        or payload["group_count"] != 1
+    ):
+        _reject("Native delivery requires one exact approved product campaign")
+    group = groups[0]
+    binding = generation_binding(
+        payload,
+        job.configuration["settings"],
+        group["assets"],
+        group_key=group["group_key"],
+        job_input=job.configuration.get("input") or {},
+    )
+    root = detail_workspace(job.id)
+    bind_native_contract(root, binding)
+    state = _json(root / "session.json")
+    if state.get("state") not in {"AWAITING_USER_FINAL_REVIEW", "FINALIZED"}:
+        _reject("The accepted native session is not awaiting this final review")
+    if state.get("assembly") or state.get("long_page_audit"):
+        _reject(
+            "Optional campaign preview needs its original website review evidence",
+            "NATIVE_DETAIL_CAMPAIGN_EVIDENCE_REQUIRED",
+        )
+    modules = state["modules"]
+    count = job.expected_item_count
+    if count not in {8, 10, 12} or len(modules) != count:
+        _reject("Native delivery does not cover the approved screens")
+    rows = [
+        (asset, link, item)
+        for asset, link, item in db.execute(
+            select(AssetRecord, JobAssetRecord, JobItemRecord)
+            .join(JobAssetRecord, JobAssetRecord.asset_id == AssetRecord.id)
+            .join(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
+            .where(
+                JobAssetRecord.workspace_id == job.workspace_id,
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.direction == "output",
+                JobAssetRecord.is_deliverable.is_(True),
+                JobAssetRecord.role == "detail_page",
+            )
+            .order_by(JobItemRecord.ordinal)
+        )
+    ]
+    if len(rows) != count or [item.ordinal for _, _, item in rows] != list(
+        range(count)
+    ):
+        _reject("Durable screens are missing, duplicated or reordered")
+    roots = _workspaces(db, job, binding)
+    pairs = state["plan"]["output_strategy"]["continuous_pair_rendering"]["pair_ids"]
+    if len(pairs) != count // 2:
+        _reject("Accepted native pair coverage is incomplete")
+    screens: list[dict[str, Any]] = []
+    canvases: list[dict[str, Any]] = []
+    audits: list[dict[str, Any]] = []
+    for position, pair in enumerate(pairs):
+        start = position * 2
+        selected = modules[start : start + 2]
+        if pair["module_ids"] != [m["id"] for m in selected]:
+            _reject("Accepted native pairs differ from the approved adjacent windows")
+        first = _accepted(selected[0])
+        canvas_sha = first["normalized_image_sha256"]
+        if any(
+            _accepted(m).get("normalized_image_sha256") != canvas_sha for m in selected
+        ):
+            _reject("Two accepted screens do not share their original pair canvas")
+        bundle = verify_accepted_canvas(
+            roots, binding, pair_id=pair["pair_id"], artifact_sha256=canvas_sha
+        )
+        pixels = load_native_pair_pixels(bundle, roots, group_key=group["group_key"])
+        keys = []
+        for offset, raster in enumerate(pixels.screens):
+            asset, link, item = rows[start + offset]
+            module = selected[offset]
+            if (
+                asset.workspace_id != job.workspace_id
+                or asset.deleted_at is not None
+                or asset.lifecycle_status != "ready"
+                or item.status not in {"succeeded", "reused"}
+                or (asset.sha256, asset.width, asset.height, asset.byte_size)
+                != (raster.sha256, raster.width, raster.height, len(raster.payload))
+                or (
+                    asset.media_kind,
+                    asset.content_type,
+                    asset.storage_provider,
+                    asset.storage_bucket,
+                )
+                != (
+                    "image",
+                    raster.content_type,
+                    storage.provider_name,
+                    storage.bucket_name,
+                )
+                or item.configuration.get("page") != start + offset + 1
+                or item.configuration.get("group_key") != group["group_key"]
+                or item.configuration.get("pair_id") != pair["pair_id"]
+                or item.configuration.get("pair_position") != offset + 1
+            ):
+                _reject("Durable screen metadata differs from accepted native pixels")
+            await _stored(storage, job.workspace_id, asset.object_key, raster.payload)
+            validation = link.validation
+            key = validation.get("aurora_pair_canvas_object_key")
+            if (
+                not isinstance(key, str)
+                or validation.get("aurora_pair_id") not in (None, pair["pair_id"])
+                or validation.get("aurora_pair_canvas_sha256") != pixels.canvas.sha256
+            ):
+                _reject("The original accepted pair-canvas reference changed")
+            keys.append(key)
+            screens.append(
+                {
+                    "module_id": module["id"],
+                    "asset_id": asset.id,
+                    "ordinal": item.ordinal,
+                    "sha256": asset.sha256,
+                    "object_key": asset.object_key,
+                    "object_version": asset.object_version,
+                    "storage_provider": asset.storage_provider,
+                    "storage_bucket": asset.storage_bucket,
+                    "width": asset.width,
+                    "height": asset.height,
+                }
+            )
+        # A selected retry may retain the source sibling and copy the other to
+        # its new job key. Every alias must contain the same accepted canvas.
+        for key in dict.fromkeys(keys):
+            await _stored(storage, job.workspace_id, key, pixels.canvas.payload)
+        canvases.append(
+            {
+                "pair_id": pair["pair_id"],
+                "module_ids": pair["module_ids"],
+                "object_key": keys[-1],
+                "source_object_keys": list(dict.fromkeys(keys)),
+                "sha256": pixels.canvas.sha256,
+                "width": pixels.canvas.width,
+                "height": pixels.canvas.height,
+                "pixel_lineage_sha256": bundle["sha256"],
+            }
+        )
+        audits.append(
+            {
+                "pair_id": pair["pair_id"],
+                "judgment": deepcopy(first["judgment"]),
+                "review_evidence": deepcopy(first.get("review_evidence")),
+            }
+        )
+    context = {
+        "generation_binding_sha256": binding["sha256"],
+        "native_session_truth_sha256": _stable_session(state),
+        "screens": screens,
+        "pair_canvases": canvases,
+        "pair_audits": audits,
+    }
+    return context, state, root
+
+
+def _inspect(root: Path, output: Path) -> dict[str, Any]:
+    if not output.resolve().is_relative_to(root.resolve()):
+        _reject("Native final output escaped its owned delivery directory")
+    return AuroraDetailHarnessRunner().run(
+        "inspect-final-manifest",
+        root,
+        {"session": root / "session.json", "manifest": output},
+    )
+
+
+def _completion(
+    root: Path, output: Path, request: Mapping[str, Any], response: Path
+) -> dict[str, Any]:
+    inspected = _inspect(root, output)
+    state = _json(root / "session.json")
+    binding = request["binding"]
+    if (
+        _stable_session(state) != binding["native_session_truth_sha256"]
+        or inspected["manifest"]["approval"]["text"] != binding["approval_text"]
+        or inspected["manifest"]["approval"]["mode"] != "USER_FINAL_REVIEW"
+    ):
+        _reject("The original finalized native intent changed")
+    value = {
+        "version": DELIVERY_VERSION,
+        "binding_sha256": canonical_hash(binding),
+        "request_sha256": canonical_hash(request),
+        "request_file_sha256": _sha(response.parent / "request.json"),
+        "native_inspection": inspected,
+        "session_after_sha256": _sha(root / "session.json"),
+    }
+    sealed = {**value, "sha256": canonical_hash(value)}
+    _once(response, sealed)
+    return sealed
+
+
+def _finish(
+    root: Path, binding: Mapping[str, Any], *, allow_create: bool
+) -> dict[str, Any]:
+    directory = root / "delivery" / canonical_hash(binding)
+    request_path = directory / "request.json"
+    response_path = directory / "response.json"
+    output = directory / "native-final-manifest.json"
+    state = _json(root / "session.json")
+    if request_path.exists():
+        request = _json(request_path)
+        before = base64.b64decode(request["session_before_bytes_base64"], validate=True)
+        before_state = json.loads(before)
+        if (
+            request.get("version") != DELIVERY_VERSION
+            or hashlib.sha256(before).hexdigest()
+            != request.get("session_before_sha256")
+            or _stable_session(before_state) != binding["native_session_truth_sha256"]
+            or before_state.get("state") != "AWAITING_USER_FINAL_REVIEW"
+        ):
+            _reject("The original pre-finalization session evidence changed")
+        if canonical_hash(request.get("binding")) != canonical_hash(binding):
+            _reject("Original native delivery request binding changed")
+        if response_path.exists():
+            response = _json(response_path)
+            proof = {k: v for k, v in response.items() if k != "sha256"}
+            if (
+                response.get("sha256") != canonical_hash(proof)
+                or response.get("binding_sha256") != canonical_hash(binding)
+                or response.get("request_sha256") != canonical_hash(request)
+                or response.get("request_file_sha256") != _sha(request_path)
+                or response.get("session_after_sha256") != _sha(root / "session.json")
+                or canonical_hash(response.get("native_inspection"))
+                != canonical_hash(_inspect(root, output))
+            ):
+                _reject("The original completed native delivery evidence changed")
+            return response
+        if state.get("state") == "FINALIZED":
+            return _completion(root, output, request, response_path)
+        _reject(
+            "Reconcile the original local finalization before repeating it",
+            "NATIVE_DETAIL_FINALIZATION_OUTCOME_UNKNOWN",
+        )
+    if not allow_create or state.get("state") != "AWAITING_USER_FINAL_REVIEW":
+        _reject("The original native finalization request is missing")
+    before = (root / "session.json").read_bytes()
+    request = {
+        "version": DELIVERY_VERSION,
+        "binding": dict(binding),
+        "session_before_sha256": hashlib.sha256(before).hexdigest(),
+        "session_before_bytes_base64": base64.b64encode(before).decode("ascii"),
+    }
+    _once(request_path, request)
+    AuroraDetailHarnessRunner().run(
+        "finalize",
+        root,
+        {
+            "session": root / "session.json",
+            "output": output,
+            "approval-text": str(binding["approval_text"]),
+        },
+    )
+    return _completion(root, output, request, response_path)
+
+
+async def finalize_native_delivery(
+    db: Session,
+    job: JobRecord,
+    plan: JobPlanRecord,
+    storage: ImageStorage,
+    *,
+    actor_id: str,
+    approval_text: str,
+    allow_create: bool = True,
+) -> dict[str, Any]:
+    """Verify every original, then finalize once or recover the same local intent."""
+    try:
+        if not approval_text.strip():
+            _reject("Explicit final human review text is required")
+        context, _, root = await _verified_context(db, job, plan, storage)
+        binding = {
+            "version": DELIVERY_VERSION,
+            "job_id": job.id,
+            "workspace_id": job.workspace_id,
+            "actor_id": actor_id,
+            "plan_id": plan.id,
+            "plan_revision": plan.revision,
+            "approval_text": approval_text,
+            **context,
+        }
+        completed = _finish(root, binding, allow_create=allow_create)
+        manifest = deepcopy(completed["native_inspection"]["manifest"])
+        return {
+            **manifest,
+            "skill_id": manifest["skill"],
+            "state": "FINALIZED",
+            "delivery": manifest["approval"]["mode"],
+            "native_manifest_sha256": completed["native_inspection"][
+                "manifest_file_sha256"
+            ],
+            "native_delivery_receipt_sha256": completed["sha256"],
+            "quality_state": "WITH_RESIDUALS"
+            if manifest["residual_issues"]
+            else "PAIR_REVIEW_PASSED",
+            "campaign_audit_status": "NOT_REQUESTED",
+            "page_asset_refs": [row["asset_id"] for row in context["screens"]],
+            "pair_canvas_asset_refs": context["pair_canvases"],
+            "pair_audits": context["pair_audits"],
+        }
+    except DetailDeliveryError:
+        raise
+    except (
+        DetailGenerationError,
+        DetailPixelError,
+        DetailPlanError,
+        AuroraDetailHarnessError,
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+    ) as exc:
+        code = str(getattr(exc, "code", "NATIVE_DETAIL_DELIVERY_INVALID"))
+        if not code.startswith("NATIVE_DETAIL_"):
+            code = "NATIVE_DETAIL_DELIVERY_INVALID"
+        raise DetailDeliveryError(code, str(exc)) from exc

@@ -15,6 +15,7 @@ from typing import List, Optional, Tuple
 from PIL import Image, UnidentifiedImageError
 
 from runtime.audit_evidence import inspect_pair_audit, record_pair_audit
+from runtime.delivery_manifest import build_final_manifest, inspect_final_manifest
 from runtime.assembly import assemble_vertical
 from runtime.artifact_binding import file_sha256, validate_artifact_binding
 from runtime.compliance_contract import validate_high_risk_cosmetic_claims, validate_high_risk_plan_copy
@@ -2191,47 +2192,14 @@ def cmd_audit_long_page(args: argparse.Namespace) -> dict:
 
 
 def _write_final_manifest(session: dict, args: argparse.Namespace, approval_text: str, approval_mode: str) -> dict:
-    residuals = [{"module_id": module["id"], "issues": module["residual_issues"]} for module in session["modules"] if module["residual_issues"]]
-    render_containers = []
-    pair_config = (session.get("plan", {}).get("output_strategy", {}).get("continuous_pair_rendering") or {})
-    if isinstance(pair_config, dict) and pair_config.get("enabled"):
-        for pair in pair_config.get("pair_ids", []):
-            first = next((item for item in session["modules"] if item["id"] == pair["module_ids"][0]), None)
-            accepted = next((attempt for attempt in reversed(first.get("attempts", [])) if attempt.get("image") == first.get("accepted_asset")), None) if first else None
-            render_containers.append({
-                "mode": "CONTINUOUS_PAIR",
-                "pair_id": pair["pair_id"],
-                "module_ids": pair["module_ids"],
-                "pair_canvas": accepted.get("pair_canvas") if accepted else None,
-                "slice_height_px": session["plan"]["output_strategy"]["module_height_px"],
-            })
-    manifest = {
-        "skill": "aurora-domestic-ecommerce-detail-page",
-        "version": VERSION,
-        "product_name": session["input"]["product_name"],
-        "platform_profile": session["input"]["platform_profile"],
-        "approval": {"text": approval_text, "at": now(), "mode": approval_mode},
-        "long_page": (session.get("assembly") or {}).get("long_page"),
-        "modules": [{
-            "id": module["id"], "order": module["order"], "asset": module["accepted_asset"],
-            "asset_sha256": file_sha256(module["accepted_asset"]) if module.get("accepted_asset") else None,
-            "audit_binding": next((
-                attempt.get("judgment", {}).get("artifact_binding")
-                for attempt in reversed(module.get("attempts", []))
-                if attempt.get("judgment") and attempt.get("image") == module.get("accepted_asset")
-            ), None),
-        } for module in session["modules"]],
-        "slices": (session.get("assembly") or {}).get("slices", []),
-        "render_containers": render_containers,
-        "seam_audit": {
-            "pair_audits": (session.get("long_page_audit") or {}).get("pair_audits", []),
-            "pair_transition_audits": (session.get("long_page_audit") or {}).get("pair_transition_audits", []),
-        },
-        "residual_issues": residuals,
-        "backend_confirmation_required": session["input"]["platform_profile"]["verification_status"] != "VERIFIED_CURRENT_BACKEND",
-    }
+    approval = {"text": approval_text, "at": now(), "mode": approval_mode}
+    manifest = build_final_manifest(session, VERSION, approval)
     atomic_write_json(args.output, manifest)
-    session["final"] = {"manifest": str(Path(args.output).resolve()), "approval": manifest["approval"]}
+    session["final"] = {
+        "manifest": str(Path(args.output).resolve()),
+        "manifest_sha256": file_sha256(args.output),
+        "approval": manifest["approval"],
+    }
     session["state"] = "FINALIZED"
     save(args.session, session, "finalized")
     return manifest
@@ -2762,6 +2730,10 @@ def cmd_inspect_pair_artifacts(args: argparse.Namespace) -> dict:
     return pair_artifacts(load_json(args.session), args.pair_id, args.selection)
 
 
+def cmd_inspect_final_manifest(args: argparse.Namespace) -> dict:
+    return inspect_final_manifest(load_json(args.session), args.manifest, VERSION)
+
+
 def cmd_inspect(args: argparse.Namespace) -> dict:
     return summary(load_json(args.session))
 
@@ -2770,7 +2742,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2793,6 +2765,7 @@ def parser() -> argparse.ArgumentParser:
     commands["inspect-pair-artifacts"].add_argument("--pair-id", required=True)
     commands["inspect-pair-review-contracts"].add_argument("--pair-id", required=True)
     commands["inspect-pair-review-evidence"].add_argument("--pair-id", required=True)
+    commands["inspect-final-manifest"].add_argument("--manifest", required=True)
     commands["inspect-pair-artifacts"].add_argument("--selection", choices=("LATEST_RECORDED", "ACCEPTED"), default="LATEST_RECORDED")
     commands["prepare-repair"].add_argument("--repair-plan", required=True)
     commands["apply-user-adjustment"].add_argument("--adjustment", required=True)
@@ -2810,6 +2783,7 @@ HANDLERS = {
     "record-generation-batch": cmd_record_generation_batch,
     "audit-current": cmd_audit_current, "prepare-repair": cmd_prepare_repair,
     "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "inspect-pair-review-contracts": cmd_inspect_pair_review_contracts, "inspect-pair-review-evidence": cmd_inspect_pair_review_evidence, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
+    "inspect-final-manifest": cmd_inspect_final_manifest,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 

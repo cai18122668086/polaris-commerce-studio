@@ -100,6 +100,24 @@ Apply this authority order:
 - One module may carry several related points, but must have one clear lead conclusion.
 - Never interpret successful file creation, schema validation, or image-generation receipt as visual success. Inspect actual pixels.
 
+## Native final delivery evidence
+
+The finalize and auto-finalize commands share one native manifest projection.
+Accepted module order, exact file hashes, original pixel audit bindings, review
+snapshots, accepted pair-canvas hashes and material residuals remain explicit.
+An optional long-page audit is preserved when present; its absence never becomes
+a passing campaign-audit claim. Finalization records the exact manifest byte
+hash in the native session.
+
+The inspect-final-manifest --session <session> --manifest <exact-output> command
+is read-only. It checks the finalized state, recorded output path and byte hash,
+then reconstructs the expected manifest from the same accepted native truth.
+Missing or changed output, altered residuals, unfinished modules and unapproved
+automatic delivery are rejected. Website delivery must additionally verify its
+original generation/review evidence and durable output bytes before accepting
+the user's final review. Historical finalized sessions lacking this evidence
+keep their original pinned runtime.
+
 ## v4.3 non-negotiable gates
 
 These gates override any shortcut, prior conversational habit, or ad-hoc image prompt:

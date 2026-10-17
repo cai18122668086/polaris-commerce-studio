@@ -2825,42 +2825,11 @@ def finalize_domestic_main_image(
         and isinstance(detail_settings, Mapping)
         and detail_settings.get("market_region") == "domestic"
     ):
-        if JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
-            raise ApiError(
-                status.HTTP_409_CONFLICT,
-                "JOB_NOT_AWAITING_FINAL_REVIEW",
-                "国内详情图尚未进入最终审核阶段。",
-            )
-        plan = session.scalar(
-            select(JobPlanRecord)
-            .where(JobPlanRecord.job_id == job.id)
-            .order_by(JobPlanRecord.revision.desc())
-            .limit(1)
+        from .domestic_detail.delivery import (
+            DetailDeliveryError,
+            finalize_native_delivery,
         )
-        links = session.scalars(
-            select(JobAssetRecord)
-            .where(
-                JobAssetRecord.job_id == job.id,
-                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
-                JobAssetRecord.is_deliverable.is_(True),
-            )
-            .order_by(JobAssetRecord.ordinal)
-        ).all()
-        if plan is None or len(links) != job.expected_item_count:
-            raise ApiError(
-                status.HTTP_409_CONFLICT,
-                "AURORA_DETAIL_AUDIT_INCOMPLETE",
-                "详情图 pair 审计产物尚未完整，不能最终交付。",
-            )
-        if (
-            not isinstance(payload.approval_text, str)
-            or len(payload.approval_text.strip()) < 2
-        ):
-            raise ApiError(
-                status.HTTP_409_CONFLICT,
-                "AURORA_FINAL_APPROVAL_TEXT_REQUIRED",
-                "请明确确认已完成详情图最终审核。",
-            )
+
         idem, replay = claim_idempotency(
             session,
             workspace_id=workspace.workspace_id,
@@ -2872,65 +2841,42 @@ def finalize_domestic_main_image(
                 {"job_id": job.id, "approval_text": payload.approval_text}
             ),
         )
-        if replay:
-            return job_detail_response(session, job)
-        pair_audits_by_id: dict[str, Mapping[str, Any]] = {}
-        pair_canvas_refs_by_id: dict[str, dict[str, Any]] = {}
-        for link in links:
-            validation = link.validation
-            if not isinstance(validation, Mapping):
-                continue
-            audit = validation.get("pair_audit")
-            if not isinstance(audit, Mapping):
-                continue
-            pair_id = str(
-                audit.get("pair_id") or validation.get("aurora_pair_id") or ""
-            )
-            if not pair_id:
-                continue
-            pair_audits_by_id.setdefault(pair_id, audit)
-            pair_canvas_refs_by_id.setdefault(
-                pair_id,
-                {
-                    "pair_id": pair_id,
-                    "object_key": validation.get("aurora_pair_canvas_object_key"),
-                    "sha256": validation.get("aurora_pair_canvas_sha256"),
-                    "storage": validation.get("aurora_pair_canvas_storage"),
-                },
-            )
-        pair_audits = list(pair_audits_by_id.values())
-        pair_canvas_asset_refs = list(pair_canvas_refs_by_id.values())
-        expected_pair_count = max(1, job.expected_item_count // 2)
-        if (
-            len(pair_audits) != expected_pair_count
-            or len(pair_canvas_asset_refs) != expected_pair_count
-            or any(
-                not ref["object_key"] or not ref["sha256"]
-                for ref in pair_canvas_asset_refs
-            )
-        ):
+        if not replay and JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
             raise ApiError(
                 status.HTTP_409_CONFLICT,
-                "AURORA_DETAIL_AUDIT_INCOMPLETE",
-                "详情图 pair 画布引用或审计记录尚未完整，不能最终交付。",
+                "JOB_NOT_AWAITING_FINAL_REVIEW",
+                "国内详情图尚未进入最终审核阶段。",
             )
-        plan_payload = dict(plan.payload)
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING",
+                "原始详情方案缺失，无法确认交付。",
+            )
+        try:
+            final_manifest = asyncio.run(
+                finalize_native_delivery(
+                    session,
+                    job,
+                    plan,
+                    request.app.state.storage,
+                    actor_id=workspace.principal.user_id,
+                    approval_text=payload.approval_text,
+                    allow_create=not replay,
+                )
+            )
+        except DetailDeliveryError as exc:
+            raise ApiError(exc.status_code, exc.code, str(exc)) from exc
+        if replay:
+            return job_detail_response(session, job)
+        plan_payload = deepcopy(plan.payload)
         aurora = dict(plan_payload.get("aurora_v4_3") or {})
-        final_manifest = {
-            "skill_id": "aurora-domestic-ecommerce-detail-page",
-            "version": "4.3.0",
-            "state": "FINALIZED",
-            "approval_text": payload.approval_text,
-            "pair_canvas_aspect_ratio": "3:8",
-            "decomposition_window_aspect_ratio": "3:4",
-            "pair_audits": pair_audits,
-            "pair_canvas_asset_refs": pair_canvas_asset_refs,
-            "page_asset_refs": [link.asset_id for link in links],
-            "delivery": "USER_FINAL_REVIEW",
-            "semantic_audit_disclosure": (
-                "STRUCTURAL_PIXEL_GATE_ONLY; semantic review accepted by user"
-            ),
-        }
         aurora["delivery"] = final_manifest
         plan_payload["aurora_v4_3"] = aurora
         plan_payload["final_manifest"] = final_manifest
@@ -2942,6 +2888,7 @@ def finalize_domestic_main_image(
         transition_job(job, JobStatus.COMPLETED, stage="completed", progress=100)
         session.commit()
         return job_detail_response(session, job)
+
     if (
         job.type == JobType.DETAIL_PACK.value
         and isinstance(detail_settings, Mapping)
@@ -3006,10 +2953,10 @@ def finalize_domestic_main_image(
         }
         final_manifest = {
             "skill_id": "xinghe-crossborder-detail-3",
-            "platform_code": detail_settings.get("platform_code"),  # type: ignore[dict-item]
+            "platform_code": detail_settings.get("platform_code"),
             "page_asset_refs": [link.asset_id for link in links],
             "delivery": "USER_MANUAL_QA_APPROVAL",
-            "qa_review": qa_review,  # type: ignore[dict-item]
+            "qa_review": qa_review,
         }
         plan_payload["crossborder_quality_review"] = qa_review
         plan_payload["crossborder_final_manifest"] = final_manifest

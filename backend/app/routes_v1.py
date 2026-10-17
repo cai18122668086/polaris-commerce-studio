@@ -102,6 +102,7 @@ from .schemas_v1 import (
     CapabilityStatus,
     CreativeImageJobCreate,
     CurrentUserResponse,
+    DetailIntakeResolutionRequest,
     DetailPackJobCreate,
     DevelopmentProviderSettingsResponse,
     DevelopmentProviderSettingsUpdate,
@@ -2197,6 +2198,40 @@ def update_plan(
         and isinstance(settings, Mapping)
         and settings.get("market_region") == "domestic"
     ):
+        if job.stage == "intake_confirmation_required":
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "INTAKE_CONFIRMATION_REQUIRED",
+                "请先确认商品事实，再审阅完整规划。",
+            )
+        from .domestic_detail.plans import resolve_native_plan
+
+        try:
+            old_native = resolve_native_plan(current.payload)
+            new_native = resolve_native_plan(editable_payload)
+            if (
+                old_native is None
+                or new_native is None
+                or any(
+                    editable_payload.get(field) != current.payload.get(field)
+                    for field in (
+                        "product_intake",
+                        "input_signature",
+                        "source_input_sha256",
+                        "source_asset_manifest",
+                    )
+                )
+            ):
+                raise DetailPlanError(
+                    "Source intake and original source manifests are immutable"
+                )
+        except DetailPlanError as exc:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "INTAKE_AUTHORITY_IMMUTABLE",
+                "规划编辑不能改写原始商品观察或素材来源。",
+                {"reason": str(exc)},
+            ) from exc
         # Rebind the campaign approval document whenever the plan is edited;
         # an old approval fingerprint may never authorize changed pages.
         from .xinghe_agent import compile_aurora_campaign_approval_document
@@ -2260,6 +2295,231 @@ def update_plan(
         validation_errors=plan.validation_errors,
         confirmed_at=plan.confirmed_at,
     )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def resolve_detail_intake(
+    job_id: str,
+    payload: DetailIntakeResolutionRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.facts import DetailIntakeError
+    from .domestic_detail.intake import validate_resolution
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve",
+        idempotency_key=key,
+        request_hash=canonical_hash(
+            {"job_id": job.id, **payload.model_dump(mode="json")}
+        ),
+    )
+    if replay:
+        return job_detail_response(session, job)
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.status != JobStatus.AWAITING_CONFIRMATION.value
+        or job.stage != "intake_confirmation_required"
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_NOT_AWAITING_CONFIRMATION",
+            "当前没有待确认的商品事实。",
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if plan is None or plan.revision != payload.expected_revision:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "PLAN_REVISION_CONFLICT",
+            "事实确认内容已更新，请刷新后重试。",
+        )
+    intake = plan.payload.get("product_intake")
+    if not isinstance(intake, dict) or canonical_hash(intake) != plan.payload.get(
+        "intake_question_sha256"
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_BINDING_CHANGED",
+            "事实来源已变化，请重新核对。",
+        )
+    if canonical_hash(job.configuration.get("settings") or {}) != plan.payload.get(
+        "intake_settings_sha256"
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_BINDING_CHANGED",
+            "商品事实已变化，不能沿用旧确认。",
+        )
+    for source in plan.payload.get("intake_source_manifest", []):
+        asset = session.get(AssetRecord, source["asset_id"])
+        role_exists = session.scalar(
+            select(JobAssetRecord.id)
+            .where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.asset_id == source["asset_id"],
+                JobAssetRecord.role == source["role"],
+                JobAssetRecord.direction == JobAssetDirection.INPUT.value,
+            )
+            .limit(1)
+        )
+        if (
+            asset is None
+            or asset.workspace_id != job.workspace_id
+            or asset.deleted_at is not None
+            or asset.sha256 != source["sha256"]
+            or role_exists is None
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "INTAKE_BINDING_CHANGED",
+                "商品图片或来源用途已变化，不能沿用旧确认。",
+            )
+    if job.configuration.get("domestic_detail_intake_resolution"):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_RESOLUTION_ALREADY_APPLIED",
+            "本次事实确认已保存，不能重复改写原确认。",
+        )
+    resolution: dict[str, Any] = {
+        "confirmation_text": payload.confirmation_text,
+        "resolutions": [row.model_dump(mode="json") for row in payload.resolutions],
+    }
+    try:
+        validate_resolution(intake, resolution)
+    except DetailIntakeError as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            exc.code,
+            "请一次确认全部冲突值，并明确排除其余值。",
+            {"reason": str(exc)},
+        ) from exc
+    if (
+        intake.get("brand_confirmation_required")
+        and not payload.brandless_confirmation
+        and not payload.additional_product_asset_ids
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_BRAND_CONFIRMATION_REQUIRED",
+            "请明确确认无品牌，或补充清晰的本商品品牌图片。",
+        )
+    if (
+        payload.brandless_confirmation is not None
+        and len(payload.brandless_confirmation.strip()) < 2
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_BRAND_CONFIRMATION_REQUIRED",
+            "请明确填写无品牌确认。",
+        )
+    style_ids = set(job.configuration["input"].get("reference_asset_ids", []))
+    if style_ids.intersection(payload.additional_product_asset_ids):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_SOURCE_AUTHORITY_INVALID",
+            "风格参考不能改作商品品牌证据，请补充本商品图片。",
+        )
+    configuration = deepcopy(job.configuration)
+    product_ids = configuration["input"]["product_groups"][0]["asset_ids"]
+    for asset_id in payload.additional_product_asset_ids:
+        asset = session.scalar(
+            select(AssetRecord).where(
+                AssetRecord.id == asset_id,
+                AssetRecord.workspace_id == job.workspace_id,
+                AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+                AssetRecord.deleted_at.is_(None),
+            )
+        )
+        if asset is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INPUT_ASSET_NOT_FOUND",
+                "补充图片不存在或不属于当前工作区。",
+            )
+        if (
+            asset.media_kind != AssetMediaKind.IMAGE.value
+            or not asset.content_type.startswith("image/")
+        ):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INTAKE_PRODUCT_IMAGE_REQUIRED",
+                "补充素材必须是商品图片。",
+            )
+        if asset_id not in product_ids:
+            product_ids.append(asset_id)
+            session.add(
+                JobAssetRecord(
+                    workspace_id=job.workspace_id,
+                    job_id=job.id,
+                    asset_id=asset_id,
+                    direction=JobAssetDirection.INPUT.value,
+                    role="product_reference",
+                    ordinal=len(product_ids) - 1,
+                    is_deliverable=False,
+                    validation={},
+                )
+            )
+    if len(product_ids) > 8:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_SOURCE_LIMIT",
+            "商品素材总数不能超过 8 张。",
+        )
+    resolution.update(
+        {
+            "brandless_confirmation": payload.brandless_confirmation,
+            "source_intake": deepcopy(intake),
+            "source_intake_sha256": canonical_hash(intake),
+            "actor_user_id": workspace.principal.user_id,
+            "confirmed_at": utc_now().isoformat(),
+        }
+    )
+    configuration["domestic_detail_intake_resolution"] = resolution
+    job.configuration = configuration
+    plan.payload = {
+        **dict(plan.payload),
+        "state": "intake_resolved",
+        "intake_resolution": resolution,
+        "planner_lease_expires_at": None,
+    }
+    plan.payload_hash = canonical_hash(plan.payload)
+    plan.revision += 1
+    transition_job(
+        job, JobStatus.PLANNING, stage="analyzing_confirmed_sources", progress=10
+    )
+    add_outbox_event(
+        session,
+        workspace_id=job.workspace_id,
+        job_id=job.id,
+        event_type="job.dispatch_requested",
+        suffix=f"intake-{plan.revision}",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, job)
 
 
 @router.post(
@@ -3151,7 +3411,7 @@ def _reserve_real_provider_job_if_enabled(
             # and two actual-pixel reviews, each with at most one targeted
             # same-image identity-envelope review. Reserve the full bound.
             page_count = int(detail_settings.get("page_count") or 8)
-            authoring_requests = group_count * (page_count + 3)
+            authoring_requests = group_count * (page_count + 5)
             review_requests = job.expected_item_count * 2
             planner_requests = authoring_requests + review_requests
             estimated_cost = (

@@ -62,7 +62,7 @@ def test_approval_exposes_locked_input_plan_and_skill_scope(client: TestClient) 
     planned = planned_job(client)
     metadata = planned["plan"]["payload"]["aurora_v4_3"]
     binding = metadata["contract_binding"]
-    assert binding["version"] == "domestic-detail-approval-v2"
+    assert binding["version"] == "domestic-detail-approval-v3"
     for field in [
         "native_plan_sha256",
         "screen_views_sha256",

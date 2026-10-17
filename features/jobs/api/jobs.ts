@@ -259,6 +259,30 @@ export function useRetryJob(workspaceId: string | undefined) {
   );
 }
 
+export function useResolveDetailIntake(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, AuthorizedJobAction & {
+    revision: number; confirmationText: string;
+    resolutions: { conflict_id: string; retained_fact_ids: string[]; rejected_fact_ids: string[] }[];
+    brandlessConfirmation?: string; additionalProductAssetIds?: string[];
+  }>(workspaceId, "resolve-intake", (input) => ({
+    jobId: input.jobId,
+    revision: input.revision,
+    confirmationText: input.confirmationText,
+    resolutions: input.resolutions,
+    brandlessConfirmation: input.brandlessConfirmation,
+    additionalProductAssetIds: input.additionalProductAssetIds ?? [],
+  }), async (id, input, key) => {
+    assertJobAction(input.allowedActions, "resolve_intake");
+    const result = await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve", {
+      params: { path: { workspace_id: id, job_id: input.jobId }, header: { "Idempotency-Key": key } },
+      body: { expected_revision: input.revision, confirmation_text: input.confirmationText,
+        resolutions: input.resolutions, brandless_confirmation: input.brandlessConfirmation,
+        additional_product_asset_ids: input.additionalProductAssetIds ?? [] },
+    });
+    return unwrapApiResponse(result);
+  });
+}
+
 export function useConfirmPlan(workspaceId: string | undefined) {
   return useJobMutation<
     JobDetail,

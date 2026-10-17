@@ -90,6 +90,7 @@ def test_foreign_pair_reference_is_repaired_before_approval(
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert [call.planning_profile for call in gateway.planner_calls] == [
+        "aurora_domestic_intake",
         "aurora_domestic_detail",
         "aurora_domestic_plan_repair",
     ]

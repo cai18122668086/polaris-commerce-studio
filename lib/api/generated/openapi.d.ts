@@ -1442,6 +1442,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Detail Intake */
+        post: operations["resolve_detail_intake_api_v1_workspaces__workspace_id__jobs__job_id__intake_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan": {
         parameters: {
             query?: never;
@@ -2056,6 +2073,19 @@ export interface components {
             id: string;
             status: components["schemas"]["UserStatus"];
         };
+        /** DetailIntakeResolutionRequest */
+        DetailIntakeResolutionRequest: {
+            /** Additional Product Asset Ids */
+            additional_product_asset_ids?: string[];
+            /** Brandless Confirmation */
+            brandless_confirmation?: string | null;
+            /** Confirmation Text */
+            confirmation_text: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Resolutions */
+            resolutions?: components["schemas"]["IntakeConflictResolution"][];
+        };
         /** DetailPackConfiguration */
         DetailPackConfiguration: {
             /**
@@ -2063,6 +2093,8 @@ export interface components {
              * @default true
              */
             auto_start_after_plan: boolean;
+            /** Brandless Confirmation */
+            brandless_confirmation?: string | null;
             /** Category */
             category?: string | null;
             /** Conflict Scan */
@@ -2594,6 +2626,15 @@ export interface components {
              * @enum {string}
              */
             workflow_type: "reference_remix" | "product_prompt" | "local_edit" | "legacy_unclassified";
+        };
+        /** IntakeConflictResolution */
+        IntakeConflictResolution: {
+            /** Conflict Id */
+            conflict_id: string;
+            /** Rejected Fact Ids */
+            rejected_fact_ids?: string[];
+            /** Retained Fact Ids */
+            retained_fact_ids: string[];
         };
         /** JobAssetResponse */
         JobAssetResponse: {
@@ -6569,6 +6610,44 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_detail_intake_api_v1_workspaces__workspace_id__jobs__job_id__intake_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailIntakeResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -8,7 +8,8 @@
       "id": "G01",
       "requirement": "Conflict scan before identity/full planning; batch only material SKU conflicts",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "Actual coordinator, native compiler and API/UI paths covered; see domestic-detail-intake-integration-2026-10-17.md. Real supplier/pixel acceptance remains unproven."
     },
     {
       "id": "G02",
@@ -26,7 +27,8 @@
       "id": "G04",
       "requirement": "Analyze every style reference; adopt/reject and schedule with provenance",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "Actual coordinator, native compiler and API/UI paths covered; see domestic-detail-intake-integration-2026-10-17.md. Real supplier/pixel acceptance remains unproven."
     },
     {
       "id": "G05",
@@ -44,7 +46,8 @@
       "id": "G07",
       "requirement": "Readable authentic brand or explicitly confirmed brandless mode; logo gates",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "Actual coordinator, native compiler and API/UI paths covered; see domestic-detail-intake-integration-2026-10-17.md. Real supplier/pixel acceptance remains unproven."
     },
     {
       "id": "G08",
@@ -233,17 +236,48 @@
       "d79f5f7": "input/plan/view/Skill approval binding, 62 checks and 80-file mypy",
       "269a990": "authored screen geometry/roles, all 8/10/12 compile; 78 checks",
       "f22a1ed": "native lower-screen seam patch; 9 API/compiler checks and native 49 pass/56 historical skip",
-      "afcff06": "restore original vendored newline styles; source hash 177ee87d891d83b1e5b0b5e7b2c58f596b752c384c34486a2758dd10913d4478"
+      "afcff06": "restore original vendored newline styles; source hash 177ee87d891d83b1e5b0b5e7b2c58f596b752c384c34486a2758dd10913d4478",
+      "2f8aae0": "native reference adopt/reject and screen schedule semantics; both new native regressions execute in active suite"
     },
     "not_complete": [
-      "intake identity/fact/reference provenance beyond token fix",
+      "real supplier intake/identity/fact/reference provenance and visual acceptance; multi-conflict consistency follow-up",
       "persist and expose the exact compiler approval before generation",
       "source/asset/request/recovery bindings and old-task version routing",
       "remove optimistic/fabricated review normalization; apply native per-screen pixel gates",
       "delivery/native finalization/residual quality states",
       "persistent independent integration stack and actual supplier generation",
       "actual visual acceptance and release/rollback readiness"
-    ]
+    ],
+    "intake_candidate": {
+      "status": "local_technical_paths_verified_real_visual_unproven",
+      "approval_binding": "domestic-detail-approval-v3",
+      "report": "domestic-detail-intake-integration-2026-10-17.md",
+      "regression": {
+        "intake-wired-full-domestic-v3": {
+          "tests": 290,
+          "passed": 232,
+          "failures": 0,
+          "skipped": 58
+        },
+        "intake-protected-main-and-shared-v3": {
+          "tests": 86,
+          "passed": 86,
+          "failures": 0,
+          "skipped": 0
+        },
+        "intake-native-reference-active-v4": {
+          "tests": 126,
+          "passed": 70,
+          "skipped": 56,
+          "failures": 0,
+          "new_reference_tests_executed": [
+            "test_explicitly_rejected_references_need_no_adopted_pattern",
+            "test_reference_patterns_apply_only_to_their_scheduled_screens"
+          ]
+        }
+      },
+      "skill_content_hash": "c5ff74928fe788e6ff3cface78922d31f75c0497e67b9339d7f5a5b67ced8779"
+    }
   },
   "commands_to_cover": [
     "start",

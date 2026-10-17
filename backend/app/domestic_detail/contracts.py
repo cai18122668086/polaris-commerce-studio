@@ -138,13 +138,6 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
         questions = detail_contract.get("buyer_question_sequence")
         if not isinstance(questions, list) or len(questions) < 4:
             detail_contract["buyer_question_sequence"] = [str(module.get("buyer_question") or "确认商品可见证据") for module in modules]
-    reference_system = normalized.get("reference_expression_system")
-    if isinstance(reference_system, dict):
-        # Product references are identity sources, not style-reference
-        # materials. With no separate reference pack supplied, the Harness
-        # requires an explicit empty adoption/rejection ledger.
-        reference_system["coverage"] = []
-        reference_system["adopted_patterns"] = []
     recall = normalized.get("campaign_recall_contract")
     if isinstance(recall, dict) and isinstance(recall.get("must_remember_claim_ids"), list):
         recall["must_remember_claim_ids"] = [fact_id_for_claim(item) for item in recall["must_remember_claim_ids"]]

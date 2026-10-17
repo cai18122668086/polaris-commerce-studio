@@ -53,8 +53,16 @@ class AuroraDetailHarnessRunner:
         allowed = {
             "start": {"input", "session"},
             "lock-identity": {"session", "identity"},
+            "resolve-conflicts": {"session", "resolution"},
             "compile-plan": {"session", "plan"},
-            "authorize": {"session", "approval-text", "approved-module-count", "approved-pair-canvas-aspect-ratio", "approval-document-sha256", "delivery-mode"},
+            "authorize": {
+                "session",
+                "approval-text",
+                "approved-module-count",
+                "approved-pair-canvas-aspect-ratio",
+                "approval-document-sha256",
+                "delivery-mode",
+            },
             "generate-next": {"session", "out"},
             "record-generation": {"session", "token", "image"},
             "audit-pair": {"session", "judgment"},
@@ -170,140 +178,132 @@ def build_native_input(
     *,
     product_images: Sequence[Mapping[str, Any]],
     image_paths: Sequence[str],
+    intake: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Normalize Polaris' compact settings into the v4.3 input contract."""
+    """Materialize validated product/style provenance into the native input."""
+    from copy import deepcopy
 
-    facts: list[dict[str, Any]] = []
-    raw_facts = settings.get("verified_facts", [])
-    if isinstance(raw_facts, list):
-        for index, raw in enumerate(raw_facts, start=1):
-            if isinstance(raw, Mapping):
-                fact = dict(raw)
-                fact.setdefault("id", f"F{index:02d}")
-                fact.setdefault("text", str(raw.get("value") or raw.get("fact") or "已确认商品事实"))
-                fact.setdefault("source_class", "USER_FACT")
-                fact.setdefault("evidence_ref", "user_input")
-                fact.setdefault("claim_kind", "OTHER")
-                fact.setdefault("display_intent", "SHOW_IF_RELEVANT")
-                fact.setdefault("user_prominence", "SUPPORTING_POINT")
-                fact.setdefault("named_elements", [str(fact["text"])])
-            else:
-                text = str(raw).strip()
-                if not text:
-                    continue
-                fact = {
-                    "id": f"F{index:02d}",
-                    "text": text,
-                    "source_class": "USER_FACT",
-                    "evidence_ref": "user_input",
-                    "claim_kind": "OTHER",
-                    "display_intent": "SHOW_IF_RELEVANT",
-                    "user_prominence": "SUPPORTING_POINT",
-                    "named_elements": [text],
-                }
-            facts.append(fact)
-    if not facts:
-        facts.append({
-            "id": "F01", "text": "以用户提供的真实商品素材为准",
-            "source_class": "OBSERVED_PRODUCT_EVIDENCE", "evidence_ref": "product_images",
-            "claim_kind": "PRODUCT_IDENTITY", "display_intent": "MUST_SHOW",
-            "user_prominence": "CORE_SELLING_POINT", "named_elements": ["真实商品素材"],
-        })
+    from .domestic_detail.facts import validate_intake
+
+    sources = [
+        {"asset_id": image["id"], "role": image["role"], "sha256": image["sha256"]}
+        for image in product_images
+    ]
+    validated = validate_intake(
+        intake,
+        settings=settings,
+        sources=sources,
+        brandless_confirmation=intake.get("brandless_confirmation")
+        or settings.get("brandless_confirmation"),
+        resolution=intake.get("resolution"),
+    )
+    if validated.get("brand_confirmation_required") or "identity" not in validated:
+        raise AuroraDetailHarnessError(
+            "NATIVE_DETAIL_INTAKE_BLOCKED",
+            "Source or brand confirmation is still required",
+        )
+    path_map = {
+        str(item["id"]): str(path)
+        for item, path in zip(product_images, image_paths, strict=True)
+    }
+    references = deepcopy(validated["reference_materials"])
+    for reference in references:
+        reference["path"] = path_map[reference["id"]]
     platform = settings.get("platform_profile")
-    if not isinstance(platform, Mapping):
-        platform = {}
-    width = int(platform.get("canvas_width_px") or 1440)
-    height = int(platform.get("module_height_px") or 1920)
+    platform = dict(platform) if isinstance(platform, Mapping) else {}
+    size = str(settings.get("size") or "1440x1920").split("x")
+    width, height = int(size[0]), int(size[1])
     profile = {
-        "target_platform": str(platform.get("target_platform") or settings.get("platform_code") or "taobao_tmall"),
-        "profile_name": str(platform.get("profile_name") or "INTERNAL_REVIEW_1440_3_4"),
-        "selection_mode": str(platform.get("selection_mode") or "INTERNAL_ONLY"),
-        "selection_rationale": str(platform.get("selection_rationale") or "采用国内详情页移动端 3:4 单屏与相邻 3:8 双屏画布，保证固定窗口切片和连续阅读。"),
-        "source": str(platform.get("source") or "INTERNAL_REVIEW_PROFILE"),
+        "target_platform": str(
+            platform.get("target_platform")
+            or settings.get("platform_code")
+            or "taobao_tmall"
+        ),
+        "profile_name": str(platform.get("profile_name") or "INTERNAL_REVIEW_3_4"),
+        "selection_mode": "USER_SPECIFIED",
+        "selection_rationale": "采用已在网页声明、待完整审批确认的移动端详情单屏规格，按相邻双屏固定切片并保持连续阅读。",
+        "source": "INTERNAL_REVIEW_PROFILE",
         "aspect_ratio": {"width_units": 3, "height_units": 4, "label": "3:4"},
         "canvas_width_px": width,
         "module_height_px": height,
-        "safe_margin_px": int(platform.get("safe_margin_px") or 96),
-        "slice_height_px": int(platform.get("slice_height_px") or height),
+        "safe_margin_px": int(platform.get("safe_margin_px") or min(96, width // 15)),
+        "slice_height_px": height,
         "format": "PNG",
-        "max_file_bytes": platform.get("max_file_bytes"),
-        "verification_status": str(platform.get("verification_status") or "INTERNAL_ONLY"),
+        "max_file_bytes": None,
+        "verification_status": "INTERNAL_ONLY",
     }
-    # The Harness only permits ADAPTIVE_PLANNED with a verified backend profile;
-    # otherwise the explicit internal review profile is the safe contract.
-    if profile["selection_mode"] not in {"USER_SPECIFIED", "PLATFORM_VERIFIED", "ADAPTIVE_PLANNED"}:
-        profile["selection_mode"] = "USER_SPECIFIED"
-    raw_references = settings.get("reference_materials") or []
-    references: list[dict[str, Any]] = []
-    for index, raw in enumerate(raw_references, start=1):
-        if isinstance(raw, Mapping):
-            reference = dict(raw)
-        else:
-            reference = {"id": f"REF{index:02d}", "path": str(raw)}
-        reference.setdefault("id", f"REF{index:02d}")
-        reference.setdefault("path", str(reference.get("id")))
-        reference.setdefault("category", "style_reference")
-        reference.setdefault("analysis_status", "ANALYZED")
-        unit = {
-            "id": f"{reference['id']}-U01",
-            "source_region": "完整画面",
-            "page_duty": "提供视觉语法参考",
-            "visual_carrier": "构图、层级与信息表面",
-            "composition_logic": "保留视觉语法，不复制商品、品牌或文案",
-            "typography_logic": "保持清晰的中文信息层级",
-            "observed_expression_method": "采用参考图的视觉语法并适配当前商品证据。",
+    user_facts = validated["user_facts"]
+    points = [
+        {
+            "id": f"USP{index:02d}",
+            "text": fact["text"],
+            "source_ref": fact["evidence_ref"],
+            "fact_ids": [fact["id"]],
         }
-        reference.setdefault("analyzed_units", [unit])
-        reference.setdefault("observed_expression_methods", [unit["observed_expression_method"]])
-        references.append(reference)
-    raw_conflicts = settings.get("source_conflicts") or []
-    conflicts = [dict(item) for item in raw_conflicts if isinstance(item, Mapping)]
-    conflict_scan_value = settings.get("conflict_scan")
-    conflict_scan = dict(conflict_scan_value) if isinstance(conflict_scan_value, Mapping) else {}
-    conflict_scan.setdefault("status", "CONFLICTS_FOUND" if conflicts else "CLEAR")
-    if conflict_scan.get("status") == "NO_MATERIAL_CONFLICTS_REPORTED":
-        conflict_scan["status"] = "CONFLICTS_FOUND" if conflicts else "CLEAR"
-    conflict_scan.setdefault("scanned_topics", ["identity", "specification", "formula", "performance", "audience", "compliance"])
-    conflict_scan["conflict_ids"] = [str(item.get("id")) for item in conflicts]
-    return {
-        "intake_route": "USER_SELLING_POINT_LED" if settings.get("selling_points") else "PHOTO_TO_PRODUCT_STRATEGY",
-        "product_name": str(settings.get("product_name") or "未命名商品"),
-        "category": str(settings.get("category") or "国内电商商品"),
-        "target_buyer": str(settings.get("target_buyer") or "需要了解商品真实结构与使用价值的购买者"),
-        "primary_scenario": str(settings.get("primary_scenario") or "日常使用场景"),
+        for index, fact in enumerate(
+            (
+                fact
+                for fact in user_facts
+                if fact["evidence_ref"].startswith("settings/selling_points/")
+            ),
+            start=1,
+        )
+    ]
+    identity = validated["identity"]
+    value = {
+        "intake_route": "USER_SELLING_POINT_LED"
+        if points
+        else "PHOTO_TO_PRODUCT_STRATEGY",
+        "product_name": str(settings.get("product_name") or identity["canonical_name"]),
+        "category": identity["category"],
+        "target_buyer": str(
+            settings.get("target_buyer")
+            or validated.get("target_buyer")
+            or "了解当前商品特征的购买者"
+        ),
+        "primary_scenario": str(validated.get("primary_scenario") or ""),
         "product_images": [
-            {"id": str(item.get("id")), "path": str(image_paths[index]), "role": str(item.get("role") or "product_reference")}
-            for index, item in enumerate(product_images)
+            {
+                "id": str(item["id"]),
+                "path": path_map[str(item["id"])],
+                "role": "product_reference",
+            }
+            for item in product_images
+            if item["role"] == "product_reference"
         ],
-        "verified_facts": facts,
-        "conflict_scan": conflict_scan,
-        "source_conflicts": conflicts,
+        "verified_facts": [*user_facts, *validated["observed_facts"]],
+        "user_supplied_selling_points": points,
+        "conflict_scan": validated["conflict_scan"],
+        "source_conflicts": validated["source_conflicts"],
         "reference_materials": references,
         "platform_profile": profile,
         "coverage_directive": "MAXIMIZE_USER_SUPPLIED_RELEVANT_FACTS",
         "question_budget": 0,
         "conflict_policy": "BLOCK_PLAN_AND_BATCH_ASK",
     }
+    if validated.get("operating_analysis") is not None:
+        value["operating_analysis"] = deepcopy(validated["operating_analysis"])
+    return value
 
 
-def build_native_identity(settings: Mapping[str, Any], product_image_ids: Sequence[str]) -> dict[str, Any]:
-    name = str(settings.get("product_name") or "未命名商品")
-    return {
-        "canonical_name": name,
-        "category": str(settings.get("category") or "国内电商商品"),
-        "reference_image_ids": list(product_image_ids),
-        "invariant_features": [
-            "截面形状、外轮廓边界与整体比例严格以用户商品参考图的可见像素为准。",
-            "正面宽:总高比例、主体占比与透视关系严格以用户商品参考图的可见像素为准。",
-            "结构分段、部件接缝、部件数量与相对位置严格以用户商品参考图的可见像素为准。",
-            "颜色分区、材质外观、纹理状态以及可见标识严格以用户商品参考图为准。",
-        ],
-        "allowed_states": ["正面展示", "侧面展示", "局部结构展示", "真实使用场景展示"],
-        "uncertain_features": [],
-        "forbidden_mutations": ["不得新增、删除或改造用户素材中未出现的商品部件。", "不得改变商品型号、颜色、比例、结构或身份标识。", "不得把视觉参考图的商品、品牌或文案带入当前商品。"],
-        "forbidden_background_elements": ["竞争品牌标志", "未授权认证或参数", "会与商品身份混淆的替代商品"],
-        "brand_logo_source": {"mode": "BRANDLESS", "image_id": "NONE", "authorization_basis": "NOT_APPLICABLE", "readability": "NOT_APPLICABLE", "usage": "FORBIDDEN_ALL_SCREENS", "brandless_evidence": "当前接入仅授权用户提供的商品素材，未收到可独立授权的品牌标识源。"},
-    }
+def build_native_identity(
+    settings: Mapping[str, Any],
+    product_image_ids: Sequence[str],
+    *,
+    intake: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the actual validated observation contract; never synthesize geometry."""
+    from copy import deepcopy
+
+    identity = intake.get("identity")
+    if not isinstance(identity, Mapping) or not set(
+        identity.get("reference_image_ids") or []
+    ).issubset(set(product_image_ids)):
+        raise AuroraDetailHarnessError(
+            "NATIVE_DETAIL_IDENTITY_MISSING",
+            "A product-only observed identity is required",
+        )
+    return deepcopy(dict(identity))
 
 
 def extract_native_plan(payload: Mapping[str, Any]) -> dict[str, Any] | None:

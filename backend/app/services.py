@@ -345,7 +345,13 @@ def allowed_actions(job: JobRecord) -> list[str]:
     elif current == JobStatus.AWAITING_FINAL_REVIEW:
         actions.extend(["finalize", "cancel"])
     if current == JobStatus.AWAITING_CONFIRMATION:
-        actions.extend(["edit_plan", "confirm_plan"])
+        if (
+            job.type == JobType.DETAIL_PACK.value
+            and job.stage == "intake_confirmation_required"
+        ):
+            actions.append("resolve_intake")
+        else:
+            actions.extend(["edit_plan", "confirm_plan"])
     if current in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,

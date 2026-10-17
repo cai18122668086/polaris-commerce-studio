@@ -37,6 +37,8 @@ const JOB_STAGE_LABELS: Record<string, string> = {
   validation: "校验中",
   organizing: "整理结果中",
   planning_failed: "规划失败",
+  intake_confirmation_required: "等待商品事实确认",
+  analyzing_confirmed_sources: "分析已确认商品信息",
   suite_quality_reported: "质量检查已完成",
   suite_quality_passed: "质量检查通过",
   suite_review_reported: "套图审核已完成",
@@ -106,6 +108,7 @@ export function jobTitle(job: Job | JobDetail): string { return job.display_name
 export function jobCount(job: Job | JobDetail): string { return `${job.succeeded_item_count} / ${job.expected_item_count} 项`; }
 
 export function jobNote(job: Job | JobDetail): string {
+  if (job.type === "detail_pack" && job.stage === "intake_confirmation_required") return "请先确认商品事实，随后审阅完整详情规划。";
   if (job.status === "failed" && "items" in job) {
     const failed = job.items.find((item) => item.status === "failed");
     if (failed?.error_code) return safeJobFailureSummary(failed.error_code);

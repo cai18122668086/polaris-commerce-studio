@@ -36,6 +36,7 @@ class DetailIntakeError(ValueError):
         super().__init__(message)
         self.code = code
         self.path = path
+        self.call_results: tuple[Any, ...] = ()
 
 
 def user_fact_ledger(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -127,6 +128,7 @@ def validate_intake(
     settings: Mapping[str, Any],
     sources: Sequence[Mapping[str, Any]],
     brandless_confirmation: str | None = None,
+    resolution: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Validate model observations before identity lock or storyboard authoring.
 
@@ -160,9 +162,13 @@ def validate_intake(
         for source in sources
         if source.get("role") == "style_reference"
     }
-    if not product_ids or any(
-        source.get("role") not in {"product_reference", "style_reference"}
-        for source in sources
+    if (
+        not product_ids
+        or product_ids & style_ids
+        or any(
+            source.get("role") not in {"product_reference", "style_reference"}
+            for source in sources
+        )
     ):
         raise DetailIntakeError(
             "INTAKE_SOURCE_AUTHORITY_INVALID",
@@ -243,18 +249,41 @@ def validate_intake(
                 "INTAKE_CONFLICT_BINDING_INVALID",
                 "An unresolved conflict scan needs its complete alternatives",
             )
-        if value.get("identity") or value.get("modules") or value.get("plan"):
+        if resolution is not None:
+            from .intake import validate_resolution
+
+            value["resolution"] = validate_resolution(value, resolution)
+        elif value.get("identity") or value.get("modules") or value.get("plan"):
             raise DetailIntakeError(
                 "INTAKE_CONFLICT_LOCK_FORBIDDEN",
                 "Identity and storyboard must wait for source conflict resolution",
             )
-        value["user_facts"] = user_facts
-        return value
-    if conflicts:
+        if resolution is None:
+            value["user_facts"] = user_facts
+            return value
+    if scan["status"] == "CLEAR" and conflicts:
         raise DetailIntakeError(
             "INTAKE_CONFLICT_BINDING_INVALID",
             "A CLEAR scan cannot silently resolve conflicting values",
         )
+    if value.get("brand_confirmation_required") is True:
+        if value.get("identity") or value.get("modules") or value.get("plan"):
+            raise DetailIntakeError(
+                "INTAKE_BRAND_LOCK_FORBIDDEN",
+                "Brand confirmation must precede identity lock",
+            )
+        observation = value.get("brand_observation")
+        if (
+            not isinstance(observation, Mapping)
+            or observation.get("source_asset_id") not in product_ids
+        ):
+            raise DetailIntakeError(
+                "INTAKE_BRAND_OBSERVATION_MISSING",
+                "Brand clarification requires the actual product source",
+            )
+        _specific_observation(observation.get("text"), "/brand_observation/text")
+        value["user_facts"] = user_facts
+        return value
     if not user_facts and not observed:
         raise DetailIntakeError(
             "INTAKE_FACTS_MISSING", "Photo-led intake requires observed product facts"

@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-BINDING_VERSION = "domestic-detail-approval-v2"
+BINDING_VERSION = "domestic-detail-approval-v3"
 
 
 class DetailPlanError(ValueError):
@@ -156,8 +156,15 @@ def approval_binding(
         / "skill_manifests/aurora-domestic-ecommerce-detail-page.json"
     )
     content_hash = json.loads(manifest.read_text(encoding="utf-8"))["content_hash"]
+    intake = payload.get("product_intake")
+    if (
+        not isinstance(intake, Mapping)
+        or intake.get("version") != "domestic-detail-intake-v1"
+    ):
+        raise DetailPlanError("Approval requires the validated source intake")
     binding = {
         "version": BINDING_VERSION,
+        "product_intake_sha256": canonical_hash(intake),
         "native_plan_sha256": canonical_hash(native),
         "screen_views_sha256": canonical_hash(payload["pages"]),
         "settings_sha256": canonical_hash(settings),

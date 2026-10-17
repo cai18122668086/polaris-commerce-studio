@@ -363,6 +363,9 @@ class DetailPackInput(BaseModel):
 
 
 class DetailPackConfiguration(BaseModel):
+    brandless_confirmation: str | None = Field(
+        default=None, min_length=2, max_length=240
+    )
     product_name: str = Field(min_length=1, max_length=160)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
     platform_code: str = Field(min_length=1, max_length=32)
@@ -384,6 +387,14 @@ class DetailPackConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def default_domestic_delivery_size(self) -> "DetailPackConfiguration":
+        if (
+            self.market_region == "domestic"
+            and self.brandless_confirmation is not None
+            and len(self.brandless_confirmation.strip()) < 2
+        ):
+            raise ValueError(
+                "Brandless mode requires explicit user confirmation words."
+            )
         if self.market_region == "domestic" and "size" not in self.model_fields_set:
             self.size = "1440x1920"
         if self.market_region == "domestic" and self.page_count not in {8, 10, 12}:
@@ -681,6 +692,24 @@ class RetryRequest(BaseModel):
 class PlanUpdateRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     payload: dict[str, Any]
+
+
+class IntakeConflictResolution(BaseModel):
+    conflict_id: str = Field(min_length=1, max_length=120)
+    retained_fact_ids: list[str] = Field(min_length=1, max_length=36)
+    rejected_fact_ids: list[str] = Field(default_factory=list, max_length=36)
+
+
+class DetailIntakeResolutionRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    confirmation_text: str = Field(min_length=2, max_length=500)
+    resolutions: list[IntakeConflictResolution] = Field(
+        default_factory=list, max_length=24
+    )
+    brandless_confirmation: str | None = Field(
+        default=None, min_length=2, max_length=240
+    )
+    additional_product_asset_ids: list[str] = Field(default_factory=list, max_length=2)
 
 
 class PlanConfirmRequest(BaseModel):

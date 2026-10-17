@@ -20,7 +20,7 @@ import secrets
 import time
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -58,6 +58,7 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
+from .domestic_detail.facts import DetailIntakeError, _schema, validate_intake
 from .domestic_detail.generation import (
     DetailGenerationError,
     begin_invocation,
@@ -68,6 +69,13 @@ from .domestic_detail.generation import (
     require_current_pipeline,
     verify_accepted_canvas,
     wire_idempotency_key,
+)
+from .domestic_detail.intake import (
+    INTAKE_PROFILE,
+    IntakeStore,
+    intake_binding,
+    intake_prompt,
+    intake_response_schema,
 )
 from .domestic_detail.plans import DetailPlanError, approval_binding
 from .masked_repair import (
@@ -393,6 +401,9 @@ class PlannerRequest:
     planning_directives: tuple[str, ...] = ()
     domestic_protocol: bool = False
     planning_profile: str = "detail_pack"
+    intake_settings: Mapping[str, Any] | None = None
+    detail_intake: Mapping[str, Any] | None = None
+    intake_resolution: Mapping[str, Any] | None = None
 
 
 def _choose_identity_anchor(sources: Sequence[SourceImage]) -> SourceImage | None:
@@ -1804,8 +1815,35 @@ class FakeXingheGateway:
                 error_message="The fake planner returned a controlled failure.",
                 http_status=503,
             )
-        payload: object = _fake_plan(request)
-        if self.planner_failure == "invalid_json":
+        if request.planning_profile == INTAKE_PROFILE:
+            from .domestic_detail.mock_intake import mock_intake
+
+            payload: object = mock_intake(
+                request.intake_settings or {},
+                [
+                    {
+                        "asset_id": source.asset_id,
+                        "role": source.source_role,
+                        "sha256": source.sha256,
+                    }
+                    for source in request.sources
+                ],
+                request.intake_resolution,
+            )
+        else:
+            payload = _fake_plan(request)
+            if request.detail_intake is not None and request.planning_profile in {
+                "aurora_domestic_detail",
+                "aurora_domestic_campaign_completion",
+                "aurora_domestic_plan_repair",
+                "aurora_domestic_modules_completion",
+            }:
+                from .domestic_detail.mock_intake import mock_plan_with_intake
+
+                payload = mock_plan_with_intake(payload, request.detail_intake)
+        if request.planning_profile == INTAKE_PROFILE:
+            pass
+        elif self.planner_failure == "invalid_json":
             payload = "{not-json"
         elif self.planner_failure == "schema":
             payload = {"analysis": {}, "plan": {"screens": []}}
@@ -2250,6 +2288,8 @@ class TengliOpenAICompatibleGateway:
         response: Mapping[str, Any] | None = None
         try:
             routes = self._ordered_routes()
+            if request.planning_profile == INTAKE_PROFILE:
+                routes = routes[:1]
             last_route_index = len(routes) - 1
             for route_index, route in enumerate(routes):
                 route_payload = {**payload, "model": route.planner_model}
@@ -3038,7 +3078,11 @@ class XinghePlanningCoordinator:
                     request,
                     system_prompt=(
                         system_prompt
-                        + _auto_identity_resolution_system_prompt(request)
+                        + (
+                            ""
+                            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                            else _auto_identity_resolution_system_prompt(request)
+                        )
                     ),
                 )
                 for request in requests
@@ -3056,7 +3100,32 @@ class XinghePlanningCoordinator:
             )
         results: list[PlannerCallResult] = []
         validated: list[dict[str, Any]] = []
+        enriched_requests: list[PlannerRequest] = []
         for request in requests:
+            intake_calls: tuple[PlannerCallResult, ...] = ()
+            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+                try:
+                    request, intake_calls = await self._with_domestic_intake(request)
+                except DetailIntakeError as exc:
+                    return self._fail_planning(
+                        job_id,
+                        plan_id,
+                        exc.code,
+                        str(exc),
+                        [*results, *exc.call_results],
+                        error_path=exc.path,
+                    )
+                if request.detail_intake is not None and (
+                    request.detail_intake.get("brand_confirmation_required") is True
+                    or (
+                        request.detail_intake.get("source_conflicts")
+                        and not request.detail_intake.get("resolution")
+                    )
+                ):
+                    return self._await_domestic_intake_confirmation(
+                        job_id, plan_id, request, intake_calls
+                    )
+            enriched_requests.append(request)
             started = time.perf_counter()
             try:
                 result = self._recover_aurora_candidate(request)
@@ -3073,7 +3142,9 @@ class XinghePlanningCoordinator:
                     error_code="PLANNER_PROVIDER_FAILED",
                     error_message=(f"Planner provider failed ({type(exc).__name__})."),
                 )
-            result = _with_planner_observability(result)
+            result = replace(
+                _with_planner_observability(result), supplemental_results=intake_calls
+            )
             results.append(result)
             if result.error_code is not None:
                 return self._fail_planning(
@@ -3134,10 +3205,253 @@ class XinghePlanningCoordinator:
         return self._complete_planning(
             job_id,
             plan_id,
-            requests,
+            tuple(enriched_requests),
             results,
             validated,
         )
+
+    async def _with_domestic_intake(
+        self,
+        request: PlannerRequest,
+    ) -> tuple[PlannerRequest, tuple[PlannerCallResult, ...]]:
+        """Run/recover one role-bound intake before any full-plan call."""
+        settings = dict(request.intake_settings or {})
+        resolution = request.intake_resolution
+        brandless = (resolution or {}).get("brandless_confirmation") or settings.get(
+            "brandless_confirmation"
+        )
+        if brandless:
+            settings["brandless_confirmation"] = brandless
+        sources = [
+            {
+                "asset_id": source.asset_id,
+                "role": source.source_role,
+                "sha256": source.sha256,
+            }
+            for source in request.sources
+        ]
+        product_ids = {source["asset_id"] for source in sources if source["role"] == "product_reference"}
+        style_ids = {source["asset_id"] for source in sources if source["role"] == "style_reference"}
+        if product_ids & style_ids:
+            raise DetailIntakeError("INTAKE_SOURCE_AUTHORITY_INVALID", "A style reference cannot also become a product source")
+        manifest_path = (
+            Path(__file__).resolve().parent
+            / "skill_manifests"
+            / f"{self.skill_id}.json"
+        )
+        skill_hash = json.loads(manifest_path.read_text(encoding="utf-8"))[
+            "content_hash"
+        ]
+        binding = intake_binding(
+            settings=settings,
+            sources=sources,
+            skill_hash=skill_hash,
+            model=self.gateway.planner_model,
+            resolution=resolution,
+        )
+        store = IntakeStore(detail_workspace(request.job_id) / "intake", binding)
+        result: PlannerCallResult | None = None
+        calls: tuple[PlannerCallResult, ...] = ()
+        try:
+            stored = store.completed()
+            source_id = request.job_id
+            if stored is None:
+                source_ids: list[str] = []
+                with self.session_factory() as db:
+                    current = db.get(JobRecord, request.job_id)
+                    visited = {request.job_id}
+                    while current and current.retry_scope == "failed" and current.retry_of_job_id:
+                        source = db.get(JobRecord, current.retry_of_job_id)
+                        if source is None or source.workspace_id != current.workspace_id or source.configuration != current.configuration:
+                            break
+                        if source.id in visited:
+                            raise DetailIntakeError("INTAKE_RECEIPT_INVALID", "Intake recovery lineage contains a cycle")
+                        visited.add(source.id)
+                        source_ids.append(source.id)
+                        current = source
+                for candidate_id in source_ids:
+                    stored = IntakeStore(detail_workspace(candidate_id) / "intake", binding).completed()
+                    if stored is not None:
+                        source_id = candidate_id
+                        break
+                if stored is not None and stored.get("error_code"):
+                    known_rejection = stored.get("http_status") in {400, 401, 402, 403, 404, 422, 429}
+                    if not known_rejection and stored.get("external_request", True):
+                        raise DetailIntakeError(
+                            "INTAKE_OUTCOME_UNKNOWN",
+                            "Reconcile the original intake outcome even when request ID or cost is known",
+                        )
+                    stored = None
+            if stored is not None:
+                result = PlannerCallResult(**stored)
+                if source_id != request.job_id:
+                    result = replace(
+                        result,
+                        external_request=False,
+                        actual_cost_micros=0,
+                        supplemental_results=(),
+                        phase="aurora_intake_recovered",
+                    )
+            else:
+                intake_request = replace(
+                    request,
+                    planning_profile=INTAKE_PROFILE,
+                    intake_settings=settings,
+                    planning_directives=(),
+                    system_prompt="Inspect the supplied source pixels and preserve their exact authority. No identity lock or storyboard before conflict resolution. JSON only.",
+                    idempotency_key=f"{request.idempotency_key}:intake:{binding['sha256']}",
+                )
+                store.begin(request.job_id)
+                started = time.perf_counter()
+                try:
+                    result = await self.gateway.plan(intake_request)
+                except Exception as exc:
+                    result = PlannerCallResult(
+                        payload=None,
+                        provider_request_id=None,
+                        raw_usage=None,
+                        normalized_usage=normalize_usage(None),
+                        api_latency_seconds=time.perf_counter() - started,
+                        actual_cost_micros=None,
+                        error_code="INTAKE_OUTCOME_UNKNOWN",
+                        error_message=f"Source intake did not return a recoverable result ({type(exc).__name__}).",
+                    )
+                result = replace(
+                    _with_planner_observability(result), phase=INTAKE_PROFILE
+                )
+                calls = (result,)
+                store.finish(asdict(result))
+            assert result is not None
+            history: list[PlannerCallResult] = []
+            for response_path in sorted(store.root.glob("*.response.json")):
+                request_path = response_path.with_name(
+                    response_path.name.replace(".response.json", ".json")
+                )
+                saved_request = json.loads(request_path.read_text(encoding="utf-8"))
+                saved_response = json.loads(response_path.read_text(encoding="utf-8"))
+                if saved_response.get("sha256") != canonical_hash(
+                    saved_response.get("result")
+                ):
+                    raise DetailIntakeError(
+                        "INTAKE_RESPONSE_CHANGED", "An original intake receipt changed"
+                    )
+                if saved_request.get("job_id") == request.job_id:
+                    history.append(PlannerCallResult(**saved_response["result"]))
+            calls = tuple(history) or (result,)
+            if result.error_code:
+                raise DetailIntakeError(
+                    result.error_code, result.error_message or "Source intake failed"
+                )
+            _schema(result.payload, intake_response_schema(), "/intake")
+            contract = validate_intake(
+                result.payload,
+                settings=settings,
+                sources=sources,
+                brandless_confirmation=brandless,
+                resolution=resolution,
+            )
+            prior_intake = (resolution or {}).get("source_intake")
+            if isinstance(prior_intake, Mapping):
+                current_facts = {
+                    fact["id"]: fact for fact in contract["observed_facts"]
+                }
+                if any(
+                    current_facts.get(fact["id"]) != fact
+                    for fact in prior_intake.get("observed_facts", [])
+                ) or contract["source_conflicts"] != prior_intake.get(
+                    "source_conflicts", []
+                ):
+                    raise DetailIntakeError(
+                        "INTAKE_RESOLVED_SOURCE_CHANGED",
+                        "The model changed source values already covered by the user's exact resolution",
+                    )
+            if resolution is not None and contract.get("brand_confirmation_required"):
+                raise DetailIntakeError(
+                    "INTAKE_CONFIRMATION_STILL_UNRESOLVED",
+                    "Additional product sources still do not show a readable brand; keep the original evidence and stop before planning",
+                )
+            if brandless:
+                contract["brandless_confirmation"] = brandless
+            return replace(
+                request, intake_settings=settings, detail_intake=contract
+            ), calls
+        except (DetailIntakeError, OSError, ValueError, TypeError) as exc:
+            if isinstance(exc, DetailIntakeError):
+                exc.call_results = calls
+                raise
+            error = DetailIntakeError("INTAKE_RECEIPT_INVALID", str(exc))
+            error.call_results = calls
+            raise error from exc
+
+    def _await_domestic_intake_confirmation(
+        self,
+        job_id: str,
+        plan_id: str,
+        request: PlannerRequest,
+        calls: Sequence[PlannerCallResult],
+    ) -> JobStatus:
+        """Expose one batched source question with no locked identity or plan."""
+        with self.session_factory() as db:
+            job = db.get(JobRecord, job_id, with_for_update=True)
+            plan = db.get(JobPlanRecord, plan_id, with_for_update=True)
+            if job is None or plan is None:
+                return JobStatus.FAILED
+            if job.status != JobStatus.PLANNING.value:
+                return JobStatus(job.status)
+            intake = deepcopy(dict(request.detail_intake or {}))
+            payload = {
+                **dict(plan.payload),
+                "state": "intake_confirmation_required",
+                "product_intake": intake,
+                "planner_lease_expires_at": None,
+                "intake_question_sha256": canonical_hash(intake),
+                "intake_settings_sha256": canonical_hash(request.intake_settings or {}),
+                "intake_source_manifest": [{"asset_id": source.asset_id, "role": source.source_role, "sha256": source.sha256} for source in request.sources],
+                "usage": {
+                    "planner": [
+                        _planner_usage_record(call)
+                        for call in _planner_call_results(calls)
+                    ],
+                    "image": {"reported_requests": 0, "unreported_requests": 0},
+                },
+            }
+            plan.payload = payload
+            plan.payload_hash = canonical_hash(payload)
+            plan.validation_status = PlanValidationStatus.PENDING.value
+            plan.validation_errors = []
+            transition_job(
+                job,
+                JobStatus.AWAITING_CONFIRMATION,
+                stage="intake_confirmation_required",
+                progress=10,
+            )
+            job.api_request_count = sum(
+                call.external_request
+                and bool(call.provider_request_id)
+                and not str(call.provider_request_id).startswith("mock_")
+                for call in calls
+            )
+            costs = [call.actual_cost_micros for call in calls if call.external_request]
+            job.actual_cost_micros = (
+                sum(cost for cost in costs if cost is not None)
+                if all(cost is not None for cost in costs)
+                else None
+            )
+            db.add(
+                AuditEventRecord(
+                    workspace_id=job.workspace_id,
+                    action="domestic_detail.intake_confirmation_required",
+                    resource_type="job",
+                    resource_id=job.id,
+                    request_id=plan.id,
+                    details={
+                        "intake_sha256": payload["intake_question_sha256"],
+                        "image_request_count": 0,
+                    },
+                )
+            )
+            db.commit()
+        return JobStatus.AWAITING_CONFIRMATION
 
     def _recover_aurora_candidate(self, request: PlannerRequest) -> PlannerCallResult | None:
         """Resume a failed-only retry from its verified, unapproved candidate.
@@ -3173,6 +3487,11 @@ class XinghePlanningCoordinator:
             if prior_sources != [(s.asset_id, s.sha256) for s in request.sources]:
                 return None
             candidate = data.get("rejected_aurora_plan")
+            if (
+                not isinstance(candidate, Mapping)
+                or candidate.get("product_intake") != request.detail_intake
+            ):
+                return None
             modules = candidate.get("modules") if isinstance(candidate, Mapping) else None
             if not isinstance(modules, list) or len(modules) != request.page_count or not all(_aurora_compact_module_ready(m) for m in modules):
                 return None
@@ -3203,6 +3522,7 @@ class XinghePlanningCoordinator:
 
         index = len(results) - 1
         payload = dict(_require_mapping(result.payload, "AURORA_PLAN_SCHEMA_INVALID"))
+        payload["product_intake"] = deepcopy(request.detail_intake)
         extra: list[PlannerCallResult] = []
 
         def snapshot(name: str, value: Mapping[str, Any]) -> None:
@@ -3290,6 +3610,7 @@ class XinghePlanningCoordinator:
             return response
 
         def normalized() -> None:
+            payload["product_intake"] = deepcopy(request.detail_intake)
             modules = payload.get("modules")
             if isinstance(modules, list):
                 payload["modules"] = [
@@ -3469,8 +3790,10 @@ class XinghePlanningCoordinator:
             results[index] = replace(
                 result,
                 payload=payload,
-                phase="aurora_domestic_detail" if result.external_request else "aurora_recovered_candidate",
-                supplemental_results=tuple(extra),
+                phase="aurora_domestic_detail"
+                if result.external_request
+                else "aurora_recovered_candidate",
+                supplemental_results=(*result.supplemental_results, *extra),
             )
 
     def _preflight_aurora_plan(
@@ -3493,6 +3816,7 @@ class XinghePlanningCoordinator:
                     "id": source.asset_id,
                     "role": source.source_role,
                     "filename": source.filename,
+                    "sha256": source.sha256,
                 }
                 for source in request.sources
             ]
@@ -3506,17 +3830,44 @@ class XinghePlanningCoordinator:
             ]
             write_detail_contract(
                 input_path,
-                build_native_input(settings, product_images=sources, image_paths=paths),
+                build_native_input(
+                    settings,
+                    product_images=sources,
+                    image_paths=paths,
+                    intake=request.detail_intake or {},
+                ),
             )
             write_detail_contract(
                 identity_path,
-                build_native_identity(settings, [source["id"] for source in sources]),
+                build_native_identity(
+                    settings,
+                    [
+                        source["id"]
+                        for source in sources
+                        if source["role"] == "product_reference"
+                    ],
+                    intake=request.detail_intake or {},
+                ),
             )
             write_detail_contract(plan_path, normalize_native_plan_for_harness(plan))
             runner = AuroraDetailHarnessRunner(skill_root=self.skill_root)
             runner.run(
                 "start", workspace, {"input": input_path, "session": session_path}
             )
+            if (
+                request.detail_intake
+                and request.detail_intake.get("resolution")
+                and request.detail_intake.get("source_conflicts")
+            ):
+                resolution_path = workspace / "resolution.json"
+                write_detail_contract(
+                    resolution_path, request.detail_intake["resolution"]
+                )
+                runner.run(
+                    "resolve-conflicts",
+                    workspace,
+                    {"session": session_path, "resolution": resolution_path},
+                )
             runner.run(
                 "lock-identity",
                 workspace,
@@ -3601,6 +3952,19 @@ class XinghePlanningCoordinator:
                 .with_for_update()
             )
             if existing is not None:
+                if existing.payload.get("state") == "intake_resolved":
+                    requests = self._planning_requests(session, job)
+                    self._authorize_planning(session, job, requests)
+                    existing.payload = {
+                        **dict(existing.payload),
+                        "state": "planner_reserved",
+                        "planner_lease_expires_at": (
+                            datetime.now(UTC) + timedelta(seconds=PLANNER_LEASE_SECONDS)
+                        ).isoformat(),
+                    }
+                    existing.payload_hash = canonical_hash(existing.payload)
+                    session.commit()
+                    return existing.id, requests
                 if existing.validation_status == PlanValidationStatus.VALID.value:
                     transition_job(
                         job,
@@ -3948,7 +4312,15 @@ class XinghePlanningCoordinator:
                     platform_code=platform_code,
                     size=size,
                     idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
-                    planning_directives=identity_directives,
+                    planning_directives=()
+                    if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                    else identity_directives,
+                    intake_settings=dict(settings)
+                    if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                    else None,
+                    intake_resolution=configuration.get(
+                        "domestic_detail_intake_resolution"
+                    ),
                     domestic_protocol=domestic_protocol,
                     planning_profile=(
                         "crossborder_detail"
@@ -4719,6 +5091,7 @@ class XinghePlanningCoordinator:
                 "input_signature": input_signature,
                 **(
                     {
+                        "product_intake": deepcopy(requests[0].detail_intake),
                         "source_input_sha256": canonical_hash(
                             job.configuration.get("input") or {}
                         ),
@@ -5792,7 +6165,14 @@ class XingheImageProvider:
         for index, source in enumerate(sources, start=1):
             path = source_path_for(workspace, index, source.filename, source.payload)
             source_paths.append(str(path))
-            native_sources.append({"id": source.asset_id, "role": source.source_role, "filename": source.filename})
+            native_sources.append(
+                {
+                    "id": source.asset_id,
+                    "role": source.source_role,
+                    "filename": source.filename,
+                    "sha256": source.sha256,
+                }
+            )
         with self.session_factory() as db:
             job = db.get(JobRecord, request.job_id)
             plan_record = db.scalar(
@@ -5804,7 +6184,8 @@ class XingheImageProvider:
             if job is None or plan_record is None:
                 raise AuroraDetailHarnessError("NATIVE_DETAIL_CONTEXT_MISSING", "Native detail job context is missing")
             job_configuration = job.configuration if isinstance(job.configuration, Mapping) else {}
-            settings = job_configuration.get("settings") if isinstance(job_configuration.get("settings"), Mapping) else {}
+            settings_value = job_configuration.get("settings")
+            settings: Mapping[str, Any] = settings_value if isinstance(settings_value, Mapping) else {}
             payload = plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
         native_plan = extract_native_plan(payload)
         if native_plan is None:
@@ -5815,11 +6196,39 @@ class XingheImageProvider:
         if new_session:
             write_detail_contract(
                 input_path,
-                build_native_input(settings, product_images=native_sources, image_paths=source_paths),  # type: ignore[arg-type]
+                build_native_input(
+                    settings,
+                    product_images=native_sources,
+                    image_paths=source_paths,
+                    intake=payload.get("product_intake") or {},
+                ),
             )
-            write_detail_contract(identity_path, build_native_identity(settings, [item["id"] for item in native_sources]))  # type: ignore[arg-type]
+            write_detail_contract(
+                identity_path,
+                build_native_identity(
+                    settings,
+                    [
+                        item["id"]
+                        for item in native_sources
+                        if item["role"] == "product_reference"
+                    ],
+                    intake=payload.get("product_intake") or {},
+                ),
+            )
             write_detail_contract(plan_path, native_plan)
             runner.run("start", workspace, {"input": input_path, "session": session_path})
+            if (payload.get("product_intake") or {}).get("resolution") and (
+                native_plan.get("product_intake") or {}
+            ).get("source_conflicts"):
+                resolution_path = workspace / "resolution.json"
+                write_detail_contract(
+                    resolution_path, payload["product_intake"]["resolution"]
+                )
+                runner.run(
+                    "resolve-conflicts",
+                    workspace,
+                    {"session": session_path, "resolution": resolution_path},
+                )
             runner.run("lock-identity", workspace, {"session": session_path, "identity": identity_path})
             runner.run("compile-plan", workspace, {"session": session_path, "plan": plan_path})
             compiled = json.loads(session_path.read_text(encoding="utf-8"))
@@ -5899,14 +6308,14 @@ class XingheImageProvider:
         # facts and module contracts.  Do not write these fields back to the
         # signed generation request on disk: the Harness fingerprint covers
         # that request and must remain immutable.
-        raw_facts = settings.get("verified_facts") or settings.get("selling_points") or []  # type: ignore[union-attr]
+        raw_facts = settings.get("verified_facts") or settings.get("selling_points") or []
         native_request["product_information"] = [
             str(value).strip()
             for value in raw_facts
             if str(value).strip()
         ]
         native_request["product_name"] = str(
-            settings.get("product_name") or "当前商品"  # type: ignore[union-attr]
+            settings.get("product_name") or "当前商品"
         )
         # Keep the blank format canvas local, as required by the Skill provider protocol.
         ordered: list[SourceImage] = []
@@ -8258,10 +8667,42 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "selection_mode": "USER_SPECIFIED",
                 "module_count": request.page_count,
                 "module_count_rationale": "按用户指定屏数覆盖购买决策，并以相邻双屏连续渲染保持阅读递进。",
-                "module_count_candidates": [{"candidate_mode": "DIRECT_DERIVATION", "count": request.page_count, "coverage_tradeoff": "覆盖核心卖点并保持连续叙事", "selling_point_fit": "满足当前卖点覆盖", "story_obligation_fit": "满足从认知到购买决策的故事义务", "decision": "SELECTED"}],
-                "selling_point_clusters": [{"id": "SP-COVERAGE", "buyer_question": "买家如何判断商品事实", "fact_ids": ["F01"], "purchase_role": "BENEFIT", "separation_policy": "MERGEABLE", "assigned_module_ids": [f"M{index:02d}" for index in range(1, request.page_count + 1)]}],
+                "module_count_candidates": [
+                    {
+                        "candidate_mode": "DIRECT_DERIVATION",
+                        "count": request.page_count,
+                        "coverage_tradeoff": "覆盖核心卖点并保持连续叙事",
+                        "selling_point_fit": "满足当前卖点覆盖",
+                        "story_obligation_fit": "满足从认知到购买决策的故事义务",
+                        "decision": "SELECTED",
+                    }
+                ],
+                "selling_point_clusters": [
+                    {
+                        "id": "SP-COVERAGE",
+                        "buyer_question": "买家如何判断商品事实",
+                        "fact_ids": ["F01"],
+                        "purchase_role": "BENEFIT",
+                        "separation_policy": "MERGEABLE",
+                        "assigned_module_ids": [
+                            f"M{index:02d}"
+                            for index in range(1, request.page_count + 1)
+                        ],
+                    }
+                ],
                 "merge_decisions": ["相邻两屏组成一个连续 pair"],
-                "claim_coverage": [{"claim_id": "F01", "disposition": "LEAD", "module_ids": [f"M{index:02d}" for index in range(1, request.page_count + 1)], "rationale": "核心事实直接进入已批准屏幕", "defer_reason_code": "NOT_DEFERRED"}],
+                "claim_coverage": [
+                    {
+                        "claim_id": "F01",
+                        "disposition": "LEAD",
+                        "module_ids": [
+                            f"M{index:02d}"
+                            for index in range(1, request.page_count + 1)
+                        ],
+                        "rationale": "核心事实直接进入已批准屏幕",
+                        "defer_reason_code": "NOT_DEFERRED",
+                    }
+                ],
                 "dimension_rationale": "采用 1440x1920 单屏与 1440x3840 双屏画布，保持移动端详情阅读比例。",
                 "aspect_ratio": {"width_units": 3, "height_units": 4, "label": "3:4"},
                 "canvas_width_px": 1440,
@@ -8281,21 +8722,78 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                     "pair_canvas_aspect_ratio": "3:8",
                     "decomposition_window_aspect_ratio": "3:4",
                     "pair_slice_height_px": 1920,
-                    "pair_to_pair_transition_tokens": [f"P{index:02d}→P{index + 1:02d}" for index in range(1, request.page_count // 2)],
+                    "pair_to_pair_transition_tokens": [
+                        f"P{index:02d}→P{index + 1:02d}"
+                        for index in range(1, request.page_count // 2)
+                    ],
                     "pair_ids": pair_ids,
                 },
             },
-            "reference_expression_system": {"coverage": [], "adopted_patterns": [], "anti_copy_rule": "仅迁移视觉语法，不复制品牌、文案或资产"},
-            "style_constitution": {"visual_world": "商品主导的克制商业摄影", "color_and_light": "统一柔和方向光", "typography_and_graphics": "编辑型清晰层级", "product_rendering": "保持真实商品身份", "rhythm": "概览到证明递进"},
-            "series_visual_dna": {"brand_anchor_system": "以当前商品本体建立识别", "palette_tokens": "以商品真实配色为主", "typography_tokens": "清晰中文信息层级", "graphic_tokens": "克制辅助图形", "photography_tokens": "真实商品材质与统一主光", "product_tokens": ["商品真实身份"], "spatial_tokens": ["连续纵向展台"], "invariants": ["商品身份不可变", "统一主光与连续 pair 节奏"]},
-            "typography_rhythm": {"campaign_rule": "标题服从可见证据并按屏幕职责变化", "primary_mode_sequence": ["EDITORIAL" for _ in range(request.page_count)], "anchor_zone_sequence": ["主标题区" for _ in range(request.page_count)], "centered_hero_max": 1, "consecutive_anchor_repeat_limit": 2, "exceptions": []},
+            "reference_expression_system": {
+                "coverage": [],
+                "adopted_patterns": [],
+                "anti_copy_rule": "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET",
+            },
+            "style_constitution": {
+                "visual_world": "商品主导的克制商业摄影",
+                "color_and_light": "统一柔和方向光",
+                "typography_and_graphics": "编辑型清晰层级",
+                "product_rendering": "保持真实商品身份",
+                "rhythm": "概览到证明递进",
+            },
+            "series_visual_dna": {
+                "brand_anchor_system": "以当前商品本体建立识别",
+                "palette_tokens": "以商品真实配色为主",
+                "typography_tokens": "清晰中文信息层级",
+                "graphic_tokens": "克制辅助图形",
+                "photography_tokens": "真实商品材质与统一主光",
+                "product_tokens": ["商品真实身份"],
+                "spatial_tokens": ["连续纵向展台"],
+                "invariants": ["商品身份不可变", "统一主光与连续 pair 节奏"],
+            },
+            "typography_rhythm": {
+                "campaign_rule": "标题服从可见证据并按屏幕职责变化",
+                "primary_mode_sequence": [
+                    "EDITORIAL" for _ in range(request.page_count)
+                ],
+                "anchor_zone_sequence": ["主标题区" for _ in range(request.page_count)],
+                "centered_hero_max": 1,
+                "consecutive_anchor_repeat_limit": 2,
+                "exceptions": [],
+            },
             "modules": modules,
             "information_contract_version": "4.1",
             "expression_contract_version": "4.3",
-            "hero_screen_contract": {"hero_module_id": "M01", "hero_entity_id": "PRODUCT_FROM_APPROVED_SOURCES", "hero_job": "建立商品主体识别", "hero_uniqueness": "M01 是唯一首屏商品主体锚点", "supporting_entities_allowed": [], "co_equal_hero_forbidden": True, "hero_identity_evidence": []},
-            "detail_information_contract": {"buyer_question_sequence": [f"买家问题 {index}" for index in range(1, request.page_count + 1)], "non_repeating_overview_limit": 1, "required_progression_jobs": ["身份", "证据", "购买闭环"], "every_pair_requires_information_delta": True},
-            "formula_split_contract": {"enabled": False, "trigger_basis": "用户已提供卖点", "evaluated_claims": [], "entries": []},
-            "campaign_expression_diversity_contract": {"minimum_subject_classes": 3, "minimum_presentation_forms": 4, "maximum_complete_product_dominant_screens": 3, "maximum_consecutive_same_signature": 1, "required_when_evidence_available": ["PRODUCT_DETAIL_OR_STRUCTURE"]},
+            "hero_screen_contract": {
+                "hero_module_id": "M01",
+                "hero_entity_id": "PRODUCT_FROM_APPROVED_SOURCES",
+                "hero_job": "建立商品主体识别",
+                "hero_uniqueness": "M01 是唯一首屏商品主体锚点",
+                "supporting_entities_allowed": [],
+                "co_equal_hero_forbidden": True,
+                "hero_identity_evidence": [],
+            },
+            "detail_information_contract": {
+                "buyer_question_sequence": [
+                    f"买家问题 {index}" for index in range(1, request.page_count + 1)
+                ],
+                "non_repeating_overview_limit": 1,
+                "required_progression_jobs": ["身份", "证据", "购买闭环"],
+                "every_pair_requires_information_delta": True,
+            },
+            "formula_split_contract": {
+                "enabled": False,
+                "trigger_basis": "用户已提供卖点",
+                "evaluated_claims": [],
+                "entries": [],
+            },
+            "campaign_expression_diversity_contract": {
+                "minimum_subject_classes": 3,
+                "minimum_presentation_forms": 4,
+                "maximum_complete_product_dominant_screens": 3,
+                "maximum_consecutive_same_signature": 1,
+                "required_when_evidence_available": ["PRODUCT_DETAIL_OR_STRUCTURE"],
+            },
         }
     roles = (
         "Cover hero",
@@ -9576,6 +10074,15 @@ def _single_image_analysis_fields(profile: str) -> set[str]:
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == INTAKE_PROFILE:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": INTAKE_PROFILE,
+                "strict": False,
+                "schema": intake_response_schema(),
+            },
+        }
     if request.planning_profile == "creative_image":
         required = sorted(_single_image_analysis_fields(request.planning_profile))
         return {"type": "json_schema", "json_schema": {
@@ -9751,6 +10258,19 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == INTAKE_PROFILE:
+        return intake_prompt(
+            request.intake_settings or {},
+            [
+                {
+                    "asset_id": source.asset_id,
+                    "role": source.source_role,
+                    "sha256": source.sha256,
+                }
+                for source in request.sources
+            ],
+            request.intake_resolution,
+        )
     if request.planning_profile == "creative_image":
         return (
             "Analyze the uploaded product and user brief for ONE creative ecommerce image. "
@@ -10021,107 +10541,112 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "product_name": request.product_name,
             "user_supplied_selling_points": list(request.product_information),
             "verified_facts": [
-                {"id": f"F{index:02d}", "text": value, "source_class": "USER_FACT"}
-                for index, value in enumerate(request.product_information, start=1)
+                *(request.detail_intake or {}).get("user_facts", []),
+                *(request.detail_intake or {}).get("observed_facts", []),
             ],
+            "validated_intake": request.detail_intake,
             "platform_code": request.platform_code,
             "language": request.language,
             "module_count": request.page_count,
             "screen_size": request.size,
         }
         return (
-            "The bundled aurora-domestic-ecommerce-detail-page v4.3.1 Skill is "  # noqa: UP031
-            "the sole authority. Return exactly one JSON object that validates "
-            "against schemas/compact-detail-plan.schema.json. Do not return the "
-            "legacy analysis/plan/screens contract. First perform the conflict "
-            "scan and stop with conflict_blocked evidence if facts conflict. "
-            "Choose exactly the requested module_count of 8, 10, or 12; do not "
-            "offer multiple candidates. Modules must be M01..M%02d in order. "
-            "Set information_contract_version=4.1 and "
-            "expression_contract_version=4.3. Declare the full campaign thesis, "
-            "fact-grounded selling-point ledger, pain-to-solution contract, "
-            "formula/ingredient routing, identity/brand gate, visual DNA, and "
-            "per-module subject class, presentation form, complete-product role, "
-            "expression signature, visual cast, structured content units and "
-            "visible-copy anchors. "
-            "Honor every schema minLength exactly; any string field with "
-            "minLength=10 must contain at least 10 characters, especially "
-            "expression.commercial_comfort.replacement_expression. "
-            "output_strategy.continuous_pair_rendering must be enabled with "
-            "grouping_mode=TWO_SCREEN_PAIRS, pair_size=2, "
-            "pair_merge_type=PAIR_PLAN_MERGE, pair_count=%d, "
-            "pair_canvas_aspect_ratio=3:8, "
-            "decomposition_window_aspect_ratio=3:4, ordered P01..P%02d and "
-            "adjacent module ids only. Each pair needs an internal seam contract "
-            "and a transition token. Use only product_reference pixels for product "
-            "identity/facts; style_reference may guide grammar only. Do not invent "
-            "logos, claims, ingredients, specifications or evidence. "
-            "The resulting plan is an approval packet; generation is blocked until "
-            "the user approves it. Source inventory: %s\n\n"
-            "FINAL RESPONSE CONTRACT: return the compact Aurora object itself at "
-            "the JSON root. Do not wrap it in `analysis`, `plan`, `screens`, "
-            "`groups`, or any legacy Xinghe envelope. The root MUST include "
-            "campaign_thesis, dominant_decision_type, operating_strategy, "
-            "campaign_recall_contract, selling_point_depth_contract, "
-            "user_selling_point_coverage_ledger, campaign_pain_solution_contract, "
-            "output_strategy, reference_expression_system, style_constitution, "
-            "series_visual_dna, modules, information_contract_version, "
-            "expression_contract_version, hero_screen_contract, "
-            "detail_information_contract, formula_split_contract, and "
-            "campaign_expression_diversity_contract. `campaign_thesis` must be a "
-            "non-empty sentence. `modules` must contain exactly the requested "
-            "M01..M%02d entries and `output_strategy.continuous_pair_rendering` "
-            "must contain the ordered P01..P%02d pair contract. Nested required "
-            "fields must be present too: detail_information_contract has "
-            "buyer_question_sequence, non_repeating_overview_limit, "
-            "required_progression_jobs, every_pair_requires_information_delta; "
-            "hero_screen_contract has hero_module_id, hero_entity_id, hero_job, "
-            "hero_uniqueness, supporting_entities_allowed, co_equal_hero_forbidden, "
-            "hero_identity_evidence; formula_split_contract has enabled, "
-            "trigger_basis, evaluated_claims, entries; style_constitution has "
-            "visual_world, color_and_light, typography_and_graphics, "
-            "product_rendering, rhythm; reference_expression_system has coverage, "
-            "adopted_patterns, anti_copy_rule; campaign_expression_diversity_contract "
-            "has minimum_subject_classes, minimum_presentation_forms, "
-            "maximum_complete_product_dominant_screens, "
-            "maximum_consecutive_same_signature, required_when_evidence_available. "
-            "Set plan_format=COMPACT_V1_3. Each module must include the compact "
-            "schema fields only: id, duty, buyer_question, lead_conclusion, "
-            "lead_claim_id, selling_point_cluster_ids, story_function, pain_ids, "
-            "value_bridge_ids, visual_proof_direction, visual_evidence, proof, "
-            "expression, structure, visual_archetype, visible_copy, typography, "
-            "composition_family, camera_scale, variation_from_previous, "
-            "transition_contract, primary_subject_class, secondary_subject_classes, "
-            "presentation_form, complete_product_role, expression_signature, "
-            "visual_cast, and content_unit_contract. Do not emit runtime-derived "
-            "fields such as visual_proof_contract, text_system, copy_intent, "
-            "output, independent_logo_policy, or module_spatial_structure_contract; "
-            "the installed plan normalizer derives them from the compact module. "
-            "modules must contain exactly the requested screens and must not be "
-            "an empty array. formula_split_contract.entries[].dedicated_module_id "
-            "must match ^M[0-9]{2,}$ when an entry is present; leave entries "
-            "empty instead of writing an empty module id. Do not substitute "
-            "legacy screen objects. JSON only."
-            % (
-                request.page_count,
-                request.page_count // 2,
-                request.page_count // 2,
-                source_inventory,
-                request.page_count,
-                request.page_count // 2,
+            (
+                "The bundled aurora-domestic-ecommerce-detail-page v4.3.1 Skill is "  # noqa: UP031
+                "the sole authority. Return exactly one JSON object that validates "
+                "against schemas/compact-detail-plan.schema.json. Do not return the "
+                "legacy analysis/plan/screens contract. First perform the conflict "
+                "scan and stop with conflict_blocked evidence if facts conflict. "
+                "Choose exactly the requested module_count of 8, 10, or 12; do not "
+                "offer multiple candidates. Modules must be M01..M%02d in order. "
+                "Set information_contract_version=4.1 and "
+                "expression_contract_version=4.3. Declare the full campaign thesis, "
+                "fact-grounded selling-point ledger, pain-to-solution contract, "
+                "formula/ingredient routing, identity/brand gate, visual DNA, and "
+                "per-module subject class, presentation form, complete-product role, "
+                "expression signature, visual cast, structured content units and "
+                "visible-copy anchors. "
+                "Honor every schema minLength exactly; any string field with "
+                "minLength=10 must contain at least 10 characters, especially "
+                "expression.commercial_comfort.replacement_expression. "
+                "output_strategy.continuous_pair_rendering must be enabled with "
+                "grouping_mode=TWO_SCREEN_PAIRS, pair_size=2, "
+                "pair_merge_type=PAIR_PLAN_MERGE, pair_count=%d, "
+                "pair_canvas_aspect_ratio=3:8, "
+                "decomposition_window_aspect_ratio=3:4, ordered P01..P%02d and "
+                "adjacent module ids only. Each pair needs an internal seam contract "
+                "and a transition token. Use only product_reference pixels for product "
+                "identity/facts; style_reference may guide grammar only. Do not invent "
+                "logos, claims, ingredients, specifications or evidence. "
+                "The resulting plan is an approval packet; generation is blocked until "
+                "the user approves it. Source inventory: %s\n\n"
+                "FINAL RESPONSE CONTRACT: return the compact Aurora object itself at "
+                "the JSON root. Do not wrap it in `analysis`, `plan`, `screens`, "
+                "`groups`, or any legacy Xinghe envelope. The root MUST include "
+                "campaign_thesis, dominant_decision_type, operating_strategy, "
+                "campaign_recall_contract, selling_point_depth_contract, "
+                "user_selling_point_coverage_ledger, campaign_pain_solution_contract, "
+                "output_strategy, reference_expression_system, style_constitution, "
+                "series_visual_dna, modules, information_contract_version, "
+                "expression_contract_version, hero_screen_contract, "
+                "detail_information_contract, formula_split_contract, and "
+                "campaign_expression_diversity_contract. `campaign_thesis` must be a "
+                "non-empty sentence. `modules` must contain exactly the requested "
+                "M01..M%02d entries and `output_strategy.continuous_pair_rendering` "
+                "must contain the ordered P01..P%02d pair contract. Nested required "
+                "fields must be present too: detail_information_contract has "
+                "buyer_question_sequence, non_repeating_overview_limit, "
+                "required_progression_jobs, every_pair_requires_information_delta; "
+                "hero_screen_contract has hero_module_id, hero_entity_id, hero_job, "
+                "hero_uniqueness, supporting_entities_allowed, co_equal_hero_forbidden, "
+                "hero_identity_evidence; formula_split_contract has enabled, "
+                "trigger_basis, evaluated_claims, entries; style_constitution has "
+                "visual_world, color_and_light, typography_and_graphics, "
+                "product_rendering, rhythm; reference_expression_system has coverage, "
+                "adopted_patterns, anti_copy_rule; campaign_expression_diversity_contract "
+                "has minimum_subject_classes, minimum_presentation_forms, "
+                "maximum_complete_product_dominant_screens, "
+                "maximum_consecutive_same_signature, required_when_evidence_available. "
+                "Set plan_format=COMPACT_V1_3. Each module must include the compact "
+                "schema fields only: id, duty, buyer_question, lead_conclusion, "
+                "lead_claim_id, selling_point_cluster_ids, story_function, pain_ids, "
+                "value_bridge_ids, visual_proof_direction, visual_evidence, proof, "
+                "expression, structure, visual_archetype, visible_copy, typography, "
+                "composition_family, camera_scale, variation_from_previous, "
+                "transition_contract, primary_subject_class, secondary_subject_classes, "
+                "presentation_form, complete_product_role, expression_signature, "
+                "visual_cast, and content_unit_contract. Do not emit runtime-derived "
+                "fields such as visual_proof_contract, text_system, copy_intent, "
+                "output, independent_logo_policy, or module_spatial_structure_contract; "
+                "the installed plan normalizer derives them from the compact module. "
+                "modules must contain exactly the requested screens and must not be "
+                "an empty array. formula_split_contract.entries[].dedicated_module_id "
+                "must match ^M[0-9]{2,}$ when an entry is present; leave entries "
+                "empty instead of writing an empty module id. Do not substitute "
+                "legacy screen objects. JSON only."
+                % (
+                    request.page_count,
+                    request.page_count // 2,
+                    request.page_count // 2,
+                    source_inventory,
+                    request.page_count,
+                    request.page_count // 2,
+                )
             )
-        ) + (
-            "\n\nUSER_BRIEF_JSON=" + json.dumps(brief, ensure_ascii=False)
-            + "\nPreserve these user fact IDs and their meanings throughout the "
-            "coverage ledger, depth plan and copy bindings. Do not replace the "
-            "user's supplied selling points with a photo-only appearance plan. "
-            "Additional visible photo facts may support the story but must not "
-            "reuse or renumber these user fact IDs. For every pair, the upper "
-            "module transition_contract defines that pair's internal seam at "
-            "y=1920 between its upper and lower screens. It must describe an "
-            "actual continuous carrier crossing that boundary and agree with "
-            "the pair seam contract; do not use an incoming page-header "
-            "transition or a no-previous-region placeholder there."
+            + (
+                "\n\nUSER_BRIEF_JSON="
+                + json.dumps(brief, ensure_ascii=False)
+                + "\nPreserve these user fact IDs and their meanings throughout the "
+                "coverage ledger, depth plan and copy bindings. Do not replace the "
+                "user's supplied selling points with a photo-only appearance plan. "
+                "Additional visible photo facts may support the story but must not "
+                "reuse or renumber these user fact IDs. For every pair, each "
+                "module transition_contract is its incoming seam. The lower screen in a pair defines the internal seam at "
+                "y=1920 between its upper and lower screens. It must describe an "
+                "actual continuous carrier crossing that boundary and agree with "
+                "the pair seam contract; do not use an incoming page-header "
+                "transition or a no-previous-region placeholder there."
+            )
         )
     if request.planning_profile == "crossborder_detail":
         source_inventory = ", ".join(
@@ -11526,45 +12051,6 @@ def validate_aurora_domestic_plan(
         pair_contract["pair_ids"] = pair_ids
         output_strategy["continuous_pair_rendering"] = pair_contract
         root["output_strategy"] = output_strategy
-    reference_system = root.get("reference_expression_system")
-    if isinstance(reference_system, Mapping):
-        reference_system = dict(reference_system)
-        coverage = reference_system.get("coverage")
-        if isinstance(coverage, list):
-            repaired_coverage = []
-            for index, item in enumerate(coverage, start=1):
-                entry = dict(item) if isinstance(item, Mapping) else {}
-                entry.setdefault("reference_id", f"REF-{index:02d}")
-                entry.setdefault("disposition", "REJECTED")
-                entry.setdefault("pattern_ids", [])
-                entry.setdefault("reason", "未提供可采用的参考表达样本")
-                repaired_coverage.append(entry)
-            reference_system["coverage"] = repaired_coverage
-        reference_system.setdefault("coverage", [])
-        adopted_patterns = reference_system.get("adopted_patterns")
-        if isinstance(adopted_patterns, list):
-            repaired_patterns = []
-            for index, item in enumerate(adopted_patterns, start=1):
-                pattern = dict(item) if isinstance(item, Mapping) else {}
-                pattern.setdefault("id", f"PATTERN-{index:02d}")
-                pattern.setdefault("source_reference_ids", [])
-                pattern.setdefault("source_unit_ids", [])
-                pattern.setdefault("observed_method", "保持信息层级与节奏")
-                pattern.setdefault("adaptation_for_product", "按当前产品事实重建")
-                pattern.setdefault("scheduled_module_ids", ["M01"])
-                pattern.setdefault("do_not_copy", "不复制品牌、文案、资产或整版布局")
-                pattern.setdefault("fact_dependencies", ["PRODUCT_REFERENCE"])
-                pattern.setdefault(
-                    "copy_or_claims_not_inherited", ["源参考中的品牌与文案不继承"]
-                )
-                repaired_patterns.append(pattern)
-            reference_system["adopted_patterns"] = repaired_patterns
-        else:
-            reference_system["adopted_patterns"] = []
-        reference_system["anti_copy_rule"] = (
-            "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET"
-        )
-        root["reference_expression_system"] = reference_system
     try:
         from jsonschema import Draft202012Validator, RefResolver
     except ImportError as exc:

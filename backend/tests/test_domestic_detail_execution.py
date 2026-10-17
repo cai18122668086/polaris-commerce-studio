@@ -63,13 +63,12 @@ def _create_detail_job(
             "intent": "submit",
             "display_name": f"{market_region} detail execution boundary",
             "input": {
-                "product_groups": [
-                    {"group_key": "primary", "asset_ids": [asset_id]}
-                ],
+                "product_groups": [{"group_key": "primary", "asset_ids": [asset_id]}],
                 "reference_asset_ids": reference_asset_ids or [],
             },
             "configuration": {
                 "product_name": "Execution boundary product",
+                "brandless_confirmation": "我确认这个合成测试商品无品牌，不添加独立标志",
                 "selling_points": ["durable plan", "bounded generation"],
                 "platform_code": platform_code
                 or ("tmall" if market_region == "domestic" else "amazon"),
@@ -151,7 +150,7 @@ def test_domestic_valid_plan_requires_approval_then_waits_for_final_review(
 
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert planned["plan"]["confirmed_at"] is None
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     assert gateway.image_calls == []
     confirmed = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
@@ -196,7 +195,7 @@ def test_domestic_valid_plan_requires_approval_then_waits_for_final_review(
         asyncio.run(client.app.state.task_runner.run(str(job["id"])))
         == JobStatus.AWAITING_FINAL_REVIEW
     )
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     assert len(gateway.image_calls) == 4
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
     with client.app.state.session_factory() as session:
@@ -237,7 +236,7 @@ def test_domestic_plan_commit_recovery_preserves_confirmation_gate(
         )
         assert plan is not None and plan.confirmed_at is None
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     assert gateway.image_calls == []
 
     client.app.state.settings.max_image_pixels = 6_000_000
@@ -252,12 +251,12 @@ def test_domestic_plan_commit_recovery_preserves_confirmation_gate(
     )
     assert confirmed.status_code == 202, confirmed.text
     assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.AWAITING_FINAL_REVIEW
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     assert len(gateway.image_calls) == 4
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
     assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.AWAITING_FINAL_REVIEW
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     assert len(gateway.image_calls) == 4
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
@@ -306,7 +305,7 @@ def test_domestic_auto_start_false_stops_at_confirmation_gate(
     ).json()
 
     assert current["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     assert gateway.image_calls == []
     assert current["plan"]["confirmed_at"] is None
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
@@ -334,7 +333,7 @@ def test_domestic_invalid_plan_never_reaches_image_provider(
     assert failed["error_code"] == "AURORA_PLAN_SCHEMA_INVALID"
     # Invalid root contracts stop after one targeted campaign repair, before
     # any of the eight module-completion calls or image generation can start.
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 3
     assert gateway.planner_calls[-1].planning_profile == "aurora_domestic_campaign_completion"
     assert gateway.image_calls == []
     assert failed["plan"]["validation_status"] == PlanValidationStatus.INVALID.value
@@ -349,6 +348,8 @@ def test_domestic_missing_campaign_contracts_repair_before_modules_and_preserve_
 
     async def incomplete_plan(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         if request.planning_profile == "aurora_domestic_detail":
             payload.pop("reference_expression_system")
@@ -366,10 +367,10 @@ def test_domestic_missing_campaign_contracts_repair_before_modules_and_preserve_
     dispatch_pending(client)
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_campaign_completion"]
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_intake", "aurora_domestic_detail", "aurora_domestic_campaign_completion"]
     payload = planned["plan"]["payload"]
-    assert len(payload["usage"]["planner"]) == 2
-    assert payload["usage"]["planner"][1]["phase"] == "aurora_domestic_campaign_completion"
+    assert len(payload["usage"]["planner"]) == 3
+    assert payload["usage"]["planner"][2]["phase"] == "aurora_domestic_campaign_completion"
     assert payload["groups"][0]["plan_protocol_fields"]["aurora_plan"]["campaign_thesis"] == "保留原始有效的商品购买叙事。"
     assert gateway.image_calls == []
 
@@ -382,6 +383,8 @@ def test_domestic_harness_preflight_repairs_bad_claim_mapping_before_approval(
 
     async def unmapped_plan(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         if request.planning_profile == "aurora_domestic_detail":
             payload["output_strategy"]["claim_coverage"].append({
@@ -400,7 +403,7 @@ def test_domestic_harness_preflight_repairs_bad_claim_mapping_before_approval(
     dispatch_pending(client)
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_plan_repair"]
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_intake", "aurora_domestic_detail", "aurora_domestic_plan_repair"]
     assert "selected claim F99 needs at least one assigned module" in str(gateway.planner_calls[-1].product_information)
     original_snapshot = detail_workspace(str(job["id"])) / "planning" / "aurora_domestic_plan_repair-campaign-request.json"
     before = json.loads(original_snapshot.read_text(encoding="utf-8"))
@@ -435,6 +438,8 @@ def test_failed_planning_retry_recovers_verified_candidate_without_rebilling_old
 
     async def invalid_policy(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         if request.planning_profile == "aurora_domestic_detail":
             authored_module.update(deepcopy(payload["modules"][2]))
@@ -471,6 +476,8 @@ def test_failed_planning_retry_recovers_verified_candidate_without_rebilling_old
     old_call_count = len(gateway.planner_calls)
 
     async def recover(request):
+        if request.planning_profile == "aurora_domestic_intake":
+            return await original_plan(request)
         assert mode != "zero_calls", "A migrated valid checkpoint must make no provider call"
         if mode in {"patch", "pair_order"}:
             assert request.planning_profile == "aurora_domestic_plan_repair"
@@ -498,7 +505,7 @@ def test_failed_planning_retry_recovers_verified_candidate_without_rebilling_old
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target_id}").json()
     assert planned["status"] == "awaiting_confirmation", planned
     payload = planned["plan"]["payload"]
-    expected_new_calls = 0 if mode == "zero_calls" else 1
+    expected_new_calls = 0 if mode == "zero_calls" else 2 if mode == "full" else 1
     assert len(gateway.planner_calls) - old_call_count == expected_new_calls
     assert len(payload["usage"]["planner"]) == expected_new_calls
     assert payload["metrics"]["usage_missing_count"] == 0
@@ -591,7 +598,7 @@ def test_failed_detail_retry_recovers_audited_prefix_and_native_pair_without_new
     assert result["status"] == "awaiting_final_review", result
     assert [item["status"] for item in result["items"]] == ["reused"] * 4 + ["succeeded"] * 4
     assert len(_gateway(client).image_calls) - before == 1
-    assert len(_gateway(client).planner_calls) == 1
+    assert len(_gateway(client).planner_calls) == 2
     assert json.loads(checkpoint_path.read_text(encoding="utf-8")) == checkpoint
 
 
@@ -624,7 +631,7 @@ def test_failed_detail_retry_restores_all_halted_screens_and_reuses_approved_pla
     assert result["status"] == "awaiting_final_review", result
     assert all(item["status"] == "succeeded" for item in result["items"])
     assert len(_gateway(client).image_calls) == 4
-    assert len(_gateway(client).planner_calls) == 1
+    assert len(_gateway(client).planner_calls) == 2
 
 
 def test_missing_middle_module_completes_only_that_id_without_reordering(
@@ -636,6 +643,8 @@ def test_missing_middle_module_completes_only_that_id_without_reordering(
 
     async def missing_middle(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         if request.planning_profile == "aurora_domestic_detail":
             authored["M03"] = deepcopy(payload["modules"][2])
@@ -651,8 +660,8 @@ def test_missing_middle_module_completes_only_that_id_without_reordering(
     dispatch_pending(client)
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_modules_completion"]
-    assert len(planned["plan"]["payload"]["usage"]["planner"]) == 2
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_intake", "aurora_domestic_detail", "aurora_domestic_modules_completion"]
+    assert len(planned["plan"]["payload"]["usage"]["planner"]) == 3
 
 
 @pytest.mark.parametrize("evidence_shape", ["text", "list", "object"])
@@ -676,6 +685,8 @@ def test_authored_visual_evidence_reaches_real_harness_without_replanning(
 
     async def authored_evidence(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         for module in payload["modules"]:
             module["visual_evidence"] = deepcopy(evidence)
@@ -688,7 +699,7 @@ def test_authored_visual_evidence_reaches_real_harness_without_replanning(
     dispatch_pending(client)
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     native = normalize_native_plan_for_harness(authored)
     assert all(m["visual_evidence"]["visible_content"] == [note] for m in native["modules"])
     assert gateway.image_calls == []
@@ -703,6 +714,8 @@ def test_module_repair_receives_the_actual_invalid_enum_and_path(
 
     async def invalid_enum(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         if request.planning_profile == "aurora_domestic_detail":
             healthy_module.update(deepcopy(payload["modules"][1]))
@@ -721,7 +734,7 @@ def test_module_repair_receives_the_actual_invalid_enum_and_path(
     dispatch_pending(client)
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail", "aurora_domestic_modules_completion"]
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_intake", "aurora_domestic_detail", "aurora_domestic_modules_completion"]
     assert "TARGET_MODULE_ID=M02" in gateway.planner_calls[-1].product_information
     assert gateway.image_calls == []
 
@@ -741,7 +754,7 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     gateway = _gateway(client)
 
     assert dispatch_pending(client) == 1
-    assert len(gateway.planner_calls) == 1
+    assert len(gateway.planner_calls) == 2
     planned = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
     ).json()
@@ -766,8 +779,8 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     image_roles = [source.source_role for source in gateway.image_calls[0].sources]
     assert "format_canvas" not in image_roles
     assert image_roles[0] == "product_reference"
-    assert image_roles == ["product_reference", "style_reference"]
-    planner_prompt = _planner_prompt(gateway.planner_calls[0])
+    assert image_roles == ["product_reference"]
+    planner_prompt = _planner_prompt(gateway.planner_calls[1])
     assert "aurora-domestic-ecommerce-detail-page v4.3.1" in planner_prompt
     assert "product_reference" in planner_prompt
     assert "style_reference" in planner_prompt
@@ -803,7 +816,6 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     assert reservation is not None
     assert reservation.details["source_role_counts"] == {
         "product_reference": 1,
-        "style_reference": 1,
     }
 
 
@@ -896,6 +908,8 @@ def test_domestic_protocol_fields_survive_planning_and_reach_generation(
 
     async def plan_with_protocol(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         payload["campaign_thesis"] = "以真实可见结构回答买家信任问题。"
         payload["modules"][0]["visual_proof_direction"] = "展示可见结构证据"
@@ -1111,7 +1125,7 @@ def test_compact_completion_module_merges_without_runtime_derived_fields() -> No
     assert "Do not emit runtime-derived" in prompt
 
 
-@pytest.mark.parametrize("region, expected_requests", [("domestic", 35), ("international", 17)])
+@pytest.mark.parametrize("region, expected_requests", [("domestic", 37), ("international", 17)])
 def test_detail_provider_reservation_covers_bounded_authoring_and_pixel_reviews(monkeypatch, region, expected_requests):
     import app.routes_v1 as routes
 
@@ -1167,10 +1181,14 @@ def test_deferred_reason_passes_real_compiler_without_replanning_or_generation(
 
     async def with_deferred_claim(request):
         result = await original_plan(request)
+        if request.planning_profile == "aurora_domestic_intake":
+            return result
         payload = deepcopy(result.payload)
         if request.planning_profile == "aurora_domestic_detail":
             strategy = payload["output_strategy"]
-            strategy["selling_point_clusters"][0]["fact_ids"].append("F02")
+            strategy["claim_coverage"] = [row for row in strategy["claim_coverage"] if row["claim_id"] != "F02"]
+            for module in payload["modules"]:
+                module["supporting_claim_ids"] = [value for value in module["supporting_claim_ids"] if value != "F02"]
             strategy["claim_coverage"].append({
                 "claim_id": "F02", "disposition": "DEFERRED", "module_ids": [],
                 "rationale": "This unsupported performance claim must remain deferred.",
@@ -1187,10 +1205,8 @@ def test_deferred_reason_passes_real_compiler_without_replanning_or_generation(
     with client.app.state.session_factory() as session:
         record = session.get(JobRecord, job["id"])
         configuration = deepcopy(record.configuration)
-        configuration["settings"]["verified_facts"] = [
-            {"id": "F01", "text": "Visible product identity from the test source."},
-            {"id": "F02", "text": "Unsupported performance claim held out of all screens."},
-        ]
+        configuration["settings"]["selling_points"] = ["Visible product identity from the test source."]
+        configuration["settings"]["verified_facts"] = ["Unsupported performance claim held out of all screens."]
         record.configuration = configuration
         session.commit()
     dispatch_pending(client)
@@ -1199,7 +1215,7 @@ def test_deferred_reason_passes_real_compiler_without_replanning_or_generation(
     ).json()
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert planned["plan"]["confirmed_at"] is None
-    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_detail"]
+    assert [r.planning_profile for r in gateway.planner_calls] == ["aurora_domestic_intake", "aurora_domestic_detail"]
     assert gateway.image_calls == []
     native = planned["plan"]["payload"]["groups"][0]["plan_protocol_fields"]["aurora_plan"]
     coverage = native["output_strategy"]["claim_coverage"]

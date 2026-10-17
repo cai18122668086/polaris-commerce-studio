@@ -4,6 +4,7 @@ export type IdempotentOperation =
   | "cancel-job"
   | "retry-job"
   | "clone-job"
+  | "resolve-intake"
   | "confirm-plan"
   | "finalize-job";
 

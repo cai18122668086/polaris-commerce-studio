@@ -10,6 +10,7 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
+import { BRANDLESS_CONFIRMATION, DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
@@ -30,7 +31,7 @@ import {
   type MarketRegion,
 } from "@/lib/marketplaces";
 
-type UploadedSource = { asset: Asset; previewUrl: string };
+type UploadedSource = { asset: Asset; previewUrl: string; role: "product_reference" | "style_reference" };
 type PlanPage = { title: string; description?: string; quality?: string };
 
 const DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920";
@@ -102,6 +103,7 @@ export default function DetailPackPage() {
   const [category, setCategory] = useState("");
   const [targetBuyer, setTargetBuyer] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
+  const [brandlessConfirmed, setBrandlessConfirmed] = useState(false);
   const [sources, setSources] = useState<UploadedSource[]>([]);
   const [uploadError, setUploadError] = useState<string>();
   // Prefer the task-center URL when present; the local value covers jobs
@@ -128,6 +130,7 @@ export default function DetailPackPage() {
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
+  const productSources = marketRegion === "domestic" ? sources.filter(source => source.role === "product_reference") : sources;
   const sourcesRef = useRef(sources);
   useEffect(() => { sourcesRef.current = sources; }, [sources]);
   useEffect(() => () => {
@@ -164,7 +167,8 @@ export default function DetailPackPage() {
       const previewUrl = URL.createObjectURL(file);
       try {
         const asset = await upload.mutateAsync({ file, mediaKind: "image" });
-        setSources((items) => [...items, { asset, previewUrl }]);
+        setBrandlessConfirmed(false);
+        setSources((items) => [...items, { asset, previewUrl, role: "product_reference" }]);
       } catch (error) {
         URL.revokeObjectURL(previewUrl);
         failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
@@ -177,6 +181,7 @@ export default function DetailPackPage() {
   };
 
   const removeSource = (assetId: string) => {
+    setBrandlessConfirmed(false);
     setSources((items) => {
       const removed = items.find((item) => item.asset.id === assetId);
       if (removed) URL.revokeObjectURL(removed.previewUrl);
@@ -185,7 +190,7 @@ export default function DetailPackPage() {
   };
 
   const createPlanningJob = async () => {
-    if (!workflowAvailable || !sources.length || !productName.trim() || !workspace) return;
+    if (!workflowAvailable || !productSources.length || !productName.trim() || !workspace) return;
     const configuration = {
       product_name: productName.trim(),
       platform_code: marketplaceId,
@@ -198,8 +203,9 @@ export default function DetailPackPage() {
       // group→screen packet before any pair generation can start.
       auto_start_after_plan: false,
       selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
-      verified_facts: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 24),
-      conflict_scan: { status: "NO_MATERIAL_CONFLICTS_REPORTED" },
+      verified_facts: marketRegion === "domestic" ? [] : sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 24),
+      brandless_confirmation: marketRegion === "domestic" && brandlessConfirmed ? BRANDLESS_CONFIRMATION : undefined,
+      conflict_scan: marketRegion === "domestic" ? {} : { status: "NO_MATERIAL_CONFLICTS_REPORTED" },
       source_conflicts: [],
       reference_materials: [],
       platform_profile: {
@@ -214,7 +220,8 @@ export default function DetailPackPage() {
       type: "detail_pack",
       intent: "submit",
       display_name: `商品详情图 · ${productName.trim()}`,
-      input: { product_groups: [{ group_key: "primary-product", asset_ids: sources.map((source) => source.asset.id) }] },
+      input: { product_groups: [{ group_key: "primary-product", asset_ids: productSources.map((source) => source.asset.id) }],
+        reference_asset_ids: marketRegion === "domestic" ? sources.filter(source => source.role === "style_reference").map(source => source.asset.id) : [] },
       configuration,
     });
     setLocalJobId(created.id);
@@ -230,7 +237,7 @@ export default function DetailPackPage() {
     setLocalJobId(retried.id);
   };
 
-  const step = !sources.length ? 0 : !productName.trim() ? 1 : !jobId ? 2 : job.data?.status === "awaiting_confirmation" ? 3 : 4;
+  const step = !productSources.length ? 0 : !productName.trim() ? 1 : !jobId ? 2 : job.data?.status === "awaiting_confirmation" ? 3 : 4;
 
   return (
     <AppShell flush>
@@ -261,7 +268,9 @@ export default function DetailPackPage() {
           <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip">1</span><div><h2>商品素材</h2><p>每张图片都会先保存到当前工作区。</p></div>{sources.length > 0 && <span className="validation-chip"><CheckCircle2 size={15} />已上传 {sources.length} 张</span>}</div>
             <div className="multi-uploader">
-              {sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>角度 {index + 1}</span><button aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button><i><GripVertical size={14} /></i></div>)}
+              {sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={Boolean(jobId)} onChange={event => {
+                const role = event.target.value as UploadedSource["role"]; setBrandlessConfirmed(false); setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));
+              }}><option value="product_reference">商品图</option><option value="style_reference">风格参考</option></select>}<button aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button><i><GripVertical size={14} /></i></div>)}
               {sources.length < 8 && <button className="upload-more" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>{upload.isPending ? <LoaderCircle className="spin" size={23} /> : <ImagePlus size={23} />}<strong>{upload.isPending ? "上传中" : "添加素材"}</strong><small>最多 8 张</small></button>}
               <input ref={fileInput} className="visually-hidden" type="file" multiple accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
             </div>
@@ -275,6 +284,7 @@ export default function DetailPackPage() {
               <label><span>商品类目</span><input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
               <label><span>目标买家</span><input value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
               <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize}</strong></div></label>
+              {marketRegion === "domestic" && <label className="full"><span><input style={{ width: "auto", marginRight: 8 }} type="checkbox" checked={brandlessConfirmed} onChange={event => setBrandlessConfirmed(event.target.checked)} />{BRANDLESS_CONFIRMATION}</span><small>有品牌的商品请上传能清楚辨认标识的本商品图片。</small></label>}
               <label className="full"><span>核心卖点</span><textarea value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
             </div>
           </section>
@@ -289,6 +299,8 @@ export default function DetailPackPage() {
           </section>
 
           {requestError && <div className="api-state api-state--error" role="alert"><AlertCircle size={24} /><div><strong>请求未完成</strong><p>{errorMessage(requestError)}</p></div></div>}
+
+          {job.data?.stage === "intake_confirmation_required" && <DomesticDetailIntakeQuestion key={`${job.data.id}:${job.data.plan?.revision}`} workspaceId={workspace?.id} job={job.data} />}
 
           <section className="planning-card" aria-busy={job.isFetching}>
             <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p><small>{marketRegion === "domestic" ? "国内详情按相邻两屏组成一个 3:8 连续画布，审核通过后固定切成两张 3:4 图片。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
@@ -322,7 +334,7 @@ export default function DetailPackPage() {
               {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
-                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !sources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
               ) : job.data?.status === "awaiting_final_review" && allowsJobAction(job.data.allowed_actions, "finalize") ? (
                 <button className="primary-button" onClick={() => finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: "我已完成详情图逐 pair 最终审核并确认交付" })} disabled={finalizeJob.isPending}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />}确认最终审核并交付<ArrowRight size={17} /></button>
               ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (

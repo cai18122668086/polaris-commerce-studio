@@ -1405,12 +1405,75 @@
         "title": "CurrentUserResponse",
         "type": "object"
       },
+      "DetailIntakeResolutionRequest": {
+        "properties": {
+          "additional_product_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Additional Product Asset Ids",
+            "type": "array"
+          },
+          "brandless_confirmation": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brandless Confirmation"
+          },
+          "confirmation_text": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Confirmation Text",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/IntakeConflictResolution"
+            },
+            "maxItems": 24,
+            "title": "Resolutions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "confirmation_text"
+        ],
+        "title": "DetailIntakeResolutionRequest",
+        "type": "object"
+      },
       "DetailPackConfiguration": {
         "properties": {
           "auto_start_after_plan": {
             "default": true,
             "title": "Auto Start After Plan",
             "type": "boolean"
+          },
+          "brandless_confirmation": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brandless Confirmation"
           },
           "category": {
             "anyOf": [
@@ -2733,6 +2796,39 @@
           "prompt"
         ],
         "title": "InspirationCaseUpdate",
+        "type": "object"
+      },
+      "IntakeConflictResolution": {
+        "properties": {
+          "conflict_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Conflict Id",
+            "type": "string"
+          },
+          "rejected_fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 36,
+            "title": "Rejected Fact Ids",
+            "type": "array"
+          },
+          "retained_fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 36,
+            "minItems": 1,
+            "title": "Retained Fact Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conflict_id",
+          "retained_fact_ids"
+        ],
+        "title": "IntakeConflictResolution",
         "type": "object"
       },
       "JobAssetResponse": {
@@ -11382,6 +11478,88 @@
           }
         ],
         "summary": "Finalize Domestic Main Image",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve": {
+      "post": {
+        "operationId": "resolve_detail_intake_api_v1_workspaces__workspace_id__jobs__job_id__intake_resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetailIntakeResolutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Resolve Detail Intake",
         "tags": [
           "jobs"
         ]

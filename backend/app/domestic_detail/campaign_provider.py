@@ -35,6 +35,7 @@ from .planner_dispatch import (
 )
 from .plans import canonical_hash
 from .review import ReviewStore, approved_review_authority
+from .review_packet import _metadata
 
 
 def _sha(payload: bytes) -> str:
@@ -175,11 +176,18 @@ class DomesticCampaignReviewProvider:
                         or asset.lifecycle_status != "ready"
                     ):
                         raise ValueError("Original product reference is unavailable")
-                    payload, _ = await self.storage.read_stored_image(
+                    payload, stored = await self.storage.read_stored_image(
                         asset.object_key, asset.object_version
                     )
-                    if _sha(payload) != row["sha256"]:
-                        raise ValueError("Original product-reference bytes changed")
+                    if (
+                        _sha(payload) != row["sha256"]
+                        or asset.sha256 != row["sha256"]
+                        or _metadata(stored)
+                        != {name: getattr(asset, name) for name in _metadata(stored)}
+                    ):
+                        raise ValueError(
+                            "Original product-reference bytes or metadata changed"
+                        )
                     references.append(
                         SourceImage(
                             asset_id=asset.id,
@@ -296,6 +304,8 @@ class DomesticCampaignReviewProvider:
                 "image/webp": ".webp",
             }
             for index, frame in enumerate(model_sources, 1):
+                if _sha(frame.payload) != frame.sha256:
+                    raise ValueError("Model-seen frame digest differs from its bytes")
                 relative = f"model-inputs/{index:02d}{suffixes[frame.content_type]}"
                 _bytes_once(root / relative, frame.payload)
                 frame_inventory.append(

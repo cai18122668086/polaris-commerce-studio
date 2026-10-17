@@ -500,5 +500,17 @@
     "persistent_stack_verified": false,
     "actual_visual_acceptance": false,
     "remaining_design": "native-campaign-selection-design.json in local evidence; pre-call metadata/missing-original-binding checks and interrupted-write reconciliation remain to audit before UI/release"
+  },
+  "local_optional_campaign_source_guard_candidate": {
+    "overall_completion": "unproven",
+    "parent": "fb69d5334a8078e173f37a15b863bf558aeda258",
+    "report": "domestic-detail-campaign-source-guard-2026-10-18.md",
+    "current_source_cases": 4,
+    "prior_C8_cases": 207,
+    "prior_C8_full_set_rerun_after_narrow_patch": false,
+    "source_variants_explicit": true,
+    "actual_supplier_calls": 0,
+    "missing_native_binding_already_rejects_without_recreation": true,
+    "native_sources_unchanged": true
   }
 }

@@ -207,3 +207,65 @@ def test_changed_native_preview_stops_before_any_paid_model_call(client, monkeyp
     assert (
         detail_workspace(source["id"]) / "session.json"
     ).read_bytes() == original_session
+
+
+def test_missing_original_binding_and_reference_metadata_stop_before_paid_review(
+    client, monkeypatch
+):
+    from app.models import AssetRecord, JobPlanRecord
+    from tests.test_api import dispatch_pending
+    from tests.test_domestic_detail_delivery import REVIEWS
+
+    source = ready(client)
+    root = detail_workspace(source["id"])
+    binding = root / "native-contract-binding.json"
+    original_binding = binding.read_bytes()
+    backup = binding.with_suffix(".preserved")
+    binding.rename(backup)
+    try:
+        quote = client.get(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{source['id']}/campaign-review/quote",
+            params={"final_review_sha256": REVIEWS[source["id"]]},
+        )
+        assert quote.status_code == 409, quote.text
+        assert not binding.exists()
+    finally:
+        backup.rename(binding)
+    assert binding.read_bytes() == original_binding
+    response = request_review(client, source)
+    assert response.status_code == 202, response.text
+    review_id = response.json()["id"]
+    with client.app.state.session_factory() as db:
+        plan = db.get(JobPlanRecord, response.json()["configuration"]["source_plan_id"])
+        rows = plan.payload["source_asset_manifest"][0]["assets"]
+        row = next(
+            row for row in rows if row["role"] not in {"style", "style_reference"}
+        )
+        asset = db.get(AssetRecord, row["asset_id"])
+        asset.sha256 = "b" * 64
+        db.commit()
+    gateway = _gateway(client)
+    calls = []
+    before_images = len(gateway.image_calls)
+
+    async def observed(request):
+        assert request.planning_profile == "aurora_detail_campaign_audit"
+        calls.append(request)
+        raw = synthetic_campaign_observation(json.loads(request.product_information[0]))
+        return PlannerCallResult(
+            payload=raw,
+            provider_request_id="synthetic-reference-metadata-drift",
+            raw_usage={"input_tokens": 9, "output_tokens": 8},
+            normalized_usage=normalize_usage({"input_tokens": 9, "output_tokens": 8}),
+            api_latency_seconds=0.01,
+            actual_cost_micros=17,
+            audit_raw_content=json.dumps(raw, ensure_ascii=False),
+        )
+
+    monkeypatch.setattr(gateway, "plan", observed)
+    dispatch_pending(client)
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{review_id}").json()
+    assert current["status"] == "failed", current
+    assert calls == [] and len(gateway.image_calls) == before_images
+    assert current["cost"]["actual"]["micros"] == "0"
+    assert not list((detail_workspace(review_id) / "reviews").glob("*.request.json"))

@@ -4,16 +4,16 @@
 
 | 角色 | 当前版本或用途 |
 |---|---|
-| GitHub 正式目标 | main，当前 d19fd33；默认分支本来就是 main，本轮未更改 |
+| GitHub 正式目标 | main，生产历史集成点 ad9f588（PR #73）；默认分支未改变 |
 | 生产应用源码 | 812a1f7（API/Worker/Dispatcher/Frontend） |
 | 生产爬虫源码 | c5eb50e（crawl worker / maintenance） |
 | 生产数据库 | 20260930_0025 + 三个 stage 字段 64 的历史手工 DDL；生产未升级；候选已补 20261017_0026，CI 隔离验证 |
-| 本地待审基线 | codex/main-reconciliation-20261017，位于 D:\Codex\worktrees\polaris-generation-recovery |
+| 已合并审查基线 | bef9866 经 PR #73 合入 main；后续功能从 main 建分支，隔离目录仍为 D:\Codex\worktrees\polaris-generation-recovery |
 | 主目录过渡归档 | codex/workspace-preserved-20261017；本机 Worker 正在使用此目录的启动环境，禁止在此继续业务开发 |
 | 未验收工作 | 9 条 codex/preserve-*-20261017 分支；用途/文件/提交见基线报告 |
 | 当前业务优先级 | 国内详情规划与画面质量；国内主图用户实测正常，保护现有路径 |
 
-候选审查：[PR #73](https://github.com/cai18122668086/polaris-commerce-studio/pull/73)，目标 main，草稿状态。它包含已观察的生产历史、两项 Skill 打包完整性修正和单独的历史扩列迁移；国内详情业务修复未混入。合并与上线均未批准。
+候选审查：[PR #73](https://github.com/cai18122668086/polaris-commerce-studio/pull/73)，已通过 merge commit 合入 main，集成提交 `ad9f588a7c75124c6570063224968324898e120a`。它包含已观察的生产历史、两项 Skill 打包完整性修正和单独的历史扩列迁移；国内详情业务修复未混入。固定候选 `bef98664ff17f4791d3b166b5c320fab6ab19b4e` 的六项 CI 全部成功；合并已执行，生产发布未执行。集成提交与该候选的 Git 树完全一致。
 
 ## 固定流程
 
@@ -29,4 +29,4 @@
 
 保留 812a1f7 与 c5eb50e、机器清单中的实际镜像 ID、当前 Compose SHA-256、`/opt/polaris/releases/generation-recovery-3f91b7d/compose.before.yml` 的存在与哈希。本轮没有更新服务。历史回滚 Compose 仅是资料，未来必须先核对该文件中的镜像/卷/队列与实际兼容性；禁止自动执行旧文件或数据库缩列。
 
-正式主线合并后，通过一次文档提交记录合并 SHA 和 PR；生产更新后，另行记录各服务生效时间与运行中任务处置。未经实际核验不能写成“本地/GitHub/生产全部一致”。
+本次文档更新记录 PR #73 的合并 SHA 和 CI；该 SHA 是固定集成锚点，后续文档提交不改变业务基线含义。生产更新后，另行记录各服务生效时间与运行中任务处置。未经实际核验不能写成“本地/GitHub/生产全部一致”。

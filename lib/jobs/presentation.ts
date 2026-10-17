@@ -17,6 +17,7 @@ const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   planning: "规划中",
   awaiting_confirmation: "待确认",
   processing: "处理中",
+  awaiting_final_review: "等待整组确认",
   cancelling: "取消中",
   partial: "部分成功",
   completed: "已完成",
@@ -31,15 +32,13 @@ const JOB_STAGE_LABELS: Record<string, string> = {
   awaiting_confirmation: "等待确认",
   processing: "处理中",
   generating: "生成中",
+  awaiting_final_review: "等待整组确认",
   validating: "校验中",
   validation: "校验中",
   organizing: "整理结果中",
   planning_failed: "规划失败",
   suite_quality_reported: "质量检查已完成",
   suite_quality_passed: "质量检查通过",
-  set_auditing: "图片已生成，整组审核中",
-  set_audit_error: "图片已生成，审核异常待确认",
-  set_audit_failed: "图片已生成，整组审核未通过",
   suite_review_reported: "套图审核已完成",
   partial: "部分成功",
   completed: "已完成",
@@ -107,6 +106,10 @@ export function jobTitle(job: Job | JobDetail): string { return job.display_name
 export function jobCount(job: Job | JobDetail): string { return `${job.succeeded_item_count} / ${job.expected_item_count} 项`; }
 
 export function jobNote(job: Job | JobDetail): string {
+  if (job.status === "failed" && "items" in job) {
+    const failed = job.items.find((item) => item.status === "failed");
+    if (failed?.error_code) return safeJobFailureSummary(failed.error_code);
+  }
   if (job.status === "partial") return "部分结果已完成，可在详情中查看并重试失败项目。";
   if (job.status === "failed") return "生成未完成，请查看详情中的安全错误摘要。";
   if (job.status === "awaiting_confirmation") return "生成方案已经就绪，等待确认后继续。";
@@ -121,11 +124,23 @@ export function jobNote(job: Job | JobDetail): string {
 }
 
 export function safeJobFailureSummary(errorCode?: string | null): string {
-  if (errorCode === "AURORA_SET_AUDIT_ERROR") {
-    return "图片已生成并保留，整组审核发生技术错误，审核结论待确认。";
+  if (errorCode === "PROVIDER_OUTCOME_UNKNOWN") {
+    return "生成请求的结果尚未确认，系统已停止自动重试，请联系管理员核查，避免重复生成。";
   }
-  if (errorCode === "AURORA_SET_AUDIT_FAILED") {
-    return "图片已生成并保留，整组审核未通过，请检查审核结果。";
+  if (errorCode?.startsWith("LOCAL_EDIT_VISUAL_REVIEW") && errorCode !== "LOCAL_EDIT_VISUAL_REVIEW_REJECTED") {
+    return "图片已生成，但审核服务暂时不可用。重试会继续审核已保存的图片。";
+  }
+  if (errorCode === "LOCAL_EDIT_VISUAL_REVIEW_REJECTED") {
+    return "候选图未通过视觉审核，请调整修改要求或选区后重试。";
+  }
+  if (errorCode?.startsWith("LOCAL_EDIT_RAW_")) {
+    return "已保存的候选图未通过完整性校验，请重新提交改图任务。";
+  }
+  if (errorCode === "IMAGE_REQUEST_FAILED") {
+    return "生成服务暂时不可用，请稍后重试。";
+  }
+  if (errorCode === "CREATIVE_VISUAL_ANALYSIS_INVALID" || errorCode === "PLANNER_SCHEMA_INVALID") {
+    return "规划服务返回的数据不完整，请稍后重试。";
   }
   if (errorCode === "AURORA_SEQUENCE_HALTED") {
     return "前序图片未完成，后续图片已停止生成。";

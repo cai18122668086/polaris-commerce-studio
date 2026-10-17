@@ -10,6 +10,9 @@ diagnostics.
 """
 
 # Prompt text is intentionally preserved verbatim for the provider contract.
+# Planner fields are capped before they reach the image model. A real planner
+# sometimes echoes the verified Skill protocol into one JSON field; that echo
+# must not become the image instruction or trip the 24KB fail-closed guard.
 
 from __future__ import annotations
 
@@ -27,7 +30,6 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .creative_planning_contract import CREATIVE_FIELDS, CREATIVE_PLANNER_PROMPT
 from .domain import (
     AssetLifecycleStatus,
     AssetMediaKind,
@@ -44,6 +46,16 @@ from .models import (
     JobItemRecord,
     JobRecord,
     WorkspaceRecord,
+)
+from .product_image_provider import (
+    _NEGATIVE_CONSTRAINTS,
+    _PLATFORM_DEFAULTS,
+    _PRODUCT_CONSISTENCY_LOCK,
+    _QA_CHECKLIST,
+    _QUALITY_LOCK,
+    _REFERENCE_LOADING,
+    _RETRY_STRATEGY,
+    _TASK_RECIPES,
 )
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
 from .skill_protocol import (
@@ -64,6 +76,7 @@ from .xinghe_agent import (
     normalize_usage,
 )
 
+_ANALYSIS_FIELD_MAX_CHARS = 1_200
 SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY = "new_skill_adapter"
 SINGLE_IMAGE_ADAPTER_SCHEMA_VERSION = "single-image-skill-adapter-v1"
 SINGLE_IMAGE_PROMPT_SCHEMA_VERSION = "single-image-prompt-v1"
@@ -251,15 +264,6 @@ class SingleImageProviderError(RuntimeError):
         self.code = code
 
 
-def validate_execution_prompt_budget(prompt: str) -> None:
-    size = len(prompt.encode("utf-8"))
-    if size > 24_000:
-        raise SingleImageProviderError(
-            "EXECUTION_PROMPT_TOO_LARGE",
-            f"最终执行提示词为 {size} UTF-8 字节，超过 24000 字节。请精简描述后重新提交；尚未调用生图，商品约束未被截断。",
-        )
-
-
 @dataclass(frozen=True)
 class SourceAssetSpec:
     asset_id: str
@@ -303,6 +307,28 @@ class SingleImageEnvelope:
     prompt_input: dict[str, Any]
 
 
+def _bounded_analysis_text(
+    raw: Any,
+    *,
+    fallback: str = "Not specified.",
+    limit: int = _ANALYSIS_FIELD_MAX_CHARS,
+) -> str:
+    """Keep one planner field concise enough for the image-model instruction."""
+
+    if raw is None or raw == "":
+        return fallback
+    text = raw.strip() if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False, sort_keys=True)
+    text = text.strip()
+    protocol_at = text.find("skill-protocol-v1")
+    if protocol_at >= 0:
+        text = text[:protocol_at].strip()
+    if not text:
+        return fallback
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
 def _source_inventory_is_authorized(
     envelope: SingleImageEnvelope,
     durable_inputs: Sequence[JobAssetRecord],
@@ -312,33 +338,42 @@ def _source_inventory_is_authorized(
     durable_inventory = sorted(
         (binding.asset_id, binding.role, binding.ordinal) for binding in durable_inputs
     )
-    durable_asset_roles = {
-        (binding.asset_id, binding.role) for binding in durable_inputs
-    }
     envelope_inventory = sorted(
         (spec.asset_id, spec.role, spec.ordinal) for spec in envelope.source_assets
     )
 
-    if (
-        envelope.skill_id == "xinghe-amazon-visual-suite"
-        and envelope.item_key == "MAIN-01"
-    ):
-        allowed_main_roles = {
+    if envelope.skill_id == "xinghe-amazon-visual-suite":
+        # Each screen may omit optional roles the plan did not request.
+        # A selected role must still carry every durable asset of that role,
+        # and no asset outside the job input is accepted.  Ordinals are
+        # reassigned per role by the delegate, so identity is asset plus role.
+        allowed_roles = {
             "white_background_product",
             "product_detail",
             "package_reference",
             "brand_reference",
         }
-        has_white_background_product = any(
-            spec.role == "white_background_product" for spec in envelope.source_assets
-        )
-        return (
-            has_white_background_product
-            and all(spec.role in allowed_main_roles for spec in envelope.source_assets)
-            and all(
-                (spec.asset_id, spec.role) in durable_asset_roles
-                for spec in envelope.source_assets
+        if envelope.item_key != "MAIN-01":
+            allowed_roles.update(
+                {
+                    "scene_reference",
+                    "style_reference",
+                    "competitor_reference",
+                }
             )
+        selected_roles = {spec.role for spec in envelope.source_assets}
+        selected_assets = {
+            (spec.asset_id, spec.role) for spec in envelope.source_assets
+        }
+        durable_selected_assets = {
+            (binding.asset_id, binding.role)
+            for binding in durable_inputs
+            if binding.role in selected_roles
+        }
+        return (
+            "white_background_product" in selected_roles
+            and selected_roles <= allowed_roles
+            and selected_assets == durable_selected_assets
         )
 
     return envelope_inventory == durable_inventory
@@ -492,8 +527,6 @@ class XingheSingleImageProvider:
                     sources = style_sources + product_sources
             if not direct_prompt and not creative_analysis:
                 prompt = self._compile_prompt(envelope, protocol, reference_analysis=analysis)
-            if envelope.operation in {"reference_remix", "creative_image"}:
-                validate_execution_prompt_budget(prompt)
         except SingleImageProviderError as exc:
             return self._rejection(exc.code, str(exc))
         except Exception as exc:
@@ -544,7 +577,11 @@ class XingheSingleImageProvider:
                     ),
                     estimated_cost_micros=None,
                     actual_cost_micros=None,
-                    retryable=envelope.skill_id == "xinghe-amazon-visual-suite",
+                    retryable=envelope.skill_id
+                    in {
+                        "xinghe-amazon-visual-suite",
+                        "xinghe-wanneng-shengtu-3-0",
+                    },
                     provider_name=self.name,
                     model_name=self.model,
                     pricing_version=self.pricing_version,
@@ -655,13 +692,16 @@ class XingheSingleImageProvider:
             "normalized_anchors",
             "product_role_map",
             "typography_zones",
+                "commercial_intent",
+                "reusable_visual_strategy",
+                "forbidden_transfer",
             "original_remix_prompt",
         }
         missing = sorted(key for key in required if key not in analysis.payload)
         if missing:
             raise SingleImageProviderError(
                 "REFERENCE_VISUAL_ANALYSIS_INVALID",
-                "Reference visual analysis omitted required fields: " + ", ".join(missing),
+                "Reference visual analysis omitted required fields.",
             )
         return dict(analysis.payload)
 
@@ -693,12 +733,12 @@ class XingheSingleImageProvider:
             size=envelope.target.size,
             idempotency_key=f"{request.idempotency_key}:creative-analysis",
             system_prompt=(
-                (CREATIVE_PLANNER_PROMPT + " Use the verified ecommerce creative-image Skill protocol below. "
+                ("Use the verified ecommerce creative-image Skill protocol below. "
                 "Inspect the uploaded product image and the user's brief. Plan one "
                 "commercial image, then return JSON only with these keys: "
                 "product_identity_lock, hard_composition_skeleton, normalized_anchors, "
                 "product_role_map, typography_zones, commercial_intent, "
-                "forbidden_transfer, original_execution_prompt. Preserve the product "
+                "forbidden_transfer, post_generation_review, original_execution_prompt. Preserve the product "
                 "as the only identity authority. The original_execution_prompt must "
                 "be a concise executable image prompt, not a plan summary. Include "
                 "the user's brief, canvas, subject scale, layout, text zones and "
@@ -723,11 +763,22 @@ class XingheSingleImageProvider:
                 "CREATIVE_VISUAL_ANALYSIS_FAILED",
                 analysis.error_message or "Creative visual planning failed.",
             )
-        missing = sorted(key for key in CREATIVE_FIELDS if not analysis.payload.get(key))
+        required = {
+            "product_identity_lock",
+            "hard_composition_skeleton",
+            "normalized_anchors",
+            "product_role_map",
+            "typography_zones",
+            "commercial_intent",
+            "forbidden_transfer",
+            "post_generation_review",
+            "original_execution_prompt",
+        }
+        missing = sorted(key for key in required if key not in analysis.payload)
         if missing:
             raise SingleImageProviderError(
                 "CREATIVE_VISUAL_ANALYSIS_INVALID",
-                "Creative planner omitted required fields: " + ", ".join(missing),
+                "Creative planner omitted required fields.",
             )
         return dict(analysis.payload)
 
@@ -737,8 +788,7 @@ class XingheSingleImageProvider:
         analysis: Mapping[str, Any],
     ) -> str:
         def field(name: str) -> str:
-            value = analysis.get(name, "")
-            return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True)
+            return _bounded_analysis_text(analysis.get(name, ""), fallback="")
 
         prompt = "\n\n".join(
             (
@@ -749,16 +799,20 @@ class XingheSingleImageProvider:
                 "NORMALIZED ANCHORS\n" + field("normalized_anchors"),
                 "PRODUCT ROLE MAP\n" + field("product_role_map"),
                 "TYPOGRAPHY ZONES\n" + field("typography_zones"),
+                "COMMERCIAL INTENT\n" + field("commercial_intent"),
                 "USER INSTRUCTION — HIGHEST PRIORITY\n" + str(envelope.prompt_input.get("user_instruction") or "No additional user instruction."),
                 "EXECUTION PROMPT\n" + field("original_execution_prompt"),
                 "FORBIDDEN TRANSFER\n" + field("forbidden_transfer"),
+                "POST-GENERATION REVIEW\n"
+                + field("post_generation_review")
+                + "\nAfter generation, manually check product fidelity, 3-second/mobile scan clarity, copy legibility, and compliance. Do not auto-accept or silently redraw.",
                 "Do not redesign the product, add variants, import the source background, or invent unsupported claims.",
             )
         )
         if len(prompt.encode("utf-8")) > 24_000:
             raise SingleImageProviderError(
-                "EXECUTION_PROMPT_TOO_LARGE",
-                f"创意执行提示词为 {len(prompt.encode('utf-8'))} UTF-8 字节，超过 24000 字节。请精简描述后重新提交；尚未调用生图，商品约束未被截断。",
+                "CREATIVE_VISUAL_ANALYSIS_INVALID",
+                "The compiled creative execution prompt is unexpectedly large.",
             )
         return prompt
 
@@ -843,7 +897,7 @@ class XingheSingleImageProvider:
         )
         raw_usage = dict(result.raw_usage)
         raw_usage["metrics"] = _direct_pose_transfer_metrics()
-        return replace(result, raw_usage=raw_usage, retryable=False)
+        return replace(result, raw_usage=raw_usage)
 
     def _compile_direct_model_pose_prompt(
         self,
@@ -1431,12 +1485,7 @@ class XingheSingleImageProvider:
         """
 
         def field(name: str, fallback: str = "Not specified.") -> str:
-            raw = analysis.get(name)
-            if raw is None or raw == "":
-                return fallback
-            if isinstance(raw, str):
-                return raw.strip()
-            return json.dumps(raw, ensure_ascii=False, sort_keys=True)
+            return _bounded_analysis_text(analysis.get(name), fallback=fallback)
 
         width = envelope.target.width or 1024
         height = envelope.target.height or 1536
@@ -1491,6 +1540,15 @@ class XingheSingleImageProvider:
                     "depth order. " + product_identity_replacement
                 ),
                 (
+                    "PRODUCT IDENTITY WINS ON CONFLICT\n"
+                    "When composition and product appearance disagree, keep the product "
+                    "photo's visible structure, colors, part count, proportions, and any "
+                    "mark already printed on the product. Do not redesign those parts to "
+                    "match the reference product, and do not erase a mark that is visible "
+                    "on the product photo. Do not invent a new brand. Composition, crop, "
+                    "light, and typography still follow the reference."
+                ),
+                (
                     "Compiled from verified Skill "
                     f"{protocol.skill_id}@{protocol.source_content_hash}."
                 ),
@@ -1498,8 +1556,8 @@ class XingheSingleImageProvider:
         )
         if len(prompt.encode("utf-8")) > 24_000:
             raise SingleImageProviderError(
-                "EXECUTION_PROMPT_TOO_LARGE",
-                f"复刻执行提示词为 {len(prompt.encode('utf-8'))} UTF-8 字节，超过 24000 字节。请精简参考描述后重新提交；尚未调用生图，商品约束未被截断。",
+                "REFERENCE_VISUAL_ANALYSIS_INVALID",
+                "The compiled reference execution prompt is unexpectedly large.",
             )
         return prompt
 
@@ -1523,6 +1581,54 @@ class XingheSingleImageProvider:
         # local Skill runtime. The durable prompt fields remain visible in the
         # inspiration UI, while the provider also receives the verified Skill
         # source and source-role/target contract needed to interpret them.
+        instructions = dict(envelope.prompt_input)
+        if (
+            envelope.skill_id == "xinghe-wanneng-shengtu-3-0"
+            and envelope.operation == "product_image"
+            and isinstance(instructions.get("task_type"), str)
+            # ProductImageProvider always includes platform_code. Keeping this
+            # guard preserves the legacy low-level adapter fixture contract while
+            # ensuring every real product-image request gets the complete Skill
+            # recipe and progressive reference policy.
+            and "platform_code" in instructions
+        ):
+            task_type = str(instructions["task_type"])
+            platform_code = str(instructions.get("platform_code") or "tmall").lower()
+            recipe = _TASK_RECIPES.get(task_type)
+            if recipe:
+                recipe = (
+                    f"{recipe} Output canvas: {envelope.target.aspect_ratio}; "
+                    "honor the requested target dimensions."
+                )
+                if instructions.get("target_color"):
+                    recipe = (
+                        f"{recipe} Target color: {instructions['target_color']}."
+                    )
+                instructions.update(
+                    {
+                        "input_roles": (
+                            "Input image roles: "
+                            + "; ".join(
+                                f"Image {index} is the {spec.role.replace('_', ' ')}"
+                                for index, spec in enumerate(
+                                    envelope.source_assets, start=1
+                                )
+                            )
+                            + ". Preserve product identity from product_reference "
+                            "images; use style_reference images only for their stated role."
+                        ),
+                        "reference_loading": _REFERENCE_LOADING,
+                        "product_identity_lock": _PRODUCT_CONSISTENCY_LOCK,
+                        "task_recipe": recipe,
+                        "platform_defaults": _PLATFORM_DEFAULTS.get(
+                            platform_code, _PLATFORM_DEFAULTS["generic"]
+                        ),
+                        "quality_lock": _QUALITY_LOCK,
+                        "negative_constraints": _NEGATIVE_CONSTRAINTS,
+                        "qa_checklist": _QA_CHECKLIST,
+                        "retry_strategy": _RETRY_STRATEGY,
+                    }
+                )
         prompt_contract = {
             "schema_version": SINGLE_IMAGE_PROMPT_SCHEMA_VERSION,
             "skill_id": envelope.skill_id,
@@ -1545,7 +1651,7 @@ class XingheSingleImageProvider:
                 "quality": envelope.target.quality,
                 "width": envelope.target.width,
             },
-            "instructions": envelope.prompt_input,
+            "instructions": instructions,
             "skill_protocol": protocol.prompt_payload(),
         }
         prompt = json.dumps(
@@ -1624,7 +1730,11 @@ class XingheSingleImageProvider:
                 outcome=ProviderOutcome.FAILED,
                 error_code="IMAGE_OUTPUT_ARTIFACT_MISSING",
                 error_message="The image provider succeeded without an artifact.",
-                retryable=False,
+                retryable=envelope.skill_id
+                in {
+                    "xinghe-amazon-visual-suite",
+                    "xinghe-wanneng-shengtu-3-0",
+                },
                 provider_request_id=provider_request_id,
                 usage_reported=usage_reported,
                 raw_usage=raw_usage,
@@ -1646,7 +1756,11 @@ class XingheSingleImageProvider:
                 outcome=ProviderOutcome.FAILED,
                 error_code=exc.code,
                 error_message=str(exc),
-                retryable=envelope.skill_id == "xinghe-amazon-visual-suite",
+                retryable=envelope.skill_id
+                in {
+                    "xinghe-amazon-visual-suite",
+                    "xinghe-wanneng-shengtu-3-0",
+                },
                 provider_request_id=provider_request_id,
                 usage_reported=usage_reported,
                 raw_usage=raw_usage,
@@ -1681,6 +1795,17 @@ class XingheSingleImageProvider:
         raw_usage["output_images"] = 1
         raw_usage["artifact_kind"] = "image"
         raw_usage["perceptual_dhash"] = _perceptual_dhash(artifact.payload)
+        if envelope.skill_id == "xinghe-wanneng-shengtu-3-0":
+            raw_usage["metrics"] = {
+                **(
+                    dict(raw_usage.get("metrics"))  # type: ignore[arg-type]
+                    if isinstance(raw_usage.get("metrics"), Mapping)
+                    else {}
+                ),
+                "product_image_qa": _product_image_output_qa(
+                    artifact, envelope
+                ),
+            }
         return ProviderResult(
             outcome=ProviderOutcome.SUCCEEDED,
             artifact=artifact,
@@ -1757,6 +1882,37 @@ class XingheSingleImageProvider:
         if self.skill_id == "xinghe-amazon-visual-suite":
             usage["metrics"] = {
                 "generation_route": _configured_xinghe_fixed_api_route()
+            }
+        elif self.skill_id == _MODEL_POSE_TRANSFER_SKILL_ID:
+            usage["metrics"] = _direct_pose_transfer_metrics()
+        elif self.skill_id == _REFERENCE_VISUAL_REMIX_SKILL_ID:
+            usage["metrics"] = {
+                "review_mode": "human_required",
+                "automatic_review_regeneration": False,
+                "bounded_repair": "one_explicit_user_requested_repair",
+                "review_checklist": [
+                    "product_identity_and_visible_text",
+                    "reference_composition_and_role_relationships",
+                    "typography_zones_and_mobile_scan_order",
+                    "source_brand_or_watermark_leakage",
+                    "unsupported_claims_or_extra_product_roles",
+                ],
+            }
+        elif self.skill_id in {
+            "xinghe-ecommerce-creative-image",
+            "xinghe-wanneng-shengtu-3-0",
+        }:
+            usage["metrics"] = {
+                "review_mode": "human_required",
+                "automatic_review_regeneration": False,
+                "retry_policy": "explicit_user_requested_conservative_retry",
+                "review_checklist": [
+                    "product_fidelity_and_sku",
+                    "scale_perspective_and_scene_clarity",
+                    "copy_legibility_and_mobile_scan",
+                    "compliance_no_fake_claims_or_badges",
+                    "no_watermark_or_unrequested_extra_elements",
+                ],
             }
         return usage
 
@@ -2115,6 +2271,47 @@ def _perceptual_dhash(payload: bytes) -> str:
     return f"{value:016x}"
 
 
+def _product_image_output_qa(
+    artifact: ProviderArtifact,
+    envelope: SingleImageEnvelope,
+) -> dict[str, Any]:
+    """Record the bounded post-generation checks for the universal-image Skill.
+
+    The image gateway is the only component able to judge semantic product
+    fidelity.  Local QA therefore stays deterministic and non-destructive: it
+    verifies the independently materialized artifact, target dimensions and
+    delivery format, then records the Skill's visual checklist as requiring
+    review.  A failed transport/output attempt remains eligible for the single
+    execution-layer retry; semantic review never silently replaces the user's
+    original references.
+    """
+
+    content_type = artifact.content_type.lower()
+    expected_content_type = _OUTPUT_FORMATS[envelope.target.output_format][1]
+    technical_checks = {
+        "artifact_bytes": bool(artifact.payload),
+        "target_dimensions": (
+            artifact.width == envelope.target.width
+            and artifact.height == envelope.target.height
+        ),
+        "format": content_type == expected_content_type,
+        "independent_image": True,
+    }
+    return {
+        "schema_version": "product-image-qa-v1",
+        "technical_passed": all(technical_checks.values()),
+        "technical_checks": technical_checks,
+        "visual_review_required": True,
+        "visual_checklist": (
+            "same SKU identity, natural scale/perspective, complete parts, "
+            "unblocked product, no fake claims/badges/watermarks"
+        ),
+        "task_type": envelope.prompt_input.get("task_type"),
+        "source_count": len(envelope.source_assets),
+        "retry_budget": 1,
+    }
+
+
 def _safe_usage_integer(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
@@ -2142,6 +2339,16 @@ def _direct_pose_transfer_metrics() -> dict[str, Any]:
         "source_order": ["model_source", "pose_reference"],
         "reference_pixels_available": True,
         "appearance_authority": "model_source_only",
+        "review_mode": "human_required",
+        "automatic_pose_scoring": False,
+        "automatic_retry": False,
+        "review_checklist": [
+            "no_role_reversal_or_pose_reference_identity_leakage",
+            "source_identity_outfit_scene_and_proportions_preserved",
+            "torso_limbs_feet_and_weight_bearing_match_reference_geometry",
+            "no_stretched_limbs_broken_joints_or_extra_people",
+            "canvas_crop_and_background_remain_source_consistent",
+        ],
     }
 
 

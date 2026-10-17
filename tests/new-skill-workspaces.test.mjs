@@ -31,6 +31,19 @@ test("standalone workspaces submit the exact backend job families", async () => 
   assert.match(workspace, /product_asset_ids: selections\.product/);
   assert.match(workspace, /reference_asset_ids: selections\.reference/);
   assert.match(workspace, /competitor_asset_ids: selections\.competitor/);
+  assert.match(
+    workspace,
+    /inspiration_reference_planning: selections\.competitor\.length > 0/,
+  );
+  const remixBody = workspace.slice(
+    workspace.indexOf('type: "reference_remix"'),
+    workspace.indexOf(
+      'if (featureId === "creative-image")',
+      workspace.indexOf('type: "reference_remix"'),
+    ),
+  );
+  assert.match(remixBody, /reference_skill: "reference-visual-reverse-remix"/);
+  assert.match(remixBody, /inspiration_product_first: true/);
 
   const amazonBody = workspace.slice(
     workspace.indexOf('type: "amazon_visual_suite"'),
@@ -356,13 +369,13 @@ test("public navigation uses registry route matching instead of local-edit fallb
   assert.match(directory, /searchableTools\.filter/);
 });
 
-test("detail workspace submits the selected market and only auto-starts domestic", async () => {
+test("detail workspace submits the selected market and requires explicit plan confirmation", async () => {
   const detail = await utf8("app/workspace/detail-pack/page.tsx");
-  assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1200x1600"/);
+  assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920"/);
   assert.match(detail, /严格交付 \{imageSize\}/);
   assert.match(detail, /\{selectedMarketplace\.name\} · \{imageSize\}/);
   assert.match(detail, /market_region: marketRegion/);
-  assert.match(detail, /auto_start_after_plan: marketRegion === "domestic"/);
+  assert.match(detail, /auto_start_after_plan: false/);
   assert.doesNotMatch(detail, /market_region: "international" as const/);
   assert.match(detail, /selectRegion\("domestic"\).*disabled=\{Boolean\(jobId\)\}/);
   assert.match(detail, /selectRegion\("international"\).*disabled=\{Boolean\(jobId\)\}/);

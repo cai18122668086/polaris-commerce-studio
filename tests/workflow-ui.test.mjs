@@ -18,7 +18,6 @@ import {
   jobAssetRoleLabel,
   jobItemStatusLabel,
   jobStageLabel,
-  safeJobFailureSummary,
 } from "../lib/jobs/presentation.ts";
 
 test("display coordinates map to original raster pixels", () => {
@@ -144,12 +143,4 @@ test("job detail renders explicit output, empty, download, and safe failure stat
   assert.match(source, /safeJobFailureSummary/);
   assert.doesNotMatch(source, /error_details/);
   assert.doesNotMatch(source, /error_message/);
-});
-
-
-test("set review errors describe preserved generation, not failed images", () => {
-  assert.match(safeJobFailureSummary("AURORA_SET_AUDIT_ERROR"), /图片已生成并保留/);
-  assert.match(safeJobFailureSummary("AURORA_SET_AUDIT_ERROR"), /技术错误/);
-  assert.match(safeJobFailureSummary("AURORA_SET_AUDIT_FAILED"), /审核未通过/);
-  assert.equal(jobStageLabel("set_auditing", "processing"), "图片已生成，整组审核中");
 });

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +20,7 @@ from PIL import Image
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 
+from app.aurora_detail_runtime import AuroraDetailHarnessError
 from app.config import Settings
 from app.domain import AssetOriginKind, JobAssetDirection, JobStatus
 from app.execution import AttemptLease
@@ -143,6 +145,134 @@ class _OfflineNonMockGateway(FakeXingheGateway):
     planner_model = "offline-test-planner"
     image_model = "offline-test-image"
     pricing_version = "offline-test-zero-v1"
+
+
+def _native_pair_seam_bridge_fixture(tmp_path: Path) -> tuple[Path, Path, dict[str, Any]]:
+    """Build the smallest session that has passed the pre-seam Harness gates."""
+
+    candidate = tmp_path / "candidate.png"
+    Image.new("RGB", (16, 32), "#222222").save(candidate)
+    pair_ids = [{"pair_id": "P01", "module_ids": ["M01", "M02"]}]
+    modules = []
+    for module_id in ("M01", "M02"):
+        modules.append(
+            {
+                "id": module_id,
+                "status": "AWAITING_AUDIT",
+                "cycle_attempt_count": 1,
+                "plan": {"transition_contract": {"method_id": "GRAPHIC_OVERLAY"}},
+                "attempts": [{"image": str(candidate), "pair_canvas": {"path": str(candidate)}}],
+            }
+        )
+    session = {
+        "state": "AWAITING_PIXEL_AUDIT",
+        "current_index": 0,
+        "plan": {
+            "information_contract_version": "4.1",
+            "output_strategy": {
+                "canvas_width_px": 16,
+                "module_height_px": 16,
+                "continuous_pair_rendering": {"enabled": True, "pair_ids": pair_ids},
+            },
+        },
+        "modules": modules,
+    }
+    required_checks = (
+        "identity",
+        "facts",
+        "pair_duties",
+        "visual_proof",
+        "legibility",
+        "copy_binding",
+        "internal_seam",
+        "spatial_integrity",
+        "commercial_expression",
+    )
+    judgment = {
+        "pair_id": "P01",
+        "module_ids": ["M01", "M02"],
+        "status": "MATERIAL_FAIL",
+        "audit_complete": True,
+        "checks": {
+            name: {"pass": name != "internal_seam", "visible_evidence": "direct pixel evidence"}
+            for name in required_checks
+        },
+        "internal_seam_evidence": {
+            "method_id": "GRAPHIC_OVERLAY",
+            "source_region": "M01底部接缝区域",
+            "target_region": "M02顶部接缝区域",
+            "carrier": "琥珀光轨",
+            "geometry": "光轨在固定边界处中断",
+            "hard_cut_absent": False,
+            "method_specific_pass": False,
+            "visible_evidence": "固定边界出现明显硬切，光轨未跨越接缝。",
+        },
+        "material_failures": [{"check": "internal_seam", "visible_evidence": "固定边界出现明显硬切。"}],
+        "identity_silhouette": {
+            "shape_consistent": True,
+            "colorway_consistent": True,
+            "texture_consistent": True,
+            "visible_evidence": "商品轮廓、配色和材质与原始素材一致。",
+        },
+        "information_audit": {
+            "upper_buyer_question": "上屏问题",
+            "lower_buyer_question": "下屏问题",
+            "new_information_visible": True,
+            "new_information_evidence": "上下屏信息递进。",
+            "repetition_without_progression": False,
+            "hero_subject_clear": True,
+            "co_equal_hero_detected": False,
+            "purchase_judgment_enabled": True,
+            "detail_page_not_posterized": True,
+        },
+    }
+    session_path = tmp_path / "session.json"
+    judgment_path = tmp_path / "judgment.json"
+    session_path.write_text(json.dumps(session, ensure_ascii=False), encoding="utf-8")
+    judgment_path.write_text(json.dumps(judgment, ensure_ascii=False), encoding="utf-8")
+    return session_path, judgment_path, judgment
+
+
+def test_native_pair_seam_bridge_keeps_failed_seam_and_enters_repair(tmp_path: Path) -> None:
+    session_path, judgment_path, _ = _native_pair_seam_bridge_fixture(tmp_path)
+    result = XingheImageProvider._bridge_native_pair_seam_gate(
+        session_path,
+        judgment_path,
+        AuroraDetailHarnessError(
+            "HARNESS_BLOCKED",
+            "Pair seam evidence must pass the declared method and contain no hard cut",
+        ),
+    )
+    assert result and result["state"] == "REPAIR_REQUIRED"
+    saved = json.loads(session_path.read_text(encoding="utf-8"))
+    assert [item["status"] for item in saved["modules"]] == ["REPAIR_REQUIRED", "REPAIR_REQUIRED"]
+    assert saved["modules"][0]["attempts"][-1]["judgment"]["internal_seam_evidence"]["hard_cut_absent"] is False
+
+
+@pytest.mark.parametrize("invalid_gate", ["missing_check", "identity_drift", "missing_slice"])
+def test_native_pair_seam_bridge_fails_closed_before_post_seam_gates(tmp_path: Path, invalid_gate: str) -> None:
+    session_path, judgment_path, judgment = _native_pair_seam_bridge_fixture(tmp_path)
+    session = json.loads(session_path.read_text(encoding="utf-8"))
+    if invalid_gate == "missing_check":
+        del judgment["checks"]["commercial_expression"]
+    elif invalid_gate == "identity_drift":
+        judgment["identity_silhouette"]["shape_consistent"] = False
+    else:
+        missing = tmp_path / "missing-slice.png"
+        for module in session["modules"]:
+            module["attempts"][-1]["pair_slice"] = {"path": str(missing)}
+        session_path.write_text(json.dumps(session, ensure_ascii=False), encoding="utf-8")
+    judgment_path.write_text(json.dumps(judgment, ensure_ascii=False), encoding="utf-8")
+    result = XingheImageProvider._bridge_native_pair_seam_gate(
+        session_path,
+        judgment_path,
+        AuroraDetailHarnessError(
+            "HARNESS_BLOCKED",
+            "Pair seam evidence must pass the declared method and contain no hard cut",
+        ),
+    )
+    assert result is None
+    assert json.loads(session_path.read_text(encoding="utf-8"))["state"] == "AWAITING_PIXEL_AUDIT"
 
 
 @pytest.fixture
@@ -420,7 +550,7 @@ def test_postgres_agent_concurrency_retry_and_usage_are_durable(
             .where(UsageEventRecord.job_id == job["id"])
         )
 
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == 7
     assert 1 <= gateway.max_active_images <= 6
@@ -473,7 +603,8 @@ def test_failed_pages_wait_for_explicit_retry_and_successes_are_reused(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{retried.json()['id']}"
     ).json()
 
-    assert resumed["status"] == JobStatus.COMPLETED.value
+    # Detail packs pause for the explicit delivery decision after generation.
+    assert resumed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert len(gateway.planner_calls) == 1
     assert sum(call.page_number == 1 for call in gateway.image_calls) == 1
     assert sum(call.page_number == 2 for call in gateway.image_calls) == 2
@@ -553,7 +684,7 @@ def test_unreported_usage_is_explicit_and_metrics_are_distinct(
             select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
         ).all()
 
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert completed["cost"]["usage_completeness"] == "none"
     assert all(event.usage_reported is False for event in events)
     assert all(event.input_tokens is None for event in events)
@@ -590,7 +721,7 @@ def test_throughput_metric_has_stable_zero_and_completed_semantics(
     assert dispatch_pending(client) == 1
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     metrics = completed["plan"]["payload"]["metrics"]
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert metrics["success_count"] == 2
     assert metrics["image_wall_time"] > 0
     assert metrics["throughput_pages_per_second"] == pytest.approx(
@@ -818,6 +949,44 @@ def test_reference_planner_prompt_follows_attached_source_roles() -> None:
         in style_first
     )
     assert "The first attached image is visual_strategy_reference" not in product_first
+
+
+def test_crossborder_detail_prompt_keeps_product_and_style_reference_roles() -> None:
+    def source(asset_id: str, role: str) -> SourceImage:
+        return SourceImage(
+            asset_id=asset_id,
+            group_key="crossborder",
+            filename=f"{asset_id}.png",
+            content_type="image/png",
+            sha256="b" * 64,
+            payload=b"image",
+            source_role=role,
+        )
+
+    prompt = _planner_prompt(
+        PlannerRequest(
+            workspace_id="ws-crossborder-contract",
+            job_id="job-crossborder-contract",
+            group_key="crossborder",
+            sources=(
+                source("product", "product_reference"),
+                source("style", "style_reference"),
+            ),
+            page_count=8,
+            language="en",
+            product_name="visible product",
+            product_information=("visible product facts",),
+            platform_code="amazon",
+            size="2048x1152",
+            idempotency_key="job-crossborder-contract:planner",
+            planning_profile="crossborder_detail",
+        )
+    )
+
+    assert "product_reference image(s) are the only source of product identity" in prompt
+    assert "style_reference image(s) are optional visual references" in prompt
+    assert "references/reference-page-analysis.md" in prompt
+    assert "Never copy their product, brand, wording" in prompt
 
 
 def test_fake_amazon_plan_matches_original_skill_contract() -> None:
@@ -1550,7 +1719,7 @@ def test_raw_planner_envelope_diagnostics_are_safe_and_durable(
             "parse_trace": expected_trace,
             "structure_fingerprint": diagnostics["structure_fingerprint"],
             "structure_profile": expected_structure_profile,
-            "provider_envelope": {**expected_envelope, "finish_reason": "unknown"},
+            "provider_envelope": expected_envelope,
             "content_utf8_bytes": expected_bytes,
             "content_sha256": expected_sha256,
             "request_id_presence": expected_request_id,
@@ -1635,7 +1804,6 @@ def test_strict_planner_content_reaches_confirmation_gate(
             "choice0_kind": "mapping",
             "message_kind": "mapping",
             "content_kind": "string",
-            "finish_reason": "unknown",
         }
         assert diagnostics[0]["request_id_presence"] == "present"
         assert diagnostics[0]["usage_presence"] == "present"
@@ -2101,7 +2269,7 @@ def test_mock_detail_pack_discards_artifacts_before_storage(
     assert dispatch_pending(client) == 1
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert all(item["result_source"] == "mock" for item in completed["items"])
     assert not [
         relation
@@ -2232,7 +2400,8 @@ def test_duplicate_delivery_is_idempotent_across_plan_and_generation(
     )
     assert dispatch_pending(client) == 1
     assert (
-        asyncio.run(client.app.state.task_runner.run(job["id"])) == JobStatus.COMPLETED
+        asyncio.run(client.app.state.task_runner.run(job["id"]))
+        == JobStatus.AWAITING_FINAL_REVIEW
     )
     assert len(gateway.planner_calls) == 1
     assert len(gateway.image_calls) == 2
@@ -2331,7 +2500,7 @@ def test_durable_plan_survives_runner_recreation(
     assert dispatch_pending(client) == 1
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
-    assert completed["status"] == JobStatus.COMPLETED.value
+    assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert replacement_gateway.planner_calls == []
     assert len(replacement_gateway.image_calls) == 2
 
@@ -2417,6 +2586,64 @@ def test_image_artifact_uses_requested_canvas_size_contract() -> None:
             expected_size=IMAGE_SIZE,
         )
     assert exc_info.value.code == "IMAGE_RESPONSE_SIZE_INVALID"
+
+
+def test_crossborder_16_9_requests_native_canvas_and_delivers_2k() -> None:
+    transport = _RecordingTransport()
+    adapter = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key",
+        base_url="https://api.example.test",
+        planner_model="gpt-5.6-terra",
+        image_model="gpt-image-2",
+        transport=transport,
+    )
+    source = SourceImage(
+        asset_id="asset_one",
+        group_key="crossborder",
+        filename="source.jpg",
+        content_type="image/jpeg",
+        sha256="a" * 64,
+        payload=b"source-pixels",
+    )
+
+    image = asyncio.run(
+        adapter.edit(
+            ImageEditRequest(
+                workspace_id="ws_test",
+                job_id="job_test",
+                job_item_id="item_test",
+                attempt_id="attempt_test",
+                page_number=1,
+                group_key="crossborder",
+                sources=(source,),
+                prompt="16:9 product detail module",
+                quality="high",
+                idempotency_key="image-idem",
+                size="2048x1152",
+            )
+        )
+    )
+
+    fields = dict(transport.multipart_calls[0]["fields"])
+    assert fields["size"] == "1536x864"
+    assert image.artifact is not None
+    assert (image.artifact.width, image.artifact.height) == (2048, 1152)
+    assert image.artifact.locally_resampled is True
+    assert (image.artifact.provider_width, image.artifact.provider_height) == (1536, 864)
+
+
+def test_near_16_9_provider_canvas_is_cover_cropped_onto_delivery_size() -> None:
+    artifact = _artifact_from_bytes(
+        _jpeg((1672, 941)),
+        filename="provider-16-9.jpg",
+        expected_size="2048x1152",
+    )
+
+    assert (artifact.width, artifact.height) == (2048, 1152)
+    assert artifact.locally_resampled is True
+    assert (artifact.provider_width, artifact.provider_height) == (1672, 941)
+    with Image.open(BytesIO(artifact.payload)) as image:
+        assert image.size == (2048, 1152)
 
 
 def _png(size: tuple[int, int]) -> bytes:
@@ -3020,20 +3247,107 @@ def test_sensitive_agent_audits_store_no_prompt_source_or_key(
     assert plan is not None
 
 
-def test_aurora_set_audit_gateway_reserves_full_review_token_budget() -> None:
-    transport = _RecordingTransport()
-    adapter = TengliOpenAICompatibleGateway(
-        api_key="test-placeholder-key",
-        base_url="https://api.example.test",
-        planner_model="gpt-5.6-terra",
-        image_model="gpt-image-2",
+class _OrderedFailoverTransport:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def post_json(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        headers = kwargs["headers"]
+        self.calls.append((kwargs["url"], headers["Authorization"]))
+        if len(self.calls) < 3:
+            return 403, {"error": {"message": "Insufficient account balance"}}
+        return 200, {
+            "id": "req-ok",
+            "choices": [{"message": {"content": "{\"accepted\": true}"}}],
+            "usage": {
+                "prompt_tokens": 1,
+                "completion_tokens": 1,
+                "total_tokens": 2,
+            },
+        }
+
+    async def post_multipart(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        raise AssertionError("planner failover must not call the image API")
+
+
+def test_planner_walks_failover_keys_from_top_to_bottom() -> None:
+    transport = _OrderedFailoverTransport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="primary-key",
+        base_url="https://planner.example",
+        planner_model="gpt-5.6-sol",
+        image_model="gpt-image-2.5-flare",
+        image_api_key="image-key",
+        image_base_url="https://image.example",
+        failover_enabled=True,
+        failover_api_key="key-one,key-two,key-three",
+        failover_base_url="https://fallback.example",
+        failover_model="gpt-5.6-sol",
+        rotation_order="primary,failover",
         transport=transport,
     )
-    asyncio.run(adapter.plan(PlannerRequest(
-        workspace_id="ws_set_audit", job_id="job_set_audit", group_key="set",
-        sources=(), page_count=6, language="zh-CN", product_name="Audit fixture",
-        product_information=(), platform_code="TAOBAO", size="1024x1024",
-        idempotency_key="set-audit-fixture", planning_profile="aurora_set_audit",
-    )))
-    assert len(transport.json_calls) == 1
-    assert transport.json_calls[0]["payload"]["max_completion_tokens"] == 16_000
+
+    routes = gateway._ordered_routes()
+    assert [route.name for route in routes] == [
+        "primary",
+        "failover-1",
+        "failover-2",
+        "failover-3",
+    ]
+    assert [route.planner_api_key for route in routes] == [
+        "primary-key",
+        "key-one",
+        "key-two",
+        "key-three",
+    ]
+    assert [route.planner_base_url for route in routes] == [
+        "https://planner.example/",
+        "https://fallback.example/",
+        "https://fallback.example/",
+        "https://fallback.example/",
+    ]
+    assert [route.name for route in gateway._image_routes()] == ["primary"]
+    assert gateway._image_routes()[0].image_api_key == "image-key"
+    assert gateway._should_failover_status(401)
+    assert gateway._should_failover_status(402)
+    assert gateway._should_failover_status(403)
+    assert not gateway._should_failover_status(400)
+
+    single = TengliOpenAICompatibleGateway(
+        api_key="primary-key",
+        base_url="https://planner.example",
+        planner_model="gpt-5.6-sol",
+        image_model="gpt-image-2.5-flare",
+        failover_enabled=True,
+        failover_api_key="only-one",
+        failover_base_url="https://fallback.example",
+        transport=transport,
+    )
+    assert [route.name for route in single._ordered_routes()] == [
+        "primary",
+        "failover",
+    ]
+
+    result = asyncio.run(
+        gateway.plan(
+            PlannerRequest(
+                workspace_id="ws",
+                job_id="job",
+                group_key="group",
+                sources=(),
+                page_count=1,
+                language="zh",
+                product_name="cup",
+                product_information=(),
+                platform_code="taobao",
+                size="1024x1536",
+                idempotency_key="idem-failover",
+            )
+        )
+    )
+    assert result.payload == {"accepted": True}
+    assert transport.calls == [
+        ("https://planner.example/v1/chat/completions", "Bearer primary-key"),
+        ("https://fallback.example/v1/chat/completions", "Bearer key-one"),
+        ("https://fallback.example/v1/chat/completions", "Bearer key-two"),
+    ]

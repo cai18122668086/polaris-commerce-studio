@@ -121,9 +121,26 @@ export function StyleReplicaWorkspace() {
           `/api/ecommerce/session/status?platform=${sessionPlatform}`,
         );
         const body = await response.json();
+        if (response.status === 403) {
+          if (active) {
+            setSession({
+              state: "permission_required",
+              message: "当前账号无电商会话权限，请使用管理员账号或联系管理员。",
+            });
+          }
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(body.detail?.message ?? "电商会话状态暂时不可用。");
+        }
         if (active && body.data) setSession(body.data);
-      } catch {
-        /* status is best-effort */
+      } catch (caught) {
+        if (active) {
+          setSession({
+            state: "unavailable",
+            message: caught instanceof Error ? caught.message : "电商会话状态暂时不可用。",
+          });
+        }
       }
     };
     void read();
@@ -147,6 +164,7 @@ export function StyleReplicaWorkspace() {
   const sessionProfileDetected =
     Boolean(session.profileReady) && !sessionReady && !sessionNeedsRelogin;
   const sessionRiskControlled = session.state === "risk_controlled";
+  const sessionPermissionRequired = session.state === "permission_required";
   useEffect(() => {
     if (!previewSrc) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -284,11 +302,13 @@ export function StyleReplicaWorkspace() {
                     : styles.statusMuted
               }
             >
-              {sessionRiskControlled ? <ShieldAlert size={15} /> : <CheckCircle2 size={15} />}
+              {sessionRiskControlled || sessionPermissionRequired ? <ShieldAlert size={15} /> : <CheckCircle2 size={15} />}
               {sessionReady
                 ? `${sessionLabel}会话已连接`
                 : sessionRiskControlled
                   ? `${sessionLabel}安全验证拦截`
+                  : sessionPermissionRequired
+                    ? "当前账号无电商会话权限"
                   : sessionNeedsRelogin
                     ? `需要重新登录${sessionLabel}`
                   : sessionProfileDetected
@@ -298,7 +318,7 @@ export function StyleReplicaWorkspace() {
             <button
               className={styles.loginButton}
               onClick={() => void startLogin()}
-              disabled={session.state === "login_pending" || sessionReady}
+              disabled={session.state === "login_pending" || sessionReady || sessionPermissionRequired}
             >
               {sessionReady
                 ? "已连接"
@@ -310,9 +330,11 @@ export function StyleReplicaWorkspace() {
                   ? "等待登录…"
                   : sessionRiskControlled
                     ? "稍后重试"
+                    : sessionPermissionRequired
+                      ? "需要管理员权限"
                     : `登录${sessionLabel}`}
             </button>
-            {sessionRiskControlled && (
+            {(sessionRiskControlled || sessionPermissionRequired) && (
               <div className={styles.sessionNotice}>
                 {session.message || "请停止连续重试，稍后使用稳定网络通过官方页面完成验证。"}
               </div>
@@ -599,20 +621,27 @@ export function StyleReplicaWorkspace() {
                 </button>
                 <button
                   className={styles.secondary}
-                  onClick={() => setSaved("已保存到素材库（演示状态）")}
+                  type="button"
+                  disabled
+                  title="保存到素材库尚未接入"
                 >
                   <Save size={15} />
-                  保存到素材库
+                  保存到素材库（待接入）
                 </button>
                 <button
                   className={styles.primary}
-                  disabled={!selected.length}
-                  onClick={() => setSaved("复刻任务已创建，可在生成记录中查看")}
+                  type="button"
+                  disabled
+                  title="商品复刻 Skill 尚未接入"
                 >
                   <Sparkles size={15} />
-                  开始复刻
+                  开始复刻（待接入）
                 </button>
               </div>
+              <p className={styles.saved} role="status">
+                当前页面仅支持商品抓取预览；素材保存与复刻任务尚未接入对应 Skill。
+                {sessionPermissionRequired ? ` ${session.message}` : ""}
+              </p>
               {saved && <div className={styles.saved}>{saved}</div>}
             </footer>
           </>

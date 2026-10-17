@@ -538,9 +538,9 @@ def test_terminal_quota_settlement_releases_unused_retry_without_fake_actual_cos
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
-    settings.tengli_daily_budget_usd = 0.6
+    settings.tengli_daily_budget_usd = 1.5
     settings.tengli_monthly_budget_usd = 5
-    settings.tengli_daily_request_limit = 6
+    settings.tengli_daily_request_limit = 8
     settings.tengli_planner_reserve_micros = 250_000
     gateway = OfflineMaskedGateway(report_actual_cost=False)
     _install_runner(client, gateway)
@@ -591,8 +591,8 @@ def test_terminal_quota_settlement_releases_unused_retry_without_fake_actual_cos
         assert settlement.details["actual_provider_request_count"] == 2
         assert settlement.details["cost_basis"] == "estimated_fallback"
         assert settlement.details["actual_cost_reported_count"] == 0
-        assert release.details["released_cost_micros"] == 340_000
-        assert release.details["released_request_count"] == 2
+        assert release.details["released_cost_micros"] == 1_090_000
+        assert release.details["released_request_count"] == 4
         assert attempts.details["attempts"][0]["actual_cost_reported"] is False
 
 
@@ -934,7 +934,7 @@ def test_encoding_damaged_instruction_fails_before_provider_calls(
         assert release is not None
         assert settlement.details["charged_cost_micros"] == 0
         assert settlement.details["actual_provider_request_count"] == 0
-        assert release.details["released_request_count"] == 4
+        assert release.details["released_request_count"] == 6
 
 def test_dimensions_kind_and_cross_workspace_are_rejected_at_api(
     client: TestClient,

@@ -6,8 +6,8 @@ import hashlib
 import json
 import math
 from collections import defaultdict
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -45,7 +45,12 @@ from .models import (
     JobRecord,
     utc_now,
 )
-from .services import canonical_hash, fence_amazon_suite_review_attempts, new_id
+from .services import (
+    canonical_hash,
+    fence_amazon_suite_review_attempts,
+    new_id,
+    transition_job,
+)
 from .skill_protocol import SkillProtocolError, load_skill_protocol
 from .storage import ImageStorage, ValidatedImage
 from .xinghe_agent import (
@@ -161,6 +166,7 @@ class AmazonSuiteQualityService:
         skill_root: Path,
         manifest_validator: Callable[[str], str],
         max_review_rounds: int = 1,
+        enforce_delivery: bool = False,
         worker_id: str | None = None,
         review_lease_seconds: float = 900,
     ) -> None:
@@ -174,6 +180,11 @@ class AmazonSuiteQualityService:
         self.skill_root = skill_root
         self.manifest_validator = manifest_validator
         self.max_review_rounds = max_review_rounds
+        # The standalone diagnostic service remains read-only by default.  The
+        # production Amazon execution path opts in so a failed first review
+        # schedules only the flagged items for one bounded redraw round and a
+        # failed final review blocks delivery.
+        self.enforce_delivery = enforce_delivery
         self.worker_id = worker_id or f"amazon-review-{uuid4().hex}"
         self.review_lease_seconds = review_lease_seconds
 
@@ -267,7 +278,7 @@ class AmazonSuiteQualityService:
             )
 
         try:
-            result = await self.gateway.review_amazon(
+            result = await self._review_with_recovery(
                 AmazonVisualReviewRequest(
                     workspace_id=snapshot.workspace_id,
                     job_id=snapshot.job_id,
@@ -286,7 +297,10 @@ class AmazonSuiteQualityService:
                     skill_protocol=protocol.prompt_payload(),
                     idempotency_key=cast(str, claim.idempotency_key),
                     review_item_keys=AMAZON_ITEM_KEYS,
-                )
+                ),
+                snapshot=snapshot,
+                attempt_id=attempt_id,
+                lease_token=lease_token,
             )
         except Exception as exc:
             return self._unavailable(
@@ -332,6 +346,65 @@ class AmazonSuiteQualityService:
             result,
             attempt_id=attempt_id,
             lease_token=lease_token,
+        )
+
+    async def _review_with_recovery(
+        self,
+        request: AmazonVisualReviewRequest,
+        *,
+        snapshot: _Snapshot,
+        attempt_id: str,
+        lease_token: str,
+    ) -> AmazonVisualReviewCallResult:
+        attempts: list[AmazonVisualReviewCallResult] = []
+        route_limit = min(
+            4, max(2, int(getattr(self.gateway, "visual_review_route_count", 2)))
+        )
+        for index in range(route_limit):
+            if index and self._provider_call_allowed(
+                snapshot, attempt_id, lease_token
+            ) in {"lost", "expired"}:
+                break
+            result = await self.gateway.review_amazon(
+                replace(request, route_attempt=index)
+            )
+            attempts.append(result)
+            if result.visual_success is not None or not result.retryable:
+                break
+        if len(attempts) == 1:
+            return result
+        normalized: dict[str, Any] = {
+            "reported": all(a.normalized_usage.get("reported") for a in attempts),
+            "network_requests": len(attempts),
+        }
+        for key in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+            values = [a.normalized_usage.get(key) for a in attempts]
+            normalized[key] = (
+                sum(values) if all(isinstance(v, int) for v in values) else None
+            )
+        actual = [a.actual_cost_micros for a in attempts]
+        estimates = [a.estimated_cost_micros for a in attempts]
+        return replace(
+            result,
+            normalized_usage=normalized,
+            raw_usage={
+                "network_requests": len(attempts),
+                "attempts": [
+                    {
+                        "raw": a.raw_usage,
+                        "error_code": a.error_code,
+                        "http_status": a.http_status,
+                        "provider_request_id": a.provider_request_id,
+                    }
+                    for a in attempts
+                ],
+            },
+            actual_cost_micros=sum(v for v in actual if v is not None)
+            if all(v is not None for v in actual)
+            else None,
+            estimated_cost_micros=sum(v for v in estimates if v is not None)
+            if all(v is not None for v in estimates)
+            else None,
         )
 
     def _claim_review(self, snapshot: _Snapshot) -> _ReviewClaim:
@@ -866,8 +939,20 @@ class AmazonSuiteQualityService:
                     ),
                 }
             )
+            if self.enforce_delivery:
+                quality.update(
+                    {
+                        "manual_review_required": True,
+                        "delivery_status": "manual_review_required",
+                        "max_suite_review_rounds": self.max_review_rounds,
+                    }
+                )
             payload["business_quality"] = quality
-            _enable_review(payload)
+            _enable_review(
+                payload,
+                max_review_rounds=self.max_review_rounds,
+                automatic_redraw=False,
+            )
             plan.payload = payload
             plan.payload_hash = canonical_hash(payload)
             session.commit()
@@ -900,6 +985,20 @@ class AmazonSuiteQualityService:
                     }
                 ],
             )
+            if self.enforce_delivery:
+                payload["business_quality"].update(
+                    {
+                        "manual_review_required": True,
+                        "automatic_redraw_enabled": False,
+                        "max_suite_review_rounds": self.max_review_rounds,
+                        "delivery_status": "manual_review_required",
+                    }
+                )
+                _enable_review(
+                    payload,
+                    max_review_rounds=self.max_review_rounds,
+                    automatic_redraw=False,
+                )
             plan.payload, plan.payload_hash = payload, canonical_hash(payload)
             session.commit()
 
@@ -970,7 +1069,86 @@ class AmazonSuiteQualityService:
                 missing=list(review.missing_evidence),
                 visual_review=_review_payload(review, reasons),
             )
-            _enable_review(payload)
+            if self.enforce_delivery:
+                payload["business_quality"].update(
+                    {
+                        "automatic_redraw_enabled": True,
+                        "manual_review_required": not passed,
+                        "max_suite_review_rounds": self.max_review_rounds,
+                        "delivery_status": "ready" if passed else "blocked",
+                    }
+                )
+            if (
+                self.enforce_delivery
+                and not passed
+                and review_round < self.max_review_rounds
+            ):
+                self._schedule_redraw_locked(
+                    session,
+                    snapshot,
+                    payload,
+                    failed,
+                    review,
+                    next_review_round=review_round + 1,
+                )
+                plan.payload, plan.payload_hash = payload, canonical_hash(payload)
+                # The next image attempts require an active generation job,
+                # including when this review started from a manual-review state.
+                transition_job(job, JobStatus.PROCESSING)
+                job.finished_at = None
+                job.succeeded_item_count = (
+                    session.scalar(
+                        select(func.count())
+                        .select_from(JobItemRecord)
+                        .where(
+                            JobItemRecord.job_id == job.id,
+                            JobItemRecord.status.in_(("succeeded", "reused")),
+                        )
+                    )
+                    or 0
+                )
+                job.failed_item_count = 0
+                job.stage = "suite_quality_redraw_pending"
+                job.state_version += 1
+                session.commit()
+                return AmazonSuiteReviewOutcome("retry_items", review_round, failed)
+            if self.enforce_delivery and not passed:
+                # A final visual rejection must have failed JobItems so the
+                # durable partial-state constraint and retry scope can express
+                # the blocked rows.  Fence their prior files before the job is
+                # transitioned out of a completed delivery state.
+                failed_set = set(failed) or set(AMAZON_ITEM_KEYS)
+                items = session.scalars(
+                    select(JobItemRecord)
+                    .where(JobItemRecord.job_id == snapshot.job_id)
+                    .with_for_update()
+                ).all()
+                for item in items:
+                    if item.item_key not in failed_set:
+                        continue
+                    item.status = JobItemStatus.FAILED.value
+                    item.stage = "qa_failed"
+                    item.finished_at = utc_now()
+                    item.error_code = "AMAZON_QA_QUALITY_FAILED"
+                    item.error_message = review.retry_guidance or review.summary
+                    item.error_details = {
+                        "qa_review_round": review_round,
+                        "qa_failed_item": True,
+                        "reason_codes": list(review.reason_codes),
+                        "retry_guidance": review.retry_guidance,
+                    }
+                    item.state_version += 1
+                    session.query(JobAssetRecord).filter(
+                        JobAssetRecord.job_id == snapshot.job_id,
+                        JobAssetRecord.job_item_id == item.id,
+                        JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                        JobAssetRecord.is_deliverable.is_(True),
+                    ).update({"is_deliverable": False}, synchronize_session=False)
+            _enable_review(
+                payload,
+                max_review_rounds=self.max_review_rounds,
+                automatic_redraw=self.enforce_delivery,
+            )
             plan.payload, plan.payload_hash = payload, canonical_hash(payload)
             job.stage = "suite_quality_passed" if passed else "suite_quality_reported"
             job.state_version += 1
@@ -978,6 +1156,89 @@ class AmazonSuiteQualityService:
         return AmazonSuiteReviewOutcome(
             "passed" if passed else "failed", review_round, failed
         )
+
+    def _schedule_redraw_locked(
+        self,
+        session: Session,
+        snapshot: _Snapshot,
+        payload: dict[str, Any],
+        failed: Sequence[str],
+        review: AmazonVisualReviewCallResult,
+        next_review_round: int,
+    ) -> None:
+        """Fence old outputs and make only failed items claimable again."""
+
+        failed_set = set(failed)
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == snapshot.job_id)
+            .with_for_update()
+        ).all()
+        for item in items:
+            if item.item_key not in failed_set:
+                continue
+            item.status = JobItemStatus.PENDING.value
+            item.stage = "qa_redraw"
+            item.finished_at = None
+            item.error_code = "AMAZON_QA_REDRAW"
+            item.error_message = review.retry_guidance or review.summary
+            item.error_details = {
+                "qa_review_round": next_review_round,
+                "qa_failed_item": True,
+                "retry_guidance": review.retry_guidance,
+            }
+            current_configuration = (
+                dict(item.configuration)
+                if isinstance(item.configuration, Mapping)
+                else {}
+            )
+            item.configuration = {
+                **current_configuration,
+                "qa_redraw": {
+                    "review_round": next_review_round,
+                    "reason_codes": list(review.reason_codes),
+                    "retry_guidance": review.retry_guidance,
+                    "summary": review.summary,
+                },
+            }
+            item.state_version += 1
+            session.query(JobAssetRecord).filter(
+                JobAssetRecord.job_id == snapshot.job_id,
+                JobAssetRecord.job_item_id == item.id,
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                JobAssetRecord.is_deliverable.is_(True),
+            ).update({"is_deliverable": False}, synchronize_session=False)
+        quality = payload.get("business_quality")
+        quality_payload = dict(quality) if isinstance(quality, Mapping) else {}
+        quality_payload.update(
+            {
+                "status": "redraw_pending",
+                "technical_delivery_status": "redraw_pending",
+                "manual_review_required": False,
+                "automatic_redraw_enabled": True,
+                "delivery_status": "redraw_pending",
+                "failed_item_keys": list(failed),
+                "qa_notes": [review.summary],
+                "retry_guidance": review.retry_guidance,
+                "max_suite_review_rounds": self.max_review_rounds,
+            }
+        )
+        payload["business_quality"] = quality_payload
+        _enable_review(
+            payload,
+            max_review_rounds=self.max_review_rounds,
+            automatic_redraw=True,
+        )
+        payload["controls"] = {
+            **(
+                dict(payload.get("controls"))  # type: ignore[arg-type]
+                if isinstance(payload.get("controls"), Mapping)
+                else {}
+            ),
+            "max_suite_review_rounds": self.max_review_rounds,
+            "automatic_review_enabled": True,
+            "automatic_redraw_enabled": True,
+        }
 
     def _unavailable(
         self,
@@ -1053,6 +1314,15 @@ class AmazonSuiteQualityService:
                 ),
                 failure_kind=_REVIEW_INFRASTRUCTURE_FAILURE,
             )
+            if self.enforce_delivery:
+                payload["business_quality"].update(
+                    {
+                        "manual_review_required": True,
+                        "delivery_status": "manual_review_required",
+                        "automatic_redraw_enabled": False,
+                        "max_suite_review_rounds": self.max_review_rounds,
+                    }
+                )
             _enable_review(payload)
             plan.payload, plan.payload_hash = payload, canonical_hash(payload)
             job.stage = "suite_review_reported"
@@ -1282,6 +1552,17 @@ def _next_review_round(
     status = quality.get("status")
     if current_round == 0 and status in {None, "pending_generation", "needs_review"}:
         return 1
+    controls = payload.get("controls")
+    max_rounds = (
+        controls.get("max_suite_review_rounds", 1)
+        if isinstance(controls, Mapping)
+        else 1
+    )
+    if status == "redraw_pending" and current_round > 0 and current_round < max_rounds:
+        # A deterministic/mock generator may return the same bytes after a
+        # redraw.  Completion of the fenced pending item set, rather than a
+        # hash change alone, is the durable round transition.
+        return current_round + 1
     return None
 
 
@@ -1398,15 +1679,20 @@ def _append_usage(
     payload["usage"] = usage
 
 
-def _enable_review(payload: dict[str, Any]) -> None:
+def _enable_review(
+    payload: dict[str, Any],
+    *,
+    max_review_rounds: int = 1,
+    automatic_redraw: bool = False,
+) -> None:
     controls_value = payload.get("controls")
     controls = dict(controls_value) if isinstance(controls_value, dict) else {}
     controls.update(
         {
             "automatic_review_enabled": True,
-            "automatic_redraw_enabled": False,
+            "automatic_redraw_enabled": automatic_redraw,
             "successful_page_auto_redraw_enabled": False,
-            "max_suite_review_rounds": 1,
+            "max_suite_review_rounds": max_review_rounds,
         }
     )
     payload["controls"] = controls

@@ -41,6 +41,7 @@ from app.models import (
     JobRecord,
     utc_now,
 )
+from app.provider import FakeProvider
 from app.services import canonical_hash, transition_job
 from app.xinghe_agent import (
     AmazonVisualReviewCallResult,
@@ -373,6 +374,8 @@ def _service(
     *,
     worker_id: str,
     lease_seconds: float = 30,
+    enforce_delivery: bool = False,
+    max_review_rounds: int = 1,
 ) -> AmazonSuiteQualityService:
     service = AmazonSuiteQualityService(
         client.app.state.session_factory,
@@ -380,6 +383,8 @@ def _service(
         object(),
         skill_root=Path("."),
         manifest_validator=lambda _skill_id: "a" * 64,
+        max_review_rounds=max_review_rounds,
+        enforce_delivery=enforce_delivery,
         worker_id=worker_id,
         review_lease_seconds=lease_seconds,
     )
@@ -702,6 +707,68 @@ def test_review_findings_are_read_only_and_do_not_demote_outputs(
         assert all(link.is_deliverable for link in links)
 
 
+@pytest.mark.parametrize(
+    "initial_status", [JobStatus.PROCESSING, JobStatus.AWAITING_FINAL_REVIEW]
+)
+def test_enforced_review_schedules_only_failed_items_for_bounded_redraw(
+    client: TestClient,
+    initial_status: JobStatus,
+) -> None:
+    snapshot = _seed_snapshot(client, "enforced-redraw")
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, snapshot.job_id)
+        job.status = initial_status.value
+        session.commit()
+    gateway = _ImmediateGateway(result=_finding_result())
+    service = _service(
+        client,
+        gateway,
+        snapshot,
+        worker_id="review-enforced-redraw",
+        enforce_delivery=True,
+        max_review_rounds=2,
+    )
+
+    outcome = asyncio.run(service.review(snapshot.job_id))
+
+    assert outcome.action == "retry_items"
+    assert outcome.review_round == 1
+    assert outcome.failed_item_keys == (AMAZON_ITEM_KEYS[0],)
+    with client.app.state.session_factory() as session:
+        plan = session.get(JobPlanRecord, snapshot.plan_id)
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == snapshot.job_id)
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        links = session.scalars(
+            select(JobAssetRecord).where(
+                JobAssetRecord.job_id == snapshot.job_id,
+                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+            )
+        ).all()
+        assert plan is not None
+        quality = plan.payload["business_quality"]
+        assert quality["status"] == "redraw_pending"
+        job = session.get(JobRecord, snapshot.job_id)
+        assert job.status == JobStatus.PROCESSING.value
+        assert job.succeeded_item_count == len(AMAZON_ITEM_KEYS) - 1
+        assert quality["delivery_status"] == "redraw_pending"
+        assert quality["max_suite_review_rounds"] == 2
+        assert plan.payload["controls"]["automatic_redraw_enabled"] is True
+        assert items[0].status == JobItemStatus.PENDING.value
+        assert items[0].stage == "qa_redraw"
+        assert items[0].configuration["qa_redraw"]["review_round"] == 2
+        assert all(item.status == JobItemStatus.SUCCEEDED.value for item in items[1:])
+        item_by_id = {item.id: item for item in items}
+        assert all(
+            (not link.is_deliverable)
+            if item_by_id[link.job_item_id].item_key == AMAZON_ITEM_KEYS[0]
+            else link.is_deliverable
+            for link in links
+        )
+
+
 @pytest.mark.parametrize("result_kind", ["apply", "unavailable"])
 def test_review_result_is_fenced_after_deliverable_output_changes(
     client: TestClient,
@@ -807,7 +874,7 @@ async def _review_infrastructure_failure_scenario(client: TestClient) -> None:
     assert first.action == "failed"
     assert second.action == "failed"
     assert first.review_round == second.review_round == 1
-    assert len(gateway.calls) == 1
+    assert len(gateway.calls) == 2
     with client.app.state.session_factory() as session:
         plan = session.get(JobPlanRecord, snapshot.plan_id)
         items = session.scalars(
@@ -1026,3 +1093,70 @@ async def _slow_local_preparation_scenario(client: TestClient) -> None:
         assert attempt is not None
         assert attempt.status == AttemptStatus.SUCCEEDED.value
         assert attempt.provider_call_started_at is not None
+
+
+def test_transient_suite_review_recovers_without_redrawing_images(
+    client: TestClient,
+) -> None:
+    snapshot = _seed_snapshot(client, "transient-review-recovery")
+
+    class Gateway(_ImmediateGateway):
+        async def review_amazon(
+            self, request: AmazonVisualReviewRequest
+        ) -> AmazonVisualReviewCallResult:
+            self.calls.append(request)
+            if len(self.calls) == 1:
+                return replace(_unavailable_result(), retryable=True, http_status=503)
+            return _passed_result()
+
+    gateway = Gateway()
+    service = _service(client, gateway, snapshot, worker_id="review-recovery")
+    result = asyncio.run(service.review(snapshot.job_id))
+    assert result.action == "passed"
+    assert [call.route_attempt for call in gateway.calls] == [0, 1]
+    assert len({call.idempotency_key for call in gateway.calls}) == 1
+    with client.app.state.session_factory() as session:
+        attempt = session.scalar(
+            select(AmazonSuiteReviewAttemptRecord).where(
+                AmazonSuiteReviewAttemptRecord.job_id == snapshot.job_id
+            )
+        )
+        assert attempt.status == AttemptStatus.SUCCEEDED.value
+        assert attempt.normalized_usage["network_requests"] == 2
+        assert len(attempt.raw_usage["attempts"]) == 2
+        items = session.scalars(
+            select(JobItemRecord).where(JobItemRecord.job_id == snapshot.job_id)
+        ).all()
+        assert all(item.status == JobItemStatus.SUCCEEDED.value for item in items)
+
+
+@pytest.mark.parametrize("failed_count", [1, len(AMAZON_ITEM_KEYS)])
+def test_legacy_review_with_failed_items_becomes_retryable_without_generation(
+    client: TestClient,
+    failed_count: int,
+) -> None:
+    snapshot = _seed_snapshot(client, "legacy-failed-review")
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, snapshot.job_id)
+        job.status = JobStatus.AWAITING_FINAL_REVIEW.value
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job.id)
+            .limit(failed_count)
+        ).all()
+        for item in items:
+            item.status = JobItemStatus.FAILED.value
+            item.error_code = "AMAZON_QA_REDRAW"
+        session.commit()
+    provider = FakeProvider()
+    coordinator = ExecutionCoordinator(client.app.state.session_factory, provider)
+    expected = (
+        JobStatus.PARTIAL if failed_count < len(AMAZON_ITEM_KEYS) else JobStatus.FAILED
+    )
+    assert asyncio.run(coordinator.run(snapshot.job_id)) == expected
+    assert provider.call_count == 0
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, snapshot.job_id)
+        assert job.succeeded_item_count == len(AMAZON_ITEM_KEYS) - failed_count
+        assert job.failed_item_count == failed_count
+        assert job.finished_at is not None

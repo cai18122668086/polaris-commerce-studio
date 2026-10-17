@@ -126,6 +126,12 @@ class DevelopmentProviderSettingsResponse(BaseModel):
     available: bool
     configured: bool
     task_runner: Literal["mock", "tengli"]
+    product_image_provider_enabled: bool
+    reference_remix_provider_enabled: bool
+    model_pose_transfer_provider_enabled: bool
+    creative_image_provider_enabled: bool
+    amazon_visual_suite_provider_enabled: bool
+    crossborder_detail_provider_enabled: bool
     domestic_main_image_provider_enabled: bool
     base_url: str
     image_model: str
@@ -181,7 +187,13 @@ class LocalEditInput(BaseModel):
 
 class LocalEditConfiguration(BaseModel):
     instruction: str = Field(min_length=1, max_length=4000)
-    quality: Literal["preview", "balanced", "final"] = "balanced"
+    quality: Literal["preview", "balanced", "final", "auto"] = "balanced"
+    # The masked-image-repair Skill chooses the cheapest viable execution path.
+    # ``auto`` keeps the existing UI behaviour while allowing API clients to
+    # request an explicit deterministic, hybrid, cropped, or full-canvas path.
+    execution_path: Literal[
+        "auto", "deterministic", "hybrid", "cropped", "full"
+    ] = "auto"
     output_format: Literal["png"] = "png"
 
 
@@ -356,28 +368,56 @@ class DetailPackConfiguration(BaseModel):
     platform_code: str = Field(min_length=1, max_length=32)
     market_region: Literal["domestic", "international"] = "international"
     category: str | None = Field(default=None, max_length=80)
+    target_buyer: str | None = Field(default=None, max_length=500)
+    verified_facts: list[str] = Field(default_factory=list, max_length=24)
+    conflict_scan: dict[str, Any] = Field(default_factory=dict)
+    source_conflicts: list[dict[str, Any]] = Field(default_factory=list, max_length=24)
+    reference_materials: list[str] = Field(default_factory=list, max_length=24)
+    platform_profile: dict[str, Any] = Field(default_factory=dict)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
-    page_count: int = Field(strict=True, ge=1, le=12)
+    page_count: int = Field(ge=1, le=12)
     auto_start_after_plan: bool = True
-    size: Literal[
-        "1024x1536",
-        "1600x1600",
-        "2200x2200",
-        "2000x2000",
-        "1000x1000",
-        "1024x1024",
-        "2048x2048",
-        "1200x1200",
-        "750x1000",
-        "1200x1600",
-        "1464x600",
-        "1600x1200",
-    ] = "1024x1536"
+    # ``None`` preserves the legacy international planner default while the
+    # cross-border Skill adapter resolves its own 16:9/2K canvas. Domestic
+    # requests are normalized below to the strict 3:4 canvas.
+    size: str | None = None
 
     @model_validator(mode="after")
     def default_domestic_delivery_size(self) -> "DetailPackConfiguration":
         if self.market_region == "domestic" and "size" not in self.model_fields_set:
-            self.size = "1200x1600"
+            self.size = "1440x1920"
+        if self.market_region == "domestic" and self.page_count not in {8, 10, 12}:
+            raise ValueError(
+                "Domestic Aurora detail pages must contain 8, 10, or 12 screens."
+            )
+        if self.market_region == "domestic":
+            # Internal routing marker; clients cannot select a different
+            # domestic detail runtime.
+            self.auto_start_after_plan = False
+        allowed_sizes = {
+            "750x1000",
+            "1200x1600",
+            "1440x1920",
+            "900x1200",
+            "1024x1536",
+            "2048x1152",
+            "1600x1600",
+            "2200x2200",
+            "2000x2000",
+            "1000x1000",
+            "1024x1024",
+            "2048x2048",
+            "1200x1200",
+            "1464x600",
+            "1600x1200",
+        }
+        if self.size is not None and self.size not in allowed_sizes:
+            raise ValueError("Unsupported detail image size.")
+        if (
+            self.market_region == "international"
+            and "language" not in self.model_fields_set
+        ):
+            self.language = "en"
         return self
 
 
@@ -444,6 +484,7 @@ class DomesticMainImageConfiguration(BaseModel):
     product_name: str = Field(min_length=1, max_length=160)
     category: str = Field(min_length=1, max_length=120)
     selling_points: list[str] = Field(min_length=1, max_length=24)
+    user_provided_display_facts: list[str] = Field(default_factory=list, max_length=24)
     product_attributes: list[str] = Field(default_factory=list, max_length=24)
     scenes: list[str] = Field(default_factory=list, max_length=12)
     offers: list[str] = Field(default_factory=list, max_length=12)
@@ -451,6 +492,12 @@ class DomesticMainImageConfiguration(BaseModel):
     style_preferences: list[str] = Field(default_factory=list, max_length=12)
     instruction: str = Field(default="", max_length=4000)
     language: Literal["zh-CN"] = "zh-CN"
+    # Development-only opt-in. The production default remains the native
+    # Aurora generation path; the shadow value is carried through the normal
+    # job envelope so a local user submission can be reviewed end to end.
+    aurora_shadow_mode: Literal[
+        "off", "contract_first_rebuild_v1", "execution_semantics_v1"
+    ] = "off"
 
 
 class JobCreateBase(BaseModel):
@@ -639,6 +686,17 @@ class PlanUpdateRequest(BaseModel):
 class PlanConfirmRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     approval_text: str | None = Field(default=None, min_length=2, max_length=240)
+    # Aurora domestic v4.3 binds authorization to the compiler-produced
+    # group→screen approval packet and pair canvas contract.
+    approval_document_sha256: str | None = Field(
+        default=None, min_length=64, max_length=64
+    )
+    approved_module_count: int | None = Field(default=None, ge=8, le=12)
+    approved_pair_canvas_aspect_ratio: Literal["3:8"] | None = None
+
+
+class FinalizeJobRequest(BaseModel):
+    approval_text: str = Field(min_length=2, max_length=240)
 
 
 class HealthResponse(BaseModel):

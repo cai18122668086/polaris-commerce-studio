@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from math import ceil, sqrt
 from pathlib import Path
@@ -86,6 +87,11 @@ class MaskedEditGatewayRequest:
     width: int
     height: int
     idempotency_key: str
+    # ``mask_png`` is the explicit OpenAI-compatible mask part.  It is
+    # optional only for backwards-compatible third-party gateways; the real
+    # provider path always supplies it and sends ``image`` + ``mask``.
+    mask_png: bytes | None = None
+    execution_path: str = "full"
 
 
 @dataclass(frozen=True)
@@ -110,6 +116,7 @@ class MaskedVisualReviewRequest:
     candidate_png: bytes
     instruction: str
     idempotency_key: str
+    route_attempt: int = 0
 
 
 @dataclass(frozen=True)
@@ -122,6 +129,9 @@ class MaskedVisualReviewCallResult:
     estimated_cost_micros: int | None
     summary: str | None = None
     reason_codes: tuple[str, ...] = ()
+    retry_guidance: str | None = None
+    observable_defect: str | None = None
+    corrective_action: str | None = None
     error_code: str | None = None
     error_message: str | None = None
     retryable: bool = False
@@ -150,6 +160,8 @@ class _AuthorizedInputs:
     mask: AssetRecord
     instruction: str
     quality: str
+    execution_path: str
+    attempt_no: int = 1
 
 
 @dataclass(frozen=True)
@@ -208,6 +220,7 @@ class MaskedRepairProvider:
             authorized = self._authorize(request)
             normalized = await self._load_and_normalize(authorized)
             self._reserve_call_budget(request, authorized.quality)
+            reusable = await self._load_reusable_raw(request, normalized)
         except MaskedRepairError as exc:
             return self._rejected(exc)
 
@@ -219,14 +232,58 @@ class MaskedRepairProvider:
             width=normalized.provider_canvas.width,
             height=normalized.provider_canvas.height,
             idempotency_key=request.idempotency_key,
+            # Keep the authority/API mask as a distinct multipart part.  The
+            # gateway may still retain its legacy transparent-hole adapter for
+            # old callers, but production local-edit calls use this field.
+            mask_png=normalized.provider_canvas.api_mask_png,
+            execution_path=_effective_execution_path(
+                authorized.execution_path,
+                instruction=authorized.instruction,
+                authority=normalized.authority,
+            ),
         )
+        execution_path = gateway_request.execution_path
         call_count = 0
         result: MaskedEditCallResult
-        while True:
-            call_count += 1
-            result = await self.gateway.edit_masked(gateway_request)
-            if not result.retryable or call_count >= 2:
-                break
+        if reusable is not None:
+            result = reusable
+        elif execution_path == "deterministic":
+            deterministic = _deterministic_repair(
+                normalized.source_image,
+                normalized.authority,
+                authorized.instruction,
+            )
+            if deterministic is None:
+                return self._rejected(
+                    MaskedRepairError(
+                        "LOCAL_EDIT_DETERMINISTIC_UNSUPPORTED",
+                        "The deterministic path only accepts an explicit "
+                        "flat-colour fill.",
+                    )
+                )
+            payload = _png_bytes(deterministic)
+            result = MaskedEditCallResult(
+                outcome=ProviderOutcome.SUCCEEDED,
+                provider_request_id="local-deterministic",
+                raw_usage={"path": "deterministic"},
+                normalized_usage={"reported": True},
+                actual_cost_micros=0,
+                estimated_cost_micros=0,
+                artifact=ProviderArtifact(
+                    payload=payload,
+                    filename="local-edit-deterministic.png",
+                    content_type="image/png",
+                    width=deterministic.width,
+                    height=deterministic.height,
+                    sha256=hashlib.sha256(payload).hexdigest(),
+                ),
+            )
+        else:
+            while True:
+                call_count += 1
+                result = await self.gateway.edit_masked(gateway_request)
+                if not result.retryable or call_count >= 2:
+                    break
 
         usage = _usage_record(
             result,
@@ -236,6 +293,7 @@ class MaskedRepairProvider:
             mask_sha256=authorized.mask.sha256,
             normalized_source_sha256=normalized.normalized_source_sha256,
             authority_sha256=normalized.authority_sha256,
+            execution_path=execution_path,
         )
         if result.outcome != ProviderOutcome.SUCCEEDED or result.artifact is None:
             return ProviderResult(
@@ -259,17 +317,22 @@ class MaskedRepairProvider:
             result.provider_request_id,
             result.artifact.sha256,
         )
-        try:
-            await self._persist_raw_artifact(
-                request,
-                result.artifact,
-                generation_id=generation_id,
-                provider_request_id=result.provider_request_id,
-                source_sha256=authorized.source.sha256,
-                mask_sha256=authorized.mask.sha256,
-                normalized_source_sha256=normalized.normalized_source_sha256,
-                authority_sha256=normalized.authority_sha256,
+        if reusable is not None:
+            generation_id = str(
+                (result.raw_usage or {}).get("generation_id") or generation_id
             )
+        try:
+            if reusable is None:
+                await self._persist_raw_artifact(
+                    request,
+                    result.artifact,
+                    generation_id=generation_id,
+                    provider_request_id=result.provider_request_id,
+                    source_sha256=authorized.source.sha256,
+                    mask_sha256=authorized.mask.sha256,
+                    normalized_source_sha256=normalized.normalized_source_sha256,
+                    authority_sha256=normalized.authority_sha256,
+                )
         except Exception as error:
             failure = (
                 error
@@ -370,7 +433,14 @@ class MaskedRepairProvider:
         review_attempts: list[MaskedVisualReviewCallResult] = []
         while len(review_attempts) < _VISUAL_REVIEW_MAX_ATTEMPTS:
             try:
-                review = await self.gateway.review_masked(review_request)
+                review = await self.gateway.review_masked(
+                    replace(
+                        review_request,
+                        route_attempt=(authorized.attempt_no - 1)
+                        * _VISUAL_REVIEW_MAX_ATTEMPTS
+                        + len(review_attempts),
+                    )
+                )
             except Exception as exc:
                 review = MaskedVisualReviewCallResult(
                     visual_success=None,
@@ -400,6 +470,7 @@ class MaskedRepairProvider:
             mask_sha256=authorized.mask.sha256,
             normalized_source_sha256=normalized.normalized_source_sha256,
             authority_sha256=normalized.authority_sha256,
+            execution_path=execution_path,
         )
         try:
             self._record_raw_visual_review(request, review)
@@ -419,20 +490,14 @@ class MaskedRepairProvider:
                 http_status=review.http_status,
             )
         review_estimated_cost = (
-            sum(
-                cast(int, attempt.estimated_cost_micros)
-                for attempt in review_attempts
-            )
+            sum(cast(int, attempt.estimated_cost_micros) for attempt in review_attempts)
             if all(
                 attempt.estimated_cost_micros is not None for attempt in review_attempts
             )
             else None
         )
         review_actual_cost = (
-            sum(
-                cast(int, attempt.actual_cost_micros)
-                for attempt in review_attempts
-            )
+            sum(cast(int, attempt.actual_cost_micros) for attempt in review_attempts)
             if all(
                 attempt.actual_cost_micros is not None for attempt in review_attempts
             )
@@ -460,6 +525,9 @@ class MaskedRepairProvider:
                 "visual_review_request_id": review.provider_request_id,
                 "visual_review_summary": review.summary,
                 "visual_review_reason_codes": list(review.reason_codes),
+                "visual_review_retry_guidance": review.retry_guidance,
+                "visual_review_observable_defect": review.observable_defect,
+                "visual_review_corrective_action": review.corrective_action,
                 "visual_review_version": MASKED_REPAIR_REVIEW_VERSION,
                 "strict_lock_success": None,
                 "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
@@ -690,6 +758,7 @@ class MaskedRepairProvider:
             configuration = edit_settings if isinstance(edit_settings, dict) else {}
             instruction = configuration.get("instruction")
             quality = configuration.get("quality", "balanced")
+            execution_path = configuration.get("execution_path", "auto")
             if not isinstance(instruction, str) or not instruction.strip():
                 raise MaskedRepairError(
                     "LOCAL_EDIT_INSTRUCTION_INVALID",
@@ -700,16 +769,29 @@ class MaskedRepairProvider:
                     "LOCAL_EDIT_INSTRUCTION_ENCODING_INVALID",
                     "The local-edit instruction appears to contain encoding damage.",
                 )
-            if quality not in {"preview", "balanced", "final"}:
+            if quality not in {"preview", "balanced", "final", "auto"}:
                 raise MaskedRepairError(
                     "LOCAL_EDIT_QUALITY_INVALID",
                     "Local-edit quality is invalid.",
+                )
+            if execution_path not in {
+                "auto",
+                "deterministic",
+                "hybrid",
+                "cropped",
+                "full",
+            }:
+                raise MaskedRepairError(
+                    "LOCAL_EDIT_EXECUTION_PATH_INVALID",
+                    "Local-edit execution path is invalid.",
                 )
             return _AuthorizedInputs(
                 source=source,
                 mask=mask,
                 instruction=instruction,
                 quality=str(quality),
+                execution_path=str(execution_path),
+                attempt_no=attempt.attempt_no,
             )
 
     async def _load_and_normalize(
@@ -780,6 +862,149 @@ class MaskedRepairProvider:
             provider_canvas=provider_canvas,
         )
 
+    async def _load_reusable_raw(
+        self, request: ProviderRequest, normalized: _NormalizedInputs
+    ) -> MaskedEditCallResult | None:
+        """Resume review from a hash-bound candidate in this retry's lineage."""
+        with self.session_factory() as session:
+            current_job = session.get(JobRecord, request.job_id)
+            item = session.get(JobItemRecord, request.job_item_id)
+            if current_job is None or item is None:
+                return None
+            found: dict[str, Any] | None = None
+            seen: set[str] = set()
+            for _ in range(16):
+                if item.id in seen:
+                    break
+                seen.add(item.id)
+                source_job = session.get(JobRecord, item.job_id)
+                if (
+                    source_job is None
+                    or item.workspace_id != request.workspace_id
+                    or source_job.workspace_id != request.workspace_id
+                    or source_job.type != "local_edit"
+                    or source_job.configuration != current_job.configuration
+                ):
+                    break
+                relation = session.scalar(
+                    select(JobAssetRecord).where(
+                        JobAssetRecord.job_id == item.job_id,
+                        JobAssetRecord.job_item_id == item.id,
+                        JobAssetRecord.direction == "intermediate",
+                        JobAssetRecord.role == _RAW_ROLE,
+                    )
+                )
+                if relation is not None:
+                    asset = session.get(AssetRecord, relation.asset_id)
+                    if asset is None or asset.workspace_id != request.workspace_id:
+                        break
+                    metadata = asset.asset_metadata or {}
+                    if relation.validation.get("raw_visual_success") is False:
+                        return None
+                    # A rejected image must be regenerated on an explicit retry.
+                    if item.error_code == "LOCAL_EDIT_VISUAL_REVIEW_REJECTED":
+                        return None
+                    if (
+                        asset.lifecycle_status != AssetLifecycleStatus.READY.value
+                        or asset.deleted_at is not None
+                        or metadata.get("immutable_provider_raw") is not True
+                        or metadata.get("workflow_version")
+                        != MASKED_REPAIR_WORKFLOW_VERSION
+                        or metadata.get("normalized_source_sha256")
+                        != normalized.normalized_source_sha256
+                        or metadata.get("authority_sha256")
+                        != normalized.authority_sha256
+                    ):
+                        raise MaskedRepairError(
+                            "LOCAL_EDIT_RAW_BINDING_INVALID",
+                            "The saved candidate no longer matches this edit's "
+                            "authority.",
+                        )
+                    found = {
+                        "id": asset.id,
+                        "key": asset.object_key,
+                        "sha256": asset.sha256,
+                        "bytes": asset.byte_size,
+                        "width": asset.width,
+                        "height": asset.height,
+                        "validation": dict(relation.validation),
+                    }
+                    break
+                if not item.source_job_item_id:
+                    break
+                ancestor = session.get(JobItemRecord, item.source_job_item_id)
+                if ancestor is None:
+                    break
+                item = ancestor
+        if found is None:
+            return None
+        try:
+            payload = await self.storage.read_bytes(str(found["key"]))
+            if (
+                hashlib.sha256(payload).hexdigest() != found["sha256"]
+                or len(payload) != found["bytes"]
+            ):
+                raise ValueError("candidate hash mismatch")
+            with Image.open(BytesIO(payload)) as image:
+                if image.size != (found["width"], found["height"]):
+                    raise ValueError("candidate dimensions mismatch")
+                image.verify()
+        except Exception as exc:
+            raise MaskedRepairError(
+                "LOCAL_EDIT_RAW_INVALID",
+                "The saved candidate could not be verified; "
+                "upload again or start a new edit.",
+            ) from exc
+        with self.session_factory() as session:
+            existing = session.scalar(
+                select(JobAssetRecord.id).where(
+                    JobAssetRecord.job_id == request.job_id,
+                    JobAssetRecord.job_item_id == request.job_item_id,
+                    JobAssetRecord.direction == "intermediate",
+                    JobAssetRecord.role == _RAW_ROLE,
+                )
+            )
+            if existing is None:
+                session.add(
+                    JobAssetRecord(
+                        workspace_id=request.workspace_id,
+                        job_id=request.job_id,
+                        job_item_id=request.job_item_id,
+                        asset_id=str(found["id"]),
+                        direction="intermediate",
+                        role=_RAW_ROLE,
+                        ordinal=0,
+                        is_deliverable=False,
+                        validation={**found["validation"], "candidate_reused": True},
+                    )
+                )
+                session.commit()
+        return MaskedEditCallResult(
+            outcome=ProviderOutcome.SUCCEEDED,
+            provider_request_id=None,
+            raw_usage={
+                "candidate_reused": True,
+                "generation_id": found["validation"].get("generation_id"),
+            },
+            normalized_usage={
+                "reported": True,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cached_tokens": 0,
+            },
+            actual_cost_micros=0,
+            estimated_cost_micros=0,
+            http_status=200,
+            artifact=ProviderArtifact(
+                payload=payload,
+                filename="resumed-candidate.png",
+                content_type="image/png",
+                width=int(found["width"]),
+                height=int(found["height"]),
+                sha256=str(found["sha256"]),
+            ),
+        )
+
     def _reserve_call_budget(
         self,
         request: ProviderRequest,
@@ -845,14 +1070,29 @@ class MaskedRepairProvider:
                     "This durable attempt already reserved its provider call.",
                 )
             review_exposure = int(getattr(self.gateway, "review_price_micros", 0) or 0)
-            exposure = int(job.estimated_cost_max_micros or 0) + review_exposure
-            if exposure <= 0 or exposure > self.budget_limit_micros:
+            saved_candidate = session.scalar(
+                select(JobAssetRecord.id).where(
+                    JobAssetRecord.job_id == job.id,
+                    JobAssetRecord.job_item_id == item.id,
+                    JobAssetRecord.direction == "intermediate",
+                    JobAssetRecord.role == _RAW_ROLE,
+                )
+            )
+            image_exposure = (
+                0
+                if saved_candidate is not None
+                else int(job.estimated_cost_max_micros or 0) * 2
+            )
+            exposure = image_exposure + review_exposure * _VISUAL_REVIEW_MAX_ATTEMPTS
+            if (
+                exposure <= 0 and saved_candidate is None
+            ) or exposure > self.budget_limit_micros:
                 raise MaskedRepairError(
                     "BUDGET_LIMIT_EXCEEDED",
                     "The local-edit maximum cost is outside the runner budget.",
                 )
-            prior = session.scalar(
-                select(func.count())
+            prior: Sequence[dict[str, Any]] = session.scalars(
+                select(AuditEventRecord.details)
                 .select_from(AuditEventRecord)
                 .join(
                     JobAttemptRecord,
@@ -863,8 +1103,11 @@ class MaskedRepairProvider:
                     AuditEventRecord.workspace_id == request.workspace_id,
                     AuditEventRecord.action == "masked_repair.image_reserved",
                 )
+            ).all()
+            prior_exposure = sum(
+                int(value.get("estimated_cost_micros") or 0) for value in prior
             )
-            if int(prior or 0) * exposure + exposure > self.budget_limit_micros:
+            if prior_exposure + exposure > self.budget_limit_micros:
                 raise MaskedRepairError(
                     "BUDGET_LIMIT_EXCEEDED",
                     "Cumulative local-edit exposure exceeds the runner budget.",
@@ -1052,6 +1295,9 @@ class MaskedRepairProvider:
                     "visual_review_request_id": review.provider_request_id,
                     "visual_review_summary": review.summary,
                     "visual_review_reason_codes": list(review.reason_codes),
+                    "visual_review_retry_guidance": review.retry_guidance,
+                    "visual_review_observable_defect": review.observable_defect,
+                    "visual_review_corrective_action": review.corrective_action,
                     "visual_review_version": MASKED_REPAIR_REVIEW_VERSION,
                     "visual_review_error_code": review.error_code,
                 }
@@ -1070,6 +1316,9 @@ class MaskedRepairProvider:
                     "visual_review_request_id": review.provider_request_id,
                     "visual_review_summary": review.summary,
                     "visual_review_reason_codes": list(review.reason_codes),
+                    "visual_review_retry_guidance": review.retry_guidance,
+                    "visual_review_observable_defect": review.observable_defect,
+                    "visual_review_corrective_action": review.corrective_action,
                     "visual_review_version": MASKED_REPAIR_REVIEW_VERSION,
                     "visual_review_error_code": review.error_code,
                 }
@@ -1086,6 +1335,9 @@ class MaskedRepairProvider:
                         "visual_success": review.visual_success,
                         "reason_codes": list(review.reason_codes),
                         "review_request_id": review.provider_request_id,
+                        "retry_guidance": review.retry_guidance,
+                        "observable_defect": review.observable_defect,
+                        "corrective_action": review.corrective_action,
                         "review_version": MASKED_REPAIR_REVIEW_VERSION,
                         "error_code": review.error_code,
                     },
@@ -1283,7 +1535,89 @@ def _provider_quality(quality: str) -> str:
         "preview": "low",
         "balanced": "medium",
         "final": "high",
+        "auto": "auto",
     }[quality]
+
+
+_HEX_COLOUR_RE = re.compile(r"(?<![0-9a-f])#?(?P<hex>[0-9a-f]{6})(?![0-9a-f])", re.I)
+_NAMED_COLOURS = {
+    "black": (0, 0, 0),
+    "white": (255, 255, 255),
+    "red": (220, 32, 32),
+    "green": (34, 150, 80),
+    "blue": (32, 96, 220),
+    "yellow": (245, 196, 32),
+    "黑色": (0, 0, 0),
+    "白色": (255, 255, 255),
+    "红色": (220, 32, 32),
+    "绿色": (34, 150, 80),
+    "蓝色": (32, 96, 220),
+    "黄色": (245, 196, 32),
+}
+
+
+def _deterministic_repair(
+    source: Image.Image,
+    authority: Image.Image,
+    instruction: str,
+) -> Image.Image | None:
+    """Apply a measured flat-colour fill without a model call.
+
+    This intentionally accepts only an explicit colour token.  Ambiguous
+    instructions stay on a model path instead of silently changing pixels.
+    """
+
+    lowered = instruction.casefold()
+    if not any(token in lowered for token in ("填充", "改为", "换成", "solid", "fill")):
+        return None
+    match = _HEX_COLOUR_RE.search(lowered)
+    colour: tuple[int, int, int] | None = None
+    if match:
+        token = match.group("hex")
+        colour = tuple(int(token[index : index + 2], 16) for index in (0, 2, 4))  # type: ignore[assignment]
+    else:
+        for name, value in _NAMED_COLOURS.items():
+            if name.casefold() in lowered:
+                colour = value
+                break
+    if colour is None:
+        return None
+    result = source.copy().convert("RGBA")
+    pixels = result.load()
+    for y in range(result.height):
+        for x in range(result.width):
+            if authority.getpixel((x, y)) > 0:  # type: ignore[operator]
+                pixels[x, y] = (*colour, pixels[x, y][3])  # type: ignore[index]
+    return result
+
+
+def _effective_execution_path(
+    requested: str,
+    *,
+    instruction: str,
+    authority: Image.Image,
+) -> str:
+    """Resolve the Skill's fast-path choice without changing user authority.
+
+    The deterministic/hybrid implementations remain provider-specific.  We
+    therefore record the requested path and use a conservative model path for
+    instructions that need synthesis.  ``auto`` chooses cropped context for a
+    small selection and full canvas otherwise; this is observable in usage
+    metrics and keeps retries on the normalized source.
+    """
+
+    if requested != "auto":
+        return requested
+    selected = sum(1 for value in authority.getdata() if value > 0)  # type: ignore[attr-defined,misc]
+    total = authority.width * authority.height
+    fraction = selected / total if total else 1.0
+    lowered = instruction.casefold()
+    # Flat colour/fill requests are eligible for a deterministic adapter in a
+    # future provider release.  Until that adapter is available, keep the
+    # model call explicit rather than silently claiming a local repair.
+    if any(token in lowered for token in ("纯色", "填充", "solid", "flat color")):
+        return "hybrid"
+    return "cropped" if fraction <= 0.35 else "full"
 
 
 def _master_prompt(user_request: str) -> str:
@@ -1363,6 +1697,7 @@ def _usage_record(
     mask_sha256: str,
     normalized_source_sha256: str,
     authority_sha256: str,
+    execution_path: str,
 ) -> dict[str, Any]:
     normalized = dict(result.normalized_usage)
     attempts = tuple(review_attempts)
@@ -1394,8 +1729,8 @@ def _usage_record(
             review_cached_tokens,
             review_performed=review_performed,
         ),
-        "input_images": 2 + (3 * len(attempts)),
-        "output_images": 1 if result.artifact is not None else 0,
+        "input_images": (2 if call_count else 0) + (3 * len(attempts)),
+        "output_images": 1 if result.artifact is not None and call_count else 0,
         "network_requests": call_count + len(attempts),
         "raw": {
             "image_edit": dict(result.raw_usage or {}),
@@ -1419,6 +1754,7 @@ def _usage_record(
             "normalized_source_sha256": normalized_source_sha256,
             "authority_sha256": authority_sha256,
             "transport_attempts": call_count,
+            "candidate_reused": bool((result.raw_usage or {}).get("candidate_reused")),
             "visual_review_requests": len(attempts),
             "visual_review_attempts": [
                 {
@@ -1434,6 +1770,8 @@ def _usage_record(
                 for index, attempt in enumerate(attempts, start=1)
             ],
             "durable_idempotency_reused": call_count > 1 or len(attempts) > 1,
+            "execution_path": execution_path,
+            "mask_protocol": "source_plus_explicit_mask_v1",
             "workflow_version": MASKED_REPAIR_WORKFLOW_VERSION,
         },
     }

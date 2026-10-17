@@ -357,6 +357,13 @@
   background: var(--card-accent);
 }
 
+.primaryAction[data-disabled="true"] {
+  cursor: not-allowed;
+  background: var(--ink-200);
+  color: var(--ink-500);
+  pointer-events: none;
+}
+
 .emptyState {
   display: grid;
   place-items: center;

@@ -23,8 +23,14 @@ def publish_pending_events(
     worker_id = f"outbox-{socket.gethostname()}-{uuid4().hex}"
     now = utc_now()
     stale_lock_before = now - timedelta(minutes=5)
+    live_jobs = (
+        _live_celery_job_ids() if settings.task_dispatcher == "celery" else set()
+    )
     with session_factory() as session:
-        _requeue_lost_deliveries(session, now)
+        # A slow provider call is not a lost broker delivery. In particular,
+        # set audits have no running image-item lease to fence duplicate calls.
+        if live_jobs is not None:
+            _requeue_lost_deliveries(session, now, live_job_ids=live_jobs)
         events = session.scalars(
             select(OutboxEventRecord)
             .where(
@@ -114,7 +120,40 @@ def publish_pending_events(
     return published
 
 
-def _requeue_lost_deliveries(session: Session, now: Any) -> None:
+def _live_celery_job_ids() -> set[str] | None:
+    """Protect active/reserved deliveries; an unknown snapshot is not proof of loss."""
+    from .celery_app import celery_app
+
+    try:
+        inspector = celery_app.control.inspect(timeout=1)
+        active, reserved = inspector.active(), inspector.reserved()
+        if not active or reserved is None:
+            return None
+        job_ids: set[str] = set()
+        for snapshot in (active, reserved):
+            for tasks in snapshot.values():
+                for task in tasks:
+                    if task.get("name") != "polaris.process_job":
+                        continue
+                    args = task.get("args")
+                    if (
+                        not isinstance(args, (list, tuple))
+                        or not args
+                        or not isinstance(args[0], str)
+                    ):
+                        return None
+                    job_ids.add(args[0])
+        return job_ids
+    except Exception:
+        # New pending events can still be published. Postgres recovery of old
+        # acknowledgements waits for a usable worker snapshot instead of
+        # submitting another paid call while the broker's state is unknown.
+        return None
+
+
+def _requeue_lost_deliveries(
+    session: Session, now: Any, *, live_job_ids: set[str] | None = None,
+) -> None:
     """Restore broker deliveries from PostgreSQL after Redis/task loss.
 
     A published event is a delivery acknowledgement, not completion state.
@@ -132,6 +171,8 @@ def _requeue_lost_deliveries(session: Session, now: Any) -> None:
             ]
         )
     )
+    if live_job_ids:
+        active_job_ids = active_job_ids.where(JobRecord.id.not_in(live_job_ids))
     session.execute(
         update(OutboxEventRecord)
         .where(

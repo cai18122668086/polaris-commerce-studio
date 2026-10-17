@@ -594,6 +594,10 @@ def test_real_provider_quota_disabled_skips_recurring_limits(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    # These quota tests exercise the cross-border detail request envelope.
+    # Explicitly enable the Skill adapter so the production
+    # fail-closed gate does not mask the quota assertions.
+    settings.crossborder_detail_provider_enabled = True
     settings.provider_quota_enabled = False
     settings.tengli_daily_budget_usd = 0
     settings.tengli_monthly_budget_usd = 0
@@ -625,6 +629,7 @@ def test_real_provider_zero_recurring_limits_keep_usage_ledger_unbounded(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    settings.crossborder_detail_provider_enabled = True
     settings.provider_quota_enabled = True
     settings.workspace_credit_enforcement_enabled = False
     settings.tengli_daily_budget_usd = 0
@@ -683,7 +688,7 @@ def test_amazon_real_provider_reserves_complete_automation_envelope(
     settings.amazon_visual_suite_provider_enabled = True
     settings.tengli_daily_budget_usd = 10
     settings.tengli_monthly_budget_usd = 20
-    settings.tengli_daily_request_limit = 45
+    settings.tengli_daily_request_limit = 51
     settings.tengli_planner_reserve_micros = 250_000
     asset = upload_asset(client, filename="amazon-source.png")
 
@@ -704,8 +709,8 @@ def test_amazon_real_provider_reserves_complete_automation_envelope(
             )
         )
     assert reservation is not None
-    assert reservation.details["provider_request_count"] == 45
-    assert reservation.details["estimated_cost_micros"] == 4_530_000
+    assert reservation.details["provider_request_count"] == 51
+    assert reservation.details["estimated_cost_micros"] == 6_030_000
     assert reservation.details["image_budget_micros"] == 1_890_000
     assert reservation.details["planner_reserve_micros"] == 250_000
 
@@ -715,6 +720,7 @@ def test_real_provider_job_reservation_is_idempotent_and_daily_bounded(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    settings.crossborder_detail_provider_enabled = True
     settings.tengli_daily_budget_usd = 0.5
     settings.tengli_monthly_budget_usd = 5
     settings.tengli_daily_request_limit = 20
@@ -760,6 +766,7 @@ def test_real_provider_daily_request_limit_blocks_before_dispatch(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    settings.crossborder_detail_provider_enabled = True
     settings.tengli_daily_budget_usd = 2
     settings.tengli_monthly_budget_usd = 5
     settings.tengli_daily_request_limit = 3
@@ -788,6 +795,7 @@ def test_unknown_planner_outcome_is_charged_conservatively_and_releases_images(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    settings.crossborder_detail_provider_enabled = True
     settings.tengli_daily_budget_usd = 0.7
     settings.tengli_monthly_budget_usd = 5
     settings.tengli_daily_request_limit = 5
@@ -866,6 +874,7 @@ def test_terminal_detail_without_attempt_evidence_fails_quota_closed(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    settings.crossborder_detail_provider_enabled = True
     settings.tengli_daily_budget_usd = 0.7
     settings.tengli_monthly_budget_usd = 5
     settings.tengli_daily_request_limit = 5
@@ -916,6 +925,7 @@ def test_provider_quota_ledger_rejects_duplicate_or_inconsistent_events(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    settings.crossborder_detail_provider_enabled = True
     settings.tengli_daily_budget_usd = 2
     settings.tengli_monthly_budget_usd = 5
     settings.tengli_daily_request_limit = 20
@@ -1006,6 +1016,7 @@ def test_nonterminal_job_with_valid_zero_settlement_fails_quota_closed(
 ) -> None:
     settings = client.app.state.settings
     settings.task_runner = "tengli"
+    settings.crossborder_detail_provider_enabled = True
     settings.tengli_daily_budget_usd = 0.7
     settings.tengli_monthly_budget_usd = 5
     settings.tengli_daily_request_limit = 20
@@ -1438,6 +1449,178 @@ def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
         assert [
             item.ordinal for item in sorted(selected_items, key=lambda v: v.ordinal)
         ] == list(range(6))
+
+
+def test_sequential_v20_retry_requeues_synthetic_style_blockers(
+    client: TestClient,
+) -> None:
+    """A sequential v2 retry must restore pages blocked after the failure."""
+
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.FAILED.value,
+                stage=JobStatus.FAILED.value,
+                display_name="Aurora sequential retry fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=6,
+                failed_item_count=2,
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        for ordinal in range(6):
+            session.add(
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"PAGE-{ordinal + 1:02d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if ordinal < 2
+                        else JobItemStatus.SKIPPED.value
+                    ),
+                    error_code=("HARNESS_BLOCKED" if ordinal < 2 else None),
+                    stage="reused" if ordinal >= 2 else "failed",
+                    finished_at=now,
+                )
+            )
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {"execution_mode": "sequential_v20"}
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+        source = session.get(JobRecord, job_id)
+        assert source is not None
+        selected = retry_item_ids(session, source, RetryScope.FAILED, [])
+        selected_items = session.scalars(
+            select(JobItemRecord).where(JobItemRecord.id.in_(selected))
+        ).all()
+        assert [
+            item.ordinal for item in sorted(selected_items, key=lambda v: v.ordinal)
+        ] == list(range(6))
+
+
+def test_domestic_provider_failure_retry_resets_pending_harness_session(
+    client: TestClient,
+) -> None:
+    """HTTP 400 provider failures must re-authorize an unbound v2 retry."""
+
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.PARTIAL.value,
+                stage=JobStatus.PARTIAL.value,
+                display_name="Aurora provider retry fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=2,
+                succeeded_item_count=1,
+                failed_item_count=1,
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        failed_id = f"item_{uuid4().hex}"
+        session.add_all(
+            [
+                JobItemRecord(
+                    id=failed_id,
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key="PAGE-01",
+                    ordinal=0,
+                    status=JobItemStatus.FAILED.value,
+                    error_code="IMAGE_REQUEST_FAILED",
+                    error_details={
+                        "provider_outcome": "failed",
+                        "retryable": False,
+                    },
+                    finished_at=now,
+                ),
+                JobItemRecord(
+                    id=f"item_{uuid4().hex}",
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key="PAGE-02",
+                    ordinal=1,
+                    status=JobItemStatus.SUCCEEDED.value,
+                    finished_at=now,
+                ),
+            ]
+        )
+        session.add(
+            JobPlanRecord(
+                id=f"plan_{uuid4().hex}",
+                workspace_id=WORKSPACE_ID,
+                job_id=job_id,
+                revision=1,
+                schema_version="aurora-main-image-plan-v2",
+                payload={
+                    "execution_policy": {"execution_mode": "sequential_v20"},
+                    "_harness_session": {
+                        "state": "AWAITING_GENERATED_ASSET",
+                        "pending_generation": {"page_index": 0},
+                        "active_page_index": 0,
+                        "authorization": {},
+                    },
+                },
+                payload_hash="0" * 64,
+                validation_status=PlanValidationStatus.VALID.value,
+                validation_errors=[],
+                validator_version="aurora-harness-2.0.0",
+                validated_at=now,
+                confirmed_at=now,
+            )
+        )
+        session.commit()
+
+    retried = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "failed", "item_ids": []},
+    )
+    assert retried.status_code == 201, retried.text
+    retry_id = retried.json()["id"]
+    with client.app.state.session_factory() as session:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == retry_id)
+            .order_by(JobPlanRecord.revision.desc())
+        )
+        assert plan is not None
+        harness = plan.payload["_harness_session"]
+        assert harness["state"] == "AUTHORIZED"
+        assert harness["pending_generation"] is None
+        assert harness["active_page_index"] is None
+        assert harness["authorization"]["retry_after_provider_failure"] is True
 
 
 def test_amazon_partial_review_infrastructure_failure_allows_complete_archive(
@@ -1908,7 +2091,7 @@ def test_clone_real_provider_job_reserves_quota_before_dispatch(
             )
         )
     assert reservation is not None
-    assert reservation.details["provider_request_count"] == 4
+    assert reservation.details["provider_request_count"] == 6
 
 
 def test_detail_pack_stops_for_validated_plan_confirmation(
@@ -1967,12 +2150,9 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
     )
     assert confirmed.status_code == 202
     dispatch_pending(client)
-    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
-    assert completed["status"] == "completed"
-    assert completed["succeeded_item_count"] == 3
-
     # The mock runner intentionally creates no image outputs. Attach the uploaded
-    # test image as each canonical deliverable so the archive path stays zero-cost.
+    # test image as each canonical deliverable so the cross-border QA gate and
+    # archive path stay zero-cost.
     with client.app.state.session_factory() as session:
         items = session.scalars(
             select(JobItemRecord)
@@ -1994,7 +2174,20 @@ def test_detail_pack_stops_for_validated_plan_confirmation(
                 )
             )
         session.commit()
+
+    awaiting_review = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}"
+    ).json()
+    assert awaiting_review["status"] == "awaiting_final_review"
+    assert awaiting_review["succeeded_item_count"] == 3
+    finalized = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/finalize",
+        headers=idem(),
+        json={"approval_text": "已完成人工 QA 审阅并确认交付"},
+    )
+    assert finalized.status_code == 200, finalized.text
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
+    assert completed["status"] == "completed"
 
     archive = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/deliverables.zip"
@@ -2097,6 +2290,18 @@ def test_development_provider_settings_enable_real_runner_without_echoing_key(
         body = response.json()
         assert body["configured"] is True
         assert body["task_runner"] == "tengli"
+        assert all(
+            body[f"{name}_provider_enabled"] is True
+            for name in (
+                "product_image",
+                "reference_remix",
+                "model_pose_transfer",
+                "creative_image",
+                "amazon_visual_suite",
+                "crossborder_detail",
+                "domestic_main_image",
+            )
+        )
         assert body["domestic_main_image_provider_enabled"] is True
         runtime = client.get("/api/v1/runtime").json()
         assert runtime["task_runner"] == "tengli"
@@ -2112,10 +2317,44 @@ def test_development_provider_settings_enable_real_runner_without_echoing_key(
         assert "test-secret-provider-key" not in response.text
         stored = development.development_provider_env_file.read_text(encoding="utf-8")
         assert 'POLARIS_TASK_RUNNER="tengli"' in stored
+        assert 'POLARIS_PRODUCT_IMAGE_PROVIDER_ENABLED="true"' in stored
         assert 'POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED="true"' in stored
+        assert 'POLARIS_MODEL_POSE_TRANSFER_PROVIDER_ENABLED="true"' in stored
         assert 'POLARIS_CREATIVE_IMAGE_PROVIDER_ENABLED="true"' in stored
+        assert 'POLARIS_AMAZON_VISUAL_SUITE_PROVIDER_ENABLED="true"' in stored
+        assert 'POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED="true"' in stored
         assert 'POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED="true"' in stored
         assert 'POLARIS_XINGHE_CONCURRENCY="6"' in stored
+
+
+def test_development_provider_settings_refuse_api_only_enable_for_celery(
+    settings,
+    tmp_path: Path,
+) -> None:
+    development = settings.model_copy(
+        deep=True,
+        update={
+            "environment": "development",
+            "task_dispatcher": "celery",
+            "development_provider_env_file": tmp_path / "provider.env",
+        },
+    )
+    with TestClient(create_app(development)) as client:
+        response = client.post(
+            "/api/v1/development/provider-settings",
+            json={
+                "api_key": "test-secret-provider-key",
+                "base_url": "https://provider.example.test",
+                "image_model": "image-model",
+                "vision_model": "vision-model",
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == (
+        "DEVELOPMENT_PROVIDER_SETTINGS_REQUIRES_WORKER_RESTART"
+    )
+    assert not (tmp_path / "provider.env").exists()
 
 
 def test_missing_assets_and_unknown_workspace_do_not_leak(client: TestClient) -> None:

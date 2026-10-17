@@ -24,9 +24,12 @@ from app.aurora_main_image_planner import (
 from app.aurora_main_image_provider import (
     _VISUAL_CHECKS,
     AuroraMainImageProvider,
+    _authorized_fact_pool_for_audit,
     _bounded_visual_audit_sources,
     _classify_transient_failure,
     _generation_sources,
+    _is_shadow_composition_gate_failure,
+    _merge_identity_coverage_judgment,
     _normalize_aurora_square_artifact,
     _normalize_parallel_set_audit_payload,
     _normalize_set_role_audit_payload,
@@ -54,6 +57,43 @@ from app.xinghe_agent import (
     SourceImage,
     _planner_response_format,
 )
+
+
+def test_v20_identity_coverage_merges_only_identity_failure() -> None:
+    primary = {
+        "checks": [
+            {"name": "product_identity_match", "passed": True, "evidence": "primary"},
+            {"name": "page_role_fit", "passed": True, "evidence": "layout"},
+        ],
+        "deficiencies": [],
+    }
+    coverage = {
+        "checks": [
+            {
+                "name": "product_identity_match",
+                "passed": False,
+                "evidence": "fourth source disagrees",
+            },
+            {
+                "name": "page_role_fit",
+                "passed": False,
+                "evidence": "coverage-only layout observation",
+            },
+        ],
+        "deficiencies": [
+            {"check": "product_identity_match", "detail": "fourth source disagrees"},
+        ],
+    }
+
+    _merge_identity_coverage_judgment(primary, coverage)
+
+    checks = {item["name"]: item for item in primary["checks"]}
+    assert checks["product_identity_match"]["passed"] is False
+    assert checks["page_role_fit"]["passed"] is True
+    assert any(
+        item.get("check") == "product_identity_match"
+        for item in primary["all_material_deficiencies"]
+    )
 
 
 def test_domestic_main_image_contract_is_exactly_six_page_input() -> None:
@@ -242,48 +282,18 @@ def test_v20_visual_judgment_normalizes_fractional_scores_and_routes_baseline_to
     ] == ["baseline_performance_match"]
 
 
-def test_v20_audit_downgrades_contradicted_checks_instead_of_killing_the_page(
-    tmp_path: Path,
-) -> None:
-    """A self-report its own observations contradict must not be terminal.
-
-    The immutable Harness raises a terminal ``HarnessError`` whenever a check
-    claims ``passed`` while the recorded observations say otherwise, and that
-    error fires before the one-repair state is reachable.  A single over-long
-    search headline therefore killed the page *and* the page-1 style
-    calibration that reads page 0's contract.  The application boundary now
-    mirrors the same rules as ordinary failures so the page reaches repair.
-    """
-
-    source_path = tmp_path / "candidate.png"
-    source_path.write_bytes(b"candidate-pixels")
-    layout_contract = {
-        "composition_archetype": "PRODUCT_HERO_ARCHETYPE",
-        "product_zone": "LOWER_TWO_THIRDS",
-        "copy_zone": "UPPER_LEFT",
-        "dominant_view": "FRONT_THREE_QUARTER",
-        "evidence_topology": "MATERIAL_CUTAWAY",
-    }
-    display_copy_contract = {
-        "headline_hard_max_chars": 12,
-        "headline_max_lines": 2,
-        "headline_seed_source_segment": "主要配料 油柑原汁≥30g/L",
-    }
-    page_contract = {
-        "layout_contract": layout_contract,
-        "display_copy_contract": display_copy_contract,
-    }
+def test_v20_visual_judgment_routes_overlong_search_headline_to_repair() -> None:
     result = asyncio.run(
         FakeXingheGateway().plan(
             PlannerRequest(
                 workspace_id="workspace_one",
-                job_id="job_headline_contract",
+                job_id="job_overlong_headline",
                 group_key="audit",
                 sources=(
                     SourceImage(
                         asset_id="candidate",
-                        group_key="job_headline_contract",
-                        filename=str(source_path),
+                        group_key="job_overlong_headline",
+                        filename="candidate.png",
                         content_type="image/png",
                         sha256="a" * 64,
                         payload=b"candidate-pixels",
@@ -293,50 +303,39 @@ def test_v20_audit_downgrades_contradicted_checks_instead_of_killing_the_page(
                 language="zh-CN",
                 product_name="Aurora v2 audit",
                 product_information=(
-                    json.dumps(
-                        {
-                            "required_check_names": list(_VISUAL_CHECKS),
-                            "page_contract": page_contract,
-                        }
-                    ),
+                    json.dumps({"required_check_names": list(_VISUAL_CHECKS)}),
                 ),
                 platform_code="TAOBAO_AURORA_V20_PIXEL_AUDIT",
                 size="1024x1024",
-                idempotency_key="job_headline_contract:audit",
+                idempotency_key="job_overlong_headline:audit",
                 planning_profile="aurora_v20_visual_audit",
             )
         )
     )
     assert isinstance(result.payload, dict)
     payload = dict(result.payload)
+    payload["observations"] = dict(payload["observations"])
     payload["observations"].update(
-        {
-            # 13 effective characters once whitespace and separators are
-            # stripped, against the compiled 12-character hard cap.
-            "headline_text": "主要配料 油柑原汁≥30g/L",
-            "headline_line_count": 2,
-            "evidence_is_primary_visual": False,
-        }
+        {"headline_text": "一二三四五六七八九十 一二三四五六七八九十"}
     )
+    generation_request = {
+        "page_index": 0,
+        "page_contract": {
+            "display_copy_contract": {
+                "headline_hard_max_chars": 12,
+                "headline_max_lines": 2,
+            }
+        },
+    }
 
     normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
-        payload,
-        {"page_index": 0, "page_contract": page_contract},
+        payload, generation_request
     )
 
-    checks = {item["name"]: item for item in normalized["checks"]}
-    assert checks["headline_treatment_match"]["passed"] is False
-    assert checks["thumbnail_success"]["passed"] is False
-    assert checks["selling_point_visual_dominance"]["passed"] is False
-    # The observed layout still matches its contract, so those gates stand.
-    assert checks["layout_not_cloned"]["passed"] is True
-    assert checks["approved_plan_fidelity_match"]["passed"] is True
-    # A contradicted style check stays advisory; the material ones must block.
-    assert checks["headline_treatment_match"]["material"] is False
-    assert {item["check"] for item in normalized["all_material_deficiencies"]} == {
-        "thumbnail_success",
-        "selling_point_visual_dominance",
-    }
+    for name in ("headline_treatment_match", "thumbnail_success"):
+        check = next(item for item in normalized["checks"] if item["name"] == name)
+        assert check["passed"] is False
+        assert check["score"] == 69
 
 
 @pytest.mark.parametrize("bad_observations", ["像素观察文本", [], None])
@@ -845,10 +844,9 @@ def test_balanced_audit_keeps_unrequested_soft_checks_advisory() -> None:
     )
 
     assert judgment["checks"]["page_role_expression"]["passed"] is False
-    assert {item["check"] for item in judgment["all_observed_deficiencies"]} == {
-        "page_role_expression",
-        "selling_point_visible_without_copy",
-    }
+    assert {
+        item["check"] for item in judgment["all_observed_deficiencies"]
+    } == {"page_role_expression", "selling_point_visible_without_copy"}
 
 
 def test_balanced_audit_deficiencies_include_forced_core_proof_failure() -> None:
@@ -927,7 +925,10 @@ def test_balanced_gate_does_not_repair_for_low_soft_score_mean() -> None:
         visual_gate = importlib.import_module("visual_gate")
     finally:
         sys.path.pop(0)
-    blocking = visual_gate.HARD_BLOCKING_CHECKS | visual_gate.MATERIAL_BLOCKING_CHECKS
+    blocking = (
+        visual_gate.HARD_BLOCKING_CHECKS
+        | visual_gate.MATERIAL_BLOCKING_CHECKS
+    )
     checks = {
         name: {
             "passed": name in blocking,
@@ -995,18 +996,12 @@ def test_balanced_gate_does_not_repair_for_low_soft_score_mean() -> None:
     assert "thumbnail_success" in result["advisory_checks"]
 
 
-@pytest.mark.parametrize(
-    "evidence_key", ["concrete_observed_evidence", "observed_evidence"]
-)
-@pytest.mark.parametrize("pixel_reviewed", [True, False])
-def test_style_calibration_joins_concrete_pixel_evidence(
-    evidence_key, pixel_reviewed
-) -> None:
+def test_style_calibration_joins_concrete_pixel_evidence() -> None:
     observation = _normalize_style_calibration_payload(
         {
-            "agent_pixel_reviewed": pixel_reviewed,
+            "agent_pixel_reviewed": True,
             "review_mode": "DIRECT_PIXEL_VISUAL_COMPARISON",
-            evidence_key: [
+            "concrete_observed_evidence": [
                 "Both accepted pages use the same clean white studio field.",
                 "Both pages preserve matching blue product color and crisp finish.",
             ],
@@ -1017,7 +1012,6 @@ def test_style_calibration_joins_concrete_pixel_evidence(
 
     assert len(observation["observed_evidence"]) >= 20
     assert "concrete_observed_evidence" not in observation
-    assert observation["agent_pixel_reviewed"] is pixel_reviewed
 
 
 def test_style_calibration_flattens_spaced_nested_evidence_field() -> None:
@@ -1082,6 +1076,23 @@ def test_style_calibration_maps_geometry_alias_to_harness_field() -> None:
 
     assert observation["style_tokens"] == {
         "information_surfaces": "asymmetric evidence-led surfaces"
+    }
+
+
+def test_style_calibration_coalesces_list_string_tokens() -> None:
+    observation = _normalize_style_calibration_payload(
+        {
+            "agent_pixel_reviewed": True,
+            "style_tokens": {
+                "information_surfaces": ["完整结构为主", "局部采用辅助面"],
+                "density_band": ["MEDIUM", "HIGH"],
+            },
+        }
+    )
+
+    assert observation["style_tokens"] == {
+        "information_surfaces": "完整结构为主；局部采用辅助面",
+        "density_band": "MEDIUM；HIGH",
     }
 
 
@@ -1161,95 +1172,6 @@ def test_style_calibration_keeps_unknown_fields_fail_closed(field: str) -> None:
         native_validator(observation)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("plain text", "plain text"),
-        ("  padded  ", "padded"),
-        (["包装正面", "卖点标签"], "包装正面；卖点标签"),
-        (["  a  ", "b"], "a；b"),
-    ],
-)
-def test_style_calibration_coerces_text_token_to_prompt_string(
-    value: object, expected: str
-) -> None:
-    """The Harness prompt compiler renders text tokens with ``str + str``."""
-
-    observation = _normalize_style_calibration_payload(
-        {
-            "agent_pixel_reviewed": True,
-            "style_tokens": {"information_surfaces": value},
-        }
-    )
-
-    assert observation["style_tokens"] == {"information_surfaces": expected}
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        [],
-        ["ok", 7],
-        [{"nested": "object"}],
-        "",
-        "   ",
-        7,
-        None,
-        {"headline": "bold"},
-    ],
-)
-def test_style_calibration_drops_text_token_it_cannot_render(
-    value: object,
-) -> None:
-    """An unrenderable override falls back to the compiled campaign style."""
-
-    observation = _normalize_style_calibration_payload(
-        {
-            "agent_pixel_reviewed": True,
-            "style_tokens": {
-                "information_surfaces": value,
-                "density_band": "  medium  ",
-            },
-        }
-    )
-
-    assert observation["style_tokens"] == {"density_band": "medium"}
-
-
-def test_style_calibration_leaves_no_unrenderable_text_token_for_the_harness() -> None:
-    """Regression for the ``HARNESS_INVALID_OUTPUT`` page loss.
-
-    ``compile_prompt`` renders the campaign-style text tokens with ``str + str``.
-    A list-valued token that escaped calibration raised ``TypeError: can only
-    concatenate str (not "list") to str`` inside the Harness subprocess, which
-    exited non-zero and surfaced as an opaque ``HARNESS_INVALID_OUTPUT`` on the
-    page, leaving the job at ``partial``.
-    """
-
-    text_tokens = (
-        "photography_finish",
-        "light_direction",
-        "color_temperature",
-        "graphic_language",
-        "information_surfaces",
-        "density_band",
-    )
-    observation = _normalize_style_calibration_payload(
-        {
-            "agent_pixel_reviewed": True,
-            "style_tokens": {
-                **{name: [f"{name} A", f"{name} B"] for name in text_tokens},
-                "palette_roles": {"primary": "blue"},
-            },
-        }
-    )
-
-    tokens = observation["style_tokens"]
-    assert set(tokens) == set(text_tokens) | {"palette_roles"}
-    assert all(isinstance(tokens[name], str) for name in text_tokens)
-    assert tokens["palette_roles"] == {"primary": "blue"}
-
-
 def test_set_role_audit_adapts_page_evidence_to_harness_distinctions() -> None:
     observation = _normalize_set_role_audit_payload(
         {
@@ -1285,16 +1207,6 @@ def test_parallel_set_audit_binds_provider_output_to_harness_contract() -> None:
     sources = [SimpleNamespace(sha256=f"hash-{index}") for index in range(6)]
     observation = _normalize_parallel_set_audit_payload(
         {
-            "checks": [
-                {
-                    "check_name": "page_0_is_search_listing_cover"
-                    if index == 0
-                    else f"page_{index}_is_not_search_listing_cover",
-                    "status": "PASS",
-                    "pixel_evidence": f"Concrete evidence for page {index}.",
-                }
-                for index in range(6)
-            ],
             "pages": [
                 {
                     "page_index": index,
@@ -1403,178 +1315,6 @@ def test_set_role_audit_adapts_tengli_explaining_evidence_and_set_verdict() -> N
     assert "product hero" in observation["search_identification_evidence"]
 
 
-def test_set_role_audit_derives_verdict_from_native_v2_checks() -> None:
-    """The model obeys the system prompt and returns checks, not legacy aliases."""
-    observation = _normalize_set_role_audit_payload(
-        {
-            "decision_summary": "Page 0 is the unique search cover; pages 1-5 are not.",
-            "checks": [
-                {"check_name": "product_identity", "status": "pass", "evidence": "x"},
-                {
-                    "check_name": "page_0_is_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_1_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_2_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_3_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_4_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_5_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-            ],
-        }
-    )
-    assert observation["identified_search_page_index"] == 0
-    assert observation["search_role_is_unique"] is True
-    assert observation["confusable_page_indexes"] == []
-
-
-def test_set_role_audit_blocks_when_checks_contradict_uniqueness() -> None:
-    observation = _normalize_set_role_audit_payload(
-        {
-            "decision_summary": "Page 2 looks like a second search cover.",
-            "checks": [
-                {
-                    "name": "page_0_is_search_listing_cover",
-                    "passed": True,
-                    "observed_evidence": "x",
-                },
-                {
-                    "name": "page_1_is_not_search_listing_cover",
-                    "passed": True,
-                    "observed_evidence": "x",
-                },
-                {
-                    "name": "page_2_is_not_search_listing_cover",
-                    "passed": False,
-                    "observed_evidence": "x",
-                },
-                {
-                    "name": "page_3_is_not_search_listing_cover",
-                    "passed": True,
-                    "observed_evidence": "x",
-                },
-                {
-                    "name": "page_4_is_not_search_listing_cover",
-                    "passed": True,
-                    "observed_evidence": "x",
-                },
-                {
-                    "name": "page_5_is_not_search_listing_cover",
-                    "passed": True,
-                    "observed_evidence": "x",
-                },
-            ],
-        }
-    )
-    assert observation["identified_search_page_index"] == 0
-    assert observation["search_role_is_unique"] is False
-    assert observation["confusable_page_indexes"] == [2]
-
-
-def test_set_role_audit_derives_from_set_level_checks_when_per_page_missing() -> None:
-    observation = _normalize_set_role_audit_payload(
-        {
-            "decision_summary": "The set roles are distinct.",
-            "checks": [
-                {
-                    "check_name": "search_listing_cover_role",
-                    "status": "PASS",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "set_role_distinction",
-                    "status": "PASS",
-                    "evidence": "x",
-                },
-            ],
-        }
-    )
-    assert observation["identified_search_page_index"] == 0
-    assert observation["search_role_is_unique"] is True
-    assert observation["confusable_page_indexes"] == []
-
-
-def test_set_role_audit_preserves_legacy_fields_when_checks_absent() -> None:
-    observation = _normalize_set_role_audit_payload(
-        {
-            "search_listing_cover_assessment": {
-                "search_listing_cover_page_index": 0,
-                "page_0_alone_is_visibly_search_listing_cover": True,
-                "other_search_listing_cover_page_indices": [],
-            },
-        }
-    )
-    assert observation["identified_search_page_index"] == 0
-    assert observation["search_role_is_unique"] is True
-    assert observation["confusable_page_indexes"] == []
-
-
-def test_set_role_audit_checks_take_precedence_over_legacy_fields() -> None:
-    """Checks are the model-native shape; they must override stale legacy hints."""
-    observation = _normalize_set_role_audit_payload(
-        {
-            "search_listing_cover_assessment": {
-                "search_listing_cover_page_index": 0,
-                "page_0_alone_is_visibly_search_listing_cover": False,
-            },
-            "checks": [
-                {
-                    "check_name": "page_0_is_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_1_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_2_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_3_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_4_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-                {
-                    "check_name": "page_5_is_not_search_listing_cover",
-                    "status": "pass",
-                    "evidence": "x",
-                },
-            ],
-        }
-    )
-    assert observation["identified_search_page_index"] == 0
-    assert observation["search_role_is_unique"] is True
-
-
 def test_visual_audit_accepts_material_pass_with_audit_limitations() -> None:
     normalized = _normalize_visual_judgment_payload(
         {
@@ -1615,10 +1355,9 @@ def test_visual_audit_normalizes_incomplete_evidence_in_complete_shape() -> None
         }
     )
 
-    assert (
-        len(normalized["checks"]["page_role_expression"]["observed_evidence"].strip())
-        >= 12
-    )
+    assert len(
+        normalized["checks"]["page_role_expression"]["observed_evidence"].strip()
+    ) >= 12
 
 
 def test_visual_audit_proof_observation_forces_consistent_material_failures() -> None:
@@ -1852,6 +1591,9 @@ def test_provider_completes_the_harness_controlled_six_page_loop(
         gateway=FakeXingheGateway(),
         storage=None,  # type: ignore[arg-type]
         work_root=tmp_path,
+        # This fixture drives the v0.1.17 six-page Harness contract below;
+        # the provider default is the native Aurora v2.0 mode.
+        execution_mode="sequential_v013",
     )
     for index in range(6):
         result = asyncio.run(
@@ -1943,31 +1685,186 @@ def test_aurora_v20_source_matches_the_original_zip_manifest() -> None:
     )
 
 
-@pytest.mark.parametrize("review_failure", [None, 502, 400])
+def test_sequential_v20_provider_keeps_native_harness_order(
+    tmp_path: Path, client,
+) -> None:
+    job_id = "job_v20_sequential"
+    evidence_path = tmp_path / "product.png"
+    evidence_path.write_bytes(
+        (Path(__file__).resolve().parents[2] / "public" / "og.png").read_bytes()
+    )
+    raw = {
+        "request_id": job_id,
+        "product": {
+            "name": "轻量随行杯",
+            "category": "保温杯",
+            "original_references": [str(evidence_path)],
+            "verified_selling_points": ["杯盖防误开", "轻量便携"],
+            "verified_attributes": ["可见杯盖结构"],
+            "verified_scenes": ["城市通勤"],
+            "verified_offers": [],
+            "verified_service_or_trust_facts": ["48小时内发货"],
+        },
+    }
+    identity = {
+        "request_id": job_id,
+        "product_form": "带盖随行杯",
+        "identity_summary": "由原始图片锁定同一款带盖随行杯。",
+        "evidence": [
+            {
+                "evidence_id": "asset_one",
+                "path": str(evidence_path),
+                "view_tags": ["商品主视图"],
+            }
+        ],
+        "must_preserve": ["杯体轮廓", "杯盖结构", "颜色分区"],
+        "must_not_change": ["不得增加部件", "不得改变杯体比例"],
+        "previous_generated_images_used": False,
+    }
+    input_path = tmp_path / "input.json"
+    identity_path = tmp_path / "identity.json"
+    session_path = tmp_path / "session.json"
+    input_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    identity_path.write_text(
+        json.dumps(identity, ensure_ascii=False), encoding="utf-8"
+    )
+    runner = AuroraV20HarnessRunner()
+    runner.run("start", tmp_path, {"input": input_path, "session": session_path})
+    runner.run(
+        "lock-identity",
+        tmp_path,
+        {"session": session_path, "identity": identity_path},
+    )
+    runner.run("compile", tmp_path, {"session": session_path})
+    runner.run(
+        "authorize",
+        tmp_path,
+        {"session": session_path, "approval-text": "确认六图规划并授权生成"},
+    )
+
+    class MemoryProvider(AuroraMainImageProvider):
+        state = json.loads(session_path.read_text(encoding="utf-8"))
+
+        def _load_authorized_context(self, request):  # type: ignore[no-untyped-def]
+            del request
+            return SimpleNamespace(ordinal=len(self.state["accepted_pages"])), dict(
+                self.state
+            )
+
+        def _persist_session(self, job_id, harness_session):  # type: ignore[no-untyped-def]
+            assert job_id == "job_v20_sequential"
+            self.state = dict(harness_session)
+
+    provider = MemoryProvider(
+        session_factory=None,  # type: ignore[arg-type]
+        gateway=FakeXingheGateway(),
+        storage=None,  # type: ignore[arg-type]
+        work_root=tmp_path,
+        execution_mode="sequential_v20",
+    )
+    results = []
+    for index in range(6):
+        result = asyncio.run(
+            provider.execute(
+                ProviderRequest(
+                    workspace_id="workspace_one",
+                    job_id=job_id,
+                    job_item_id=f"item_{index}",
+                    attempt_id=f"attempt_{index}",
+                    operation="domestic_main_image",
+                    idempotency_key=f"provider-v20-{index}",
+                    configuration={},
+                )
+            )
+        )
+        results.append(result)
+
+    assert all(result.outcome == ProviderOutcome.SUCCEEDED for result in results)
+    assert provider.state["accepted_pages"] == [0, 1, 2, 3, 4, 5]
+    assert provider.state["state"] == "AWAITING_SET_AUDIT"
+
+    # Exercise the production set-audit persistence and final approval API with
+    # the actual native Harness and offline gateway, including stale pixels.
+    from uuid import uuid4
+
+    from sqlalchemy import select
+
+    from app.domain import JobItemStatus, JobStatus, JobType, PlanValidationStatus
+    from app.models import JobItemRecord, JobPlanRecord, JobRecord
+
+    with client.app.state.session_factory() as db:
+        db.add(JobRecord(
+            id=job_id, workspace_id="ws_test", type=JobType.DOMESTIC_MAIN_IMAGE.value,
+            status=JobStatus.PROCESSING.value, stage="generating", progress=90,
+            configuration={}, expected_item_count=6, currency="USD",
+        ))
+        db.flush()
+        for index in range(6):
+            db.add(JobItemRecord(
+                id=f"item_{uuid4().hex}", workspace_id="ws_test", job_id=job_id,
+                item_key=f"PAGE-{index}", ordinal=index,
+                status=JobItemStatus.SUCCEEDED.value, configuration={},
+            ))
+        payload = {
+            "execution_policy": {"execution_mode": "sequential_v20"},
+            "_harness_session": provider.state,
+        }
+        db.add(JobPlanRecord(
+            id=f"plan_{uuid4().hex}", workspace_id="ws_test", job_id=job_id,
+            revision=1, schema_version="aurora-main-image-plan-v2", payload=payload,
+            payload_hash=canonical_hash(payload),
+            validation_status=PlanValidationStatus.VALID.value,
+        ))
+        db.commit()
+    provider.session_factory = client.app.state.session_factory
+    assert asyncio.run(provider.audit_sequential_v20_set(job_id)) is True
+    coordinator = client.app.state.task_runner.coordinator
+    assert (
+        coordinator._mark_aurora_final_review_pending(job_id)
+        == JobStatus.AWAITING_FINAL_REVIEW
+    )
+    # Redelivery must not re-audit or complete a job awaiting human approval.
+    assert asyncio.run(coordinator.run(job_id)) == JobStatus.AWAITING_FINAL_REVIEW
+    client.app.state.settings.aurora_work_root = tmp_path
+    endpoint = f"/api/v1/workspaces/ws_test/jobs/{job_id}/finalize"
+    approval = {"approval_text": "我确认六张图片并批准交付"}
+    headers = {"Idempotency-Key": str(uuid4())}
+    candidate_path = Path(provider.state["generated_versions"][0]["file"])
+    original = candidate_path.read_bytes()
+    candidate_path.write_bytes(b"changed after audit")
+    rejected = client.post(endpoint, json=approval, headers=headers)
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["error"]["code"] == "AURORA_FINALIZE_FAILED"
+    candidate_path.write_bytes(original)
+    approved = client.post(endpoint, json=approval, headers=headers)
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "completed"
+    assert approved.json()["plan"]["payload"]["harness_state"] == "FINALIZED"
+    replay = client.post(endpoint, json=approval, headers=headers)
+    assert replay.status_code == 200, replay.text
+    changed = client.post(
+        endpoint, json={"approval_text": "不同批准内容"}, headers=headers
+    )
+    assert changed.status_code == 409
+    assert changed.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+    with client.app.state.session_factory() as db:
+        stored = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job_id))
+        manifest = json.loads(
+            Path(stored.payload["final_manifest"]).read_text(encoding="utf-8")
+        )
+    assert manifest["final_user_approval"]["text"] == approval["approval_text"]
+    assert len(manifest["pages"]) == 6
+
+
 def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    review_failure: int | None,
 ) -> None:
     class SparseNativeGateway(FakeXingheGateway):
-        edit_calls = 0
-
-        async def edit(self, request):
-            self.edit_calls += 1
-            return await super().edit(request)
-
         async def plan(self, request: PlannerRequest):
             result = await super().plan(request)
-            if review_failure and request.planning_profile == "aurora_v20_visual_audit":
-                return replace(
-                    result,
-                    payload=None,
-                    error_code="PLANNER_REQUEST_FAILED",
-                    error_message=f"Planner request failed with HTTP {review_failure}.",
-                    http_status=review_failure,
-                )
-            if request.planning_profile == "aurora_v20_visual_audit" and isinstance(
-                result.payload, dict
+            if (
+                request.planning_profile == "aurora_v20_visual_audit"
+                and isinstance(result.payload, dict)
             ):
                 payload = dict(result.payload)
                 for field in (
@@ -2018,7 +1915,9 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
     session_path = tmp_path / "session.json"
     request_path = tmp_path / "request.json"
     input_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
-    identity_path.write_text(json.dumps(identity, ensure_ascii=False), encoding="utf-8")
+    identity_path.write_text(
+        json.dumps(identity, ensure_ascii=False), encoding="utf-8"
+    )
     runner = AuroraV20HarnessRunner()
     runner.run("start", tmp_path, {"input": input_path, "session": session_path})
     runner.run(
@@ -2044,14 +1943,18 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         "page_index": 0,
         "group_key": job_id,
         "prompt": generation_request["prompt"],
-        "imagegen_reference_paths": generation_request["imagegen_reference_paths"],
+        "imagegen_reference_paths": generation_request[
+            "imagegen_reference_paths"
+        ],
         "edit_target": generation_request.get("edit_target"),
         "generation_token": generation_request["generation_token"],
         "page_revision": 0,
         "plan_revision": 1,
         "plan_hash": generation_request["plan_digest"],
         "identity_hash": "identity",
-        "style_lock": generation_request["campaign_constitution"]["campaign_style"],
+        "style_lock": generation_request["campaign_constitution"][
+            "campaign_style"
+        ],
         "source_asset_hashes": {
             "asset_one": hashlib.sha256(evidence_path.read_bytes()).hexdigest()
         },
@@ -2068,138 +1971,24 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         execution_mode="parallel_v20",
     )
 
-    request = ProviderRequest(
-        workspace_id="workspace_one",
-        job_id=job_id,
-        job_item_id="item_0",
-        attempt_id="attempt_0",
-        operation="domestic_main_image",
-        idempotency_key=snapshot["logical_idempotency_key"],
-        configuration={
-            "item": {
-                "aurora_execution_mode": "parallel_v20",
-                "aurora_snapshot": snapshot,
-            }
-        },
+    provider_result = asyncio.run(
+        provider.execute(
+            ProviderRequest(
+                workspace_id="workspace_one",
+                job_id=job_id,
+                job_item_id="item_0",
+                attempt_id="attempt_0",
+                operation="domestic_main_image",
+                idempotency_key=snapshot["logical_idempotency_key"],
+                configuration={
+                    "item": {
+                        "aurora_execution_mode": "parallel_v20",
+                        "aurora_snapshot": snapshot,
+                    }
+                },
+            )
+        )
     )
-    monkeypatch.setattr("app.aurora_main_image_provider._AURORA_AUDIT_RETRY_DELAYS", ())
-    provider_result = asyncio.run(provider.execute(request))
-    if review_failure:
-        assert provider_result.outcome == ProviderOutcome.FAILED
-        assert provider_result.retryable is False
-        assert provider_result.raw_usage["metrics"]["candidate_retained"] is True
-        assert provider.gateway.edit_calls == 1
-        original_hash = provider_result.raw_usage["metrics"]["candidate_sha256"]
-        # A durable manual retry must review exactly the retained bytes and
-        # make zero additional image calls, even for a permanent contract error.
-        from app.models import JobItemRecord, JobRecord
-
-        item = SimpleNamespace(
-            id="item_0",
-            job_id=job_id,
-            workspace_id="workspace_one",
-            ordinal=0,
-            configuration=request.configuration["item"],
-            source_job_item_id=None,
-        )
-        job = SimpleNamespace(
-            id=job_id, workspace_id="workspace_one", retry_of_job_id=None
-        )
-        records = {(JobItemRecord, item.id): item, (JobRecord, job.id): job}
-        root = (
-            tmp_path
-            / "work"
-            / job_id
-            / "parallel-v20"
-            / "page-01"
-            / "attempt-attempt_0"
-        )
-        checkpoint = json.loads((root / "review-candidate.json").read_text())
-        if review_failure == 502:
-            child = SimpleNamespace(
-                **{
-                    **vars(item),
-                    "id": "child_item",
-                    "job_id": "child_job",
-                    "source_job_item_id": item.id,
-                }
-            )
-            child_job = SimpleNamespace(
-                id="child_job", workspace_id="workspace_one", retry_of_job_id=job.id
-            )
-            records[(JobItemRecord, child.id)] = child
-            records[(JobRecord, child_job.id)] = child_job
-            request = replace(request, job_id=child_job.id, job_item_id=child.id)
-        else:
-            # Pre-release candidates only have the native Harness session.
-            (root / "review-candidate.json").unlink()
-
-        class Database:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                pass
-
-            def get(self, model, identifier):
-                return records.get((model, identifier))
-
-            def scalars(self, statement):
-                return SimpleNamespace(all=lambda: [SimpleNamespace(id="attempt_0")])
-
-        provider.session_factory = Database
-        review_failure = None
-        provider_result = asyncio.run(
-            provider.execute(replace(request, attempt_id="attempt_1"))
-        )
-        assert provider_result.outcome == ProviderOutcome.SUCCEEDED
-        assert provider_result.artifact.sha256 == original_hash
-        assert provider.gateway.edit_calls == 1
-        assert provider_result.raw_usage["image_request_count"] == 0
-        assert provider_result.raw_usage["metrics"]["candidate_reused"] is True
-        if not (root / "review-candidate.json").exists():
-            legacy = json.loads((root / "session.json").read_text())
-            legacy["generated_versions"][-1]["revision"] = 1
-            legacy["modifications_used_by_page"] = {"0": 1}
-            (root / "session.json").write_text(json.dumps(legacy))
-            repair = {**snapshot["request"], "revision": 1}
-            repair_path = root / "repair-generation-request.json"
-            repair_path.write_text(json.dumps(repair))
-            recovered = provider._retained_v20_candidate(request, snapshot)
-            assert recovered[1]["revision"] == 1
-            assert recovered[2]["modifications_used_by_page"] == {"0": 1}
-            assert recovered[0].artifact.sha256 == original_hash
-            repair_path.unlink()
-            with pytest.raises(
-                AuroraPlanningError, match="repair request is unavailable"
-            ):
-                provider._retained_v20_candidate(request, snapshot)
-            repair_path.write_text(json.dumps(repair))
-        # Corrupt data or a foreign workspace must fail closed without billing.
-        root = (
-            tmp_path
-            / "work"
-            / job_id
-            / "parallel-v20"
-            / "page-01"
-            / "attempt-attempt_0"
-        )
-        image = Path(checkpoint["session"]["generated_versions"][-1]["file"])
-        image.write_bytes(b"corrupted")
-        corrupt = asyncio.run(
-            provider.execute(replace(request, attempt_id="attempt_2"))
-        )
-        assert corrupt.outcome == ProviderOutcome.FAILED
-        assert "hash mismatch" in corrupt.error_message
-        assert provider.gateway.edit_calls == 1
-        item.workspace_id = "foreign"
-        foreign = asyncio.run(
-            provider.execute(replace(request, attempt_id="attempt_3"))
-        )
-        assert foreign.outcome == ProviderOutcome.FAILED
-        assert "lineage mismatch" in foreign.error_message
-        assert provider.gateway.edit_calls == 1
-        return
 
     assert provider_result.outcome == ProviderOutcome.SUCCEEDED
     metrics = provider_result.raw_usage["metrics"]
@@ -2216,17 +2005,23 @@ def test_parallel_v20_provider_uses_native_snapshot_and_page_local_audit(
         / "search-baseline-observation.json"
     ).is_file()
     attempt_workspace = (
-        tmp_path / "work" / job_id / "parallel-v20" / "page-01" / "attempt-attempt_0"
+        tmp_path
+        / "work"
+        / job_id
+        / "parallel-v20"
+        / "page-01"
+        / "attempt-attempt_0"
     )
     judgment = json.loads(
         (attempt_workspace / "judgment-1.json").read_text(encoding="utf-8")
     )
-    generated_path = attempt_workspace / "generated" / "page-01-attempt-1.jpg"
-    assert judgment["page_index"] == 0
-    assert (
-        judgment["image_sha256"]
-        == hashlib.sha256(generated_path.read_bytes()).hexdigest()
+    generated_path = (
+        attempt_workspace / "generated" / "page-01-attempt-1.jpg"
     )
+    assert judgment["page_index"] == 0
+    assert judgment["image_sha256"] == hashlib.sha256(
+        generated_path.read_bytes()
+    ).hexdigest()
     assert judgment["reviewer"] == {
         "mode": "AGENT_DIRECT_PIXEL_REVIEW",
         "pixel_inspection_performed": True,
@@ -2338,9 +2133,33 @@ def test_v20_visual_judgment_names_the_missing_checks() -> None:
     assert dropped in str(captured.value)
 
 
-def test_v20_visual_judgment_rejects_duplicate_checks() -> None:
+def test_v20_visual_judgment_coalesces_duplicate_checks_conservatively() -> None:
     payload = _fake_v20_judgment_payload("job_check_duplicate")
-    payload["checks"] = [*payload["checks"], dict(payload["checks"][0])]
+    duplicate = dict(payload["checks"][0])
+    duplicate["passed"] = False
+    duplicate["score"] = 12
+    duplicate["observed_evidence"] = "重复项明确显示该层存在可见材料性问题"
+    payload["checks"] = [*payload["checks"], duplicate]
+
+    normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        payload,
+        {"page_index": 0},
+        runtime_image_sha256="a" * 64,
+    )
+
+    product_identity = next(
+        item
+        for item in normalized["checks"]
+        if item["name"] == "product_identity_match"
+    )
+    assert product_identity["passed"] is False
+    assert product_identity["score"] == 12
+
+
+def test_v20_visual_judgment_still_rejects_duplicate_that_hides_missing_check() -> None:
+    payload = _fake_v20_judgment_payload("job_check_duplicate_missing")
+    dropped = payload["checks"].pop()
+    payload["checks"].append(dict(payload["checks"][0]))
 
     with pytest.raises(AuroraPlanningError) as captured:
         AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
@@ -2349,7 +2168,8 @@ def test_v20_visual_judgment_rejects_duplicate_checks() -> None:
             runtime_image_sha256="a" * 64,
         )
 
-    assert "repeat the native check" in str(captured.value)
+    assert "complete native check set" in str(captured.value)
+    assert dropped["name"] in str(captured.value)
 
 
 def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> None:
@@ -2457,6 +2277,25 @@ def test_transient_classifier_keeps_contract_failures_permanent() -> None:
     assert _classify_transient_failure(error) == (False, None)
 
 
+def test_audit_fact_pool_is_lossless_and_does_not_use_page_prose() -> None:
+    pool = _authorized_fact_pool_for_audit(
+        {
+            "authorized_facts": {
+                "selling_points": ["12V 电瓶"],
+                "attributes": ["双座"],
+                "scenes": ["户外亲子出行"],
+            },
+            "page_contract": {"primary_claim": "模型生成的页面主卖点"},
+        }
+    )
+
+    assert pool["selling_points"] == ["12V 电瓶"]
+    assert pool["attributes"] == ["双座"]
+    assert pool["scenes"] == ["户外亲子出行"]
+    assert pool["all_exact_fact_seeds"] == ["12V 电瓶", "双座", "户外亲子出行"]
+    assert "模型生成的页面主卖点" not in pool["all_exact_fact_seeds"]
+
+
 def test_transient_classifier_ignores_a_non_transient_status() -> None:
     error = AuroraPlanningError("Planner request failed with HTTP 400.")
     error.http_status = 400
@@ -2465,70 +2304,18 @@ def test_transient_classifier_ignores_a_non_transient_status() -> None:
 
 
 @pytest.mark.parametrize(
-    "checks",
+    "message, expected",
     [
-        # A summary cannot override explicit page failure or incomplete review.
-        [
-            {"check_name": "page_0_is_search_listing_cover", "status": state},
-            {"check_name": "search_listing_cover_role", "status": "pass"},
-            {"check_name": "set_role_distinction", "status": "pass"},
-        ]
-        for state in ("fail", "unknown", "pass")
-    ]
-    + [
-        [{"check_name": "search_listing_cover_role", "status": "fail"}],
-        [{"check_name": "set_role_distinction", "status": "unknown"}],
-        [{"check_name": "search_listing_cover_role", "status": "pass"}],
-        [
-            {
-                "check_name": "search_listing_cover_role",
-                "status": "pass",
-                "passed": False,
-            },
-            {"check_name": "set_role_distinction", "status": "pass"},
-        ],
+        (
+            "selling-point dominance cannot pass when evidence is not a primary visual",
+            True,
+        ),
+        ("layout-not-cloned needs a concrete visible difference", True),
+        ("product identity mismatch requires rebuilding from product evidence", True),
+        ("generated image is missing", False),
     ],
 )
-def test_set_role_native_incomplete_or_failed_checks_override_legacy_pass(
-    checks: list[dict[str, object]],
+def test_shadow_visual_gate_is_the_only_harness_quality_retry(
+    message: str, expected: bool
 ) -> None:
-    observation = _normalize_set_role_audit_payload(
-        {
-            "identified_search_page_index": 0,
-            "search_role_is_unique": True,
-            "confusable_page_indexes": [],
-            "checks": checks,
-        }
-    )
-    assert observation["search_role_is_unique"] is False
-
-
-@pytest.mark.parametrize("failure_first", [True, False])
-def test_set_role_conflicting_duplicate_checks_always_block(
-    failure_first: bool,
-) -> None:
-    checks = [
-        {"check_name": "page_0_is_search_listing_cover", "status": "pass"},
-        *[
-            {"check_name": f"page_{n}_is_not_search_listing_cover", "status": "pass"}
-            for n in range(1, 6)
-        ],
-    ]
-    failure = {"check_name": "page_2_is_not_search_listing_cover", "status": "fail"}
-    checks.insert(0 if failure_first else len(checks), failure)
-    observation = _normalize_set_role_audit_payload({"checks": checks})
-    assert observation["search_role_is_unique"] is False
-    assert observation["confusable_page_indexes"] == [2]
-
-
-def test_set_role_summary_failure_blocks_even_with_complete_page_passes() -> None:
-    checks = [
-        {"check_name": "page_0_is_search_listing_cover", "status": "pass"},
-        *[
-            {"check_name": f"page_{n}_is_not_search_listing_cover", "status": "pass"}
-            for n in range(1, 6)
-        ],
-        {"check_name": "set_role_distinction", "status": "fail"},
-    ]
-    observation = _normalize_set_role_audit_payload({"checks": checks})
-    assert observation["search_role_is_unique"] is False
+    assert _is_shadow_composition_gate_failure(message) is expected

@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Continuous Pair Group Judgment v4.3",
+  "type": "object",
+  "required": [
+    "pair_id",
+    "module_ids",
+    "status",
+    "audit_complete",
+    "artifact_binding",
+    "pair_canvas",
+    "checks",
+    "screen_coverage",
+    "internal_seam_evidence",
+    "material_failures",
+    "identity_silhouette"
+  ],
+  "properties": {
+    "pair_id": {
+      "type": "string"
+    },
+    "module_ids": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "MATERIAL_FAIL"
+      ]
+    },
+    "audit_complete": {
+      "const": true
+    },
+    "artifact_binding": {
+      "$ref": "#/$defs/artifact_binding"
+    },
+    "pair_canvas": {
+      "type": "object",
+      "required": [
+        "aspect_ratio",
+        "width_px",
+        "height_px",
+        "decomposition"
+      ],
+      "properties": {
+        "aspect_ratio": {
+          "const": "3:8"
+        },
+        "width_px": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height_px": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decomposition": {
+          "const": "TWO_FIXED_SINGLE_SCREEN_WINDOWS"
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "pass",
+          "visible_evidence"
+        ],
+        "properties": {
+          "pass": {
+            "type": "boolean"
+          },
+          "visible_evidence": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
+      }
+    },
+    "screen_coverage": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "module_id",
+          "duty_visible",
+          "selling_points_visible",
+          "visible_evidence"
+        ],
+        "properties": {
+          "module_id": {
+            "type": "string"
+          },
+          "duty_visible": {
+            "const": true
+          },
+          "selling_points_visible": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "visible_evidence": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
+      }
+    },
+    "internal_seam_evidence": {
+      "type": "object",
+      "required": [
+        "method_id",
+        "source_region",
+        "target_region",
+        "carrier",
+        "geometry",
+        "hard_cut_absent",
+        "method_specific_pass",
+        "visible_evidence"
+      ],
+      "properties": {
+        "method_id": {
+          "type": "string"
+        },
+        "source_region": {
+          "type": "string"
+        },
+        "target_region": {
+          "type": "string"
+        },
+        "carrier": {
+          "type": "string"
+        },
+        "geometry": {
+          "type": "string"
+        },
+        "hard_cut_absent": {
+          "type": "boolean"
+        },
+        "method_specific_pass": {
+          "type": "boolean"
+        },
+        "visible_evidence": {
+          "type": "string",
+          "minLength": 8
+        }
+      }
+    },
+    "information_audit": {
+      "type": "object",
+      "required": [
+        "upper_buyer_question",
+        "lower_buyer_question",
+        "new_information_visible",
+        "new_information_evidence",
+        "repetition_without_progression",
+        "hero_subject_clear",
+        "co_equal_hero_detected",
+        "purchase_judgment_enabled",
+        "detail_page_not_posterized"
+      ],
+      "properties": {
+        "upper_buyer_question": {
+          "type": "string"
+        },
+        "lower_buyer_question": {
+          "type": "string"
+        },
+        "new_information_visible": {
+          "type": "boolean"
+        },
+        "new_information_evidence": {
+          "type": "string",
+          "minLength": 8
+        },
+        "repetition_without_progression": {
+          "type": "boolean"
+        },
+        "hero_subject_clear": {
+          "type": "boolean"
+        },
+        "co_equal_hero_detected": {
+          "type": "boolean"
+        },
+        "purchase_judgment_enabled": {
+          "type": "boolean"
+        },
+        "detail_page_not_posterized": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ocr_text": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unauthorized_ocr_text": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "forbidden_text_hits": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "material_failures": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "passed_layers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "residual_issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "identity_silhouette": {
+      "type": "object",
+      "required": [
+        "shape_consistent",
+        "colorway_consistent",
+        "texture_consistent",
+        "visible_evidence"
+      ],
+      "properties": {
+        "shape_consistent": {
+          "type": "boolean"
+        },
+        "colorway_consistent": {
+          "type": "boolean"
+        },
+        "texture_consistent": {
+          "type": "boolean"
+        },
+        "visible_evidence": {
+          "type": "string",
+          "minLength": 8
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "artifact_binding": {
+      "type": "object",
+      "required": [
+        "image_sha256",
+        "auditor",
+        "audited_at",
+        "ocr_text",
+        "visual_inspection_output"
+      ],
+      "properties": {
+        "image_sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "auditor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audited_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ocr_text": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "visual_inspection_output": {}
+      }
+    }
+  }
+}

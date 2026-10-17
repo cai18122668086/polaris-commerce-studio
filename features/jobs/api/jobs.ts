@@ -262,7 +262,13 @@ export function useRetryJob(workspaceId: string | undefined) {
 export function useConfirmPlan(workspaceId: string | undefined) {
   return useJobMutation<
     JobDetail,
-    AuthorizedJobAction & { revision: number; approvalText?: string }
+    AuthorizedJobAction & {
+      revision: number;
+      approvalText?: string;
+      approvalDocumentSha256?: string;
+      approvedModuleCount?: number;
+      approvedPairCanvasAspectRatio?: "3:8";
+    }
   >(
     workspaceId,
     "confirm-plan",
@@ -279,7 +285,32 @@ export function useConfirmPlan(workspaceId: string | undefined) {
           body: {
             expected_revision: input.revision,
             approval_text: input.approvalText,
+            approval_document_sha256: input.approvalDocumentSha256,
+            approved_module_count: input.approvedModuleCount,
+            approved_pair_canvas_aspect_ratio: input.approvedPairCanvasAspectRatio,
           },
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
+export function useFinalizeJob(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, AuthorizedJobAction & { approvalText: string }>(
+    workspaceId,
+    "finalize-job",
+    ({ jobId, approvalText }) => ({ jobId, approvalText }),
+    async (id, input, key) => {
+      assertJobAction(input.allowedActions, "finalize");
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+        {
+          params: {
+            path: { workspace_id: id, job_id: input.jobId },
+            header: { "Idempotency-Key": key },
+          },
+          body: { approval_text: input.approvalText },
         },
       );
       return unwrapApiResponse(result);

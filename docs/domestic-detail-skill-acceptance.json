@@ -35,7 +35,7 @@
       "requirement": "Approved atomic module is the exact rendering contract",
       "completion": "unproven",
       "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
-      "local_candidate_evidence": "Native compiler file/inputs/identity/plan and exact gateway signed prompt bound through approval-v4; see domestic-detail-native-approval-2026-10-17.md. Document identity completeness and actual pixels remain unproven."
+      "local_candidate_evidence": "Exact native compiler approval-v4 binding plus visible identity, brand and original/active/deferred/excluded fact ledger verified offline; see domestic-detail-native-approval-2026-10-17.md. Actual pixel fidelity remains unproven."
     },
     {
       "id": "G06",
@@ -48,7 +48,7 @@
       "requirement": "Readable authentic brand or explicitly confirmed brandless mode; logo gates",
       "completion": "unproven",
       "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
-      "local_candidate_evidence": "Actual coordinator, native compiler and API/UI paths covered; see domestic-detail-intake-integration-2026-10-17.md. Real supplier/pixel acceptance remains unproven."
+      "local_candidate_evidence": "Intake and native compiler approval expose actual product logo/source or explicit brandless user confirmation. Actual generated pixel logo/identity gates remain unproven."
     },
     {
       "id": "G08",

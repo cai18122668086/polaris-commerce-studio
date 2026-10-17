@@ -2394,8 +2394,54 @@ def _approval_markdown(session: dict) -> str:
     packet = _approval_packet(plan)
     analysis = input_data.get("operating_analysis", {})
     facts_by_id = {item["id"]: item for item in input_data.get("verified_facts", [])}
-    confirmed_ids = analysis.get("confirmed_fact_ids") or session.get("planning_fact_ids", [])
-    confirmed_facts = [facts_by_id[item]["text"] for item in confirmed_ids if item in facts_by_id]
+    active_ids = set(session.get("planning_fact_ids", facts_by_id))
+    coverage_by_id = {item["claim_id"]: item for item in strategy.get("claim_coverage", [])}
+    confirmed_ids = analysis.get("confirmed_fact_ids") or list(facts_by_id)
+    confirmed_facts = [facts_by_id[item]["text"] for item in confirmed_ids
+                       if item in facts_by_id and item in active_ids
+                       and coverage_by_id.get(item, {}).get("disposition") != "DEFERRED"]
+    identity = session.get("identity", {})
+    brand = identity.get("brand_logo_source", {})
+    if brand.get("mode", "BRANDED") == "BRANDLESS":
+        brand_summary = "无品牌；原始确认：" + str(brand.get("brandless_evidence") or "未记录")
+    else:
+        brand_summary = "品牌原文：" + str(brand.get("observed_logo_text") or "未记录") + "；来源图编号：" + str(brand.get("image_id") or "未记录") + "；可见区域：" + str(brand.get("observed_region") or "未记录")
+    identity_lines = [
+        "## 锁定的商品身份", "",
+        "| 商品与品类 | 来源图编号 | 必须保持的可见特征 | 允许状态 | 禁止变化 | 待核对特征 | 品牌依据 |",
+        "|---|---|---|---|---|---|---|",
+        "| " + " | ".join(_md_cell(value) for value in (
+            [identity.get("canonical_name", "未记录"), identity.get("category", "未记录")],
+            identity.get("reference_image_ids", []), identity.get("invariant_features", []),
+            identity.get("allowed_states", []), identity.get("forbidden_mutations", []),
+            identity.get("uncertain_features", []), brand_summary,
+        )) + " |", "",
+    ]
+    fact_lines = ["## 事实来源与本次处置", "",
+                  "| 事实编号 | 原始内容 | 来源及引用 | 本次处置 |",
+                  "|---|---|---|---|"]
+    source_names = {"USER_FACT": "用户原文", "OBSERVED_PRODUCT_EVIDENCE": "商品图观察", "DOCUMENTED_EVIDENCE": "材料证据"}
+    for fact_id, fact in facts_by_id.items():
+        coverage = coverage_by_id.get(fact_id, {})
+        if fact_id not in active_ids:
+            disposition = "已按用户确认排除，不进入本次表达"
+        elif coverage.get("disposition") == "DEFERRED":
+            disposition = "暂缓表达：" + str(coverage.get("rationale") or coverage.get("defer_reason_code") or "原因未记录")
+        elif coverage.get("disposition") in {"LEAD", "SUPPORT"}:
+            disposition = "主责表达" if coverage["disposition"] == "LEAD" else "辅助事实"
+            disposition += "；对应屏：" + _as_compact_text(coverage.get("module_ids", []))
+        else:
+            disposition = "待核对：未记录明确处置"
+        reference = str(fact.get("evidence_ref") or "未记录")
+        for prefix, label in (("settings/selling_points/", "用户卖点第"), ("settings/verified_facts/", "用户补充事实第")):
+            if reference.startswith(prefix) and reference[len(prefix):].isdigit():
+                reference = label + str(int(reference[len(prefix):]) + 1) + "条"
+                break
+        source = source_names.get(fact.get("source_class"), "来源未确认") + "：" + reference
+        if fact.get("observed_region"):
+            source += "；可见区域：" + str(fact["observed_region"])
+        fact_lines.append("| " + " | ".join(_md_cell(value) for value in (fact_id, fact["text"], source, disposition)) + " |")
+    fact_lines.append("")
     supplied_points = [item.get("text", "") for item in input_data.get("user_supplied_selling_points", [])]
     buyer_pain = [
         f"{item.get('buyer', '')}：{item.get('scenario', '')}"
@@ -2410,6 +2456,8 @@ def _approval_markdown(session: dict) -> str:
     lines = [
         f"方案已通过 Skill v{VERSION} 编译，当前停在生图前审批节点。",
         "",
+        *identity_lines,
+        *fact_lines,
         "| 采用路由 | 确认的产品事实 | 用户指定卖点 | 推演人群与痛点 | 推荐定位 | 待验证假设 |",
         "|---|---|---|---|---|---|",
         "| " + " | ".join([
@@ -2690,7 +2738,15 @@ def summary(session: dict) -> dict:
         if state == "AWAITING_PLAN_APPROVAL":
             result["approval_packet"] = _approval_packet(session["plan"])
             result["approval_document"] = session.get("approval_document")
-            result["approval_markdown"] = _approval_markdown(session)
+            document = session.get("approval_document") or {}
+            try:
+                raw_document = Path(document["path"]).read_bytes()
+                markdown = raw_document.decode("utf-8")
+            except (KeyError, OSError, TypeError, UnicodeError) as exc:
+                raise HarnessError("The compiled approval document is missing or unreadable") from exc
+            if hashlib.sha256(raw_document).hexdigest() != document.get("sha256"):
+                raise HarnessError("The compiled approval document bytes changed")
+            result["approval_markdown"] = markdown
             result["approval_output_instruction"] = (
                 "Show approval_markdown verbatim as the complete user-facing response; "
                 "do not abbreviate, paraphrase, replace it with a page-order list, or add a second plan."

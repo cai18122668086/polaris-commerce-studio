@@ -691,6 +691,52 @@ def fail_judgment(module_record, issue="Typography is not attached to the planne
     }
 
 
+class NativeApprovalContentTests(unittest.TestCase):
+    def test_locked_identity_and_brand_confirmation_are_visible(self):
+        current = session()
+        current["plan"] = plan()
+        current["identity"] = identity_brandless("用户确认当前商品无品牌，不添加独立标志")
+        markdown = harness._approval_markdown(current)
+        for feature in current["identity"]["invariant_features"]:
+            self.assertIn(feature, markdown)
+        self.assertIn("锁定的商品身份", markdown)
+        self.assertIn("用户确认当前商品无品牌，不添加独立标志", markdown)
+        self.assertIn("不得改成普通圆形风扇", markdown)
+
+    def test_excluded_and_deferred_facts_are_visible_but_not_confirmed_summary(self):
+        current = session()
+        current["input"] = raw_input(with_conflict=True)
+        current["input"]["operating_analysis"] = {"confirmed_fact_ids": ["F1", "F2", "F3"]}
+        current["planning_fact_ids"] = ["F1", "F3"]
+        current["plan"] = plan()
+        current["plan"]["output_strategy"]["claim_coverage"].append({
+            "claim_id": "F3", "disposition": "DEFERRED", "module_ids": [],
+            "rationale": "该容量主张暂缓进入本次画面", "defer_reason_code": "HIGH_RISK_UNDOCUMENTED",
+        })
+        markdown = harness._approval_markdown(current)
+        rows = markdown.splitlines()
+        summary_index = next(index for index, row in enumerate(rows) if "确认的产品事实" in row)
+        self.assertNotIn("3000mAh", rows[summary_index + 2])
+        self.assertNotIn("5000mAh", rows[summary_index + 2])
+        self.assertIn("3000mAh", markdown)
+        self.assertIn("5000mAh", markdown)
+        self.assertIn("已按用户确认排除", markdown)
+        self.assertIn("暂缓表达", markdown)
+
+    def test_summary_returns_exact_persisted_document_including_grouping_and_lf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = V4ContractTests()._portable_approval_session()
+            current["state"] = "AWAITING_PLAN_APPROVAL"
+            path = Path(directory) / "session.json"
+            markdown = harness._approval_markdown(current) + "\n\n" + harness._pair_grouping_markdown(current)
+            harness._persist_approval_document(current, path, markdown)
+            raw = (path.parent / "campaign-approval.md").read_bytes()
+            self.assertEqual(harness.summary(current)["approval_markdown"].encode("utf-8"), raw)
+            (path.parent / "campaign-approval.md").write_bytes(raw + b"changed")
+            with self.assertRaisesRegex(HarnessError, "document bytes changed"):
+                harness.summary(current)
+
+
 class ConflictResolutionContractTests(unittest.TestCase):
     def _reject_without_session_mutation(self, *, duplicate=False):
         with tempfile.TemporaryDirectory() as directory:

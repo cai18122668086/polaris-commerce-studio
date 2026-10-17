@@ -53,6 +53,12 @@ from .domain import (
     PlanValidationStatus,
     RetryScope,
 )
+from .domestic_detail.plans import (
+    DetailPlanError,
+    approval_binding,
+    validate_approval_binding,
+    validate_plan_views,
+)
 from .errors import ApiError, UploadValidationError
 from .inspiration_routes import _sync_configuration_status
 from .masked_repair import (
@@ -2182,14 +2188,20 @@ def update_plan(
         groups = editable_payload.get("groups")
         pages = editable_payload.get("pages")
         if isinstance(groups, list) and isinstance(pages, list):
+            try:
+                detail_binding = approval_binding(editable_payload, settings)
+            except DetailPlanError:
+                detail_binding = None
             approval_document = compile_aurora_campaign_approval_document(
                 group_plans=[group for group in groups if isinstance(group, Mapping)],
                 pages=[page for page in pages if isinstance(page, Mapping)],
                 page_count=int(settings.get("page_count", 0)),
+                binding=detail_binding,
             )
             aurora = editable_payload.get("aurora_v4_3")
             if isinstance(aurora, dict):
                 aurora = dict(aurora)
+                aurora["contract_binding"] = detail_binding
                 aurora["approval_document_markdown"] = approval_document
                 aurora["approval_document_sha256"] = hashlib.sha256(
                     approval_document.encode("utf-8")
@@ -2301,6 +2313,15 @@ def confirm_plan(
                     "AURORA_APPROVAL_PACKET_MISSING",
                     "Aurora 详情图必须先生成完整的 group→screen 审批包。",
                 )
+            try:
+                validate_approval_binding(plan.payload, settings)
+            except DetailPlanError as exc:
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "AURORA_APPROVAL_BINDING_INVALID",
+                    "商品输入、完整方案或 Skill 已变化，请重新审阅当前审批包。",
+                    {"reason": str(exc)},
+                ) from exc
             if (
                 payload.approval_document_sha256
                 != aurora.get("approval_document_sha256")
@@ -3680,6 +3701,13 @@ def _validate_plan_payload(
                         "field": "groups.0.plan_protocol_fields.aurora_plan",
                         "message": "Full Aurora compact plan is required.",
                     }
+                )
+            try:
+                validate_plan_views(payload)
+                validate_approval_binding(payload, settings)
+            except DetailPlanError as exc:
+                errors.append(
+                    {"field": "aurora_v4_3.contract_binding", "message": str(exc)}
                 )
         return errors
     if job.type == JobType.AMAZON_VISUAL_SUITE.value:

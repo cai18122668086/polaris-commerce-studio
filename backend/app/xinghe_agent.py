@@ -58,6 +58,7 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
+from .domestic_detail.plans import approval_binding
 from .masked_repair import (
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
@@ -1640,6 +1641,7 @@ def compile_aurora_campaign_approval_document(
     group_plans: Sequence[Mapping[str, Any]],
     pages: Sequence[Mapping[str, Any]],
     page_count: int,
+    binding: Mapping[str, Any] | None = None,
 ) -> str:
     """Produce the canonical approval packet whose bytes are user-approved."""
 
@@ -1689,6 +1691,8 @@ def compile_aurora_campaign_approval_document(
             "",
         ]
     )
+    if binding is not None:
+        lines.extend(["", "## Immutable approval scope", json.dumps(binding, ensure_ascii=False, sort_keys=True)])
     return "\n".join(lines)
 
 
@@ -4742,12 +4746,15 @@ class XinghePlanningCoordinator:
                     if isinstance(job.configuration, Mapping)
                     else {}
                 )
+                detail_binding = approval_binding(payload, job_settings or {})
                 approval_document = compile_aurora_campaign_approval_document(
                     group_plans=group_plans,
                     pages=flattened_pages,
                     page_count=requests[0].page_count,
+                    binding=detail_binding,
                 )
                 payload["aurora_v4_3"] = {
+                    "contract_binding": detail_binding,
                     "approval_required": True,
                     "approval_document_filename": "campaign-approval.md",
                     "approval_document_markdown": approval_document,

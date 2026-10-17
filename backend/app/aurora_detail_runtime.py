@@ -22,6 +22,7 @@ from .config import default_aurora_work_root, default_skill_root
 from .domestic_detail.contracts import (
     normalize_native_plan_for_harness as normalize_native_plan_for_harness,
 )
+from .domestic_detail.plans import resolve_native_plan
 from .skill_runtime import SkillManifestRegistry
 
 DETAIL_SKILL_ID = "aurora-domestic-ecommerce-detail-page"
@@ -306,20 +307,7 @@ def build_native_identity(settings: Mapping[str, Any], product_image_ids: Sequen
 
 
 def extract_native_plan(payload: Mapping[str, Any]) -> dict[str, Any] | None:
-    for candidate in (
-        payload.get("aurora_plan"),
-        (payload.get("analysis") or {}).get("aurora_plan") if isinstance(payload.get("analysis"), Mapping) else None,
-    ):
-        if isinstance(candidate, Mapping) and isinstance(candidate.get("modules"), list):
-            return dict(candidate)
-    for group in payload.get("groups", []) if isinstance(payload.get("groups"), list) else []:
-        if not isinstance(group, Mapping):
-            continue
-        protocol = group.get("plan_protocol_fields")
-        if isinstance(protocol, Mapping) and isinstance(protocol.get("aurora_plan"), Mapping):
-            return dict(protocol["aurora_plan"])
-    return None
-
+    return resolve_native_plan(payload)
 
 
 

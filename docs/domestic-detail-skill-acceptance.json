@@ -176,7 +176,7 @@
       "requirement": "Raw audit evidence preserved; missing/unknown observations never count as pass",
       "completion": "unproven",
       "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
-      "local_candidate_evidence": "Strict raw observation adapter, original model message byte preservation/parse equality, immutable review receipts, bounded identity uncertainty and no duplicate paid review/usage verified offline. Actual canonical fact context, native canvas/slices, all per-screen gates and real visual evidence remain unproven."
+      "local_candidate_evidence": "C1 exact native compiled identity/facts/dispositions/approval hashes reach actual review requests; conflict confirmation reaches all four pairs; strict raw message/observation and immutable receipts verified offline. Actual raster/slice lineage, all atomic pixel gates, internal gateway route dispatch and real visual evidence remain unproven."
     },
     {
       "id": "I07",
@@ -247,12 +247,12 @@
     },
     "not_complete": [
       "real supplier intake/identity/fact/reference provenance and visual acceptance",
-      "canonical approved review identity/fact authority instead of raw settings",
       "actual original/normalized-canvas/fixed-slice pixel lineage and per-screen gates",
       "accepted recovery validates raw review provenance; old-task version routing",
       "cross-pair/full-campaign quality gates; delivery/native finalization/residual quality states",
       "persistent independent integration stack and actual supplier generation",
-      "actual visual acceptance and release/rollback readiness"
+      "actual visual acceptance and release/rollback readiness",
+      "single network dispatch and actual route/model provenance for native paid review/intake; outer saved receipts alone do not cover internal gateway failover"
     ],
     "intake_candidate": {
       "status": "local_technical_paths_verified_real_visual_unproven",
@@ -323,7 +323,7 @@
       }
     },
     "native_review_candidate": {
-      "status": "strict_raw_observation_and_bounded_native_failure_technical_paths_verified_full_pixel_and_real_visual_pending",
+      "status": "C1_approved_native_fact_identity_authority_and_raw_observations_verified_offline_actual_pixels_pending",
       "report": "domestic-detail-native-review-2026-10-17.md",
       "regression": {
         "native-review-integrated-v3": {
@@ -346,9 +346,17 @@
           "failures": 0,
           "skipped": 0,
           "passed": 45
+        },
+        "native-review-authority-final-v3": {
+          "tests": 72,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 72
         }
       },
-      "skill_content_hash": "7766eff69a8b5501eb7b186707f01a080b92260c65c7a0b7fd6516f60793f42b"
+      "skill_content_hash": "7766eff69a8b5501eb7b186707f01a080b92260c65c7a0b7fd6516f60793f42b",
+      "review_protocol": "native-pixel-review-v2"
     }
   },
   "commands_to_cover": [

@@ -12,6 +12,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from app.aurora_detail_runtime import AuroraDetailHarnessRunner
+from app.domestic_detail.review import approved_review_authority
 from app.models import JobPlanRecord
 from app.provider import ProviderRequest
 from app.xinghe_agent import (
@@ -27,6 +28,7 @@ from app.xinghe_agent import (
 )
 from tests.test_api import WORKSPACE_ID, dispatch_pending, upload_asset
 from tests.test_domestic_detail_execution import _create_detail_job
+from tests.test_domestic_detail_review_authority import compiled_review_session
 
 
 @pytest.mark.parametrize(
@@ -39,6 +41,9 @@ from tests.test_domestic_detail_execution import _create_detail_job
         "uncertain_followup",
         "raw_missing",
         "raw_mismatch",
+        "authority_missing",
+        "authority_changed",
+        "aliases_changed",
     ],
 )
 def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
@@ -63,6 +68,20 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
 
         async def plan(self, request):
             self.planner_calls.append(request)
+            context = json.loads(request.product_information[0])
+            assert request.product_name == authority["product_name"]
+            if request.planning_profile == "aurora_detail_pair_audit":
+                assert context["review_authority"] == authority
+                assert (
+                    context["product_information"] == authority["product_information"]
+                )
+                assert "Capacity 300 ml" not in context["product_information"]
+                assert (
+                    "777-hour performance claim" not in context["product_information"]
+                )
+            else:
+                assert context["locked_identity"] == authority["locked_identity"]
+                assert context["review_authority_sha256"] == authority["sha256"]
             if request.planning_profile == "aurora_detail_pair_audit":
                 payload = provider._native_detail_judgment(native, artifact)
                 payload["status"] = "MATERIAL_FAIL"
@@ -148,11 +167,21 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         payload=artifact.payload,
         source_role="product_reference",
     )
+    authority = approved_review_authority(compiled_review_session())
     native = {
+        "review_authority": authority,
+        "product_name": authority["product_name"],
+        "product_information": authority["product_information"],
         "pair_id": "P01",
         "module_ids": ["M01", "M02"],
         "pair_render": {"internal_seam_method_id": "EDGE_BLEED"},
     }
+    if mode == "authority_missing":
+        native.pop("review_authority")
+    elif mode == "authority_changed":
+        native["review_authority"] = {**authority, "sha256": "0" * 64}
+    elif mode == "aliases_changed":
+        native["product_information"] = ["Capacity 300 ml"]
     request = ProviderRequest(
         workspace_id=WORKSPACE_ID,
         job_id=job["id"],
@@ -160,7 +189,7 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         attempt_id="attempt-test",
         operation="detail_pack",
         idempotency_key="audit-test",
-        configuration={"group_key": "primary"},
+        configuration={"group_key": "primary", "product_name": "Wrong raw setting"},
     )
     coroutine = provider._native_detail_judgment_with_review(
         request, native, (source,), artifact
@@ -170,6 +199,9 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         "uncertain_followup": "AURORA_NATIVE_IDENTITY_AUDIT_INVALID",
         "raw_missing": "AURORA_NATIVE_REVIEW_RAW_REPLY_MISSING",
         "raw_mismatch": "AURORA_NATIVE_REVIEW_RAW_REPLY_MISMATCH",
+        "authority_missing": "AURORA_NATIVE_REVIEW_AUTHORITY_INVALID",
+        "authority_changed": "AURORA_NATIVE_REVIEW_AUTHORITY_INVALID",
+        "aliases_changed": "AURORA_NATIVE_REVIEW_AUTHORITY_INVALID",
     }.get(mode)
     if expected_error:
         with pytest.raises(XingheAgentError) as error:
@@ -182,7 +214,13 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         )
         assert judgment["checks"]["internal_seam"]["pass"] is False
         assert judgment["status"] == "MATERIAL_FAIL"
-    calls = 1 if mode in {"complete_failed", "raw_missing", "raw_mismatch"} else 2
+    calls = (
+        0
+        if mode in {"authority_missing", "authority_changed", "aliases_changed"}
+        else 1
+        if mode in {"complete_failed", "raw_missing", "raw_mismatch"}
+        else 2
+    )
     assert len(gateway.planner_calls) == calls
     assert gateway.image_calls == []
     assert all(
@@ -206,6 +244,8 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         assert len(plan.payload["usage"]["planner"]) == prior_planner_calls + calls
     evidence = list((tmp_path / job["id"] / "reviews").glob("*.response.json"))
     assert len(evidence) == calls
+    if calls == 0:
+        return
     for path in evidence:
         saved = json.loads(path.read_bytes())
         raw_path = path.with_name(path.name.replace(".response.json", ".reply.txt"))

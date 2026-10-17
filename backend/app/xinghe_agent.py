@@ -88,7 +88,9 @@ from .domestic_detail.review import (
     AUDIT_PROFILES,
     DetailReviewError,
     ReviewStore,
+    approved_review_authority,
     normalize_pair_observation,
+    require_review_authority,
 )
 from .masked_repair import (
     MaskedEditCallResult,
@@ -5541,6 +5543,7 @@ class XingheImageProvider:
                 XingheAgentError,
                 DetailGenerationError,
                 DetailPlanError,
+                DetailReviewError,
             ) as exc:
                 return _provider_rejection(
                     getattr(exc, "code", "AURORA_NATIVE_RUNTIME_FAILED"),
@@ -6212,9 +6215,7 @@ class XingheImageProvider:
             runner.run(
                 "start", workspace, {"input": input_path, "session": session_path}
             )
-            if (payload.get("product_intake") or {}).get("resolution") and (
-                native_plan.get("product_intake") or {}
-            ).get("source_conflicts"):
+            if (payload.get("product_intake") or {}).get("resolution") and native_input_value.get("source_conflicts"):
                 resolution_path = workspace / "resolution.json"
                 write_detail_contract(
                     resolution_path, payload["product_intake"]["resolution"]
@@ -6317,6 +6318,7 @@ class XingheImageProvider:
                 "NATIVE_DETAIL_STATE_INVALID",
                 f"Native detail session is not ready: {state}",
             )
+        review_authority = approved_review_authority(native_session_value)
         runner.run(
             "generate-next", workspace, {"session": session_path, "out": request_path}
         )
@@ -6338,6 +6340,8 @@ class XingheImageProvider:
         # vision response can correctly inspect pixels yet still fail closed on
         # MODULE_CONTRACT_UNAVAILABLE.
         session_for_audit = json.loads(session_path.read_text(encoding="utf-8"))
+        if approved_review_authority(session_for_audit) != review_authority:
+            raise DetailReviewError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Approved review authority changed while issuing the native request")
         approved_contracts = []
         requested_module_ids = {
             str(module_id) for module_id in native_request.get("module_ids") or []
@@ -6354,20 +6358,11 @@ class XingheImageProvider:
                     {"module_id": str(module.get("id")), "contract": dict(plan)}
                 )
         native_request["approved_module_contracts"] = approved_contracts
-        # Keep the audit context explicit and machine-readable.  The native
-        # generation prompt already contains these facts, but the semantic
-        # pair reviewer receives its own first ``product_information`` entry
-        # and must be able to bind every visible claim to the same approved
-        # facts and module contracts.  Do not write these fields back to the
-        # signed generation request on disk: the Harness fingerprint covers
-        # that request and must remain immutable.
-        raw_facts = (
-            settings.get("verified_facts") or settings.get("selling_points") or []
-        )
-        native_request["product_information"] = [
-            str(value).strip() for value in raw_facts if str(value).strip()
-        ]
-        native_request["product_name"] = str(settings.get("product_name") or "当前商品")
+        # The signed request on disk stays immutable. Its app envelope carries
+        # the exact approved native identity and fact dispositions for review.
+        native_request["review_authority"] = review_authority
+        native_request["product_information"] = list(review_authority["product_information"])
+        native_request["product_name"] = review_authority["product_name"]
         # Keep the blank format canvas local, as required by the Skill provider protocol.
         ordered: list[SourceImage] = []
         source_by_path = {
@@ -6477,6 +6472,12 @@ class XingheImageProvider:
 
         if self.gateway.provider_name == "mock":
             return self._native_detail_judgment(native_request, artifact)
+        try:
+            authority = require_review_authority(native_request.get("review_authority"))
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
+        if native_request.get("product_information") != authority["product_information"] or native_request.get("product_name") != authority["product_name"]:
+            raise XingheAgentError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Review aliases differ from the approved native authority")
         candidate = SourceImage(
             asset_id=f"generated:{artifact.sha256}",
             group_key=str(native_request.get("pair_id") or request.job_id),
@@ -6498,10 +6499,11 @@ class XingheImageProvider:
             "module_ids": native_request.get("module_ids"),
             "pair_render": native_request.get("pair_render"),
             "output_surface": native_request.get("output_surface"),
-            "product_name": native_request.get("product_name") or request.configuration.get("product_name") or "当前商品",
-            "product_information": list(native_request.get("product_information") or []),
+            "product_name": authority["product_name"],
+            "product_information": authority["product_information"],
+            "review_authority": authority,
             "approved_module_contracts": list(native_request.get("approved_module_contracts") or []),
-            "audit_context_version": "aurora-v4.3-pair-audit-v3",
+            "audit_context_version": "aurora-v4.3-pair-audit-v4",
             "candidate_sha256": artifact.sha256,
             "candidate_dimensions": [artifact.width, artifact.height],
             "source_inventory": source_inventory,
@@ -6513,7 +6515,8 @@ class XingheImageProvider:
 
         async def review(audit_request: PlannerRequest, phase: str) -> PlannerCallResult:
             binding = {
-                "version": "native-pixel-review-v1", "phase": phase,
+                "version": "native-pixel-review-v2", "phase": phase,
+                "approved_review_authority_sha256": authority["sha256"],
                 "render_token": native_request.get("token") or canonical_hash(native_request),
                 "candidate_sha256": artifact.sha256,
                 "native_request_sha256": canonical_hash(native_request),
@@ -6584,7 +6587,7 @@ class XingheImageProvider:
                 sources=audit_sources,
                 page_count=2,
                 language="zh-CN",
-                product_name=str(request.configuration.get("product_name") or "当前商品"),
+                product_name=authority["product_name"],
                 product_information=(json.dumps(contract, ensure_ascii=False),),
                 platform_code="domestic-detail",
                 size="1440x3840",
@@ -6611,7 +6614,8 @@ class XingheImageProvider:
                     idempotency_key=audit_request.idempotency_key + ":identity",
                     product_information=(json.dumps({"pair_id": contract["pair_id"],
                         "product_name": contract["product_name"], "candidate_sha256": artifact.sha256,
-                        "source_inventory": source_inventory}, ensure_ascii=False),)),
+                        "source_inventory": source_inventory, "locked_identity": authority["locked_identity"],
+                        "review_authority_sha256": authority["sha256"]}, ensure_ascii=False),)),
                 "aurora_detail_identity_audit",
             )
             observed = identity_result.payload
@@ -10127,6 +10131,10 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "Report observed OCR as explicit ocr_text, unauthorized_ocr_text and "
             "forbidden_text_hits lists; artifact_binding.ocr_text must be identical. "
             "Do not fill selling_points_visible or seam observations from the plan. "
+            "review_authority carries the exact locked identity, brand policy and "
+            "original fact ledger. Only active LEAD/SUPPORT facts may be expressed; "
+            "EXCLUDED/DEFERRED rows remain denial evidence, never permission. "
+            "The allowed fact vocabulary does not replace each approved screen duty. "
             "If any required observation is unknown, return audit_complete=false and "
             "describe uncertainty; unknown evidence never authorizes image regeneration. "
             "internal_seam_evidence must report method_id, source_region, "

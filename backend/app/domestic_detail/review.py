@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
@@ -41,6 +42,166 @@ class DetailReviewError(ValueError):
 
 def _invalid(path: str, reason: str) -> NoReturn:
     raise DetailReviewError("AURORA_NATIVE_AUDIT_INVALID", f"{path}: {reason}")
+
+
+def _authority_invalid(path: str) -> NoReturn:
+    raise DetailReviewError(
+        "AURORA_NATIVE_REVIEW_AUTHORITY_INVALID",
+        path + ": the exact compiled and approved review authority is required",
+    )
+
+
+def approved_review_authority(session: Mapping[str, Any]) -> dict[str, Any]:
+    """Project approved native truth; raw settings never supply review facts."""
+    expected_version = (
+        (default_skill_root("aurora-domestic-ecommerce-detail-page") / "VERSION")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
+    if session.get("version") != expected_version:
+        _authority_invalid("/version")
+    for key in ("input", "identity", "plan", "approval_document"):
+        if not isinstance(session.get(key), Mapping):
+            _authority_invalid("/" + key)
+    native_input, identity, plan = (
+        session["input"],
+        session["identity"],
+        session["plan"],
+    )
+    facts = native_input.get("verified_facts")
+    active = session.get("planning_fact_ids")
+    if not isinstance(facts, list) or not isinstance(active, list):
+        _authority_invalid("/verified_facts or /planning_fact_ids")
+    if any(
+        not isinstance(row, dict)
+        or not isinstance(row.get("id"), str)
+        or not isinstance(row.get("text"), str)
+        or not row["text"].strip()
+        for row in facts
+    ):
+        _authority_invalid("/verified_facts")
+    fact_ids = [row["id"] for row in facts]
+    if (
+        any(not isinstance(item, str) for item in active)
+        or len(fact_ids) != len(set(fact_ids))
+        or len(active) != len(set(active))
+        or not set(active) <= set(fact_ids)
+    ):
+        _authority_invalid("/planning_fact_ids")
+    conflicts = native_input.get("source_conflicts", [])
+    if not isinstance(conflicts, list):
+        _authority_invalid("/source_conflicts")
+    rejected: set[str] = set()
+    retained: set[str] = set()
+    for conflict in conflicts:
+        if not isinstance(conflict, dict) or conflict.get("status") != "RESOLVED":
+            _authority_invalid("/source_conflicts/status")
+        resolution = conflict.get("resolution")
+        if (
+            not isinstance(resolution, dict)
+            or not isinstance(resolution.get("rejected_fact_ids"), list)
+            or not isinstance(resolution.get("retained_fact_ids"), list)
+            or not resolution.get("confirmation_text")
+        ):
+            _authority_invalid("/source_conflicts/resolution")
+        rejected.update(resolution["rejected_fact_ids"])
+        retained.update(resolution["retained_fact_ids"])
+    if rejected & retained or set(fact_ids) - set(active) != rejected:
+        _authority_invalid("/planning_fact_ids/resolution")
+    coverage = (plan.get("output_strategy") or {}).get("claim_coverage")
+    if not isinstance(coverage, list) or any(
+        not isinstance(row, dict)
+        or row.get("disposition") not in {"LEAD", "SUPPORT", "DEFERRED"}
+        for row in coverage
+    ):
+        _authority_invalid("/claim_coverage")
+    coverage_ids = [row.get("claim_id") for row in coverage]
+    if len(coverage_ids) != len(set(coverage_ids)) or set(coverage_ids) != set(active):
+        _authority_invalid("/claim_coverage/claim_id")
+    by_id = {row["claim_id"]: row for row in coverage}
+    ledger = [
+        {
+            "fact": deepcopy(fact),
+            "approved_disposition": by_id[fact["id"]]["disposition"]
+            if fact["id"] in by_id
+            else "EXCLUDED",
+            "claim_coverage": deepcopy(by_id.get(fact["id"])),
+        }
+        for fact in facts
+    ]
+    expressed = [
+        row["fact"]
+        for row in ledger
+        if row["approved_disposition"] in {"LEAD", "SUPPORT"}
+    ]
+    value = {
+        "version": "native-review-authority-v1",
+        "native_version": session["version"],
+        "locked_identity": deepcopy(identity),
+        "original_fact_ledger": ledger,
+        "active_fact_ids": list(active),
+        "expressible_fact_ids": [row["id"] for row in expressed],
+        "product_name": identity.get("canonical_name"),
+        "product_information": [row["text"] for row in expressed],
+        "source_conflicts": deepcopy(conflicts),
+        "compiled_input_sha256": canonical_hash(native_input),
+        "compiled_identity_sha256": canonical_hash(identity),
+        "compiled_plan_sha256": canonical_hash(plan),
+        "native_approval_document_sha256": session["approval_document"].get("sha256"),
+    }
+    return require_review_authority({**value, "sha256": canonical_hash(value)})
+
+
+def require_review_authority(value: object) -> dict[str, Any]:
+    if (
+        not isinstance(value, Mapping)
+        or value.get("version") != "native-review-authority-v1"
+    ):
+        _authority_invalid("/review_authority")
+    value = deepcopy(dict(value))
+    if value.get("sha256") != canonical_hash(
+        {key: item for key, item in value.items() if key != "sha256"}
+    ):
+        _authority_invalid("/review_authority/sha256")
+    for key in (
+        "compiled_input_sha256",
+        "compiled_identity_sha256",
+        "compiled_plan_sha256",
+        "native_approval_document_sha256",
+    ):
+        if not isinstance(value.get(key), str) or not re.fullmatch(
+            r"[0-9a-f]{64}", value[key]
+        ):
+            _authority_invalid("/review_authority/" + key)
+    identity = value.get("locked_identity")
+    if (
+        not isinstance(identity, dict)
+        or not isinstance(identity.get("canonical_name"), str)
+        or not identity["canonical_name"].strip()
+        or value.get("product_name") != identity["canonical_name"]
+    ):
+        _authority_invalid("/review_authority/locked_identity")
+    ledger = value.get("original_fact_ledger")
+    if not isinstance(ledger, list) or any(
+        not isinstance(row, dict)
+        or not isinstance(row.get("fact"), dict)
+        or not isinstance(row["fact"].get("id"), str)
+        or not isinstance(row["fact"].get("text"), str)
+        or row.get("approved_disposition")
+        not in {"LEAD", "SUPPORT", "DEFERRED", "EXCLUDED"}
+        for row in ledger
+    ):
+        _authority_invalid("/review_authority/original_fact_ledger")
+    expressed = [
+        row["fact"]
+        for row in ledger
+        if row["approved_disposition"] in {"LEAD", "SUPPORT"}
+    ]
+    if value.get("expressible_fact_ids") != [
+        row["id"] for row in expressed
+    ] or value.get("product_information") != [row["text"] for row in expressed]:
+        _authority_invalid("/review_authority/product_information")
+    return value
 
 
 def normalize_pair_observation(

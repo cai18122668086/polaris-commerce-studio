@@ -190,6 +190,63 @@ def test_material_conflicts_are_batched_and_human_choice_reaches_native_harness(
     contract = gateway.planner_calls[-1].detail_intake
     assert contract["resolution"]["resolutions"][0]["retained_fact_ids"] == ["F02"]
     assert gateway.image_calls == []
+    import hashlib
+    import json
+
+    from app.aurora_detail_runtime import detail_workspace
+    from app.xinghe_agent import XingheImageProvider
+    from tests.test_domestic_detail_execution import _aurora_approval_payload
+
+    contexts = []
+    approved = planned["plan"]["payload"]["native_approval"]
+
+    async def inspect_authority(self, request, native_request, sources, artifact):
+        del request, sources
+        authority = native_request["review_authority"]
+        assert authority["product_information"] == ["容量 500 ml"]
+        assert native_request["product_information"] == ["容量 500 ml"]
+        assert (
+            authority["native_approval_document_sha256"] == approved["document_sha256"]
+        )
+        for key in ("input", "identity", "plan"):
+            field = f"compiled_{key}_sha256"
+            assert authority[field] == approved[field]
+        ledger = {row["fact"]["id"]: row for row in authority["original_fact_ledger"]}
+        assert ledger["F01"]["fact"]["text"] == "容量 300 ml"
+        assert ledger["F01"]["approved_disposition"] == "EXCLUDED"
+        assert ledger["F02"]["approved_disposition"] == "LEAD"
+        assert authority["locked_identity"] == contract["identity"]
+        contexts.append(deepcopy(native_request))
+        return self._native_detail_judgment(native_request, artifact)
+
+    monkeypatch.setattr(
+        XingheImageProvider, "_native_detail_judgment_with_review", inspect_authority
+    )
+    client.app.state.settings.max_image_pixels = 6_000_000
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    confirmed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
+        headers=idem(), json=_aurora_approval_payload(planned),
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    dispatch_pending(client)
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert current["status"] == "awaiting_final_review", (
+        current.get("error_code"),
+        [
+            (item.get("error_code"), item.get("error_message"))
+            for item in current["items"]
+        ],
+    )
+    assert len(gateway.image_calls) == len(contexts) == 4
+    assert len(gateway.planner_calls) == 3
+    assert len({context["review_authority"]["sha256"] for context in contexts}) == 1
+    for context in contexts:
+        page = int(context["module_ids"][0][1:])
+        raw = (detail_workspace(job["id"]) / f"generation-{page:03d}.json").read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == context["signed_request_sha256"]
+        assert "review_authority" not in json.loads(raw)
+
 
 
 @pytest.mark.parametrize("cost", [None, 0, 1700])

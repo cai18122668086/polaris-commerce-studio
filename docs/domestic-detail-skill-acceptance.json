@@ -41,7 +41,8 @@
       "id": "G06",
       "requirement": "At most initial render plus one repair; preserve residuals, no hidden third render",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "Canonical native negative-observation transition and three complete eight-screen synthetic campaigns prove one repair and preserved second-attempt residuals. See domestic-detail-native-review-2026-10-17.md. Raw audit integrity, all per-screen gates and actual pixels remain unproven."
     },
     {
       "id": "G07",

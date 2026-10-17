@@ -2001,8 +2001,8 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         require_fields(coverage, ("module_id", "duty_visible", "selling_points_visible", "visible_evidence"), "pair screen coverage")
         if coverage["module_id"] not in pair["module_ids"] or coverage["module_id"] in coverage_ids:
             raise HarnessError("Pair screen coverage must contain each adjacent module exactly once")
-        if coverage["duty_visible"] is not True or not coverage["selling_points_visible"] or len(str(coverage["visible_evidence"]).strip()) < 8:
-            raise HarnessError("Pair screen coverage must visibly confirm each screen duty and selling-point payload")
+        if judgment["status"] == "PASS" and (coverage["duty_visible"] is not True or not coverage["selling_points_visible"]):
+            raise HarnessError("PASS pair screen coverage must visibly confirm each screen duty and selling-point payload")
         coverage_ids.append(coverage["module_id"])
     if coverage_ids != pair["module_ids"]:
         raise HarnessError("Pair screen coverage must preserve upper-to-lower screen order")
@@ -2015,15 +2015,34 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     planned = pair_modules[1]["plan"].get("transition_contract") or {}
     if seam["method_id"] != planned.get("method_id"):
         raise HarnessError("Pair seam evidence method does not match the approved lower-screen incoming transition contract")
-    if seam["hard_cut_absent"] is not True or seam["method_specific_pass"] is not True:
-        raise HarnessError("Pair seam evidence must pass the declared method and contain no hard cut")
+    if judgment["status"] == "PASS" and (seam["hard_cut_absent"] is not True or seam["method_specific_pass"] is not True):
+        raise HarnessError("PASS pair seam evidence must pass the declared method and contain no hard cut")
     checks = judgment["checks"]
     required_checks = ("identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression")
     missing = [name for name in required_checks if name not in checks]
     if missing:
         raise HarnessError("Pair judgment missing checks: " + ", ".join(missing))
-    require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment")
+    require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment", allow_material_failure=True)
     failures = list(judgment["material_failures"])
+    if judgment["status"] == "MATERIAL_FAIL" and not failures:
+        raise HarnessError("MATERIAL_FAIL pair judgment requires visible material failures")
+    # These findings come only from explicit negative pixel observations. Missing
+    # fields remain schema errors and never grant an automatic image repair.
+    observed_failures = [
+        {"check": name, "visible_evidence": checks[name]["visible_evidence"]}
+        for name in required_checks if checks[name]["pass"] is False
+    ]
+    if seam["hard_cut_absent"] is False or seam["method_specific_pass"] is False:
+        observed_failures.append({"check": "internal_seam", "visible_evidence": seam["visible_evidence"]})
+    silhouette = judgment["identity_silhouette"]
+    if any(silhouette[name] is False for name in ("shape_consistent", "colorway_consistent", "texture_consistent")):
+        observed_failures.append({"check": "identity_silhouette", "visible_evidence": silhouette["visible_evidence"]})
+    for coverage in judgment["screen_coverage"]:
+        if coverage["duty_visible"] is False or not coverage["selling_points_visible"]:
+            observed_failures.append({"check": "screen_coverage", "module_id": coverage["module_id"], "visible_evidence": coverage["visible_evidence"]})
+    for finding in observed_failures:
+        if finding not in failures:
+            failures.append(finding)
     if session.get("plan", {}).get("information_contract_version") == "4.1":
         info = judgment.get("information_audit")
         require_fields(info or {}, ("upper_buyer_question", "lower_buyer_question", "new_information_visible", "new_information_evidence", "repetition_without_progression", "hero_subject_clear", "co_equal_hero_detected", "purchase_judgment_enabled", "detail_page_not_posterized"), "pair information audit")
@@ -2050,9 +2069,12 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     ]
     if latest_slices:
         _verify_pair_slice_integrity(latest_slices, session)
+    cycle_counts = [item.get("cycle_attempt_count") for item in pair_modules]
+    if any(type(count) is not int for count in cycle_counts) or cycle_counts[0] not in (1, 2) or cycle_counts != [cycle_counts[0]] * len(pair_modules):
+        raise HarnessError("Pair audit requires the same first or second cycle attempt on both screens")
     for item in pair_modules:
         attempt = item["attempts"][-1]
-        attempt["judgment"] = judgment
+        attempt["judgment"] = {**judgment, "material_failures": failures}
         if judgment["status"] == "PASS":
             item["accepted_asset"] = attempt["image"]
             item["status"] = "COMPLETE"

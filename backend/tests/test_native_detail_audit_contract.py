@@ -39,6 +39,11 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         client, asset["id"], market_region="domestic", auto_start_after_plan=False
     )
     dispatch_pending(client)
+    with client.app.state.session_factory() as db:
+        initial = db.scalar(
+            select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"])
+        )
+        prior_planner_calls = len(initial.payload["usage"]["planner"])
     monkeypatch.setattr(
         "app.xinghe_agent.detail_workspace", lambda job_id: tmp_path / job_id
     )
@@ -152,7 +157,7 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
     )
     with client.app.state.session_factory() as db:
         plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"]))
-        assert len(plan.payload["usage"]["planner"]) == calls + 1
+        assert len(plan.payload["usage"]["planner"]) == prior_planner_calls + calls
     evidence = list((tmp_path / job["id"]).glob("*.json"))
     assert len(evidence) == calls
     original = next(

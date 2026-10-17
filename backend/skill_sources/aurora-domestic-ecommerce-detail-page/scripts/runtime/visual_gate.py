@@ -340,7 +340,7 @@ def _eligible_advisory_visual_marks(observations: dict) -> list[str]:
     return eligible
 
 
-def require_identity_silhouette(judgment: dict, context: str) -> None:
+def require_identity_silhouette(judgment: dict, context: str, *, allow_material_failure: bool = False) -> None:
     """Positive identity lock: the rendered product must match the original.
 
     The 2026-09-17 trash-bin campaign passed screens whose product had drifted
@@ -368,12 +368,12 @@ def require_identity_silhouette(judgment: dict, context: str) -> None:
             f"{context}: identity_silhouette.visible_evidence must describe the "
             "observed silhouette, colorway and texture against the product original"
         )
-    drifted = [
-        name
-        for name in ("shape_consistent", "colorway_consistent", "texture_consistent")
-        if silhouette[name] is not True
-    ]
-    if drifted:
+    identity_keys = ("shape_consistent", "colorway_consistent", "texture_consistent")
+    for name in identity_keys:
+        if not isinstance(silhouette[name], bool):
+            raise HarnessError(f"{context}: identity_silhouette.{name} must be a boolean pixel observation")
+    drifted = [name for name in identity_keys if silhouette[name] is False]
+    if drifted and not (allow_material_failure and judgment.get("status") == "MATERIAL_FAIL"):
         raise HarnessError(
             f"{context}: product identity drift detected in identity_silhouette "
             f"({', '.join(drifted)}) — the rendered product does not match the "

@@ -518,8 +518,9 @@ def test_failed_planning_retry_recovers_verified_candidate_without_rebilling_old
     assert gateway.image_calls == []
 
 
+@pytest.mark.parametrize("pixel_failure", ["string_legibility", "seam", "identity"])
 def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_screens(
-    client: TestClient, monkeypatch,
+    client: TestClient, monkeypatch, pixel_failure,
 ) -> None:
     async def review(self, request, native_request, sources, artifact):
         del request, sources
@@ -530,6 +531,11 @@ def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_scr
                 "pass": False, "visible_evidence": "首对图片右侧的小字有一处笔画粘连，需要保留为审计问题。",
             }
             judgment["material_failures"] = ["首对图片右侧的小字有一处笔画粘连，需要保留为审计问题。"]
+            if pixel_failure == "seam":
+                judgment["internal_seam_evidence"]["hard_cut_absent"] = False
+                judgment["internal_seam_evidence"]["method_specific_pass"] = False
+            elif pixel_failure == "identity":
+                judgment["identity_silhouette"]["shape_consistent"] = False
         return self._normalize_native_pair_judgment(judgment, native_request, artifact)
 
     monkeypatch.setattr(XingheImageProvider, "_native_detail_judgment_with_review", review)
@@ -550,6 +556,14 @@ def test_native_string_audit_failures_allow_one_repair_then_finish_all_eight_scr
     assert result["status"] == JobStatus.AWAITING_FINAL_REVIEW.value
     assert all(item["status"] == "succeeded" for item in result["items"])
     assert len(_gateway(client).image_calls) == 5
+    native = json.loads((detail_workspace(job["id"]) / "session.json").read_text(encoding="utf-8"))
+    first_pair = native["modules"][:2]
+    assert [module["status"] for module in first_pair] == ["COMPLETE_WITH_RESIDUALS"] * 2
+    assert all(len(module["attempts"]) == 2 for module in first_pair)
+    if pixel_failure == "seam":
+        assert all(module["attempts"][-1]["judgment"]["internal_seam_evidence"]["hard_cut_absent"] is False for module in first_pair)
+    elif pixel_failure == "identity":
+        assert all(module["attempts"][-1]["judgment"]["identity_silhouette"]["shape_consistent"] is False for module in first_pair)
     session = json.loads((detail_workspace(str(job["id"])) / "session.json").read_text(encoding="utf-8"))
     assert all(m["status"] == "COMPLETE_WITH_RESIDUALS" for m in session["modules"][:2])
     assert all(m["cycle_attempt_count"] == 2 for m in session["modules"][:2])

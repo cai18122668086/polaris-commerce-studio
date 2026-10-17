@@ -98,9 +98,21 @@ from .domestic_detail.pixels import (
     load_native_pair_pixels,
     pixel_review_context,
 )
+from .domestic_detail.planner_dispatch import (
+    NATIVE_PLANNER_PROFILES,
+    PlannerDispatchError,
+    dispatch_metadata,
+    planner_dispatch_record,
+    planning_model,
+    require_route,
+    result_with_dispatch,
+    route_descriptor,
+    select_route,
+    validate_dispatch_result,
+)
+from .domestic_detail.planning_calls import NativePlanningStore, call_binding
 from .domestic_detail.plans import DetailPlanError, approval_binding
 from .domestic_detail.review import (
-    AUDIT_PROFILES,
     DetailReviewError,
     ReviewStore,
     approved_review_authority,
@@ -439,6 +451,7 @@ class PlannerRequest:
     intake_settings: Mapping[str, Any] | None = None
     detail_intake: Mapping[str, Any] | None = None
     intake_resolution: Mapping[str, Any] | None = None
+    native_dispatch: Mapping[str, Any] | None = None
 
 
 def _choose_identity_anchor(sources: Sequence[SourceImage]) -> SourceImage | None:
@@ -661,6 +674,8 @@ class XingheGateway(Protocol):
     medium_price_micros: int
     high_price_micros: int
     external_network_request_count: int
+
+    def native_planner_route(self) -> dict[str, Any]: ...
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult: ...
 
@@ -1840,6 +1855,16 @@ class FakeXingheGateway:
         self.max_active_images = 0
         self._activity_lock = asyncio.Lock()
 
+    def native_planner_route(self) -> dict[str, Any]:
+        return route_descriptor(
+            provider=self.provider_name,
+            route="offline-synthetic",
+            model=self.planner_model,
+            endpoint="offline://synthetic",
+            credential="SYNTHETIC_OFFLINE",
+            kind="synthetic",
+        )
+
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         self.planner_calls.append(request)
         started = time.perf_counter()
@@ -2262,7 +2287,91 @@ class TengliOpenAICompatibleGateway:
         # Try the next configured key instead of failing the job immediately.
         return status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
 
+    def native_planner_route(self) -> dict[str, Any]:
+        route = self._ordered_routes()[0]
+        return route_descriptor(
+            provider=self.provider_name,
+            route=route.name,
+            model=route.planner_model,
+            endpoint=urljoin(route.planner_base_url, "v1/chat/completions"),
+            credential=route.planner_api_key,
+        )
+
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
+        if request.planning_profile not in NATIVE_PLANNER_PROFILES:
+            return await self._plan_transport(request)
+        started = time.perf_counter()
+        route = None
+        try:
+            route = (
+                require_route(request.native_dispatch)
+                if request.native_dispatch is not None
+                else self.native_planner_route()
+            )
+            select_route(self, route)
+        except PlannerDispatchError as exc:
+            return PlannerCallResult(
+                payload=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=0,
+                actual_cost_micros=None,
+                error_code=exc.code,
+                error_message=str(exc),
+                external_request=False,
+                provider_envelope=(
+                    {
+                        "native_planner_dispatch": dispatch_metadata(
+                            route,
+                            attempts=0,
+                            response_received=False,
+                            status=None,
+                            error_code=exc.code,
+                        )
+                    }
+                    if route is not None
+                    else None
+                ),
+            )
+        state: dict[str, Any] = {
+            "route": route,
+            "attempts": 0,
+            "response_received": False,
+            "http_status": None,
+            "reported_model": None,
+        }
+        try:
+            result = await self._plan_transport(request, state)
+        except Exception as exc:
+            result = PlannerCallResult(
+                payload=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=time.perf_counter() - started,
+                actual_cost_micros=None,
+                error_code=getattr(exc, "code", "NATIVE_PLANNER_OUTCOME_UNKNOWN"),
+                error_message=f"Native planner dispatch stopped ({type(exc).__name__})",
+            )
+        envelope = dict(result.provider_envelope or {})
+        envelope["native_planner_dispatch"] = dispatch_metadata(
+            route,
+            attempts=state["attempts"],
+            response_received=state["response_received"],
+            status=state["http_status"],
+            error_code=result.error_code,
+            reported_model=state["reported_model"],
+        )
+        return replace(
+            result, provider_envelope=envelope, external_request=state["attempts"] > 0
+        )
+
+    async def _plan_transport(
+        self,
+        request: PlannerRequest,
+        native_state: dict[str, Any] | None = None,
+    ) -> PlannerCallResult:
         started = time.perf_counter()
         content: list[dict[str, Any]] = [
             {
@@ -2331,12 +2440,20 @@ class TengliOpenAICompatibleGateway:
         response: Mapping[str, Any] | None = None
         try:
             routes = self._ordered_routes()
-            if request.planning_profile == INTAKE_PROFILE:
+            if request.planning_profile in NATIVE_PLANNER_PROFILES:
                 routes = routes[:1]
             last_route_index = len(routes) - 1
             for route_index, route in enumerate(routes):
                 route_payload = {**payload, "model": route.planner_model}
                 try:
+                    if native_state is not None:
+                        select_route(self, native_state["route"])
+                        if native_state["attempts"] != 0:
+                            raise PlannerDispatchError(
+                                "NATIVE_PLANNER_ALREADY_DISPATCHED",
+                                "A native planner request permits one transport call",
+                            )
+                        native_state["attempts"] = 1
                     self.external_network_request_count += 1
                     status, response = await self.transport.post_json(
                         url=urljoin(route.planner_base_url, "v1/chat/completions"),
@@ -2346,6 +2463,14 @@ class TengliOpenAICompatibleGateway:
                         payload=route_payload,
                         timeout_seconds=self.timeout_seconds,
                     )
+                    if native_state is not None:
+                        native_state["response_received"] = True
+                        native_state["http_status"] = status
+                        native_state["reported_model"] = (
+                            response.get("model")
+                            if isinstance(response.get("model"), str)
+                            else None
+                        )
                 except XingheAgentError as exc:
                     if (
                         exc.retryable or exc.code == "PROVIDER_RESPONSE_INVALID"
@@ -2421,7 +2546,9 @@ class TengliOpenAICompatibleGateway:
                     provider_envelope=envelope_diagnostics["provider_envelope"],
                     content_utf8_bytes=len(content_bytes),
                     content_sha256=content_sha256,
-                audit_raw_content=text if request.planning_profile in AUDIT_PROFILES else None,
+                    audit_raw_content=text
+                    if request.planning_profile in NATIVE_PLANNER_PROFILES
+                    else None,
                     request_id_presence=envelope_diagnostics["request_id_presence"],
                     usage_presence=envelope_diagnostics["usage_presence"],
                     usage_completeness=envelope_diagnostics["usage_completeness"],
@@ -2439,7 +2566,9 @@ class TengliOpenAICompatibleGateway:
                 provider_envelope=envelope_diagnostics["provider_envelope"],
                 content_utf8_bytes=len(content_bytes),
                 content_sha256=content_sha256,
-                audit_raw_content=text if request.planning_profile in AUDIT_PROFILES else None,
+                audit_raw_content=text
+                if request.planning_profile in NATIVE_PLANNER_PROFILES
+                else None,
                 request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
                 usage_completeness=envelope_diagnostics["usage_completeness"],
@@ -2485,7 +2614,12 @@ class TengliOpenAICompatibleGateway:
                 request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
                 usage_completeness=envelope_diagnostics["usage_completeness"],
-                audit_raw_content=(raw_content if isinstance(raw_content, str) and request.planning_profile in AUDIT_PROFILES else None),
+                audit_raw_content=(
+                    raw_content
+                    if isinstance(raw_content, str)
+                    and request.planning_profile in NATIVE_PLANNER_PROFILES
+                    else None
+                ),
             )
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
@@ -3176,7 +3310,11 @@ class XinghePlanningCoordinator:
             try:
                 result = self._recover_aurora_candidate(request)
                 if result is None:
-                    result = await self.gateway.plan(request)
+                    result = (
+                        await self._native_planner_call(request)
+                        if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                        else await self.gateway.plan(request)
+                    )
             except Exception as exc:
                 result = PlannerCallResult(
                     payload=None,
@@ -3256,6 +3394,142 @@ class XinghePlanningCoordinator:
             validated,
         )
 
+    async def _native_planner_call(self, request: PlannerRequest) -> PlannerCallResult:
+        if self.skill_id != _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+            return await self.gateway.plan(request)
+        result: PlannerCallResult | None = None
+        store: NativePlanningStore | None = None
+        try:
+            from .domestic_detail.generation import runtime_source_hash
+
+            route = select_route(self.gateway, request.native_dispatch)
+            sources = []
+            for source in request.sources:
+                if hashlib.sha256(source.payload).hexdigest() != source.sha256:
+                    raise PlannerDispatchError(
+                        "NATIVE_PLANNING_SOURCE_CHANGED",
+                        "Original planner source bytes changed",
+                    )
+                sources.append(
+                    {
+                        "asset_id": source.asset_id,
+                        "role": source.source_role,
+                        "sha256": source.sha256,
+                        "filename": source.filename,
+                        "content_type": source.content_type,
+                    }
+                )
+            target = next(
+                (
+                    v.removeprefix("TARGET_MODULE_ID=")
+                    for v in request.product_information
+                    if v.startswith("TARGET_MODULE_ID=")
+                ),
+                "campaign",
+            )
+            fields = {
+                "product_name": request.product_name,
+                "product_information": list(request.product_information),
+                "system_prompt": request.system_prompt,
+                "planning_directives": list(request.planning_directives),
+                "page_count": request.page_count,
+                "language": request.language,
+                "platform_code": request.platform_code,
+                "size": request.size,
+                "domestic_protocol": request.domestic_protocol,
+                "source_inventory": sources,
+                "detail_intake": request.detail_intake,
+                "intake_settings": request.intake_settings,
+                "intake_resolution": request.intake_resolution,
+            }
+            binding = call_binding(
+                profile=request.planning_profile,
+                group_key=request.group_key,
+                target=target,
+                logical_key=request.idempotency_key,
+                semantics=fields,
+                prompt=_planner_prompt(request),
+                schema=_planner_response_format(request),
+                route=route,
+                skill_hash=SkillManifestRegistry.bundled()
+                .get(self.skill_id)
+                .content_hash,
+                runtime_hash=runtime_source_hash(),
+            )
+            store = NativePlanningStore(
+                detail_workspace(request.job_id) / "planner-calls", binding
+            )
+            saved = store.completed()
+            if saved is not None:
+                return PlannerCallResult(**saved)
+            with self.session_factory() as db:
+                current = db.get(JobRecord, request.job_id)
+                visited = {request.job_id}
+                while (
+                    current is not None
+                    and current.retry_scope == "failed"
+                    and current.retry_of_job_id
+                ):
+                    previous = db.get(JobRecord, current.retry_of_job_id)
+                    if (
+                        previous is None
+                        or previous.workspace_id != current.workspace_id
+                        or canonical_hash(previous.configuration)
+                        != canonical_hash(current.configuration)
+                    ):
+                        break
+                    if previous.id in visited:
+                        raise PlannerDispatchError(
+                            "NATIVE_PLANNING_RECEIPT_INVALID",
+                            "Planning recovery lineage contains a cycle",
+                        )
+                    visited.add(previous.id)
+                    store.assert_no_unknown_source(
+                        detail_workspace(previous.id) / "planner-calls"
+                    )
+                    current = previous
+            store.begin()
+            try:
+                result = await self.gateway.plan(
+                    replace(
+                        request, native_dispatch=route, idempotency_key=store.wire_key
+                    )
+                )
+            except Exception as exc:
+                result = PlannerCallResult(
+                    payload=None,
+                    provider_request_id=None,
+                    raw_usage=None,
+                    normalized_usage=normalize_usage(None),
+                    api_latency_seconds=0,
+                    actual_cost_micros=None,
+                    error_code="NATIVE_PLANNING_OUTCOME_UNKNOWN",
+                    error_message=f"Reconcile original planner dispatch ({type(exc).__name__})",
+                )
+            try:
+                checked = result_with_dispatch(asdict(result), route)
+            except PlannerDispatchError:
+                store.finish(asdict(result))
+                raise
+            return PlannerCallResult(**store.finish(checked))
+        except (DetailReviewError, OSError, ValueError, TypeError, KeyError) as exc:
+            code = getattr(exc, "code", "NATIVE_PLANNING_OUTCOME_UNKNOWN")
+            if result is not None:
+                return replace(
+                    result, payload=None, error_code=code, error_message=str(exc)
+                )
+            return PlannerCallResult(
+                payload=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=0,
+                actual_cost_micros=None,
+                error_code=code,
+                error_message=str(exc),
+                external_request=False,
+            )
+
     async def _with_domestic_intake(
         self,
         request: PlannerRequest,
@@ -3288,14 +3562,21 @@ class XinghePlanningCoordinator:
         skill_hash = json.loads(manifest_path.read_text(encoding="utf-8"))[
             "content_hash"
         ]
+        try:
+            selected_route = select_route(self.gateway)
+        except PlannerDispatchError as exc:
+            raise DetailIntakeError(exc.code, str(exc)) from exc
         binding = intake_binding(
             settings=settings,
             sources=sources,
             skill_hash=skill_hash,
-            model=self.gateway.planner_model,
+            model=selected_route["model"],
+            dispatch_route=selected_route,
             resolution=resolution,
         )
-        store = IntakeStore(detail_workspace(request.job_id) / "intake", binding)
+        store = IntakeStore(
+            detail_workspace(request.job_id) / "intake", binding, request.job_id
+        )
         result: PlannerCallResult | None = None
         calls: tuple[PlannerCallResult, ...] = ()
         try:
@@ -3316,7 +3597,9 @@ class XinghePlanningCoordinator:
                         source_ids.append(source.id)
                         current = source
                 for candidate_id in source_ids:
-                    stored = IntakeStore(detail_workspace(candidate_id) / "intake", binding).completed()
+                    stored = IntakeStore(
+                        detail_workspace(candidate_id) / "intake", binding, candidate_id
+                    ).completed()
                     if stored is not None:
                         source_id = candidate_id
                         break
@@ -3329,6 +3612,7 @@ class XinghePlanningCoordinator:
                         )
                     stored = None
             if stored is not None:
+                validate_dispatch_result(stored, selected_route)
                 result = PlannerCallResult(**stored)
                 if source_id != request.job_id:
                     result = replace(
@@ -3342,6 +3626,7 @@ class XinghePlanningCoordinator:
                 intake_request = replace(
                     request,
                     planning_profile=INTAKE_PROFILE,
+                    native_dispatch=selected_route,
                     intake_settings=settings,
                     planning_directives=(),
                     system_prompt="Inspect the supplied source pixels and preserve their exact authority. No identity lock or storyboard before conflict resolution. JSON only.",
@@ -3366,6 +3651,21 @@ class XinghePlanningCoordinator:
                     _with_planner_observability(result), phase=INTAKE_PROFILE
                 )
                 calls = (result,)
+                try:
+                    checked = result_with_dispatch(asdict(result), selected_route)
+                except PlannerDispatchError:
+                    store.finish(asdict(result))
+                    raise
+                envelope = dict(checked["provider_envelope"])
+                envelope["native_intake_receipt"] = {
+                    "version": "native-intake-call-v1",
+                    "binding_sha256": binding["sha256"],
+                    "request_file": "intake/" + store.path.name,
+                    "response_file": "intake/"
+                    + store.path.with_suffix(".response.json").name,
+                    "source_job_id": request.job_id,
+                }
+                result = replace(result, provider_envelope=envelope)
                 store.finish(asdict(result))
             assert result is not None
             history: list[PlannerCallResult] = []
@@ -3374,15 +3674,21 @@ class XinghePlanningCoordinator:
                     response_path.name.replace(".response.json", ".json")
                 )
                 saved_request = json.loads(request_path.read_text(encoding="utf-8"))
-                saved_response = json.loads(response_path.read_text(encoding="utf-8"))
-                if saved_response.get("sha256") != canonical_hash(
-                    saved_response.get("result")
-                ):
-                    raise DetailIntakeError(
-                        "INTAKE_RESPONSE_CHANGED", "An original intake receipt changed"
-                    )
                 if saved_request.get("job_id") == request.job_id:
-                    history.append(PlannerCallResult(**saved_response["result"]))
+                    original_store = IntakeStore(
+                        store.root, saved_request["binding"], request.job_id
+                    )
+                    if original_store.path != request_path:
+                        raise DetailIntakeError(
+                            "INTAKE_RECEIPT_INVALID", "Original intake filename changed"
+                        )
+                    original_result = original_store.completed()
+                    if original_result is None:
+                        raise DetailIntakeError(
+                            "INTAKE_OUTCOME_UNKNOWN",
+                            "An original intake completion is missing",
+                        )
+                    history.append(PlannerCallResult(**original_result))
             calls = tuple(history) or (result,)
             if result.error_code:
                 raise DetailIntakeError(
@@ -3419,13 +3725,21 @@ class XinghePlanningCoordinator:
             if brandless:
                 contract["brandless_confirmation"] = brandless
             return replace(
-                request, intake_settings=settings, detail_intake=contract
+                request,
+                intake_settings=settings,
+                detail_intake=contract,
+                native_dispatch=selected_route,
             ), calls
         except (DetailIntakeError, OSError, ValueError, TypeError) as exc:
             if isinstance(exc, DetailIntakeError):
                 exc.call_results = calls
                 raise
-            error = DetailIntakeError("INTAKE_RECEIPT_INVALID", str(exc))
+            error = DetailIntakeError(
+                exc.code
+                if isinstance(exc, PlannerDispatchError)
+                else "INTAKE_RECEIPT_INVALID",
+                str(exc),
+            )
             error.call_results = calls
             raise error from exc
 
@@ -3622,7 +3936,7 @@ class XinghePlanningCoordinator:
             )
             started = time.perf_counter()
             try:
-                response = await self.gateway.plan(repair_request)
+                response = await self._native_planner_call(repair_request)
             except Exception as exc:
                 response = PlannerCallResult(
                     payload=None,
@@ -4016,7 +4330,7 @@ class XinghePlanningCoordinator:
                 ).isoformat(),
                 "provider": {
                     "type": self.gateway.provider_name,
-                    "planner_model": self.gateway.planner_model,
+                    "planner_model": planning_model(self.gateway, self.skill_id),
                     "image_model": self.gateway.image_model,
                     "pricing_version": self.gateway.pricing_version,
                 },
@@ -4300,7 +4614,7 @@ class XinghePlanningCoordinator:
         signature = build_resume_signature(
             groups=signature_groups,
             base_url=self.base_url_signature,
-            planner_model=self.gateway.planner_model,
+            planner_model=planning_model(self.gateway, self.skill_id),
             image_model=self.gateway.image_model,
             page_count=page_count,
             language=language,
@@ -4813,7 +5127,9 @@ class XinghePlanningCoordinator:
             input_signature = build_resume_signature(
                 groups=all_signature_groups,
                 base_url=self.base_url_signature,
-                planner_model=self.gateway.planner_model,
+                planner_model=planning_model(
+                    self.gateway, self.skill_id, request=requests[0], results=results
+                ),
                 image_model=self.gateway.image_model,
                 page_count=requests[0].page_count,
                 language=requests[0].language,
@@ -5098,7 +5414,12 @@ class XinghePlanningCoordinator:
                 "group_count": len(requests),
                 "provider": {
                     "type": self.gateway.provider_name,
-                    "planner_model": self.gateway.planner_model,
+                    "planner_model": planning_model(
+                        self.gateway,
+                        self.skill_id,
+                        request=requests[0],
+                        results=results,
+                    ),
                     "image_model": self.gateway.image_model,
                     "pricing_version": self.gateway.pricing_version,
                 },
@@ -6549,19 +6870,32 @@ class XingheImageProvider:
         audit_receipts: list[dict[str, Any]] = []
 
         async def review(audit_request: PlannerRequest, phase: str) -> PlannerCallResult:
+            selected_route = select_route(self.gateway, audit_request.native_dispatch)
+            audit_request = replace(audit_request, native_dispatch=selected_route)
             binding = {
-                "version": REVIEW_BINDING_VERSION, "phase": phase,
+                "version": REVIEW_BINDING_VERSION,
+                "phase": phase,
                 "approved_review_authority_sha256": authority["sha256"],
-                "render_token": native_request.get("token") or canonical_hash(native_request),
+                "render_token": native_request.get("token")
+                or canonical_hash(native_request),
                 "candidate_sha256": artifact.sha256,
                 "native_request_sha256": canonical_hash(native_request),
-                "approved_module_contracts_sha256": contract["approved_module_contracts_sha256"],
+                "approved_module_contracts_sha256": contract[
+                    "approved_module_contracts_sha256"
+                ],
                 "source_inventory": source_inventory,
                 "provider": self.gateway.provider_name,
-                "model": self.gateway.planner_model,
-                "prompt_sha256": hashlib.sha256(_planner_prompt(audit_request).encode()).hexdigest(),
-                "response_schema_sha256": canonical_hash(_planner_response_format(audit_request)),
-                "skill_content_hash": SkillManifestRegistry.bundled().get(self.skill_id).content_hash,
+                "model": selected_route["model"],
+                "dispatch_route": selected_route,
+                "prompt_sha256": hashlib.sha256(
+                    _planner_prompt(audit_request).encode()
+                ).hexdigest(),
+                "response_schema_sha256": canonical_hash(
+                    _planner_response_format(audit_request)
+                ),
+                "skill_content_hash": SkillManifestRegistry.bundled()
+                .get(self.skill_id)
+                .content_hash,
                 "review_runtime_sha256": review_runtime_hash(),
             }
             store = ReviewStore(detail_workspace(request.job_id) / "reviews", binding)
@@ -6571,8 +6905,17 @@ class XingheImageProvider:
                 if saved is None:
                     store.begin()
                     result = replace(_with_planner_observability(await self.gateway.plan(audit_request)), phase=phase + ":" + str(native_request.get("pair_id") or ""))
+                    try:
+                        checked = result_with_dispatch(asdict(result), selected_route)
+                    except PlannerDispatchError:
+                        store.finish(asdict(result))
+                        raise
+                    result = replace(
+                        result, provider_envelope=checked["provider_envelope"]
+                    )
                     store.finish(asdict(result))
                 else:
+                    validate_dispatch_result(saved, selected_route)
                     result = PlannerCallResult(**saved)
             except DetailReviewError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
@@ -7821,16 +8164,50 @@ def _planner_call_results(
     results: Sequence[PlannerCallResult],
 ) -> tuple[PlannerCallResult, ...]:
     calls: list[PlannerCallResult] = []
-    for result in results:
-        if result.external_request:
-            calls.append(result)
-        calls.extend(_planner_call_results(result.supplemental_results))
+    seen: set[str] = set()
+
+    def visit(values: Sequence[PlannerCallResult]) -> None:
+        for result in values:
+            envelope = result.provider_envelope or {}
+            kind = (
+                "native_planner_receipt"
+                if isinstance(envelope.get("native_planner_receipt"), Mapping)
+                else "native_intake_receipt"
+            )
+            receipt = envelope.get(kind)
+            identity = (
+                receipt.get("binding_sha256") if isinstance(receipt, Mapping) else None
+            )
+            key = kind + ":" + identity if isinstance(identity, str) else None
+            if result.external_request and (
+                not isinstance(key, str) or key not in seen
+            ):
+                calls.append(result)
+                if isinstance(key, str):
+                    seen.add(key)
+            visit(result.supplemental_results)
+
+    visit(results)
     return tuple(calls)
 
 
 def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
+    dispatch = planner_dispatch_record(result.provider_envelope)
+    receipt = (result.provider_envelope or {}).get("native_planner_receipt")
+    intake_receipt = (result.provider_envelope or {}).get("native_intake_receipt")
     return {
         **({"phase": result.phase} if result.phase else {}),
+        **({"native_planner_dispatch": dispatch} if dispatch else {}),
+        **(
+            {"native_planner_receipt": dict(receipt)}
+            if isinstance(receipt, Mapping)
+            else {}
+        ),
+        **(
+            {"native_intake_receipt": dict(intake_receipt)}
+            if isinstance(intake_receipt, Mapping)
+            else {}
+        ),
         "raw": result.raw_usage,
         "normalized": result.normalized_usage,
         "reported": bool(result.normalized_usage["reported"]),

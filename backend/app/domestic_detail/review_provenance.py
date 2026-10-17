@@ -16,6 +16,7 @@ from .identity_review import (
     observed_pair_scope,
 )
 from .pixels import pixel_review_context
+from .planner_dispatch import require_route, validate_dispatch_result
 from .plans import canonical_hash
 from .review import (
     DetailReviewError,
@@ -26,7 +27,7 @@ from .review import (
     validate_pair_before_identity,
 )
 
-REVIEW_BINDING_VERSION = "native-pixel-review-v3"
+REVIEW_BINDING_VERSION = "native-pixel-review-v4"
 
 
 def review_runtime_hash() -> str:
@@ -40,7 +41,12 @@ def review_runtime_hash() -> str:
                 name: hashlib.sha256(
                     (root / "domestic_detail" / (name + ".py")).read_bytes()
                 ).hexdigest()
-                for name in ("review", "identity_review", "review_provenance")
+                for name in (
+                    "review",
+                    "identity_review",
+                    "review_provenance",
+                    "planner_dispatch",
+                )
             },
         }
     )
@@ -275,6 +281,13 @@ def _verify_review_provenance(
         ],
     }
     for index, (binding, phase) in enumerate(zip(bindings, phases, strict=True)):
+        route = require_route(binding.get("dispatch_route"))
+        validate_dispatch_result(saved[index], route)
+        if (
+            route["provider"] != invocation["provider"]
+            or binding.get("model") != route["model"]
+        ):
+            _invalid("Original review model differs from its actual routed request")
         if (
             any(binding.get(k) != v for k, v in {**expected, "phase": phase}.items())
             or not isinstance(binding.get("model"), str)

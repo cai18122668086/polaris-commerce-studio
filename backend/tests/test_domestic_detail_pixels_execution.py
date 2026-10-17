@@ -44,9 +44,10 @@ def test_wrong_size_rgba_is_normalized_once_audited_delivered_and_recovered_exac
     planned = planned_job(client)
     root = detail_workspace(planned["id"])
     gateway = _gateway(client)
-    # Distinct synthetic provider exercises actual output persistence, while the
-    # network guard and local fake gateway still prohibit any supplier call.
-    monkeypatch.setattr(gateway, "provider_name", "synthetic-pixel-fixture")
+    # Explicit synthetic mode exercises output persistence and permits this
+    # test's synthetic pixel observer under the accepted-review authority.
+    # The network guard and local fake still prohibit any supplier call.
+    monkeypatch.setattr(gateway, "provider_name", "synthetic")
     original_edit = gateway.edit
     originals = []
     observed = []

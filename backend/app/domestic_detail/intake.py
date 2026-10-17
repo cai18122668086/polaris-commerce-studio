@@ -18,6 +18,7 @@ from .facts import (
     _schema,
     user_fact_ledger,
 )
+from .planner_dispatch import require_route, validate_dispatch_result
 from .plans import canonical_hash
 
 INTAKE_PROFILE = "aurora_domestic_intake"
@@ -213,6 +214,7 @@ def intake_binding(
     skill_hash: str,
     model: str,
     resolution: Mapping[str, Any] | None,
+    dispatch_route: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     source_root = Path(__file__).parent
     value = {
@@ -221,11 +223,17 @@ def intake_binding(
         "sources": list(sources),
         "skill_content_hash": skill_hash,
         "model": model,
+        "dispatch_route": deepcopy(dict(dispatch_route)) if dispatch_route else None,
         "resolution": resolution,
         "intake_runtime_sha256": canonical_hash(
             {
-                name: hashlib.sha256((source_root / name).read_bytes()).hexdigest()
-                for name in ("facts.py", "intake.py")
+                "adapter": hashlib.sha256(
+                    (source_root.parent / "xinghe_agent.py").read_bytes()
+                ).hexdigest(),
+                **{
+                    name: hashlib.sha256((source_root / name).read_bytes()).hexdigest()
+                    for name in ("facts.py", "intake.py", "planner_dispatch.py")
+                },
             }
         ),
     }
@@ -244,12 +252,19 @@ def _write_once(path: Path, value: Mapping[str, Any]) -> None:
 class IntakeStore:
     root: Path
     binding: Mapping[str, Any]
+    job_id: str | None = None
 
     @property
     def path(self) -> Path:
         return self.root / (str(self.binding["sha256"]) + ".json")
 
     def completed(self) -> dict[str, Any] | None:
+        if self.binding.get("sha256") != canonical_hash(
+            {k: v for k, v in self.binding.items() if k != "sha256"}
+        ):
+            raise DetailIntakeError(
+                "INTAKE_BINDING_CHANGED", "The original intake binding hash changed"
+            )
         if not self.path.exists():
             for previous in self.root.glob("*.json"):
                 if previous.name.endswith(".response.json"):
@@ -268,7 +283,11 @@ class IntakeStore:
                     )
             return None
         request = json.loads(self.path.read_text(encoding="utf-8"))
-        if request.get("binding") != self.binding:
+        if self.job_id is not None and request.get("job_id") != self.job_id:
+            raise DetailIntakeError(
+                "INTAKE_RECEIPT_INVALID", "The original intake belongs to another job"
+            )
+        if canonical_hash(request.get("binding")) != canonical_hash(self.binding):
             raise DetailIntakeError(
                 "INTAKE_BINDING_CHANGED", "Saved intake inputs or Skill changed"
             )
@@ -283,9 +302,47 @@ class IntakeStore:
             raise DetailIntakeError(
                 "INTAKE_RESPONSE_CHANGED", "The original model intake receipt changed"
             )
-        return value["result"]
+        result = value["result"]
+        if self.binding.get("dispatch_route") is not None:
+            route = require_route(self.binding["dispatch_route"])
+            validate_dispatch_result(result, route)
+            expected = {
+                "version": "native-intake-call-v1",
+                "binding_sha256": self.binding["sha256"],
+                "request_file": "intake/" + self.path.name,
+                "response_file": "intake/" + completion.name,
+                "source_job_id": request["job_id"],
+            }
+            envelope = result.get("provider_envelope") or {}
+            if canonical_hash(envelope.get("native_intake_receipt")) != canonical_hash(
+                expected
+            ):
+                raise DetailIntakeError(
+                    "INTAKE_RECEIPT_INVALID",
+                    "The original intake event identity changed",
+                )
+            if route["kind"] == "http" and result.get("error_code") is None:
+                from ..xinghe_agent import _planner_content_payload
+
+                try:
+                    parsed = _planner_content_payload(result["audit_raw_content"])
+                except Exception as exc:
+                    raise DetailIntakeError(
+                        "INTAKE_RAW_REPLY_CHANGED",
+                        "Original intake model text cannot be parsed",
+                    ) from exc
+                if canonical_hash(parsed) != canonical_hash(result.get("payload")):
+                    raise DetailIntakeError(
+                        "INTAKE_RAW_REPLY_CHANGED",
+                        "Original intake model text differs from its parsed result",
+                    )
+        return result
 
     def begin(self, job_id: str) -> None:
+        if self.job_id is not None and job_id != self.job_id:
+            raise DetailIntakeError(
+                "INTAKE_RECEIPT_INVALID", "Intake job identity changed"
+            )
         try:
             _write_once(self.path, {"binding": dict(self.binding), "job_id": job_id})
         except FileExistsError as exc:
@@ -299,3 +356,4 @@ class IntakeStore:
             self.path.with_suffix(".response.json"),
             {"result": dict(result), "sha256": canonical_hash(result)},
         )
+        self.completed()

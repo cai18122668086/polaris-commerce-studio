@@ -462,7 +462,10 @@ class ReviewStore:
                         ),
                     )
             return None
-        if json.loads(self.request_path.read_bytes()).get("binding") != self.binding:
+        if (
+            canonical_hash(json.loads(self.request_path.read_bytes()).get("binding"))
+            != self.sha256
+        ):
             raise DetailReviewError(
                 "AURORA_NATIVE_REVIEW_CHANGED", "Review request changed"
             )
@@ -477,7 +480,8 @@ class ReviewStore:
             not isinstance(result, dict)
             or response.get("binding_sha256") != self.sha256
             or response.get("result_sha256") != canonical_hash(result)
-            or response.get("response") != result.get("payload")
+            or canonical_hash(response.get("response"))
+            != canonical_hash(result.get("payload"))
         ):
             raise DetailReviewError(
                 "AURORA_NATIVE_REVIEW_CHANGED", "Raw review receipt changed"

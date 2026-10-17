@@ -108,6 +108,11 @@ from .domestic_detail.review import (
     require_review_authority,
     validate_pair_before_identity,
 )
+from .domestic_detail.review_provenance import (
+    REVIEW_BINDING_VERSION,
+    pair_review_contract,
+    review_runtime_hash,
+)
 from .masked_repair import (
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
@@ -6539,29 +6544,13 @@ class XingheImageProvider:
             {"asset_id": source.asset_id, "role": source.source_role, "sha256": source.sha256}
             for source in audit_sources
         ]
-        contract = {
-            "pair_id": native_request.get("pair_id"),
-            "module_ids": native_request.get("module_ids"),
-            "pair_render": native_request.get("pair_render"),
-            "output_surface": native_request.get("output_surface"),
-            "product_name": authority["product_name"],
-            "product_information": authority["product_information"],
-            "review_authority": authority,
-            "approved_module_contracts": list(native_request.get("approved_module_contracts") or []),
-            "pixel_lineage": pixel_review_context(native_request["pixel_lineage"]),
-            "audit_context_version": "aurora-v4.3-pair-audit-v5",
-            "candidate_sha256": artifact.sha256,
-            "candidate_dimensions": [artifact.width, artifact.height],
-            "source_inventory": source_inventory,
-            "native_request_sha256": canonical_hash(native_request),
-            "approved_module_contracts_sha256": canonical_hash(native_request.get("approved_module_contracts")),
-        }
+        contract = pair_review_contract(native_request, artifact.sha256, artifact.width, artifact.height, source_inventory)
 
         audit_receipts: list[dict[str, Any]] = []
 
         async def review(audit_request: PlannerRequest, phase: str) -> PlannerCallResult:
             binding = {
-                "version": "native-pixel-review-v2", "phase": phase,
+                "version": REVIEW_BINDING_VERSION, "phase": phase,
                 "approved_review_authority_sha256": authority["sha256"],
                 "render_token": native_request.get("token") or canonical_hash(native_request),
                 "candidate_sha256": artifact.sha256,
@@ -6573,10 +6562,7 @@ class XingheImageProvider:
                 "prompt_sha256": hashlib.sha256(_planner_prompt(audit_request).encode()).hexdigest(),
                 "response_schema_sha256": canonical_hash(_planner_response_format(audit_request)),
                 "skill_content_hash": SkillManifestRegistry.bundled().get(self.skill_id).content_hash,
-                "review_runtime_sha256": canonical_hash({
-                    "adapter": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                    "review": hashlib.sha256((Path(__file__).parent / "domestic_detail/review.py").read_bytes()).hexdigest(),
-                }),
+                "review_runtime_sha256": review_runtime_hash(),
             }
             store = ReviewStore(detail_workspace(request.job_id) / "reviews", binding)
             try:

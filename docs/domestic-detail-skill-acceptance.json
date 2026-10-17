@@ -461,5 +461,13 @@
     "native_content_hash": "53064035537c1286b8b608e05c77e0002d65b8d4be2c0e7addd09570205ea48e",
     "unique_offline_cases": 459,
     "actual_supplier_calls": 0
+  },
+  "local_accepted_review_candidate": {
+    "status": "offline technical only; overall unproven",
+    "documentation": "domestic-detail-accepted-review-provenance-2026-10-18.md",
+    "native_content_hash": "7e6632c13e9499f1d76c5ffa4b211b6032d1d7268b49c7309bfde6c08c26868b",
+    "unique_offline_cases": 355,
+    "actual_supplier_calls": 0,
+    "pending_network_dispatch_red_cases": 8
   }
 }

@@ -283,7 +283,7 @@ def verify_original_invocation(
     artifact_sha256: str,
     token: str | None = None,
     signed_request_sha256: str | None = None,
-) -> None:
+) -> tuple[Path, dict[str, Any]]:
     """Verify the original paid response, before any native normalization."""
     for workspace in workspaces:
         bind_workspace(workspace, binding)
@@ -307,6 +307,11 @@ def verify_original_invocation(
             ):
                 continue
             native = receipt.get("native_request") or {}
+            if receipt.get("native_request_sha256") != canonical_hash(native):
+                raise DetailGenerationError(
+                    "NATIVE_DETAIL_REQUEST_RECEIPT_INVALID",
+                    "Original native request envelope changed",
+                )
             if (token is not None and native.get("token") != token) or (
                 signed_request_sha256 is not None
                 and native.get("signed_request_sha256") != signed_request_sha256
@@ -331,7 +336,7 @@ def verify_original_invocation(
                         "NATIVE_DETAIL_ORIGINAL_ARTIFACT_CHANGED",
                         "The exact original paid response is missing or changed",
                     )
-                return
+                return workspace, receipt
     raise DetailGenerationError(
         "NATIVE_DETAIL_CANVAS_RECEIPT_MISSING",
         "An accepted canvas needs its exact original successful invocation receipt",
@@ -351,6 +356,8 @@ def verify_accepted_canvas(
         AuroraDetailHarnessRunner,
     )
     from .pixels import DetailPixelError, load_native_pair_pixels
+    from .review import DetailReviewError
+    from .review_provenance import verify_review_provenance
 
     for workspace in workspaces:
         bind_workspace(workspace, binding)
@@ -376,7 +383,7 @@ def verify_accepted_canvas(
                 "NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH",
                 "Stored canvas differs from its exact accepted native pixels",
             )
-        verify_original_invocation(
+        paid_workspace, invocation = verify_original_invocation(
             workspaces,
             binding,
             pair_id=pair_id,
@@ -384,6 +391,36 @@ def verify_accepted_canvas(
             token=bundle["token"],
             signed_request_sha256=bundle["signed_request_sha256"],
         )
+        try:
+            evidence = AuroraDetailHarnessRunner().run(
+                "inspect-pair-review-evidence",
+                workspace,
+                {"session": workspace / "session.json", "pair-id": pair_id},
+            )
+            evidence_root = Path(
+                evidence["snapshot_reference"]["snapshot_file"]
+            ).parent.parent
+            if (
+                evidence_root.resolve() != paid_workspace.resolve()
+                or evidence_root.resolve()
+                not in {path.resolve() for path in workspaces}
+            ):
+                raise DetailReviewError(
+                    "NATIVE_DETAIL_REVIEW_PROVENANCE_INVALID",
+                    "Original review belongs to another workspace",
+                )
+            verify_review_provenance(evidence_root, invocation, bundle, evidence)
+        except (
+            AuroraDetailHarnessError,
+            DetailReviewError,
+            OSError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise DetailGenerationError(
+                "NATIVE_DETAIL_REVIEW_PROVENANCE_INVALID", str(exc)
+            ) from exc
         return bundle
     raise DetailGenerationError(
         "NATIVE_DETAIL_PIXEL_LINEAGE_MISSING",

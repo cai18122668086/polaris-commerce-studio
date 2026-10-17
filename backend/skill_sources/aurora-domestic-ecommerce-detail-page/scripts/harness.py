@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple
 
 from PIL import Image, UnidentifiedImageError
 
+from runtime.audit_evidence import inspect_pair_audit, record_pair_audit
 from runtime.assembly import assemble_vertical
 from runtime.artifact_binding import file_sha256, validate_artifact_binding
 from runtime.compliance_contract import validate_high_risk_cosmetic_claims, validate_high_risk_plan_copy
@@ -2036,9 +2037,12 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         effective_passed = [name for name in effective_passed if name != "identity"]
     if seam["hard_cut_absent"] is False or seam["method_specific_pass"] is False:
         effective_passed = [name for name in effective_passed if name != "internal_seam"]
+    recorded_judgment = {**judgment, "material_failures": failures, "effective_passed_layers": effective_passed}
+    review_evidence = record_pair_audit(args.judgment, judgment, recorded_judgment, lineage)
     for item in pair_modules:
         attempt = item["attempts"][-1]
-        attempt["judgment"] = {**judgment, "material_failures": failures, "effective_passed_layers": effective_passed}
+        attempt["judgment"] = recorded_judgment
+        attempt["review_evidence"] = review_evidence
         attempt["artifact_lineage_sha256"] = lineage["sha256"]
         if judgment["status"] == "PASS":
             item["accepted_asset"] = attempt["image"]
@@ -2750,6 +2754,10 @@ def cmd_inspect_pair_review_contracts(args: argparse.Namespace) -> dict:
     return {"module_contracts": review_contracts([by_id[key] for key in pair["module_ids"]], len(session["modules"]))}
 
 
+def cmd_inspect_pair_review_evidence(args: argparse.Namespace) -> dict:
+    return inspect_pair_audit(load_json(args.session), args.pair_id)
+
+
 def cmd_inspect_pair_artifacts(args: argparse.Namespace) -> dict:
     return pair_artifacts(load_json(args.session), args.pair_id, args.selection)
 
@@ -2762,7 +2770,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2784,6 +2792,7 @@ def parser() -> argparse.ArgumentParser:
     commands["audit-pair"].add_argument("--judgment", required=True)
     commands["inspect-pair-artifacts"].add_argument("--pair-id", required=True)
     commands["inspect-pair-review-contracts"].add_argument("--pair-id", required=True)
+    commands["inspect-pair-review-evidence"].add_argument("--pair-id", required=True)
     commands["inspect-pair-artifacts"].add_argument("--selection", choices=("LATEST_RECORDED", "ACCEPTED"), default="LATEST_RECORDED")
     commands["prepare-repair"].add_argument("--repair-plan", required=True)
     commands["apply-user-adjustment"].add_argument("--adjustment", required=True)
@@ -2800,7 +2809,7 @@ HANDLERS = {
     "authorize": cmd_authorize, "generate-next": cmd_generate_next, "record-generation": cmd_record_generation,
     "record-generation-batch": cmd_record_generation_batch,
     "audit-current": cmd_audit_current, "prepare-repair": cmd_prepare_repair,
-    "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "inspect-pair-review-contracts": cmd_inspect_pair_review_contracts, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
+    "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "inspect-pair-review-contracts": cmd_inspect_pair_review_contracts, "inspect-pair-review-evidence": cmd_inspect_pair_review_evidence, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 

@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-detail-page",
-  "content_hash": "53064035537c1286b8b608e05c77e0002d65b8d4be2c0e7addd09570205ea48e",
+  "content_hash": "7e6632c13e9499f1d76c5ffa4b211b6032d1d7268b49c7309bfde6c08c26868b",
   "capability": "ecommerce_detail_pack",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-detail-page.input.v4.3",
@@ -53,7 +53,7 @@
     },
     {
       "path": "SKILL.md",
-      "sha256": "f8504639719e66879beaaecfa7bfea2903b196a48bcf233913d72dcb425d796e"
+      "sha256": "79fc6f7efb8d997b2fd1fa64eb9826dfa6028cff1c0b1c8f07dff9406223e3e2"
     },
     {
       "path": "VERSION",
@@ -269,7 +269,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "510975c6a04f7e7ef63a77ff5a10a8e8eeb810ebcbe8b229b441274a95decbf0"
+      "sha256": "7ccaa377f4ab79fee5344d1eaa129f543e8c062568b88859a6de382017b561ab"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -286,6 +286,10 @@
     {
       "path": "scripts/runtime/atomic_review.py",
       "sha256": "1a72e415a5c364f8169c2740f11a5740c652f46e881957786b9d1a571fa95010"
+    },
+    {
+      "path": "scripts/runtime/audit_evidence.py",
+      "sha256": "14b377c335ed5cd274214a4ccb20aac151a0df0cfb38c0803753b5c1c7a8d741"
     },
     {
       "path": "scripts/runtime/compliance_contract.py",

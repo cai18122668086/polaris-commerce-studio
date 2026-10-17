@@ -728,6 +728,39 @@ class PlanConfirmRequest(BaseModel):
     approved_pair_canvas_aspect_ratio: Literal["3:8"] | None = None
 
 
+class DomesticCampaignReviewReport(BaseModel):
+    report: dict[str, Any]
+    request_context: dict[str, Any]
+    original_message: str | None
+    original_message_state: Literal["PRESERVED_UTF8", "UNAVAILABLE"]
+    model: str
+    source_job_id: str
+    scope: Literal["OPTIONAL_CAMPAIGN_REVIEW_ONLY"]
+
+
+class DomesticCampaignReviewQuote(BaseModel):
+    version: Literal["domestic-campaign-review-v1"]
+    source_job_id: str
+    final_review_sha256: str
+    source_context_sha256: str
+    provider: str
+    model: str
+    dispatch_route_sha256: str
+    reserve_micros: int
+    currency: Literal["USD"]
+    model_requests: Literal[1]
+    image_requests: Literal[0]
+    sha256: str
+
+
+class DomesticCampaignReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    final_review_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approval_text: str = Field(min_length=2, max_length=240)
+    authorized_reserve_micros: int = Field(gt=0, le=2_000_000, strict=True)
+    quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class DomesticDetailFinalReviewResponse(BaseModel):
     version: Literal["domestic-detail-final-review-v1"]
     job_id: str

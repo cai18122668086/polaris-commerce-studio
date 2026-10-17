@@ -106,6 +106,9 @@ from .schemas_v1 import (
     DetailPackJobCreate,
     DevelopmentProviderSettingsResponse,
     DevelopmentProviderSettingsUpdate,
+    DomesticCampaignReviewQuote,
+    DomesticCampaignReviewReport,
+    DomesticCampaignReviewRequest,
     DomesticDetailFinalReviewResponse,
     DomesticMainImageJobCreate,
     DraftJobUpdate,
@@ -2043,6 +2046,12 @@ def retry_job(
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
     source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if source.type == JobType.DOMESTIC_DETAIL_REVIEW.value:
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_CAMPAIGN_RECONCILIATION_REQUIRED",
+            "请先核对原审核请求；新的整页审核须从原详情结果明确授权后发起。",
+        )
     if JobStatus(source.status) not in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,
@@ -2134,6 +2143,12 @@ def clone_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if source.type == JobType.DOMESTIC_DETAIL_REVIEW.value:
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_CAMPAIGN_RECONCILIATION_REQUIRED",
+            "请先核对原审核请求；新的整页审核须从原详情结果明确授权后发起。",
+        )
     if JobStatus(source.status) not in TERMINAL_JOB_STATUSES:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -2844,6 +2859,202 @@ def confirm_plan(
     session.commit()
     _schedule_outbox(request, background_tasks)
     return job_detail_response(session, job)
+
+
+def _campaign_report_for_job(
+    session: Session, workspace_id: str, job_id: str
+) -> tuple[dict[str, Any], bytes]:
+    from .domestic_detail.campaign_reports import load_campaign_report
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    job = get_workspace_job(session, workspace_id, job_id)
+    try:
+        return load_campaign_report(job)
+    except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_REPORT_INVALID"),
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/report",
+    response_model=DomesticCampaignReviewReport,
+    tags=["jobs"],
+)
+def get_domestic_campaign_report(
+    job_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> DomesticCampaignReviewReport:
+    report, _ = _campaign_report_for_job(session, workspace.workspace_id, job_id)
+    return DomesticCampaignReviewReport.model_validate(report)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/preview.png",
+    response_class=Response,
+    tags=["jobs"],
+    responses={
+        200: {
+            "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}
+        }
+    },
+)
+def get_domestic_campaign_preview(
+    job_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> Response:
+    _, preview = _campaign_report_for_job(session, workspace.workspace_id, job_id)
+    return Response(
+        preview,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": 'inline; filename="campaign-preview.png"',
+        },
+    )
+
+
+def _campaign_review_provider(request: Request) -> Any:
+    provider = request.app.state.task_runner.coordinator.provider.routes.get(
+        JobType.DOMESTIC_DETAIL_REVIEW.value
+    )
+    if provider is None or not callable(getattr(provider, "describe_route", None)):
+        raise ApiError(
+            503, "NATIVE_DETAIL_CAMPAIGN_UNAVAILABLE", "整页审核服务当前不可用。"
+        )
+    return provider
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/quote",
+    response_model=DomesticCampaignReviewQuote,
+    tags=["jobs"],
+)
+def quote_domestic_campaign_review(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+    final_review_sha256: Annotated[str, Query(pattern=r"^[0-9a-f]{64}$")],
+) -> DomesticCampaignReviewQuote:
+    from .domestic_detail.campaign_jobs import campaign_quote, source_scope
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    try:
+        _, context, _, _, _ = asyncio.run(
+            source_scope(
+                session,
+                source,
+                request.app.state.storage,
+                final_review_sha256,
+            )
+        )
+        route = _campaign_review_provider(request).describe_route()
+        quote = campaign_quote(
+            source.id, final_review_sha256, context, request.app.state.settings, route
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_INVALID"),
+            str(exc),
+        ) from exc
+    return DomesticCampaignReviewQuote.model_validate(quote)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def create_domestic_campaign_review(
+    job_id: str,
+    payload: DomesticCampaignReviewRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.campaign_jobs import create_campaign_review_job
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    key = require_idempotency_key(idempotency_header)
+    source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review",
+        idempotency_key=key,
+        request_hash=canonical_hash(
+            {"source_job_id": source.id, **payload.model_dump()}
+        ),
+    )
+    if replay:
+        return job_detail_response(
+            session,
+            get_workspace_job(
+                session,
+                workspace.workspace_id,
+                cast(str, idem.resource_id),
+            ),
+        )
+    try:
+        review = asyncio.run(
+            create_campaign_review_job(
+                session,
+                source,
+                request.app.state.storage,
+                request.app.state.settings,
+                actor_id=workspace.principal.user_id,
+                fingerprint=payload.final_review_sha256,
+                approval_text=payload.approval_text,
+                authorized_reserve_micros=payload.authorized_reserve_micros,
+                quote_sha256=payload.quote_sha256,
+                dispatch_route=_campaign_review_provider(request).describe_route(),
+            )
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_INVALID"),
+            str(exc),
+        ) from exc
+    add_outbox_event(
+        session,
+        workspace_id=workspace.workspace_id,
+        job_id=review.id,
+        event_type="job.dispatch_requested",
+        suffix="initial",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=review.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, review)
 
 
 @router.post(

@@ -2153,6 +2153,60 @@ def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def cmd_fork_campaign_review(args: argparse.Namespace) -> dict:
+    """Create an owned review snapshot of the original accepted campaign."""
+    source_path, target = Path(args.source_session), Path(args.session)
+    expected = args.source_session_sha256
+    if not re.fullmatch(r"[0-9a-f]{64}", expected) or file_sha256(source_path) != expected:
+        raise HarnessError("Original campaign-review session bytes changed")
+    if source_path.resolve().parent != target.resolve().parent or source_path.resolve() == target.resolve():
+        raise HarnessError("Campaign-review source snapshot must belong to the new review workspace")
+    if source_path.is_symlink() or target.is_symlink() or target.parent.is_symlink() or target.parent.is_junction():
+        raise HarnessError("Campaign-review snapshots cannot traverse links")
+    source = load_json(source_path)
+    inspection = cmd_inspect_campaign_review_contract(argparse.Namespace(session=str(source_path)))
+    if source.get("pending") is not None:
+        raise HarnessError("Reconcile the source's unfinished generation before reviewing it")
+    def authority_sha(value: dict) -> str:
+        controls = {"state", "events", "updated_at", "final", "assembly", "long_page_audit", "session_dir", "review_fork"}
+        return hashlib.sha256(json.dumps(
+            {key: item for key, item in value.items() if key not in controls},
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")).hexdigest()
+    original_authority_sha = authority_sha(source)
+    accepted_sha = hashlib.sha256(json.dumps(
+        source["modules"], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")).hexdigest()
+    fork = {"source_session": str(source_path.resolve()), "source_session_sha256": expected,
+            "accepted_modules_sha256": accepted_sha, "source_authority_sha256": original_authority_sha,
+            "inspection_scope": inspection["scope"]}
+    if target.exists():
+        existing = load_json(target)
+        actual_sha = hashlib.sha256(json.dumps(
+            existing.get("modules"), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")).hexdigest()
+        if (existing.get("review_fork") != fork or actual_sha != accepted_sha or existing.get("version") != VERSION
+                or authority_sha(existing) != original_authority_sha
+                or existing.get("session_dir") != str(target.resolve().parent)
+                or existing.get("state") not in {"AWAITING_USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED", "FINALIZED"}):
+            raise HarnessError("Existing campaign-review snapshot differs from its original accepted source")
+        return {"session": str(target.resolve()), "review_fork": fork, "reused": True}
+    # Existing images, identities, facts, approval and audit originals stay in
+    # their original workspace. Only the new review snapshot is changed.
+    source["session_dir"] = str(target.resolve().parent)
+    source["review_fork"] = fork
+    source["assembly"] = None
+    source["long_page_audit"] = None
+    source["final"] = None
+    source["state"] = (
+        "AUTO_FINALIZE_AUTHORIZED"
+        if (source.get("approval") or {}).get("delivery_mode") == "AUTO_FINALIZE_AUTHORIZED"
+        else "AWAITING_USER_FINAL_REVIEW"
+    )
+    save(str(target), source, "campaign_review_forked")
+    return {"session": str(target.resolve()), "review_fork": fork, "reused": False}
+
+
 def cmd_inspect_campaign_review_contract(args: argparse.Namespace) -> dict:
     """Requirements and byte inventory only; never a new visual acceptance."""
     session = load_json(args.session)
@@ -2179,6 +2233,30 @@ def cmd_inspect_campaign_review_contract(args: argparse.Namespace) -> dict:
         if pair.get("module_ids") != [m["module_id"] for m in inventory[index * 2:index * 2 + 2]]:
             raise HarnessError("Campaign review pair inventory differs from approved adjacent windows")
     schema = load_json(Path(__file__).resolve().parents[1] / "schemas" / "long-page-judgment.schema.json")
+    sections = list(schema["required"])
+    if pair_config.get("enabled"):
+        sections.extend(("pair_audits", "pair_transition_audits"))
+        for name, count in (("pair_audits", len(pairs)), ("pair_transition_audits", len(pairs) - 1)):
+            schema["properties"][name]["minItems"] = count
+            schema["properties"][name]["maxItems"] = count
+    if plan.get("expression_contract_version") == "4.3":
+        sections.append("expression_diversity_audit")
+    if plan.get("plan_format") == "COMPACT_V1_3":
+        sections.append("claim_fulfillment")
+        claim_ids = (plan.get("selling_point_depth_contract") or {}).get("primary_claim_ids") or []
+        module_ids = [m["id"] for m in modules]
+        schema["properties"]["claim_fulfillment"] = {
+            "type": "array", "minItems": len(claim_ids), "maxItems": len(claim_ids),
+            "items": {"type": "object",
+                "required": ["claim_id", "overview_visible", "dedicated_visible", "use_or_result_visible", "recall_visible", "observed_module_ids", "visible_evidence"],
+                "properties": {
+                    "claim_id": {"enum": claim_ids},
+                    **{name: {"type": "boolean"} for name in ("overview_visible", "dedicated_visible", "use_or_result_visible", "recall_visible")},
+                    "observed_module_ids": {"type": "array", "uniqueItems": True, "minItems": 3, "items": {"enum": module_ids}},
+                    "visible_evidence": {"type": "string", "minLength": 20},
+                }},
+        }
+    schema["required"] = list(dict.fromkeys(sections))
     dynamic_checks = list(required_long_page_checks(plan))
     all_checks = list(dict.fromkeys(dynamic_checks + schema["properties"]["checks"]["required"]))
     return {
@@ -2785,7 +2863,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest", "inspect-campaign-review-contract"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest", "inspect-campaign-review-contract", "fork-campaign-review"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2809,6 +2887,8 @@ def parser() -> argparse.ArgumentParser:
     commands["inspect-pair-review-contracts"].add_argument("--pair-id", required=True)
     commands["inspect-pair-review-evidence"].add_argument("--pair-id", required=True)
     commands["inspect-final-manifest"].add_argument("--manifest", required=True)
+    commands["fork-campaign-review"].add_argument("--source-session", required=True)
+    commands["fork-campaign-review"].add_argument("--source-session-sha256", required=True)
     commands["inspect-pair-artifacts"].add_argument("--selection", choices=("LATEST_RECORDED", "ACCEPTED"), default="LATEST_RECORDED")
     commands["prepare-repair"].add_argument("--repair-plan", required=True)
     commands["apply-user-adjustment"].add_argument("--adjustment", required=True)
@@ -2828,6 +2908,7 @@ HANDLERS = {
     "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "inspect-pair-review-contracts": cmd_inspect_pair_review_contracts, "inspect-pair-review-evidence": cmd_inspect_pair_review_evidence, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
     "inspect-final-manifest": cmd_inspect_final_manifest,
     "inspect-campaign-review-contract": cmd_inspect_campaign_review_contract,
+    "fork-campaign-review": cmd_fork_campaign_review,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 

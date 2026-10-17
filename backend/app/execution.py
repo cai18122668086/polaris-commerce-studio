@@ -3114,6 +3114,11 @@ def build_fake_coordinator(
                 else UnavailableProvider()
             ),
         }
+    from .domestic_detail.campaign_provider import DomesticCampaignReviewProvider
+
+    new_routes[JobType.DOMESTIC_DETAIL_REVIEW.value] = DomesticCampaignReviewProvider(
+        session_factory, gateway, storage,
+    )
     provider = RegisteredOperationRoutingProvider(
         default_provider,
         detail_provider,

@@ -1371,6 +1371,74 @@ export interface paths {
         patch: operations["update_draft_job_api_v1_workspaces__workspace_id__jobs__job_id__patch"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Domestic Campaign Review */
+        post: operations["create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/preview.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domestic Campaign Preview */
+        get: operations["get_domestic_campaign_preview_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_preview_png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quote Domestic Campaign Review */
+        get: operations["quote_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_quote_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domestic Campaign Report */
+        get: operations["get_domestic_campaign_report_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -2226,6 +2294,83 @@ export interface components {
             /** Vision Model */
             vision_model: string;
         };
+        /** DomesticCampaignReviewQuote */
+        DomesticCampaignReviewQuote: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /** Dispatch Route Sha256 */
+            dispatch_route_sha256: string;
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /**
+             * Image Requests
+             * @constant
+             */
+            image_requests: 0;
+            /** Model */
+            model: string;
+            /**
+             * Model Requests
+             * @constant
+             */
+            model_requests: 1;
+            /** Provider */
+            provider: string;
+            /** Reserve Micros */
+            reserve_micros: number;
+            /** Sha256 */
+            sha256: string;
+            /** Source Context Sha256 */
+            source_context_sha256: string;
+            /** Source Job Id */
+            source_job_id: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-campaign-review-v1";
+        };
+        /** DomesticCampaignReviewReport */
+        DomesticCampaignReviewReport: {
+            /** Model */
+            model: string;
+            /** Original Message */
+            original_message: string | null;
+            /**
+             * Original Message State
+             * @enum {string}
+             */
+            original_message_state: "PRESERVED_UTF8" | "UNAVAILABLE";
+            /** Report */
+            report: {
+                [key: string]: unknown;
+            };
+            /** Request Context */
+            request_context: {
+                [key: string]: unknown;
+            };
+            /**
+             * Scope
+             * @constant
+             */
+            scope: "OPTIONAL_CAMPAIGN_REVIEW_ONLY";
+            /** Source Job Id */
+            source_job_id: string;
+        };
+        /** DomesticCampaignReviewRequest */
+        DomesticCampaignReviewRequest: {
+            /** Approval Text */
+            approval_text: string;
+            /** Authorized Reserve Micros */
+            authorized_reserve_micros: number;
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /** Quote Sha256 */
+            quote_sha256: string;
+        };
         /** DomesticDetailFinalReviewResponse */
         DomesticDetailFinalReviewResponse: {
             /**
@@ -2906,7 +3051,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite" | "domestic_main_image";
+        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "domestic_detail_review" | "amazon_visual_suite" | "domestic_main_image";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /**
@@ -6542,6 +6687,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticCampaignReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domestic_campaign_preview_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_preview_png_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_quote_get: {
+        parameters: {
+            query: {
+                final_review_sha256: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticCampaignReviewQuote"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domestic_campaign_report_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticCampaignReviewReport"];
                 };
             };
             /** @description Validation Error */

@@ -27,6 +27,7 @@ PROFILES = [
     "aurora_domestic_modules_completion",
     "aurora_domestic_campaign_completion",
     "aurora_detail_pair_audit",
+    "aurora_detail_campaign_audit",
     "aurora_detail_identity_audit",
 ]
 

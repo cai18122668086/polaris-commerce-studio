@@ -2433,7 +2433,7 @@ class TengliOpenAICompatibleGateway:
             # keep the first pass within the relay's reliable response window.
             payload.update({"max_completion_tokens": 16_000})
         elif request.planning_profile in {
-            "aurora_domestic_modules_completion", "aurora_detail_pair_audit",
+            "aurora_domestic_modules_completion", "aurora_detail_pair_audit", "aurora_detail_campaign_audit",
             "aurora_domestic_campaign_completion",
         }:
             payload.update({"max_completion_tokens": 16_000})
@@ -10165,6 +10165,13 @@ def _single_image_analysis_fields(profile: str) -> set[str]:
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "aurora_detail_campaign_audit":
+        from .domestic_detail.campaign_protocol import campaign_schema
+
+        return {"type": "json_schema", "json_schema": {
+            "name": "aurora_detail_campaign_audit", "strict": False,
+            "schema": campaign_schema(request),
+        }}
     if request.planning_profile == INTAKE_PROFILE:
         return {
             "type": "json_schema",
@@ -10359,6 +10366,10 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "aurora_detail_campaign_audit":
+        from .domestic_detail.campaign_protocol import campaign_prompt
+
+        return campaign_prompt(request)
     if request.planning_profile == INTAKE_PROFILE:
         return intake_prompt(
             request.intake_settings or {},

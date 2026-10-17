@@ -47,9 +47,13 @@ class AuroraDetailHarnessRunner:
         arguments: Mapping[str, str | Path],
     ) -> dict[str, Any]:
         try:
-            SkillManifestRegistry.bundled().verify_source(DETAIL_SKILL_ID, self.skill_root)
+            SkillManifestRegistry.bundled().verify_source(
+                DETAIL_SKILL_ID, self.skill_root
+            )
         except Exception as exc:
-            raise AuroraDetailHarnessError("AURORA_DETAIL_SOURCE_MISMATCH", str(exc)) from exc
+            raise AuroraDetailHarnessError(
+                "AURORA_DETAIL_SOURCE_MISMATCH", str(exc)
+            ) from exc
         allowed = {
             "start": {"input", "session"},
             "lock-identity": {"session", "identity"},
@@ -72,6 +76,11 @@ class AuroraDetailHarnessRunner:
             "inspect-pair-review-evidence": {"session", "pair-id"},
             "inspect-final-manifest": {"session", "manifest"},
             "inspect-campaign-review-contract": {"session"},
+            "fork-campaign-review": {
+                "session",
+                "source-session",
+                "source-session-sha256",
+            },
             "prepare-repair": {"session", "repair-plan"},
             "assemble": {"session", "output"},
             "audit-long-page": {"session", "judgment"},
@@ -91,7 +100,17 @@ class AuroraDetailHarnessRunner:
         argv = [sys.executable, str(self.harness_path), command]
         for name, raw in arguments.items():
             value = str(raw)
-            if name not in {"approval-text", "token", "delivery-mode", "approved-module-count", "approved-pair-canvas-aspect-ratio", "approval-document-sha256", "pair-id", "selection"}:
+            if name not in {
+                "approval-text",
+                "token",
+                "delivery-mode",
+                "approved-module-count",
+                "approved-pair-canvas-aspect-ratio",
+                "approval-document-sha256",
+                "pair-id",
+                "selection",
+                "source-session-sha256",
+            }:
                 value = str(self._workspace_path(root, Path(value)))
             argv.extend((f"--{name}", value))
         try:
@@ -107,7 +126,9 @@ class AuroraDetailHarnessRunner:
                 shell=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise AuroraDetailHarnessError("HARNESS_TIMEOUT", "Aurora detail Harness timed out") from exc
+            raise AuroraDetailHarnessError(
+                "HARNESS_TIMEOUT", "Aurora detail Harness timed out"
+            ) from exc
         try:
             result = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
@@ -124,7 +145,10 @@ class AuroraDetailHarnessRunner:
         if completed.returncode != 0 or result.get("status") == "BLOCKED":
             raise AuroraDetailHarnessError(
                 "HARNESS_BLOCKED",
-                str(result.get("error") or "Aurora detail Harness blocked the transition"),
+                str(
+                    result.get("error")
+                    or "Aurora detail Harness blocked the transition"
+                ),
             )
         return result
 
@@ -132,7 +156,9 @@ class AuroraDetailHarnessRunner:
     def harness_path(self) -> Path:
         path = (self.skill_root / "scripts" / "harness.py").resolve()
         if not path.is_file() or self.skill_root.resolve() not in path.parents:
-            raise AuroraDetailHarnessError("HARNESS_MISSING", "Aurora detail Harness is missing")
+            raise AuroraDetailHarnessError(
+                "HARNESS_MISSING", "Aurora detail Harness is missing"
+            )
         return path
 
     @staticmethod
@@ -153,18 +179,26 @@ def write_contract(path: Path, value: Mapping[str, Any] | Sequence[Any]) -> None
 
 
 def detail_workspace(job_id: str, *, root: Path | None = None) -> Path:
-    if not job_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in job_id):
-        raise AuroraDetailHarnessError("INVALID_JOB_ID", "Invalid detail job identifier")
+    if not job_id or any(
+        char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+        for char in job_id
+    ):
+        raise AuroraDetailHarnessError(
+            "INVALID_JOB_ID", "Invalid detail job identifier"
+        )
     base = (root or (default_aurora_work_root() / "domestic-detail")).resolve()
     workspace = (base / job_id).resolve()
     if base != workspace and base not in workspace.parents:
-        raise AuroraDetailHarnessError("WORKSPACE_ESCAPE", "Detail workspace escaped its root")
+        raise AuroraDetailHarnessError(
+            "WORKSPACE_ESCAPE", "Detail workspace escaped its root"
+        )
     try:
         workspace.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise AuroraDetailHarnessError(
             "WORKSPACE_NOT_WRITABLE",
-            "Aurora detail workspace is not writable (%s)." % (exc.strerror or type(exc).__name__),
+            "Aurora detail workspace is not writable (%s)."
+            % (exc.strerror or type(exc).__name__),
         ) from exc
     return workspace
 
@@ -316,11 +350,14 @@ def extract_native_plan(payload: Mapping[str, Any]) -> dict[str, Any] | None:
     return resolve_native_plan(payload)
 
 
-
 def source_path_for(workspace: Path, index: int, filename: str, payload: bytes) -> Path:
     suffix = Path(filename).suffix.lower() or ".bin"
     path = workspace / "references" / f"{index:02d}{suffix}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != hashlib.sha256(payload).hexdigest():
+    if (
+        not path.exists()
+        or hashlib.sha256(path.read_bytes()).hexdigest()
+        != hashlib.sha256(payload).hexdigest()
+    ):
         path.write_bytes(payload)
     return path

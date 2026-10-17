@@ -1795,6 +1795,170 @@
         "title": "DevelopmentProviderSettingsUpdate",
         "type": "object"
       },
+      "DomesticCampaignReviewQuote": {
+        "properties": {
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "dispatch_route_sha256": {
+            "title": "Dispatch Route Sha256",
+            "type": "string"
+          },
+          "final_review_sha256": {
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "image_requests": {
+            "const": 0,
+            "title": "Image Requests",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_requests": {
+            "const": 1,
+            "title": "Model Requests",
+            "type": "integer"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reserve_micros": {
+            "title": "Reserve Micros",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_context_sha256": {
+            "title": "Source Context Sha256",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          },
+          "version": {
+            "const": "domestic-campaign-review-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "source_job_id",
+          "final_review_sha256",
+          "source_context_sha256",
+          "provider",
+          "model",
+          "dispatch_route_sha256",
+          "reserve_micros",
+          "currency",
+          "model_requests",
+          "image_requests",
+          "sha256"
+        ],
+        "title": "DomesticCampaignReviewQuote",
+        "type": "object"
+      },
+      "DomesticCampaignReviewReport": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "original_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Message"
+          },
+          "original_message_state": {
+            "enum": [
+              "PRESERVED_UTF8",
+              "UNAVAILABLE"
+            ],
+            "title": "Original Message State",
+            "type": "string"
+          },
+          "report": {
+            "additionalProperties": true,
+            "title": "Report",
+            "type": "object"
+          },
+          "request_context": {
+            "additionalProperties": true,
+            "title": "Request Context",
+            "type": "object"
+          },
+          "scope": {
+            "const": "OPTIONAL_CAMPAIGN_REVIEW_ONLY",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report",
+          "request_context",
+          "original_message",
+          "original_message_state",
+          "model",
+          "source_job_id",
+          "scope"
+        ],
+        "title": "DomesticCampaignReviewReport",
+        "type": "object"
+      },
+      "DomesticCampaignReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_text": {
+            "maxLength": 240,
+            "minLength": 2,
+            "title": "Approval Text",
+            "type": "string"
+          },
+          "authorized_reserve_micros": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 2000000.0,
+            "title": "Authorized Reserve Micros",
+            "type": "integer"
+          },
+          "final_review_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "quote_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Quote Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_review_sha256",
+          "approval_text",
+          "authorized_reserve_micros",
+          "quote_sha256"
+        ],
+        "title": "DomesticCampaignReviewRequest",
+        "type": "object"
+      },
       "DomesticDetailFinalReviewResponse": {
         "properties": {
           "campaign_audit_status": {
@@ -3676,6 +3840,7 @@
           "model_pose_transfer",
           "creative_image",
           "detail_pack",
+          "domestic_detail_review",
           "amazon_visual_suite",
           "domestic_main_image"
         ],
@@ -11317,6 +11482,267 @@
           }
         ],
         "summary": "Update Draft Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review": {
+      "post": {
+        "operationId": "create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticCampaignReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Domestic Campaign Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/preview.png": {
+      "get": {
+        "operationId": "get_domestic_campaign_preview_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_preview_png_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Domestic Campaign Preview",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/quote": {
+      "get": {
+        "operationId": "quote_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_quote_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "final_review_sha256",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Final Review Sha256",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticCampaignReviewQuote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Quote Domestic Campaign Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/report": {
+      "get": {
+        "operationId": "get_domestic_campaign_report_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticCampaignReviewReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Domestic Campaign Report",
         "tags": [
           "jobs"
         ]

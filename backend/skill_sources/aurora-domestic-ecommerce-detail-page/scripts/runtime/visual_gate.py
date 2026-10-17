@@ -689,14 +689,7 @@ def validate_module_judgment(value: dict, module: dict, *, pair_canvas_audit: bo
 
 
 
-def validate_long_page_judgment(value: dict, plan: dict | None = None) -> None:
-    require_fields(value, ("status", "checks", "audit_complete"), "long-page judgment")
-    if value["status"] not in ("PASS", "PASS_WITH_RESIDUALS"):
-        raise HarnessError("Long-page status must be PASS or PASS_WITH_RESIDUALS")
-    if value["audit_complete"] is not True:
-        raise HarnessError("Long-page pixel audit must be complete")
-    if plan and plan.get("plan_format") == "COMPACT_V1_3":
-        _validate_concrete_check_evidence(value["checks"], "long-page")
+def required_long_page_checks(plan: dict | None = None) -> tuple[str, ...]:
     required = (
         "story_order", "repetition", "density_rhythm", "visual_continuity",
         "layout_variation", "typography_rhythm", "proof_integrity",
@@ -731,6 +724,19 @@ def validate_long_page_judgment(value: dict, plan: dict | None = None) -> None:
     pair_config = ((plan or {}).get("output_strategy") or {}).get("continuous_pair_rendering") if plan else None
     if isinstance(pair_config, dict) and pair_config.get("enabled"):
         required += ("continuous_pair_integrity", "pair_internal_seams", "pair_to_pair_seams")
+    return required
+
+
+def validate_long_page_judgment(value: dict, plan: dict | None = None) -> None:
+    require_fields(value, ("status", "checks", "audit_complete"), "long-page judgment")
+    if value["status"] not in ("PASS", "PASS_WITH_RESIDUALS"):
+        raise HarnessError("Long-page status must be PASS or PASS_WITH_RESIDUALS")
+    if value["audit_complete"] is not True:
+        raise HarnessError("Long-page pixel audit must be complete")
+    if plan and plan.get("plan_format") == "COMPACT_V1_3":
+        _validate_concrete_check_evidence(value["checks"], "long-page")
+    required = required_long_page_checks(plan)
+    pair_config = ((plan or {}).get("output_strategy") or {}).get("continuous_pair_rendering") if plan else None
     missing = [name for name in required if name not in value["checks"]]
     if missing:
         raise HarnessError("Long-page judgment missing checks: " + ", ".join(missing))

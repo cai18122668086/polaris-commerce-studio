@@ -633,3 +633,9 @@ Two rules that are not negotiable:
 <!-- IDENTITY-CONSISTENCY-LOCK:END -->
 
 审批文件指纹必须覆盖实际 UTF-8 文件字节（含唯一末尾 LF）；授权前同时核对编译器指纹与文件实际 SHA-256，文件被改动必须重新编译和审阅。
+
+### Optional campaign review contract inspection
+
+`inspect-campaign-review-contract --session <session.json>` is read-only. It returns the union of schema-required and dynamically required long-page checks (the latter from the same native function used by `audit-long-page`), the judgment schema, the approved expression-diversity constraints, and the ordered accepted screen/pair byte inventory. It does not assemble a long image, invoke a model, authorize automatic finalization, verify original review provenance, or grant visual acceptance. The website must separately verify the original accepted artifacts and raw review evidence before using this inventory.
+
+Long-page preview and audit remain optional. A consumer must preserve original model observations and actual dispatch/usage evidence and must not fill pass/observation fields from the approved plan. Pair, information, expression, pain/solution, and product-presence contracts can add required checks; a static schema-only checklist is incomplete.

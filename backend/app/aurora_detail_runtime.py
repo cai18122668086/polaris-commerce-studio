@@ -71,6 +71,7 @@ class AuroraDetailHarnessRunner:
             "inspect-pair-review-contracts": {"session", "pair-id"},
             "inspect-pair-review-evidence": {"session", "pair-id"},
             "inspect-final-manifest": {"session", "manifest"},
+            "inspect-campaign-review-contract": {"session"},
             "prepare-repair": {"session", "repair-plan"},
             "assemble": {"session", "output"},
             "audit-long-page": {"session", "judgment"},

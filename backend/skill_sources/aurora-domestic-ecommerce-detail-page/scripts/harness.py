@@ -53,7 +53,7 @@ from runtime.state import (
     require_fields,
     require_state,
 )
-from runtime.visual_gate import require_identity_silhouette, validate_long_page_judgment, validate_module_judgment
+from runtime.visual_gate import require_identity_silhouette, required_long_page_checks, validate_long_page_judgment, validate_module_judgment
 from runtime.information_contract import validate_information_contract
 from runtime.schema_validation import validate_schema
 
@@ -2153,6 +2153,49 @@ def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def cmd_inspect_campaign_review_contract(args: argparse.Namespace) -> dict:
+    """Requirements and byte inventory only; never a new visual acceptance."""
+    session = load_json(args.session)
+    if session.get("version") != VERSION:
+        raise HarnessError("Campaign review requires its exact pinned native session version")
+    require_state(session, "AWAITING_USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED", "FINALIZED")
+    modules = session.get("modules") or []
+    plan = session.get("plan") or {}
+    if len(modules) not in {8, 10, 12} or [m.get("id") for m in modules] != [m.get("id") for m in plan.get("modules", [])]:
+        raise HarnessError("Campaign review inventory differs from the approved screen sequence")
+    inventory = []
+    for order, module in enumerate(modules, 1):
+        if type(module.get("order")) is not int or module["order"] != order or module.get("status") not in COMPLETE_STATUSES:
+            raise HarnessError("Campaign review requires accepted screens in exact native order")
+        image = module.get("accepted_asset")
+        if not isinstance(image, str) or not Path(image).is_file():
+            raise HarnessError("Campaign review is missing an original accepted screen")
+        inventory.append({"module_id": module["id"], "image": image, "image_sha256": file_sha256(image), "status": module["status"]})
+    pair_config = (plan.get("output_strategy") or {}).get("continuous_pair_rendering") or {}
+    pairs = pair_config.get("pair_ids") or []
+    if not pair_config.get("enabled") or len(pairs) != len(modules) // 2 or len({p.get("pair_id") for p in pairs}) != len(pairs):
+        raise HarnessError("Campaign review requires exact adjacent pair coverage")
+    for index, pair in enumerate(pairs):
+        if pair.get("module_ids") != [m["module_id"] for m in inventory[index * 2:index * 2 + 2]]:
+            raise HarnessError("Campaign review pair inventory differs from approved adjacent windows")
+    schema = load_json(Path(__file__).resolve().parents[1] / "schemas" / "long-page-judgment.schema.json")
+    dynamic_checks = list(required_long_page_checks(plan))
+    all_checks = list(dict.fromkeys(dynamic_checks + schema["properties"]["checks"]["required"]))
+    return {
+        "version": VERSION,
+        "scope": "REQUIREMENTS_AND_ASSET_INVENTORY_ONLY",
+        "visual_quality_accepted": False,
+        "original_review_provenance_verified": False,
+        "preview_optional": True,
+        "required_checks": all_checks,
+        "native_dynamic_required_checks": dynamic_checks,
+        "judgment_schema": schema,
+        "approved_expression_diversity_contract": plan.get("campaign_expression_diversity_contract"),
+        "modules": inventory,
+        "pairs": pairs,
+    }
+
+
 def cmd_assemble(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     require_state(session, "AWAITING_ASSEMBLY", "AWAITING_USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED")
@@ -2742,7 +2785,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest", "inspect-campaign-review-contract"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2784,6 +2827,7 @@ HANDLERS = {
     "audit-current": cmd_audit_current, "prepare-repair": cmd_prepare_repair,
     "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "inspect-pair-review-contracts": cmd_inspect_pair_review_contracts, "inspect-pair-review-evidence": cmd_inspect_pair_review_evidence, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
     "inspect-final-manifest": cmd_inspect_final_manifest,
+    "inspect-campaign-review-contract": cmd_inspect_campaign_review_contract,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 

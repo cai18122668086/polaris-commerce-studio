@@ -1539,18 +1539,7 @@ def cmd_compile_plan(args: argparse.Namespace) -> dict:
     approval_markdown = _approval_markdown(session)
     grouping_markdown = _pair_grouping_markdown(session)
     approval_markdown = approval_markdown.rstrip() + "\n\n" + grouping_markdown.lstrip()
-    approval_path = Path(args.session).with_name("campaign-approval.md")
-    atomic_write_text(approval_path, approval_markdown)
-    session["approval_document"] = {
-        "path": str(approval_path.resolve()),
-        "sha256": hashlib.sha256(approval_markdown.encode("utf-8")).hexdigest(),
-        "format": "MANDATORY_VERBATIM_MARKDOWN",
-    }
-    session["pair_grouping_document"] = {
-        "path": str(approval_path.resolve()),
-        "sha256": session["approval_document"]["sha256"],
-        "format": "MERGED_IN_CAMPAIGN_APPROVAL",
-    }
+    _persist_approval_document(session, args.session, approval_markdown)
     raw_bytes = len(json.dumps(raw_plan, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     compiled_bytes = len(json.dumps(plan, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     session["planning_metrics"] = {
@@ -1565,6 +1554,23 @@ def cmd_compile_plan(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def _persist_approval_document(session: dict, session_path: str | Path, markdown: str) -> None:
+    # atomic_write_text owns exactly one terminal LF. Hash those same bytes.
+    markdown = markdown.rstrip() + "\n"
+    approval_path = Path(session_path).with_name("campaign-approval.md")
+    atomic_write_text(approval_path, markdown)
+    session["approval_document"] = {
+        "path": str(approval_path.resolve()),
+        "sha256": hashlib.sha256(markdown.encode("utf-8")).hexdigest(),
+        "format": "MANDATORY_VERBATIM_MARKDOWN",
+    }
+    session["pair_grouping_document"] = {
+        "path": str(approval_path.resolve()),
+        "sha256": session["approval_document"]["sha256"],
+        "format": "MERGED_IN_CAMPAIGN_APPROVAL",
+    }
+
+
 def cmd_authorize(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     require_state(session, "AWAITING_PLAN_APPROVAL")
@@ -1576,6 +1582,12 @@ def cmd_authorize(args: argparse.Namespace) -> dict:
             "Authorization must cite the exact compiler-generated campaign-approval.md fingerprint; "
             "do not authorize from a handwritten or abbreviated plan summary"
         )
+    try:
+        actual_approval_sha = hashlib.sha256(Path(approval_document["path"]).read_bytes()).hexdigest()
+    except (KeyError, OSError, TypeError) as exc:
+        raise HarnessError("The compiler-generated approval file is missing") from exc
+    if actual_approval_sha != approval_document.get("sha256"):
+        raise HarnessError("The compiler-generated approval file bytes changed; recompile and review again")
     strategy = session["plan"]["output_strategy"]
     if args.approved_module_count != strategy["module_count"]:
         raise HarnessError("Approved module count does not match the compiled plan")

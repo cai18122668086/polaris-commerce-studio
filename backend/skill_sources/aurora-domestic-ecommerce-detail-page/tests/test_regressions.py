@@ -1622,6 +1622,34 @@ class V4ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(HarnessError, "one direct derivation"):
             harness.validate_plan(current, value)
 
+    def test_v431_native_approval_hash_covers_written_bytes_and_rejects_edits(self):
+        import hashlib
+        current = self._portable_approval_session()
+        current.update({"state": "AWAITING_PLAN_APPROVAL", "version": harness.VERSION})
+        markdown = harness._approval_markdown(current) + harness._pair_grouping_markdown(current)
+        with tempfile.TemporaryDirectory() as directory:
+            session_path = Path(directory) / "session.json"
+            harness._persist_approval_document(current, session_path, markdown)
+            document = Path(current["approval_document"]["path"])
+            original = document.read_bytes()
+            self.assertEqual(hashlib.sha256(original).hexdigest(), current["approval_document"]["sha256"])
+            self.assertTrue(original.endswith(b"\n"))
+            self.assertFalse(original.endswith(b"\n\n"))
+            session_path.write_text(json.dumps(current, ensure_ascii=False), encoding="utf-8")
+            args = type("Args", (), {
+                "session": session_path, "approval_text": "确认这份完整审批文件",
+                "approval_document_sha256": current["approval_document"]["sha256"],
+                "approved_module_count": 8, "approved_pair_canvas_aspect_ratio": "3:8",
+                "delivery_mode": "USER_FINAL_REVIEW",
+            })()
+            document.write_bytes(original + b"unauthorized edit")
+            with self.assertRaisesRegex(HarnessError, "file bytes changed"):
+                harness.cmd_authorize(args)
+            self.assertEqual(json.loads(session_path.read_text(encoding="utf-8"))["state"], "AWAITING_PLAN_APPROVAL")
+            document.write_bytes(original)
+            harness.cmd_authorize(args)
+            self.assertEqual(json.loads(session_path.read_text(encoding="utf-8"))["state"], "AUTHORIZED")
+
     def test_v4_approval_is_single_hierarchical_packet(self):
         current = self._portable_approval_session()
         value = harness._approval_markdown(current) + harness._pair_grouping_markdown(current)

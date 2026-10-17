@@ -603,3 +603,5 @@ Two rules that are not negotiable:
 > **状态：已启用硬门禁（B 层）** 本 skill 的 `harness.py` 在 `cmd_lock_identity` 强制 `invariant_features` / `allowed_states` 至少含 3 条具体几何描述（截面/宽高比/结构分段，命中 `GEOMETRY_FACETS` 或数字比例），否则 BLOCKED。出图后由 `visual_gate.py` 里已有的 `require_identity_silhouette` 强制 `identity_silhouette` 块（shape/colorway/texture_consistent 三者必须为 True）兜底。两环合起来 = 出图前锁几何 + 出图后锁形态，产品一致性不再依赖模型自觉。
 
 <!-- IDENTITY-CONSISTENCY-LOCK:END -->
+
+审批文件指纹必须覆盖实际 UTF-8 文件字节（含唯一末尾 LF）；授权前同时核对编译器指纹与文件实际 SHA-256，文件被改动必须重新编译和审阅。

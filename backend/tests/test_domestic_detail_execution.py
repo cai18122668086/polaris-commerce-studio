@@ -764,8 +764,9 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
         source.source_role for source in gateway.planner_calls[0].sources
     ] == ["product_reference", "style_reference"]
     image_roles = [source.source_role for source in gateway.image_calls[0].sources]
-    assert image_roles[0] == "format_canvas"
-    assert image_roles[1:] == ["product_reference", "style_reference"]
+    assert "format_canvas" not in image_roles
+    assert image_roles[0] == "product_reference"
+    assert image_roles == ["product_reference", "style_reference"]
     planner_prompt = _planner_prompt(gateway.planner_calls[0])
     assert "aurora-domestic-ecommerce-detail-page v4.3.1" in planner_prompt
     assert "product_reference" in planner_prompt
@@ -801,7 +802,6 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     }
     assert reservation is not None
     assert reservation.details["source_role_counts"] == {
-        "format_canvas": 1,
         "product_reference": 1,
         "style_reference": 1,
     }

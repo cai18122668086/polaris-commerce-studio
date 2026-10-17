@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -53,6 +54,13 @@ from .domain import (
     PlanValidationStatus,
     RetryScope,
 )
+from .domestic_detail.generation import (
+    PIPELINE_VERSION,
+    DetailGenerationError,
+    generation_binding,
+    require_current_pipeline,
+    require_recoverable_pair,
+)
 from .domestic_detail.plans import (
     DetailPlanError,
     approval_binding,
@@ -75,6 +83,7 @@ from .models import (
     AssetRecord,
     InspirationCaseRecord,
     JobAssetRecord,
+    JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
     JobRecord,
@@ -1817,7 +1826,12 @@ def update_draft_job(
     if payload.display_name is not None:
         job.display_name = payload.display_name
     if payload.configuration is not None:
-        job.configuration = payload.configuration
+        updated_configuration = dict(payload.configuration)
+        if job.type == JobType.DETAIL_PACK.value:
+            updated_configuration.pop("domestic_detail_pipeline", None)
+            if job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION:
+                updated_configuration["domestic_detail_pipeline"] = PIPELINE_VERSION
+        job.configuration = updated_configuration
     job.state_version += 1
     session.commit()
     return job_detail_response(session, job)
@@ -2016,6 +2030,7 @@ def retry_job(
             "JOB_NOT_RETRYABLE",
             "当前重试范围内没有可重试条目。",
         )
+    _validate_domestic_detail_retry(session, source, selected)
     retried = _copy_job_for_retry(session, source, payload.scope, selected)
     session.add(retried)
     session.flush()
@@ -2098,6 +2113,7 @@ def clone_job(
         select(JobItemRecord).where(JobItemRecord.job_id == source.id)
     ).all()
     selected = [item.id for item in source_items]
+    _validate_domestic_detail_retry(session, source, selected, clone=True)
     cloned = _copy_job_for_retry(session, source, RetryScope.FULL, selected)
     cloned.root_job_id = None
     cloned.retry_of_job_id = None
@@ -2419,6 +2435,23 @@ def confirm_plan(
                 "六图规划未能通过 Aurora Harness 授权，不能开始生成。",
                 {"reason": getattr(exc, "code", type(exc).__name__)},
             ) from exc
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and isinstance(job.configuration.get("settings"), dict)
+        and job.configuration["settings"].get("market_region") == "domestic"
+    ):
+        detail_payload = deepcopy(plan.payload)
+        detail_aurora = detail_payload["aurora_v4_3"]
+        detail_aurora["approval_receipt"] = {
+            "pipeline": PIPELINE_VERSION,
+            "approval_text": payload.approval_text,
+            "approval_document_sha256": payload.approval_document_sha256,
+            "contract_binding_sha256": detail_aurora["contract_binding"]["sha256"],
+            "approved_at": utc_now().isoformat(),
+            "actor_user_id": workspace.principal.user_id,
+            "plan_revision": plan.revision,
+        }
+        plan.payload = detail_payload
     plan.confirmed_at = utc_now()
     transition_job(job, JobStatus.PROCESSING, stage="generating", progress=20)
     add_outbox_event(
@@ -2928,6 +2961,12 @@ def _new_job_from_payload(
         configuration={
             "input": payload.input.model_dump(mode="json"),
             "settings": payload.configuration.model_dump(mode="json"),
+            **(
+                {"domestic_detail_pipeline": PIPELINE_VERSION}
+                if isinstance(payload, DetailPackJobCreate)
+                and payload.configuration.market_region == "domestic"
+                else {}
+            ),
         },
         expected_item_count=item_count,
         estimated_cost_min_micros=minimum,
@@ -3253,6 +3292,91 @@ def _add_items_and_inputs(
         )
 
 
+def _validate_domestic_detail_retry(
+    session: Session,
+    source: JobRecord,
+    selected: list[str],
+    *,
+    clone: bool = False,
+) -> None:
+    settings = source.configuration.get("settings") or {}
+    if (
+        source.type != JobType.DETAIL_PACK.value
+        or settings.get("market_region") != "domestic"
+    ):
+        return
+    from .aurora_detail_runtime import detail_workspace
+
+    try:
+        require_current_pipeline(source.configuration)
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == source.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        items = session.scalars(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id == source.id, JobItemRecord.id.in_(selected)
+            )
+        ).all()
+        for item in items:
+            uncertain = (
+                item.error_code == "PROVIDER_OUTCOME_UNKNOWN"
+                or session.scalar(
+                    select(JobAttemptRecord.id)
+                    .where(
+                        JobAttemptRecord.job_item_id == item.id,
+                        JobAttemptRecord.status == "outcome_unknown",
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
+            if not uncertain:
+                continue
+            if clone or plan is None:
+                raise DetailGenerationError(
+                    "NATIVE_DETAIL_RECONCILIATION_REQUIRED",
+                    "Uncertain calls cannot be cloned into new paid requests",
+                )
+            binding = generation_binding(
+                plan.payload,
+                settings,
+                item.configuration["source_assets"],
+                group_key=str(item.configuration["group_key"]),
+                job_input=source.configuration.get("input") or {},
+            )
+            workspace = detail_workspace(source.id)
+            checkpoint = json.loads(
+                (workspace / "session.json").read_text(encoding="utf-8")
+            )
+            origin = detail_workspace(
+                str(checkpoint.get("checkpoint_source_job_id") or source.id)
+            )
+            page = int(item.configuration["page"])
+            page -= 1 if int(item.configuration.get("pair_position") or 1) == 2 else 0
+            require_recoverable_pair(
+                list(dict.fromkeys((workspace, origin))),
+                binding,
+                page=page,
+                pair_id=str(item.configuration["pair_id"]),
+            )
+    except (
+        DetailGenerationError,
+        DetailPlanError,
+        OSError,
+        ValueError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "NATIVE_DETAIL_RECONCILIATION_REQUIRED",
+            "原请求结果尚未核对，不能再次付费生成；请先核对原结果。",
+            {"reason": str(exc)},
+        ) from exc
+
+
 def _copy_job_for_retry(
     session: Session,
     source: JobRecord,
@@ -3354,6 +3478,25 @@ def _copy_job_relations_for_retry(
             and item.id in preserved_set_audit_ids
         )
         copied_configuration = dict(item.configuration or {})
+        if (
+            source.type == JobType.DETAIL_PACK.value
+            and (source.configuration.get("settings") or {}).get("market_region")
+            == "domestic"
+            and retry_this
+            and (
+                item.error_code == "PROVIDER_OUTCOME_UNKNOWN"
+                or session.scalar(
+                    select(JobAttemptRecord.id)
+                    .where(
+                        JobAttemptRecord.job_item_id == item.id,
+                        JobAttemptRecord.status == "outcome_unknown",
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
+        ):
+            copied_configuration["recovery_only"] = True
         # A parallel v2 retry may reuse page 0 while retrying page 1.  The
         # native Campaign Style gate still needs the accepted page-0 pixels;
         # retain the source job id so the provider can read that durable

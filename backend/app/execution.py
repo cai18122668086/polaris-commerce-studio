@@ -1511,7 +1511,6 @@ class ExecutionCoordinator:
                         "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
                         "AURORA_PAIR_CACHE_MISSING",
                         "IMAGE_RESPONSE_SIZE_INVALID",
-                        "PROVIDER_OUTCOME_UNKNOWN",
                         "USAGE_RECORD_FAILED",
                     }
                     for candidate in pair_rows:
@@ -1542,6 +1541,8 @@ class ExecutionCoordinator:
                             candidate.error_message = None
                             candidate.error_details = None
                             candidate.state_version += 1
+                        elif candidate.status == JobItemStatus.FAILED.value:
+                            return None
                         break
                 if next_pair is not None:
                     item_query = item_query.where(
@@ -1711,6 +1712,7 @@ class ExecutionCoordinator:
         attempt.finished_at = now
         pair_reconcile = (
             job.type == JobType.DETAIL_PACK.value
+            and not self._is_domestic_detail_job_record(job)
             and isinstance(item.configuration, Mapping)
             and bool(item.configuration.get("pair_id"))
             and attempt.attempt_no <= 2
@@ -1762,6 +1764,13 @@ class ExecutionCoordinator:
         item.error_message = (
             "Provider outcome is unknown; manual reconciliation required."
         )
+        if self._is_domestic_detail_job_record(job):
+            item.error_details = {
+                "retryable": False,
+                "outcome_unknown": True,
+                "manual_reconciliation_required": True,
+                "provider_idempotency_key": attempt.provider_idempotency_key,
+            }
         item.finished_at = now
         item.state_version += 1
         return None, True
@@ -2260,6 +2269,7 @@ class ExecutionCoordinator:
                 attempt.status = AttemptStatus.OUTCOME_UNKNOWN.value
                 pair_reconcile = (
                     job.type == JobType.DETAIL_PACK.value
+                    and not self._is_domestic_detail_job_record(job)
                     and isinstance(item.configuration, Mapping)
                     and bool(item.configuration.get("pair_id"))
                     and attempt.attempt_no <= 2

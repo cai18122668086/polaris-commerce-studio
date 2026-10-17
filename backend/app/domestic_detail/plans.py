@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-BINDING_VERSION = "domestic-detail-approval-v1"
+BINDING_VERSION = "domestic-detail-approval-v2"
 
 
 class DetailPlanError(ValueError):
@@ -117,6 +117,40 @@ def approval_binding(
     source_signature = payload.get("input_signature")
     if not isinstance(source_signature, str) or len(source_signature) != 64:
         raise DetailPlanError("Source input signature is missing or malformed")
+    source_manifest = payload.get("source_asset_manifest")
+    source_input = payload.get("source_input_sha256")
+    if (
+        not isinstance(source_input, str)
+        or len(source_input) != 64
+        or not isinstance(source_manifest, list)
+        or not source_manifest
+    ):
+        raise DetailPlanError("Approval requires a source input and asset manifest")
+    if [
+        group.get("group_key")
+        for group in source_manifest
+        if isinstance(group, Mapping)
+    ] != [group.get("group_key") for group in payload["groups"]]:
+        raise DetailPlanError(
+            "Approved source groups differ from the storyboard groups"
+        )
+    for group in source_manifest:
+        assets = group.get("assets") if isinstance(group, Mapping) else None
+        if not isinstance(assets, list) or not assets:
+            raise DetailPlanError("Every approved group requires its source assets")
+        for asset in assets:
+            if (
+                not isinstance(asset, Mapping)
+                or not all(
+                    isinstance(asset.get(key), str) and asset[key]
+                    for key in ("asset_id", "role", "sha256", "filename")
+                )
+                or asset["role"] not in {"product_reference", "style_reference"}
+                or len(asset["sha256"]) != 64
+            ):
+                raise DetailPlanError(
+                    "Approved asset identities, roles and byte hashes must be explicit"
+                )
     manifest = (
         Path(__file__).resolve().parents[1]
         / "skill_manifests/aurora-domestic-ecommerce-detail-page.json"
@@ -128,6 +162,8 @@ def approval_binding(
         "screen_views_sha256": canonical_hash(payload["pages"]),
         "settings_sha256": canonical_hash(settings),
         "source_input_signature": payload.get("input_signature"),
+        "source_input_sha256": source_input,
+        "source_assets_sha256": canonical_hash(source_manifest),
         "skill_content_hash": content_hash,
     }
     return {**binding, "sha256": canonical_hash(binding)}

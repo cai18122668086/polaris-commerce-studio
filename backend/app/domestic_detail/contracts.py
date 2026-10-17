@@ -203,7 +203,10 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
     }
     for index, module in enumerate(modules):
         if isinstance(module, dict):
-            module.setdefault("information_role", information_roles.get(module.get("story_function"), "OTHER"))
+            module.setdefault(
+                "information_role",
+                information_roles.get(str(module.get("story_function") or ""), "OTHER"),
+            )
             if index == 0:
                 module.setdefault("hero_entity_id", str((hero_contract or {}).get("hero_entity_id") or "E_PRODUCT_WHOLE"))
                 module.setdefault("co_equal_hero_entity_ids", [])

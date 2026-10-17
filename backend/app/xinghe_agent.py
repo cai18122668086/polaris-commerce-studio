@@ -58,7 +58,18 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
-from .domestic_detail.plans import approval_binding
+from .domestic_detail.generation import (
+    DetailGenerationError,
+    begin_invocation,
+    bind_native_contract,
+    bind_workspace,
+    finish_invocation,
+    generation_binding,
+    require_current_pipeline,
+    verify_accepted_canvas,
+    wire_idempotency_key,
+)
+from .domestic_detail.plans import DetailPlanError, approval_binding
 from .masked_repair import (
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
@@ -532,6 +543,7 @@ class ImageEditRequest:
     jpeg_quality: int = JPEG_QUALITY
     input_fidelity: str = "high"
     preserve_provider_artifact: bool = False
+    single_dispatch: bool = False
 
 
 @dataclass(frozen=True)
@@ -2412,6 +2424,8 @@ class TengliOpenAICompatibleGateway:
         ]
         try:
             routes = self._image_routes()
+            if request.single_dispatch:
+                routes = routes[:1]
             last_route_index = len(routes) - 1
             response: Mapping[str, Any] | None = None
             for route_index, route in enumerate(routes):
@@ -2446,10 +2460,17 @@ class TengliOpenAICompatibleGateway:
                 else self.medium_price_micros
             )
             if status >= 400:
+                uncertain = request.single_dispatch and (
+                    status >= 500 or status in {408, 409}
+                )
                 rate_limited = status == 429
                 raw_error = _provider_error_summary(response)  # type: ignore[arg-type]
                 return ImageCallResult(
-                    outcome=ProviderOutcome.FAILED,
+                    outcome=(
+                        ProviderOutcome.OUTCOME_UNKNOWN
+                        if uncertain
+                        else ProviderOutcome.FAILED
+                    ),
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
                     raw_usage={
                         **(raw_usage or {}),
@@ -2463,7 +2484,7 @@ class TengliOpenAICompatibleGateway:
                         "IMAGE_RATE_LIMITED" if rate_limited else "IMAGE_REQUEST_FAILED"
                     ),
                     error_message=f"Image request failed with HTTP {status}.",
-                    retryable=rate_limited or status >= 500,
+                    retryable=(rate_limited or status >= 500) and not uncertain,
                     http_status=status,
                     rate_limited=rate_limited,
                 )
@@ -2486,8 +2507,9 @@ class TengliOpenAICompatibleGateway:
                 http_status=status,
             )
         except XingheAgentError as exc:
-            unknown = exc.code in {
-                "PROVIDER_TRANSPORT_FAILED", "PROVIDER_RESPONSE_INVALID"
+            unknown = request.single_dispatch or exc.code in {
+                "PROVIDER_TRANSPORT_FAILED",
+                "PROVIDER_RESPONSE_INVALID",
             }
             return ImageCallResult(
                 outcome=(
@@ -4695,6 +4717,30 @@ class XinghePlanningCoordinator:
                 "groups": group_plans,
                 "pages": flattened_pages,
                 "input_signature": input_signature,
+                **(
+                    {
+                        "source_input_sha256": canonical_hash(
+                            job.configuration.get("input") or {}
+                        ),
+                        "source_asset_manifest": [
+                            {
+                                "group_key": request.group_key,
+                                "assets": [
+                                    {
+                                        "asset_id": source.asset_id,
+                                        "role": source.source_role,
+                                        "sha256": source.sha256,
+                                        "filename": source.filename,
+                                    }
+                                    for source in request.sources
+                                ],
+                            }
+                            for request in requests
+                        ],
+                    }
+                    if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                    else {}
+                ),
                 "resume_signature": resume_signature,
                 "controls": {
                     "automatic_reflection_rounds": 0,
@@ -4713,7 +4759,9 @@ class XinghePlanningCoordinator:
                     "budget_limit_micros": self.budget_limit_micros,
                 },
                 "usage": {
-                    "planner": [_planner_usage_record(result) for result in all_results],
+                    "planner": [
+                        _planner_usage_record(result) for result in all_results
+                    ],
                     "image": {
                         "reported_requests": 0,
                         "unreported_requests": 0,
@@ -4736,7 +4784,8 @@ class XinghePlanningCoordinator:
                     "rate_limit_429_count": 0,
                     "actual_concurrency": 0,
                     "usage_missing_count": sum(
-                        not result.normalized_usage["reported"] for result in all_results
+                        not result.normalized_usage["reported"]
+                        for result in all_results
                     ),
                 },
             }
@@ -5081,9 +5130,18 @@ class XingheImageProvider:
         try:
             configuration, sources = self._authorize(request)
             sources = await self._load_sources(request.workspace_id, sources)
-        except (XingheAgentError, SkillRuntimeError) as exc:
+            generation_scope = (
+                self._generation_scope(request, sources)
+                if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                else {}
+            )
+        except (XingheAgentError, SkillRuntimeError, DetailGenerationError) as exc:
             code = exc.code
             return _provider_rejection(code, str(exc), self.gateway)
+        except DetailPlanError as exc:
+            return _provider_rejection(
+                "NATIVE_DETAIL_APPROVAL_CHANGED", str(exc), self.gateway
+            )
         except Exception as exc:
             return _provider_rejection(
                 "AUDIT_WRITE_FAILED",
@@ -5097,16 +5155,34 @@ class XingheImageProvider:
         native_detail_session: Path | None = None
         if pair_mode and pair_position == 1 and self._native_detail_runner is not None:
             try:
-                self._restore_native_detail_retry_checkpoint(request, configuration)
-                recovered = await self._recover_native_detail_pair(request, configuration)
+                self._restore_native_detail_retry_checkpoint(
+                    request, configuration, generation_scope
+                )
+                recovered = await self._recover_native_detail_pair(
+                    request, configuration, generation_scope
+                )
                 if recovered is not None:
                     return recovered
-                native_detail_session, native_detail_request, sources = await self._prepare_native_detail_generation(
+                if configuration.get("recovery_only"):
+                    raise DetailGenerationError(
+                        "NATIVE_DETAIL_RECONCILIATION_REQUIRED",
+                        "This retry may only reuse the original accepted result",
+                    )
+                (
+                    native_detail_session,
+                    native_detail_request,
+                    sources,
+                ) = await self._prepare_native_detail_generation(
                     request,
                     configuration,
                     sources,
+                    generation_scope,
                 )
-            except (AuroraDetailHarnessError, XingheAgentError) as exc:
+            except (
+                AuroraDetailHarnessError,
+                XingheAgentError,
+                DetailGenerationError,
+            ) as exc:
                 return _provider_rejection(
                     getattr(exc, "code", "AURORA_NATIVE_RUNTIME_FAILED"),
                     str(exc),
@@ -5136,7 +5212,14 @@ class XingheImageProvider:
                 )
             ),
             quality=str(configuration["quality"]),
-            idempotency_key=request.idempotency_key,
+            idempotency_key=(
+                wire_idempotency_key(
+                    request.idempotency_key, str(native_detail_request["token"])
+                )
+                if native_detail_request is not None
+                else request.idempotency_key
+            ),
+            single_dispatch=pair_mode,
             size=(
                 native_size or str(configuration.get("pair_canvas_size"))
                 if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
@@ -5146,150 +5229,49 @@ class XingheImageProvider:
         )
         pair_cache_key = (request.job_id, str(configuration["group_key"]), pair_id)
         if pair_mode and pair_position == 2:
-            cached = self._aurora_pair_slice_cache.pop(pair_cache_key, None)
-            if cached is None and self.storage is not None:
-                # The second screen may be claimed by another worker process
-                # after the first screen has finished.  Rehydrate the exact
-                # provider canvas from object storage instead of issuing a
-                # second image request or relying on process-local memory.
-                try:
-                    source_job_id = configuration.get("aurora_pair_source_job_id")
-                    candidate_job_ids = [request.job_id]
-                    if isinstance(source_job_id, str) and source_job_id:
-                        candidate_job_ids.append(source_job_id)
-                    pair_payload = None
-                    pair_canvas_key = ""
-                    last_error: Exception | None = None
-                    for candidate_job_id in candidate_job_ids:
-                        try:
-                            pair_canvas_key = self._aurora_pair_canvas_object_key(
-                                request.workspace_id,
-                                candidate_job_id,
-                                str(configuration["group_key"]),
-                                pair_id,
-                            )
-                            pair_payload = await self.storage.read_bytes(pair_canvas_key)
-                            break
-                        except Exception as exc:
-                            last_error = exc
-                    if pair_payload is None:
-                        raise last_error or FileNotFoundError(pair_id)
-                    pair_canvas = _artifact_from_bytes(
-                        pair_payload,
-                        filename=f"{configuration['group_key']}-{pair_id}-canvas.png",
-                        expected_size=str(configuration["pair_canvas_size"]),
-                        preserve_provider_artifact=True,
-                    )
-                    _, cached = _split_aurora_pair_artifact(
-                        pair_canvas,
-                        screen_size=str(configuration["size"]),
-                        pair_id=pair_id,
-                        group_key=str(configuration["group_key"]),
-                    )
-                except Exception as exc:
-                    return _provider_rejection(
-                        "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
-                        f"The persisted Aurora pair canvas could not be rehydrated ({type(exc).__name__}).",
-                        self.gateway,
-                        retryable=True,
-                    )
-            if cached is None:
-                return _provider_rejection(
-                    "AURORA_PAIR_CACHE_MISSING",
-                    "The second Aurora screen cannot be generated without its pair canvas.",
-                    self.gateway,
-                    retryable=True,
-                )
-            pair_canvas_audit: dict[str, Any] | None = None
             try:
-                pair_canvas_key = self._aurora_pair_canvas_object_key(
-                    request.workspace_id,
-                    request.job_id,
-                    str(configuration["group_key"]),
-                    pair_id,
+                self._restore_native_detail_retry_checkpoint(
+                    request, configuration, generation_scope
                 )
-                if self.storage is not None:
-                    source_job_id = configuration.get("aurora_pair_source_job_id")
-                    candidate_job_ids = [request.job_id]
-                    if isinstance(source_job_id, str) and source_job_id:
-                        candidate_job_ids.append(source_job_id)
-                    pair_payload = None
-                    pair_canvas_key = ""
-                    last_error: Exception | None = None  # type: ignore[no-redef]
-                    for candidate_job_id in candidate_job_ids:
-                        try:
-                            pair_canvas_key = self._aurora_pair_canvas_object_key(
-                                request.workspace_id,
-                                candidate_job_id,
-                                str(configuration["group_key"]),
-                                pair_id,
-                            )
-                            pair_payload = await self.storage.read_bytes(pair_canvas_key)
-                            break
-                        except Exception as exc:
-                            last_error = exc
-                    if pair_payload is None:
-                        raise last_error or FileNotFoundError(pair_id)
-                    pair_canvas = _artifact_from_bytes(
-                        pair_payload,
-                        filename=f"{configuration['group_key']}-{pair_id}-canvas.png",
-                        expected_size=str(configuration["pair_canvas_size"]),
-                        preserve_provider_artifact=True,
+                first_configuration = {
+                    **configuration,
+                    "page": int(configuration["page"]) - 1,
+                }
+                recovered = await self._recover_native_detail_pair(
+                    request, first_configuration, generation_scope
+                )
+                cached = self._aurora_pair_slice_cache.pop(pair_cache_key, None)
+                if recovered is None or cached is None:
+                    raise DetailGenerationError(
+                        "AURORA_PAIR_CACHE_MISSING",
+                        "The second screen requires its bound, audited original canvas",
                     )
-                    pair_canvas_audit = _aurora_pair_pixel_audit(
-                        pair_canvas,
-                        pair_id=pair_id,
-                    )
-            except Exception:
-                # The cached slice is still bound to the pair-generation call;
-                # retain the fail-closed slice path while the final-review gate
-                # requires a complete pair audit before delivery.
-                pair_canvas_audit = None
-            result = ImageCallResult(
-                outcome=ProviderOutcome.SUCCEEDED,
-                # Provider request ids are globally unique in the durable
-                # attempt table.  The slice is local to this job/pair, so do
-                # not reuse the old pair-only id across separate jobs.
-                provider_request_id=f"aurora_pair_slice_{request.job_id}_{pair_id}",
-                raw_usage={
-                    "reported": False,
-                    "metrics": {
-                        "aurora_pair_slice": True,
-                        "aurora_pair_canvas_object_key": pair_canvas_key,
-                        "audit_entrypoint": "audit-pair",
-                        "pair_audit": pair_canvas_audit,
-                    },
-                },
-                normalized_usage=normalize_usage(None),
-                api_latency_seconds=0.0,
-                actual_cost_micros=0,
-                estimated_cost_micros=0,
-                artifact=cached,
-                http_status=200,
-                active_concurrency=0,
-            )
-            try:
+                result = ImageCallResult(
+                    outcome=ProviderOutcome.SUCCEEDED,
+                    provider_request_id=f"aurora_pair_slice_{request.job_id}_{pair_id}",
+                    raw_usage=recovered.raw_usage,
+                    normalized_usage=normalize_usage(None),
+                    api_latency_seconds=0.0,
+                    actual_cost_micros=0,
+                    estimated_cost_micros=0,
+                    artifact=cached,
+                    http_status=200,
+                    active_concurrency=0,
+                )
                 self._record_completion(request, result, configuration=configuration)
+                return replace(
+                    recovered,
+                    provider_request_id=result.provider_request_id,
+                    artifact=cached,
+                )
+            except (AuroraDetailHarnessError, DetailGenerationError) as exc:
+                return _provider_rejection(exc.code, str(exc), self.gateway)
             except Exception as exc:
                 return _provider_rejection(
-                    "AUDIT_WRITE_FAILED",
-                    f"Pair-slice audit failed ({type(exc).__name__}).",
+                    "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
+                    f"Bound pair recovery failed ({type(exc).__name__}).",
                     self.gateway,
                 )
-            return ProviderResult(
-                outcome=ProviderOutcome.SUCCEEDED,
-                provider_request_id=result.provider_request_id,
-                usage_reported=False,
-                raw_usage=result.raw_usage or {},
-                estimated_cost_micros=0,
-                actual_cost_micros=0,
-                retryable=False,
-                http_status=200,
-                artifact=cached,
-                provider_name=self.gateway.provider_name,
-                model_name=self.gateway.image_model,
-                pricing_version=self.gateway.pricing_version,
-            )
         async with self._semaphore:
             try:
                 if not pair_mode or pair_position == 1:
@@ -5312,11 +5294,43 @@ class XingheImageProvider:
                 active_concurrency = self._active_requests
             try:
                 started_at = datetime.now(UTC)
+                invocation_path = None
+                if (
+                    native_detail_session is not None
+                    and native_detail_request is not None
+                ):
+                    try:
+                        invocation_path = begin_invocation(
+                            native_detail_session.parent,
+                            generation_scope,
+                            native_detail_request,
+                            provider=self.gateway.provider_name,
+                            model=self.gateway.image_model,
+                            pricing_version=self.gateway.pricing_version,
+                            idempotency_key=image_request.idempotency_key,
+                            prompt=image_request.prompt,
+                            size=image_request.size,
+                            quality=image_request.quality,
+                            sources=[
+                                {
+                                    "asset_id": source.asset_id,
+                                    "role": source.source_role,
+                                    "sha256": source.sha256,
+                                }
+                                for source in sources
+                            ],
+                        )
+                    except DetailGenerationError as exc:
+                        return _provider_rejection(exc.code, str(exc), self.gateway)
                 try:
                     result = await self.gateway.edit(image_request)
                 except Exception as exc:
                     result = ImageCallResult(
-                        outcome=ProviderOutcome.FAILED,
+                        outcome=(
+                            ProviderOutcome.OUTCOME_UNKNOWN
+                            if pair_mode
+                            else ProviderOutcome.FAILED
+                        ),
                         provider_request_id=None,
                         raw_usage=None,
                         normalized_usage=normalize_usage(None),
@@ -5324,12 +5338,50 @@ class XingheImageProvider:
                             datetime.now(UTC) - started_at
                         ).total_seconds(),
                         actual_cost_micros=None,
-                        error_code="IMAGE_PROVIDER_FAILED",
+                        error_code=(
+                            "PROVIDER_OUTCOME_UNKNOWN"
+                            if pair_mode
+                            else "IMAGE_PROVIDER_FAILED"
+                        ),
                         error_message=(
                             f"Image provider failed ({type(exc).__name__})."
                         ),
                         retryable=False,
                     )
+                if (
+                    pair_mode
+                    and result.outcome == ProviderOutcome.SUCCEEDED
+                    and result.artifact is None
+                ):
+                    result = replace(
+                        result,
+                        outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                        retryable=False,
+                        error_code="NATIVE_DETAIL_RESULT_MISSING",
+                        error_message="The provider returned no recoverable image.",
+                    )
+                if invocation_path is not None:
+                    try:
+                        finish_invocation(
+                            invocation_path,
+                            outcome=result.outcome.value,
+                            provider_request_id=result.provider_request_id,
+                            artifact_sha256=result.artifact.sha256
+                            if result.artifact is not None
+                            else None,
+                            artifact_payload=result.artifact.payload
+                            if result.artifact is not None
+                            else None,
+                        )
+                    except (OSError, DetailGenerationError):
+                        # A paid response without a durable completion receipt is uncertain.
+                        result = replace(
+                            result,
+                            outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                            error_code="NATIVE_DETAIL_COMPLETION_RECEIPT_FAILED",
+                            error_message="The original provider result needs reconciliation.",
+                            retryable=False,
+                        )
                 finished_at = datetime.now(UTC)
                 result = replace(
                     result,
@@ -5341,6 +5393,7 @@ class XingheImageProvider:
             finally:
                 async with self._activity_lock:
                     self._active_requests -= 1
+        known_provider_failure = result.outcome == ProviderOutcome.FAILED
         if (
             pair_mode
             and pair_position == 1
@@ -5484,7 +5537,7 @@ class XingheImageProvider:
                         },
                     },
                 )
-        if native_detail_session is not None and result.outcome != ProviderOutcome.SUCCEEDED:
+        if native_detail_session is not None and known_provider_failure:
             self._reset_native_detail_generation(native_detail_session)
         raw_usage = _image_usage_record(
             result,
@@ -5531,6 +5584,39 @@ class XingheImageProvider:
             pricing_version=self.gateway.pricing_version,
         )
 
+    def _generation_scope(
+        self, request: ProviderRequest, sources: tuple[SourceImage, ...]
+    ) -> dict[str, Any]:
+        with self.session_factory() as db:
+            job = db.get(JobRecord, request.job_id)
+            plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == request.job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            if job is None or plan is None:
+                raise DetailGenerationError(
+                    "NATIVE_DETAIL_CONTEXT_MISSING",
+                    "Confirmed generation context is missing",
+                )
+            require_current_pipeline(job.configuration)
+            return generation_binding(
+                plan.payload,
+                job.configuration["settings"],
+                [
+                    {
+                        "asset_id": source.asset_id,
+                        "role": source.source_role,
+                        "sha256": source.sha256,
+                        "filename": source.filename,
+                    }
+                    for source in sources
+                ],
+                group_key=str(request.configuration["item"]["group_key"]),
+                job_input=job.configuration.get("input") or {},
+            )
+
     @staticmethod
     def _reset_native_detail_generation(session_path: Path) -> None:
         """Release an unbound native token after a provider failure.
@@ -5556,13 +5642,17 @@ class XingheImageProvider:
             return
 
     def _restore_native_detail_retry_checkpoint(
-        self, request: ProviderRequest, configuration: Mapping[str, Any]
+        self,
+        request: ProviderRequest,
+        configuration: Mapping[str, Any],
+        generation_scope: Mapping[str, Any],
     ) -> None:
         """Carry an audited prefix into a normal failed-only retry."""
 
         page = int(configuration.get("page") or 1)
         workspace = detail_workspace(request.job_id)
-        if page <= 1 or (workspace / "session.json").exists():
+        if (workspace / "session.json").exists():
+            bind_workspace(workspace, generation_scope)
             return
         with self.session_factory() as db:
             job = db.get(JobRecord, request.job_id)
@@ -5584,6 +5674,7 @@ class XingheImageProvider:
         source_path = source_workspace / "session.json"
         if not source_path.exists() or native_plan is None:
             return
+        bind_workspace(source_workspace, generation_scope)
         source_plan = json.loads((source_workspace / "plan.json").read_text(encoding="utf-8"))
         if canonical_hash(source_plan) != canonical_hash(normalize_native_plan_for_harness(native_plan)):
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_PLAN_MISMATCH", "Retry checkpoint does not match the confirmed plan")
@@ -5593,23 +5684,34 @@ class XingheImageProvider:
         modules = checkpoint.get("modules") or []
         if len(modules) < page or any(module.get("status") not in {"COMPLETE", "COMPLETE_WITH_RESIDUALS"} for module in modules[:page - 1]):
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_INCOMPLETE", "Source checkpoint does not contain the reused prefix")
-        for name in ("input.json", "identity.json", "plan.json"):
+        bind_native_contract(source_workspace, generation_scope)
+        for name in (
+            "input.json",
+            "identity.json",
+            "plan.json",
+            "native-contract-binding.json",
+        ):
             (workspace / name).write_bytes((source_workspace / name).read_bytes())
         # Historical accepted assets and receipts remain immutable in their
         # original workspace. New Harness output belongs to the retry workspace.
         checkpoint["session_dir"] = str(workspace)
         checkpoint["checkpoint_source_job_id"] = source_id
         checkpoint.setdefault("events", []).append({"event": "retry_checkpoint_restored", "source_job_id": source_id, "at": datetime.now(UTC).isoformat()})
+        bind_workspace(workspace, generation_scope, create=True)
         write_detail_contract(workspace / "session.json", checkpoint)
 
     async def _recover_native_detail_pair(
-        self, request: ProviderRequest, configuration: Mapping[str, Any]
+        self,
+        request: ProviderRequest,
+        configuration: Mapping[str, Any],
+        generation_scope: Mapping[str, Any],
     ) -> ProviderResult | None:
         """Replay an audited canvas if its database completion lost its lease."""
 
         session_path = detail_workspace(request.job_id) / "session.json"
         if not session_path.exists():
             return None
+        bind_native_contract(session_path.parent, generation_scope)
         checkpoint = json.loads(session_path.read_text(encoding="utf-8"))
         page = int(configuration.get("page") or 1)
         modules = (checkpoint.get("modules") or [])[page - 1:page + 1]
@@ -5638,6 +5740,15 @@ class XingheImageProvider:
             break
         else:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_CANVAS_MISSING", "Accepted canvas is missing from durable storage")
+        origin_workspace = detail_workspace(
+            str(checkpoint.get("checkpoint_source_job_id") or request.job_id)
+        )
+        verify_accepted_canvas(
+            list(dict.fromkeys((session_path.parent, origin_workspace))),
+            generation_scope,
+            pair_id=pair_id,
+            artifact_sha256=hashlib.sha256(payload).hexdigest(),
+        )
         if hashlib.sha256(payload).hexdigest() not in hashes:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Stored canvas does not match its accepted audit")
         canvas = _artifact_from_bytes(payload, filename=f"{group_key}-{pair_id}-canvas.png", expected_size=str(configuration["pair_canvas_size"]), preserve_provider_artifact=True)
@@ -5663,6 +5774,7 @@ class XingheImageProvider:
         request: ProviderRequest,
         configuration: Mapping[str, Any],
         sources: tuple[SourceImage, ...],
+        generation_scope: Mapping[str, Any],
     ) -> tuple[Path, dict[str, Any], tuple[SourceImage, ...]]:
         """Create/advance one native v4.3 session and issue its signed request."""
 
@@ -5698,7 +5810,9 @@ class XingheImageProvider:
         if native_plan is None:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_PLAN_MISSING", "The confirmed plan does not contain a compact Aurora v4.3 storyboard")
         native_plan = normalize_native_plan_for_harness(native_plan)
-        if not session_path.exists():
+        new_session = not session_path.exists()
+        bind_workspace(workspace, generation_scope, create=new_session)
+        if new_session:
             write_detail_contract(
                 input_path,
                 build_native_input(settings, product_images=native_sources, image_paths=source_paths),  # type: ignore[arg-type]
@@ -5715,13 +5829,16 @@ class XingheImageProvider:
                 workspace,
                 {
                     "session": session_path,
-                    "approval-text": "已确认当前详情页组—单屏方案，按原生 Aurora v4.3 合同继续生成。",
+                    "approval-text": str(
+                        payload["aurora_v4_3"]["approval_receipt"]["approval_text"]
+                    ),
                     "approved-module-count": str(len(native_plan.get("modules") or [])),
                     "approved-pair-canvas-aspect-ratio": "3:8",
                     "approval-document-sha256": str(approval.get("sha256") or ""),
                     "delivery-mode": "USER_FINAL_REVIEW",
                 },
             )
+        bind_native_contract(workspace, generation_scope, create=new_session)
         native_session_value = json.loads(session_path.read_text(encoding="utf-8"))
         state = native_session_value.get("state")
         expected_index = int(configuration.get("page") or 1) - 1
@@ -5750,6 +5867,9 @@ class XingheImageProvider:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_STATE_INVALID", f"Native detail session is not ready: {state}")
         runner.run("generate-next", workspace, {"session": session_path, "out": request_path})
         native_request = json.loads(request_path.read_text(encoding="utf-8"))
+        native_request["signed_request_sha256"] = hashlib.sha256(
+            request_path.read_bytes()
+        ).hexdigest()
         if str(native_request.get("pair_id") or "") != str(configuration.get("pair_id") or ""):
             self._reset_native_detail_generation(session_path)
             raise AuroraDetailHarnessError("NATIVE_DETAIL_PAIR_MISMATCH", "Native generation request does not match the database pair")
@@ -5788,12 +5908,13 @@ class XingheImageProvider:
         native_request["product_name"] = str(
             settings.get("product_name") or "当前商品"  # type: ignore[union-attr]
         )
-        # The first reference is a Skill-owned format canvas.  Add it to the
-        # multipart request exactly where generate-next placed it.
+        # Keep the blank format canvas local, as required by the Skill provider protocol.
         ordered: list[SourceImage] = []
         source_by_path = {str(Path(path).resolve()): source for path, source in zip(source_paths, sources, strict=True)}
         for raw_path in native_request.get("reference_images") or []:
             path = Path(str(raw_path)).resolve()
+            if path == Path(str(native_request.get("format_canvas") or "")).resolve():
+                continue
             source = source_by_path.get(str(path))  # type: ignore[assignment]
             if source is not None:
                 ordered.append(source)

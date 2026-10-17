@@ -72,6 +72,10 @@ class ImageStorage(Protocol):
 
     async def read_bytes(self, object_key: str) -> bytes: ...
 
+    async def read_stored_image(
+        self, object_key: str, object_version: str = ""
+    ) -> tuple[bytes, StoredImage]: ...
+
     async def create_access_url(
         self,
         object_key: str,
@@ -212,6 +216,16 @@ class LocalImageStorage:
             raise FileNotFoundError(object_key)
         return await asyncio.to_thread(source.read_bytes)
 
+    async def read_stored_image(
+        self, object_key: str, object_version: str = ""
+    ) -> tuple[bytes, StoredImage]:
+        if object_version:
+            raise ValueError("Local image storage has no object versions")
+        payload = await self.read_bytes(object_key)
+        return payload, _describe_stored_image(
+            payload, object_key, provider=self.provider_name, bucket=self.bucket_name
+        )
+
     def _require_safe_path(self, path: Path) -> None:
         if self.root not in path.parents:
             raise UploadValidationError(
@@ -342,6 +356,32 @@ class S3ImageStorage:
         )
         return await asyncio.to_thread(response["Body"].read)
 
+    async def read_stored_image(
+        self, object_key: str, object_version: str = ""
+    ) -> tuple[bytes, StoredImage]:
+        parameters = {"Bucket": self.bucket, "Key": object_key}
+        if object_version:
+            parameters["VersionId"] = object_version
+        response = await asyncio.to_thread(self.client.get_object, **parameters)
+        payload = await asyncio.to_thread(response["Body"].read)
+        actual_version = str(response.get("VersionId") or "")
+        if object_version and actual_version != object_version:
+            raise ValueError("Storage returned a different object version")
+        metadata = _describe_stored_image(
+            payload,
+            object_key,
+            provider=self.provider_name,
+            bucket=self.bucket_name,
+            version=actual_version,
+            etag=str(response.get("ETag") or "").strip('"') or None,
+        )
+        if (response.get("ContentType"), response.get("ContentLength")) != (
+            metadata.content_type,
+            metadata.byte_size,
+        ):
+            raise ValueError("Stored image headers differ from its exact raster")
+        return payload, metadata
+
     async def create_access_url(
         self,
         object_key: str,
@@ -360,6 +400,37 @@ class S3ImageStorage:
             },
             ExpiresIn=expires_seconds,
         )
+
+
+def _describe_stored_image(
+    payload: bytes,
+    object_key: str,
+    *,
+    provider: str,
+    bucket: str,
+    version: str = "",
+    etag: str | None = None,
+) -> StoredImage:
+    with Image.open(BytesIO(payload)) as image:
+        width, height = image.size
+        image_format = image.format
+        image.verify()
+    contract = ALLOWED_IMAGE_FORMATS.get(image_format or "")
+    if contract is None:
+        raise ValueError("Stored object is not a supported raster")
+    return StoredImage(
+        filename=Path(object_key).name,
+        content_type=contract[1],
+        byte_size=len(payload),
+        width=width,
+        height=height,
+        object_key=object_key,
+        sha256=hashlib.sha256(payload).hexdigest(),
+        storage_provider=provider,
+        storage_bucket=bucket,
+        object_version=version,
+        etag=etag,
+    )
 
 
 def _stored_image(
@@ -472,7 +543,4 @@ def build_content_disposition(disposition: str, filename: str) -> str:
     basename = Path(filename).name or "download"
     fallback = _safe_filename(basename)
     encoded = quote(basename, safe="!#$&+-.^_`|~")
-    return (
-        f'{disposition}; filename="{fallback}"; '
-        f"filename*=UTF-8''{encoded}"
-    )
+    return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"

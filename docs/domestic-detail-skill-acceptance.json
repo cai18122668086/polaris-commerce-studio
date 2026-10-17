@@ -469,5 +469,23 @@
     "unique_offline_cases": 355,
     "actual_supplier_calls": 0,
     "pending_network_dispatch_red_cases": 8
+  },
+  "local_native_delivery_review_candidate": {
+    "overall_completion": "unproven",
+    "core_commit": "c6bb44bd3b968a3faef337ac9f4b1d3603dc3f5e",
+    "phase2_parent": "c6bb44bd3b968a3faef337ac9f4b1d3603dc3f5e",
+    "report": "domestic-detail-final-review-2026-10-18.md",
+    "current_backend_green": 38,
+    "frontend_green": 8,
+    "native_source_unchanged": "79 files / d18eb110d7b9bd69e986556f8409e21848618f464b44b6d6b6c43a5d6f59267b",
+    "scope": "Native human finalization, material residuals, exact review fingerprint, accepted screen/pair-master storage and ZIP bytes, immutable interruption recovery; synthetic technical validation only",
+    "actual_supplier_calls": 0,
+    "remaining": [
+      "optional full-campaign actual observation and original evidence",
+      "explicit auto-delivery and user correction command coverage",
+      "historical frozen version compatibility/rollback",
+      "persistent independent PG/Redis/MinIO and API/Worker shared absolute harness root",
+      "real supplier/cost and actual visual acceptance"
+    ]
   }
 }

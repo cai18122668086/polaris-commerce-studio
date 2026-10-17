@@ -106,6 +106,7 @@ from .schemas_v1 import (
     DetailPackJobCreate,
     DevelopmentProviderSettingsResponse,
     DevelopmentProviderSettingsUpdate,
+    DomesticDetailFinalReviewResponse,
     DomesticMainImageJobCreate,
     DraftJobUpdate,
     ErrorResponse,
@@ -1127,6 +1128,7 @@ async def create_asset_access_url(
     url = None
     if (
         payload.variant == "original"
+        and not asset.asset_metadata.get("native_detail_pair_master")
         and request.app.state.settings.asset_access_url_mode == "auto"
     ):
         url = await request.app.state.storage.create_access_url(
@@ -1205,6 +1207,18 @@ def _asset_for_storage(
     return asset
 
 
+async def _asset_content_bytes(request: Request, asset: AssetRecord) -> bytes:
+    if asset.asset_metadata.get("native_detail_pair_master"):
+        from .domestic_detail.delivery import DetailDeliveryError
+        from .domestic_detail.review_packet import read_pair_master
+
+        try:
+            return await read_pair_master(request.app.state.storage, asset)
+        except DetailDeliveryError as exc:
+            raise ApiError(exc.status_code, exc.code, str(exc)) from exc
+    return await request.app.state.storage.read_bytes(asset.object_key)
+
+
 @router.get(
     "/workspaces/{workspace_id}/assets/{asset_id}/content",
     name="get_signed_asset_content",
@@ -1257,7 +1271,7 @@ async def get_signed_asset_content(
         try:
             body = await request.app.state.thumbnails.get(
                 f"{asset.object_key}:{asset.sha256}",
-                lambda: request.app.state.storage.read_bytes(asset.object_key),
+                lambda: _asset_content_bytes(request, asset),
             )
         except ThumbnailBusy:
             return Response(
@@ -1277,7 +1291,7 @@ async def get_signed_asset_content(
     }
     if request.headers.get("If-None-Match") == etag:
         return Response(status_code=304, headers=headers)
-    body = await request.app.state.storage.read_bytes(asset.object_key)
+    body = await _asset_content_bytes(request, asset)
     return Response(
         body,
         media_type=asset.content_type,
@@ -1683,6 +1697,40 @@ async def download_job_deliverables(
     session: SessionDependency,
 ) -> Response:
     job = get_workspace_job(session, workspace.workspace_id, job_id)
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
+    ):
+        from .domestic_detail.delivery import DetailDeliveryError
+        from .domestic_detail.review_packet import delivery_archive
+
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None:
+            raise ApiError(
+                409, "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING", "原始方案缺失。"
+            )
+        try:
+            body = await delivery_archive(session, job, plan, request.app.state.storage)
+        except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
+            raise ApiError(
+                getattr(exc, "status_code", 409),
+                getattr(exc, "code", "NATIVE_DETAIL_DELIVERY_INVALID"),
+                str(exc),
+            ) from exc
+        return Response(
+            body,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": build_content_disposition(
+                    "attachment", f"detail-pack-{job.id}.zip"
+                )
+            },
+        )
     if job.type not in {
         JobType.DETAIL_PACK.value,
         JobType.AMAZON_VISUAL_SUITE.value,
@@ -2799,6 +2847,53 @@ def confirm_plan(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review",
+    response_model=DomesticDetailFinalReviewResponse,
+    tags=["jobs"],
+)
+def prepare_domestic_detail_final_review(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> DomesticDetailFinalReviewResponse:
+    from .domestic_detail.delivery import DetailDeliveryError
+    from .domestic_detail.review_packet import prepare_final_review
+
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+        or job.status not in {"awaiting_final_review", "completed"}
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_FINAL_REVIEW_NOT_READY",
+            "当前任务尚不能进行国内详情最终审阅。",
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    if plan is None:
+        raise ApiError(409, "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING", "原始方案缺失。")
+    try:
+        packet = asyncio.run(
+            prepare_final_review(session, job, plan, request.app.state.storage)
+        )
+    except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_DELIVERY_INVALID"),
+            str(exc),
+        ) from exc
+    session.commit()
+    return DomesticDetailFinalReviewResponse.model_validate(packet)
+
+
+@router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/finalize",
     response_model=JobDetailResponse,
     tags=["jobs"],
@@ -2838,7 +2933,11 @@ def finalize_domestic_main_image(
             route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
             idempotency_key=key,
             request_hash=canonical_hash(
-                {"job_id": job.id, "approval_text": payload.approval_text}
+                {
+                    "job_id": job.id,
+                    "approval_text": payload.approval_text,
+                    "final_review_sha256": payload.final_review_sha256,
+                }
             ),
         )
         if not replay and JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
@@ -2868,6 +2967,7 @@ def finalize_domestic_main_image(
                     request.app.state.storage,
                     actor_id=workspace.principal.user_id,
                     approval_text=payload.approval_text,
+                    final_review_sha256=payload.final_review_sha256,
                     allow_create=not replay,
                 )
             )

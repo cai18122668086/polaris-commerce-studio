@@ -191,9 +191,9 @@ class LocalEditConfiguration(BaseModel):
     # The masked-image-repair Skill chooses the cheapest viable execution path.
     # ``auto`` keeps the existing UI behaviour while allowing API clients to
     # request an explicit deterministic, hybrid, cropped, or full-canvas path.
-    execution_path: Literal[
-        "auto", "deterministic", "hybrid", "cropped", "full"
-    ] = "auto"
+    execution_path: Literal["auto", "deterministic", "hybrid", "cropped", "full"] = (
+        "auto"
+    )
     output_format: Literal["png"] = "png"
 
 
@@ -728,8 +728,26 @@ class PlanConfirmRequest(BaseModel):
     approved_pair_canvas_aspect_ratio: Literal["3:8"] | None = None
 
 
+class DomesticDetailFinalReviewResponse(BaseModel):
+    version: Literal["domestic-detail-final-review-v1"]
+    job_id: str
+    plan_id: str
+    plan_revision: int
+    skill_version: str
+    context_sha256: str
+    generation_binding_sha256: str
+    sha256: str
+    document_markdown: str
+    quality_state: Literal["PAIR_REVIEW_PASSED", "WITH_RESIDUALS"]
+    campaign_audit_status: Literal["NOT_REQUESTED"]
+    screens: list[dict[str, Any]]
+    pair_canvases: list[dict[str, Any]]
+    residual_issues: list[dict[str, Any]]
+
+
 class FinalizeJobRequest(BaseModel):
     approval_text: str = Field(min_length=2, max_length=240)
+    final_review_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class HealthResponse(BaseModel):

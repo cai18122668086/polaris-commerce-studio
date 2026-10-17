@@ -18,6 +18,8 @@ from tests.test_domestic_detail_plans import planned_job
 
 ORIGINAL_REVIEW = XingheImageProvider._native_detail_judgment_with_review
 
+REVIEWS = {}
+
 APPROVAL = "我已逐屏审阅本次合成任务的最终结果，并接受明确列出的残差。"
 
 
@@ -25,6 +27,7 @@ APPROVAL = "我已逐屏审阅本次合成任务的最终结果，并接受明�
 def explicit_synthetic_delivery(client, monkeypatch):
     # The default mock shortcut does not persist merchant pair canvases.
     # Explicit synthetic mode exercises real local output storage and C4 lineage.
+    REVIEWS.clear()
     monkeypatch.setattr(_gateway(client), "provider_name", "synthetic")
 
     async def synthetic_observer(self, request, native_request, sources, artifact):
@@ -35,7 +38,7 @@ def explicit_synthetic_delivery(client, monkeypatch):
     )
 
 
-def ready(client):
+def ready(client, *, prepare=True):
     planned = planned_job(client)
     client.app.state.settings.max_image_pixels = 6_000_000
     client.app.state.storage.validator.max_image_pixels = 6_000_000
@@ -50,14 +53,26 @@ def ready(client):
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{planned['id']}"
     ).json()
     assert current["status"] == "awaiting_final_review", current.get("error_message")
+    if prepare:
+        packet = client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{current['id']}/detail-final-review"
+        )
+        assert packet.status_code == 200, packet.text
+        REVIEWS[current["id"]] = packet.json()["sha256"]
     return current
 
 
 def finalize(client, job_id, key=None):
+    if job_id not in REVIEWS:
+        packet = client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/detail-final-review"
+        )
+        assert packet.status_code == 200, packet.text
+        REVIEWS[job_id] = packet.json()["sha256"]
     return client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/finalize",
         headers=key or idem(),
-        json={"approval_text": APPROVAL},
+        json={"approval_text": APPROVAL, "final_review_sha256": REVIEWS[job_id]},
     )
 
 

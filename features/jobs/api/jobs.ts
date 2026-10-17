@@ -14,6 +14,7 @@ import { mapApiError } from "@/lib/api/error-mapper";
 import {
   activeJobStatuses,
   isActiveJob,
+  type DomesticDetailFinalReview,
   type JobCreate,
   type JobDetail,
   type JobStatus,
@@ -328,11 +329,26 @@ export function useConfirmPlan(workspaceId: string | undefined) {
   );
 }
 
+export function useDomesticDetailFinalReview(workspaceId: string | undefined, job: JobDetail | undefined) {
+  return useQuery<DomesticDetailFinalReview>({
+    queryKey: [...jobKeys.detail(workspaceId ?? "pending", job?.id ?? "pending"), "final-review", job?.plan?.revision, job?.status],
+    enabled: Boolean(workspaceId && job?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1" && ["awaiting_final_review", "completed"].includes(job.status)),
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review",
+        { params: { path: { workspace_id: workspaceId!, job_id: job!.id } }, signal },
+      );
+      return unwrapApiResponse(result);
+    },
+  });
+}
+
 export function useFinalizeJob(workspaceId: string | undefined) {
-  return useJobMutation<JobDetail, AuthorizedJobAction & { approvalText: string }>(
+  return useJobMutation<JobDetail, AuthorizedJobAction & { approvalText: string; finalReviewSha256?: string }>(
     workspaceId,
     "finalize-job",
-    ({ jobId, approvalText }) => ({ jobId, approvalText }),
+    ({ jobId, approvalText, finalReviewSha256 }) => ({ jobId, approvalText, ...(finalReviewSha256 ? { finalReviewSha256 } : {}) }),
     async (id, input, key) => {
       assertJobAction(input.allowedActions, "finalize");
       const result = await apiClient.POST(
@@ -342,7 +358,7 @@ export function useFinalizeJob(workspaceId: string | undefined) {
             path: { workspace_id: id, job_id: input.jobId },
             header: { "Idempotency-Key": key },
           },
-          body: { approval_text: input.approvalText },
+          body: { approval_text: input.approvalText, ...(input.finalReviewSha256 ? { final_review_sha256: input.finalReviewSha256 } : {}) },
         },
       );
       return unwrapApiResponse(result);

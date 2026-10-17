@@ -414,13 +414,19 @@ async def finalize_native_delivery(
     *,
     actor_id: str,
     approval_text: str,
+    final_review_sha256: str | None = None,
     allow_create: bool = True,
 ) -> dict[str, Any]:
     """Verify every original, then finalize once or recover the same local intent."""
     try:
         if not approval_text.strip():
             _reject("Explicit final human review text is required")
-        context, _, root = await _verified_context(db, job, plan, storage)
+        from .review_packet import validate_final_review
+
+        context, state, root = await _verified_context(db, job, plan, storage)
+        review = await validate_final_review(
+            db, job, plan, storage, context, state, root, final_review_sha256
+        )
         binding = {
             "version": DELIVERY_VERSION,
             "job_id": job.id,
@@ -429,6 +435,7 @@ async def finalize_native_delivery(
             "plan_id": plan.id,
             "plan_revision": plan.revision,
             "approval_text": approval_text,
+            "final_review_sha256": review["sha256"],
             **context,
         }
         completed = _finish(root, binding, allow_create=allow_create)
@@ -447,7 +454,8 @@ async def finalize_native_delivery(
             else "PAIR_REVIEW_PASSED",
             "campaign_audit_status": "NOT_REQUESTED",
             "page_asset_refs": [row["asset_id"] for row in context["screens"]],
-            "pair_canvas_asset_refs": context["pair_canvases"],
+            "pair_canvas_asset_refs": review["pair_canvases"],
+            "final_review": {"sha256": review["sha256"], "version": review["version"]},
             "pair_audits": context["pair_audits"],
         }
     except DetailDeliveryError:

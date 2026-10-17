@@ -1422,6 +1422,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Domestic Detail Final Review */
+        post: operations["prepare_domestic_detail_final_review_api_v1_workspaces__workspace_id__jobs__job_id__detail_final_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize": {
         parameters: {
             query?: never;
@@ -2209,6 +2226,52 @@ export interface components {
             /** Vision Model */
             vision_model: string;
         };
+        /** DomesticDetailFinalReviewResponse */
+        DomesticDetailFinalReviewResponse: {
+            /**
+             * Campaign Audit Status
+             * @constant
+             */
+            campaign_audit_status: "NOT_REQUESTED";
+            /** Context Sha256 */
+            context_sha256: string;
+            /** Document Markdown */
+            document_markdown: string;
+            /** Generation Binding Sha256 */
+            generation_binding_sha256: string;
+            /** Job Id */
+            job_id: string;
+            /** Pair Canvases */
+            pair_canvases: {
+                [key: string]: unknown;
+            }[];
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Revision */
+            plan_revision: number;
+            /**
+             * Quality State
+             * @enum {string}
+             */
+            quality_state: "PAIR_REVIEW_PASSED" | "WITH_RESIDUALS";
+            /** Residual Issues */
+            residual_issues: {
+                [key: string]: unknown;
+            }[];
+            /** Screens */
+            screens: {
+                [key: string]: unknown;
+            }[];
+            /** Sha256 */
+            sha256: string;
+            /** Skill Version */
+            skill_version: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-detail-final-review-v1";
+        };
         /** DomesticMainImageConfiguration */
         DomesticMainImageConfiguration: {
             /**
@@ -2348,6 +2411,8 @@ export interface components {
         FinalizeJobRequest: {
             /** Approval Text */
             approval_text: string;
+            /** Final Review Sha256 */
+            final_review_sha256?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -6581,6 +6646,38 @@ export interface operations {
                 };
                 content: {
                     "application/zip": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_domestic_detail_final_review_api_v1_workspaces__workspace_id__jobs__job_id__detail_final_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticDetailFinalReviewResponse"];
                 };
             };
             /** @description Validation Error */

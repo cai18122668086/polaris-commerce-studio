@@ -12,12 +12,13 @@ import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
 import { BRANDLESS_CONFIRMATION, DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
 import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
+import { DomesticDetailFinalReview, isCurrentFinalReview, NATIVE_DETAIL_FINAL_REVIEW_TEXT } from "@/components/domestic-detail-final-review";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useUploadAsset } from "@/features/assets/api/assets";
-import { useConfirmPlan, useCreateJob, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
+import { useConfirmPlan, useCreateJob, useDomesticDetailFinalReview, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
@@ -108,6 +109,7 @@ export default function DetailPackPage() {
   const [sellingPoints, setSellingPoints] = useState("");
   const [brandlessConfirmed, setBrandlessConfirmed] = useState(false);
   const [reviewedApprovalKey, setReviewedApprovalKey] = useState("");
+  const [reviewedFinalKey, setReviewedFinalKey] = useState("");
   const [sources, setSources] = useState<UploadedSource[]>([]);
   const [uploadError, setUploadError] = useState<string>();
   // Prefer the task-center URL when present; the local value covers jobs
@@ -122,6 +124,12 @@ export default function DetailPackPage() {
   const retryJob = useRetryJob(workspace?.id);
   const finalizeJob = useFinalizeJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
+  const isNativeDetail = job.data?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1";
+  const finalReview = useDomesticDetailFinalReview(workspace?.id, job.data);
+  const currentFinalReview = isCurrentFinalReview(finalReview.data, jobId, job.data?.expected_item_count ?? 0) ? finalReview.data : undefined;
+  const finalKey = currentFinalReview ? `${jobId}:${currentFinalReview.sha256}` : "";
+  const finalReviewed = Boolean(finalKey && reviewedFinalKey === finalKey && !finalReview.isError);
+
   const runtime = useRuntimeStatus();
   const workflow = presentWorkflow(
     marketRegion === "international"
@@ -319,7 +327,7 @@ export default function DetailPackPage() {
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
             {planPages.length > 0 && <div className="plan-list">
               {planPages.map((page, index) => {
-                const item = job.data?.items.find((candidate) => candidate.ordinal === index + 1);
+                const item = job.data?.items.find((candidate) => candidate.ordinal === (isNativeDetail ? index : index + 1));
                 const presentation = planItemPresentation(item?.status, job.data?.status, workflow);
                 return <article key={`${page.title}-${index}`}><span className="plan-drag"><GripVertical size={15} /></span><i>{String(index + 1).padStart(2, "0")}</i><div><strong>{page.title}</strong><p>{page.description ?? "页面规划内容已生成。"}</p></div><span className="quality-chip">{page.quality ?? "默认"}</span><span className={`page-status ${presentation.className}`}>{presentation.icon === "done" ? <CheckCircle2 size={14} /> : presentation.icon === "failed" ? <AlertCircle size={14} /> : <Clock3 size={14} />}{presentation.label}</span></article>;
               })}
@@ -335,6 +343,11 @@ export default function DetailPackPage() {
             <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} />)}</div>
             {job.data?.status === "completed" && resultAssets.length === job.data.expected_item_count ? <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} /> : null}
           </section>}
+          {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>
+            {finalReview.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在核对当前成图和审核记录…</p></div>}
+            {finalReview.error && <div className="api-state api-state--error" role="alert"><p>{errorMessage(finalReview.error)}</p><button onClick={() => void finalReview.refetch()}>重新核对审阅内容</button></div>}
+            {currentFinalReview && <DomesticDetailFinalReview key={finalKey} review={currentFinalReview} workspaceId={workspace?.id} reviewed={finalReviewed} onReviewed={checked => setReviewedFinalKey(checked ? finalKey : "")} completed={job.data?.status === "completed"} />}
+          </>}
           {job.data?.status === "completed" && workflow.mode === "mock" && resultAssets.length === 0 && <div className="api-state"><ImagePlus size={22} /><p>任务流程已完成，当前生成服务未返回图片结果。</p></div>}
 
           <section className="generation-footer">
@@ -350,7 +363,7 @@ export default function DetailPackPage() {
               ) : !jobId ? (
                 <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
               ) : job.data?.status === "awaiting_final_review" && allowsJobAction(job.data.allowed_actions, "finalize") ? (
-                <button className="primary-button" onClick={() => finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: "我已完成详情图逐 pair 最终审核并确认交付" })} disabled={finalizeJob.isPending}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />}确认最终审核并交付<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => { if (isNativeDetail && !finalReviewed) return; finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: isNativeDetail ? NATIVE_DETAIL_FINAL_REVIEW_TEXT : "我已完成详情图逐 pair 最终审核并确认交付", finalReviewSha256: isNativeDetail ? currentFinalReview?.sha256 : undefined }); }} disabled={finalizeJob.isPending || (isNativeDetail && !finalReviewed)}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />}确认最终审核并交付<ArrowRight size={17} /></button>
               ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
                 <button className="primary-button" onClick={() => {
                   const aurora = job.data!.plan!.payload.aurora_v4_3 as Record<string, unknown> | undefined;

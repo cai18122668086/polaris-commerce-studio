@@ -10,7 +10,7 @@ function cells(line: string): string[] {
 
 // Render the compiler's entire document as text and tables. Model-authored
 // HTML is always escaped by React; no raw HTML, script or remote image executes.
-export function NativeApprovalDocument({ document }: { document: string }) {
+export function NativeApprovalDocument({ document, label = "完整逐屏方案" }: { document: string; label?: string }) {
   const lines = document.split(/\r?\n/);
   const blocks: ReactNode[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -36,7 +36,7 @@ export function NativeApprovalDocument({ document }: { document: string }) {
         : <p key={index} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.8 }}>{line}</p>);
     }
   }
-  return <div aria-label="完整逐屏方案">{blocks}</div>;
+  return <div aria-label={label}>{blocks}</div>;
 }
 
 export function DomesticDetailApproval({ document, fingerprint, reviewed, onReviewed }: {

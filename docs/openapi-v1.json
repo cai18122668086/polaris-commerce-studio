@@ -1795,6 +1795,102 @@
         "title": "DevelopmentProviderSettingsUpdate",
         "type": "object"
       },
+      "DomesticDetailFinalReviewResponse": {
+        "properties": {
+          "campaign_audit_status": {
+            "const": "NOT_REQUESTED",
+            "title": "Campaign Audit Status",
+            "type": "string"
+          },
+          "context_sha256": {
+            "title": "Context Sha256",
+            "type": "string"
+          },
+          "document_markdown": {
+            "title": "Document Markdown",
+            "type": "string"
+          },
+          "generation_binding_sha256": {
+            "title": "Generation Binding Sha256",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "pair_canvases": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pair Canvases",
+            "type": "array"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "plan_revision": {
+            "title": "Plan Revision",
+            "type": "integer"
+          },
+          "quality_state": {
+            "enum": [
+              "PAIR_REVIEW_PASSED",
+              "WITH_RESIDUALS"
+            ],
+            "title": "Quality State",
+            "type": "string"
+          },
+          "residual_issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Residual Issues",
+            "type": "array"
+          },
+          "screens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Screens",
+            "type": "array"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "skill_version": {
+            "title": "Skill Version",
+            "type": "string"
+          },
+          "version": {
+            "const": "domestic-detail-final-review-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "job_id",
+          "plan_id",
+          "plan_revision",
+          "skill_version",
+          "context_sha256",
+          "generation_binding_sha256",
+          "sha256",
+          "document_markdown",
+          "quality_state",
+          "campaign_audit_status",
+          "screens",
+          "pair_canvases",
+          "residual_issues"
+        ],
+        "title": "DomesticDetailFinalReviewResponse",
+        "type": "object"
+      },
       "DomesticMainImageConfiguration": {
         "properties": {
           "aurora_shadow_mode": {
@@ -2206,6 +2302,18 @@
             "minLength": 2,
             "title": "Approval Text",
             "type": "string"
+          },
+          "final_review_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Review Sha256"
           }
         },
         "required": [
@@ -11420,6 +11528,62 @@
           }
         ],
         "summary": "Download Job Deliverables",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review": {
+      "post": {
+        "operationId": "prepare_domestic_detail_final_review_api_v1_workspaces__workspace_id__jobs__job_id__detail_final_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticDetailFinalReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Prepare Domestic Detail Final Review",
         "tags": [
           "jobs"
         ]

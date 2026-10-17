@@ -240,7 +240,7 @@
       "2f8aae0": "native reference adopt/reject and screen schedule semantics; both new native regressions execute in active suite"
     },
     "not_complete": [
-      "real supplier intake/identity/fact/reference provenance and visual acceptance; multi-conflict consistency follow-up",
+      "real supplier intake/identity/fact/reference provenance and visual acceptance",
       "persist and expose the exact compiler approval before generation",
       "source/asset/request/recovery bindings and old-task version routing",
       "remove optimistic/fabricated review normalization; apply native per-screen pixel gates",
@@ -274,9 +274,15 @@
             "test_explicitly_rejected_references_need_no_adopted_pattern",
             "test_reference_patterns_apply_only_to_their_scheduled_screens"
           ]
+        },
+        "intake-cross-conflict-guards-v1": {
+          "tests": 150,
+          "passed": 94,
+          "skipped": 56,
+          "failures": 0
         }
       },
-      "skill_content_hash": "c5ff74928fe788e6ff3cface78922d31f75c0497e67b9339d7f5a5b67ced8779"
+      "skill_content_hash": "b322f65b001cccf0b7243c18d705a3f194878e8499bc3161548f5303e2c65f18"
     }
   },
   "commands_to_cover": [

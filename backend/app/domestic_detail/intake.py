@@ -167,6 +167,8 @@ def validate_resolution(
             "INTAKE_RESOLUTION_INCOMPLETE",
             "One response must account for every material conflict exactly once",
         )
+    all_retained: set[str] = set()
+    all_rejected: set[str] = set()
     for row in rows:
         retained, rejected = (
             set(row["retained_fact_ids"]),
@@ -181,6 +183,13 @@ def validate_resolution(
                     "every other value"
                 ),
             )
+        all_retained.update(retained)
+        all_rejected.update(rejected)
+    if all_retained & all_rejected:
+        raise DetailIntakeError(
+            "INTAKE_RESOLUTION_CONTRADICTORY",
+            "A fact cannot be both retained and rejected across conflicts",
+        )
     return deepcopy(dict(resolution))
 
 

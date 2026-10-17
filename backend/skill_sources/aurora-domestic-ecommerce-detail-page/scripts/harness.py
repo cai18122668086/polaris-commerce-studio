@@ -603,9 +603,10 @@ def cmd_resolve_conflicts(args: argparse.Namespace) -> dict:
         raise HarnessError("Conflict resolution must preserve the user's confirmation words")
     conflicts = {item["id"]: item for item in session["input"].get("source_conflicts", []) if item["status"] == "UNRESOLVED"}
     supplied = {item.get("conflict_id"): item for item in resolution["resolutions"]}
-    if set(supplied) != set(conflicts):
+    if len(supplied) != len(resolution["resolutions"]) or set(supplied) != set(conflicts):
         raise HarnessError("One batched resolution must cover every unresolved conflict exactly once")
     rejected_fact_ids = set()
+    retained_fact_ids = set()
     for conflict_id, item in supplied.items():
         require_fields(item, ("conflict_id", "retained_fact_ids", "rejected_fact_ids"), "conflict resolution item")
         conflict = conflicts[conflict_id]
@@ -621,6 +622,9 @@ def cmd_resolve_conflicts(args: argparse.Namespace) -> dict:
             "rejected_fact_ids": sorted(rejected),
         }
         rejected_fact_ids.update(rejected)
+        retained_fact_ids.update(retained)
+    if retained_fact_ids & rejected_fact_ids:
+        raise HarnessError("A fact cannot be both retained and rejected across conflicts")
     all_fact_ids = {item["id"] for item in session["input"]["verified_facts"]}
     session["planning_fact_ids"] = sorted(all_fact_ids - rejected_fact_ids)
     session["conflict_checkpoint"] = {"required": False, "conflict_ids": [], "resolved_at": now()}

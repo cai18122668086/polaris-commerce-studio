@@ -543,3 +543,76 @@ def test_supplementary_brand_photo_stays_product_scoped_and_bounded(
         len(gateway.planner_calls) == (3 if readable else 2)
         and gateway.image_calls == []
     )
+
+
+def test_contradictory_batch_answer_is_rejected_before_resuming_paid_intake(
+    client, monkeypatch
+):
+    from copy import deepcopy
+    from dataclasses import replace
+
+    from tests.test_api import idem
+
+    gateway = _gateway(client)
+    original = gateway.plan
+
+    async def scan_two_conflicts(request):
+        result = await original(request)
+        if request.planning_profile != "aurora_domestic_intake":
+            return result
+        value = deepcopy(result.payload)
+        value["conflict_scan"].update(
+            status="CONFLICTS_FOUND", conflict_ids=["C01", "C02"]
+        )
+        value["source_conflicts"] = [
+            {
+                "id": conflict_id,
+                "topic": "关联规格核对",
+                "alternative_fact_ids": ["F01", "F02"],
+                "why_material": "同一销售规格的两个来源需要一致取舍",
+                "status": "UNRESOLVED",
+            }
+            for conflict_id in ("C01", "C02")
+        ]
+        value.pop("identity", None)
+        value.pop("identity_observations", None)
+        return replace(result, payload=value)
+
+    monkeypatch.setattr(gateway, "plan", scan_two_conflicts)
+    product = upload_asset(client, filename="cross-conflict-product.png")
+    job = _create_detail_job(
+        client, product["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    pending = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert pending["stage"] == "intake_confirmation_required"
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/intake/resolve",
+        headers=idem(),
+        json={
+            "expected_revision": pending["plan"]["revision"],
+            "confirmation_text": "一次确认以上全部规格",
+            "resolutions": [
+                {
+                    "conflict_id": "C01",
+                    "retained_fact_ids": ["F01"],
+                    "rejected_fact_ids": ["F02"],
+                },
+                {
+                    "conflict_id": "C02",
+                    "retained_fact_ids": ["F02"],
+                    "rejected_fact_ids": ["F01"],
+                },
+            ],
+        },
+    )
+    assert (
+        response.status_code == 422
+        and "INTAKE_RESOLUTION_CONTRADICTORY" in response.text
+    )
+    current = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert (
+        current["stage"] == pending["stage"]
+        and current["plan"]["revision"] == pending["plan"]["revision"]
+    )
+    assert len(gateway.planner_calls) == 1 and gateway.image_calls == []

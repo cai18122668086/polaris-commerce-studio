@@ -691,6 +691,36 @@ def fail_judgment(module_record, issue="Typography is not attached to the planne
     }
 
 
+class ConflictResolutionContractTests(unittest.TestCase):
+    def _reject_without_session_mutation(self, *, duplicate=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            session_path, resolution_path = root / "session.json", root / "resolution.json"
+            current = session()
+            current.update({"input": raw_input(with_conflict=True), "state": "AWAITING_CONFLICT_RESOLUTION", "events": []})
+            first = {"conflict_id": "C1", "retained_fact_ids": ["F2"], "rejected_fact_ids": ["F3"]}
+            if duplicate:
+                second = copy.deepcopy(first)
+                message = "exactly once"
+            else:
+                current["input"]["source_conflicts"].append({**copy.deepcopy(current["input"]["source_conflicts"][0]), "id": "C2"})
+                current["input"]["conflict_scan"]["conflict_ids"] = ["C1", "C2"]
+                second = {"conflict_id": "C2", "retained_fact_ids": ["F3"], "rejected_fact_ids": ["F2"]}
+                message = "both retained and rejected"
+            session_path.write_text(json.dumps(current), encoding="utf-8")
+            before = session_path.read_bytes()
+            resolution_path.write_text(json.dumps({"confirmation_text": "User selected these specification alternatives", "resolutions": [first, second]}), encoding="utf-8")
+            with self.assertRaisesRegex(HarnessError, message):
+                harness.cmd_resolve_conflicts(type("Args", (), {"session": str(session_path), "resolution": str(resolution_path)})())
+            self.assertEqual(session_path.read_bytes(), before)
+
+    def test_cross_conflict_choices_cannot_reject_a_retained_fact(self):
+        self._reject_without_session_mutation()
+
+    def test_duplicate_conflict_answer_cannot_be_silently_overwritten(self):
+        self._reject_without_session_mutation(duplicate=True)
+
+
 class ReferenceExpressionContractTests(unittest.TestCase):
     def test_explicitly_rejected_references_need_no_adopted_pattern(self):
         current, value = session(with_reference=True), plan(with_reference=True)

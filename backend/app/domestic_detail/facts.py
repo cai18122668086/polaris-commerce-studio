@@ -231,6 +231,10 @@ def validate_intake(
             "The model scan must cover every product source and original user fact",
             path="/conflict_scan/scanned_source_refs",
         )
+    if len({conflict["id"] for conflict in conflicts}) != len(conflicts):
+        raise DetailIntakeError(
+            "INTAKE_CONFLICT_BINDING_INVALID", "Conflict identifiers must be unique"
+        )
     if set(scan["conflict_ids"]) != {conflict["id"] for conflict in conflicts}:
         raise DetailIntakeError(
             "INTAKE_CONFLICT_BINDING_INVALID", "Conflict IDs disagree with the scan"

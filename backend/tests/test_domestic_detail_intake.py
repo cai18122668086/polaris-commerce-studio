@@ -256,3 +256,39 @@ def test_intake_does_not_repair_bad_evidence_optimistically(change):
         return
     with pytest.raises(DetailIntakeError):
         validate(value)
+
+
+def test_duplicate_conflict_ids_cannot_collapse_the_source_question():
+    value = conflict_intake()
+    value["source_conflicts"].append(deepcopy(value["source_conflicts"][0]))
+    with pytest.raises(DetailIntakeError, match="identifiers must be unique"):
+        validate(value)
+
+
+def test_one_fact_cannot_be_retained_and_rejected_in_different_conflicts():
+    from app.domestic_detail.intake import validate_resolution
+
+    value = conflict_intake()
+    second = {**deepcopy(value["source_conflicts"][0]), "id": "C02"}
+    value["source_conflicts"].append(second)
+    resolution = {
+        "confirmation_text": "确认同一批规格取舍",
+        "resolutions": [
+            {
+                "conflict_id": "C01",
+                "retained_fact_ids": ["F01"],
+                "rejected_fact_ids": ["F02"],
+            },
+            {
+                "conflict_id": "C02",
+                "retained_fact_ids": ["F02"],
+                "rejected_fact_ids": ["F01"],
+            },
+        ],
+    }
+    with pytest.raises(DetailIntakeError, match="both retained and rejected"):
+        validate_resolution(value, resolution)
+    resolution["resolutions"][1].update(
+        retained_fact_ids=["F01"], rejected_fact_ids=["F02"]
+    )
+    assert validate_resolution(value, resolution) == resolution

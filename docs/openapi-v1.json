@@ -3934,6 +3934,18 @@
             ],
             "title": "Approval Document Sha256"
           },
+          "approval_protocol": {
+            "anyOf": [
+              {
+                "const": "domestic-native-approval-v1",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Protocol"
+          },
           "approval_text": {
             "anyOf": [
               {
@@ -3976,6 +3988,19 @@
             "minimum": 1.0,
             "title": "Expected Revision",
             "type": "integer"
+          },
+          "native_approval_document_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Approval Document Sha256"
           }
         },
         "required": [

@@ -116,6 +116,8 @@ def _aurora_approval_payload(planned: dict[str, object]) -> dict[str, object]:
     aurora = payload.get("aurora_v4_3")
     assert isinstance(aurora, dict)
     return {
+        "approval_protocol": payload["native_approval"]["version"],
+        "native_approval_document_sha256": payload["native_approval"]["document_sha256"],
         "expected_revision": plan["revision"],
         "approval_text": "我已审阅完整 group→screen 审批包，并批准按 3:8 pair 画布生成。",
         "approval_document_sha256": aurora["approval_document_sha256"],

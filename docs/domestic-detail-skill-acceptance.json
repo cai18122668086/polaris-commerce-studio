@@ -34,7 +34,8 @@
       "id": "G05",
       "requirement": "Approved atomic module is the exact rendering contract",
       "completion": "unproven",
-      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient"
+      "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
+      "local_candidate_evidence": "Native compiler file/inputs/identity/plan and exact gateway signed prompt bound through approval-v4; see domestic-detail-native-approval-2026-10-17.md. Document identity completeness and actual pixels remain unproven."
     },
     {
       "id": "G06",
@@ -241,7 +242,7 @@
     },
     "not_complete": [
       "real supplier intake/identity/fact/reference provenance and visual acceptance",
-      "persist and expose the exact compiler approval before generation",
+      "complete native approval identity visibility and active/deferred/excluded fact presentation",
       "source/asset/request/recovery bindings and old-task version routing",
       "remove optimistic/fabricated review normalization; apply native per-screen pixel gates",
       "delivery/native finalization/residual quality states",
@@ -283,6 +284,38 @@
         }
       },
       "skill_content_hash": "b322f65b001cccf0b7243c18d705a3f194878e8499bc3161548f5303e2c65f18"
+    },
+    "native_approval_candidate": {
+      "status": "wired_local_technical_paths_verified_visual_and_document_identity_content_pending",
+      "approval_binding": "domestic-detail-approval-v4",
+      "native_protocol": "domestic-native-approval-v1",
+      "report": "domestic-detail-native-approval-2026-10-17.md",
+      "regression": {
+        "native-approval-protocol-final-v5": {
+          "tests": 108,
+          "passed": 108,
+          "skipped": 0,
+          "failures": 0
+        },
+        "native-approval-protected-main-v5": {
+          "tests": 86,
+          "passed": 86,
+          "skipped": 0,
+          "failures": 0
+        },
+        "native-approval-edit-final-v6": {
+          "tests": 35,
+          "passed": 35,
+          "skipped": 0,
+          "failures": 0
+        },
+        "native-approval-snapshot-tamper-v4": {
+          "tests": 8,
+          "passed": 8,
+          "skipped": 0,
+          "failures": 0
+        }
+      }
     }
   },
   "commands_to_cover": [

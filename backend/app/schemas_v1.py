@@ -720,6 +720,10 @@ class PlanConfirmRequest(BaseModel):
     approval_document_sha256: str | None = Field(
         default=None, min_length=64, max_length=64
     )
+    approval_protocol: Literal["domestic-native-approval-v1"] | None = None
+    native_approval_document_sha256: str | None = Field(
+        default=None, min_length=64, max_length=64
+    )
     approved_module_count: int | None = Field(default=None, ge=8, le=12)
     approved_pair_canvas_aspect_ratio: Literal["3:8"] | None = None
 

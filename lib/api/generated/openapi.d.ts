@@ -2995,6 +2995,8 @@ export interface components {
         PlanConfirmRequest: {
             /** Approval Document Sha256 */
             approval_document_sha256?: string | null;
+            /** Approval Protocol */
+            approval_protocol?: "domestic-native-approval-v1" | null;
             /** Approval Text */
             approval_text?: string | null;
             /** Approved Module Count */
@@ -3003,6 +3005,8 @@ export interface components {
             approved_pair_canvas_aspect_ratio?: "3:8" | null;
             /** Expected Revision */
             expected_revision: number;
+            /** Native Approval Document Sha256 */
+            native_approval_document_sha256?: string | null;
         };
         /** PlanResponse */
         PlanResponse: {

@@ -77,6 +77,12 @@ from .domestic_detail.intake import (
     intake_prompt,
     intake_response_schema,
 )
+from .domestic_detail.native_approval import (
+    compile_native_approval,
+    verify_approval_sources,
+    verify_compiled_native_approval,
+    write_native_json,
+)
 from .domestic_detail.plans import DetailPlanError, approval_binding
 from .masked_repair import (
     MaskedEditCallResult,
@@ -1665,8 +1671,15 @@ def compile_aurora_campaign_approval_document(
     pages: Sequence[Mapping[str, Any]],
     page_count: int,
     binding: Mapping[str, Any] | None = None,
+    native_document: str | None = None,
 ) -> str:
     """Produce the canonical approval packet whose bytes are user-approved."""
+    if native_document is not None:
+        if not native_document or binding is None:
+            raise DetailPlanError("Complete native approval and immutable scope are required")
+        return ("# 国内详情图完整方案\n\n" + native_document
+                + "\n## 本次方案指纹\n\n"
+                + json.dumps(binding, ensure_ascii=False, sort_keys=True) + "\n")
 
     lines = [
         "# Aurora 国内电商详情图 v4.3 Campaign Approval",
@@ -3759,7 +3772,7 @@ class XinghePlanningCoordinator:
             if structured is not None and _aurora_plan_has_unresolved_conflict(structured):
                 return structured
             try:
-                await asyncio.to_thread(
+                native_approval = await asyncio.to_thread(
                     self._preflight_aurora_plan, request, structured["aurora_plan"] if structured else payload
                 )
             except AuroraDetailHarnessError as exc:
@@ -3779,10 +3792,11 @@ class XinghePlanningCoordinator:
                 structured = validate_aurora_domestic_plan(
                     payload, request.page_count, skill_root=self.skill_root
                 )
-                await asyncio.to_thread(
+                native_approval = await asyncio.to_thread(
                     self._preflight_aurora_plan, request, structured["aurora_plan"]
                 )
             assert structured is not None
+            structured["native_approval"] = native_approval
             return structured
         except AuroraDetailHarnessError as exc:
             raise XingheAgentError("AURORA_PLAN_PREFLIGHT_INVALID", str(exc)) from exc
@@ -3798,48 +3812,38 @@ class XinghePlanningCoordinator:
 
     def _preflight_aurora_plan(
         self, request: PlannerRequest, plan: Mapping[str, Any]
-    ) -> None:
-        """Run the real Skill compiler before presenting a plan for approval."""
-
-        from tempfile import TemporaryDirectory
-
+    ) -> dict[str, Any]:
+        """Compile and preserve the exact native document before user approval."""
         with self.session_factory() as session:
             job = session.get(JobRecord, request.job_id)
             settings = (
                 dict((job.configuration or {}).get("settings") or {}) if job else {}
             )
         base = detail_workspace(request.job_id)
-        with TemporaryDirectory(prefix="planning-preflight-", dir=base) as path:
-            workspace = Path(path)
-            sources = [
-                {
-                    "id": source.asset_id,
-                    "role": source.source_role,
-                    "filename": source.filename,
-                    "sha256": source.sha256,
-                }
-                for source in request.sources
-            ]
-            paths = [
-                str(source_path_for(workspace, index, source.filename, source.payload))
-                for index, source in enumerate(request.sources, start=1)
-            ]
-            input_path, identity_path, plan_path, session_path = [
-                workspace / name
-                for name in ("input.json", "identity.json", "plan.json", "session.json")
-            ]
-            write_detail_contract(
-                input_path,
-                build_native_input(
+        sources = [
+            {
+                "id": source.asset_id,
+                "role": source.source_role,
+                "filename": source.filename,
+                "sha256": source.sha256,
+            }
+            for source in request.sources
+        ]
+        paths = [
+            str(source_path_for(base, index, source.filename, source.payload))
+            for index, source in enumerate(request.sources, start=1)
+        ]
+        try:
+            return compile_native_approval(
+                base,
+                runner=AuroraDetailHarnessRunner(skill_root=self.skill_root),
+                native_input=build_native_input(
                     settings,
                     product_images=sources,
                     image_paths=paths,
                     intake=request.detail_intake or {},
                 ),
-            )
-            write_detail_contract(
-                identity_path,
-                build_native_identity(
+                identity=build_native_identity(
                     settings,
                     [
                         source["id"]
@@ -3848,34 +3852,13 @@ class XinghePlanningCoordinator:
                     ],
                     intake=request.detail_intake or {},
                 ),
+                normalized_plan=normalize_native_plan_for_harness(plan),
+                resolution=(request.detail_intake or {}).get("resolution"),
             )
-            write_detail_contract(plan_path, normalize_native_plan_for_harness(plan))
-            runner = AuroraDetailHarnessRunner(skill_root=self.skill_root)
-            runner.run(
-                "start", workspace, {"input": input_path, "session": session_path}
-            )
-            if (
-                request.detail_intake
-                and request.detail_intake.get("resolution")
-                and request.detail_intake.get("source_conflicts")
-            ):
-                resolution_path = workspace / "resolution.json"
-                write_detail_contract(
-                    resolution_path, request.detail_intake["resolution"]
-                )
-                runner.run(
-                    "resolve-conflicts",
-                    workspace,
-                    {"session": session_path, "resolution": resolution_path},
-                )
-            runner.run(
-                "lock-identity",
-                workspace,
-                {"session": session_path, "identity": identity_path},
-            )
-            runner.run(
-                "compile-plan", workspace, {"session": session_path, "plan": plan_path}
-            )
+        except (DetailPlanError, OSError) as exc:
+            raise XingheAgentError(
+                "NATIVE_DETAIL_APPROVAL_ARTIFACT_INVALID", str(exc)
+            ) from exc
 
     async def _with_source_payloads(
         self,
@@ -5092,6 +5075,7 @@ class XinghePlanningCoordinator:
                 **(
                     {
                         "product_intake": deepcopy(requests[0].detail_intake),
+                        "native_approval": deepcopy(validated[0]["native_approval"]),
                         "source_input_sha256": canonical_hash(
                             job.configuration.get("input") or {}
                         ),
@@ -5174,6 +5158,7 @@ class XinghePlanningCoordinator:
                     pages=flattened_pages,
                     page_count=requests[0].page_count,
                     binding=detail_binding,
+                    native_document=payload["native_approval"]["document_markdown"],
                 )
                 payload["aurora_v4_3"] = {
                     "contract_binding": detail_binding,
@@ -5185,17 +5170,7 @@ class XinghePlanningCoordinator:
                     ).hexdigest(),
                     "approved_module_count": requests[0].page_count,
                     "approved_pair_canvas_aspect_ratio": "3:8",
-                    "input_contract": {
-                        "product_name": job_settings.get("product_name"),  # type: ignore[union-attr]
-                        "category": job_settings.get("category"),  # type: ignore[union-attr]
-                        "target_buyer": job_settings.get("target_buyer"),  # type: ignore[union-attr]
-                        "verified_facts": job_settings.get("verified_facts", []),  # type: ignore[union-attr]
-                        "conflict_scan": job_settings.get("conflict_scan", {}),  # type: ignore[union-attr]
-                        "reference_materials": job_settings.get(  # type: ignore[union-attr]
-                            "reference_materials", []
-                        ),
-                        "platform_profile": job_settings.get("platform_profile", {}),  # type: ignore[union-attr]
-                    },
+                    "input_contract": deepcopy(payload["product_intake"]),
                     "rendering": "ONE_PAIR_CANVAS_THEN_TWO_DETERMINISTIC_SLICES",
                     "reference_edit_concurrency": 1,
                     "prompt_only_concurrency": 4,
@@ -5555,6 +5530,7 @@ class XingheImageProvider:
                 AuroraDetailHarnessError,
                 XingheAgentError,
                 DetailGenerationError,
+                DetailPlanError,
             ) as exc:
                 return _provider_rejection(
                     getattr(exc, "code", "AURORA_NATIVE_RUNTIME_FAILED"),
@@ -6153,18 +6129,20 @@ class XingheImageProvider:
 
         runner = self._native_detail_runner
         if runner is None:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_DISABLED", "Native detail runtime is unavailable")
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_DISABLED", "Native detail runtime is unavailable"
+            )
         workspace = detail_workspace(request.job_id)
         session_path = workspace / "session.json"
         input_path = workspace / "input.json"
         identity_path = workspace / "identity.json"
         plan_path = workspace / "plan.json"
-        request_path = workspace / f"generation-{int(configuration.get('page') or 1):03d}.json"
+        request_path = (
+            workspace / f"generation-{int(configuration.get('page') or 1):03d}.json"
+        )
         native_sources: list[dict[str, Any]] = []
         source_paths: list[str] = []
-        for index, source in enumerate(sources, start=1):
-            path = source_path_for(workspace, index, source.filename, source.payload)
-            source_paths.append(str(path))
+        for source in sources:
             native_sources.append(
                 {
                     "id": source.asset_id,
@@ -6182,41 +6160,64 @@ class XingheImageProvider:
                 .limit(1)
             )
             if job is None or plan_record is None:
-                raise AuroraDetailHarnessError("NATIVE_DETAIL_CONTEXT_MISSING", "Native detail job context is missing")
-            job_configuration = job.configuration if isinstance(job.configuration, Mapping) else {}
+                raise AuroraDetailHarnessError(
+                    "NATIVE_DETAIL_CONTEXT_MISSING",
+                    "Native detail job context is missing",
+                )
+            job_configuration = (
+                job.configuration if isinstance(job.configuration, Mapping) else {}
+            )
             settings_value = job_configuration.get("settings")
-            settings: Mapping[str, Any] = settings_value if isinstance(settings_value, Mapping) else {}
-            payload = plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
+            settings: Mapping[str, Any] = (
+                settings_value if isinstance(settings_value, Mapping) else {}
+            )
+            payload = (
+                plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
+            )
         native_plan = extract_native_plan(payload)
         if native_plan is None:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_PLAN_MISSING", "The confirmed plan does not contain a compact Aurora v4.3 storyboard")
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_PLAN_MISSING",
+                "The confirmed plan does not contain a compact Aurora v4.3 storyboard",
+            )
         native_plan = normalize_native_plan_for_harness(native_plan)
+        approved_paths = verify_approval_sources(
+            workspace,
+            payload.get("native_approval"),
+            [
+                {
+                    "asset_id": source.asset_id,
+                    "sha256": source.sha256,
+                    "role": source.source_role,
+                }
+                for source in sources
+            ],
+        )
+        source_paths = [approved_paths[source.asset_id] for source in sources]
         new_session = not session_path.exists()
         bind_workspace(workspace, generation_scope, create=new_session)
         if new_session:
-            write_detail_contract(
-                input_path,
-                build_native_input(
-                    settings,
-                    product_images=native_sources,
-                    image_paths=source_paths,
-                    intake=payload.get("product_intake") or {},
-                ),
+            native_input_value = build_native_input(
+                settings,
+                product_images=native_sources,
+                image_paths=source_paths,
+                intake=payload.get("product_intake") or {},
             )
-            write_detail_contract(
-                identity_path,
-                build_native_identity(
-                    settings,
-                    [
-                        item["id"]
-                        for item in native_sources
-                        if item["role"] == "product_reference"
-                    ],
-                    intake=payload.get("product_intake") or {},
-                ),
+            native_identity_value = build_native_identity(
+                settings,
+                [
+                    item["id"]
+                    for item in native_sources
+                    if item["role"] == "product_reference"
+                ],
+                intake=payload.get("product_intake") or {},
             )
-            write_detail_contract(plan_path, native_plan)
-            runner.run("start", workspace, {"input": input_path, "session": session_path})
+            write_native_json(input_path, native_input_value)
+            write_native_json(identity_path, native_identity_value)
+            write_native_json(plan_path, native_plan)
+            runner.run(
+                "start", workspace, {"input": input_path, "session": session_path}
+            )
             if (payload.get("product_intake") or {}).get("resolution") and (
                 native_plan.get("product_intake") or {}
             ).get("source_conflicts"):
@@ -6229,10 +6230,34 @@ class XingheImageProvider:
                     workspace,
                     {"session": session_path, "resolution": resolution_path},
                 )
-            runner.run("lock-identity", workspace, {"session": session_path, "identity": identity_path})
-            runner.run("compile-plan", workspace, {"session": session_path, "plan": plan_path})
+            runner.run(
+                "lock-identity",
+                workspace,
+                {"session": session_path, "identity": identity_path},
+            )
+            runner.run(
+                "compile-plan", workspace, {"session": session_path, "plan": plan_path}
+            )
             compiled = json.loads(session_path.read_text(encoding="utf-8"))
             approval = compiled.get("approval_document") or {}
+            if (
+                Path(str(approval.get("path"))).resolve()
+                != (workspace / "campaign-approval.md").resolve()
+            ):
+                raise DetailPlanError(
+                    "Native compiler approval file escaped its workspace"
+                )
+            approved_native = verify_compiled_native_approval(
+                workspace,
+                payload.get("native_approval"),
+                native_input=native_input_value,
+                identity=native_identity_value,
+                normalized_plan=native_plan,
+                compiled_plan=compiled["plan"],
+                compiled_input=compiled["input"],
+                compiled_identity=compiled["identity"],
+                document=(workspace / "campaign-approval.md").read_bytes(),
+            )
             runner.run(
                 "authorize",
                 workspace,
@@ -6243,7 +6268,7 @@ class XingheImageProvider:
                     ),
                     "approved-module-count": str(len(native_plan.get("modules") or [])),
                     "approved-pair-canvas-aspect-ratio": "3:8",
-                    "approval-document-sha256": str(approval.get("sha256") or ""),
+                    "approval-document-sha256": approved_native["document_sha256"],
                     "delivery-mode": "USER_FINAL_REVIEW",
                 },
             )
@@ -6252,36 +6277,67 @@ class XingheImageProvider:
         state = native_session_value.get("state")
         expected_index = int(configuration.get("page") or 1) - 1
         if native_session_value.get("current_index", 0) != expected_index:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_PAIR_MISMATCH", "Native cursor does not match the requested database pair")
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_PAIR_MISMATCH",
+                "Native cursor does not match the requested database pair",
+            )
         if state == "REPAIR_REQUIRED":
             current_index = int(native_session_value.get("current_index") or 0)
             current_module = (native_session_value.get("modules") or [])[current_index]
-            last_judgment = ((current_module.get("attempts") or [])[-1].get("judgment") if current_module else None) or {}
-            repair_path = workspace / f"repair-{int(configuration.get('page') or 1):03d}.json"
+            last_judgment = (
+                (current_module.get("attempts") or [])[-1].get("judgment")
+                if current_module
+                else None
+            ) or {}
+            repair_path = (
+                workspace / f"repair-{int(configuration.get('page') or 1):03d}.json"
+            )
             write_detail_contract(
                 repair_path,
                 {
-                    "module_id": str(current_module.get("id") or f"M{int(configuration.get('page') or 1):02d}"),
-                    "material_failures": list(last_judgment.get("material_failures") or [{"visible_evidence": "像素审计发现需要修正的可见问题"}]),
-                    "passed_layers": list(last_judgment.get("passed_layers") or ["identity"]),
+                    "module_id": str(
+                        current_module.get("id")
+                        or f"M{int(configuration.get('page') or 1):02d}"
+                    ),
+                    "material_failures": list(
+                        last_judgment.get("material_failures")
+                        or [{"visible_evidence": "像素审计发现需要修正的可见问题"}]
+                    ),
+                    "passed_layers": list(
+                        last_judgment.get("passed_layers") or ["identity"]
+                    ),
                     "root_cause": "按原生 pair 像素审计结果修正可见问题并保持商品身份锁定。",
                     "unified_strategy": "仅保留 passed_layers 明确列出的通过层；修正 material_failures 中的全部问题，不得保留被判失败的接缝或文案。",
                     "expected_visible_change": "下一次 3:8 画布应使全部材料性检查通过。",
                 },
             )
-            self._native_detail_runner.run("prepare-repair", workspace, {"session": session_path, "repair-plan": repair_path})  # type: ignore[union-attr]
+            self._native_detail_runner.run(  # type: ignore[union-attr]
+                "prepare-repair",
+                workspace,
+                {"session": session_path, "repair-plan": repair_path},
+            )
             native_session_value = json.loads(session_path.read_text(encoding="utf-8"))
             state = native_session_value.get("state")
         if state != "AUTHORIZED":
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_STATE_INVALID", f"Native detail session is not ready: {state}")
-        runner.run("generate-next", workspace, {"session": session_path, "out": request_path})
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_STATE_INVALID",
+                f"Native detail session is not ready: {state}",
+            )
+        runner.run(
+            "generate-next", workspace, {"session": session_path, "out": request_path}
+        )
         native_request = json.loads(request_path.read_text(encoding="utf-8"))
         native_request["signed_request_sha256"] = hashlib.sha256(
             request_path.read_bytes()
         ).hexdigest()
-        if str(native_request.get("pair_id") or "") != str(configuration.get("pair_id") or ""):
+        if str(native_request.get("pair_id") or "") != str(
+            configuration.get("pair_id") or ""
+        ):
             self._reset_native_detail_generation(session_path)
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_PAIR_MISMATCH", "Native generation request does not match the database pair")
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_PAIR_MISMATCH",
+                "Native generation request does not match the database pair",
+            )
         # The generation request deliberately carries the full compiled prompt,
         # but the pair auditor must receive the approved screen contracts as a
         # structured, machine-readable object as well.  Without this binding a
@@ -6293,7 +6349,10 @@ class XingheImageProvider:
             str(module_id) for module_id in native_request.get("module_ids") or []
         }
         for module in session_for_audit.get("modules") or []:
-            if not isinstance(module, Mapping) or str(module.get("id") or "") not in requested_module_ids:
+            if (
+                not isinstance(module, Mapping)
+                or str(module.get("id") or "") not in requested_module_ids
+            ):
                 continue
             plan = module.get("plan")
             if isinstance(plan, Mapping):
@@ -6308,18 +6367,19 @@ class XingheImageProvider:
         # facts and module contracts.  Do not write these fields back to the
         # signed generation request on disk: the Harness fingerprint covers
         # that request and must remain immutable.
-        raw_facts = settings.get("verified_facts") or settings.get("selling_points") or []
-        native_request["product_information"] = [
-            str(value).strip()
-            for value in raw_facts
-            if str(value).strip()
-        ]
-        native_request["product_name"] = str(
-            settings.get("product_name") or "当前商品"
+        raw_facts = (
+            settings.get("verified_facts") or settings.get("selling_points") or []
         )
+        native_request["product_information"] = [
+            str(value).strip() for value in raw_facts if str(value).strip()
+        ]
+        native_request["product_name"] = str(settings.get("product_name") or "当前商品")
         # Keep the blank format canvas local, as required by the Skill provider protocol.
         ordered: list[SourceImage] = []
-        source_by_path = {str(Path(path).resolve()): source for path, source in zip(source_paths, sources, strict=True)}
+        source_by_path = {
+            str(Path(path).resolve()): source
+            for path, source in zip(source_paths, sources, strict=True)
+        }
         for raw_path in native_request.get("reference_images") or []:
             path = Path(str(raw_path)).resolve()
             if path == Path(str(native_request.get("format_canvas") or "")).resolve():
@@ -6329,17 +6389,25 @@ class XingheImageProvider:
                 ordered.append(source)
                 continue
             if not path.is_file():
-                raise AuroraDetailHarnessError("NATIVE_DETAIL_REFERENCE_MISSING", f"Native reference image is missing: {path}")
+                raise AuroraDetailHarnessError(
+                    "NATIVE_DETAIL_REFERENCE_MISSING",
+                    f"Native reference image is missing: {path}",
+                )
             payload_bytes = path.read_bytes()
-            ordered.append(SourceImage(
-                asset_id=f"native-{hashlib.sha256(payload_bytes).hexdigest()[:16]}",
-                group_key=str(configuration["group_key"]),
-                filename=path.name,
-                content_type="image/png",
-                sha256=hashlib.sha256(payload_bytes).hexdigest(),
-                payload=payload_bytes,
-                source_role="format_canvas" if path == Path(str(native_request.get("format_canvas") or "")).resolve() else "continuity_edge",
-            ))
+            ordered.append(
+                SourceImage(
+                    asset_id=f"native-{hashlib.sha256(payload_bytes).hexdigest()[:16]}",
+                    group_key=str(configuration["group_key"]),
+                    filename=path.name,
+                    content_type="image/png",
+                    sha256=hashlib.sha256(payload_bytes).hexdigest(),
+                    payload=payload_bytes,
+                    source_role="format_canvas"
+                    if path
+                    == Path(str(native_request.get("format_canvas") or "")).resolve()
+                    else "continuity_edge",
+                )
+            )
         return session_path, native_request, tuple(ordered)
 
     def _native_detail_judgment(

@@ -288,6 +288,8 @@ export function useConfirmPlan(workspaceId: string | undefined) {
     JobDetail,
     AuthorizedJobAction & {
       revision: number;
+      approvalProtocol?: "domestic-native-approval-v1";
+      nativeApprovalDocumentSha256?: string;
       approvalText?: string;
       approvalDocumentSha256?: string;
       approvedModuleCount?: number;
@@ -296,7 +298,11 @@ export function useConfirmPlan(workspaceId: string | undefined) {
   >(
     workspaceId,
     "confirm-plan",
-    ({ jobId, revision }) => ({ jobId, revision }),
+    (input) => ({ jobId: input.jobId, revision: input.revision,
+      approvalProtocol: input.approvalProtocol, nativeApprovalDocumentSha256: input.nativeApprovalDocumentSha256,
+      approvalText: input.approvalText, approvalDocumentSha256: input.approvalDocumentSha256,
+      approvedModuleCount: input.approvedModuleCount,
+      approvedPairCanvasAspectRatio: input.approvedPairCanvasAspectRatio }),
     async (id, input, key) => {
       assertJobAction(input.allowedActions, "confirm_plan");
       const result = await apiClient.POST(
@@ -308,6 +314,8 @@ export function useConfirmPlan(workspaceId: string | undefined) {
           },
           body: {
             expected_revision: input.revision,
+            approval_protocol: input.approvalProtocol,
+            native_approval_document_sha256: input.nativeApprovalDocumentSha256,
             approval_text: input.approvalText,
             approval_document_sha256: input.approvalDocumentSha256,
             approved_module_count: input.approvedModuleCount,

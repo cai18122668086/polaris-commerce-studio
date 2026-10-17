@@ -84,6 +84,9 @@ def generation_binding(
         or receipt.get("contract_binding_sha256")
         != aurora["contract_binding"]["sha256"]
         or receipt.get("pipeline") != PIPELINE_VERSION
+        or receipt.get("approval_protocol") != payload["native_approval"]["version"]
+        or receipt.get("native_approval_document_sha256")
+        != payload["native_approval"]["document_sha256"]
     ):
         raise DetailGenerationError(
             "NATIVE_DETAIL_APPROVAL_RECEIPT_INVALID",

@@ -2216,6 +2216,7 @@ def update_plan(
                     editable_payload.get(field) != current.payload.get(field)
                     for field in (
                         "product_intake",
+                        "native_approval",
                         "input_signature",
                         "source_input_sha256",
                         "source_asset_manifest",
@@ -2234,29 +2235,64 @@ def update_plan(
             ) from exc
         # Rebind the campaign approval document whenever the plan is edited;
         # an old approval fingerprint may never authorize changed pages.
+        from .aurora_detail_runtime import (
+            AuroraDetailHarnessError,
+            AuroraDetailHarnessRunner,
+            detail_workspace,
+            normalize_native_plan_for_harness,
+        )
+        from .domestic_detail.native_approval import (
+            compile_native_approval,
+            load_native_approval,
+        )
+        from .domestic_detail.plans import validate_plan_views
         from .xinghe_agent import compile_aurora_campaign_approval_document
 
         groups = editable_payload.get("groups")
         pages = editable_payload.get("pages")
         if isinstance(groups, list) and isinstance(pages, list):
             try:
+                new_native = validate_plan_views(editable_payload)
+                original_contracts = load_native_approval(
+                    detail_workspace(job.id), current.payload.get("native_approval")
+                )
+                editable_payload["native_approval"] = compile_native_approval(
+                    detail_workspace(job.id),
+                    runner=AuroraDetailHarnessRunner(),
+                    native_input=original_contracts["input"],
+                    identity=original_contracts["identity"],
+                    normalized_plan=normalize_native_plan_for_harness(new_native),
+                    resolution=(current.payload.get("product_intake") or {}).get(
+                        "resolution"
+                    ),
+                )
                 detail_binding = approval_binding(editable_payload, settings)
-            except DetailPlanError:
+            except (ValueError, TypeError, KeyError, AuroraDetailHarnessError, OSError):
                 detail_binding = None
-            approval_document = compile_aurora_campaign_approval_document(
-                group_plans=[group for group in groups if isinstance(group, Mapping)],
-                pages=[page for page in pages if isinstance(page, Mapping)],
-                page_count=int(settings.get("page_count", 0)),
-                binding=detail_binding,
-            )
             aurora = editable_payload.get("aurora_v4_3")
             if isinstance(aurora, dict):
                 aurora = dict(aurora)
+                aurora.pop("approval_receipt", None)
                 aurora["contract_binding"] = detail_binding
-                aurora["approval_document_markdown"] = approval_document
-                aurora["approval_document_sha256"] = hashlib.sha256(
-                    approval_document.encode("utf-8")
-                ).hexdigest()
+                if detail_binding is None:
+                    aurora["approval_document_markdown"] = ""
+                    aurora["approval_document_sha256"] = None
+                if detail_binding is not None:
+                    approval_document = compile_aurora_campaign_approval_document(
+                        group_plans=[
+                            group for group in groups if isinstance(group, Mapping)
+                        ],
+                        pages=[page for page in pages if isinstance(page, Mapping)],
+                        page_count=int(settings.get("page_count", 0)),
+                        binding=detail_binding,
+                        native_document=editable_payload["native_approval"][
+                            "document_markdown"
+                        ],
+                    )
+                    aurora["approval_document_markdown"] = approval_document
+                    aurora["approval_document_sha256"] = hashlib.sha256(
+                        approval_document.encode("utf-8")
+                    ).hexdigest()
                 editable_payload["aurora_v4_3"] = aurora
     validation_errors = _validate_plan_payload(job, editable_payload)
     plan = JobPlanRecord(
@@ -2590,7 +2626,15 @@ def confirm_plan(
                     "Aurora 详情图必须先生成完整的 group→screen 审批包。",
                 )
             try:
+                from .aurora_detail_runtime import detail_workspace
+                from .domestic_detail.native_approval import verify_approval_sources
+
                 validate_approval_binding(plan.payload, settings)
+                verify_approval_sources(
+                    detail_workspace(job.id),
+                    plan.payload.get("native_approval"),
+                    plan.payload["source_asset_manifest"][0]["assets"],
+                )
             except DetailPlanError as exc:
                 raise ApiError(
                     status.HTTP_409_CONFLICT,
@@ -2609,6 +2653,17 @@ def confirm_plan(
                     status.HTTP_409_CONFLICT,
                     "AURORA_APPROVAL_PACKET_MISMATCH",
                     "审批包指纹、屏数或 3:8 pair 画布比例不匹配。",
+                )
+            native_approval = plan.payload["native_approval"]
+            if (
+                payload.approval_protocol != native_approval["version"]
+                or payload.native_approval_document_sha256
+                != native_approval["document_sha256"]
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "AURORA_NATIVE_APPROVAL_REQUIRED",
+                    "请使用当前完整原生审批文档和版本指纹确认方案。",
                 )
     if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
         settings = request.app.state.settings
@@ -2630,6 +2685,18 @@ def confirm_plan(
         idempotency_key=key,
         request_hash=canonical_hash(
             {
+                **(
+                    {
+                        "approval_protocol": payload.approval_protocol,
+                        "native_approval_document_sha256": (
+                            payload.native_approval_document_sha256
+                        ),
+                    }
+                    if job.type == JobType.DETAIL_PACK.value
+                    and isinstance(job.configuration.get("settings"), dict)
+                    and job.configuration["settings"].get("market_region") == "domestic"
+                    else {}
+                ),
                 "job_id": job.id,
                 "expected_revision": payload.expected_revision,
                 "approval_text": payload.approval_text,
@@ -2703,6 +2770,8 @@ def confirm_plan(
         detail_payload = deepcopy(plan.payload)
         detail_aurora = detail_payload["aurora_v4_3"]
         detail_aurora["approval_receipt"] = {
+            "approval_protocol": payload.approval_protocol,
+            "native_approval_document_sha256": payload.native_approval_document_sha256,
             "pipeline": PIPELINE_VERSION,
             "approval_text": payload.approval_text,
             "approval_document_sha256": payload.approval_document_sha256,

@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-BINDING_VERSION = "domestic-detail-approval-v3"
+BINDING_VERSION = "domestic-detail-approval-v4"
 
 
 class DetailPlanError(ValueError):
@@ -162,8 +162,19 @@ def approval_binding(
         or intake.get("version") != "domestic-detail-intake-v1"
     ):
         raise DetailPlanError("Approval requires the validated source intake")
+    from .contracts import normalize_native_plan_for_harness
+    from .native_approval import validate_native_approval
+
+    native_approval = validate_native_approval(payload.get("native_approval"))
+    if native_approval["normalized_plan_sha256"] != canonical_hash(
+        normalize_native_plan_for_harness(native)
+    ):
+        raise DetailPlanError(
+            "Native approval was compiled from a different storyboard"
+        )
     binding = {
         "version": BINDING_VERSION,
+        "native_approval_sha256": canonical_hash(native_approval),
         "product_intake_sha256": canonical_hash(intake),
         "native_plan_sha256": canonical_hash(native),
         "screen_views_sha256": canonical_hash(payload["pages"]),
@@ -188,5 +199,9 @@ def validate_approval_binding(
         document.encode("utf-8")
     ).hexdigest() != aurora.get("approval_document_sha256"):
         raise DetailPlanError("Approval document bytes differ from their fingerprint")
+    if payload["native_approval"]["document_markdown"] not in document:
+        raise DetailPlanError(
+            "The complete native compiler document is not shown in the approval"
+        )
     if expected["sha256"] not in document:
         raise DetailPlanError("Approval document does not expose its immutable scope")

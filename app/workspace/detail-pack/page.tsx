@@ -11,6 +11,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
 import { BRANDLESS_CONFIRMATION, DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
+import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
@@ -84,6 +85,8 @@ function planItemPresentation(
     label: workflow.mode === "provider" ? "图片生成未完成" : workflow.mode === "mock" ? "任务已结束 · 暂无图片结果" : "任务已结束 · 暂无图片结果",
     icon: "failed",
   };
+  if (jobStatus === "awaiting_confirmation") return { className: "queued", label: "等待方案确认", icon: "waiting" };
+  if (jobStatus === "planning") return { className: "queued", label: "规划中", icon: "waiting" };
   return {
     className: "queued",
     label: workflow.mode === "provider" ? "图片生成处理中" : workflow.mode === "mock" ? "任务处理中" : "服务状态确认中 · 生成服务暂不可用",
@@ -104,6 +107,7 @@ export default function DetailPackPage() {
   const [targetBuyer, setTargetBuyer] = useState("");
   const [sellingPoints, setSellingPoints] = useState("");
   const [brandlessConfirmed, setBrandlessConfirmed] = useState(false);
+  const [reviewedApprovalKey, setReviewedApprovalKey] = useState("");
   const [sources, setSources] = useState<UploadedSource[]>([]);
   const [uploadError, setUploadError] = useState<string>();
   // Prefer the task-center URL when present; the local value covers jobs
@@ -127,6 +131,12 @@ export default function DetailPackPage() {
   const workflowAvailable = workflow.mode === "mock" || workflow.mode === "provider";
   const selectedMarketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId) ?? marketplaceGroups[marketRegion][0];
   const planPages = readPlanPages(job.data?.plan?.payload);
+  const auroraApproval = job.data?.plan?.payload.aurora_v4_3 as Record<string, unknown> | undefined;
+  const nativeApproval = job.data?.plan?.payload.native_approval as Record<string, unknown> | undefined;
+  const approvalDocument = typeof auroraApproval?.approval_document_markdown === "string" ? auroraApproval.approval_document_markdown : "";
+  const approvalFingerprint = typeof auroraApproval?.approval_document_sha256 === "string" ? auroraApproval.approval_document_sha256 : "";
+  const approvalKey = `${job.data?.id}:${job.data?.plan?.revision}:${approvalFingerprint}`;
+  const nativeReviewed = job.data?.id === jobId && nativeApproval?.version === "domestic-native-approval-v1" && Boolean(nativeApproval?.artifact_id) && Boolean(approvalDocument) && reviewedApprovalKey === approvalKey && job.data?.plan?.validation_status === "valid";
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
@@ -303,7 +313,7 @@ export default function DetailPackPage() {
           {job.data?.stage === "intake_confirmation_required" && <DomesticDetailIntakeQuestion key={`${job.data.id}:${job.data.plan?.revision}`} workspaceId={workspace?.id} job={job.data} />}
 
           <section className="planning-card" aria-busy={job.isFetching}>
-            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p><small>{marketRegion === "domestic" ? "国内详情按相邻两屏组成一个 3:8 连续画布，审核通过后固定切成两张 3:4 图片。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
+            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p><small>{marketRegion === "domestic" ? "国内详情按相邻两屏生成一个 3:8 连续画布，固定切成两张 3:4 图片并审核。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
             {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在准备页面规划，请稍候…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
@@ -315,6 +325,10 @@ export default function DetailPackPage() {
               })}
             </div>}
           </section>
+
+          {job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && nativeApproval && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
+
+          {job.data?.id === jobId && auroraApproval && job.data.plan?.validation_status === "invalid" && <div className="api-state api-state--error" role="alert"><p>当前方案尚未通过校验。请修正后重新审阅完整方案；旧审批内容不能用于此次修改。</p></div>}
 
           {resultAssets.length > 0 && <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>所有已完成的图片会展示在这里，并支持后续下载。</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
@@ -340,16 +354,19 @@ export default function DetailPackPage() {
               ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
                 <button className="primary-button" onClick={() => {
                   const aurora = job.data!.plan!.payload.aurora_v4_3 as Record<string, unknown> | undefined;
+                  if (aurora && !nativeReviewed) return;
                   confirmPlan.mutate({
                     jobId: job.data!.id,
                     revision: job.data!.plan!.revision,
                     allowedActions: job.data!.allowed_actions,
-                    approvalText: "我确认完整详情图审批包，并授权按 pair 逐组生成",
+                    approvalProtocol: nativeApproval?.version === "domestic-native-approval-v1" ? "domestic-native-approval-v1" : undefined,
+                    nativeApprovalDocumentSha256: typeof nativeApproval?.document_sha256 === "string" ? nativeApproval.document_sha256 : undefined,
+                    approvalText: aurora ? NATIVE_DETAIL_APPROVAL_TEXT : "我确认完整详情图审批包，并授权按 pair 逐组生成",
                     approvalDocumentSha256: typeof aurora?.approval_document_sha256 === "string" ? aurora.approval_document_sha256 : undefined,
                     approvedModuleCount: typeof aurora?.approved_module_count === "number" ? aurora.approved_module_count : undefined,
                     approvedPairCanvasAspectRatio: aurora?.approved_pair_canvas_aspect_ratio === "3:8" ? "3:8" : undefined,
                   });
-                }} disabled={confirmPlan.isPending}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并开始生成" : "确认并保存任务"}<ArrowRight size={17} /></button>
+                }} disabled={confirmPlan.isPending || Boolean(auroraApproval && !nativeReviewed)}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并开始生成" : "确认并保存任务"}<ArrowRight size={17} /></button>
               ) : (
                 <button className="primary-button" disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data ? jobNote(job.data) : "正在读取任务"}</button>
               )}

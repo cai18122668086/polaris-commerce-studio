@@ -190,6 +190,12 @@ class RuntimeTests(unittest.TestCase):
                 verify_release(root)
 
     def test_cli_host_connects_only_to_fixture_and_drains(self):
+        self._assert_cli_host(True)
+
+    def test_auth_failure_is_distinct_from_a_running_process(self):
+        self._assert_cli_host(False)
+
+    def _assert_cli_host(self, authenticated):
         fixture_calls = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -199,6 +205,15 @@ class RuntimeTests(unittest.TestCase):
                 )
                 self.assert_fixture()
                 fixture_calls.append(self.path)
+                if not authenticated:
+                    response = json.dumps(
+                        {"error": {"code": "WORKER_AUTH_INVALID"}}
+                    ).encode()
+                    self.send_response(401)
+                    self.send_header("Content-Length", str(len(response)))
+                    self.end_headers()
+                    self.wfile.write(response)
+                    return
                 data = None
                 if self.path.endswith("/heartbeat"):
                     data = {"ready": payload["ready"]}
@@ -274,10 +289,22 @@ class RuntimeTests(unittest.TestCase):
                 wait_for(
                     lambda: (
                         status.exists()
-                        and json.loads(status.read_text()).get("heartbeat_successes", 0)
-                        > 0
+                        and (
+                            json.loads(status.read_text()).get("heartbeat_successes", 0)
+                            > 0
+                            if authenticated
+                            else json.loads(status.read_text()).get("connection")
+                            == "authorization_required"
+                        )
                     )
                 )
+                if not authenticated:
+                    observed = json.loads(status.read_text())
+                    self.assertEqual(observed["phase"], "running")
+                    self.assertEqual(observed["heartbeat_successes"], 0)
+                    self.assertEqual(
+                        observed["last_heartbeat_error"], "WORKER_AUTH_INVALID"
+                    )
                 controller = Path(__file__).parent / "control_runtime.py"
                 drained = subprocess.run(
                     [

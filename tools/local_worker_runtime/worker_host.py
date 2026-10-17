@@ -64,6 +64,7 @@ class Lifecycle:
             "started_at": utc_now(),
             "phase": "starting",
             "heartbeat_successes": 0,
+            "connection": "starting",
         }
         self.thread = None
 
@@ -85,6 +86,8 @@ class Lifecycle:
                 last_heartbeat_at=utc_now(),
                 heartbeat_successes=self.state["heartbeat_successes"] + 1,
                 ready=bool(ready),
+                connection="online" if ready else "offline",
+                last_heartbeat_error=None,
             )
 
     def start(self):
@@ -129,7 +132,26 @@ def run_agent(module, config, lifecycle):
 
     class ObservedClient(module.WorkerApiClient):
         def heartbeat(self, worker_id, payload):
-            result = super().heartbeat(worker_id, payload)
+            try:
+                result = super().heartbeat(worker_id, payload)
+            except module.LocalWorkerError as exc:
+                auth_codes = {
+                    "WORKER_AUTH_INVALID",
+                    "WORKER_AUTH_REQUIRED",
+                    "WORKER_TOKEN_EXPIRED",
+                    "WORKER_TOKEN_ROTATED",
+                    "WORKER_SCOPE_REVOKED",
+                }
+                code = str(exc)
+                lifecycle.write(
+                    connection="authorization_required"
+                    if code in auth_codes
+                    else "unavailable",
+                    last_heartbeat_error=code
+                    if code in auth_codes
+                    else "WORKER_API_UNAVAILABLE",
+                )
+                raise
             lifecycle.heartbeat_ok(payload.get("ready", True))
             return result
 

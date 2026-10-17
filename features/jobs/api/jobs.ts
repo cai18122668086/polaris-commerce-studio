@@ -85,7 +85,12 @@ export function useJob(
     },
     refetchInterval(current) {
       const status = current.state.data?.status;
-      return status && isActiveJob(status) ? 1_500 : false;
+      if (status && isActiveJob(status)) return 1_500;
+      const data = current.state.data;
+      const native = data?.plan?.payload.aurora_v4_3 as Record<string, unknown> | undefined;
+      const receipt = native?.approval_receipt as Record<string, unknown> | undefined;
+      const automatic = receipt?.automatic_delivery_authorization as Record<string, unknown> | undefined;
+      return status === "awaiting_final_review" && data?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1" && automatic?.delivery_mode === "AUTO_FINALIZE_AUTHORIZED" && data.stage !== "automatic_delivery_reconciliation_required" ? 1_500 : false;
     },
   });
 }
@@ -295,6 +300,7 @@ export function useConfirmPlan(workspaceId: string | undefined) {
       approvalDocumentSha256?: string;
       approvedModuleCount?: number;
       approvedPairCanvasAspectRatio?: "3:8";
+      automaticDeliveryAuthorization?: { sha256: string; authorization_text: string };
     }
   >(
     workspaceId,
@@ -303,7 +309,8 @@ export function useConfirmPlan(workspaceId: string | undefined) {
       approvalProtocol: input.approvalProtocol, nativeApprovalDocumentSha256: input.nativeApprovalDocumentSha256,
       approvalText: input.approvalText, approvalDocumentSha256: input.approvalDocumentSha256,
       approvedModuleCount: input.approvedModuleCount,
-      approvedPairCanvasAspectRatio: input.approvedPairCanvasAspectRatio }),
+      approvedPairCanvasAspectRatio: input.approvedPairCanvasAspectRatio,
+      ...(input.automaticDeliveryAuthorization ? { automaticDeliveryAuthorization: { sha256: input.automaticDeliveryAuthorization.sha256, authorization_text: input.automaticDeliveryAuthorization.authorization_text } } : {}) }),
     async (id, input, key) => {
       assertJobAction(input.allowedActions, "confirm_plan");
       const result = await apiClient.POST(
@@ -314,6 +321,7 @@ export function useConfirmPlan(workspaceId: string | undefined) {
             header: { "Idempotency-Key": key },
           },
           body: {
+            ...(input.automaticDeliveryAuthorization ? { domestic_detail_delivery_mode: "AUTO_FINALIZE_AUTHORIZED" as const, automatic_delivery_authorization_text: input.automaticDeliveryAuthorization.authorization_text, automatic_delivery_authorization_sha256: input.automaticDeliveryAuthorization.sha256 } : {}),
             expected_revision: input.revision,
             approval_protocol: input.approvalProtocol,
             native_approval_document_sha256: input.nativeApprovalDocumentSha256,

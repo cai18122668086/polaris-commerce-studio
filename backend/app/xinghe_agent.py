@@ -6541,6 +6541,13 @@ class XingheImageProvider:
             payload = (
                 plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
             )
+        from .domestic_detail.delivery_authorization import (
+            native_authorization_text,
+            native_delivery_mode,
+            receipt_authorization,
+        )
+
+        receipt_authorization(payload, job_id=request.job_id, workspace_id=request.workspace_id, plan_id=plan_record.id, revision=plan_record.revision)
         native_plan = extract_native_plan(payload)
         if native_plan is None:
             raise AuroraDetailHarnessError(
@@ -6628,13 +6635,11 @@ class XingheImageProvider:
                 workspace,
                 {
                     "session": session_path,
-                    "approval-text": str(
-                        payload["aurora_v4_3"]["approval_receipt"]["approval_text"]
-                    ),
+                    "approval-text": native_authorization_text(payload),
                     "approved-module-count": str(len(native_plan.get("modules") or [])),
                     "approved-pair-canvas-aspect-ratio": "3:8",
                     "approval-document-sha256": approved_native["document_sha256"],
-                    "delivery-mode": "USER_FINAL_REVIEW",
+                    "delivery-mode": native_delivery_mode(payload),
                 },
             )
         bind_native_contract(workspace, generation_scope, create=new_session)

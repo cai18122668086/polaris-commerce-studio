@@ -2065,8 +2065,132 @@
         "title": "DomesticCampaignReviewSelection",
         "type": "object"
       },
+      "DomesticDetailAutomaticDeliveryAuthorization": {
+        "properties": {
+          "actor_user_id": {
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "approval_document_sha256": {
+            "title": "Approval Document Sha256",
+            "type": "string"
+          },
+          "authorization_text": {
+            "title": "Authorization Text",
+            "type": "string"
+          },
+          "completion_disclosure": {
+            "title": "Completion Disclosure",
+            "type": "string"
+          },
+          "contract_binding_sha256": {
+            "title": "Contract Binding Sha256",
+            "type": "string"
+          },
+          "delivery_extra_image_requests": {
+            "const": 0,
+            "title": "Delivery Extra Image Requests",
+            "type": "integer"
+          },
+          "delivery_extra_model_requests": {
+            "const": 0,
+            "title": "Delivery Extra Model Requests",
+            "type": "integer"
+          },
+          "delivery_mode": {
+            "const": "AUTO_FINALIZE_AUTHORIZED",
+            "title": "Delivery Mode",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "native_approval_document_sha256": {
+            "title": "Native Approval Document Sha256",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "plan_revision": {
+            "title": "Plan Revision",
+            "type": "integer"
+          },
+          "runtime_source_sha256": {
+            "title": "Runtime Source Sha256",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_input_sha256": {
+            "title": "Source Input Sha256",
+            "type": "string"
+          },
+          "version": {
+            "const": "domestic-detail-auto-delivery-authorization-v1",
+            "title": "Version",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "job_id",
+          "workspace_id",
+          "actor_user_id",
+          "plan_id",
+          "plan_revision",
+          "native_approval_document_sha256",
+          "approval_document_sha256",
+          "contract_binding_sha256",
+          "source_input_sha256",
+          "runtime_source_sha256",
+          "delivery_mode",
+          "authorization_text",
+          "completion_disclosure",
+          "delivery_extra_model_requests",
+          "delivery_extra_image_requests",
+          "sha256"
+        ],
+        "title": "DomesticDetailAutomaticDeliveryAuthorization",
+        "type": "object"
+      },
+      "DomesticDetailAutomaticDeliveryRecoveryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "authorization_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Authorization Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_sha256"
+        ],
+        "title": "DomesticDetailAutomaticDeliveryRecoveryRequest",
+        "type": "object"
+      },
       "DomesticDetailFinalReviewResponse": {
         "properties": {
+          "automatic_delivery_authorization": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automatic Delivery Authorization"
+          },
           "campaign_audit_status": {
             "const": "NOT_REQUESTED",
             "title": "Campaign Audit Status",
@@ -2075,6 +2199,18 @@
           "context_sha256": {
             "title": "Context Sha256",
             "type": "string"
+          },
+          "delivery_mode": {
+            "anyOf": [
+              {
+                "const": "AUTO_FINALIZE_AUTHORIZED",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Mode"
           },
           "document_markdown": {
             "title": "Document Markdown",
@@ -4374,6 +4510,46 @@
               }
             ],
             "title": "Approved Pair Canvas Aspect Ratio"
+          },
+          "automatic_delivery_authorization_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automatic Delivery Authorization Sha256"
+          },
+          "automatic_delivery_authorization_text": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automatic Delivery Authorization Text"
+          },
+          "domestic_detail_delivery_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "USER_FINAL_REVIEW",
+                  "AUTO_FINALIZE_AUTHORIZED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domestic Detail Delivery Mode"
           },
           "expected_revision": {
             "minimum": 1.0,
@@ -11605,6 +11781,88 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover": {
+      "post": {
+        "operationId": "recover_automatic_detail_delivery_api_v1_workspaces__workspace_id__jobs__job_id__automatic_delivery_recover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticDetailAutomaticDeliveryRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Recover Automatic Detail Delivery",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review": {
       "post": {
         "operationId": "create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post",
@@ -12598,6 +12856,62 @@
           }
         ],
         "summary": "Update Plan",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/automatic-delivery-authorization": {
+      "get": {
+        "operationId": "get_automatic_detail_delivery_authorization_api_v1_workspaces__workspace_id__jobs__job_id__plan_automatic_delivery_authorization_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticDetailAutomaticDeliveryAuthorization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Automatic Detail Delivery Authorization",
         "tags": [
           "jobs"
         ]

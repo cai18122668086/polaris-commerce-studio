@@ -602,7 +602,9 @@ class ExecutionCoordinator:
                     ).limit(1))
                 if failed is not None:
                     return self._mark_amazon_quality_blocked(job_id)
-            return current
+            return await self._maybe_finalize_domestic_automatic_delivery(
+                job_id, current
+            )
         if current == JobStatus.CANCELLING:
             return self.cancel(job_id)
         if current == JobStatus.PLANNING:
@@ -724,7 +726,22 @@ class ExecutionCoordinator:
                 # skill still moves to user final review so the residual issue
                 # is disclosed and the user can explicitly approve the set.
                 return self._mark_aurora_final_review_pending(job_id)
-        return self.finalize_job(job_id)
+        return await self._maybe_finalize_domestic_automatic_delivery(
+            job_id, self.finalize_job(job_id)
+        )
+
+    async def _maybe_finalize_domestic_automatic_delivery(
+        self, job_id: str, current: JobStatus | None
+    ) -> JobStatus | None:
+        if current != JobStatus.AWAITING_FINAL_REVIEW or not (
+            self._is_aurora_domestic_detail_job(job_id)
+        ):
+            return current
+        from .domestic_detail.automatic_delivery import complete_authorized_delivery
+
+        return await complete_authorized_delivery(
+            self.session_factory, self.artifact_storage, job_id
+        )
 
     def _mark_amazon_quality_blocked(self, job_id: str) -> JobStatus | None:
         """Fence rejected outputs and finalize through normal usage settlement."""

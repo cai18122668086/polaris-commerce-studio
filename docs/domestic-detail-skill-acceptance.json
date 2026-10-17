@@ -543,5 +543,26 @@
     "persistent_stack_verified": false,
     "actual_visual_acceptance": false,
     "mypy_sources": 101
+  },
+  "local_explicit_automatic_delivery_candidate": {
+    "overall_completion": "unproven",
+    "parent": "53461fd8b9d2382ee4dda56411ccddd95259fb4d",
+    "report": "domestic-detail-automatic-delivery-2026-10-18.md",
+    "scope": "Default manual unchanged; separate exact plan-stage authorization bound to source/user/plan/Skill/adapter; native auto-finalize after original usage settlement; truthful residual packet and zero-model/image original-delivery recovery.",
+    "final_source_backend_green": 100,
+    "final_frontend_green": 29,
+    "mypy_sources": 103,
+    "whole_frontend_eslint_files": 165,
+    "native79_and_all12_sources_unchanged": true,
+    "actual_supplier_calls": 0,
+    "persistent_stack_verified": false,
+    "browser_full_flow_verified": false,
+    "actual_visual_acceptance": false,
+    "remaining": [
+      "Independent owned local user correction revisions; no source accepted-cycle mutation",
+      "Historical frozen runtime routing, approval compatibility and rollback",
+      "Persistent independent PostgreSQL/Redis/MinIO/API/Worker",
+      "Browser complete business flow, actual supplier cost and actual pixel acceptance"
+    ]
   }
 }

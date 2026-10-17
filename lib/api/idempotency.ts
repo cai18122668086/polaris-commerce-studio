@@ -8,7 +8,8 @@ export type IdempotentOperation =
   | "confirm-plan"
   | "finalize-job"
   | "campaign-review"
-  | "recover-campaign-review";
+  | "recover-campaign-review"
+  | "recover-automatic-delivery";
 
 export class IdempotencyIntentRegistry {
   private readonly keys = new Map<string, string>();

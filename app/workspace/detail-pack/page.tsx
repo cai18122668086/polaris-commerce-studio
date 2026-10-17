@@ -14,6 +14,8 @@ import { BRANDLESS_CONFIRMATION, DomesticDetailIntakeQuestion } from "@/componen
 import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
 import { DomesticDetailCampaignReview } from "@/components/domestic-detail-campaign-review";
 import type { CampaignSelection } from "@/features/jobs/api/campaign-reviews";
+import { AutomaticDeliveryChoice, AutomaticDeliveryRecovery } from "@/components/domestic-detail-automatic-delivery";
+import { automaticAuthorityForJob, useAutomaticDeliveryAuthorization, type AutomaticDeliveryAuthorization } from "@/features/jobs/api/automatic-delivery";
 import { DomesticDetailFinalReview, isCurrentFinalReview, NATIVE_DETAIL_FINAL_REVIEW_TEXT } from "@/components/domestic-detail-final-review";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
@@ -111,6 +113,7 @@ export default function DetailPackPage() {
   const [sellingPoints, setSellingPoints] = useState("");
   const [brandlessConfirmed, setBrandlessConfirmed] = useState(false);
   const [reviewedApprovalKey, setReviewedApprovalKey] = useState("");
+  const [automaticChoice, setAutomaticChoice] = useState<{ scope: string; requested: boolean; authorization?: AutomaticDeliveryAuthorization }>();
   const [reviewedFinalKey, setReviewedFinalKey] = useState("");
   const [campaignChoice, setCampaignChoice] = useState<{ workspaceId?: string; sourceId: string; selection: CampaignSelection }>();
   const [sources, setSources] = useState<UploadedSource[]>([]);
@@ -149,6 +152,12 @@ export default function DetailPackPage() {
   const approvalFingerprint = typeof auroraApproval?.approval_document_sha256 === "string" ? auroraApproval.approval_document_sha256 : "";
   const approvalKey = `${job.data?.id}:${job.data?.plan?.revision}:${approvalFingerprint}`;
   const nativeReviewed = job.data?.id === jobId && nativeApproval?.version === "domestic-native-approval-v1" && Boolean(nativeApproval?.artifact_id) && Boolean(approvalDocument) && reviewedApprovalKey === approvalKey && job.data?.plan?.validation_status === "valid";
+  const automaticScope = `${workspace?.id}:${jobId}:${job.data?.plan?.revision}:${nativeApproval?.document_sha256}`;
+  const automaticRequested = automaticChoice?.scope === automaticScope && automaticChoice.requested;
+  const automaticQuote = useAutomaticDeliveryAuthorization(workspace?.id, job.data, Boolean(automaticRequested));
+  const automaticConsent = automaticChoice?.scope === automaticScope ? automaticChoice.authorization : undefined;
+  const automaticReady = !automaticRequested || Boolean(automaticConsent && automaticQuote.data && !automaticQuote.isError && !automaticQuote.isFetching && automaticConsent.sha256 === automaticQuote.data.sha256 && automaticQuote.data.native_approval_document_sha256 === nativeApproval?.document_sha256 && automaticQuote.data.plan_revision === job.data?.plan?.revision);
+  const originalAutomaticAuthority = automaticAuthorityForJob(job.data);
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
@@ -340,6 +349,11 @@ export default function DetailPackPage() {
 
           {job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && nativeApproval && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
 
+          {job.data?.id === jobId && isNativeDetail && job.data.status === "awaiting_confirmation" && job.data.plan?.validation_status === "valid" && <AutomaticDeliveryChoice requested={Boolean(automaticRequested)} quote={automaticQuote.data} selected={automaticConsent} busy={automaticQuote.isFetching} error={automaticQuote.error ?? undefined} onChange={(requested, authorization) => {
+            setReviewedApprovalKey("");
+            setAutomaticChoice({ scope: automaticScope, requested, authorization });
+          }} />}
+
           {job.data?.id === jobId && auroraApproval && job.data.plan?.validation_status === "invalid" && <div className="api-state api-state--error" role="alert"><p>当前方案尚未通过校验。请修正后重新审阅完整方案；旧审批内容不能用于此次修改。</p></div>}
 
           {resultAssets.length > 0 && <section className="detail-form-card">
@@ -350,7 +364,7 @@ export default function DetailPackPage() {
           {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>
             {finalReview.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在核对当前成图和审核记录…</p></div>}
             {finalReview.error && <div className="api-state api-state--error" role="alert"><p>{errorMessage(finalReview.error)}</p><button onClick={() => void finalReview.refetch()}>重新核对审阅内容</button></div>}
-            {job.data && <DomesticDetailCampaignReview key={`${workspace?.id}:${jobId}`} workspaceId={workspace?.id} source={job.data} fingerprint={currentFinalReview?.sha256} selected={activeCampaignChoice} onSelection={selection => {
+            {job.data && <DomesticDetailCampaignReview key={`${workspace?.id}:${jobId}`} workspaceId={workspace?.id} source={job.data} fingerprint={currentFinalReview?.sha256} selected={activeCampaignChoice} canAttach={!originalAutomaticAuthority} onSelection={selection => {
               setReviewedFinalKey("");
               setCampaignChoice(selection ? { workspaceId: workspace?.id, sourceId: jobId, selection } : undefined);
             }} />}
@@ -370,13 +384,16 @@ export default function DetailPackPage() {
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
                 <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
+              ) : job.data?.status === "awaiting_final_review" && originalAutomaticAuthority ? (
+                <AutomaticDeliveryRecovery workspaceId={workspace?.id} job={job.data} authorization={originalAutomaticAuthority} />
               ) : job.data?.status === "awaiting_final_review" && allowsJobAction(job.data.allowed_actions, "finalize") ? (
                 <button className="primary-button" onClick={() => { if (isNativeDetail && !finalReviewed) return; finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: isNativeDetail ? NATIVE_DETAIL_FINAL_REVIEW_TEXT : "我已完成详情图逐 pair 最终审核并确认交付", finalReviewSha256: isNativeDetail ? currentFinalReview?.sha256 : undefined }); }} disabled={finalizeJob.isPending || (isNativeDetail && !finalReviewed)}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />}确认最终审核并交付<ArrowRight size={17} /></button>
               ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
                 <button className="primary-button" onClick={() => {
                   const aurora = job.data!.plan!.payload.aurora_v4_3 as Record<string, unknown> | undefined;
-                  if (aurora && !nativeReviewed) return;
+                  if (aurora && (!nativeReviewed || !automaticReady)) return;
                   confirmPlan.mutate({
+                    ...(isNativeDetail && automaticRequested && automaticReady && automaticConsent ? { automaticDeliveryAuthorization: automaticConsent } : {}),
                     jobId: job.data!.id,
                     revision: job.data!.plan!.revision,
                     allowedActions: job.data!.allowed_actions,
@@ -387,7 +404,7 @@ export default function DetailPackPage() {
                     approvedModuleCount: typeof aurora?.approved_module_count === "number" ? aurora.approved_module_count : undefined,
                     approvedPairCanvasAspectRatio: aurora?.approved_pair_canvas_aspect_ratio === "3:8" ? "3:8" : undefined,
                   });
-                }} disabled={confirmPlan.isPending || Boolean(auroraApproval && !nativeReviewed)}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并开始生成" : "确认并保存任务"}<ArrowRight size={17} /></button>
+                }} disabled={confirmPlan.isPending || Boolean(auroraApproval && (!nativeReviewed || !automaticReady))}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{workflow.mode === "provider" ? "确认并开始生成" : "确认并保存任务"}<ArrowRight size={17} /></button>
               ) : (
                 <button className="primary-button" disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{job.data ? jobNote(job.data) : "正在读取任务"}</button>
               )}

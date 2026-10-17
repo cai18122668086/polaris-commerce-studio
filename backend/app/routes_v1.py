@@ -112,6 +112,8 @@ from .schemas_v1 import (
     DomesticCampaignReviewReport,
     DomesticCampaignReviewRequest,
     DomesticCampaignReviewSelection,
+    DomesticDetailAutomaticDeliveryAuthorization,
+    DomesticDetailAutomaticDeliveryRecoveryRequest,
     DomesticDetailFinalReviewResponse,
     DomesticMainImageJobCreate,
     DraftJobUpdate,
@@ -2624,6 +2626,62 @@ def resolve_detail_intake(
     return job_detail_response(session, job)
 
 
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/plan/automatic-delivery-authorization",
+    response_model=DomesticDetailAutomaticDeliveryAuthorization,
+    tags=["jobs"],
+)
+def get_automatic_detail_delivery_authorization(
+    job_id: str,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> DomesticDetailAutomaticDeliveryAuthorization:
+    from .aurora_detail_runtime import detail_workspace
+    from .domestic_detail.delivery_authorization import authorization_quote
+    from .domestic_detail.native_approval import verify_approval_sources
+
+    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+        or job.status != "awaiting_confirmation"
+        or job.stage == "intake_confirmation_required"
+        or plan is None
+        or plan.validation_status != "valid"
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_AUTO_DELIVERY_NOT_READY",
+            "请先完成商品事实确认并审阅当前完整方案。",
+        )
+    try:
+        validate_approval_binding(plan.payload, job.configuration["settings"])
+        verify_approval_sources(
+            detail_workspace(job.id),
+            plan.payload.get("native_approval"),
+            plan.payload["source_asset_manifest"][0]["assets"],
+        )
+        quote = authorization_quote(
+            job_id=job.id,
+            workspace_id=job.workspace_id,
+            actor_id=workspace.principal.user_id,
+            plan_id=plan.id,
+            revision=plan.revision,
+            payload=plan.payload,
+        )
+    except (ValueError, OSError, KeyError) as exc:
+        raise ApiError(
+            409, "NATIVE_DETAIL_AUTO_DELIVERY_AUTHORIZATION_INVALID", str(exc)
+        ) from exc
+    return DomesticDetailAutomaticDeliveryAuthorization.model_validate(quote)
+
+
 @router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/plan/confirm",
     response_model=JobDetailResponse,
@@ -2669,6 +2727,24 @@ def confirm_plan(
             "任务当前状态不允许确认计划。",
         )
     _ensure_detail_skill_provider_enabled(request, job)
+    automatic_delivery_authorization = None
+    auto_fields_supplied = any(
+        value is not None
+        for value in (
+            payload.domestic_detail_delivery_mode,
+            payload.automatic_delivery_authorization_text,
+            payload.automatic_delivery_authorization_sha256,
+        )
+    )
+    if auto_fields_supplied and not (
+        job.type == JobType.DETAIL_PACK.value
+        and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_AUTO_DELIVERY_SCOPE_INVALID",
+            "自动交付授权只适用于当前国内详情方案。",
+        )
     if job.type == JobType.DETAIL_PACK.value:
         settings = job.configuration.get("settings")
         if isinstance(settings, dict) and settings.get("market_region") == "domestic":
@@ -2731,6 +2807,28 @@ def confirm_plan(
                     "AURORA_NATIVE_APPROVAL_REQUIRED",
                     "请使用当前完整原生审批文档和版本指纹确认方案。",
                 )
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
+    ):
+        from .domestic_detail.delivery_authorization import confirm_authorization
+
+        try:
+            automatic_delivery_authorization = confirm_authorization(
+                mode=payload.domestic_detail_delivery_mode,
+                text=payload.automatic_delivery_authorization_text,
+                fingerprint=payload.automatic_delivery_authorization_sha256,
+                job_id=job.id,
+                workspace_id=job.workspace_id,
+                actor_id=workspace.principal.user_id,
+                plan_id=plan.id,
+                revision=plan.revision,
+                payload=plan.payload,
+            )
+        except ValueError as exc:
+            raise ApiError(
+                409, "NATIVE_DETAIL_AUTO_DELIVERY_AUTHORIZATION_INVALID", str(exc)
+            ) from exc
     if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
         settings = request.app.state.settings
         if (
@@ -2761,6 +2859,15 @@ def confirm_plan(
                     if job.type == JobType.DETAIL_PACK.value
                     and isinstance(job.configuration.get("settings"), dict)
                     and job.configuration["settings"].get("market_region") == "domestic"
+                    else {}
+                ),
+                **(
+                    {
+                        "automatic_delivery_authorization": (
+                            automatic_delivery_authorization
+                        )
+                    }
+                    if automatic_delivery_authorization is not None
                     else {}
                 ),
                 "job_id": job.id,
@@ -2836,6 +2943,11 @@ def confirm_plan(
         detail_payload = deepcopy(plan.payload)
         detail_aurora = detail_payload["aurora_v4_3"]
         detail_aurora["approval_receipt"] = {
+            **(
+                {"automatic_delivery_authorization": automatic_delivery_authorization}
+                if automatic_delivery_authorization is not None
+                else {}
+            ),
             "approval_protocol": payload.approval_protocol,
             "native_approval_document_sha256": payload.native_approval_document_sha256,
             "pipeline": PIPELINE_VERSION,
@@ -3231,6 +3343,90 @@ def create_domestic_campaign_review(
     session.commit()
     _schedule_outbox(request, background_tasks)
     return job_detail_response(session, review)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def recover_automatic_detail_delivery(
+    job_id: str,
+    payload: DomesticDetailAutomaticDeliveryRecoveryRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.delivery_authorization import receipt_authorization
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    try:
+        if (
+            job.type != JobType.DETAIL_PACK.value
+            or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+            or plan is None
+        ):
+            raise ValueError(
+                "This is not an original automatic domestic detail delivery"
+            )
+        authorization = receipt_authorization(
+            plan.payload,
+            job_id=job.id,
+            workspace_id=job.workspace_id,
+            plan_id=plan.id,
+            revision=plan.revision,
+        )
+        if (
+            authorization is None
+            or authorization["sha256"] != payload.authorization_sha256
+        ):
+            raise ValueError("The original automatic-delivery authorization changed")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ApiError(
+            409, "NATIVE_DETAIL_AUTO_DELIVERY_AUTHORIZATION_INVALID", str(exc)
+        ) from exc
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job.id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(session, job)
+    if job.status not in {"awaiting_final_review", "completed"}:
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_AUTO_DELIVERY_NOT_READY",
+            "等待当前生成任务结束后，才能恢复原自动打包。",
+        )
+    if job.status == "awaiting_final_review":
+        job.stage = "automatic_delivery_reconciliation_requested"
+        add_outbox_event(
+            session,
+            workspace_id=job.workspace_id,
+            job_id=job.id,
+            event_type="job.dispatch_requested",
+            suffix=f"automatic-delivery-recovery-{idem.id}",
+        )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, job)
 
 
 @router.post(

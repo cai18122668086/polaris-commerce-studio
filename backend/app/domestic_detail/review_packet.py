@@ -171,8 +171,9 @@ def _master_record(
 
 
 def _document(packet: Mapping[str, Any]) -> str:
+    automatic = packet.get("delivery_mode") == "AUTO_FINALIZE_AUTHORIZED"
     lines = [
-        "# 国内详情最终审阅",
+        "# 国内详情自动交付记录" if automatic else "# 国内详情最终审阅",
         "",
         f"任务：{packet['job_id']}；方案版本：{packet['plan_revision']}",
         f"详情规范：{packet['skill_version']}",
@@ -220,7 +221,19 @@ def _document(packet: Mapping[str, Any]) -> str:
                 "可用原文、请求证据和实际所见图片随交付包保存；该报告不改变原任务的费用状态。",
             ]
         )
-    lines.extend(["", "最终确认表示接受以上图片、审核范围及所列残差。", ""])
+    if automatic:
+        lines.extend(
+            [
+                "",
+                "## 方案阶段的自动交付授权",
+                "",
+                packet["automatic_delivery_authorization"]["authorization_text"],
+                "以上记录依据方案阶段的明确授权，不表示用户已经逐屏审阅最终成图。逐屏/组内观察与残差保留，整页审核范围不因此扩大。",
+                "",
+            ]
+        )
+    else:
+        lines.extend(["", "最终确认表示接受以上图片、审核范围及所列残差。", ""])
     return "\n".join(lines)
 
 
@@ -294,6 +307,18 @@ async def _packet(
             "residual_checks"
         ):
             value["quality_state"] = "WITH_RESIDUALS"
+    from .delivery_authorization import AUTO_MODE, receipt_authorization
+
+    authorization = receipt_authorization(
+        plan.payload,
+        job_id=job.id,
+        workspace_id=job.workspace_id,
+        plan_id=plan.id,
+        revision=plan.revision,
+    )
+    if authorization is not None:
+        value["delivery_mode"] = AUTO_MODE
+        value["automatic_delivery_authorization"] = authorization
     value["document_markdown"] = _document(value)
     return {**value, "sha256": canonical_hash(value)}
 
@@ -307,6 +332,13 @@ async def prepare_final_review(
 ) -> dict[str, Any]:
     """Register existing masters and persist an immutable human-review packet."""
     context, state, root = await _verified_context(db, job, plan, storage)
+    from .delivery_authorization import receipt_authorization
+
+    if selection is not None and receipt_authorization(plan.payload) is not None:
+        _reject(
+            "Original automatic delivery keeps its preauthorized scope; "
+            "later reviews remain independent"
+        )
     if job.status == "completed":
         if selection is not None:
             _reject("A completed delivery keeps its originally accepted review")

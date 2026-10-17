@@ -1371,6 +1371,23 @@ export interface paths {
         patch: operations["update_draft_job_api_v1_workspaces__workspace_id__jobs__job_id__patch"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Automatic Detail Delivery */
+        post: operations["recover_automatic_detail_delivery_api_v1_workspaces__workspace_id__jobs__job_id__automatic_delivery_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review": {
         parameters: {
             query?: never;
@@ -1605,6 +1622,23 @@ export interface paths {
         get?: never;
         /** Update Plan */
         put: operations["update_plan_api_v1_workspaces__workspace_id__jobs__job_id__plan_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/automatic-delivery-authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Automatic Detail Delivery Authorization */
+        get: operations["get_automatic_detail_delivery_authorization_api_v1_workspaces__workspace_id__jobs__job_id__plan_automatic_delivery_authorization_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2474,8 +2508,66 @@ export interface components {
             /** Review Job Id */
             review_job_id: string;
         };
+        /** DomesticDetailAutomaticDeliveryAuthorization */
+        DomesticDetailAutomaticDeliveryAuthorization: {
+            /** Actor User Id */
+            actor_user_id: string;
+            /** Approval Document Sha256 */
+            approval_document_sha256: string;
+            /** Authorization Text */
+            authorization_text: string;
+            /** Completion Disclosure */
+            completion_disclosure: string;
+            /** Contract Binding Sha256 */
+            contract_binding_sha256: string;
+            /**
+             * Delivery Extra Image Requests
+             * @constant
+             */
+            delivery_extra_image_requests: 0;
+            /**
+             * Delivery Extra Model Requests
+             * @constant
+             */
+            delivery_extra_model_requests: 0;
+            /**
+             * Delivery Mode
+             * @constant
+             */
+            delivery_mode: "AUTO_FINALIZE_AUTHORIZED";
+            /** Job Id */
+            job_id: string;
+            /** Native Approval Document Sha256 */
+            native_approval_document_sha256: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Revision */
+            plan_revision: number;
+            /** Runtime Source Sha256 */
+            runtime_source_sha256: string;
+            /** Sha256 */
+            sha256: string;
+            /** Source Input Sha256 */
+            source_input_sha256: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-detail-auto-delivery-authorization-v1";
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** DomesticDetailAutomaticDeliveryRecoveryRequest */
+        DomesticDetailAutomaticDeliveryRecoveryRequest: {
+            /** Authorization Sha256 */
+            authorization_sha256: string;
+        };
         /** DomesticDetailFinalReviewResponse */
         DomesticDetailFinalReviewResponse: {
+            /** Automatic Delivery Authorization */
+            automatic_delivery_authorization?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Campaign Audit Status
              * @constant
@@ -2483,6 +2575,8 @@ export interface components {
             campaign_audit_status: "NOT_REQUESTED";
             /** Context Sha256 */
             context_sha256: string;
+            /** Delivery Mode */
+            delivery_mode?: "AUTO_FINALIZE_AUTHORIZED" | null;
             /** Document Markdown */
             document_markdown: string;
             /** Generation Binding Sha256 */
@@ -3320,6 +3414,12 @@ export interface components {
             approved_module_count?: number | null;
             /** Approved Pair Canvas Aspect Ratio */
             approved_pair_canvas_aspect_ratio?: "3:8" | null;
+            /** Automatic Delivery Authorization Sha256 */
+            automatic_delivery_authorization_sha256?: string | null;
+            /** Automatic Delivery Authorization Text */
+            automatic_delivery_authorization_text?: string | null;
+            /** Domestic Detail Delivery Mode */
+            domestic_detail_delivery_mode?: ("USER_FINAL_REVIEW" | "AUTO_FINALIZE_AUTHORIZED") | null;
             /** Expected Revision */
             expected_revision: number;
             /** Native Approval Document Sha256 */
@@ -6807,6 +6907,44 @@ export interface operations {
             };
         };
     };
+    recover_automatic_detail_delivery_api_v1_workspaces__workspace_id__jobs__job_id__automatic_delivery_recover_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticDetailAutomaticDeliveryRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post: {
         parameters: {
             query?: never;
@@ -7287,6 +7425,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_automatic_detail_delivery_authorization_api_v1_workspaces__workspace_id__jobs__job_id__plan_automatic_delivery_authorization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticDetailAutomaticDeliveryAuthorization"];
                 };
             };
             /** @description Validation Error */

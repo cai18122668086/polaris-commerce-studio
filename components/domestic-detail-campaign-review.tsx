@@ -80,17 +80,18 @@ function CampaignReviewDetails({ workspaceId, sourceId, reviewId, selected, canS
   </article>;
 }
 
-export function DomesticDetailCampaignReview({ workspaceId, source, fingerprint, selected, onSelection }: { workspaceId?: string; source: JobDetail; fingerprint?: string; selected?: CampaignSelection; onSelection: (selection: CampaignSelection | undefined) => void }) {
+export function DomesticDetailCampaignReview({ workspaceId, source, fingerprint, selected, onSelection, canAttach = true }: { workspaceId?: string; source: JobDetail; fingerprint?: string; selected?: CampaignSelection; onSelection: (selection: CampaignSelection | undefined) => void; canAttach?: boolean }) {
   const history = useCampaignHistory(workspaceId, source.id);
   const quote = useCampaignQuote(workspaceId, source.id, fingerprint);
   const [viewId, setViewId] = useState<string>();
   const items = history.data?.pages.flatMap(page => page.items) ?? [];
   const active = items.some(item => ["queued", "processing", "cancelling"].includes(item.status));
-  const canSelect = source.status === "awaiting_final_review";
+  const canSelect = source.status === "awaiting_final_review" && canAttach;
   return <section className="detail-form-card" aria-label="独立整页审核">
     <h2>可选整页审核</h2>
-    <p>独立核对整页节奏、跨组接缝与信息重复。审核任务完成后，由你明确选择是否把报告列入最终审阅。</p>
-    {!canSelect && <p>此详情已确认交付；后续审核保留为独立记录，已接受的交付保持原样。</p>}
+    <p>{canSelect ? "独立核对整页节奏、跨组接缝与信息重复。审核任务完成后，由你明确选择是否把报告列入最终审阅。" : "独立核对整页节奏、跨组接缝与信息重复，报告保留为后续独立记录。"}</p>
+    {source.status === "completed" && <p>{canAttach ? "此详情已确认交付" : "此详情已按原授权完成交付"}；后续审核保留为独立记录，已接受的交付保持原样。</p>}
+    {source.status !== "completed" && !canAttach && <p>此任务已有方案阶段的自动交付授权；独立审核作为后续记录，不改变原交付范围。</p>}
     {quote.error && <p role="alert">报价不可用：{errorMessage(quote.error)}</p>}
     {quote.data && <CampaignAuthorization key={`${workspaceId}:${source.id}:${quote.data.sha256}`} workspaceId={workspaceId} sourceId={source.id} quote={quote.data} disabled={active || history.isPending || history.isError || quote.isError || quote.isFetching || !fingerprint} onOpen={setViewId} />}
     {active && <p>当前来源已有审核任务在进行，请等待其结束。</p>}

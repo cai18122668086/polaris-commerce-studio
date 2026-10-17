@@ -726,6 +726,40 @@ class PlanConfirmRequest(BaseModel):
     )
     approved_module_count: int | None = Field(default=None, ge=8, le=12)
     approved_pair_canvas_aspect_ratio: Literal["3:8"] | None = None
+    domestic_detail_delivery_mode: (
+        Literal["USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED"] | None
+    ) = None
+    automatic_delivery_authorization_text: str | None = Field(
+        default=None, min_length=2, max_length=240
+    )
+    automatic_delivery_authorization_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+
+
+class DomesticDetailAutomaticDeliveryAuthorization(BaseModel):
+    version: Literal["domestic-detail-auto-delivery-authorization-v1"]
+    job_id: str
+    workspace_id: str
+    actor_user_id: str
+    plan_id: str
+    plan_revision: int
+    native_approval_document_sha256: str
+    approval_document_sha256: str
+    contract_binding_sha256: str
+    source_input_sha256: str
+    runtime_source_sha256: str
+    delivery_mode: Literal["AUTO_FINALIZE_AUTHORIZED"]
+    authorization_text: str
+    completion_disclosure: str
+    delivery_extra_model_requests: Literal[0]
+    delivery_extra_image_requests: Literal[0]
+    sha256: str
+
+
+class DomesticDetailAutomaticDeliveryRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    authorization_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class DomesticCampaignRecoveryQuote(BaseModel):
@@ -799,6 +833,8 @@ class DomesticDetailFinalReviewResponse(BaseModel):
     quality_state: Literal["PAIR_REVIEW_PASSED", "WITH_RESIDUALS"]
     campaign_audit_status: Literal["NOT_REQUESTED"]
     supplementary_campaign_review: dict[str, Any] | None = None
+    delivery_mode: Literal["AUTO_FINALIZE_AUTHORIZED"] | None = None
+    automatic_delivery_authorization: dict[str, Any] | None = None
     screens: list[dict[str, Any]]
     pair_canvases: list[dict[str, Any]]
     residual_issues: list[dict[str, Any]]

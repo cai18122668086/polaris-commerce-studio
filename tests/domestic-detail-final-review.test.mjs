@@ -12,9 +12,9 @@ function load(file, customRequire = require) {
   const { outputText } = ts.transpileModule(source, { compilerOptions: {
     jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
   } });
-  const module = { exports: {} };
-  new Function("require", "module", "exports", outputText)(customRequire, module, module.exports);
-  return module.exports;
+  const testModule = { exports: {} };
+  new Function("require", "module", "exports", outputText)(customRequire, testModule, testModule.exports);
+  return testModule.exports;
 }
 const approval = load("../components/domestic-detail-approval.tsx");
 const { DomesticDetailFinalReview, isCurrentFinalReview } = load("../components/domestic-detail-final-review.tsx", name => {

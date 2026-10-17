@@ -92,6 +92,14 @@ def generation_binding(
             "NATIVE_DETAIL_APPROVAL_RECEIPT_INVALID",
             "The exact user approval receipt is missing or stale",
         )
+    from .delivery_authorization import receipt_authorization
+
+    try:
+        receipt_authorization(payload)
+    except ValueError as exc:
+        raise DetailGenerationError(
+            "NATIVE_DETAIL_AUTO_DELIVERY_AUTHORIZATION_INVALID", str(exc)
+        ) from exc
     assets = []
     for source in sources:
         asset = {

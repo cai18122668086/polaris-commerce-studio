@@ -11,9 +11,9 @@ const source = readFileSync(new URL("../components/domestic-detail-approval.tsx"
 const { outputText } = ts.transpileModule(source, { compilerOptions: {
   jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
 } });
-const module = { exports: {} };
-new Function("require", "module", "exports", outputText)(require, module, module.exports);
-const { NativeApprovalDocument, DomesticDetailApproval } = module.exports;
+const testModule = { exports: {} };
+new Function("require", "module", "exports", outputText)(require, testModule, testModule.exports);
+const { NativeApprovalDocument, DomesticDetailApproval } = testModule.exports;
 
 test("complete native approval renders every row and safely escapes authored markup", () => {
   const document = "# 完整方案\n\n| 屏 | 内容 |\n|---|---|\n| M01 | 原始商品事实 |\n| M02 | 下屏独立职责 |\n\n## 双屏衔接\n所有逐屏内容保留\n<script>untrusted()</script>\n";

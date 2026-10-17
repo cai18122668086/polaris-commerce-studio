@@ -168,8 +168,34 @@ async def _verified_context(
     root = detail_workspace(job.id)
     bind_native_contract(root, binding)
     state = _json(root / "session.json")
-    if state.get("state") not in {"AWAITING_USER_FINAL_REVIEW", "FINALIZED"}:
-        _reject("The accepted native session is not awaiting this final review")
+    from .delivery_authorization import (
+        AUTO_MODE,
+        native_authorization_text,
+        receipt_authorization,
+    )
+
+    authorization = receipt_authorization(
+        payload,
+        job_id=job.id,
+        workspace_id=job.workspace_id,
+        plan_id=plan.id,
+        revision=plan.revision,
+    )
+    expected_state = (
+        AUTO_MODE if authorization is not None else "AWAITING_USER_FINAL_REVIEW"
+    )
+    if state.get("state") not in {expected_state, "FINALIZED"}:
+        _reject(
+            "The accepted native session is not awaiting its original delivery mode"
+        )
+    if authorization is not None and (
+        (state.get("approval") or {}).get("delivery_mode") != AUTO_MODE
+        or (state.get("approval") or {}).get("text")
+        != native_authorization_text(payload)
+    ):
+        _reject(
+            "Native automatic delivery differs from the original explicit authorization"
+        )
     if state.get("assembly") or state.get("long_page_audit"):
         _reject(
             "Optional campaign preview needs its original website review evidence",
@@ -326,7 +352,8 @@ def _completion(
     if (
         _stable_session(state) != binding["native_session_truth_sha256"]
         or inspected["manifest"]["approval"]["text"] != binding["approval_text"]
-        or inspected["manifest"]["approval"]["mode"] != "USER_FINAL_REVIEW"
+        or inspected["manifest"]["approval"]["mode"]
+        != binding.get("delivery_mode", "USER_FINAL_REVIEW")
     ):
         _reject("The original finalized native intent changed")
     value = {
@@ -359,7 +386,12 @@ def _finish(
             or hashlib.sha256(before).hexdigest()
             != request.get("session_before_sha256")
             or _stable_session(before_state) != binding["native_session_truth_sha256"]
-            or before_state.get("state") != "AWAITING_USER_FINAL_REVIEW"
+            or before_state.get("state")
+            != (
+                "AUTO_FINALIZE_AUTHORIZED"
+                if binding.get("delivery_mode") == "AUTO_FINALIZE_AUTHORIZED"
+                else "AWAITING_USER_FINAL_REVIEW"
+            )
         ):
             _reject("The original pre-finalization session evidence changed")
         if canonical_hash(request.get("binding")) != canonical_hash(binding):
@@ -384,7 +416,11 @@ def _finish(
             "Reconcile the original local finalization before repeating it",
             "NATIVE_DETAIL_FINALIZATION_OUTCOME_UNKNOWN",
         )
-    if not allow_create or state.get("state") != "AWAITING_USER_FINAL_REVIEW":
+    automatic = binding.get("delivery_mode") == "AUTO_FINALIZE_AUTHORIZED"
+    expected_state = (
+        "AUTO_FINALIZE_AUTHORIZED" if automatic else "AWAITING_USER_FINAL_REVIEW"
+    )
+    if not allow_create or state.get("state") != expected_state:
         _reject("The original native finalization request is missing")
     before = (root / "session.json").read_bytes()
     request = {
@@ -395,15 +431,37 @@ def _finish(
     }
     _once(request_path, request)
     AuroraDetailHarnessRunner().run(
-        "finalize",
+        "auto-finalize" if automatic else "finalize",
         root,
         {
             "session": root / "session.json",
             "output": output,
-            "approval-text": str(binding["approval_text"]),
+            **({} if automatic else {"approval-text": str(binding["approval_text"])}),
         },
     )
     return _completion(root, output, request, response_path)
+
+
+def public_delivery_manifest(
+    completed: Mapping[str, Any], context: Mapping[str, Any], review: Mapping[str, Any]
+) -> dict[str, Any]:
+    manifest = deepcopy(completed["native_inspection"]["manifest"])
+    return {
+        **manifest,
+        "skill_id": manifest["skill"],
+        "state": "FINALIZED",
+        "delivery": manifest["approval"]["mode"],
+        "native_manifest_sha256": completed["native_inspection"][
+            "manifest_file_sha256"
+        ],
+        "native_delivery_receipt_sha256": completed["sha256"],
+        "quality_state": review["quality_state"],
+        "campaign_audit_status": "NOT_REQUESTED",
+        "page_asset_refs": [row["asset_id"] for row in context["screens"]],
+        "pair_canvas_asset_refs": review["pair_canvases"],
+        "final_review": {"sha256": review["sha256"], "version": review["version"]},
+        "pair_audits": context["pair_audits"],
+    }
 
 
 async def finalize_native_delivery(
@@ -421,8 +479,14 @@ async def finalize_native_delivery(
     try:
         if not approval_text.strip():
             _reject("Explicit final human review text is required")
+        from .delivery_authorization import receipt_authorization
         from .review_packet import validate_final_review
 
+        if receipt_authorization(plan.payload) is not None:
+            _reject(
+                "Use the original authorized automatic-delivery recovery",
+                "NATIVE_DETAIL_AUTOMATIC_DELIVERY_RECOVERY_REQUIRED",
+            )
         context, state, root = await _verified_context(db, job, plan, storage)
         review = await validate_final_review(
             db, job, plan, storage, context, state, root, final_review_sha256
@@ -439,23 +503,7 @@ async def finalize_native_delivery(
             **context,
         }
         completed = _finish(root, binding, allow_create=allow_create)
-        manifest = deepcopy(completed["native_inspection"]["manifest"])
-        return {
-            **manifest,
-            "skill_id": manifest["skill"],
-            "state": "FINALIZED",
-            "delivery": manifest["approval"]["mode"],
-            "native_manifest_sha256": completed["native_inspection"][
-                "manifest_file_sha256"
-            ],
-            "native_delivery_receipt_sha256": completed["sha256"],
-            "quality_state": review["quality_state"],
-            "campaign_audit_status": "NOT_REQUESTED",
-            "page_asset_refs": [row["asset_id"] for row in context["screens"]],
-            "pair_canvas_asset_refs": review["pair_canvases"],
-            "final_review": {"sha256": review["sha256"], "version": review["version"]},
-            "pair_audits": context["pair_audits"],
-        }
+        return public_delivery_manifest(completed, context, review)
     except DetailDeliveryError:
         raise
     except (

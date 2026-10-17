@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-detail-page",
-  "content_hash": "73f66d01ab129c84c48730829b3f483875eed2bf33ec0e146ea026f1d3c9b1bd",
+  "content_hash": "c5ff74928fe788e6ff3cface78922d31f75c0497e67b9339d7f5a5b67ced8779",
   "capability": "ecommerce_detail_pack",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-detail-page.input.v4.3",
@@ -265,7 +265,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "0821d0c0273fa80a8ae11135012f650ae4348b03fd257cb4130961f871f68c48"
+      "sha256": "4e5a8f7849821a8c781a10889b0d881ef0f31a7ce5a2f186a65ff05dbeb3b8cc"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -337,7 +337,7 @@
     },
     {
       "path": "tests/test_regressions.py",
-      "sha256": "56527a0c9406ef6562d5f368dd3060a53c7b8d429eccf6f089421f5fc0ea8535"
+      "sha256": "2f709a8e01e0d7915a7f1c0b76d37955ac838085704d3fb77bef16320075be06"
     }
   ],
   "rename_only": false,

@@ -863,6 +863,80 @@ def _require_module_logo_policy(session: dict, module: dict) -> None:
         )
 
 
+def validate_reference_expression_system(session: dict, plan: dict, fact_ids: set[str]) -> None:
+    """Validate actual analyzed references and their exact screen schedule."""
+    known_module_ids = {item["id"] for item in plan["modules"]}
+    reference_system = plan["reference_expression_system"]
+    require_fields(reference_system, ("anti_copy_rule",), "reference expression system")
+    for optional_empty_key in ("coverage", "adopted_patterns"):
+        if optional_empty_key not in reference_system or not isinstance(reference_system[optional_empty_key], list):
+            raise HarnessError(f"reference expression system missing required list field: {optional_empty_key}")
+    if reference_system["anti_copy_rule"] != "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET":
+        raise HarnessError("Reference use must adapt expression grammar without copying brand, copy or assets")
+    supplied_reference_items = {
+        item["id"]: item for item in session["input"].get("reference_materials", [])
+    }
+    supplied_reference_units = {
+        unit["id"]: {**unit, "reference_id": item["id"]}
+        for item in supplied_reference_items.values()
+        for unit in item.get("analyzed_units", [])
+    }
+    supplied_refs = set(supplied_reference_items)
+    coverage_refs = {item.get("reference_id") for item in reference_system["coverage"]}
+    if coverage_refs != supplied_refs:
+        raise HarnessError("Every supplied reference material must be explicitly adopted or rejected")
+    patterns = {item.get("id"): item for item in reference_system["adopted_patterns"]}
+    for pattern_id, pattern in patterns.items():
+        pattern_fields = ["id", "source_reference_ids", "source_unit_ids", "observed_method", "adaptation_for_product", "scheduled_module_ids", "do_not_copy"]
+        if plan.get("expression_contract_version") == "4.3":
+            pattern_fields.extend(["fact_dependencies", "copy_or_claims_not_inherited"])
+        require_fields(pattern, tuple(pattern_fields), "reference expression pattern")
+        if set(pattern["source_reference_ids"]) - supplied_refs:
+            raise HarnessError(f"Reference pattern {pattern_id} cites unknown materials")
+        cited_units = set(pattern["source_unit_ids"])
+        if cited_units - set(supplied_reference_units):
+            raise HarnessError(f"Reference pattern {pattern_id} cites unknown analyzed screen units")
+        if {supplied_reference_units[unit_id]["reference_id"] for unit_id in cited_units} - set(pattern["source_reference_ids"]):
+            raise HarnessError(f"Reference pattern {pattern_id} source units do not belong to its source references")
+        observed_methods = {
+            supplied_reference_units[unit_id]["observed_expression_method"]
+            for unit_id in cited_units
+        }
+        if pattern["observed_method"] not in observed_methods:
+            raise HarnessError(
+                f"Reference pattern {pattern_id} must use an expression method actually recorded in its analyzed source material"
+            )
+        if set(pattern["scheduled_module_ids"]) - known_module_ids:
+            raise HarnessError(f"Reference pattern {pattern_id} is scheduled to unknown modules")
+        if not pattern["scheduled_module_ids"]:
+            raise HarnessError(f"Reference pattern {pattern_id} must be scheduled to at least one module")
+        if plan.get("expression_contract_version") == "4.3":
+            if not pattern["fact_dependencies"] or set(pattern["fact_dependencies"]) - fact_ids:
+                raise HarnessError(f"Reference pattern {pattern_id} must bind to active verified facts")
+            if not pattern["copy_or_claims_not_inherited"]:
+                raise HarnessError(f"Reference pattern {pattern_id} must name reference claims/copy that are not inherited")
+    for item in reference_system["coverage"]:
+        require_fields(item, ("reference_id", "disposition", "pattern_ids", "reason"), "reference coverage item")
+        cited_patterns = set(item["pattern_ids"])
+        if cited_patterns - set(patterns):
+            raise HarnessError(f"Reference {item['reference_id']} cites unknown expression patterns")
+        if item["disposition"] == "ADOPTED_GRAMMAR" and not cited_patterns:
+            raise HarnessError(f"Adopted reference {item['reference_id']} must feed at least one expression pattern")
+        if item["disposition"] == "REJECTED_IRRELEVANT" and cited_patterns:
+            raise HarnessError(f"Rejected reference {item['reference_id']} cannot feed an expression pattern")
+    known_pattern_ids = set(patterns)
+    for module in plan["modules"]:
+        scheduled_patterns = {pattern_id for pattern_id, pattern in patterns.items()
+                              if module["id"] in pattern["scheduled_module_ids"]}
+        if scheduled_patterns - set(module["reference_pattern_ids"]):
+            raise HarnessError(f"Module {module['id']} must inherit every scheduled analyzed reference-expression pattern")
+        if set(module["reference_pattern_ids"]) - known_pattern_ids:
+            raise HarnessError(f"Module {module['id']} cites unknown reference-expression patterns")
+        for pattern_id in module["reference_pattern_ids"]:
+            if module["id"] not in patterns[pattern_id]["scheduled_module_ids"]:
+                raise HarnessError(f"Reference pattern {pattern_id} is not scheduled for module {module['id']}")
+
+
 def validate_plan(session: dict, plan: dict) -> None:
     if any(item.get("status") == "UNRESOLVED" for item in session["input"].get("source_conflicts", [])):
         raise HarnessError("Full planning is forbidden while product-source conflicts remain unresolved")
@@ -1409,75 +1483,7 @@ def validate_plan(session: dict, plan: dict) -> None:
         if not (set(cluster["assigned_module_ids"]) - other_assignments):
             raise HarnessError(f"Selling-point cluster {cluster['id']} is marked MUST_SEPARATE but has no dedicated module")
 
-    reference_system = plan["reference_expression_system"]
-    require_fields(reference_system, ("anti_copy_rule",), "reference expression system")
-    for optional_empty_key in ("coverage", "adopted_patterns"):
-        if optional_empty_key not in reference_system or not isinstance(reference_system[optional_empty_key], list):
-            raise HarnessError(f"reference expression system missing required list field: {optional_empty_key}")
-    if reference_system["anti_copy_rule"] != "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET":
-        raise HarnessError("Reference use must adapt expression grammar without copying brand, copy or assets")
-    supplied_reference_items = {
-        item["id"]: item for item in session["input"].get("reference_materials", [])
-    }
-    supplied_reference_units = {
-        unit["id"]: {**unit, "reference_id": item["id"]}
-        for item in supplied_reference_items.values()
-        for unit in item.get("analyzed_units", [])
-    }
-    supplied_refs = set(supplied_reference_items)
-    coverage_refs = {item.get("reference_id") for item in reference_system["coverage"]}
-    if coverage_refs != supplied_refs:
-        raise HarnessError("Every supplied reference material must be explicitly adopted or rejected")
-    patterns = {item.get("id"): item for item in reference_system["adopted_patterns"]}
-    if supplied_refs and len(patterns) < 1:
-        raise HarnessError("Analyzed reference materials were supplied, so at least one expression pattern must be adapted")
-    for pattern_id, pattern in patterns.items():
-        pattern_fields = ["id", "source_reference_ids", "source_unit_ids", "observed_method", "adaptation_for_product", "scheduled_module_ids", "do_not_copy"]
-        if plan.get("expression_contract_version") == "4.3":
-            pattern_fields.extend(["fact_dependencies", "copy_or_claims_not_inherited"])
-        require_fields(pattern, tuple(pattern_fields), "reference expression pattern")
-        if set(pattern["source_reference_ids"]) - supplied_refs:
-            raise HarnessError(f"Reference pattern {pattern_id} cites unknown materials")
-        cited_units = set(pattern["source_unit_ids"])
-        if cited_units - set(supplied_reference_units):
-            raise HarnessError(f"Reference pattern {pattern_id} cites unknown analyzed screen units")
-        if {supplied_reference_units[unit_id]["reference_id"] for unit_id in cited_units} - set(pattern["source_reference_ids"]):
-            raise HarnessError(f"Reference pattern {pattern_id} source units do not belong to its source references")
-        observed_methods = {
-            supplied_reference_units[unit_id]["observed_expression_method"]
-            for unit_id in cited_units
-        }
-        if pattern["observed_method"] not in observed_methods:
-            raise HarnessError(
-                f"Reference pattern {pattern_id} must use an expression method actually recorded in its analyzed source material"
-            )
-        if set(pattern["scheduled_module_ids"]) - known_module_ids:
-            raise HarnessError(f"Reference pattern {pattern_id} is scheduled to unknown modules")
-        if not pattern["scheduled_module_ids"]:
-            raise HarnessError(f"Reference pattern {pattern_id} must be scheduled to at least one module")
-        if plan.get("expression_contract_version") == "4.3":
-            if not pattern["fact_dependencies"] or set(pattern["fact_dependencies"]) - fact_ids:
-                raise HarnessError(f"Reference pattern {pattern_id} must bind to active verified facts")
-            if not pattern["copy_or_claims_not_inherited"]:
-                raise HarnessError(f"Reference pattern {pattern_id} must name reference claims/copy that are not inherited")
-    for item in reference_system["coverage"]:
-        require_fields(item, ("reference_id", "disposition", "pattern_ids", "reason"), "reference coverage item")
-        cited_patterns = set(item["pattern_ids"])
-        if cited_patterns - set(patterns):
-            raise HarnessError(f"Reference {item['reference_id']} cites unknown expression patterns")
-        if item["disposition"] == "ADOPTED_GRAMMAR" and not cited_patterns:
-            raise HarnessError(f"Adopted reference {item['reference_id']} must feed at least one expression pattern")
-        if item["disposition"] == "REJECTED_IRRELEVANT" and cited_patterns:
-            raise HarnessError(f"Rejected reference {item['reference_id']} cannot feed an expression pattern")
-    known_pattern_ids = set(patterns)
-    for module in plan["modules"]:
-        if supplied_refs and not module["reference_pattern_ids"]:
-            raise HarnessError(f"Module {module['id']} must inherit at least one analyzed reference-expression pattern")
-        if set(module["reference_pattern_ids"]) - known_pattern_ids:
-            raise HarnessError(f"Module {module['id']} cites unknown reference-expression patterns")
-        for pattern_id in module["reference_pattern_ids"]:
-            if module["id"] not in patterns[pattern_id]["scheduled_module_ids"]:
-                raise HarnessError(f"Reference pattern {pattern_id} is not scheduled for module {module['id']}")
+    validate_reference_expression_system(session, plan, fact_ids)
     for item in coverage:
         require_fields(item, ("claim_id", "disposition", "rationale", "defer_reason_code"), "claim coverage item")
         if "module_ids" not in item or not isinstance(item["module_ids"], list):

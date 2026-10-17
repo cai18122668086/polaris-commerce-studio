@@ -691,8 +691,36 @@ def fail_judgment(module_record, issue="Typography is not attached to the planne
     }
 
 
+class ReferenceExpressionContractTests(unittest.TestCase):
+    def test_explicitly_rejected_references_need_no_adopted_pattern(self):
+        current, value = session(with_reference=True), plan(with_reference=True)
+        value["reference_expression_system"]["coverage"][0].update({
+            "disposition": "REJECTED_IRRELEVANT", "pattern_ids": [],
+            "reason": "The analyzed reference does not help the product story.",
+        })
+        value["reference_expression_system"]["adopted_patterns"] = []
+        for item in value["modules"]:
+            item["reference_pattern_ids"] = []
+        harness.validate_reference_expression_system(current, value, set(current["planning_fact_ids"]))
+
+
+    def test_reference_patterns_apply_only_to_their_scheduled_screens(self):
+        current, value = session(with_reference=True), plan(with_reference=True)
+        value["reference_expression_system"]["adopted_patterns"][0]["scheduled_module_ids"] = ["M02"]
+        for item in value["modules"]:
+            item["reference_pattern_ids"] = ["RP1"] if item["id"] == "M02" else []
+        harness.validate_reference_expression_system(current, value, set(current["planning_fact_ids"]))
+        value["modules"][1]["reference_pattern_ids"] = []
+        with self.assertRaisesRegex(HarnessError, "every scheduled"):
+            harness.validate_reference_expression_system(current, value, set(current["planning_fact_ids"]))
+
+
+
 @unittest.skip("Superseded by the v4.1 contract regression suite below")
 class RegressionTests(unittest.TestCase):
+
+
+
     def test_v11_compact_plan_is_expanded_and_records_metrics(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

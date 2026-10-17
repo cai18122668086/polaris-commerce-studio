@@ -55,6 +55,7 @@ class AuroraDetailHarnessRunner:
             "lock-identity": {"session", "identity"},
             "resolve-conflicts": {"session", "resolution"},
             "compile-plan": {"session", "plan"},
+            "preflight-plan": {"session", "plan"},
             "authorize": {
                 "session",
                 "approval-text",
@@ -67,6 +68,7 @@ class AuroraDetailHarnessRunner:
             "record-generation": {"session", "token", "image"},
             "audit-pair": {"session", "judgment"},
             "inspect-pair-artifacts": {"session", "pair-id", "selection"},
+            "inspect-pair-review-contracts": {"session", "pair-id"},
             "prepare-repair": {"session", "repair-plan"},
             "assemble": {"session", "output"},
             "audit-long-page": {"session", "judgment"},

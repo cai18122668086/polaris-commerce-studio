@@ -177,7 +177,7 @@
       "requirement": "Raw audit evidence preserved; missing/unknown observations never count as pass",
       "completion": "unproven",
       "evidence_required": "current implementation plus relevant technical/real/visual evidence; green narrow tests alone are insufficient",
-      "local_candidate_evidence": "C1 exact native compiled identity/facts/dispositions/approval hashes reach actual review requests; conflict confirmation reaches all four pairs; strict raw message/observation and immutable receipts verified offline. Actual raster/slice lineage, all atomic pixel gates, internal gateway route dispatch and real visual evidence remain unproven."
+      "local_candidate_evidence": "C3A requires two exact-slice reports through all44 canonical native gates and preserves raw observations;288 distinct offline cases pass. C3B role-aware identity for product absence/tokens and real visual evidence remain unproven; see domestic-detail-atomic-gates-2026-10-17.md."
     },
     {
       "id": "I07",
@@ -247,6 +247,7 @@
       "697c179": "native known negative observation transitions; canonical bounded repair and residuals; application seam bridge removed"
     },
     "not_complete": [
+      "C3B role-aware identity: authorized/observed absent product and identity-only tokens must not invent a complete silhouette pass; explicit not-applicable is distinct from unknown",
       "real supplier intake/identity/fact/reference provenance and visual acceptance",
       "all per-screen semantic gates and actual supplier/visual lineage acceptance",
       "accepted recovery validates raw review provenance; old-task version routing",
@@ -381,6 +382,51 @@
       "skill_content_hash": "0851223049da6d0c49a92ce0d83c3ecccc4ead076e6ed714920e65c031328309",
       "lineage_protocol": "native-pixel-lineage-v1",
       "real_supplier_calls": 0
+    },
+    "native_atomic_candidate": {
+      "status": "C3A_all44_gates_and_raw_transport_verified_offline_C3B_role_aware_identity_pending",
+      "report": "domestic-detail-atomic-gates-2026-10-17.md",
+      "regression": {
+        "atomic-gates-native-v1": {
+          "tests": 116,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 116
+        },
+        "atomic-gates-raw-review-v1": {
+          "tests": 69,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 69
+        },
+        "atomic-gates-coordinator-v1": {
+          "tests": 9,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 9
+        },
+        "atomic-gates-authoring-final-v2": {
+          "tests": 94,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 94
+        },
+        "atomic-gates-final-authoring-v4": {
+          "tests": 3,
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "passed": 3
+        }
+      },
+      "distinct_tests": 290,
+      "skill_content_hash": "0007e952773352f7286b788b3254be191a773b2bddb833bab9f7b391adf6b567",
+      "real_supplier_calls": 0,
+      "role_absence_characterization": "Required truthful not-applicable identity comparison is still rejected; atomic-absence-characterization-v1, not counted as success. C3 is incomplete."
     }
   },
   "commands_to_cover": [
@@ -398,7 +444,9 @@
     "finalize",
     "auto-finalize (only separately authorized delivery mode)",
     "inspect",
-    "inspect-pair-artifacts"
+    "inspect-pair-artifacts",
+    "inspect-pair-review-contracts",
+    "preflight-plan"
   ],
   "protected": {
     "production_queue": true,

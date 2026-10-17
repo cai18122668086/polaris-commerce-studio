@@ -176,6 +176,13 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         "module_ids": ["M01", "M02"],
         "pair_render": {"internal_seam_method_id": "EDGE_BLEED"},
     }
+    from tests.domestic_detail_atomic_fixtures import (
+        attached_atomic_sources,
+        create_atomic_context,
+    )
+
+    native.update(create_atomic_context(tmp_path / "atomic-pair", artifact))
+    audit_sources = attached_atomic_sources(native, (source,))
     if mode == "authority_missing":
         native.pop("review_authority")
     elif mode == "authority_changed":
@@ -192,7 +199,7 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         configuration={"group_key": "primary", "product_name": "Wrong raw setting"},
     )
     coroutine = provider._native_detail_judgment_with_review(
-        request, native, (source,), artifact
+        request, native, audit_sources, artifact
     )
     expected_error = {
         "invalid_followup": "AURORA_NATIVE_IDENTITY_AUDIT_INVALID",
@@ -230,7 +237,10 @@ def test_native_identity_envelope_repair_is_bounded_and_preserves_failures(
         plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == job["id"]))
         assert len(plan.payload["usage"]["planner"]) == prior_planner_calls + calls
     repeat = provider._native_detail_judgment_with_review(
-        replace(request, attempt_id="reclaimed-execution"), native, (source,), artifact
+        replace(request, attempt_id="reclaimed-execution"),
+        native,
+        audit_sources,
+        artifact,
     )
     if expected_error:
         with pytest.raises(XingheAgentError) as repeated_error:

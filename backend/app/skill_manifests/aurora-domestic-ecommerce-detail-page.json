@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-detail-page",
-  "content_hash": "0851223049da6d0c49a92ce0d83c3ecccc4ead076e6ed714920e65c031328309",
+  "content_hash": "0007e952773352f7286b788b3254be191a773b2bddb833bab9f7b391adf6b567",
   "capability": "ecommerce_detail_pack",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-detail-page.input.v4.3",
@@ -201,7 +201,7 @@
     },
     {
       "path": "schemas/compact-detail-plan.schema.json",
-      "sha256": "fe183ade81a883504f3a984749667e7e882f14c0910211a75df6c1840c73d12f"
+      "sha256": "9c0d70d9411d340320bf07c9b6f2156e57d757431b066ebd5b1fe6d9c8a98e40"
     },
     {
       "path": "schemas/conflict-resolution.schema.json",
@@ -233,11 +233,11 @@
     },
     {
       "path": "schemas/module-judgment.schema.json",
-      "sha256": "742cb7fae522d692efca82f3a7d5e35b057bd4b069f1a457e39d4c46c9fff16e"
+      "sha256": "9d0130f6c1626559befb0424c866f98300bfe1e82016ea64192bbecd99efd454"
     },
     {
       "path": "schemas/pair-judgment.schema.json",
-      "sha256": "61856a3320079bac81852b36b745897b1c0fa1e134cfbc6fdb4ca3650e46e447"
+      "sha256": "44fbda2985232849b06d3fb1cd1b0e547fb4f3c6501078f36b209d9128002c86"
     },
     {
       "path": "schemas/repair-plan.schema.json",
@@ -265,7 +265,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "989da6528b0a2f3fec1e0ee158059342ffadd4c683ca0928bba5df40009bd186"
+      "sha256": "769f489a5a2631febc60d2e13b91bd3875d973210a8b959dc0ae6748e051b58d"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -278,6 +278,10 @@
     {
       "path": "scripts/runtime/assembly.py",
       "sha256": "d2ffef1c9f0e95b45f39ab5cc90b9a3038717d9830610e3df61217925752a68c"
+    },
+    {
+      "path": "scripts/runtime/atomic_review.py",
+      "sha256": "0afaea6a7724ca00add2c90532fa0a77d4340f518c441ca5630d566d22cc6dc3"
     },
     {
       "path": "scripts/runtime/compliance_contract.py",
@@ -301,7 +305,7 @@
     },
     {
       "path": "scripts/runtime/plan_normalizer.py",
-      "sha256": "c04fe2bcb61199cf200887aecd62edd0b80ce3e53df7653da80204b5fd18fd4d"
+      "sha256": "3fabc6642e81ce3c5b7b2a6f63c7b2958cbac281758ded0f3b6eff14572c318b"
     },
     {
       "path": "scripts/runtime/prompt_compiler.py",
@@ -337,7 +341,7 @@
     },
     {
       "path": "scripts/runtime/visual_gate.py",
-      "sha256": "fa1e623ecfc602f4a21488366b3cb46b2361664367867ab8be4737448f2232bf"
+      "sha256": "95c5200b6deefdab3091af9aa2dbf002ec7482f6b480f3c23efc2352cdecc764"
     },
     {
       "path": "tests/test_regressions.py",

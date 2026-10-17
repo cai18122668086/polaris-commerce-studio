@@ -381,7 +381,7 @@ def require_identity_silhouette(judgment: dict, context: str, *, allow_material_
         )
 
 
-def validate_module_judgment(value: dict, module: dict) -> None:
+def validate_module_judgment(value: dict, module: dict, *, pair_canvas_audit: bool = False) -> list[dict]:
     module_id = module["id"]
     require_fields(value, ("module_id", "status", "checks", "audit_complete", "observations"), "module judgment")
     if value["module_id"] != module_id:
@@ -394,7 +394,7 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     missing = [name for name in CHECKS if name not in value["checks"]]
     if missing:
         raise HarnessError("Judgment missing checks: " + ", ".join(missing))
-    require_identity_silhouette(value, f"module {module_id} judgment")
+    require_identity_silhouette(value, f"module {module_id} judgment", allow_material_failure=True)
     failures = value.get("material_failures", [])
     if module.get("plan", {}).get("authoring_plan_format") == "COMPACT_V1_3":
         _validate_concrete_check_evidence(value["checks"], f"module {module_id}")
@@ -410,7 +410,7 @@ def validate_module_judgment(value: dict, module: dict) -> None:
             "typography_primary_mode_observed", "typography_anchor_zone_observed",
             "typography_anchor_target_observation", "typography_hierarchy_observation",
             "typography_neighbor_difference_observation",
-            "product_prominence_percent", "headline_rank", "evidence_is_primary_visual",
+            "product_prominence_percent", "evidence_is_primary_visual",
             "depth_layers", "type_roles_seen", "unequal_information_groups_seen",
             "visual_tension_seen", "mobile_scan_order", "commercial_closure_visible",
             "background_competition", "independent_brand_logo_count",
@@ -478,7 +478,7 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     # screen is judged.  Without this gate, a model can honestly report that
     # each half is attractive while silently accepting two unrelated posters
     # separated by a hard horizontal cut.
-    if module.get("pair_id") and int(module.get("order", 1)) % 2 == 1:
+    if not pair_canvas_audit and module.get("pair_id") and int(module.get("order", 1)) % 2 == 1:
         seam_audit = value.get("pair_seam_audit")
         if not isinstance(seam_audit, dict):
             hard_failures.append("Continuous-pair judgment is missing the pair seam audit")
@@ -648,7 +648,7 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     elif performance["product_prominence_min_percent"] > 0 and prominence < performance["product_prominence_min_percent"]:
         hard_failures.append("Product prominence is below the approved visual-performance minimum")
     headline_rank = observations.get("headline_rank")
-    if performance["headline_must_enter_top_three"]:
+    if performance["headline_must_enter_top_three"] and not (pair_canvas_audit and observations["headline_visible"] is False):
         if not isinstance(headline_rank, int) or isinstance(headline_rank, bool):
             hard_failures.append("Required headline visual rank was not measured")
         elif headline_rank > performance["headline_rank_max"]:
@@ -700,10 +700,22 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     elif competition_rank[observed_competition] > competition_rank[performance["background_competition_max"]]:
         hard_failures.append("Background competition exceeds the approved ceiling")
 
+    silhouette = value["identity_silhouette"]
+    identity_drift = any(silhouette[key] is False for key in ("shape_consistent", "colorway_consistent", "texture_consistent"))
+    if identity_drift:
+        hard_failures.append("Observed product silhouette, colorway or texture differs from the original")
+    if pair_canvas_audit and performance["headline_must_enter_top_three"] and observations["headline_visible"] is False:
+        hard_failures.append("The approved headline is visibly absent")
     if value["status"] == "PASS" and (failures or failed_checks or hard_failures):
         raise HarnessError("PASS judgment violates hard pixel gates: " + "; ".join(hard_failures or failed_checks))
     if value["status"] == "MATERIAL_FAIL" and not failures:
         raise HarnessError("MATERIAL_FAIL requires visible material failures")
+    if value["status"] == "MATERIAL_FAIL" and not (failed_checks or hard_failures):
+        raise HarnessError("MATERIAL_FAIL contradicts entirely passing atomic observations")
+    derived = [{"check": name, "visible_evidence": value["checks"][name]["visible_evidence"]} for name in failed_checks]
+    derived.extend({"check": "native_atomic_gate", "visible_evidence": reason, "observations": observations} for reason in hard_failures)
+    return derived
+
 
 
 def validate_long_page_judgment(value: dict, plan: dict | None = None) -> None:

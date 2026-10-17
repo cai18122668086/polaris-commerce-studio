@@ -19,18 +19,17 @@ from tests.test_native_detail_failure_transition import pair_audit as pair_audit
 
 @pytest.fixture
 def complete_observation(pair_audit):
-    _, _, raw = pair_audit
+    from tests.domestic_detail_atomic_fixtures import review_context
+
+    root, _, raw = pair_audit
     raw["status"] = "PASS"
     raw["material_failures"] = []
     raw.update(ocr_text=[], unauthorized_ocr_text=[], forbidden_text_hits=[])
-    request = {
-        "pair_id": raw["pair_id"],
-        "module_ids": raw["module_ids"],
-        "pair_render": {"internal_seam_method_id": "GRAPHIC_OVERLAY"},
-        "approved_module_contracts": [
-            {"contract": {"visible_copy": ["UNSEEN PLAN COPY"]}}
-        ],
-    }
+    request = review_context(root)
+    request["unused_plan_copy"] = "UNSEEN PLAN COPY"
+    request["pixel_lineage"]["canvas"]["sha256"] = "a" * 64
+    for row in raw["module_judgments"]:
+        row["slice_binding"]["canvas_sha256"] = "a" * 64
     return raw, request
 
 

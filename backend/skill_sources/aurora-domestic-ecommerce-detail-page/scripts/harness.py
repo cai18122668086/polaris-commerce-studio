@@ -20,11 +20,13 @@ from runtime.compliance_contract import validate_high_risk_cosmetic_claims, vali
 from runtime.image_format import ensure_format_canvas, image_dimensions, normalize_generated_image
 from runtime.prompt_compiler import compile_pair_prompt, compile_prompt
 from runtime.performance_contract import resolve_performance_contract
+from runtime.atomic_review import review_contracts, validate_atomic_reports
 from runtime.pixel_lineage import create_fixed_slices, pair_artifacts, preserve_provider_original, preserve_signed_request
 from runtime.plan_normalizer import (
     COMPACT_PLAN_FORMAT,
     normalize_plan,
     style_constitution_errors,
+    validate_expression_signature,
 )
 from runtime.sales_depth_contract import validate_sales_depth_contract, validate_formula_split_contract
 from runtime.sales_architecture import (
@@ -1156,6 +1158,8 @@ def validate_plan(session: dict, plan: dict) -> None:
     expected_order = 1
     previous_module = None
     for module in plan["modules"]:
+        if module.get("expression_contract_version") == "4.3":
+            validate_expression_signature(module)
         require_fields(
             module,
             ("id", "order", "duty", "buyer_question", "lead_conclusion", "lead_claim_id", "selling_point_cluster_ids", "visual_proof_direction", "visual_evidence", "visual_proof_contract", "module_spatial_structure_contract", "copy_intent", "composition_family", "camera_scale", "text_system", "reading_path", "copy_density", "visual_payload_density", "proof_relation_strength", "commercial_energy", "breathing_screen", "brand_anchor", "independent_logo_policy", "independent_logo_source_id", "inherited_dna_tokens", "variation_from_previous", "output"),
@@ -1725,7 +1729,7 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
     for item in pair_modules:
         item["status"] = "AWAITING_GENERATION"
     save(args.session, session, f"generation_requested:{pair['pair_id'] if pair else module['id']}")
-    return {"request": str(Path(args.out).resolve()), **request}
+    return {"request": str(Path(args.out).resolve()), **request, "approved_module_contracts": review_contracts(pair_modules, len(session["modules"]))}
 
 
 def cmd_record_generation(args: argparse.Namespace) -> dict:
@@ -1980,6 +1984,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         raise HarnessError("Pair judgment missing checks: " + ", ".join(missing))
     require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment", allow_material_failure=True)
     failures = list(judgment["material_failures"])
+    failures.extend(validate_atomic_reports(judgment, pair_modules, lineage))
     if judgment["status"] == "MATERIAL_FAIL" and not failures:
         raise HarnessError("MATERIAL_FAIL pair judgment requires visible material failures")
     # These findings come only from explicit negative pixel observations. Missing
@@ -2021,9 +2026,18 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     cycle_counts = [item.get("cycle_attempt_count") for item in pair_modules]
     if any(type(count) is not int for count in cycle_counts) or cycle_counts[0] not in (1, 2) or cycle_counts != [cycle_counts[0]] * len(pair_modules):
         raise HarnessError("Pair audit requires the same first or second cycle attempt on both screens")
+    # Preserve raw reports unchanged. Whole-pair preservation claims require
+    # both complete atomic reports; never invent an identity pass on failure.
+    effective_passed = [name for name in judgment.get("passed_layers", []) if name in checks and checks[name]["pass"] is True]
+    if any(report["status"] != "PASS" for report in judgment["module_judgments"]):
+        effective_passed = []
+    if any(silhouette[name] is False for name in ("shape_consistent", "colorway_consistent", "texture_consistent")):
+        effective_passed = [name for name in effective_passed if name != "identity"]
+    if seam["hard_cut_absent"] is False or seam["method_specific_pass"] is False:
+        effective_passed = [name for name in effective_passed if name != "internal_seam"]
     for item in pair_modules:
         attempt = item["attempts"][-1]
-        attempt["judgment"] = {**judgment, "material_failures": failures}
+        attempt["judgment"] = {**judgment, "material_failures": failures, "effective_passed_layers": effective_passed}
         attempt["artifact_lineage_sha256"] = lineage["sha256"]
         if judgment["status"] == "PASS":
             item["accepted_asset"] = attempt["image"]
@@ -2726,6 +2740,15 @@ def summary(session: dict) -> dict:
     return result
 
 
+def cmd_inspect_pair_review_contracts(args: argparse.Namespace) -> dict:
+    session = load_json(args.session)
+    pair = next((pair for pair in session["plan"]["output_strategy"]["continuous_pair_rendering"]["pair_ids"] if pair["pair_id"] == args.pair_id), None)
+    if pair is None:
+        raise HarnessError("Unknown pair review contract")
+    by_id = {module["id"]: module for module in session["modules"]}
+    return {"module_contracts": review_contracts([by_id[key] for key in pair["module_ids"]], len(session["modules"]))}
+
+
 def cmd_inspect_pair_artifacts(args: argparse.Namespace) -> dict:
     return pair_artifacts(load_json(args.session), args.pair_id, args.selection)
 
@@ -2738,7 +2761,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2759,6 +2782,7 @@ def parser() -> argparse.ArgumentParser:
     commands["audit-current"].add_argument("--judgment", required=True)
     commands["audit-pair"].add_argument("--judgment", required=True)
     commands["inspect-pair-artifacts"].add_argument("--pair-id", required=True)
+    commands["inspect-pair-review-contracts"].add_argument("--pair-id", required=True)
     commands["inspect-pair-artifacts"].add_argument("--selection", choices=("LATEST_RECORDED", "ACCEPTED"), default="LATEST_RECORDED")
     commands["prepare-repair"].add_argument("--repair-plan", required=True)
     commands["apply-user-adjustment"].add_argument("--adjustment", required=True)
@@ -2775,7 +2799,7 @@ HANDLERS = {
     "authorize": cmd_authorize, "generate-next": cmd_generate_next, "record-generation": cmd_record_generation,
     "record-generation-batch": cmd_record_generation_batch,
     "audit-current": cmd_audit_current, "prepare-repair": cmd_prepare_repair,
-    "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
+    "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "inspect-pair-review-contracts": cmd_inspect_pair_review_contracts, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 

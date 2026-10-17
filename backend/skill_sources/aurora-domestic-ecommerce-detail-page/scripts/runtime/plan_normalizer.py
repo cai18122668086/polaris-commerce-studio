@@ -285,6 +285,12 @@ def _derive_output_strategy(session: dict, raw: dict, module_count: int) -> dict
     }
 
 
+def validate_expression_signature(module: dict) -> None:
+    expected = "+".join(str(module.get(key, "")) for key in ("primary_subject_class", "presentation_form", "camera_scale", "complete_product_role"))
+    if module.get("expression_signature") != expected:
+        raise HarnessError("Module expression_signature must be the exact authored subject+presentation+camera+product-role tuple")
+
+
 def _derive_module(session: dict, raw: dict, order: int, module_count: int, plan_format: str) -> dict:
     require_fields(
         raw,
@@ -299,6 +305,7 @@ def _derive_module(session: dict, raw: dict, order: int, module_count: int, plan
         ),
         "compact plan module",
     )
+    validate_expression_signature(raw)
     for list_key in ("pain_ids", "value_bridge_ids"):
         _require_list(raw.get(list_key), f"compact plan module {list_key}", allow_empty=True)
     proof = raw["proof"]

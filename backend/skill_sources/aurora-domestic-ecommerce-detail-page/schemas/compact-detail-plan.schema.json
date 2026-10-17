@@ -223,6 +223,9 @@
             "type": "object",
             "required": ["expression_mode", "claim_visualizability", "primary_visual_carrier", "visual_scene_sentence", "copy_responsibility"],
             "properties": {
+              "expression_mode": {"enum": ["IMAGE_FIRST", "IMAGE_PLUS_COPY", "COPY_ONLY_JUSTIFIED"]},
+              "claim_visualizability": {"enum": ["VISUALIZABLE", "PARTIALLY_VISUALIZABLE", "TEXT_VERIFIABLE_ONLY"]},
+              "primary_visual_carrier": {"enum": ["PRODUCT_HERO", "PAIN_SCENE", "ACTION_CONTACT", "STATE_CONTRAST", "PROCESS_PATH", "MATERIAL_MACRO", "RESULT_SCENE", "SCALE_RELATION", "DOCUMENT_EVIDENCE", "PRODUCT_DETAIL", "USE_SCENE", "SELECTION", "SPECIFICATION", "TRUST", "PURCHASE_CLOSURE"]},
               "product_presence_policy": {"enum": ["REQUIRED_DOMINANT", "REQUIRED_SUPPORTING", "IDENTITY_TOKEN_ONLY", "OPTIONAL", "ABSENT_ALLOWED", "ABSENT_PREFERRED"]},
               "evidence_subject_policy": {"enum": ["PRODUCT_DOMINANT", "CLAIM_OBJECT_DOMINANT", "ACTION_RESULT_DOMINANT", "SCENE_DOMINANT"]},
               "visualization_mode": {"enum": ["DIRECT_OBSERVATION", "CONCEPTUAL_NON_DIAGNOSTIC", "CONTEXTUAL_ONLY"]},

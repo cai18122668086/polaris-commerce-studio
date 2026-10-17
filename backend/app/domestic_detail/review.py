@@ -277,6 +277,53 @@ def normalize_pair_observation(
             _invalid(
                 "/internal_seam_evidence/" + key, "needs an actual pixel description"
             )
+    from .atomic_review import atomic_context
+
+    contracts, slices = atomic_context(request, image_sha256)
+    reports = value["module_judgments"]
+    if [row["module_id"] for row in reports] != request["module_ids"]:
+        _invalid("/module_judgments", "must preserve both actual slice IDs in order")
+    for index, (report, contract, sliced) in enumerate(
+        zip(reports, contracts, slices, strict=True)
+    ):
+        prefix = f"/module_judgments/{index}"
+        if report["approved_contract_sha256"] != contract["contract_sha256"]:
+            _invalid(
+                prefix + "/approved_contract_sha256", "differs from the approved module"
+            )
+        if report["artifact_binding"]["image_sha256"] != sliced["sha256"] or report[
+            "slice_binding"
+        ] != {"canvas_sha256": image_sha256, "crop_box": sliced["crop_box"]}:
+            _invalid(
+                prefix + "/slice_binding", "differs from its actual fixed native window"
+            )
+        if report["artifact_binding"]["ocr_text"] != report["observations"]["ocr_text"]:
+            _invalid(
+                prefix + "/artifact_binding/ocr_text",
+                "disagrees with the raw atomic OCR",
+            )
+        if report["artifact_binding"]["visual_inspection_output"] in (None, "", {}, []):
+            _invalid(
+                prefix + "/artifact_binding/visual_inspection_output",
+                "inspection is absent",
+            )
+        observed_negative = any(
+            row["pass"] is False for row in report["checks"].values()
+        ) or any(report["identity_silhouette"][key] is False for key in IDENTITY_KEYS)
+        if report["status"] == "PASS" and (
+            observed_negative or report["material_failures"]
+        ):
+            _invalid(
+                prefix + "/status", "PASS contradicts atomic negative observations"
+            )
+        if report["status"] == "MATERIAL_FAIL" and not report["material_failures"]:
+            _invalid(
+                prefix + "/material_failures", "needs explicit visible failure evidence"
+            )
+    if value["status"] == "PASS" and any(
+        report["status"] != "PASS" for report in reports
+    ):
+        _invalid("/status", "PASS contradicts a failing atomic module")
     information = value.get("information_audit")
     if not isinstance(information, dict):
         _invalid("/information_audit", "explicit information observations are required")
@@ -304,7 +351,11 @@ def normalize_pair_observation(
     )
     if value["status"] == "PASS" and (negative or value["material_failures"]):
         _invalid("/status", "PASS contradicts explicit negative observations")
-    if value["status"] == "MATERIAL_FAIL" and not value["material_failures"]:
+    if (
+        value["status"] == "MATERIAL_FAIL"
+        and not value["material_failures"]
+        and all(report["status"] == "PASS" for report in reports)
+    ):
         _invalid(
             "/material_failures", "a paid image repair needs a visible material finding"
         )

@@ -58,6 +58,7 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
+from .domestic_detail.atomic_review import atomic_context, synthetic_module_judgments
 from .domestic_detail.facts import DetailIntakeError, _schema, validate_intake
 from .domestic_detail.generation import (
     DetailGenerationError,
@@ -5798,7 +5799,12 @@ class XingheImageProvider:
                         await self._native_detail_judgment_with_review(
                             request,
                             native_detail_request,
-                            sources,
+                            (*sources, *(SourceImage(
+                                asset_id=f"native-slice:{module_id}:{sliced.sha256}",
+                                group_key=str(configuration["group_key"]), filename=sliced.filename,
+                                content_type=sliced.content_type, sha256=sliced.sha256,
+                                payload=sliced.payload, source_role=f"generated_module_candidate:{module_id}",
+                            ) for module_id, sliced in zip(native_detail_request["module_ids"], native_pixels.screens, strict=True))),
                             canvas_artifact,
                         ),
                     )
@@ -6327,7 +6333,7 @@ class XingheImageProvider:
                         or [{"visible_evidence": "像素审计发现需要修正的可见问题"}]
                     ),
                     "passed_layers": list(
-                        last_judgment.get("passed_layers") or ["identity"]
+                        last_judgment.get("effective_passed_layers") or []
                     ),
                     "root_cause": "按原生 pair 像素审计结果修正可见问题并保持商品身份锁定。",
                     "unified_strategy": "仅保留 passed_layers 明确列出的通过层；修正 material_failures 中的全部问题，不得保留被判失败的接缝或文案。",
@@ -6347,10 +6353,11 @@ class XingheImageProvider:
                 f"Native detail session is not ready: {state}",
             )
         review_authority = approved_review_authority(native_session_value)
-        runner.run(
+        issued_request = runner.run(
             "generate-next", workspace, {"session": session_path, "out": request_path}
         )
         native_request = json.loads(request_path.read_text(encoding="utf-8"))
+        native_request["approved_module_contracts"] = issued_request["approved_module_contracts"]
         native_request["signed_request_sha256"] = hashlib.sha256(
             request_path.read_bytes()
         ).hexdigest()
@@ -6370,22 +6377,11 @@ class XingheImageProvider:
         session_for_audit = json.loads(session_path.read_text(encoding="utf-8"))
         if approved_review_authority(session_for_audit) != review_authority:
             raise DetailReviewError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Approved review authority changed while issuing the native request")
-        approved_contracts = []
-        requested_module_ids = {
-            str(module_id) for module_id in native_request.get("module_ids") or []
-        }
-        for module in session_for_audit.get("modules") or []:
-            if (
-                not isinstance(module, Mapping)
-                or str(module.get("id") or "") not in requested_module_ids
-            ):
-                continue
-            plan = module.get("plan")
-            if isinstance(plan, Mapping):
-                approved_contracts.append(
-                    {"module_id": str(module.get("id")), "contract": dict(plan)}
-                )
-        native_request["approved_module_contracts"] = approved_contracts
+        expected_contracts = [{"module_id": str(module["id"]), "contract": dict(module["plan"])}
+                              for module in (session_for_audit.get("modules") or [])[expected_index:expected_index + 2]]
+        supplied = native_request.get("approved_module_contracts") or []
+        if [{"module_id": row.get("module_id"), "contract": row.get("contract")} for row in supplied] != expected_contracts:
+            raise AuroraDetailHarnessError("AURORA_NATIVE_ATOMIC_CONTEXT_INVALID", "Native review contracts differ from the approved session")
         # The signed request on disk stays immutable. Its app envelope carries
         # the exact approved native identity and fact dispositions for review.
         native_request["review_authority"] = review_authority
@@ -6436,7 +6432,7 @@ class XingheImageProvider:
         module_ids = [str(item) for item in native_request.get("module_ids") or []]
         contracts = native_request.get("pair_render") or {}
         method = str(contracts.get("internal_seam_method_id") or "BACKGROUND_STRINGING") if isinstance(contracts, Mapping) else "BACKGROUND_STRINGING"
-        evidence = "候选 3:8 画布已按原生 Harness 的双屏窗口与接缝合同完成像素检查。"
+        evidence = "SYNTHETIC_OFFLINE_FIXTURE; no real semantic pixel acceptance."
         checks = {
             key: {"pass": True, "visible_evidence": evidence}
             for key in ("identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression")
@@ -6444,14 +6440,15 @@ class XingheImageProvider:
         return {
             "pair_id": pair_id,
             "module_ids": module_ids,
+            "module_judgments": synthetic_module_judgments(native_request, artifact.sha256, datetime.now(UTC).isoformat()),
             "status": "PASS",
             "audit_complete": True,
             "artifact_binding": {
                 "image_sha256": artifact.sha256,
-                "auditor": "polaris-native-detail-runtime",
+                "auditor": "polaris-offline-fixture",
                 "audited_at": datetime.now(UTC).isoformat(),
                 "ocr_text": [],
-                "visual_inspection_output": {"mode": "NATIVE_HARNESS_PIXEL_GATE", "dimensions": [artifact.width, artifact.height]},
+                "visual_inspection_output": {"mode": "SYNTHETIC_OFFLINE_FIXTURE", "dimensions": [artifact.width, artifact.height]},
             },
             "pair_canvas": {"aspect_ratio": "3:8", "width_px": artifact.width, "height_px": artifact.height, "decomposition": "TWO_FIXED_SINGLE_SCREEN_WINDOWS"},
             "checks": checks,
@@ -6506,6 +6503,13 @@ class XingheImageProvider:
             raise XingheAgentError(exc.code, str(exc)) from exc
         if native_request.get("product_information") != authority["product_information"] or native_request.get("product_name") != authority["product_name"]:
             raise XingheAgentError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Review aliases differ from the approved native authority")
+        try:
+            atomic_contracts, atomic_slices = atomic_context(native_request, artifact.sha256)
+            attached_slices = [source for source in sources if source.source_role.startswith("generated_module_candidate:")]
+            if [source.source_role for source in attached_slices] != ["generated_module_candidate:" + row["module_id"] for row in atomic_contracts] or [source.sha256 for source in attached_slices] != [row["sha256"] for row in atomic_slices]:
+                raise DetailReviewError("AURORA_NATIVE_ATOMIC_CONTEXT_INVALID", "Both exact generated slices must be attached to the real review")
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
         candidate = SourceImage(
             asset_id=f"generated:{artifact.sha256}",
             group_key=str(native_request.get("pair_id") or request.job_id),
@@ -6531,8 +6535,8 @@ class XingheImageProvider:
             "product_information": authority["product_information"],
             "review_authority": authority,
             "approved_module_contracts": list(native_request.get("approved_module_contracts") or []),
-            "pixel_lineage": native_request.get("pixel_lineage"),
-            "audit_context_version": "aurora-v4.3-pair-audit-v4",
+            "pixel_lineage": pixel_review_context(native_request["pixel_lineage"]),
+            "audit_context_version": "aurora-v4.3-pair-audit-v5",
             "candidate_sha256": artifact.sha256,
             "candidate_dimensions": [artifact.width, artifact.height],
             "source_inventory": source_inventory,
@@ -8185,7 +8189,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
         # exercising the legacy detail schema on the Aurora route.
         product = request.product_name or "可见商品"
         modules: list[dict[str, Any]] = []
-        subject_scales = ("hero", "medium", "close", "macro", "mixed")
+        subject_scales = ("wide", "medium", "close", "macro", "mixed")
         archetypes = (
             "BENEFIT_OVERVIEW",
             "DEDICATED_BENEFIT_PROOF",
@@ -8204,7 +8208,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
             "DOCUMENTARY_EVIDENCE",
             "SPECIFICATION_BOARD",
             "FAQ_BOARD",
-            "PURCHASE_CLOSURE",
+            "ASYMMETRIC_EDITORIAL",
         )
         story_functions = (
             "HOOK",
@@ -8266,9 +8270,9 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                         "hidden_copy_test": conclusion,
                     },
                     "expression": {
-                        "expression_mode": "DIRECT_OBSERVATION",
-                        "claim_visualizability": conclusion,
-                        "primary_visual_carrier": "商品主体",
+                        "expression_mode": "IMAGE_PLUS_COPY",
+                        "claim_visualizability": "VISUALIZABLE",
+                        "primary_visual_carrier": "PRODUCT_HERO",
                         "visual_scene_sentence": conclusion,
                         "copy_responsibility": "说明购买结论",
                     },
@@ -8306,7 +8310,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                     "secondary_subject_classes": [],
                     "presentation_form": presentation_forms[index % len(presentation_forms)],
                     "complete_product_role": "DOMINANT" if index == 0 else "SUPPORTING",
-                    "expression_signature": f"aurora expression signature {number:02d}",
+                    "expression_signature": f"COMPLETE_PRODUCT+{presentation_forms[index % len(presentation_forms)]}+{subject_scales[index % len(subject_scales)]}+{'DOMINANT' if index == 0 else 'SUPPORTING'}",
                     "visual_cast": {
                         "hero_subject": "商品主体",
                         "claim_object": "卖点证据",
@@ -10147,7 +10151,19 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "pair-judgment schema: pair_id, module_ids, status, audit_complete, "
             "artifact_binding, pair_canvas, checks, screen_coverage, "
             "internal_seam_evidence, information_audit, material_failures and "
-            "identity_silhouette. Inspect actual pixels, compare the candidate to "
+            "identity_silhouette and module_judgments. module_judgments must contain "
+            "two complete module-judgment reports in approved order. Each report uses "
+            "all 44 canonical checks, its own observed OCR and measurements, full "
+            "identity_silhouette and observations. Bind approved_contract_sha256 to "
+            "the supplied contract_sha256, artifact_binding.image_sha256 to that "
+            "actual fixed slice, and slice_binding to the exact canvas hash/crop_box. "
+            "Inspect both attached generated_module_candidate images for their own "
+            "duties, geometry, typography, brand, semantic role and content units; "
+            "use the last full canvas to inspect the seam. Never copy expected values "
+            "into observations. Known absence may use zero, empty arrays, NOT_PRESENT, "
+            "or headline_visible=false/headline_rank=null as appropriate; unknown "
+            "measurements require audit_complete=false and stop the workflow. "
+            "A PASS pair cannot contain a failing module. Inspect actual pixels, compare the candidate to "
             "every product reference, transcribe visible copy before judging fact "
             "binding, and fail closed on identity drift, unsupported copy, missing "
             "visual proof, illegible text, repeated screens, broken seam, or "
@@ -10240,7 +10256,12 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "wide, medium, close, macro, or mixed; story_function, "
             "visual_archetype, primary_subject_class, presentation_form, and "
             "complete_product_role must use only the exact enum tokens in the "
-            "installed schema. Never use SOURCE_IMAGES_ONLY or any workflow label. "
+            "installed schema. expression_signature must equal primary_subject_class "
+            "+ '+' + presentation_form + '+' + camera_scale + '+' + complete_product_role "
+            "using those exact four authored tokens in that order. Nested expression "
+            "mode, claim_visualizability and primary_visual_carrier also use the "
+            "installed closed enums; descriptive sentences belong in visual_scene_sentence. "
+            "Never use SOURCE_IMAGES_ONLY or any workflow label. "
             "Nested proof requires buyer_takeaway, visual_verb, primary_subject, "
             "supporting_subjects, required_relations, minimum_visual_payload, "
             "visual_specificity_anchor, hidden_copy_test. Nested expression "
@@ -10293,7 +10314,11 @@ def _planner_prompt(request: PlannerRequest) -> str:
                 "formula/ingredient routing, identity/brand gate, visual DNA, and "
                 "per-module subject class, presentation form, complete-product role, "
                 "expression signature, visual cast, structured content units and "
-                "visible-copy anchors. "
+                "visible-copy anchors. expression_signature must be the exact four "
+                "authored tokens primary_subject_class + '+' + presentation_form + '+' "
+                "+ camera_scale + '+' + complete_product_role. Nested expression_mode, "
+                "claim_visualizability and primary_visual_carrier use the closed schema "
+                "enums; descriptive prose belongs in visual_scene_sentence. "
                 "Honor every schema minLength exactly; any string field with "
                 "minLength=10 must contain at least 10 characters, especially "
                 "expression.commercial_comfort.replacement_expression. "
@@ -11300,9 +11325,9 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
     if expression_output.get("evidence_subject_policy") == "PRODUCT_DETAIL_DOMINANT":
         expression_output["evidence_subject_policy"] = "CLAIM_OBJECT_DOMINANT"
     for key, fallback in {
-        "expression_mode": "DIRECT_OBSERVATION",
-        "claim_visualizability": conclusion,
-        "primary_visual_carrier": "产品主体",
+        "expression_mode": "",
+        "claim_visualizability": "",
+        "primary_visual_carrier": "",
         "visual_scene_sentence": conclusion,
         "copy_responsibility": "说明购买结论",
     }.items():
@@ -11550,10 +11575,7 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
     for field, fallback in enum_fallbacks.items():
         if output.get(field) not in allowed_enums[field]:
             output[field] = fallback
-    signature = as_text(output.get("expression_signature"), conclusion)
-    if len(signature) < 10:
-        signature = f"{signature}；保持产品识别与卖点连续"
-    output["expression_signature"] = signature
+    output["expression_signature"] = as_text(output.get("expression_signature"), "")
     return output
 
 

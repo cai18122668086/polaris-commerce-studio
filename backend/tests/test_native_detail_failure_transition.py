@@ -12,7 +12,9 @@ from app.aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
 )
+from app.domestic_detail.atomic_review import synthetic_module_judgments
 from app.domestic_detail.plans import canonical_hash
+from tests.domestic_detail_atomic_fixtures import minimal_atomic_plan, review_context
 
 
 def record_fixture(root, current, candidate, token):
@@ -56,15 +58,16 @@ def pair_audit(tmp_path):
     modules = [
         {
             "id": module_id,
+            "order": index,
+            "pair_id": "P01",
             "status": "AWAITING_AUDIT",
             "cycle_attempt_count": 0,
-            "plan": {
-                "output": {"width_px": 3, "height_px": 4},
-                "transition_contract": {"method_id": method},
-            },
+            "plan": minimal_atomic_plan(module_id, index, method),
             "attempts": [],
         }
-        for module_id, method in (("M01", "EDGE_BLEED"), ("M02", "GRAPHIC_OVERLAY"))
+        for index, (module_id, method) in enumerate(
+            (("M01", "EDGE_BLEED"), ("M02", "GRAPHIC_OVERLAY")), start=1
+        )
     ]
     current = {
         "version": "4.3.1",
@@ -178,6 +181,11 @@ def pair_audit(tmp_path):
             "detail_page_not_posterized": True,
         },
     }
+    judgment["module_judgments"] = synthetic_module_judgments(
+        review_context(tmp_path),
+        judgment["artifact_binding"]["image_sha256"],
+        "2026-10-17T14:00:00+00:00",
+    )
     return tmp_path, current, judgment
 
 
@@ -202,9 +210,12 @@ def audit(fixture):
 def test_native_negative_findings_use_bounded_canonical_transition(
     pair_audit, finding, attempt
 ):
-    _, current, judgment = pair_audit
-    for module in current["modules"]:
-        module["cycle_attempt_count"] = attempt
+    root, current, judgment = pair_audit
+    if attempt == 2:
+        current = record_fixture(
+            root, current, root / "candidate.png", "fixture-token-2"
+        )
+        pair_audit = (root, current, judgment)
     if finding == "seam":
         judgment["internal_seam_evidence"]["hard_cut_absent"] = False
         judgment["internal_seam_evidence"]["method_specific_pass"] = False

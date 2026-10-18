@@ -2309,6 +2309,459 @@
         "title": "DomesticDetailFinalReviewResponse",
         "type": "object"
       },
+      "DomesticDetailLocalRevisionCanvas": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "pixel_lineage_sha256": {
+            "title": "Pixel Lineage Sha256",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "sha256",
+          "width",
+          "height",
+          "pixel_lineage_sha256"
+        ],
+        "title": "DomesticDetailLocalRevisionCanvas",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionDelta": {
+        "additionalProperties": false,
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "TYPOGRAPHY_LAYOUT",
+              "COPY_CONTENT",
+              "VISUAL_DETAIL",
+              "OTHER_LOCAL"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "change_only": {
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Change Only",
+            "type": "array"
+          },
+          "change_scope": {
+            "const": "local",
+            "title": "Change Scope",
+            "type": "string"
+          },
+          "changes_campaign_style": {
+            "const": false,
+            "title": "Changes Campaign Style",
+            "type": "boolean"
+          },
+          "changes_facts": {
+            "const": false,
+            "title": "Changes Facts",
+            "type": "boolean"
+          },
+          "changes_identity": {
+            "const": false,
+            "title": "Changes Identity",
+            "type": "boolean"
+          },
+          "changes_module_sequence": {
+            "const": false,
+            "title": "Changes Module Sequence",
+            "type": "boolean"
+          },
+          "changes_target_buyer": {
+            "const": false,
+            "title": "Changes Target Buyer",
+            "type": "boolean"
+          },
+          "module_id": {
+            "pattern": "^M(?:0[1-9]|1[0-2])$",
+            "title": "Module Id",
+            "type": "string"
+          },
+          "must_not_regress": {
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Must Not Regress",
+            "type": "array"
+          },
+          "preserve": {
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Preserve",
+            "type": "array"
+          },
+          "verbatim_instruction": {
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Verbatim Instruction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "module_id",
+          "verbatim_instruction",
+          "change_scope",
+          "change_kind",
+          "change_only",
+          "preserve",
+          "must_not_regress",
+          "changes_identity",
+          "changes_facts",
+          "changes_target_buyer",
+          "changes_campaign_style",
+          "changes_module_sequence"
+        ],
+        "title": "DomesticDetailLocalRevisionDelta",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionQuote": {
+        "properties": {
+          "actor_user_id": {
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "adjustment": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionDelta"
+          },
+          "approved_screen_count": {
+            "enum": [
+              8,
+              10,
+              12
+            ],
+            "title": "Approved Screen Count",
+            "type": "integer"
+          },
+          "authorization_text": {
+            "title": "Authorization Text",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "delivery_mode": {
+            "const": "USER_FINAL_REVIEW",
+            "title": "Delivery Mode",
+            "type": "string"
+          },
+          "disclosure": {
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "dispatch_kind": {
+            "enum": [
+              "http",
+              "synthetic"
+            ],
+            "title": "Dispatch Kind",
+            "type": "string"
+          },
+          "final_review_sha256": {
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "image_dispatch_sha256": {
+            "title": "Image Dispatch Sha256",
+            "type": "string"
+          },
+          "image_model": {
+            "title": "Image Model",
+            "type": "string"
+          },
+          "image_provider": {
+            "title": "Image Provider",
+            "type": "string"
+          },
+          "image_unit_micros": {
+            "minimum": 0.0,
+            "title": "Image Unit Micros",
+            "type": "integer"
+          },
+          "maximum_cost_micros": {
+            "minimum": 0.0,
+            "title": "Maximum Cost Micros",
+            "type": "integer"
+          },
+          "maximum_image_requests": {
+            "const": 2,
+            "title": "Maximum Image Requests",
+            "type": "integer"
+          },
+          "maximum_provider_requests": {
+            "const": 6,
+            "title": "Maximum Provider Requests",
+            "type": "integer"
+          },
+          "maximum_review_model_requests": {
+            "const": 4,
+            "title": "Maximum Review Model Requests",
+            "type": "integer"
+          },
+          "module_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Module Ids",
+            "type": "array"
+          },
+          "native_approval_document_sha256": {
+            "title": "Native Approval Document Sha256",
+            "type": "string"
+          },
+          "original_approval_receipt_sha256": {
+            "title": "Original Approval Receipt Sha256",
+            "type": "string"
+          },
+          "pair_id": {
+            "title": "Pair Id",
+            "type": "string"
+          },
+          "pricing_version": {
+            "title": "Pricing Version",
+            "type": "string"
+          },
+          "review_dispatch_sha256": {
+            "title": "Review Dispatch Sha256",
+            "type": "string"
+          },
+          "review_model": {
+            "title": "Review Model",
+            "type": "string"
+          },
+          "review_reserve_micros": {
+            "minimum": 0.0,
+            "title": "Review Reserve Micros",
+            "type": "integer"
+          },
+          "revision_policy_sha256": {
+            "title": "Revision Policy Sha256",
+            "type": "string"
+          },
+          "runtime_source_sha256": {
+            "title": "Runtime Source Sha256",
+            "type": "string"
+          },
+          "selected_module_id": {
+            "title": "Selected Module Id",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "skill_content_hash": {
+            "title": "Skill Content Hash",
+            "type": "string"
+          },
+          "source_approved_scope_sha256": {
+            "title": "Source Approved Scope Sha256",
+            "type": "string"
+          },
+          "source_context_sha256": {
+            "title": "Source Context Sha256",
+            "type": "string"
+          },
+          "source_generation_binding_sha256": {
+            "title": "Source Generation Binding Sha256",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          },
+          "source_native_session_sha256": {
+            "title": "Source Native Session Sha256",
+            "type": "string"
+          },
+          "source_pair_canvas": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionCanvas"
+          },
+          "source_plan_id": {
+            "title": "Source Plan Id",
+            "type": "string"
+          },
+          "source_plan_payload_sha256": {
+            "title": "Source Plan Payload Sha256",
+            "type": "string"
+          },
+          "source_plan_revision": {
+            "title": "Source Plan Revision",
+            "type": "integer"
+          },
+          "source_quality_state": {
+            "enum": [
+              "PAIR_REVIEW_PASSED",
+              "WITH_RESIDUALS"
+            ],
+            "title": "Source Quality State",
+            "type": "string"
+          },
+          "source_residual_issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Residual Issues",
+            "type": "array"
+          },
+          "source_screens": {
+            "items": {
+              "$ref": "#/components/schemas/DomesticDetailLocalRevisionScreen"
+            },
+            "title": "Source Screens",
+            "type": "array"
+          },
+          "version": {
+            "const": "domestic-detail-local-revision-quote-v1",
+            "title": "Version",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "source_job_id",
+          "workspace_id",
+          "actor_user_id",
+          "source_plan_id",
+          "source_plan_revision",
+          "source_plan_payload_sha256",
+          "final_review_sha256",
+          "source_context_sha256",
+          "source_native_session_sha256",
+          "source_generation_binding_sha256",
+          "native_approval_document_sha256",
+          "original_approval_receipt_sha256",
+          "source_approved_scope_sha256",
+          "skill_content_hash",
+          "runtime_source_sha256",
+          "revision_policy_sha256",
+          "approved_screen_count",
+          "selected_module_id",
+          "pair_id",
+          "module_ids",
+          "source_screens",
+          "source_pair_canvas",
+          "source_quality_state",
+          "source_residual_issues",
+          "adjustment",
+          "image_dispatch_sha256",
+          "review_dispatch_sha256",
+          "image_provider",
+          "image_model",
+          "review_model",
+          "dispatch_kind",
+          "pricing_version",
+          "image_unit_micros",
+          "review_reserve_micros",
+          "maximum_image_requests",
+          "maximum_review_model_requests",
+          "maximum_provider_requests",
+          "maximum_cost_micros",
+          "currency",
+          "delivery_mode",
+          "authorization_text",
+          "disclosure",
+          "sha256"
+        ],
+        "title": "DomesticDetailLocalRevisionQuote",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionQuoteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionDelta"
+          },
+          "final_review_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Review Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_review_sha256",
+          "adjustment"
+        ],
+        "title": "DomesticDetailLocalRevisionQuoteRequest",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionScreen": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "module_id",
+          "asset_id",
+          "ordinal",
+          "sha256",
+          "width",
+          "height"
+        ],
+        "title": "DomesticDetailLocalRevisionScreen",
+        "type": "object"
+      },
       "DomesticMainImageConfiguration": {
         "properties": {
           "aurora_shadow_mode": {
@@ -12790,6 +13243,72 @@
           }
         ],
         "summary": "Resolve Detail Intake",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision/quote": {
+      "post": {
+        "operationId": "quote_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_quote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticDetailLocalRevisionQuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticDetailLocalRevisionQuote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Quote Domestic Detail Local Revision",
         "tags": [
           "jobs"
         ]

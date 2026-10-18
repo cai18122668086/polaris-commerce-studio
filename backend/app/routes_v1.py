@@ -115,6 +115,8 @@ from .schemas_v1 import (
     DomesticDetailAutomaticDeliveryAuthorization,
     DomesticDetailAutomaticDeliveryRecoveryRequest,
     DomesticDetailFinalReviewResponse,
+    DomesticDetailLocalRevisionQuote,
+    DomesticDetailLocalRevisionQuoteRequest,
     DomesticMainImageJobCreate,
     DraftJobUpdate,
     ErrorResponse,
@@ -3343,6 +3345,55 @@ def create_domestic_campaign_review(
     session.commit()
     _schedule_outbox(request, background_tasks)
     return job_detail_response(session, review)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/local-revision/quote",
+    response_model=DomesticDetailLocalRevisionQuote,
+    tags=["jobs"],
+)
+def quote_domestic_detail_local_revision(
+    job_id: str,
+    payload: DomesticDetailLocalRevisionQuoteRequest,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> DomesticDetailLocalRevisionQuote:
+    from .domestic_detail.revision_authorization import build_revision_quote
+
+    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    _ensure_detail_skill_provider_enabled(request, source)
+    provider = request.app.state.task_runner.coordinator.provider
+    delegate = getattr(
+        getattr(provider, "domestic_detail_provider", None), "delegate", None
+    )
+    gateway = getattr(delegate, "gateway", None)
+    if gateway is None:
+        raise ApiError(
+            503,
+            "NATIVE_DETAIL_LOCAL_REVISION_UNAVAILABLE",
+            "详情局部修订路由当前不可用。",
+        )
+    try:
+        quote = asyncio.run(
+            build_revision_quote(
+                session,
+                source,
+                request.app.state.storage,
+                request.app.state.settings,
+                gateway,
+                fingerprint=payload.final_review_sha256,
+                adjustment=payload.adjustment.model_dump(),
+                actor_id=workspace.principal.user_id,
+            )
+        )
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_LOCAL_REVISION_QUOTE_INVALID"),
+            str(exc),
+        ) from exc
+    return DomesticDetailLocalRevisionQuote.model_validate(quote)
 
 
 @router.post(

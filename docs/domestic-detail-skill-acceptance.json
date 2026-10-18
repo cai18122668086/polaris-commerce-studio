@@ -601,5 +601,29 @@
     "actual_visual_acceptance": false,
     "persistent_stack_verified": false,
     "browser_full_flow_verified": false
+  },
+  "local_revision_quote_and_authority_candidate": {
+    "overall_completion": "unproven",
+    "parent": "e2afbc73837a53e1052309e3a2b9171522fb1543",
+    "report": "domestic-detail-revision-authorization-2026-10-18.md",
+    "scope": "Read-only current-source/current-actor pair quote and exact server-recomputed authority; schema policy hash and actual routes/prices. No child creation/execution or UI yet.",
+    "final_source_boundary_green": 24,
+    "final_source_actual_API_green": 2,
+    "mypy_sources": 105,
+    "typescript_noEmit": true,
+    "protected_existing_routes_and_schema_AST": true,
+    "other_existing_app_python_raw_unchanged": 102,
+    "native79_and_all12_source_locks_unchanged": true,
+    "actual_supplier_calls": 0,
+    "actual_visual_acceptance": false,
+    "persistent_stack_verified": false,
+    "browser_full_flow_verified": false,
+    "remaining": [
+      "Independent child creation/quota/outbox and source-root conflict guards",
+      "Bounded semantic scope preflight requires explicit additional quoted reserve",
+      "Owned runtime/per-pair lineage and actual before-after delta audit",
+      "Revision UI/zero-model recovery and historical frozen runtime compatibility",
+      "Persistent isolated stack, browser, actual supplier/cost and visual acceptance"
+    ]
   }
 }

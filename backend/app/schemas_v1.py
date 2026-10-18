@@ -737,6 +737,117 @@ class PlanConfirmRequest(BaseModel):
     )
 
 
+class DomesticDetailLocalRevisionDelta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    module_id: str = Field(pattern=r"^M(?:0[1-9]|1[0-2])$")
+    verbatim_instruction: str = Field(min_length=2, max_length=2000)
+    change_scope: Literal["local"]
+    change_kind: Literal[
+        "TYPOGRAPHY_LAYOUT", "COPY_CONTENT", "VISUAL_DETAIL", "OTHER_LOCAL"
+    ]
+    change_only: list[Annotated[str, Field(min_length=1, max_length=400)]] = Field(
+        min_length=1, max_length=12
+    )
+    preserve: list[Annotated[str, Field(min_length=1, max_length=400)]] = Field(
+        min_length=1, max_length=12
+    )
+    must_not_regress: list[Annotated[str, Field(min_length=1, max_length=400)]] = Field(
+        min_length=1, max_length=12
+    )
+    changes_identity: Literal[False]
+    changes_facts: Literal[False]
+    changes_target_buyer: Literal[False]
+    changes_campaign_style: Literal[False]
+    changes_module_sequence: Literal[False]
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_local_scope(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            for name in (
+                "changes_identity",
+                "changes_facts",
+                "changes_target_buyer",
+                "changes_campaign_style",
+                "changes_module_sequence",
+            ):
+                if type(value.get(name)) is not bool or value[name] is not False:
+                    raise ValueError(
+                        "Global change flags must be false; otherwise replan"
+                    )
+        return value
+
+
+class DomesticDetailLocalRevisionQuoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    final_review_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adjustment: DomesticDetailLocalRevisionDelta
+
+
+class DomesticDetailLocalRevisionScreen(BaseModel):
+    module_id: str
+    asset_id: str
+    ordinal: int
+    sha256: str
+    width: int
+    height: int
+
+
+class DomesticDetailLocalRevisionCanvas(BaseModel):
+    asset_id: str
+    sha256: str
+    width: int
+    height: int
+    pixel_lineage_sha256: str
+
+
+class DomesticDetailLocalRevisionQuote(BaseModel):
+    version: Literal["domestic-detail-local-revision-quote-v1"]
+    source_job_id: str
+    workspace_id: str
+    actor_user_id: str
+    source_plan_id: str
+    source_plan_revision: int
+    source_plan_payload_sha256: str
+    final_review_sha256: str
+    source_context_sha256: str
+    source_native_session_sha256: str
+    source_generation_binding_sha256: str
+    native_approval_document_sha256: str
+    original_approval_receipt_sha256: str
+    source_approved_scope_sha256: str
+    skill_content_hash: str
+    runtime_source_sha256: str
+    revision_policy_sha256: str
+    approved_screen_count: Literal[8, 10, 12]
+    selected_module_id: str
+    pair_id: str
+    module_ids: list[str]
+    source_screens: list[DomesticDetailLocalRevisionScreen]
+    source_pair_canvas: DomesticDetailLocalRevisionCanvas
+    source_quality_state: Literal["PAIR_REVIEW_PASSED", "WITH_RESIDUALS"]
+    source_residual_issues: list[dict[str, Any]]
+    adjustment: DomesticDetailLocalRevisionDelta
+    image_dispatch_sha256: str
+    review_dispatch_sha256: str
+    image_provider: str
+    image_model: str
+    review_model: str
+    dispatch_kind: Literal["http", "synthetic"]
+    pricing_version: str
+    image_unit_micros: int = Field(ge=0)
+    review_reserve_micros: int = Field(ge=0)
+    maximum_image_requests: Literal[2]
+    maximum_review_model_requests: Literal[4]
+    maximum_provider_requests: Literal[6]
+    maximum_cost_micros: int = Field(ge=0)
+    currency: Literal["USD"]
+    delivery_mode: Literal["USER_FINAL_REVIEW"]
+    authorization_text: str
+    disclosure: str
+    sha256: str
+
+
 class DomesticDetailAutomaticDeliveryAuthorization(BaseModel):
     version: Literal["domestic-detail-auto-delivery-authorization-v1"]
     job_id: str

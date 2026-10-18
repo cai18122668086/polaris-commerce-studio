@@ -1612,6 +1612,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quote Domestic Detail Local Revision */
+        post: operations["quote_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan": {
         parameters: {
             query?: never;
@@ -2617,6 +2634,206 @@ export interface components {
              * @constant
              */
             version: "domestic-detail-final-review-v1";
+        };
+        /** DomesticDetailLocalRevisionCanvas */
+        DomesticDetailLocalRevisionCanvas: {
+            /** Asset Id */
+            asset_id: string;
+            /** Height */
+            height: number;
+            /** Pixel Lineage Sha256 */
+            pixel_lineage_sha256: string;
+            /** Sha256 */
+            sha256: string;
+            /** Width */
+            width: number;
+        };
+        /** DomesticDetailLocalRevisionDelta */
+        DomesticDetailLocalRevisionDelta: {
+            /**
+             * Change Kind
+             * @enum {string}
+             */
+            change_kind: "TYPOGRAPHY_LAYOUT" | "COPY_CONTENT" | "VISUAL_DETAIL" | "OTHER_LOCAL";
+            /** Change Only */
+            change_only: string[];
+            /**
+             * Change Scope
+             * @constant
+             */
+            change_scope: "local";
+            /**
+             * Changes Campaign Style
+             * @constant
+             */
+            changes_campaign_style: false;
+            /**
+             * Changes Facts
+             * @constant
+             */
+            changes_facts: false;
+            /**
+             * Changes Identity
+             * @constant
+             */
+            changes_identity: false;
+            /**
+             * Changes Module Sequence
+             * @constant
+             */
+            changes_module_sequence: false;
+            /**
+             * Changes Target Buyer
+             * @constant
+             */
+            changes_target_buyer: false;
+            /** Module Id */
+            module_id: string;
+            /** Must Not Regress */
+            must_not_regress: string[];
+            /** Preserve */
+            preserve: string[];
+            /** Verbatim Instruction */
+            verbatim_instruction: string;
+        };
+        /** DomesticDetailLocalRevisionQuote */
+        DomesticDetailLocalRevisionQuote: {
+            /** Actor User Id */
+            actor_user_id: string;
+            adjustment: components["schemas"]["DomesticDetailLocalRevisionDelta"];
+            /**
+             * Approved Screen Count
+             * @enum {integer}
+             */
+            approved_screen_count: 8 | 10 | 12;
+            /** Authorization Text */
+            authorization_text: string;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /**
+             * Delivery Mode
+             * @constant
+             */
+            delivery_mode: "USER_FINAL_REVIEW";
+            /** Disclosure */
+            disclosure: string;
+            /**
+             * Dispatch Kind
+             * @enum {string}
+             */
+            dispatch_kind: "http" | "synthetic";
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /** Image Dispatch Sha256 */
+            image_dispatch_sha256: string;
+            /** Image Model */
+            image_model: string;
+            /** Image Provider */
+            image_provider: string;
+            /** Image Unit Micros */
+            image_unit_micros: number;
+            /** Maximum Cost Micros */
+            maximum_cost_micros: number;
+            /**
+             * Maximum Image Requests
+             * @constant
+             */
+            maximum_image_requests: 2;
+            /**
+             * Maximum Provider Requests
+             * @constant
+             */
+            maximum_provider_requests: 6;
+            /**
+             * Maximum Review Model Requests
+             * @constant
+             */
+            maximum_review_model_requests: 4;
+            /** Module Ids */
+            module_ids: string[];
+            /** Native Approval Document Sha256 */
+            native_approval_document_sha256: string;
+            /** Original Approval Receipt Sha256 */
+            original_approval_receipt_sha256: string;
+            /** Pair Id */
+            pair_id: string;
+            /** Pricing Version */
+            pricing_version: string;
+            /** Review Dispatch Sha256 */
+            review_dispatch_sha256: string;
+            /** Review Model */
+            review_model: string;
+            /** Review Reserve Micros */
+            review_reserve_micros: number;
+            /** Revision Policy Sha256 */
+            revision_policy_sha256: string;
+            /** Runtime Source Sha256 */
+            runtime_source_sha256: string;
+            /** Selected Module Id */
+            selected_module_id: string;
+            /** Sha256 */
+            sha256: string;
+            /** Skill Content Hash */
+            skill_content_hash: string;
+            /** Source Approved Scope Sha256 */
+            source_approved_scope_sha256: string;
+            /** Source Context Sha256 */
+            source_context_sha256: string;
+            /** Source Generation Binding Sha256 */
+            source_generation_binding_sha256: string;
+            /** Source Job Id */
+            source_job_id: string;
+            /** Source Native Session Sha256 */
+            source_native_session_sha256: string;
+            source_pair_canvas: components["schemas"]["DomesticDetailLocalRevisionCanvas"];
+            /** Source Plan Id */
+            source_plan_id: string;
+            /** Source Plan Payload Sha256 */
+            source_plan_payload_sha256: string;
+            /** Source Plan Revision */
+            source_plan_revision: number;
+            /**
+             * Source Quality State
+             * @enum {string}
+             */
+            source_quality_state: "PAIR_REVIEW_PASSED" | "WITH_RESIDUALS";
+            /** Source Residual Issues */
+            source_residual_issues: {
+                [key: string]: unknown;
+            }[];
+            /** Source Screens */
+            source_screens: components["schemas"]["DomesticDetailLocalRevisionScreen"][];
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-detail-local-revision-quote-v1";
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** DomesticDetailLocalRevisionQuoteRequest */
+        DomesticDetailLocalRevisionQuoteRequest: {
+            adjustment: components["schemas"]["DomesticDetailLocalRevisionDelta"];
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+        };
+        /** DomesticDetailLocalRevisionScreen */
+        DomesticDetailLocalRevisionScreen: {
+            /** Asset Id */
+            asset_id: string;
+            /** Height */
+            height: number;
+            /** Module Id */
+            module_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Sha256 */
+            sha256: string;
+            /** Width */
+            width: number;
         };
         /** DomesticMainImageConfiguration */
         DomesticMainImageConfiguration: {
@@ -7389,6 +7606,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticDetailLocalRevisionQuoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticDetailLocalRevisionQuote"];
                 };
             };
             /** @description Validation Error */

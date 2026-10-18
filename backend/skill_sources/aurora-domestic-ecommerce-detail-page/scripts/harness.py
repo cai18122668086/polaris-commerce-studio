@@ -751,6 +751,18 @@ def _collect_plan_preflight_errors(session: dict, plan: dict) -> list[str]:
         ) if field not in module]
         if missing:
             errors.append(f"{module.get('id', f'M{index:02d}')} missing: {', '.join(missing)}")
+        evidence = module.get("visual_evidence")
+        if isinstance(evidence, dict):
+            missing_evidence = [field for field in (
+                "evidence_class", "proof_device", "visible_content", "forbidden_inventions",
+            ) if field not in evidence]
+            if missing_evidence:
+                errors.append(
+                    f"{module.get('id', f'M{index:02d}')} visual_evidence missing: "
+                    + ", ".join(missing_evidence)
+                )
+        else:
+            errors.append(f"{module.get('id', f'M{index:02d}')} visual_evidence must be an object")
         try:
             resolve_spatial_contract(module)
         except (HarnessError, KeyError, TypeError, ValueError) as exc:

@@ -1938,6 +1938,36 @@ class V42IntegrityTests(unittest.TestCase):
         errors = harness._collect_plan_preflight_errors(value, expanded)
         self.assertTrue(any("prompt compiler readiness" in item for item in errors))
 
+    def test_preflight_names_the_module_and_missing_evidence_field(self):
+        value = session()
+        expanded = plan()
+        template = expanded["modules"][0]
+        expanded["modules"] = []
+        for order in range(1, 9):
+            module = copy.deepcopy(template)
+            module["id"] = f"M{order:02d}"
+            module["order"] = order
+            expanded["modules"].append(module)
+        expanded["output_strategy"].update(
+            module_count=8,
+            module_count_candidates=[{"candidate_mode": "DIRECT_DERIVATION"}],
+            selling_point_clusters=[],
+            claim_coverage=[],
+            continuous_pair_rendering={
+                "pair_merge_type": "PAIR_PLAN_MERGE",
+                "pair_ids": [
+                    {"pair_id": f"P{index:02d}", "module_ids": [f"M{index * 2 - 1:02d}", f"M{index * 2:02d}"]}
+                    for index in range(1, 5)
+                ],
+            },
+        )
+        expanded["modules"][-1]["visual_evidence"].pop("forbidden_inventions")
+        before = copy.deepcopy(expanded)
+        errors = harness._collect_plan_preflight_errors(value, expanded)
+        self.assertTrue(any("M08 visual_evidence missing: forbidden_inventions" in item for item in errors))
+        self.assertFalse(any("prompt compiler readiness" in item for item in errors))
+        self.assertEqual(expanded, before)
+
     def test_v42_artifact_binding_rejects_wrong_hash(self):
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "pair.png"

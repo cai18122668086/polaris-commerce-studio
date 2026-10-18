@@ -155,7 +155,7 @@ test("workflow pages submit the bounded inputs and failed-only retry scope", asy
   );
   assert.match(
     detail,
-    /input: \{ product_groups: \[\{ group_key: "primary-product", asset_ids: sources\.map/,
+    /input: \{ product_groups: \[\{ group_key: "primary-product", asset_ids: productSources\.map/,
   );
   for (const source of [detail, local]) {
     assert.match(source, /scope: "failed"/);

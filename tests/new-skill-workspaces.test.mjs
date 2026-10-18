@@ -266,7 +266,7 @@ test("Amazon workflow reviews and confirms the backend 21-page plan", async () =
   assert.match(workspace, /revision: job\.data\.plan\.revision/);
   assert.match(workspace, /确认计划并开始生成/);
   assert.match(jobApi, /invalidateQueries/);
-  assert.match(jobApi, /status && isActiveJob\(status\) \? 1_500 : false/);
+  assert.match(jobApi, /if \(status && isActiveJob\(status\)\) return 1_500;/);
 });
 
 test("Amazon distinguishes technical completion from business quality review", async () => {

@@ -1,0 +1,151 @@
+"""Pure release transformation; original services and provider values stay private."""
+
+import importlib.util
+import unittest
+from copy import deepcopy
+from pathlib import Path
+
+SPEC = importlib.util.spec_from_file_location(
+    "detail_release", Path(__file__).parents[1] / "prepare_domestic_detail_release.py"
+)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+REVISION = "a" * 40
+BACKEND, FRONTEND = "sha256:" + "b" * 64, "sha256:" + "c" * 64
+PROVIDER = {
+    "POLARIS_ANALYSIS_BASE_URL": "https://api.ooapi.cc",
+    "POLARIS_ANALYSIS_MODEL": "gpt-5.6-sol",
+    "POLARIS_ANALYSIS_API_KEY": "synthetic-private-key",
+}
+
+
+def base():
+    app = {
+        "image": "frozen:old",
+        "build": {"context": "."},
+        "environment": {
+            "POLARIS_IMAGE_API_KEY": "synthetic-original-image-key",
+            "POLARIS_TENGLI_DAILY_BUDGET_USD": "25",
+            "POLARIS_TENGLI_MONTHLY_BUDGET_USD": "100",
+        },
+        "labels": {},
+        "volumes": [
+            {
+                "type": "volume",
+                "source": "original-harness",
+                "target": "/app/.data/aurora-main-image",
+            },
+            {
+                "type": "volume",
+                "source": "original-browser",
+                "target": "/app/.data/ecommerce-session",
+            },
+        ],
+        "ports": ["127.0.0.1:8000:8000"],
+        "command": ["original"],
+    }
+    return {
+        "name": "polaris-production",
+        "services": {
+            "api": deepcopy(app),
+            "worker": deepcopy(app),
+            "dispatcher": deepcopy(app),
+            "frontend": {"image": "frozen:frontend"},
+            "migrate": deepcopy(app),
+            "caddy": {
+                "volumes": [
+                    {
+                        "type": "bind",
+                        "source": "/original/Caddyfile",
+                        "target": "/etc/caddy/Caddyfile",
+                    },
+                    {"type": "volume", "source": "original-tls", "target": "/data"},
+                ]
+            },
+        },
+    }
+
+
+def prepare(source=None, **changes):
+    values = {
+        "backend_image": BACKEND,
+        "frontend_image": FRONTEND,
+        "revision": REVISION,
+        "caddy_file": f"/opt/polaris/releases/{REVISION}/deploy/Caddyfile.domestic-detail-native",
+        "provider": deepcopy(PROVIDER),
+    }
+    values.update(changes)
+    return MODULE.overlay(source or base(), **values)
+
+
+class ReleaseTest(unittest.TestCase):
+    def test_original_api_and_default_worker_are_never_replaced(self):
+        original = base()
+        before = deepcopy(original)
+        result = prepare(original)
+        self.assertEqual(original, before)
+        self.assertNotIn("api", result["services"])
+        self.assertNotIn("worker", result["services"])
+        self.assertEqual(result["services"]["dispatcher"]["image"], BACKEND)
+        for name in ("detail-api", "detail-worker"):
+            service = result["services"][name]
+            self.assertNotIn("ports", service)
+            self.assertNotIn("build", service)
+            self.assertEqual(len(service["volumes"]), 1)
+            environment = service["environment"]
+            self.assertEqual(
+                environment["POLARIS_IMAGE_API_KEY"], "synthetic-original-image-key"
+            )
+            self.assertEqual(environment["POLARIS_TENGLI_DAILY_BUDGET_USD"], "25")
+            self.assertEqual(
+                environment["POLARIS_ECOMMERCE_STARTUP_RECOVERY_ENABLED"], "false"
+            )
+            self.assertEqual(environment["POLARIS_PROVIDER_FAILOVER_ENABLED"], "false")
+        command = result["services"]["detail-worker"]["command"]
+        self.assertIn("--queues=domestic_detail_v431", command)
+        self.assertNotIn("--queues=default", command)
+
+    def test_creation_rollback_keeps_existing_native_runtime_alive(self):
+        result = prepare(native_creation=False)["services"]
+        self.assertEqual(
+            result["detail-api"]["environment"][
+                "POLARIS_DOMESTIC_DETAIL_NATIVE_CREATION_ENABLED"
+            ],
+            "false",
+        )
+        self.assertIn("detail-worker", result)
+        self.assertEqual(
+            result["detail-api"]["environment"]["POLARIS_LEGACY_DETAIL_API_URL"],
+            "http://api:8000",
+        )
+
+    def test_caddy_changes_only_the_reviewed_config_bind(self):
+        volumes = prepare()["services"]["caddy"]["volumes"]
+        self.assertEqual(volumes[1], base()["services"]["caddy"]["volumes"][1])
+        self.assertTrue(volumes[0]["read_only"])
+        self.assertTrue(
+            volumes[0]["source"].endswith("/deploy/Caddyfile.domestic-detail-native")
+        )
+
+    def test_reject_unreviewed_images_paths_and_provider_authority(self):
+        for changes in (
+            {"backend_image": "backend:latest"},
+            {"frontend_image": "frontend:latest"},
+            {"revision": "short"},
+            {"caddy_file": "/tmp/unreviewed"},
+            {"provider": {**PROVIDER, "POLARIS_IMAGE_API_KEY": "unauthorized"}},
+            {
+                "provider": {
+                    **PROVIDER,
+                    "POLARIS_ANALYSIS_BASE_URL": "https://outside.example",
+                }
+            },
+        ):
+            with self.subTest(changes=list(changes)), self.assertRaises(ValueError):
+                prepare(**changes)
+        with self.assertRaises(ValueError):
+            prepare({**base(), "name": "another-project"})
+
+
+if __name__ == "__main__":
+    unittest.main()

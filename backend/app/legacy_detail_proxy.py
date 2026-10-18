@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 
@@ -10,11 +11,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .models import JobRecord
 
 _ALLOWED_ORIGINS = {"http://api:8000", "http://legacy-api:8000"}
+_COLLECTION_PATH = re.compile(r"^/api/v1/workspaces/([^/]+)/jobs$")
 _JOB_PATH = re.compile(r"^/api/v1/workspaces/([^/]+)/jobs/([^/]+)(?:/.*)?$")
 _HOP_HEADERS = {
     b"connection",
@@ -72,6 +74,7 @@ class LegacyDetailProxy:
         *,
         origin: str,
         session_factory: sessionmaker[Session],
+        native_creation_enabled: bool = True,
     ) -> None:
         if origin not in _ALLOWED_ORIGINS:
             raise ValueError(
@@ -80,6 +83,7 @@ class LegacyDetailProxy:
         self.app = app
         self.origin = origin
         self.session_factory = session_factory
+        self.native_creation_enabled = native_creation_enabled
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         match = (
@@ -87,15 +91,53 @@ class LegacyDetailProxy:
             if scope["type"] == "http"
             else None
         )
-        if match is None or not await run_in_threadpool(
+        historical = match is not None and await run_in_threadpool(
             _historical_job,
             self.session_factory,
             match[1],
             match[2],
+        )
+        body = None
+        creation_rollback = False
+        if (
+            scope["type"] == "http"
+            and scope["method"] == "POST"
+            and not self.native_creation_enabled
+            and _COLLECTION_PATH.fullmatch(scope.get("path", ""))
         ):
+            body = await Request(scope, receive).body()
+            try:
+                value = json.loads(body)
+            except (ValueError, UnicodeError):
+                value = None
+            configuration = (
+                value.get("configuration") if isinstance(value, dict) else None
+            )
+            creation_rollback = (
+                isinstance(value, dict)
+                and value.get("type") == "detail_pack"
+                and isinstance(configuration, dict)
+                and configuration.get("market_region") == "domestic"
+            )
+        if not historical and not creation_rollback:
+            if body is not None:
+                original_receive = receive
+                replayed = False
+
+                async def receive_body() -> Message:
+                    nonlocal replayed
+                    if not replayed:
+                        replayed = True
+                        return {
+                            "type": "http.request",
+                            "body": body,
+                            "more_body": False,
+                        }
+                    return await original_receive()
+
+                receive = receive_body
             await self.app(scope, receive, send)
             return
-        request = Request(scope, receive)
         if any(name.lower() == _HOP for name, _ in scope.get("headers", [])):
             await JSONResponse(
                 {
@@ -107,7 +149,8 @@ class LegacyDetailProxy:
                 status_code=502,
             )(scope, receive, send)
             return
-        body = await request.body()
+        if body is None:
+            body = await Request(scope, receive).body()
         raw_path = scope.get("raw_path", scope["path"].encode("utf-8"))
         query = scope.get("query_string", b"")
         url = (
@@ -119,12 +162,15 @@ class LegacyDetailProxy:
         headers.append((_HOP, b"1"))
         started = False
         try:
-            async with upstream_client() as client, client.stream(
-                scope["method"],
-                url,
-                headers=httpx.Headers(headers),
-                content=body,
-            ) as response:
+            async with (
+                upstream_client() as client,
+                client.stream(
+                    scope["method"],
+                    url,
+                    headers=httpx.Headers(headers),
+                    content=body,
+                ) as response,
+            ):
                 await send(
                     {
                         "type": "http.response.start",

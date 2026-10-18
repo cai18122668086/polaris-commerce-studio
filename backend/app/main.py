@@ -200,12 +200,12 @@ def create_app(
         if app_settings.auto_create_schema:
             Base.metadata.create_all(engine)
         ensure_development_identity(application)
-        recover_interrupted_crawl_tasks(session_factory)
-        # In Celery mode the dedicated maintenance process is the sole owner
-        # of queued-message recovery. The API still repairs stale task state,
-        # but must not publish duplicate crawl messages during a restart.
-        if app_settings.task_dispatcher == "inline":
-            resume_queued_crawl_tasks(application, session_factory)
+        if app_settings.ecommerce_startup_recovery_enabled:
+            recover_interrupted_crawl_tasks(session_factory)
+            # Celery maintenance owns queued-message recovery. The auxiliary
+            # detail API disables this entire crawler startup path.
+            if app_settings.task_dispatcher == "inline":
+                resume_queued_crawl_tasks(application, session_factory)
         yield
         engine.dispose()
 
@@ -281,6 +281,7 @@ def create_app(
             LegacyDetailProxy,
             origin=app_settings.legacy_detail_api_url,
             session_factory=session_factory,
+            native_creation_enabled=app_settings.domestic_detail_native_creation_enabled,
         )
 
     auth_cors_headers: list[str] = []

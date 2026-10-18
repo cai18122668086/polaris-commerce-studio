@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     legacy_detail_api_url: Literal[
         "", "http://api:8000", "http://legacy-api:8000"
     ] = ""
+    domestic_detail_native_creation_enabled: bool = True
+    ecommerce_startup_recovery_enabled: bool = True
     # Metrics remain disabled unless an operator provisions a dedicated scrape
     # token. Never expose request telemetry anonymously on the public edge.
     metrics_token: SecretStr = SecretStr("")
@@ -301,6 +303,13 @@ class Settings(BaseSettings):
         return normalized
 
     def validate_runtime_safety(self) -> None:
+        if (
+            not self.domestic_detail_native_creation_enabled
+            and not self.legacy_detail_api_url
+        ):
+            raise RuntimeError(
+                "Domestic detail creation rollback requires its frozen API"
+            )
         required_smtp = {
             "POLARIS_AUTH_SMTP_HOST": self.auth_smtp_host,
             "POLARIS_AUTH_SMTP_USERNAME": self.auth_smtp_username,

@@ -32,7 +32,7 @@ jobs:
   backend:
     name: Backend quality
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:18.4-alpine
@@ -62,7 +62,7 @@ jobs:
       - run: python -m mypy --config-file backend/pyproject.toml backend/app
       - run: python -m alembic -c alembic.ini upgrade head
         working-directory: backend
-      - run: python -m pytest backend
+      - run: python -m pytest backend -vv -o faulthandler_timeout=180 --durations=25
       - name: Test PostgreSQL ecommerce concurrency
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci

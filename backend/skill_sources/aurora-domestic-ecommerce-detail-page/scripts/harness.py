@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -790,17 +791,42 @@ def _collect_plan_preflight_errors(session: dict, plan: dict) -> list[str]:
     return _unique_strings(errors)
 
 
+def _preflight_authoring_plan(session: dict, raw_plan: dict) -> dict:
+    """Report independent schema and semantic faults in one bounded repair request.
+
+    Diagnostic normalization never authorizes an invalid plan. Work on a copy:
+    authoring normalization may add runtime fields, while original replies remain
+    immutable. Strict validate_plan still runs before approval is persisted.
+    """
+    errors: list[str] = []
+    try:
+        validate_schema(raw_plan, "compact-detail-plan.schema.json", "compact plan")
+    except HarnessError as exc:
+        errors.append(str(exc))
+    plan = None
+    try:
+        plan = normalize_plan(session, copy.deepcopy(raw_plan))
+        try:
+            validate_schema(plan["output_strategy"]["continuous_pair_rendering"], "continuous-pair-render.schema.json", "continuous pair rendering")
+        except (HarnessError, KeyError, TypeError, ValueError) as exc:
+            errors.append(f"continuous pair schema: {exc}")
+        errors.extend(_collect_plan_preflight_errors(session, plan))
+    except (HarnessError, KeyError, TypeError, ValueError) as exc:
+        errors.append(f"diagnostic normalization: {exc}")
+    errors = _unique_strings(errors)
+    if errors:
+        raise HarnessError(f"Plan preflight found {len(errors)} issue(s):\n- " + "\n- ".join(errors))
+    if plan is None:
+        raise HarnessError("Plan preflight could not normalize the authored contract")
+    return plan
+
+
 def cmd_preflight_plan(args: argparse.Namespace) -> dict:
     """Run the batch preflight without mutating the session or creating approval files."""
     session = load_json(args.session)
     require_state(session, "IDENTITY_LOCKED")
     raw_plan = load_json(args.plan)
-    validate_schema(raw_plan, "compact-detail-plan.schema.json", "compact plan")
-    plan = normalize_plan(session, raw_plan)
-    validate_schema(plan["output_strategy"]["continuous_pair_rendering"], "continuous-pair-render.schema.json", "continuous pair rendering")
-    errors = _collect_plan_preflight_errors(session, plan)
-    if errors:
-        raise HarnessError(f"Plan preflight found {len(errors)} issue(s):\n- " + "\n- ".join(errors))
+    plan = _preflight_authoring_plan(session, raw_plan)
     return {"status": "PREFLIGHT_PASS", "module_count": len(plan["modules"]), "pair_count": len(plan["modules"]) // 2}
 
 
@@ -1495,12 +1521,7 @@ def cmd_compile_plan(args: argparse.Namespace) -> dict:
         raise HarnessError("Full planning is blocked until the user resolves the batched conflict checkpoint")
     compile_started = time.perf_counter()
     raw_plan = load_json(args.plan)
-    validate_schema(raw_plan, "compact-detail-plan.schema.json", "compact plan")
-    plan = normalize_plan(session, raw_plan)
-    validate_schema(plan["output_strategy"]["continuous_pair_rendering"], "continuous-pair-render.schema.json", "continuous pair rendering")
-    preflight_errors = _collect_plan_preflight_errors(session, plan)
-    if preflight_errors:
-        raise HarnessError(f"Plan preflight found {len(preflight_errors)} issue(s):\n- " + "\n- ".join(preflight_errors))
+    plan = _preflight_authoring_plan(session, raw_plan)
     validate_plan(session, plan)
     session["plan"] = plan
     session["modules"] = [

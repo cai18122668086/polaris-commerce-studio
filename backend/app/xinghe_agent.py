@@ -3972,6 +3972,12 @@ class XinghePlanningCoordinator:
             return response
 
         def normalized() -> None:
+            # Match validate_aurora_domestic_plan's protocol-only defaults even
+            # when a schema fault prevents its structured result. The native
+            # diagnostic must still recognize the compact authoring format.
+            payload.setdefault("plan_format", "COMPACT_V1_3")
+            payload.setdefault("information_contract_version", "4.1")
+            payload.setdefault("expression_contract_version", "4.3")
             payload["product_intake"] = deepcopy(request.detail_intake)
             modules = payload.get("modules")
             if isinstance(modules, list):

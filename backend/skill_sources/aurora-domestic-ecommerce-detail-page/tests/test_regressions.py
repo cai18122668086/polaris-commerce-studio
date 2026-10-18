@@ -1904,6 +1904,39 @@ class V42IntegrityTests(unittest.TestCase):
         self.assertNotIn("maxItems", field)
         self.assertTrue(field["uniqueItems"])
 
+    def test_compact_spatial_counts_match_every_native_layout(self):
+        from runtime.spatial_contract import ZONE_LAYOUTS
+        schema = json.loads((ROOT / "schemas/compact-detail-plan.schema.json").read_bytes())
+        structure = schema["properties"]["modules"]["items"]["properties"]["structure"]
+        counts = {row["if"]["properties"]["structure_family"]["const"]: row["then"]["properties"]["zone_briefs"] for row in structure["allOf"]}
+        self.assertEqual(set(counts), set(ZONE_LAYOUTS))
+        for family, zones in ZONE_LAYOUTS.items():
+            self.assertEqual(counts[family], {"minItems": len(zones), "maxItems": len(zones)})
+
+    def test_schema_errors_do_not_hide_independent_spatial_diagnostics(self):
+        value = session()
+        expanded = plan()
+        template = expanded["modules"][0]
+        expanded["modules"] = []
+        for order in range(1, 9):
+            module = copy.deepcopy(template)
+            module["id"] = f"M{order:02d}"
+            module["order"] = order
+            module["authoring_plan_format"] = "COMPACT_V1_3"
+            module["module_spatial_structure_contract"] = {
+                "structure_family": "FULL_BLEED_HERO", "zone_briefs": ["main", "extra"],
+                "structure_difference_from_previous": "different", "forbidden_fallbacks": ["a", "b", "c"],
+            }
+            expanded["modules"].append(module)
+        before = copy.deepcopy(expanded)
+        with self.assertRaises(HarnessError) as caught:
+            harness._preflight_authoring_plan(value, expanded)
+        message = str(caught.exception)
+        self.assertIn("compact-detail-plan.schema.json", message)
+        self.assertIn("M01 spatial contract", message)
+        self.assertIn("requires exactly 1 concrete zone briefs", message)
+        self.assertEqual(expanded, before)
+
     def test_v42_schema_is_first_layer(self):
         with self.assertRaisesRegex(HarnessError, "failed input.schema.json"):
             validate_schema({"product_name": "x"}, "input.schema.json", "input")

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Bound local typography leaf replacements; original plan stays immutable",
+  "title": "Source-bound local typography, copy and zone replacements; approved source immutable",
   "type": "array",
-  "maxItems": 12,
+  "maxItems": 14,
   "items": {
     "oneOf": [
       {
@@ -456,6 +456,175 @@
               "NEGATIVE_SPACE_ONLY",
               "CONTROLLED_REFLOW"
             ]
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "module_id",
+          "change_index",
+          "original_value",
+          "path",
+          "replacement_value"
+        ],
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "change_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "original_value": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "role",
+                "anchor"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "role": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "anchor": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "path": {
+            "const": "/visible_copy"
+          },
+          "replacement_value": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "role",
+                "anchor"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "role": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "anchor": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "minItems": 1
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "module_id",
+          "change_index",
+          "original_value",
+          "path",
+          "replacement_value"
+        ],
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "change_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "original_value": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": [
+                "role",
+                "geometry",
+                "content",
+                "visual_weight_percent"
+              ],
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "geometry": {
+                  "type": "string",
+                  "minLength": 5
+                },
+                "content": {
+                  "type": "string",
+                  "minLength": 5
+                },
+                "visual_weight_percent": {
+                  "type": "number",
+                  "minimum": 5,
+                  "maximum": 100
+                }
+              }
+            }
+          },
+          "path": {
+            "const": "/module_spatial_structure_contract/zones"
+          },
+          "replacement_value": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": [
+                "role",
+                "geometry",
+                "content",
+                "visual_weight_percent"
+              ],
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "geometry": {
+                  "type": "string",
+                  "minLength": 5
+                },
+                "content": {
+                  "type": "string",
+                  "minLength": 5
+                },
+                "visual_weight_percent": {
+                  "type": "number",
+                  "minimum": 5,
+                  "maximum": 100
+                }
+              }
+            }
           }
         }
       }

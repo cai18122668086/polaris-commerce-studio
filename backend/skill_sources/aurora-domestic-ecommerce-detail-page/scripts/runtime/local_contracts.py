@@ -5,6 +5,7 @@ import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 from .schema_validation import validate_schema
 from .state import HarnessError
@@ -25,24 +26,83 @@ def _owned(path: Path, root: Path) -> bytes:
     return path.read_bytes()
 
 
+def _invalid(message: str) -> None:
+    raise HarnessError(message)
+
+
+def _parent(contract: dict[str, Any], path: str) -> tuple[dict[str, Any], str]:
+    parts = path.strip("/").split("/")
+    value = contract
+    for part in parts[:-1]:
+        if not isinstance(value.get(part), dict):
+            _invalid("A local contract parent is absent from the effective source")
+        value = value[part]
+    if parts[-1] not in value:
+        _invalid("A local contract leaf is absent from the effective source")
+    return value, parts[-1]
+
+
+def _bindings(copy: Any) -> list[dict[str, str]]:
+    return [{"text": row["text"], "bound_to_visual": row["anchor"]} for row in copy]
+
+
+def _validate_replacement(path: str, old: Any, new: Any, effect: str | None = None) -> None:
+    if isinstance(new, str) and not new.strip():
+        _invalid("A local contract replacement cannot be blank")
+    if path == "/visible_copy":
+        rephrase = len(old) == len(new) and all(
+            {k: v for k, v in a.items() if k != "text"}
+            == {k: v for k, v in b.items() if k != "text"}
+            for a, b in zip(old, new, strict=True)
+        )
+        remaining = iter(old)
+        removal = all(any(row == prior for prior in remaining) for row in new)
+        if not ((rephrase and effect in {None, "REPHRASE_CONFIRMED"})
+                or (removal and effect in {None, "REMOVE"})):
+            _invalid("Local copy must rephrase the existing anchored units or remove an exact subset")
+    elif path == "/module_spatial_structure_contract/zones":
+        if len(old) != len(new) or any(
+            {k: v for k, v in a.items() if k not in {"geometry", "visual_weight_percent"}}
+            != {k: v for k, v in b.items() if k not in {"geometry", "visual_weight_percent"}}
+            for a, b in zip(old, new, strict=True)
+        ) or abs(sum(row["visual_weight_percent"] for row in new) - 100) > 0.01:
+            _invalid("Local geometry must preserve zone roles, content and count with total weight 100")
+
+
+def _kind_allows(path: str, kind: str) -> bool:
+    if path.startswith("/text_system/"):
+        return kind == "TYPOGRAPHY_LAYOUT"
+    if path == "/visible_copy":
+        return kind == "COPY_CONTENT"
+    return kind in {"VISUAL_DETAIL", "OTHER_LOCAL"}
+
+
 def _apply(plan: dict, patches: list, changes: list, selected: str) -> dict:
-    validate_schema(patches, "local-typography-overrides.schema.json", "local typography overrides")
+    validate_schema(patches, "local-typography-overrides.schema.json", "local contract overrides")
     result = deepcopy(plan)
     paths = []
     for patch in patches:
         index = patch["change_index"]
+        copy_change = patch["path"] == "/visible_copy"
         if (patch["module_id"] != selected or index >= len(changes)
                 or changes[index].get("contract_effect") != "OVERRIDE_LOCAL_FIELDS"
-                or changes[index].get("claim_effect") != "PRESERVE"):
-            raise HarnessError("A typography replacement requires its exact fact-preserving local change")
-        field = patch["path"].split("/")[-1]
+                or changes[index].get("scope") != "LOCAL"
+                or (not copy_change and changes[index].get("claim_effect") != "PRESERVE")
+                or (copy_change and changes[index].get("claim_effect") not in {"REMOVE", "REPHRASE_CONFIRMED"})):
+            raise HarnessError("A local replacement requires its exact fact-preserving original change")
+        parent, field = _parent(result, patch["path"])
         old, new = patch["original_value"], patch["replacement_value"]
-        if (field not in result["text_system"] or _sha(result["text_system"][field]) != _sha(old)
-                or _sha(old) == _sha(new) or patch["path"] in paths
-                or isinstance(new, str) and not new.strip()):
-            raise HarnessError("A typography replacement is duplicated, blank, unchanged or not based on the original value")
+        if (_sha(parent[field]) != _sha(old) or _sha(old) == _sha(new) or patch["path"] in paths):
+            raise HarnessError("A local replacement is duplicated, unchanged or not based on the original value")
+        _validate_replacement(patch["path"], old, new, changes[index]["claim_effect"])
+        if copy_change:
+            if result.get("copy_intent", {}).get("text_to_visual_bindings") != _bindings(old):
+                raise HarnessError("Local copy requires its exact original visual bindings")
+            if changes[index]["claim_effect"] == "REPHRASE_CONFIRMED" and not changes[index].get("fact_refs"):
+                raise HarnessError("Local copy rephrasing needs original expressible fact references")
+            result["copy_intent"]["text_to_visual_bindings"] = _bindings(new)
         paths.append(patch["path"])
-        result["text_system"][field] = deepcopy(new)
+        parent[field] = deepcopy(new)
     for index, change in enumerate(changes):
         associated = [p for p in patches if p["change_index"] == index]
         effect = change.get("contract_effect")
@@ -166,8 +226,16 @@ def scope_contract_override(root: Path, intent: dict, source: dict, pair: dict) 
         prior = by_id[selected]
         base = effective_plan(prior)
         patches = observation["contract_overrides"]
-        if patches and intent["adjustment"]["change_kind"] != "TYPOGRAPHY_LAYOUT":
-            raise HarnessError("This local typography policy does not authorize copy or other contract changes")
+        for patch in patches:
+            if not _kind_allows(patch["path"], intent["adjustment"]["change_kind"]):
+                raise HarnessError("This local contract kind does not authorize the requested field")
+            if patch["path"] == "/visible_copy":
+                change = changes[patch["change_index"]]
+                refs = change.get("fact_refs", [])
+                allowed = {r["fact"]["id"]: r["fact"]["text"] for r in authority.get("original_fact_ledger", [])
+                           if r["approved_disposition"] in {"LEAD", "SUPPORT"}}
+                if len({r["id"] for r in refs}) != len(refs) or any(allowed.get(ref["id"]) != ref["text"] for ref in refs):
+                    raise HarnessError("Local copy references changed or unapproved original facts")
         effective = _apply(base, patches, changes, selected)
         paths = [scope_path, journal_path, root / "source-session.json", root / "local-revision-intent.json"]
         value = {"version": VERSION, "module_id": selected, "owner_root": str(root),

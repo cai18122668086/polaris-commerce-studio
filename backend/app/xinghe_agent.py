@@ -10266,7 +10266,10 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             "json_schema": {
                 "name": INTAKE_PROFILE,
                 "strict": False,
-                "schema": intake_response_schema(),
+                "schema": intake_response_schema(
+                    [source.asset_id for source in request.sources
+                     if source.source_role == "product_reference"]
+                ),
             },
         }
     if request.planning_profile == "creative_image":

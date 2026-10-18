@@ -292,3 +292,32 @@ def test_one_fact_cannot_be_retained_and_rejected_in_different_conflicts():
         retained_fact_ids=["F01"], rejected_fact_ids=["F02"]
     )
     assert validate_resolution(value, resolution) == resolution
+
+@pytest.mark.parametrize("source_class,evidence_ref", [
+    ("OBSERVED_PRODUCT_EVIDENCE", "product-1"),
+    ("USER_FACT", "product-1"),
+    ("OBSERVED_PRODUCT_EVIDENCE", "style-1"),
+])
+def test_model_observation_contract_matches_runtime_source_boundary(
+    source_class, evidence_ref,
+):
+    from jsonschema import Draft202012Validator
+
+    from app.domestic_detail.intake import intake_response_schema
+
+    value = intake()
+    value["brand_confirmation_required"] = False
+    value["observed_facts"][0].update(
+        source_class=source_class, evidence_ref=evidence_ref,
+    )
+    schema = intake_response_schema(["product-1"])
+    valid = source_class == "OBSERVED_PRODUCT_EVIDENCE" and evidence_ref == "product-1"
+    assert Draft202012Validator(schema).is_valid(value) is valid
+    if valid:
+        validate_intake(value, settings=SETTINGS, sources=SOURCES,
+                        brandless_confirmation=CONFIRMATION)
+    else:
+        with pytest.raises(DetailIntakeError) as error:
+            validate_intake(value, settings=SETTINGS, sources=SOURCES,
+                            brandless_confirmation=CONFIRMATION)
+        assert error.value.code == "INTAKE_FACT_SOURCE_INVALID"

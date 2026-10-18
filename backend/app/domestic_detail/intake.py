@@ -24,8 +24,19 @@ from .plans import canonical_hash
 INTAKE_PROFILE = "aurora_domestic_intake"
 
 
-def intake_response_schema() -> dict[str, Any]:
+def intake_response_schema(
+    product_asset_ids: Sequence[str] = (),
+) -> dict[str, Any]:
     native_input, identity = _native_schemas()
+    observed_fact = deepcopy(native_input["properties"]["verified_facts"]["items"])
+    observed_fact["properties"]["source_class"] = {
+        "const": "OBSERVED_PRODUCT_EVIDENCE"
+    }
+    source_ref: dict[str, Any] = {"type": "string"}
+    if product_asset_ids:
+        source_ref["enum"] = list(product_asset_ids)
+        identity["properties"]["reference_image_ids"]["items"] = deepcopy(source_ref)
+    observed_fact["properties"]["evidence_ref"] = deepcopy(source_ref)
     return {
         "type": "object",
         "additionalProperties": False,
@@ -42,7 +53,7 @@ def intake_response_schema() -> dict[str, Any]:
             "source_conflicts": native_input["properties"]["source_conflicts"],
             "observed_facts": {
                 "type": "array",
-                "items": native_input["properties"]["verified_facts"]["items"],
+                "items": observed_fact,
             },
             "identity": {"anyOf": [identity, {"type": "null"}]},
             "identity_observations": {
@@ -61,8 +72,9 @@ def intake_response_schema() -> dict[str, Any]:
                         },
                         **{
                             key: {"type": "string"}
-                            for key in ("source_asset_id", "region", "text")
+                            for key in ("region", "text")
                         },
+                        "source_asset_id": deepcopy(source_ref),
                     },
                 },
             },
@@ -93,7 +105,10 @@ def intake_prompt(
         "all alternative fact IDs, with source-specific observations. A "
         "material conflict MUST stop before identity/storyboard; omit "
         "identity and modules. Use O01.. for observed facts and cite "
-        "evidence_ref as an original product asset ID, with "
+        "source_class=OBSERVED_PRODUCT_EVIDENCE on every observed fact. "
+        "Keep USER_FACTS in the original Fxx ledger; never copy them into "
+        "observed_facts or relabel user instructions as pixel observations. "
+        "Use evidence_ref as an original product asset ID, with "
         "observed_region. Preserve the Fxx IDs and original user text "
         "without rewriting. Do not repeat preservation policies as "
         "observations. When clear, provide exactly four "
@@ -106,7 +121,11 @@ def intake_prompt(
         "readable current-product logo, its exact observed_logo_text and "
         "observed_region. BRANDLESS requires the user's explicit "
         "brandless_confirmation, retained verbatim in "
-        "brandless_evidence. If neither is available, set "
+        "brandless_evidence. In BRANDLESS mode, "
+        "identity.brand_logo_source.image_id must be the literal NONE, "
+        "never a product asset ID: product references are not logo sources. "
+        "Follow IDENTITY_RESPONSE_CONTRACT, including its conditional "
+        "brand fields. If neither is available, set "
         "brand_confirmation_required=true, describe actual "
         "brand_observation, and omit identity; ask no other unnecessary "
         "questions. Analyze every style asset as reference_materials "
@@ -131,6 +150,14 @@ def intake_prompt(
             "SETTINGS": dict(settings),
             "SOURCES": list(sources),
             "HUMAN_RESOLUTION": resolution,
+            "IDENTITY_RESPONSE_CONTRACT": _native_schemas()[1],
+            "OBSERVED_FACT_RESPONSE_CONTRACT": intake_response_schema(
+                [
+                    source["asset_id"]
+                    for source in sources
+                    if source.get("role") == "product_reference"
+                ]
+            )["properties"]["observed_facts"],
         },
         ensure_ascii=False,
     )

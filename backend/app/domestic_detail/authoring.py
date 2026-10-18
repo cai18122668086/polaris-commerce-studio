@@ -290,11 +290,51 @@ def selected_story(payload: object, page_count: int) -> object:
     return value
 
 
+def merge_error_fields(
+    original: object, correction: object, errors: list[dict[str, Any]]
+) -> object:
+    """Apply only authored replacements at invalid subtrees, retaining valid fields."""
+    merged: Any = deepcopy(original)
+    paths = sorted(
+        {tuple(e["path"].lstrip("/").split("/")) for e in errors},
+        key=lambda p: (len(p), p),
+    )
+    applied: list[tuple[str, ...]] = []
+    for path in paths:
+        if any(path[: len(parent)] == parent for parent in applied):
+            continue
+        if path == ("",):
+            return deepcopy(correction)
+        try:
+            source: Any = correction
+            target = merged
+            for token in path[:-1]:
+                source = (
+                    source[int(token)] if isinstance(source, list) else source[token]
+                )
+                target = (
+                    target[int(token)] if isinstance(target, list) else target[token]
+                )
+            key = path[-1]
+            value = source[int(key)] if isinstance(source, list) else source[key]
+            if isinstance(target, list):
+                target[int(key)] = deepcopy(value)
+            else:
+                target[key] = deepcopy(value)
+            applied.append(path)
+        except (KeyError, IndexError, TypeError, ValueError):
+            # A missing authored replacement remains invalid; never synthesize it.
+            continue
+    return merged
+
+
 def recover_story(
     request: Any, source_root: Path, binding: Mapping[str, Any]
 ) -> dict[str, Any] | None:
-    """Reuse verified authored input on an explicit failed-only retry; no dispatch."""
-    if request.authoring_stage != "story" or request.authoring_context:
+    """Recover a story or pair from immutable replies on an explicit failed retry."""
+    if request.authoring_stage not in {"story", "pair"} or (
+        request.authoring_context or {}
+    ).get("validation_errors"):
         return None
     from ..xinghe_agent import (
         _planner_response_format,
@@ -303,6 +343,20 @@ def recover_story(
     )
     from .planning_calls import NativePlanningStore
     from .plans import canonical_hash
+
+    def context(value: Any) -> dict[str, Any]:
+        return {
+            k: v
+            for k, v in dict(value or {}).items()
+            if k not in {"validation_errors", "prior_response"}
+        }
+
+    def project(value: object) -> object:
+        return (
+            selected_story(value, request.page_count)
+            if request.authoring_stage == "story"
+            else deepcopy(value)
+        )
 
     truth_fields = (
         "product_name",
@@ -316,10 +370,16 @@ def recover_story(
         "detail_intake",
         "intake_settings",
         "intake_resolution",
+        "authoring_stage",
+        "authoring_target_ids",
     )
     current = binding["semantic_request"]["semantics"]
+    schema = _planner_response_format(request)
     candidates = []
-    for path in source_root.glob("*.request.json"):
+    base = None
+    for path in sorted(
+        source_root.glob("*.request.json"), key=lambda p: p.stat().st_mtime_ns
+    ):
         raw = json.loads(path.read_bytes())["binding"]
         old = NativePlanningStore(source_root, raw)
         if old.store.request_path != path:
@@ -328,48 +388,65 @@ def recover_story(
         if (
             raw.get("phase") != binding["phase"]
             or raw.get("group_key") != binding["group_key"]
-            or semantics.get("authoring_stage") != "story"
             or raw.get("skill_content_hash") != binding["skill_content_hash"]
             or raw.get("dispatch_route") != binding["dispatch_route"]
             or any(
                 canonical_hash(semantics.get(k)) != canonical_hash(current.get(k))
                 for k in truth_fields
             )
+            or canonical_hash(context(semantics.get("authoring_context")))
+            != canonical_hash(context(current.get("authoring_context")))
         ):
             continue
         result = old._original()
         if result.get("error_code") or not isinstance(result.get("payload"), Mapping):
             continue
-        projected = selected_story(result["payload"], request.page_count)
-        if errors_for(projected, _planner_response_format(request)):
+        projected = project(result["payload"])
+        source_hashes = [canonical_hash(result)]
+        correction = bool(
+            (semantics.get("authoring_context") or {}).get("validation_errors")
+        )
+        if correction and base is not None and errors_for(projected, schema):
+            prior = project(base["payload"])
+            projected = merge_error_fields(prior, projected, errors_for(prior, schema))
+            source_hashes.insert(0, canonical_hash(base))
+        elif not correction:
+            base = result
+        if errors_for(projected, schema):
             continue
         assert isinstance(projected, dict)
-        validate_aurora_domestic_plan(projected, request.page_count, campaign_only=True)
-        candidates.append((path.stat().st_mtime_ns, raw, result))
+        if request.authoring_stage == "story":
+            validate_aurora_domestic_plan(
+                projected, request.page_count, campaign_only=True
+            )
+        candidates.append(
+            (path.stat().st_mtime_ns, raw, result, projected, source_hashes)
+        )
     if not candidates:
         return None
-    _, original, result = max(candidates, key=lambda row: row[0])
+    _, original, result, projected, source_hashes = max(
+        candidates, key=lambda row: row[0]
+    )
     return {
         **result,
+        "payload": projected,
+        "audit_raw_content": None,
         "provider_request_id": None,
         "raw_usage": None,
         "normalized_usage": normalize_usage(None),
         "api_latency_seconds": 0,
         "actual_cost_micros": 0,
         "external_request": False,
-        "phase": "aurora_recovered_story",
+        "phase": "aurora_recovered_" + request.authoring_stage,
         "supplemental_results": (),
         "provider_envelope": {
             "authored_input_recovery": {
                 "source_binding_sha256": canonical_hash(original),
                 "source_result_sha256": canonical_hash(result),
+                "source_result_hashes": source_hashes,
+                "projected_payload_sha256": canonical_hash(projected),
                 "source_request_file": str(
-                    source_root
-                    / (
-                        NativePlanningStore(
-                            source_root, original
-                        ).store.request_path.name
-                    )
+                    NativePlanningStore(source_root, original).store.request_path
                 ),
                 "provider_request_count": 0,
             }
@@ -441,8 +518,9 @@ async def complete(
                 )
             corrections += 1
             context = deepcopy(stage_request.authoring_context or {})
-            if stage_request.authoring_stage == "story":
-                context["prior_response"] = response.payload
+            context["prior_response"] = response.payload
+            prior_candidate = value
+            prior_errors = errors
             context["validation_errors"] = errors
             correction = replace(
                 stage_request,
@@ -456,7 +534,29 @@ async def complete(
                     response.error_code,
                     response.error_message or "Authoring result unknown",
                 )
-            value = candidate(response.payload)
+            value = merge_error_fields(
+                prior_candidate, candidate(response.payload), prior_errors
+            )
+            from .plans import canonical_hash
+
+            write_detail_contract(
+                detail_workspace(request.job_id)
+                / "planning"
+                / (
+                    "correction-projection-"
+                    + stage_request.authoring_stage
+                    + "-"
+                    + ("+".join(stage_request.authoring_target_ids) or "campaign")
+                    + ".json"
+                ),
+                {
+                    "rule": "only-replace-invalid-authored-subtrees-v1",
+                    "original_payload_sha256": canonical_hash(prior_candidate),
+                    "correction_payload_sha256": canonical_hash(response.payload),
+                    "merged_payload_sha256": canonical_hash(value),
+                    "validation_errors": prior_errors,
+                },
+            )
             errors = errors_for(value, _planner_response_format(stage_request))
             if errors:
                 raise XingheAgentError(
@@ -464,7 +564,10 @@ async def complete(
                     "Corrected stage remains invalid",
                     validation_errors=errors,
                 )
-        if value != response.payload:
+        if (
+            stage_request.authoring_stage == "story"
+            and selected_story(response.payload, request.page_count) != response.payload
+        ):
             from .plans import canonical_hash
 
             write_detail_contract(

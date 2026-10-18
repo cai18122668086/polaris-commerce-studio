@@ -224,8 +224,11 @@ def test_selected_story_preserves_authored_selection_and_raw_reply(ambiguous):
     assert authoring.selected_story(raw, 10) == raw
 
 
+@pytest.mark.parametrize(
+    "fail_targets,remaining", [(("M01", "M02"), 4), (("M03", "M04"), 3)]
+)
 def test_failed_retry_reuses_intake_and_story_without_supplier_dispatch(
-    client, monkeypatch
+    client, monkeypatch, fail_targets, remaining
 ):
     from app.xinghe_agent import detail_workspace
     from tests.test_api import idem
@@ -237,7 +240,7 @@ def test_failed_retry_reuses_intake_and_story_without_supplier_dispatch(
     async def fail_first_pair(value):
         nonlocal failed
         result = await original(value)
-        if value.authoring_stage == "pair" and not failed:
+        if value.authoring_target_ids == fail_targets and not failed:
             failed = True
             return replace(
                 result,
@@ -278,7 +281,9 @@ def test_failed_retry_reuses_intake_and_story_without_supplier_dispatch(
     dispatch_pending(client)
     result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{second['id']}").json()
     assert result["status"] == "awaiting_confirmation", result.get("error_message")
-    assert [c.authoring_stage for c in gateway.planner_calls[before:]] == ["pair"] * 4
+    assert [c.authoring_stage for c in gateway.planner_calls[before:]] == [
+        "pair"
+    ] * remaining
     assert (
         detail_workspace(second["id"]) / "planning" / "story-recovery.json"
     ).is_file()
@@ -286,3 +291,48 @@ def test_failed_retry_reuses_intake_and_story_without_supplier_dispatch(
 
     assert all(Path(p).read_bytes() == raw for p, raw in originals.items())
     assert not gateway.image_calls
+
+
+def test_pair_correction_cannot_erase_already_valid_fields(client, monkeypatch):
+    gateway = _gateway(client)
+    original = gateway.plan
+
+    async def corrected_with_regression(value):
+        result = await original(value)
+        if value.authoring_target_ids == ("M01", "M02"):
+            payload = deepcopy(result.payload)
+            if (value.authoring_context or {}).get("validation_errors"):
+                assert value.authoring_context["prior_response"]["modules"]
+                payload["modules"][0]["variation_from_previous"] = []
+            else:
+                payload["modules"][0]["visible_copy"][0].pop("role")
+            return replace(result, payload=payload)
+        return result
+
+    monkeypatch.setattr(gateway, "plan", corrected_with_regression)
+    source = upload_asset(client, filename="correction-regression.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == "awaiting_confirmation", planned.get("error_message")
+    assert len(gateway.planner_calls) == 7
+    assert not gateway.image_calls
+
+
+def test_error_merge_never_invents_missing_replacement():
+    original = {"modules": [{"valid": "keep", "broken": []}]}
+    corrected = {"modules": [{"valid": "unrelated change"}]}
+    assert (
+        authoring.merge_error_fields(
+            original, corrected, [{"path": "/modules/0/broken"}]
+        )
+        == original
+    )
+    corrected["modules"][0]["broken"] = ["authored"]
+    result = authoring.merge_error_fields(
+        original, corrected, [{"path": "/modules/0/broken"}]
+    )
+    assert result == {"modules": [{"valid": "keep", "broken": ["authored"]}]}
+    assert original["modules"][0]["broken"] == []

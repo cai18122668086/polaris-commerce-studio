@@ -3563,7 +3563,7 @@ class XinghePlanningCoordinator:
                 for source_id, source_root in source_stories:
                     recovered = authoring.recover_story(request, source_root, binding)
                     if recovered is not None:
-                        write_detail_contract(detail_workspace(request.job_id) / "planning" / "story-recovery.json", {
+                        write_detail_contract(detail_workspace(request.job_id) / "planning" / ("story-recovery.json" if request.authoring_stage == "story" else "pair-" + "+".join(request.authoring_target_ids) + "-recovery.json"), {
                             "source_job_id": source_id,
                             **recovered["provider_envelope"]["authored_input_recovery"],
                         })

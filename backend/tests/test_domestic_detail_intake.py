@@ -293,13 +293,18 @@ def test_one_fact_cannot_be_retained_and_rejected_in_different_conflicts():
     )
     assert validate_resolution(value, resolution) == resolution
 
-@pytest.mark.parametrize("source_class,evidence_ref", [
-    ("OBSERVED_PRODUCT_EVIDENCE", "product-1"),
-    ("USER_FACT", "product-1"),
-    ("OBSERVED_PRODUCT_EVIDENCE", "style-1"),
-])
+
+@pytest.mark.parametrize(
+    "source_class,evidence_ref",
+    [
+        ("OBSERVED_PRODUCT_EVIDENCE", "product-1"),
+        ("USER_FACT", "product-1"),
+        ("OBSERVED_PRODUCT_EVIDENCE", "style-1"),
+    ],
+)
 def test_model_observation_contract_matches_runtime_source_boundary(
-    source_class, evidence_ref,
+    source_class,
+    evidence_ref,
 ):
     from jsonschema import Draft202012Validator
 
@@ -308,16 +313,52 @@ def test_model_observation_contract_matches_runtime_source_boundary(
     value = intake()
     value["brand_confirmation_required"] = False
     value["observed_facts"][0].update(
-        source_class=source_class, evidence_ref=evidence_ref,
+        source_class=source_class,
+        evidence_ref=evidence_ref,
     )
     schema = intake_response_schema(["product-1"])
     valid = source_class == "OBSERVED_PRODUCT_EVIDENCE" and evidence_ref == "product-1"
     assert Draft202012Validator(schema).is_valid(value) is valid
     if valid:
-        validate_intake(value, settings=SETTINGS, sources=SOURCES,
-                        brandless_confirmation=CONFIRMATION)
+        validate_intake(
+            value,
+            settings=SETTINGS,
+            sources=SOURCES,
+            brandless_confirmation=CONFIRMATION,
+        )
     else:
         with pytest.raises(DetailIntakeError) as error:
-            validate_intake(value, settings=SETTINGS, sources=SOURCES,
-                            brandless_confirmation=CONFIRMATION)
+            validate_intake(
+                value,
+                settings=SETTINGS,
+                sources=SOURCES,
+                brandless_confirmation=CONFIRMATION,
+            )
         assert error.value.code == "INTAKE_FACT_SOURCE_INVALID"
+
+
+@pytest.mark.parametrize(
+    "tamper", [None, "absent", "missing_fact", "duplicate", "unknown_source"]
+)
+def test_model_scan_schema_requires_the_exact_complete_source_inventory(tamper):
+    from jsonschema import Draft202012Validator
+
+    from app.domestic_detail.intake import intake_response_schema
+
+    value = intake()
+    value["brand_confirmation_required"] = False
+    expected = list(value["conflict_scan"]["scanned_source_refs"])
+    facts = [ref for ref in expected if ref != "product-1"]
+    schema = intake_response_schema(["product-1"], facts)
+    assert "scanned_source_refs" in schema["properties"]["conflict_scan"]["required"]
+    if tamper == "absent":
+        value["conflict_scan"].pop("scanned_source_refs")
+    elif tamper == "missing_fact":
+        value["conflict_scan"]["scanned_source_refs"].pop()
+    elif tamper == "duplicate":
+        value["conflict_scan"]["scanned_source_refs"][0] = value["conflict_scan"][
+            "scanned_source_refs"
+        ][1]
+    elif tamper == "unknown_source":
+        value["conflict_scan"]["scanned_source_refs"][0] = "another-product"
+    assert Draft202012Validator(schema).is_valid(value) is (tamper is None)

@@ -26,17 +26,29 @@ INTAKE_PROFILE = "aurora_domestic_intake"
 
 def intake_response_schema(
     product_asset_ids: Sequence[str] = (),
+    user_fact_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     native_input, identity = _native_schemas()
     observed_fact = deepcopy(native_input["properties"]["verified_facts"]["items"])
-    observed_fact["properties"]["source_class"] = {
-        "const": "OBSERVED_PRODUCT_EVIDENCE"
-    }
+    observed_fact["properties"]["source_class"] = {"const": "OBSERVED_PRODUCT_EVIDENCE"}
     source_ref: dict[str, Any] = {"type": "string"}
     if product_asset_ids:
         source_ref["enum"] = list(product_asset_ids)
         identity["properties"]["reference_image_ids"]["items"] = deepcopy(source_ref)
     observed_fact["properties"]["evidence_ref"] = deepcopy(source_ref)
+    scan = deepcopy(native_input["properties"]["conflict_scan"])
+    scan.setdefault("required", []).append("scanned_source_refs")
+    refs: dict[str, Any] = {
+        "type": "array",
+        "uniqueItems": True,
+        "items": {"type": "string"},
+    }
+    if user_fact_ids is not None:
+        expected = sorted(set(product_asset_ids) | set(user_fact_ids))
+        refs.update(minItems=len(expected), maxItems=len(expected))
+        if expected:
+            refs["items"]["enum"] = expected
+    scan.setdefault("properties", {})["scanned_source_refs"] = refs
     return {
         "type": "object",
         "additionalProperties": False,
@@ -49,7 +61,7 @@ def intake_response_schema(
         ],
         "properties": {
             "version": {"const": INTAKE_VERSION},
-            "conflict_scan": native_input["properties"]["conflict_scan"],
+            "conflict_scan": scan,
             "source_conflicts": native_input["properties"]["source_conflicts"],
             "observed_facts": {
                 "type": "array",
@@ -70,10 +82,7 @@ def intake_response_schema(
                                 "color_material",
                             ]
                         },
-                        **{
-                            key: {"type": "string"}
-                            for key in ("region", "text")
-                        },
+                        **{key: {"type": "string"} for key in ("region", "text")},
                         "source_asset_id": deepcopy(source_ref),
                     },
                 },
@@ -159,7 +168,8 @@ def intake_prompt(
                     source["asset_id"]
                     for source in sources
                     if source.get("role") == "product_reference"
-                ]
+                ],
+                [fact["id"] for fact in user_fact_ledger(settings)],
             ),
         },
         ensure_ascii=False,

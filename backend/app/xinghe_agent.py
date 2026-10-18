@@ -63,7 +63,12 @@ from .domestic_detail.atomic_review import (
     synthetic_identity,
     synthetic_module_judgments,
 )
-from .domestic_detail.facts import DetailIntakeError, _schema, validate_intake
+from .domestic_detail.facts import (
+    DetailIntakeError,
+    _schema,
+    user_fact_ledger,
+    validate_intake,
+)
 from .domestic_detail.generation import (
     DetailGenerationError,
     begin_invocation,
@@ -10274,7 +10279,8 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "strict": False,
                 "schema": intake_response_schema(
                     [source.asset_id for source in request.sources
-                     if source.source_role == "product_reference"]
+                     if source.source_role == "product_reference"],
+                    [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
                 ),
             },
         }

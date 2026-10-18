@@ -3774,6 +3774,7 @@ class XinghePlanningCoordinator:
                 [source["asset_id"] for source in sources if source.get("role") == "product_reference"],
                 [fact["id"] for fact in user_fact_ledger(settings)],
                 wire_settings=settings if wire else None,
+                source_conflicts_resolved=resolution is not None,
                 style_asset_ids=list(style_ids),
             ), "/intake")
             projected, identity_projection = project_identity_observations(canonical_wire)
@@ -10384,6 +10385,7 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
              if source.source_role == "product_reference"],
             [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
             wire_settings=request.intake_settings or {},
+            source_conflicts_resolved=request.intake_resolution is not None,
             style_asset_ids=[source.asset_id for source in request.sources if source.source_role == "style_reference"],
         )
         # Compatible providers require a plain object at the response root.

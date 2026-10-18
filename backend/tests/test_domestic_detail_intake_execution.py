@@ -30,6 +30,7 @@ def test_model_intake_precedes_actual_native_preflight(client, with_style):
     assert [call.planning_profile for call in gateway.planner_calls] == [
         "aurora_domestic_intake",
         "aurora_domestic_detail",
+        *["aurora_domestic_modules_completion"] * 4,
     ]
     assert gateway.image_calls == []
     contract = gateway.planner_calls[1].detail_intake
@@ -92,8 +93,9 @@ def test_missing_brand_waits_then_resumes_same_task_without_images(client):
         "aurora_domestic_intake",
         "aurora_domestic_intake",
         "aurora_domestic_detail",
+        *["aurora_domestic_modules_completion"] * 4,
     ]
-    assert len(planned["plan"]["payload"]["usage"]["planner"]) == 3
+    assert len(planned["plan"]["payload"]["usage"]["planner"]) == 7
     assert _gateway(client).image_calls == []
     replay = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/intake/resolve",
@@ -101,7 +103,7 @@ def test_missing_brand_waits_then_resumes_same_task_without_images(client):
         json=body,
     )
     assert replay.status_code == 202
-    assert len(_gateway(client).planner_calls) == 3
+    assert len(_gateway(client).planner_calls) == 7
 
 
 def test_material_conflicts_are_batched_and_human_choice_reaches_native_harness(
@@ -186,7 +188,7 @@ def test_material_conflicts_are_batched_and_human_choice_reaches_native_harness(
         planned.get("error_code"),
         planned.get("error_message"),
     )
-    assert len(gateway.planner_calls) == 3
+    assert len(gateway.planner_calls) == 7
     contract = gateway.planner_calls[-1].detail_intake
     assert contract["resolution"]["resolutions"][0]["retained_fact_ids"] == ["F02"]
     assert gateway.image_calls == []
@@ -239,7 +241,7 @@ def test_material_conflicts_are_batched_and_human_choice_reaches_native_harness(
         ],
     )
     assert len(gateway.image_calls) == len(contexts) == 4
-    assert len(gateway.planner_calls) == 3
+    assert len(gateway.planner_calls) == 7
     assert len({context["review_authority"]["sha256"] for context in contexts}) == 1
     for context in contexts:
         page = int(context["module_ids"][0][1:])
@@ -379,8 +381,6 @@ def test_actual_native_compiler_preserves_reference_adoption_choices(
             return result
         value = deepcopy(result.payload)
         system = value["reference_expression_system"]
-        for module in value["modules"]:
-            module["reference_pattern_ids"] = []
         if mode == "all_rejected":
             system["adopted_patterns"] = []
             for row in system["coverage"]:
@@ -392,9 +392,6 @@ def test_actual_native_compiler_preserves_reference_adoption_choices(
         else:
             for pattern in system["adopted_patterns"]:
                 pattern["scheduled_module_ids"] = ["M02"]
-            value["modules"][1]["reference_pattern_ids"] = [
-                pattern["id"] for pattern in system["adopted_patterns"]
-            ]
         return replace(result, payload=value)
 
     monkeypatch.setattr(gateway, "plan", choose_reference)
@@ -413,7 +410,7 @@ def test_actual_native_compiler_preserves_reference_adoption_choices(
         planned.get("error_code"),
         planned.get("error_message"),
     )
-    assert len(gateway.planner_calls) == 2 and gateway.image_calls == []
+    assert len(gateway.planner_calls) == 6 and gateway.image_calls == []
     native = planned["plan"]["payload"]["groups"][0]["plan_protocol_fields"][
         "aurora_plan"
     ]
@@ -458,7 +455,7 @@ def test_photo_led_intake_carries_observed_facts_and_hypotheses_into_native_plan
     assert intake["observed_facts"][0]["source_class"] == "OBSERVED_PRODUCT_EVIDENCE"
     assert intake["operating_analysis"]["assumption_disclosure"]
     assert (
-        len(_gateway(client).planner_calls) == 2 and _gateway(client).image_calls == []
+        len(_gateway(client).planner_calls) == 6 and _gateway(client).image_calls == []
     )
 
 
@@ -597,7 +594,7 @@ def test_supplementary_brand_photo_stays_product_scoped_and_bounded(
             and result["error_code"] == "INTAKE_CONFIRMATION_STILL_UNRESOLVED"
         ), result
     assert (
-        len(gateway.planner_calls) == (3 if readable else 2)
+        len(gateway.planner_calls) == (7 if readable else 2)
         and gateway.image_calls == []
     )
 

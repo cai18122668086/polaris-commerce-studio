@@ -160,3 +160,38 @@ def test_bounded_failure_stops_without_new_task_or_images(client, monkeypatch, f
         == {"invalid": 3, "unknown": 2, "deadline": 1}[failure]
     )
     assert not gateway.image_calls
+
+
+def test_resolved_conflict_wire_requires_identity_even_with_historical_conflict():
+    from app.domestic_detail.intake import intake_prompt, intake_response_schema
+
+    settings = {
+        "product_name": "参考图女鞋",
+        "selling_points": ["尖头轮廓"],
+        "brandless_confirmation": "用户确认仅作来源水印，测试图不添加品牌",
+    }
+    resolution = {
+        "resolutions": [
+            {
+                "conflict_id": "C01",
+                "retained_fact_ids": ["F01"],
+                "rejected_fact_ids": ["O02"],
+            }
+        ]
+    }
+    wire = request(
+        planning_profile="aurora_domestic_intake",
+        intake_settings=settings,
+        intake_resolution=resolution,
+    )
+    schema = _planner_response_format(wire)["json_schema"]["schema"]
+    assert {"identity", "identity_observations"}.issubset(schema["required"])
+    assert schema["properties"]["identity"]["type"] == "object"
+    assert "allOf" not in schema  # provider-compatible root stays intact
+    unresolved = intake_response_schema(wire_settings=settings)
+    assert "identity" not in unresolved["required"]
+    prompt = intake_prompt(settings=settings, sources=[], resolution=resolution)
+    assert "Do not stop at the old conflict again" in prompt
+    assert "material conflict MUST stop" not in prompt
+    before = intake_prompt(settings=settings, sources=[])
+    assert "material conflict MUST stop" in before

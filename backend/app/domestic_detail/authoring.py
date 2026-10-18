@@ -265,6 +265,15 @@ def fake_phase(payload: Mapping[str, Any], request: Any) -> dict[str, Any]:
     if request.authoring_stage == "story":
         value["modules"] = [{k: m[k] for k in STORY_FIELDS} for m in value["modules"]]
     elif request.authoring_stage == "pair":
+        context = request.authoring_context
+        locked = {m["id"]: m for m in context["modules"]}
+        patterns = context["reference_expression_system"]["adopted_patterns"]
+        for module in value["modules"]:
+            for key in STORY_FIELDS:
+                module[key] = deepcopy(locked[module["id"]][key])
+            module["reference_pattern_ids"] = [
+                p["id"] for p in patterns if module["id"] in p["scheduled_module_ids"]
+            ]
         value = {
             "modules": [
                 m for m in value["modules"] if m["id"] in request.authoring_target_ids

@@ -32,6 +32,7 @@ def intake_response_schema(
     *,
     wire_settings: Mapping[str, Any] | None = None,
     style_asset_ids: Sequence[str] | None = None,
+    source_conflicts_resolved: bool = False,
 ) -> dict[str, Any]:
     native_input, identity = _native_schemas()
     identity = deepcopy(identity)
@@ -147,6 +148,14 @@ def intake_response_schema(
             "then": clear_scan_requirements,
         }
     ]
+    if source_conflicts_resolved:
+        # Original conflict rows remain UNRESOLVED as evidence. The explicit
+        # human receipt, not that historical status, unlocks identity authoring.
+        result["allOf"] = [clear_scan_requirements]
+        if (wire_settings or {}).get("brandless_confirmation"):
+            result["required"].extend(["identity", "identity_observations"])
+            result["properties"]["identity"] = identity
+            result["properties"]["brand_confirmation_required"] = {"const": False}
     reference = result["properties"]["reference_materials"]["items"]["properties"]
     for field in (
         "visual_carrier",
@@ -291,9 +300,18 @@ def intake_prompt(
         "facts. Scan every product asset ID and every original Fxx user "
         "fact ID: list them in conflict_scan.scanned_source_refs. Report "
         "only real material SKU/specification/performance conflicts and "
-        "all alternative fact IDs, with source-specific observations. A "
-        "material conflict MUST stop before identity/storyboard; omit "
-        "identity and modules. Use O01.. for observed facts and cite "
+        "all alternative fact IDs, with source-specific observations. "
+        + (
+            "HUMAN_RESOLUTION already resolves the recorded conflict. Preserve "
+            "its original UNRESOLVED rows as evidence and author identity plus "
+            "all four identity_observations using the retained facts. Do not "
+            "stop at the old conflict again. Only a still-unconfirmed brand "
+            "may require brand clarification instead of identity. "
+            if resolution is not None
+            else "A material conflict MUST stop before identity/storyboard; "
+            "omit identity and modules. "
+        )
+        + "Use O01.. for observed facts and cite "
         "source_class=OBSERVED_PRODUCT_EVIDENCE on every observed fact. "
         "Leave USER_FACTS in the server-owned Fxx ledger; never copy them into "
         "observed_facts or relabel user instructions as pixel observations. "
@@ -353,6 +371,7 @@ def intake_prompt(
                 ],
                 [fact["id"] for fact in user_fact_ledger(settings)],
                 wire_settings=settings,
+                source_conflicts_resolved=resolution is not None,
                 style_asset_ids=[
                     source["asset_id"]
                     for source in sources

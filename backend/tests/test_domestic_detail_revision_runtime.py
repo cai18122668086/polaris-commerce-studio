@@ -50,7 +50,7 @@ from tests.test_native_detail_local_adjustment import adjustment, inventory
     ],
 )
 def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
-    client, automatic, scope_overrun, layout_override
+    client, automatic, scope_overrun, layout_override, monkeypatch
 ):
     if automatic:
         planned = planned_job(client)
@@ -248,8 +248,38 @@ def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
         assert len(gateway.planner_calls) == before_calls[0] + 1
         assert len(gateway.image_calls) == before_calls[1]
         return
+    if layout_override:
+        from app.domestic_detail import revision_accounts
+
+        with monkeypatch.context() as patcher:
+
+            def unavailable(gateway):
+                raise RevisionScopeError(
+                    "ACCOUNT_FIXTURE", "Account configuration unavailable"
+                )
+
+            patcher.setattr(
+                revision_accounts, "configured_revision_accounts", unavailable
+            )
+            with pytest.raises(RevisionScopeError, match="configuration unavailable"):
+                run()
+        assert (len(gateway.planner_calls), len(gateway.image_calls)) == before_calls
+        assert not (
+            detail_workspace(child_id) / "local-scope-model-result.json"
+        ).exists()
     assert run()
     root = detail_workspace(child_id)
+    configured = json.loads(
+        (root / "local-revision-account-configuration.json").read_bytes()
+    )
+    assert (
+        configured["intent_sha256"]
+        == request.configuration["job"]["local_revision"]["sha256"]
+    )
+    assert configured["quote_sha256"] == quote["sha256"]
+    assert configured["accounts"]["configuration_checked"]
+    assert not configured["accounts"]["remote_authorization_verified"]
+    assert not configured["accounts"]["remote_balance_verified"]
     first_inventory = inventory(root)
     state = json.loads((root / "session.json").read_bytes())
     assert state["state"] == "AUTHORIZED" and state["current_index"] == 2
@@ -285,7 +315,17 @@ def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
         assert len(model) == 1 and model[0]["phase"] == SCOPE_PROFILE
         assert model[0]["local_scope_binding_sha256"]
         first_usage = deepcopy(model)
-    assert run()
+    from app.domestic_detail import revision_accounts
+
+    with monkeypatch.context() as patcher:
+
+        def unavailable(gateway):
+            raise AssertionError(
+                "Paid journal replay must not perform a new account check"
+            )
+
+        patcher.setattr(revision_accounts, "configured_revision_accounts", unavailable)
+        assert run()
     assert inventory(root) == first_inventory
     with factory() as db:
         plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == child_id))

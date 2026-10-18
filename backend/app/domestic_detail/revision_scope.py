@@ -140,6 +140,7 @@ async def run_scope_check(
     gateway: Any,
     before_dispatch: Callable[[], None],
     account_result: Callable[[PlannerCallResult, str], None],
+    before_new_dispatch: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Caller verifies current owner/source, active public lease, cancel and quota."""
     from ..xinghe_agent import (
@@ -206,6 +207,8 @@ async def run_scope_check(
         )
     else:
         before_dispatch()
+        if before_new_dispatch is not None:
+            before_new_dispatch()
         store.begin()
         try:
             result = await gateway.plan(

@@ -427,6 +427,28 @@ async def prepare_revision(
             if select_route(gateway)["sha256"] != quote["review_dispatch_sha256"]:
                 _reject("The quoted semantic review account changed")
 
+    def before_new_dispatch() -> None:
+        from .revision_accounts import configured_revision_accounts
+
+        accounts = configured_revision_accounts(gateway)
+        if (
+            accounts["image_dispatch_sha256"] != quote["image_dispatch_sha256"]
+            or accounts["review_dispatch_sha256"] != quote["review_dispatch_sha256"]
+        ):
+            _reject("The account configuration differs from the original quote")
+        value = {
+            "intent_sha256": intent["sha256"],
+            "quote_sha256": quote["sha256"],
+            "accounts": accounts,
+        }
+        json_once(
+            root / "local-revision-account-configuration.json",
+            {
+                **value,
+                "sha256": canonical_hash(value),
+            },
+        )
+
     await run_scope_check(
         root=root,
         workspace_id=request.workspace_id,
@@ -434,6 +456,7 @@ async def prepare_revision(
         context=context,
         gateway=gateway,
         before_dispatch=before_dispatch,
+        before_new_dispatch=before_new_dispatch,
         account_result=lambda result, key: account_scope_result(
             factory, request, intent["sha256"], result, key
         ),

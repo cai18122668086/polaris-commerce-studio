@@ -16,6 +16,7 @@ from .facts import (
     DetailIntakeError,
     _native_schemas,
     _schema,
+    text_tokens,
     user_fact_ledger,
 )
 from .planner_dispatch import require_route, validate_dispatch_result
@@ -41,6 +42,16 @@ def intake_response_schema(
         source_ref["enum"] = list(product_asset_ids)
         identity["properties"]["reference_image_ids"]["items"] = deepcopy(source_ref)
     observed_fact["properties"]["evidence_ref"] = deepcopy(source_ref)
+    observed_fact["required"] = list(
+        dict.fromkeys(
+            [
+                *observed_fact["required"],
+                "observed_region",
+            ]
+        )
+    )
+    observed_fact["properties"]["observed_region"] = {"type": "string", "minLength": 1}
+    observed_fact["properties"]["text"]["minLength"] = 4
     scan = deepcopy(native_input["properties"]["conflict_scan"])
     scan.setdefault("required", []).append("scanned_source_refs")
     refs: dict[str, Any] = {
@@ -87,7 +98,13 @@ def intake_response_schema(
                                 "color_material",
                             ]
                         },
-                        **{key: {"type": "string"} for key in ("region", "text")},
+                        **{
+                            key: {
+                                "type": "string",
+                                "minLength": 1 if key == "region" else 4,
+                            }
+                            for key in ("region", "text")
+                        },
                         "source_asset_id": deepcopy(source_ref),
                     },
                 },
@@ -101,6 +118,34 @@ def intake_response_schema(
         },
     }
 
+    result["properties"]["brand_observation"] = {
+        "type": "object",
+        "properties": {
+            "source_asset_id": deepcopy(source_ref),
+            "text": {"type": "string", "minLength": 4},
+        },
+    }
+    result["allOf"] = [
+        {
+            "if": {"properties": {"brand_confirmation_required": {"const": True}}},
+            "then": {
+                "required": ["brand_observation"],
+                "properties": {
+                    "brand_observation": {"required": ["source_asset_id", "text"]}
+                },
+            },
+            "else": {"required": ["identity", "identity_observations"]},
+        }
+    ]
+    reference = result["properties"]["reference_materials"]["items"]["properties"]
+    for field in (
+        "visual_carrier",
+        "composition_logic",
+        "typography_logic",
+        "observed_expression_method",
+    ):
+        reference["analyzed_units"]["items"]["properties"][field]["minLength"] = 4
+    reference["observed_expression_methods"]["items"]["minLength"] = 4
     if wire_settings is not None:
         result["required"].extend(
             [
@@ -111,6 +156,17 @@ def intake_response_schema(
         )
         if style_asset_ids is not None and not style_asset_ids:
             result["properties"]["reference_materials"] = {"const": []}
+        observed_fact["required"] = list(
+            dict.fromkeys(
+                [
+                    *observed_fact["required"],
+                    "atomic_key",
+                    "atomicity",
+                ]
+            )
+        )
+        if not text_tokens(wire_settings.get("selling_points"), field="selling_points"):
+            result["required"].append("operating_analysis")
         result["properties"]["identity_features_source"] = {
             "const": IDENTITY_PROJECTION
         }

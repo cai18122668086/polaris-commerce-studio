@@ -24,6 +24,9 @@ def wire():
     value["brand_confirmation_required"] = False
     value["identity_features_source"] = IDENTITY_PROJECTION
     value["identity"].pop("invariant_features")
+    for fact in value["observed_facts"]:
+        fact.setdefault("atomic_key", "synthetic-" + fact["id"])
+        fact.setdefault("atomicity", "ONE_INDEPENDENT_PROPOSITION")
     return value
 
 
@@ -34,7 +37,8 @@ def test_wire_projection_preserves_original_bytes_and_actual_observations():
     schema = intake_response_schema(
         ["product-1"], [r for r in refs if r != "product-1"], wire_settings=SETTINGS
     )
-    assert Draft202012Validator(schema).is_valid(original)
+    errors = list(Draft202012Validator(schema).iter_errors(original))
+    assert not errors, [(str(error.path), error.message) for error in errors]
     native, receipt = project_identity_observations(original)
     result = validate_intake(
         native, settings=SETTINGS, sources=SOURCES, brandless_confirmation=CONFIRMATION
@@ -173,3 +177,25 @@ def test_zero_reference_default_does_not_remove_phantom_or_legacy_reference_data
     value = intake()
     value.pop("reference_materials")
     assert canonical_intake_wire(value, has_style_sources=False) == value
+
+
+@pytest.mark.parametrize("tamper", [None, "missing", "empty", "null"])
+def test_wire_declares_the_required_observed_fact_region(tamper):
+    value = wire()
+    if tamper == "missing":
+        value["observed_facts"][0].pop("observed_region")
+    elif tamper:
+        value["observed_facts"][0]["observed_region"] = (
+            "" if tamper == "empty" else None
+        )
+    schema = intake_response_schema(
+        ["product-1"], ["F01", "F02"], wire_settings=SETTINGS
+    )
+    assert Draft202012Validator(schema).is_valid(value) is (tamper is None)
+
+
+def test_wire_photo_only_route_requires_authored_operating_analysis():
+    schema = intake_response_schema(["product-1"], [], wire_settings={})
+    assert "operating_analysis" in schema["required"]
+    schema = intake_response_schema(["product-1"], ["F01"], wire_settings=SETTINGS)
+    assert "operating_analysis" not in schema["required"]

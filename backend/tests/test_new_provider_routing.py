@@ -20,6 +20,7 @@ from app.crossborder_detail_provider import (
     CrossborderDetailProvider,
 )
 from app.domain import JobStatus, JobType
+from app.domestic_detail.campaign_provider import DomesticCampaignReviewProvider
 from app.domestic_detail_provider import (
     DOMESTIC_DETAIL_SKILL_ID,
     DomesticDetailProvider,
@@ -428,6 +429,9 @@ def test_real_single_image_route_uses_its_own_skill_delegate_when_enabled(
         if other_operation == JobType.DOMESTIC_MAIN_IMAGE.value:
             assert isinstance(other_adapter, UnavailableProvider)
             continue
+        if other_operation == JobType.DOMESTIC_DETAIL_REVIEW.value:
+            assert isinstance(other_adapter, DomesticCampaignReviewProvider)
+            continue
         if other_operation != operation:
             assert isinstance(other_adapter.delegate, UnavailableProvider)
 
@@ -447,7 +451,10 @@ def test_real_single_image_routes_receive_independent_delegates(
     delegates = [
         adapter.delegate
         for operation, adapter in router.routes.items()
-        if operation != JobType.DOMESTIC_MAIN_IMAGE.value
+        if operation not in {
+            JobType.DOMESTIC_MAIN_IMAGE.value,
+            JobType.DOMESTIC_DETAIL_REVIEW.value,
+        }
     ]
     assert isinstance(
         router.routes[JobType.DOMESTIC_MAIN_IMAGE.value], UnavailableProvider
@@ -658,7 +665,10 @@ def test_tengli_task_runner_propagates_all_provider_switches(
     assert all(
         isinstance(adapter.delegate, XingheSingleImageProvider)
         for operation, adapter in router.routes.items()
-        if operation != JobType.DOMESTIC_MAIN_IMAGE.value
+        if operation not in {
+            JobType.DOMESTIC_MAIN_IMAGE.value,
+            JobType.DOMESTIC_DETAIL_REVIEW.value,
+        }
     )
     assert isinstance(
         router.routes[JobType.DOMESTIC_MAIN_IMAGE.value], UnavailableProvider

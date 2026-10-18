@@ -196,6 +196,30 @@ def test_wire_declares_the_required_observed_fact_region(tamper):
 
 def test_wire_photo_only_route_requires_authored_operating_analysis():
     schema = intake_response_schema(["product-1"], [], wire_settings={})
-    assert "operating_analysis" in schema["required"]
+    assert "operating_analysis" in schema["allOf"][0]["then"]["else"]["required"]
     schema = intake_response_schema(["product-1"], ["F01"], wire_settings=SETTINGS)
-    assert "operating_analysis" not in schema["required"]
+    assert "operating_analysis" not in schema["allOf"][0]["then"]["else"]["required"]
+
+
+def test_wire_conflict_question_precedes_identity_and_cannot_lock_it_early():
+    from tests.test_domestic_detail_intake import conflict_intake
+
+    value = conflict_intake()
+    value["brand_confirmation_required"] = False
+    value["identity_features_source"] = IDENTITY_PROJECTION
+    for fact in value["observed_facts"]:
+        fact.setdefault("atomic_key", "synthetic-" + fact["id"])
+        fact.setdefault("atomicity", "ONE_INDEPENDENT_PROPOSITION")
+    before = deepcopy(value)
+    schema = intake_response_schema(
+        ["product-1"], ["F01", "F02"], wire_settings=SETTINGS
+    )
+    Draft202012Validator(schema).validate(value)
+    native, receipt = project_identity_observations(value)
+    assert receipt is None and "identity" not in native
+    validated = validate_intake(native, settings=SETTINGS, sources=SOURCES)
+    assert validated["conflict_scan"]["status"] == "CONFLICTS_FOUND"
+    assert "identity" not in validated and value == before
+    value["conflict_scan"].update(status="CLEAR", conflict_ids=[])
+    value["source_conflicts"] = []
+    assert not Draft202012Validator(schema).is_valid(value)

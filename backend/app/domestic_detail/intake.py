@@ -125,16 +125,26 @@ def intake_response_schema(
             "text": {"type": "string", "minLength": 4},
         },
     }
+    clear_scan_requirements: dict[str, Any] = {
+        "if": {"properties": {"brand_confirmation_required": {"const": True}}},
+        "then": {
+            "required": ["brand_observation"],
+            "properties": {
+                "brand_observation": {"required": ["source_asset_id", "text"]}
+            },
+        },
+        "else": {"required": ["identity", "identity_observations"]},
+    }
+    # An unresolved source conflict must return before identity or story work.
+    # validate_intake separately requires the full identity after resolution.
     result["allOf"] = [
         {
-            "if": {"properties": {"brand_confirmation_required": {"const": True}}},
-            "then": {
-                "required": ["brand_observation"],
+            "if": {
                 "properties": {
-                    "brand_observation": {"required": ["source_asset_id", "text"]}
-                },
+                    "conflict_scan": {"properties": {"status": {"const": "CLEAR"}}}
+                }
             },
-            "else": {"required": ["identity", "identity_observations"]},
+            "then": clear_scan_requirements,
         }
     ]
     reference = result["properties"]["reference_materials"]["items"]["properties"]
@@ -150,7 +160,6 @@ def intake_response_schema(
         result["required"].extend(
             [
                 "identity_features_source",
-                "identity_observations",
                 "reference_materials",
             ]
         )
@@ -166,7 +175,7 @@ def intake_response_schema(
             )
         )
         if not text_tokens(wire_settings.get("selling_points"), field="selling_points"):
-            result["required"].append("operating_analysis")
+            clear_scan_requirements["else"]["required"].append("operating_analysis")
         result["properties"]["identity_features_source"] = {
             "const": IDENTITY_PROJECTION
         }

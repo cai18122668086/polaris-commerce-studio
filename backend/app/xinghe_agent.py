@@ -10283,6 +10283,25 @@ def _single_image_analysis_fields(profile: str) -> set[str]:
     return set()
 
 
+def _aurora_completion_context(request: PlannerRequest) -> dict[str, Any]:
+    for value in request.product_information:
+        if value.startswith("CURRENT_AURORA_PLAN_JSON="):
+            try:
+                result = json.loads(value.split("=", 1)[1])
+            except (TypeError, ValueError):
+                return {}
+            return dict(result) if isinstance(result, Mapping) else {}
+    return {}
+
+
+def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int]:
+    return {
+        rule["if"]["properties"]["structure_family"]["const"]:
+        rule["then"]["properties"]["zone_briefs"]["minItems"]
+        for rule in structure.get("allOf", [])
+    }
+
+
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
     if request.planning_profile == "aurora_detail_revision_scope":
         from .domestic_detail.revision_protocol import scope_schema
@@ -10449,6 +10468,25 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 for field in compact["required"]:
                     if field not in properties:
                         properties[field] = deepcopy(expanded["properties"][field])
+            # With no supplied style references there is no reference grammar
+            # to adopt. Product photos remain identity evidence, never styling.
+            if request.detail_intake is not None and not request.detail_intake.get("reference_materials"):
+                reference = schema["properties"]["reference_expression_system"]["properties"]
+                for field in ("coverage", "adopted_patterns"):
+                    reference[field] = {"type": "array", "maxItems": 0}
+            # A single-module completion keeps its already valid structure
+            # choice. Put its exact zone count in plain properties because
+            # compatible model adapters may overlook conditional allOf rules.
+            if request.planning_profile == "aurora_domestic_modules_completion":
+                current = _aurora_completion_context(request).get("current_module")
+                if isinstance(current, Mapping):
+                    authored_structure = current.get("structure")
+                    family = authored_structure.get("structure_family") if isinstance(authored_structure, Mapping) else None
+                    structure = module_schema["properties"]["structure"]
+                    counts = _aurora_structure_zone_counts(structure)
+                    if family in counts:
+                        structure["properties"]["structure_family"] = {"const": family}
+                        structure["properties"]["zone_briefs"].update(minItems=counts[family], maxItems=counts[family])
             for field in ("selling_point_clusters", "claim_coverage"):
                 schema["properties"]["output_strategy"]["properties"][field] = (
                     runtime_schema["properties"]["output_strategy"]["properties"][field]
@@ -10511,6 +10549,33 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    prompt = _planner_prompt_body(request)
+    if request.planning_profile in {
+        "aurora_domestic_detail", "aurora_domestic_campaign_completion",
+        "aurora_domestic_plan_repair", "aurora_domestic_modules_completion",
+    }:
+        schema = _planner_response_format(request)["json_schema"]["schema"]
+        modules = schema.get("properties", {}).get("modules", {})
+        structure = modules.get("items", {}).get("properties", {}).get("structure", {})
+        counts = _aurora_structure_zone_counts(structure)
+        prompt += "\nSTRUCTURE_ZONE_COUNTS_JSON=" + json.dumps(counts, sort_keys=True)
+        prompt += (
+            "\nUse exactly that many zone_briefs for the chosen structure_family. "
+            "Use only closed authored enum tokens. complete_product_role is DOMINANT, "
+            "SUPPORTING, IDENTITY_TOKEN_ONLY or ABSENT. expression_signature is the "
+            "exact four authored tokens primary_subject_class+presentation_form+camera_scale+complete_product_role."
+        )
+        if request.detail_intake is not None and not request.detail_intake.get("reference_materials"):
+            prompt += (
+                "\nThere are ZERO supplied style_reference images. Set "
+                "reference_expression_system.coverage=[] and adopted_patterns=[]. "
+                "Do not adopt product_reference images as style reference patterns. "
+                "Their observed product features remain factual identity evidence."
+            )
+    return prompt
+
+
+def _planner_prompt_body(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_detail_revision_scope":
         from .domestic_detail.revision_protocol import scope_prompt
 
@@ -10840,6 +10905,14 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "continuity_strength, seam_carrier. Keep facts grounded in the supplied product sources and "
             "retain the approved pair order.\n\n"
             + context
+            + "\n\n"
+            + next((value for value in request.product_information if value.startswith("VALIDATION_ERRORS_JSON=")), "VALIDATION_ERRORS_JSON=[]")
+            + "\nCorrect EVERY listed error. In particular, zone_briefs counts refer "
+            "to spatial zones, not the number of text labels. Keep supporting labels "
+            "inside their existing zone instead of adding a third spatial zone. "
+            "Use complete_product_role=SUPPORTING, never REQUIRED_SUPPORTING. "
+            "After any authored token change, update expression_signature to the "
+            "exact primary_subject_class+presentation_form+camera_scale+complete_product_role tuple."
         )
     if request.planning_profile == "aurora_domestic_detail":
         source_inventory = ", ".join(
@@ -12063,81 +12136,8 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
         transition_output["visible_overlap_required"] = True
     output["transition_contract"] = transition_output
 
-    enum_fallbacks = {
-        "story_function": "OTHER",
-        "visual_archetype": "BENEFIT_OVERVIEW",
-        "primary_subject_class": "COMPLETE_PRODUCT",
-        "presentation_form": "HERO_POSTER",
-        "complete_product_role": "SUPPORTING",
-        "camera_scale": "mixed",
-    }
-    allowed_enums = {
-        "story_function": {
-            "HOOK",
-            "PAIN_ARTICULATION",
-            "PAIN_SOLUTION_COMBINED",
-            "SOLUTION_PROOF",
-            "MECHANISM_PROOF",
-            "MATERIAL_PROOF",
-            "USE_OR_RESULT",
-            "TRUST_OR_RISK_REMOVAL",
-            "SELECTION_OR_SPECIFICATION",
-            "PURCHASE_CLOSURE",
-            "OTHER",
-        },
-        "visual_archetype": {
-            "PAIN_SCENE",
-            "PAIN_TO_SOLUTION_BRIDGE",
-            "BENEFIT_OVERVIEW",
-            "DEDICATED_BENEFIT_PROOF",
-            "SOURCE_ACTION_RESULT",
-            "WHOLE_PLUS_MACRO",
-            "ACTION_SEQUENCE",
-            "USE_SCOPE_MATRIX",
-            "STATE_CONTRAST",
-            "SENSORY_WORLD",
-            "SELECTION_COMPARISON",
-            "TRUST_EVIDENCE",
-            "PURCHASE_CLOSURE",
-        },
-        "primary_subject_class": {
-            "COMPLETE_PRODUCT",
-            "PRODUCT_DETAIL",
-            "HUMAN",
-            "BODY_OR_SKIN",
-            "INGREDIENT_OR_MATERIAL",
-            "MECHANISM",
-            "ACTION",
-            "RESULT_STATE",
-            "DOCUMENT_EVIDENCE",
-            "SPECIFICATION_INFORMATION",
-            "ENVIRONMENT_SCENE",
-        },
-        "presentation_form": {
-            "HERO_POSTER",
-            "MULTI_PAIN_ARRAY",
-            "WHOLE_PLUS_MACRO",
-            "EXPLODED_STRUCTURE",
-            "PROCESS_SEQUENCE",
-            "SOURCE_ACTION_RESULT",
-            "STATE_CONTRAST",
-            "USE_SCOPE_MATRIX",
-            "DOCUMENTARY_EVIDENCE",
-            "SPECIFICATION_BOARD",
-            "FAQ_BOARD",
-            "ASYMMETRIC_EDITORIAL",
-        },
-        "complete_product_role": {
-            "DOMINANT",
-            "SUPPORTING",
-            "IDENTITY_TOKEN_ONLY",
-            "ABSENT",
-        },
-        "camera_scale": {"wide", "medium", "close", "macro", "mixed"},
-    }
-    for field, fallback in enum_fallbacks.items():
-        if output.get(field) not in allowed_enums[field]:
-            output[field] = fallback
+    # These are authored commercial decisions. Preserve unknown enum values
+    # for schema diagnostics; replacing one also invalidates its signature.
     output["expression_signature"] = as_text(output.get("expression_signature"), "")
     return output
 

@@ -201,6 +201,9 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
         "prefixItems": slots,
         "items": False,
     }
+    errors = (request.authoring_context or {}).get("validation_errors")
+    if errors:
+        schema = correction_contract(schema, errors)
     return {
         "type": "json_schema",
         "json_schema": {
@@ -211,14 +214,90 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
     }
 
 
+def correction_contract(
+    schema: Mapping[str, Any], errors: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Request replacements only at invalid paths; full merged validation follows."""
+    paths = [
+        tuple(e["path"].strip("/").split("/")) if e["path"] != "/" else ()
+        for e in errors
+    ]
+
+    def scope(
+        node: Mapping[str, Any], selected: list[tuple[str, ...]]
+    ) -> dict[str, Any]:
+        if () in selected:
+            return deepcopy(dict(node))
+        children = {
+            path[0]: [p[1:] for p in selected if p[0] == path[0]] for path in selected
+        }
+        if node.get("type") == "array":
+            slots = []
+            for index in range(max(map(int, children)) + 1):
+                if str(index) not in children:
+                    slots.append({"const": None})
+                    continue
+                prefix = node.get("prefixItems", [])
+                child = prefix[index] if index < len(prefix) else node.get("items", {})
+                slots.append(
+                    scope(
+                        child if isinstance(child, Mapping) else {},
+                        children[str(index)],
+                    )
+                )
+            return {
+                "type": "array",
+                "minItems": len(slots),
+                "maxItems": len(slots),
+                "prefixItems": slots,
+                "items": False,
+            }
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": list(children),
+            "properties": {
+                key: scope(node.get("properties", {}).get(key, {}), tails)
+                for key, tails in children.items()
+            },
+        }
+
+    return scope(schema, paths)
+
+
+def correction_fixture(payload: Any, errors: list[dict[str, Any]]) -> Any:
+    """Synthetic supplier output in the same sparse format as the wire contract."""
+    paths = [
+        tuple(e["path"].strip("/").split("/")) if e["path"] != "/" else ()
+        for e in errors
+    ]
+
+    def scope(value: Any, selected: list[tuple[str, ...]]) -> Any:
+        if () in selected:
+            return deepcopy(value)
+        children = {
+            path[0]: [p[1:] for p in selected if p[0] == path[0]] for path in selected
+        }
+        if isinstance(value, list):
+            return [
+                scope(value[i], children[str(i)]) if str(i) in children else None
+                for i in range(max(map(int, children)) + 1)
+            ]
+        return {key: scope(value[key], tails) for key, tails in children.items()}
+
+    return scope(payload, paths)
+
+
 def prompt_contract(schema: Mapping[str, Any]) -> dict[str, Any]:
     """Share repeated module property schemas without changing their constraints."""
     value = deepcopy(dict(schema))
-    slots = value["properties"]["modules"]["prefixItems"]
+    slots = value.get("properties", {}).get("modules", {}).get("prefixItems", [])
+    if len(slots) < 2:
+        return value
     definitions = value.setdefault("$defs", {})
-    for key, prop in slots[0]["properties"].items():
+    for key, prop in slots[0].get("properties", {}).items():
         if len(json.dumps(prop)) < 150 or not all(
-            slot["properties"].get(key) == prop for slot in slots[1:]
+            slot.get("properties", {}).get(key) == prop for slot in slots[1:]
         ):
             continue
         name = "module_" + key
@@ -301,6 +380,18 @@ def prompt(request: Any) -> str:
             "campaign_and_story": context,
             "locked_intake": request.detail_intake,
         }
+    if errors:
+        instruction = (
+            "Repair the supplied prior_response using the listed validation errors. "
+            "Return ONLY the sparse replacement JSON required by the output contract, "
+            "not the whole campaign or whole pair. Omit unaffected properties. "
+            "A null array placeholder means leave that original element unchanged; "
+            "it is not a replacement or deletion. The server merges only the listed "
+            "invalid paths and then validates the complete result. Use active Fxx/Oxx "
+            "fact IDs from locked_intake; preserve all valid creative decisions. "
+            "The campaign must-remember facts must equal its primary facts after "
+            "correcting references. Never invent source-fact mappings from ID suffixes."
+        )
     from ..xinghe_agent import _planner_response_format
 
     contract = prompt_contract(
@@ -397,7 +488,7 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
             ):
                 issues.append(
                     {
-                        "path": "/",
+                        "path": "/campaign_recall_contract/must_remember_claim_ids",
                         "constraint": "native_sales_depth",
                         "message": (
                             "Selling-point depth primary claims must equal "
@@ -636,7 +727,8 @@ def fake_phase(payload: Mapping[str, Any], request: Any) -> dict[str, Any]:
                 m for m in value["modules"] if m["id"] in request.authoring_target_ids
             ]
         }
-    return value
+    errors = (request.authoring_context or {}).get("validation_errors")
+    return correction_fixture(value, errors) if errors else value
 
 
 async def complete(

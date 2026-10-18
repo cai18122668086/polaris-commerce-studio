@@ -50,3 +50,17 @@ Bounded authoring now includes the complete stage JSON Schema in the model-visib
 An explicit failed-only continuation can recover a known HTTP-success but invalid original reply as unapproved input to the existing single correction. It never skips current validation or creates approval. Immutable source receipts and their hashes remain intact; uncertain requests still stop in the dispatcher before recovery. Primary/recall disagreement is reported together with unknown-fact errors so a correction sees both defects at once.
 
 Validation: 23 bounded-authoring tests passed, including real coordinator/native approval, model-visible schema validation, and saved-invalid-reply continuation with no repeated initial request. Mypy passed across 115 source files. Real eight-screen/image acceptance and deployment remain outstanding at this checkpoint.
+
+
+### 2026-10-19 sparse correction after an observed timeout
+
+The 9c91202 shoe continuation made exactly one new story-correction request, reused the saved intake and invalid story, and stopped at 181.443 seconds with no HTTP response. No image calls occurred. Its immutable originals remain in the isolated evidence archive; no retry of that unknown request is authorized by this checkpoint.
+
+Read-only inspection of the existing signed-in supplier dashboard found usage row 34251315: 46,810 input tokens, 8,295 output tokens, 3m23s displayed duration, and $0.869220. It is the only new record in the experiment interval, but has no exposed provider request ID or response body. Five preceding records match saved shoe-response token pairs exactly. Billing evidence must not be substituted for the missing plan JSON. The UI's account-wide rolling-24h total also must not be equated to the isolated workspace's UTC-day/month estimated reserve ledger.
+
+Corrections now request only invalid JSON paths. Unaffected array positions use null placeholders; the existing merge changes only specified paths and then revalidates the complete campaign/pair with the native gate. Unlocalized native errors retain the full-contract fallback. No time, spend, correction-count or unknown-outcome guard was weakened.
+
+A zero-network replay using the saved real story reduced the field projection from 18,747 characters to 998 and the response schema from 33,939 to 7,814 characters. These are structural size measurements, not a claim of successful supplier correction or latency improvement. The same invalid facts remained invalid after the replay. Twenty-four bounded-authoring tests and 115-file mypy passed. Real eight-screen native acceptance, images, pixel review, delivery and deployment remain incomplete.
+
+
+The 9c91202 full CI subsequently exposed five stale adapter-fixture cases: three absence/token cases tried to populate detailed expression fields during the story-only stage, and two route/cost cases still expected the former two-call planner. The fixture now authors spine and detail at their respective stages and explicitly checks intake + story + four pair calls. All five focused cases passed with native four-pair execution, role-sensitive audit/repair behavior, exact routed model and billed-once assertions retained. This does not represent a new real supplier run.

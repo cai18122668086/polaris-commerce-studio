@@ -157,7 +157,13 @@ def test_alternate_first_model_is_preserved_through_plan_generation_and_usage(
         assert planned["stage"] == "awaiting_confirmation", json.dumps(
             planned, ensure_ascii=False
         )
-    initial_count = 3 if brand_confirmation else 2
+    initial_profiles = ["aurora_domestic_intake"] * (2 if brand_confirmation else 1)
+    initial_profiles += ["aurora_bounded_story"] + ["aurora_bounded_pair"] * 4
+    initial_count = len(initial_profiles)
+    assert [
+        r["payload"]["response_format"]["json_schema"]["name"]
+        for r in transport.requests
+    ] == initial_profiles
     payload = planned["plan"]["payload"]
     assert payload["provider"]["planner_model"] == "alternate-model"
     assert gateway.planner_model == "primary-model"

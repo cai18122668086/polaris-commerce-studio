@@ -21,7 +21,7 @@ from tests.test_domestic_detail_execution import (
 from tests.test_domestic_detail_identity_scope import SCOPE_PRESENCE, actual_role
 
 
-def raw_role(module, role):
+def raw_role(module, role, *, spine_only=False):
     subject = "ENVIRONMENT_SCENE" if role == "ABSENT" else "PRODUCT_DETAIL"
     camera = "wide" if role == "ABSENT" else "macro"
     module.update(
@@ -29,7 +29,11 @@ def raw_role(module, role):
         presentation_form="ASYMMETRIC_EDITORIAL",
         camera_scale=camera,
         complete_product_role=role,
-        expression_signature="+".join((subject, "ASYMMETRIC_EDITORIAL", camera, role)),
+    )
+    if spine_only:
+        return
+    module["expression_signature"] = "+".join(
+        (subject, "ASYMMETRIC_EDITORIAL", camera, role)
     )
     module["expression"].update(
         expression_mode="IMAGE_PLUS_COPY",
@@ -40,7 +44,14 @@ def raw_role(module, role):
         else "IDENTITY_TOKEN_ONLY",
         transformation_required=False,
     )
-    module.pop("product_presence_decision", None)
+    module["product_presence_decision"].update(
+        policy="ABSENT_PREFERRED" if role == "ABSENT" else "IDENTITY_TOKEN_ONLY",
+        primary_subject_without_product="既有使用情境"
+        if role == "ABSENT"
+        else "原素材局部身份线索",
+        identity_binding_without_product=["只使用原始素材的身份与系列视觉线索"],
+        absence_reason="保留商品专属情境与局部身份线索，不使用完整商品",
+    )
     module["proof"]["primary_subject"] = (
         "既有使用情境" if role == "ABSENT" else "原素材局部身份线索"
     )
@@ -70,9 +81,15 @@ def test_approved_absence_and_token_roles_are_honored_without_false_silhouette_p
         payload = deepcopy(result.payload)
         for module in payload.get("modules", []):
             if module.get("id") == "M03":
-                raw_role(module, "ABSENT")
+                raw_role(
+                    module, "ABSENT", spine_only=request.authoring_stage == "story"
+                )
             elif module.get("id") == "M04":
-                raw_role(module, "IDENTITY_TOKEN_ONLY")
+                raw_role(
+                    module,
+                    "IDENTITY_TOKEN_ONLY",
+                    spine_only=request.authoring_stage == "story",
+                )
         return replace(result, payload=payload)
 
     monkeypatch.setattr(gateway, "plan", author)
@@ -84,7 +101,11 @@ def test_approved_absence_and_token_roles_are_honored_without_false_silhouette_p
     planned = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{created['id']}"
     ).json()
-    assert planned["status"] == "awaiting_confirmation", planned
+    assert planned["status"] == "awaiting_confirmation", (
+        planned.get("error_code"),
+        planned.get("error_message"),
+        planned.get("plan"),
+    )
     reports = []
 
     async def inspect(self, request, native, sources, artifact):

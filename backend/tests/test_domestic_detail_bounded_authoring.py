@@ -303,6 +303,11 @@ def test_pair_correction_cannot_erase_already_valid_fields(client, monkeypatch):
             payload = deepcopy(result.payload)
             if (value.authoring_context or {}).get("validation_errors"):
                 assert value.authoring_context["prior_response"]["modules"]
+                assert set(payload) == {"modules"}
+                assert set(payload["modules"][0]) == {"visible_copy"}
+                assert not authoring.errors_for(
+                    payload, _planner_response_format(value)
+                )
                 payload["modules"][0]["variation_from_previous"] = []
             else:
                 payload["modules"][0]["visible_copy"][0].pop("role")
@@ -347,13 +352,12 @@ def test_story_semantics_stop_before_any_paid_pair(client, monkeypatch, problem)
         result = await original(value)
         if value.authoring_stage == "story":
             payload = deepcopy(result.payload)
-            depth = payload["selling_point_depth_contract"]
             if problem == "unknown_fact":
-                depth["primary_claim_ids"][0] = "C99"
+                payload["selling_point_depth_contract"]["primary_claim_ids"][0] = "C99"
             elif problem == "recall_drift":
                 payload["campaign_recall_contract"]["must_remember_claim_ids"] = []
             else:
-                first = depth["claim_depth"][0]
+                first = payload["selling_point_depth_contract"]["claim_depth"][0]
                 first["dedicated_module_ids"] = [
                     m["id"]
                     for m in payload["modules"]
@@ -508,4 +512,37 @@ def test_retry_corrects_saved_invalid_story_without_reauthoring(client, monkeypa
     assert recovery["stage_valid"] is False
     assert recovery["provider_request_count"] == 0
     assert all(Path(p).read_bytes() == raw for p, raw in originals.items())
+    assert not gateway.image_calls
+
+
+def test_sparse_second_screen_correction_preserves_first_screen(client, monkeypatch):
+    gateway = _gateway(client)
+    original = gateway.plan
+
+    async def missing_second_copy_role(value):
+        result = await original(value)
+        if value.authoring_target_ids == ("M01", "M02"):
+            payload = deepcopy(result.payload)
+            if (value.authoring_context or {}).get("validation_errors"):
+                assert payload["modules"][0] is None
+                assert set(payload["modules"][1]) == {"visible_copy"}
+                assert not authoring.errors_for(
+                    payload, _planner_response_format(value)
+                )
+                assert "not the whole campaign or whole pair" in authoring.prompt(value)
+            else:
+                payload["modules"][1]["visible_copy"][0].pop("role")
+            return replace(result, payload=payload)
+        return result
+
+    monkeypatch.setattr(gateway, "plan", missing_second_copy_role)
+    source = upload_asset(client, filename="sparse-second-screen.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == "awaiting_confirmation", planned.get("error_message")
+    assert planned["plan"]["payload"]["native_approval"]["document_sha256"]
+    assert len(gateway.planner_calls) == 7
     assert not gateway.image_calls

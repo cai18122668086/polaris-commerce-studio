@@ -36,15 +36,21 @@ from tests.test_domestic_detail_delivery import (
 )
 from tests.test_domestic_detail_execution import _gateway
 from tests.test_domestic_detail_plans import planned_job
-from tests.test_domestic_detail_revision_scope import model_result
+from tests.test_domestic_detail_revision_scope import model_result, observation
 from tests.test_native_detail_local_adjustment import adjustment, inventory
 
 
 @pytest.mark.parametrize(
-    "automatic,scope_overrun", [(False, False), (True, False), (False, True)]
+    "automatic,scope_overrun,layout_override",
+    [
+        (False, False, False),
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+    ],
 )
 def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
-    client, automatic, scope_overrun
+    client, automatic, scope_overrun, layout_override
 ):
     if automatic:
         planned = planned_job(client)
@@ -151,7 +157,26 @@ def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
             gateway.planner_calls.append(call)
             from dataclasses import replace
 
-            value = model_result(call)
+            observation_value = observation(call)
+            if layout_override:
+                context = json.loads(call.product_information[0])
+                selected = context["effective_module_contracts"][1]["contract"]
+                old = selected["text_system"]["anchor_zone"]
+                observation_value["changes"][0]["contract_effect"] = (
+                    "OVERRIDE_LOCAL_FIELDS"
+                )
+                observation_value["contract_overrides"] = [
+                    {
+                        "module_id": "M04",
+                        "change_index": 0,
+                        "path": "/text_system/anchor_zone",
+                        "original_value": old,
+                        "replacement_value": "edge_left"
+                        if old != "edge_left"
+                        else "lower_left",
+                    }
+                ]
+            value = model_result(call, observation_value)
             return (
                 replace(value, actual_cost_micros=quote["review_reserve_micros"] + 1)
                 if scope_overrun
@@ -283,10 +308,54 @@ def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
 
     runner = AuroraDetailHarnessRunner()
     request_path = root / "first-local-request.json"
-    runner.run(
-        "generate-next", root, {"session": root / "session.json", "out": request_path}
-    )
-    native_request = json.loads(request_path.read_bytes())
+    if layout_override:
+        from app.config import default_skill_root
+        from app.xinghe_agent import XingheImageProvider
+
+        provider = XingheImageProvider(
+            factory,
+            gateway,
+            storage=client.app.state.storage,
+            skill_root=default_skill_root("aurora-domestic-ecommerce-detail-page"),
+            skill_id="aurora-domestic-ecommerce-detail-page",
+            max_concurrency=1,
+        )
+        configuration, sources = provider._authorize(request)
+        sources = asyncio.run(provider._load_sources(request.workspace_id, sources))
+        assert provider._generation_scope(request, sources) == binding
+        _, native_request, ordered = asyncio.run(
+            provider._prepare_native_detail_generation(
+                request,
+                configuration,
+                sources,
+                binding,
+            )
+        )
+        patch = json.loads((root / "local-revision-scope.json").read_bytes())[
+            "original_observation"
+        ]["contract_overrides"][0]
+        contracts = native_request["approved_module_contracts"]
+        assert (
+            contracts[1]["contract"]["text_system"]["anchor_zone"]
+            == patch["replacement_value"]
+        )
+        assert contracts[0]["contract"] == state["modules"][2]["plan"]
+        assert (
+            state["modules"][3]["plan"]["text_system"]["anchor_zone"]
+            == patch["original_value"]
+        )
+        assert (
+            native_request["local_contract_bindings"][1]["effective_plan_sha256"]
+            == contracts[1]["contract_sha256"]
+        )
+        assert any(source.source_role == "generated_edit_canvas" for source in ordered)
+    else:
+        runner.run(
+            "generate-next",
+            root,
+            {"session": root / "session.json", "out": request_path},
+        )
+        native_request = json.loads(request_path.read_bytes())
     issued_state = json.loads((root / "session.json").read_bytes())
     edit = resolve_native_edit_canvas(
         runner, root, issued_state, native_request, binding

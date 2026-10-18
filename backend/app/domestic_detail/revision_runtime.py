@@ -378,7 +378,21 @@ async def prepare_revision(
             != quote["source_native_session_sha256"]
         ):
             _reject("Original session bytes changed before semantic dispatch")
-        context = scope_context(intent, state)
+        projection = runner.run(
+            "inspect-pair-review-contracts",
+            source_root,
+            {"session": source_root / "session.json", "pair-id": quote["pair_id"]},
+        )
+        if (source_root / "session.json").read_bytes() != source_session_bytes:
+            _reject("Original session changed while projecting effective contracts")
+        context = scope_context(
+            intent,
+            state,
+            effective_module_contracts=[
+                {key: row[key] for key in ("module_id", "contract", "contract_sha256")}
+                for row in projection["module_contracts"]
+            ],
+        )
         source_plan_id = source_plan.id
         source_context_sha256 = canonical_hash(source_context)
     root = detail_workspace(request.job_id)

@@ -6720,10 +6720,19 @@ class XingheImageProvider:
         session_for_audit = json.loads(session_path.read_text(encoding="utf-8"))
         if approved_review_authority(session_for_audit) != review_authority:
             raise DetailReviewError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Approved review authority changed while issuing the native request")
-        expected_contracts = [{"module_id": str(module["id"]), "contract": dict(module["plan"])}
-                              for module in (session_for_audit.get("modules") or [])[expected_index:expected_index + 2]]
         supplied = native_request.get("approved_module_contracts") or []
-        if [{"module_id": row.get("module_id"), "contract": row.get("contract")} for row in supplied] != expected_contracts:
+        pair_modules = (session_for_audit.get("modules") or [])[expected_index:expected_index + 2]
+        if any(module.get("local_contract_override") for module in pair_modules):
+            effective = runner.run(
+                "inspect-pair-review-contracts", workspace,
+                {"session": session_path, "pair-id": str(native_request["pair_id"])},
+            )
+            contracts_match = canonical_hash(supplied) == canonical_hash(effective["module_contracts"])
+        else:
+            expected_contracts = [{"module_id": str(module["id"]), "contract": dict(module["plan"])}
+                                  for module in pair_modules]
+            contracts_match = [{"module_id": row.get("module_id"), "contract": row.get("contract")} for row in supplied] == expected_contracts
+        if not contracts_match:
             raise AuroraDetailHarnessError("AURORA_NATIVE_ATOMIC_CONTEXT_INVALID", "Native review contracts differ from the approved session")
         # The signed request on disk stays immutable. Its app envelope carries
         # the exact approved native identity and fact dispositions for review.

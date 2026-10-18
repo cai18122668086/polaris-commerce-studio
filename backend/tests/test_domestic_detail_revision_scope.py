@@ -89,6 +89,7 @@ def observation(request):
         "adjustment_sha256": context["adjustment_sha256"],
         "selected_module_id": context["selected_module_id"],
         "pair_id": context["pair_id"],
+        "contract_overrides": [],
         "decision": "LOCAL",
         "dimensions": [
             {
@@ -104,6 +105,7 @@ def observation(request):
                 "original_change": text,
                 "scope": "LOCAL",
                 "claim_effect": "PRESERVE",
+                "contract_effect": "RESTORE_OR_PRESERVE_APPROVED",
                 "reason": (
                     "Only the named title layout changes; "
                     "original wording and geometry preserved"

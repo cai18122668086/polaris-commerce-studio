@@ -24,7 +24,10 @@ class RevisionScopeError(ValueError):
 
 
 def scope_context(
-    intent: Mapping[str, Any], state: Mapping[str, Any]
+    intent: Mapping[str, Any],
+    state: Mapping[str, Any],
+    *,
+    effective_module_contracts: object = None,
 ) -> dict[str, Any]:
     quote = intent["authority"]["quote"]
     authority = approved_review_authority(state)
@@ -39,7 +42,22 @@ def scope_context(
             "NATIVE_DETAIL_REVISION_SCOPE_CHANGED",
             "Original local scope or approved sequence changed",
         )
+    from .revision_contracts import effective_contracts
+
+    if effective_module_contracts is None and any(
+        module.get("local_contract_override")
+        for module in state.get("modules", [])
+        if module["id"] in quote["module_ids"]
+    ):
+        raise RevisionScopeError(
+            "NATIVE_DETAIL_REVISION_SCOPE_CHANGED",
+            "An existing local overlay requires its actual native projection",
+        )
+    contracts = effective_contracts(
+        state["plan"], quote["module_ids"], effective_module_contracts
+    )
     value = {
+        "effective_module_contracts": contracts,
         "version": SCOPE_VERSION,
         "intent_sha256": intent["sha256"],
         "skill_content_hash": quote["skill_content_hash"],
@@ -84,6 +102,18 @@ def require_context(value: object) -> dict[str, Any]:
             "NATIVE_DETAIL_REVISION_SCOPE_CHANGED",
             "Approved plan or exact local instruction differs from its authority",
         )
+    from .revision_contracts import effective_contracts
+
+    if "effective_module_contracts" not in result:
+        raise RevisionScopeError(
+            "NATIVE_DETAIL_REVISION_SCOPE_CHANGED",
+            "Effective native pair contracts are missing",
+        )
+    effective_contracts(
+        result["approved_plan"],
+        result["module_ids"],
+        result["effective_module_contracts"],
+    )
     return result
 
 
@@ -101,6 +131,8 @@ def request_context(request: Any) -> dict[str, Any]:
 
 def scope_schema(request: Any) -> dict[str, Any]:
     context = request_context(request)
+    from .revision_contracts import OVERRIDE, PRESERVE, bound_override_schema
+
     text = {"type": "string", "minLength": 1, "maxLength": 2000}
     fact = {
         "type": "object",
@@ -116,6 +148,7 @@ def scope_schema(request: Any) -> dict[str, Any]:
             "original_change",
             "scope",
             "claim_effect",
+            "contract_effect",
             "reason",
             "fact_refs",
         ],
@@ -126,6 +159,7 @@ def scope_schema(request: Any) -> dict[str, Any]:
             "claim_effect": {
                 "enum": ["PRESERVE", "REMOVE", "REPHRASE_CONFIRMED", "NEW_OR_UNKNOWN"]
             },
+            "contract_effect": {"enum": [PRESERVE, OVERRIDE]},
             "reason": text,
             "fact_refs": {"type": "array", "items": fact, "maxItems": 20},
         },
@@ -150,6 +184,7 @@ def scope_schema(request: Any) -> dict[str, Any]:
     }
     properties: dict[str, Any] = {k: {"const": v} for k, v in bound.items()}
     properties.update(
+        contract_overrides=bound_override_schema(context),
         decision={"enum": ["LOCAL", "GLOBAL", "UNKNOWN"]},
         dimensions={"type": "array", "minItems": 5, "maxItems": 5, "items": dimension},
         changes={
@@ -200,6 +235,15 @@ def scope_prompt(request: Any) -> str:
         "references; DEFERRED/EXCLUDED facts cannot be promoted. "
         "Assess PRESERVE, REMOVE, REPHRASE_CONFIRMED or NEW_OR_UNKNOW"
         "N for each change. "
+        "For each original change, report contract_effect as "
+        "RESTORE_OR_PRESERVE_APPROVED when its approved effective contract remains "
+        "valid, or OVERRIDE_LOCAL_FIELDS with exact contract_overrides for a "
+        "TYPOGRAPHY_LAYOUT change. Use the supplied effective_module_contracts, "
+        "exact original_value and original change_index. Only the selected "
+        "module and schema-enumerated typography leaves may change; preserve "
+        "copy, facts, duties, seams and the sibling. Never silently represent a "
+        "requested contract change as restoration. Unsupported fields or "
+        "ambiguity require GLOBAL or UNKNOWN. "
         "Do not rewrite the user's instruction, add a new plan, or ge"
         "nerate repair instructions. "
         "Give explicit reasons for every dimension, change and preservation finding. "
@@ -274,6 +318,9 @@ def validate_scope_response(value: object, request: Any) -> dict[str, Any]:
                 "NATIVE_DETAIL_REVISION_SCOPE_INVALID",
                 "Rephrased claims need original fact references",
             )
+    from .revision_contracts import validate_contract_overrides
+
+    validate_contract_overrides(result, context)
     accepted = (
         result["decision"] == "LOCAL"
         and all(r["state"] == "UNCHANGED" for r in result["dimensions"])

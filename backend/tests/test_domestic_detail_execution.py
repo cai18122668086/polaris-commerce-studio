@@ -44,6 +44,14 @@ from tests.test_api import WORKSPACE_ID, dispatch_pending, idem, upload_asset
 
 AUTO_CONFIRM_ACTION = "detail_plan.auto_confirmed"
 
+@pytest.fixture
+def legacy_whole_plan_path(client, monkeypatch):
+    """Retain coverage of existing saved-candidate completion and retry behavior."""
+    planner = client.app.state.task_runner.coordinator.detail_planner
+    monkeypatch.setattr(type(planner.domestic), "_bounded_authoring_request", lambda self, request: request)
+
+
+
 
 def _create_detail_job(
     client: TestClient,
@@ -152,7 +160,7 @@ def test_domestic_valid_plan_requires_approval_then_waits_for_final_review(
 
     assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
     assert planned["plan"]["confirmed_at"] is None
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 6
     assert gateway.image_calls == []
     confirmed = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
@@ -197,7 +205,7 @@ def test_domestic_valid_plan_requires_approval_then_waits_for_final_review(
         asyncio.run(client.app.state.task_runner.run(str(job["id"])))
         == JobStatus.AWAITING_FINAL_REVIEW
     )
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 6
     assert len(gateway.image_calls) == 4
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
     with client.app.state.session_factory() as session:
@@ -238,7 +246,7 @@ def test_domestic_plan_commit_recovery_preserves_confirmation_gate(
         )
         assert plan is not None and plan.confirmed_at is None
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 6
     assert gateway.image_calls == []
 
     client.app.state.settings.max_image_pixels = 6_000_000
@@ -253,12 +261,12 @@ def test_domestic_plan_commit_recovery_preserves_confirmation_gate(
     )
     assert confirmed.status_code == 202, confirmed.text
     assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.AWAITING_FINAL_REVIEW
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 6
     assert len(gateway.image_calls) == 4
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
     assert asyncio.run(runner.run(str(job["id"]))) == JobStatus.AWAITING_FINAL_REVIEW
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 6
     assert len(gateway.image_calls) == 4
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
@@ -307,12 +315,13 @@ def test_domestic_auto_start_false_stops_at_confirmation_gate(
     ).json()
 
     assert current["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 6
     assert gateway.image_calls == []
     assert current["plan"]["confirmed_at"] is None
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
 
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_domestic_invalid_plan_never_reaches_image_provider(
     client: TestClient,
 ) -> None:
@@ -342,6 +351,7 @@ def test_domestic_invalid_plan_never_reaches_image_provider(
     assert _auto_confirm_audit_count(client, str(job["id"])) == 0
 
 
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_domestic_missing_campaign_contracts_repair_before_modules_and_preserve_valid_values(
     client: TestClient, monkeypatch,
 ) -> None:
@@ -377,6 +387,7 @@ def test_domestic_missing_campaign_contracts_repair_before_modules_and_preserve_
     assert gateway.image_calls == []
 
 
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_domestic_harness_preflight_repairs_bad_claim_mapping_before_approval(
     client: TestClient, monkeypatch,
 ) -> None:
@@ -431,6 +442,7 @@ def test_partial_plan_repair_preserves_other_modules_and_matches_stable_ids() ->
 
 
 @pytest.mark.parametrize("mode", ["patch", "zero_calls", "full", "stale_source", "pair_order"])
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_failed_planning_retry_recovers_verified_candidate_without_rebilling_old_calls(
     client: TestClient, monkeypatch, mode: str,
 ) -> None:
@@ -628,7 +640,7 @@ def test_failed_detail_retry_recovers_audited_prefix_and_native_pair_without_new
     assert result["status"] == "awaiting_final_review", result
     assert [item["status"] for item in result["items"]] == ["reused"] * 4 + ["succeeded"] * 4
     assert len(_gateway(client).image_calls) - before == 1
-    assert len(_gateway(client).planner_calls) == 2
+    assert len(_gateway(client).planner_calls) == 6
     assert json.loads(checkpoint_path.read_text(encoding="utf-8")) == checkpoint
 
 
@@ -661,9 +673,10 @@ def test_failed_detail_retry_restores_all_halted_screens_and_reuses_approved_pla
     assert result["status"] == "awaiting_final_review", result
     assert all(item["status"] == "succeeded" for item in result["items"])
     assert len(_gateway(client).image_calls) == 4
-    assert len(_gateway(client).planner_calls) == 2
+    assert len(_gateway(client).planner_calls) == 6
 
 
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_missing_middle_module_completes_only_that_id_without_reordering(
     client: TestClient, monkeypatch,
 ) -> None:
@@ -695,6 +708,7 @@ def test_missing_middle_module_completes_only_that_id_without_reordering(
 
 
 @pytest.mark.parametrize("evidence_shape", ["text", "list", "object"])
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_authored_visual_evidence_reaches_real_harness_without_replanning(
     client: TestClient, monkeypatch, evidence_shape: str,
 ) -> None:
@@ -735,6 +749,7 @@ def test_authored_visual_evidence_reaches_real_harness_without_replanning(
     assert gateway.image_calls == []
 
 
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_module_repair_receives_the_actual_invalid_enum_and_path(
     client: TestClient, monkeypatch,
 ) -> None:
@@ -784,7 +799,7 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     gateway = _gateway(client)
 
     assert dispatch_pending(client) == 1
-    assert len(gateway.planner_calls) == 2
+    assert len(gateway.planner_calls) == 6
     planned = client.get(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
     ).json()
@@ -811,9 +826,9 @@ def test_domestic_product_and_style_sources_keep_distinct_durable_roles(
     assert image_roles[0] == "product_reference"
     assert image_roles == ["product_reference"]
     planner_prompt = _planner_prompt(gateway.planner_calls[1])
-    assert "aurora-domestic-ecommerce-detail-page v4.3.1" in planner_prompt
-    assert "product_reference" in planner_prompt
-    assert "style_reference" in planner_prompt
+    assert "concise ordered atomic" in planner_prompt
+    assert "locked_intake" in planner_prompt
+    assert "reference_materials" in planner_prompt
     image_prompt = gateway.image_calls[0].prompt
     assert image_prompt.startswith("CONTINUOUS_PAIR_RENDERING_LOCKED")
     assert "3:8" in image_prompt
@@ -941,8 +956,13 @@ def test_domestic_protocol_fields_survive_planning_and_reach_generation(
         if request.planning_profile == "aurora_domestic_intake":
             return result
         payload = deepcopy(result.payload)
-        payload["campaign_thesis"] = "以真实可见结构回答买家信任问题。"
-        payload["modules"][0]["visual_proof_direction"] = "展示可见结构证据"
+        if request.authoring_stage == "story":
+            payload["campaign_thesis"] = "以真实可见结构回答买家信任问题。"
+            payload["modules"][0]["visual_proof_direction"] = "展示可见结构证据"
+        elif request.authoring_stage == "pair":
+            for module in payload["modules"]:
+                if module["id"] == "M01":
+                    module["visual_proof_direction"] = "展示可见结构证据"
         return replace(result, payload=payload)
 
     monkeypatch.setattr(gateway, "plan", plan_with_protocol)
@@ -1202,6 +1222,7 @@ def test_full_pair_retry_uses_new_canvas_while_second_slice_only_retry_uses_sour
 
 @pytest.mark.parametrize("page_count", [8, 10, 12])
 @pytest.mark.parametrize("reason", ["UNSUPPORTED_INVENTION", "HIGH_RISK_UNDOCUMENTED"])
+@pytest.mark.usefixtures("legacy_whole_plan_path")
 def test_deferred_reason_passes_real_compiler_without_replanning_or_generation(
     client: TestClient, monkeypatch, page_count: int, reason: str,
 ) -> None:

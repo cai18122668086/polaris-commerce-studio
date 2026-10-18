@@ -142,7 +142,7 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
     if isinstance(recall, dict) and isinstance(recall.get("must_remember_claim_ids"), list):
         recall["must_remember_claim_ids"] = [fact_id_for_claim(item) for item in recall["must_remember_claim_ids"]]
     depth = normalized.get("selling_point_depth_contract")
-    if isinstance(depth, dict):
+    if isinstance(depth, dict) and "claim_depth" not in depth:
         primary_entries = depth.get("primary_claims") if isinstance(depth.get("primary_claims"), list) else []
         primary_ids = [fact_id_for_claim(item.get("claim_id")) for item in primary_entries if isinstance(item, dict) and item.get("claim_id")]  # type: ignore[union-attr]
         if not primary_ids:

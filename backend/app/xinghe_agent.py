@@ -58,6 +58,7 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
+from .domestic_detail import authoring
 from .domestic_detail.atomic_review import (
     atomic_context,
     synthetic_identity,
@@ -460,6 +461,10 @@ class PlannerRequest:
     detail_intake: Mapping[str, Any] | None = None
     intake_resolution: Mapping[str, Any] | None = None
     native_dispatch: Mapping[str, Any] | None = None
+    authoring_stage: str = ""
+    authoring_target_ids: tuple[str, ...] = ()
+    authoring_context: Mapping[str, Any] | None = None
+    planning_deadline: float | None = None
 
 
 def _choose_identity_anchor(sources: Sequence[SourceImage]) -> SourceImage | None:
@@ -1917,6 +1922,8 @@ class FakeXingheGateway:
                 from .domestic_detail.mock_intake import mock_plan_with_intake
 
                 payload = mock_plan_with_intake(payload, request.detail_intake)
+        if request.authoring_stage and isinstance(payload, Mapping):
+            payload = authoring.fake_phase(payload, request)
         if request.planning_profile == INTAKE_PROFILE:
             pass
         elif self.planner_failure == "invalid_json":
@@ -2460,6 +2467,8 @@ class TengliOpenAICompatibleGateway:
             "aurora_domestic_campaign_completion",
         }:
             payload.update({"max_completion_tokens": 16_000})
+        if request.authoring_stage:
+            payload["max_completion_tokens"] = 10000 if request.authoring_stage == "story" else 8000
         response: Mapping[str, Any] | None = None
         try:
             routes = self._ordered_routes()
@@ -2490,7 +2499,9 @@ class TengliOpenAICompatibleGateway:
                             request.idempotency_key, route.planner_api_key
                         ),
                         payload=route_payload,
-                        timeout_seconds=self.timeout_seconds,
+                        timeout_seconds=(min(self.timeout_seconds, authoring.CALL_SECONDS,
+                            max(0.001, request.planning_deadline - time.monotonic()))
+                            if request.planning_deadline is not None else self.timeout_seconds),
                     )
                     if native_state is not None:
                         native_state["response_received"] = True
@@ -3325,6 +3336,8 @@ class XinghePlanningCoordinator:
         validated: list[dict[str, Any]] = []
         enriched_requests: list[PlannerRequest] = []
         for request in requests:
+            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+                request = replace(request, planning_deadline=time.monotonic() + authoring.PLANNING_SECONDS)
             intake_calls: tuple[PlannerCallResult, ...] = ()
             if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
                 try:
@@ -3348,6 +3361,8 @@ class XinghePlanningCoordinator:
                     return self._await_domestic_intake_confirmation(
                         job_id, plan_id, request, intake_calls
                     )
+            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+                request = self._bounded_authoring_request(request)
             enriched_requests.append(request)
             started = time.perf_counter()
             try:
@@ -3437,10 +3452,18 @@ class XinghePlanningCoordinator:
             validated,
         )
 
+    def _bounded_authoring_request(self, request: PlannerRequest) -> PlannerRequest:
+        return replace(request, authoring_stage="story",
+            system_prompt=authoring.system_prompt(self.skill_root))
+
     async def _native_planner_call(self, request: PlannerRequest) -> PlannerCallResult:
         if self.skill_id != _AURORA_DOMESTIC_DETAIL_SKILL_ID:
             return await self.gateway.plan(request)
         result: PlannerCallResult | None = None
+        if request.planning_deadline is not None and time.monotonic() >= request.planning_deadline:
+            return PlannerCallResult(payload=None, provider_request_id=None, raw_usage=None,
+                normalized_usage=normalize_usage(None), api_latency_seconds=0, actual_cost_micros=0,
+                error_code="AURORA_PLANNING_DEADLINE", error_message="Bounded planning deadline exhausted", external_request=False)
         store: NativePlanningStore | None = None
         try:
             from .domestic_detail.generation import runtime_source_hash
@@ -3470,7 +3493,12 @@ class XinghePlanningCoordinator:
                 ),
                 "campaign",
             )
+            if request.authoring_target_ids:
+                target = "+".join(request.authoring_target_ids)
             fields = {
+                "authoring_stage": request.authoring_stage,
+                "authoring_target_ids": list(request.authoring_target_ids),
+                "authoring_context": request.authoring_context,
                 "product_name": request.product_name,
                 "product_information": list(request.product_information),
                 "system_prompt": request.system_prompt,
@@ -3938,6 +3966,10 @@ class XinghePlanningCoordinator:
         results: list[PlannerCallResult],
     ) -> dict[str, Any]:
         """Validate campaign contracts before spending calls on screen completion."""
+
+        if request.authoring_stage and result.phase != "aurora_recovered_candidate":
+            return await authoring.complete(self, request, result, results)
+        request = replace(request, authoring_stage="", authoring_target_ids=(), authoring_context=None)
 
         index = len(results) - 1
         payload = dict(_require_mapping(result.payload, "AURORA_PLAN_SCHEMA_INVALID"))
@@ -10328,6 +10360,10 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.authoring_stage:
+        full = _planner_response_format(replace(request, authoring_stage="",
+            planning_profile="aurora_domestic_detail"))
+        return authoring.phase_schema(full, request)
     if request.planning_profile == "aurora_detail_revision_scope":
         from .domestic_detail.revision_protocol import scope_schema
 
@@ -10521,6 +10557,8 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             # precise fail-closed error; do not hide it behind a transport
             # exception while constructing the request.
             return {"type": "json_object"}
+        if request.planning_profile == "aurora_domestic_detail":
+            schema["properties"]["modules"].update(minItems=request.page_count, maxItems=request.page_count)
         if request.planning_profile == "aurora_domestic_campaign_completion":
             schema = {
                 **schema,
@@ -10574,6 +10612,8 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.authoring_stage:
+        return authoring.prompt(request)
     prompt = _planner_prompt_body(request)
     if request.planning_profile in {
         "aurora_domestic_detail", "aurora_domestic_campaign_completion",
@@ -11792,6 +11832,13 @@ def _accept_aurora_completion_module(
     completed["id"] = module_id
     if not set(_AURORA_COMPACT_MODULE_REQUIRED).issubset(completed):
         return None
+    schema_request = PlannerRequest(workspace_id="schema", job_id="schema", group_key="schema",
+        sources=(), page_count=1, language="zh-CN", product_name="", product_information=(),
+        platform_code="tmall", size="1440x1920", idempotency_key="schema",
+        planning_profile="aurora_domestic_modules_completion")
+    structure_schema = _planner_response_format(schema_request)["json_schema"]["schema"]["properties"]["modules"]["items"]["properties"]["structure"]
+    if authoring.errors_for(completed.get("structure"), {"json_schema": {"schema": structure_schema}}):
+        return None
     return completed
 
 
@@ -11926,7 +11973,7 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
         "visual_specificity_anchor": "产品外观与结构",
         "hidden_copy_test": conclusion,
     }.items():
-        if key in {"supporting_subjects", "required_relations"}:
+        if key == "minimum_visual_payload" or key in {"supporting_subjects", "required_relations"}:
             proof_output.setdefault(key, fallback)
         else:
             proof_output[key] = as_text(proof_output.get(key), str(fallback))
@@ -12038,8 +12085,6 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
 
     structure = output.get("structure")
     structure_output = dict(structure) if isinstance(structure, Mapping) else {}
-    structure_output.setdefault("structure_family", "ASYMMETRIC_EDITORIAL")
-    structure_output.setdefault("zone_briefs", ["产品主体与卖点信息区"])
     structure_output.setdefault(
         "structure_difference_from_previous", "本屏以主卖点证明为核心"
     )

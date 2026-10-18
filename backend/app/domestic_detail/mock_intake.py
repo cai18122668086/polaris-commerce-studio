@@ -274,3 +274,135 @@ def mock_plan_with_intake(
     for module in modules:
         module["reference_pattern_ids"] = [pattern["id"] for pattern in patterns]
     return value
+
+
+def bounded_mock_campaign(
+    plan: Mapping[str, Any], intake: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Explicit synthetic data for the stricter staged authoring wire contract."""
+    value = deepcopy(dict(plan))
+    modules = value["modules"]
+    first = modules[0]["lead_claim_id"]
+    ids = [m["id"] for m in modules]
+    families = [
+        "hero_anchor",
+        "asymmetric_editorial",
+        "macro_material",
+        "comparison_split",
+        "process_sequence",
+        "structure_diagram",
+        "data_evidence",
+        "origin_story",
+        "sku_selection",
+        "specification_closure",
+        "immersive_scene",
+        "macro_material",
+    ]
+    for m, family in zip(modules, families, strict=False):
+        m["composition_family"] = family
+        policy = (
+            "REQUIRED_DOMINANT"
+            if m["complete_product_role"] == "DOMINANT"
+            else "REQUIRED_SUPPORTING"
+        )
+        m["expression"]["product_presence_policy"] = policy
+        m["product_presence_decision"] = {
+            "policy": policy,
+            "unique_job_if_present": "合成商品可见身份",
+            "primary_subject_without_product": "局部结构",
+            "identity_binding_without_product": ["合成商品轮廓"],
+            "absence_reason": "",
+        }
+        m["proof"].update(
+            {
+                "supporting_subjects": ["合成商品的局部边缘"],
+                "required_relations": ["外观轮廓对应局部结构"],
+                "visual_specificity_anchor": ["合成商品外观与结构"],
+            }
+        )
+        m["visual_evidence"] = {
+            "evidence_class": "DIRECT_VERIFIED",
+            "proof_device": "CONCRETE_PRODUCT_EVIDENCE",
+            "visible_content": ["合成商品的外观与结构"],
+            "forbidden_inventions": ["不得增加产品性能承诺"],
+        }
+        m["typography"]["primary_mode"] = (
+            "offset_editorial_headline" if int(m["id"][1:]) % 2 else "object_label"
+        )
+        m["typography"]["anchor_zone"] = (
+            "top_left" if int(m["id"][1:]) % 2 else "object_local"
+        )
+    value["operating_strategy"].update(
+        {
+            "intake_route": "USER_SELLING_POINT_LED",
+            "target_buyer": "合成商品测试用户",
+            "primary_pain_id": "P01",
+            "selected_positioning_id": "POS01",
+            "core_promise": "以合成商品可见外观说明选择依据",
+            "priority_claim_ids": [first],
+            "supporting_claim_ids": [],
+            "assumption_boundary": "所有人群及痛点均为测试假设，不增加任何产品事实。",
+        }
+        if not intake.get("operating_analysis")
+        else {}
+    )
+    value["campaign_recall_contract"] = {
+        "must_remember_claim_ids": [first],
+        "first_screen_value_claim_ids": [first],
+        "proof_module_ids_by_claim": {first: ids[1:3]},
+        "closure_reinforcement_claim_ids": [first],
+        "buyer_recall_test": "看完整页能区分合成商品的真实外观与局部结构。",
+    }
+    jobs = ["VALUE_OVERVIEW", "DEDICATED_EXPRESSION", "USE_SCOPE", "RECALL"]
+    value["selling_point_depth_contract"] = {
+        "selection_policy": (
+            "SMALLEST_CANDIDATE_THAT_SATISFIES_SALES_DEPTH_NOT_MINIMUM_FACT_LISTING"
+        ),
+        "primary_claim_ids": [first],
+        "compact_selection_exception": "",
+        "claim_depth": [
+            {
+                "claim_id": first,
+                "depth_tier": "DEEP",
+                "evidence_ceiling": "DIRECT_PROOF_AVAILABLE",
+                "required_decision_jobs": jobs,
+                "scheduled_module_ids": ids,
+                "dedicated_module_ids": ids[1:3],
+                "priority": "PRIMARY",
+                "module_jobs": [
+                    {
+                        "module_id": mid,
+                        "job": jobs[0]
+                        if i == 0
+                        else jobs[3]
+                        if i == len(ids) - 1
+                        else jobs[1]
+                        if i == 1
+                        else jobs[2],
+                    }
+                    for i, mid in enumerate(ids)
+                ],
+                "non_duplicate_rationale": "总览、证明、选择与回忆各有独立职责。",
+                "forbidden_expansion": ["禁止合成测试增加材质和性能事实"],
+            }
+        ],
+    }
+    pain = value["campaign_pain_solution_contract"]
+    pain.setdefault("primary_pain_id", "P01")
+    pain.update(
+        {
+            "coverage_mode": "COMBINED_PAIN_SOLUTION_MODULE",
+            "pain_module_ids": ["M02"],
+            "solution_module_ids": ["M02", "M03"],
+            "visible_problem_boundary": "只描述合成测试的选择疑问，不增加性能承诺。",
+            "pain_to_solution_transition": "从外观疑问递进到真实结构证据。",
+            "exemption_basis": "NOT_APPLICABLE",
+            "exemption_reason": "",
+        }
+    )
+    pain.setdefault("value_bridge_ids", [])
+    for key in ("product_tokens", "spatial_tokens"):
+        tokens = value["series_visual_dna"].get(key)
+        if isinstance(tokens, list):
+            value["series_visual_dna"][key] = "；".join(tokens)
+    return value

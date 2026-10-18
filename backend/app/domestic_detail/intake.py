@@ -30,6 +30,7 @@ def intake_response_schema(
     user_fact_ids: Sequence[str] | None = None,
     *,
     wire_settings: Mapping[str, Any] | None = None,
+    style_asset_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     native_input, identity = _native_schemas()
     identity = deepcopy(identity)
@@ -101,7 +102,15 @@ def intake_response_schema(
     }
 
     if wire_settings is not None:
-        result["required"].extend(["identity_features_source", "identity_observations"])
+        result["required"].extend(
+            [
+                "identity_features_source",
+                "identity_observations",
+                "reference_materials",
+            ]
+        )
+        if style_asset_ids is not None and not style_asset_ids:
+            result["properties"]["reference_materials"] = {"const": []}
         result["properties"]["identity_features_source"] = {
             "const": IDENTITY_PROJECTION
         }
@@ -135,6 +144,25 @@ def intake_response_schema(
             item["properties"]["kind"] = {"const": kind}
             observations["prefixItems"].append(item)
     return result
+
+
+def canonical_intake_wire(
+    payload: Mapping[str, Any], *, has_style_sources: bool
+) -> dict[str, Any]:
+    """No uploaded style sources means exactly zero reference analyses.
+
+    This default is input inventory, not an authored observation or an analysis.
+    Original replies remain unchanged; nonempty or required analyses are never
+    synthesized, deleted or repaired by this adapter.
+    """
+    value = deepcopy(dict(payload))
+    if (
+        value.get("identity_features_source") == IDENTITY_PROJECTION
+        and not has_style_sources
+        and value.get("reference_materials") is None
+    ):
+        value["reference_materials"] = []
+    return value
 
 
 def project_identity_observations(
@@ -260,6 +288,11 @@ def intake_prompt(
                 ],
                 [fact["id"] for fact in user_fact_ledger(settings)],
                 wire_settings=settings,
+                style_asset_ids=[
+                    source["asset_id"]
+                    for source in sources
+                    if source.get("role") == "style_reference"
+                ],
             ),
         },
         ensure_ascii=False,

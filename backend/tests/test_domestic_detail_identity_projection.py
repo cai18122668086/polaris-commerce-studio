@@ -129,3 +129,47 @@ def test_public_planning_binds_the_original_wire_reply_to_native_identity(
         row["text"].strip() for row in replies[0]["identity_observations"]
     ]
     assert gateway.image_calls == []
+
+
+@pytest.mark.parametrize("state", ["absent", "null", "empty"])
+def test_zero_reference_default_requires_no_uploaded_style_sources(state):
+    from app.domestic_detail.intake import canonical_intake_wire
+
+    value = wire()
+    if state == "absent":
+        value.pop("reference_materials")
+    else:
+        value["reference_materials"] = None if state == "null" else []
+    before = deepcopy(value)
+    canonical = canonical_intake_wire(value, has_style_sources=False)
+    assert canonical["reference_materials"] == [] and value == before
+    native, _ = project_identity_observations(canonical)
+    assert (
+        validate_intake(
+            native,
+            settings=SETTINGS,
+            sources=SOURCES[:1],
+            brandless_confirmation=CONFIRMATION,
+        )["reference_materials"]
+        == []
+    )
+    untouched = canonical_intake_wire(value, has_style_sources=True)
+    assert untouched == value
+    native, _ = project_identity_observations(untouched)
+    with pytest.raises(DetailIntakeError):
+        validate_intake(
+            native,
+            settings=SETTINGS,
+            sources=SOURCES,
+            brandless_confirmation=CONFIRMATION,
+        )
+
+
+def test_zero_reference_default_does_not_remove_phantom_or_legacy_reference_data():
+    from app.domestic_detail.intake import canonical_intake_wire
+
+    value = wire()
+    assert canonical_intake_wire(value, has_style_sources=False) == value
+    value = intake()
+    value.pop("reference_materials")
+    assert canonical_intake_wire(value, has_style_sources=False) == value

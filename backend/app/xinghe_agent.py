@@ -88,6 +88,7 @@ from .domestic_detail.identity_review import (
 from .domestic_detail.intake import (
     INTAKE_PROFILE,
     IntakeStore,
+    canonical_intake_wire,
     intake_binding,
     intake_prompt,
     intake_response_schema,
@@ -3702,14 +3703,21 @@ class XinghePlanningCoordinator:
                 raise DetailIntakeError(
                     result.error_code, result.error_message or "Source intake failed"
                 )
-            wire = isinstance(result.payload, Mapping) and "identity_features_source" in result.payload
-            _schema(result.payload, intake_response_schema(
+            if not isinstance(result.payload, Mapping):
+                _schema(result.payload, intake_response_schema(), "/intake")
+            assert isinstance(result.payload, Mapping)
+            canonical_wire = canonical_intake_wire(result.payload, has_style_sources=bool(style_ids))
+            wire = "identity_features_source" in canonical_wire
+            _schema(canonical_wire, intake_response_schema(
                 [source["asset_id"] for source in sources if source.get("role") == "product_reference"],
                 [fact["id"] for fact in user_fact_ledger(settings)],
                 wire_settings=settings if wire else None,
+                style_asset_ids=list(style_ids),
             ), "/intake")
-            assert isinstance(result.payload, Mapping)
-            projected, identity_projection = project_identity_observations(result.payload)
+            projected, identity_projection = project_identity_observations(canonical_wire)
+            if identity_projection is not None:
+                identity_projection["source_payload_sha256"] = canonical_hash(result.payload)
+                identity_projection["canonical_wire_sha256"] = canonical_hash(canonical_wire)
             contract = validate_intake(
                 projected,
                 settings=settings,
@@ -10292,6 +10300,7 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                      if source.source_role == "product_reference"],
                     [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
                     wire_settings=request.intake_settings or {},
+                    style_asset_ids=[source.asset_id for source in request.sources if source.source_role == "style_reference"],
                 ),
             },
         }

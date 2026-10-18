@@ -30,9 +30,13 @@ jobs:
       - run: npm test
 
   backend:
-    name: Backend quality
+    name: Backend shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     services:
       postgres:
         image: postgres:18.4-alpine
@@ -62,22 +66,28 @@ jobs:
       - run: python -m mypy --config-file backend/pyproject.toml backend/app
       - run: python -m alembic -c alembic.ini upgrade head
         working-directory: backend
-      - run: python -m pytest backend -vv -o faulthandler_timeout=180 --durations=25
+      - run: python backend/scripts/ci_pytest_shard.py --shard ${{ matrix.shard }} --shards 4
       - name: Test PostgreSQL ecommerce concurrency
+        if: matrix.shard == 0
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
         run: python -m pytest backend/tests/test_ecommerce_concurrency_postgres.py
       - name: Test recorded stage expansion on isolated PostgreSQL schemas
+        if: matrix.shard == 0
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
         run: python -m pytest backend/tests/test_stage_length_migration_postgres.py
       - name: Test isolated local-worker lifecycle
+        if: matrix.shard == 0
         run: python -m unittest discover -s tools/local_worker_runtime -p test_runtime.py -v
       - name: Test deployment preflight
+        if: matrix.shard == 0
         run: python -m unittest discover -s deploy/tests -v
       - name: Validate deployment sources
+        if: matrix.shard == 0
         run: python deploy/preflight.py --mode source
       - name: Validate internal deployment Compose configuration
+        if: matrix.shard == 0
         env:
           POLARIS_BACKEND_IMAGE: polaris/backend:ci
           POLARIS_FRONTEND_IMAGE: polaris/frontend:ci
@@ -105,6 +115,7 @@ jobs:
           POLARIS_TENGLI_API_KEY: ""
         run: docker compose -f deploy/compose.internal.yml config --quiet
       - name: Validate production deployment Compose configuration
+        if: matrix.shard == 0
         env:
           POLARIS_BACKEND_IMAGE: polaris/backend:ci
           POLARIS_CRAWL_WORKER_IMAGE: polaris/crawl-worker:ci
@@ -139,6 +150,17 @@ jobs:
           POLARIS_DOMESTIC_MAIN_IMAGE_PROVIDER_ENABLED: "false"
           POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED: "false"
         run: docker compose -f deploy/compose.production.yml config --quiet
+
+  backend-gate:
+    name: Backend quality
+    runs-on: ubuntu-latest
+    needs: backend
+    if: ${{ always() }}
+    steps:
+      - name: Require every backend shard
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+        run: test "$BACKEND_RESULT" = success
 
   contract:
     name: API contract

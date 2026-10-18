@@ -3536,6 +3536,7 @@ class XinghePlanningCoordinator:
             with self.session_factory() as db:
                 current = db.get(JobRecord, request.job_id)
                 visited = {request.job_id}
+                source_stories: list[tuple[str, Path]] = []
                 while (
                     current is not None
                     and current.retry_scope == "failed"
@@ -3555,10 +3556,18 @@ class XinghePlanningCoordinator:
                             "Planning recovery lineage contains a cycle",
                         )
                     visited.add(previous.id)
-                    store.assert_no_unknown_source(
-                        detail_workspace(previous.id) / "planner-calls"
-                    )
+                    source_root = detail_workspace(previous.id) / "planner-calls"
+                    store.assert_no_unknown_source(source_root)
+                    source_stories.append((previous.id, source_root))
                     current = previous
+                for source_id, source_root in source_stories:
+                    recovered = authoring.recover_story(request, source_root, binding)
+                    if recovered is not None:
+                        write_detail_contract(detail_workspace(request.job_id) / "planning" / "story-recovery.json", {
+                            "source_job_id": source_id,
+                            **recovered["provider_envelope"]["authored_input_recovery"],
+                        })
+                        return PlannerCallResult(**recovered)
             store.begin()
             try:
                 result = await self.gateway.plan(
@@ -3670,7 +3679,7 @@ class XinghePlanningCoordinator:
                 for candidate_id in source_ids:
                     stored = IntakeStore(
                         detail_workspace(candidate_id) / "intake", binding, candidate_id
-                    ).completed()
+                    ).recover_for_revalidation()
                     if stored is not None:
                         source_id = candidate_id
                         break

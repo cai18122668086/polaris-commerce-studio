@@ -115,3 +115,42 @@ def test_fresh_intake_mismatch_is_retained_before_rejection(original_intake):
         and original["result"]["actual_cost_micros"] == 37
     )
     assert len(transport.calls) == 1
+
+
+def test_cross_runtime_intake_reuse_revalidates_immutable_evidence(original_intake):
+    store, value, transport = original_intake
+    store.finish(value)
+    changed = {**store.binding, "intake_runtime_sha256": "new-code"}
+    changed["sha256"] = canonical_hash(
+        {k: v for k, v in changed.items() if k != "sha256"}
+    )
+    current = IntakeStore(store.root, changed, store.job_id)
+    with pytest.raises(DetailIntakeError):
+        current.completed()
+    assert canonical_hash(current.recover_for_revalidation()) == canonical_hash(value)
+    assert len(transport.calls) == 1
+    for field in (
+        "settings",
+        "sources",
+        "resolution",
+        "dispatch_route",
+        "skill_content_hash",
+    ):
+        different = {**changed, field: "changed-input"}
+        different["sha256"] = canonical_hash(
+            {k: v for k, v in different.items() if k != "sha256"}
+        )
+        assert (
+            IntakeStore(store.root, different, store.job_id).recover_for_revalidation()
+            is None
+        )
+
+
+def test_cross_runtime_intake_does_not_ignore_missing_original_reply(original_intake):
+    store, _, _ = original_intake
+    changed = {**store.binding, "intake_runtime_sha256": "new-code"}
+    changed["sha256"] = canonical_hash(
+        {k: v for k, v in changed.items() if k != "sha256"}
+    )
+    with pytest.raises(DetailIntakeError, match="Reconcile the original intake"):
+        IntakeStore(store.root, changed, store.job_id).recover_for_revalidation()

@@ -195,3 +195,94 @@ def test_resolved_conflict_wire_requires_identity_even_with_historical_conflict(
     assert "material conflict MUST stop" not in prompt
     before = intake_prompt(settings=settings, sources=[])
     assert "material conflict MUST stop" in before
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_selected_story_preserves_authored_selection_and_raw_reply(ambiguous):
+    selected = {
+        "candidate_mode": "DIRECT_DERIVATION",
+        "count": 8,
+        "decision": "SELECTED",
+        "rationale": "authored evidence",
+    }
+    alternative = {
+        "candidate_mode": "FULL_SALES",
+        "count": 12,
+        "decision": "SELECTED" if ambiguous else "REJECTED",
+    }
+    raw = {
+        "output_strategy": {"module_count_candidates": [selected, alternative]},
+        "modules": [{"duty": "unchanged"}],
+    }
+    original = deepcopy(raw)
+    result = authoring.selected_story(raw, 8)
+    assert raw == original
+    assert result["output_strategy"]["module_count_candidates"] == (
+        [selected, alternative] if ambiguous else [selected]
+    )
+    assert result["modules"] == raw["modules"]
+    assert authoring.selected_story(raw, 10) == raw
+
+
+def test_failed_retry_reuses_intake_and_story_without_supplier_dispatch(
+    client, monkeypatch
+):
+    from app.xinghe_agent import detail_workspace
+    from tests.test_api import idem
+
+    gateway = _gateway(client)
+    original = gateway.plan
+    failed = False
+
+    async def fail_first_pair(value):
+        nonlocal failed
+        result = await original(value)
+        if value.authoring_stage == "pair" and not failed:
+            failed = True
+            return replace(
+                result,
+                payload=None,
+                error_code="SYNTHETIC_REJECTED",
+                error_message="explicit test rejection",
+                external_request=False,
+            )
+        return result
+
+    monkeypatch.setattr(gateway, "plan", fail_first_pair)
+    source = upload_asset(client, filename="reusable-story.png")
+    first = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    original_root = detail_workspace(first["id"])
+    originals = {
+        str(p): p.read_bytes()
+        for folder in ("intake", "planner-calls")
+        for p in (original_root / folder).glob("*")
+        if p.is_file()
+    }
+    assert (
+        client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}").json()[
+            "status"
+        ]
+        == "failed"
+    )
+    before = len(gateway.planner_calls)
+    retry = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}/retry",
+        headers=idem(),
+        json={"scope": "failed"},
+    )
+    assert retry.status_code == 201, retry.text
+    second = retry.json()
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{second['id']}").json()
+    assert result["status"] == "awaiting_confirmation", result.get("error_message")
+    assert [c.authoring_stage for c in gateway.planner_calls[before:]] == ["pair"] * 4
+    assert (
+        detail_workspace(second["id"]) / "planning" / "story-recovery.json"
+    ).is_file()
+    from pathlib import Path
+
+    assert all(Path(p).read_bytes() == raw for p, raw in originals.items())
+    assert not gateway.image_calls

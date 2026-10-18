@@ -585,6 +585,34 @@ class IntakeStore:
                     )
         return result
 
+    def recover_for_revalidation(self) -> dict[str, Any] | None:
+        """Read old immutable evidence; current intake schema must revalidate it."""
+        if self.path.exists():
+            return self.completed()
+        matches = []
+        for path in self.root.glob("*.json"):
+            if path.name.endswith(".response.json"):
+                continue
+            old = json.loads(path.read_bytes()).get("binding", {})
+            keys = set(self.binding) - {"sha256", "intake_runtime_sha256"}
+            if set(old) != set(self.binding) or any(
+                old.get(k) != self.binding.get(k) for k in keys
+            ):
+                continue
+            original = IntakeStore(self.root, old, self.job_id)
+            if original.path != path:
+                raise DetailIntakeError(
+                    "INTAKE_RECEIPT_INVALID", "Original intake filename changed"
+                )
+            result = original.completed()
+            if result is not None:
+                matches.append(result)
+        if len(matches) > 1:
+            raise DetailIntakeError(
+                "INTAKE_RECEIPT_INVALID", "Ambiguous prior intake evidence"
+            )
+        return matches[0] if matches else None
+
     def begin(self, job_id: str) -> None:
         if self.job_id is not None and job_id != self.job_id:
             raise DetailIntakeError(

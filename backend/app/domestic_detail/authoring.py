@@ -191,6 +191,10 @@ def prompt(request: Any) -> str:
             "detail_information_contract "
             "requires buyer_question_sequence, non_repeating_overview_limit, "
             "required_progression_jobs and every_pair_requires_information_delta. "
+            "output_strategy.module_count_candidates contains exactly ONE object: "
+            "candidate_mode=DIRECT_DERIVATION, decision=SELECTED, count equal to "
+            "screen_count. Never emit rejected alternatives. Keep all required "
+            "fit explanations and the six module_count_formula fields. "
             "Keep output_strategy.module_count exact. Pairs are adjacent M01/M02, "
             "M03/M04 etc with 3:8 canvases, two fixed 3:4 windows. Author their "
             "seam intent consistently with the atomic duties. Only the lower screen's "
@@ -250,11 +254,127 @@ def errors_for(
 ) -> list[dict[str, Any]]:
     validator = Draft202012Validator(response_format["json_schema"]["schema"])
     return [
-        {"path": "/" + "/".join(map(str, e.absolute_path)), "message": e.message}
+        {
+            "path": "/" + "/".join(map(str, e.absolute_path)),
+            "message": e.message,
+            "constraint": e.validator,
+            "expected": e.validator_value,
+        }
         for e in sorted(
             validator.iter_errors(payload), key=lambda e: str(list(e.absolute_path))
         )
     ]
+
+
+def selected_story(payload: object, page_count: int) -> object:
+    """Discard only explicitly rejected alternatives, never author a decision."""
+    value = deepcopy(payload)
+    if not isinstance(value, dict):
+        return value
+    strategy = value.get("output_strategy")
+    if not isinstance(strategy, dict):
+        return value
+    candidates = strategy.get("module_count_candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return value
+    if not all(isinstance(row, dict) for row in candidates):
+        return value
+    selected = [row for row in candidates if row.get("decision") == "SELECTED"]
+    if (
+        len(selected) == 1
+        and selected[0].get("candidate_mode") == "DIRECT_DERIVATION"
+        and selected[0].get("count") == page_count
+        and all(row.get("decision") in {"SELECTED", "REJECTED"} for row in candidates)
+    ):
+        strategy["module_count_candidates"] = selected
+    return value
+
+
+def recover_story(
+    request: Any, source_root: Path, binding: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Reuse verified authored input on an explicit failed-only retry; no dispatch."""
+    if request.authoring_stage != "story" or request.authoring_context:
+        return None
+    from ..xinghe_agent import (
+        _planner_response_format,
+        normalize_usage,
+        validate_aurora_domestic_plan,
+    )
+    from .planning_calls import NativePlanningStore
+    from .plans import canonical_hash
+
+    truth_fields = (
+        "product_name",
+        "product_information",
+        "page_count",
+        "language",
+        "platform_code",
+        "size",
+        "domestic_protocol",
+        "source_inventory",
+        "detail_intake",
+        "intake_settings",
+        "intake_resolution",
+    )
+    current = binding["semantic_request"]["semantics"]
+    candidates = []
+    for path in source_root.glob("*.request.json"):
+        raw = json.loads(path.read_bytes())["binding"]
+        old = NativePlanningStore(source_root, raw)
+        if old.store.request_path != path:
+            continue
+        semantics = raw.get("semantic_request", {}).get("semantics", {})
+        if (
+            raw.get("phase") != binding["phase"]
+            or raw.get("group_key") != binding["group_key"]
+            or semantics.get("authoring_stage") != "story"
+            or raw.get("skill_content_hash") != binding["skill_content_hash"]
+            or raw.get("dispatch_route") != binding["dispatch_route"]
+            or any(
+                canonical_hash(semantics.get(k)) != canonical_hash(current.get(k))
+                for k in truth_fields
+            )
+        ):
+            continue
+        result = old._original()
+        if result.get("error_code") or not isinstance(result.get("payload"), Mapping):
+            continue
+        projected = selected_story(result["payload"], request.page_count)
+        if errors_for(projected, _planner_response_format(request)):
+            continue
+        assert isinstance(projected, dict)
+        validate_aurora_domestic_plan(projected, request.page_count, campaign_only=True)
+        candidates.append((path.stat().st_mtime_ns, raw, result))
+    if not candidates:
+        return None
+    _, original, result = max(candidates, key=lambda row: row[0])
+    return {
+        **result,
+        "provider_request_id": None,
+        "raw_usage": None,
+        "normalized_usage": normalize_usage(None),
+        "api_latency_seconds": 0,
+        "actual_cost_micros": 0,
+        "external_request": False,
+        "phase": "aurora_recovered_story",
+        "supplemental_results": (),
+        "provider_envelope": {
+            "authored_input_recovery": {
+                "source_binding_sha256": canonical_hash(original),
+                "source_result_sha256": canonical_hash(result),
+                "source_request_file": str(
+                    source_root
+                    / (
+                        NativePlanningStore(
+                            source_root, original
+                        ).store.request_path.name
+                    )
+                ),
+                "provider_request_count": 0,
+            }
+        },
+    }
 
 
 def fake_phase(payload: Mapping[str, Any], request: Any) -> dict[str, Any]:
@@ -302,7 +422,16 @@ async def complete(
 
     async def accept(stage_request: Any, response: Any) -> dict[str, Any]:
         nonlocal corrections
-        errors = errors_for(response.payload, _planner_response_format(stage_request))
+
+        def candidate(value: Any) -> Any:
+            return (
+                selected_story(value, request.page_count)
+                if stage_request.authoring_stage == "story"
+                else deepcopy(value)
+            )
+
+        value = candidate(response.payload)
+        errors = errors_for(value, _planner_response_format(stage_request))
         if errors:
             if corrections:
                 raise XingheAgentError(
@@ -327,16 +456,35 @@ async def complete(
                     response.error_code,
                     response.error_message or "Authoring result unknown",
                 )
-            errors = errors_for(
-                response.payload, _planner_response_format(stage_request)
-            )
+            value = candidate(response.payload)
+            errors = errors_for(value, _planner_response_format(stage_request))
             if errors:
                 raise XingheAgentError(
                     "AURORA_AUTHORING_INVALID",
                     "Corrected stage remains invalid",
                     validation_errors=errors,
                 )
-        return deepcopy(dict(response.payload))
+        if value != response.payload:
+            from .plans import canonical_hash
+
+            write_detail_contract(
+                detail_workspace(request.job_id)
+                / "planning"
+                / "selected-story-projection.json",
+                {
+                    "rule": "retain-the-single-authored-direct-selection-v1",
+                    "source_payload_sha256": canonical_hash(response.payload),
+                    "projected_payload_sha256": canonical_hash(value),
+                    "discarded": [
+                        row
+                        for row in response.payload["output_strategy"][
+                            "module_count_candidates"
+                        ]
+                        if row.get("decision") == "REJECTED"
+                    ],
+                },
+            )
+        return deepcopy(dict(value))
 
     try:
         payload = await accept(request, result)

@@ -10299,18 +10299,23 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             "schema": campaign_schema(request),
         }}
     if request.planning_profile == INTAKE_PROFILE:
+        transport_schema = intake_response_schema(
+            [source.asset_id for source in request.sources
+             if source.source_role == "product_reference"],
+            [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
+            wire_settings=request.intake_settings or {},
+            style_asset_ids=[source.asset_id for source in request.sources if source.source_role == "style_reference"],
+        )
+        # Compatible providers require a plain object at the response root.
+        # The complete conditional schema stays in intake_prompt and in the
+        # server validator. Only its top-level transport declaration differs.
+        transport_schema.pop("allOf", None)
         return {
             "type": "json_schema",
             "json_schema": {
                 "name": INTAKE_PROFILE,
                 "strict": False,
-                "schema": intake_response_schema(
-                    [source.asset_id for source in request.sources
-                     if source.source_role == "product_reference"],
-                    [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
-                    wire_settings=request.intake_settings or {},
-                    style_asset_ids=[source.asset_id for source in request.sources if source.source_role == "style_reference"],
-                ),
+                "schema": transport_schema,
             },
         }
     if request.planning_profile == "creative_image":

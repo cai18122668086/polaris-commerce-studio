@@ -74,3 +74,31 @@ def test_actual_gateway_keeps_native_http_cause_and_dispatch_provenance(status):
     assert metadata["native_provider_error"]["param"] == "response_format"
     assert metadata["native_planner_dispatch"]["outcome"] == "rejected"
     assert metadata["native_planner_dispatch"]["transport_attempts"] == 1
+
+
+def test_provider_intake_root_is_plain_object_and_local_conditions_remain():
+    from app.domestic_detail.facts import user_fact_ledger
+    from app.domestic_detail.intake import intake_response_schema
+    from app.xinghe_agent import _planner_prompt, _planner_response_format
+
+    value = request("aurora_domestic_intake")
+    original = intake_response_schema(
+        [
+            source.asset_id
+            for source in value.sources
+            if source.source_role == "product_reference"
+        ],
+        [fact["id"] for fact in user_fact_ledger(value.intake_settings or {})],
+        wire_settings=value.intake_settings or {},
+        style_asset_ids=[
+            source.asset_id
+            for source in value.sources
+            if source.source_role == "style_reference"
+        ],
+    )
+    wire = _planner_response_format(value)["json_schema"]["schema"]
+    assert wire["type"] == "object"
+    assert not ({"oneOf", "anyOf", "allOf", "enum", "const", "not"} & wire.keys())
+    assert original.pop("allOf")
+    assert wire == original
+    assert '"allOf"' in _planner_prompt(value)

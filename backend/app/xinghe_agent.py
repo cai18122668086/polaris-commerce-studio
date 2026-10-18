@@ -2109,7 +2109,12 @@ class UrllibOpenAITransport:
         )
 
     @staticmethod
+    def _open(request: Request, timeout_seconds: float) -> Any:
+        return urlopen(request, timeout=timeout_seconds)
+
+    @classmethod
     def _send(
+        cls,
         url: str,
         headers: Mapping[str, str],
         body: bytes,
@@ -2118,7 +2123,7 @@ class UrllibOpenAITransport:
         request = Request(url, data=body, headers=dict(headers), method="POST")
         error_status = False
         try:
-            with urlopen(request, timeout=timeout_seconds) as response:
+            with cls._open(request, timeout_seconds) as response:
                 status = int(response.status)
                 raw = response.read()
         except HTTPError as exc:
@@ -2146,6 +2151,14 @@ class UrllibOpenAITransport:
                 "Provider returned a non-object JSON response.",
             )
         return status, payload
+
+
+class NativeUrllibOpenAITransport(UrllibOpenAITransport):
+    @staticmethod
+    def _open(request: Request, timeout_seconds: float) -> Any:
+        from .domestic_detail.transport import native_urlopen
+
+        return native_urlopen(request, timeout_seconds)
 
 
 class TengliOpenAICompatibleGateway:
@@ -2465,7 +2478,13 @@ class TengliOpenAICompatibleGateway:
                             )
                         native_state["attempts"] = 1
                     self.external_network_request_count += 1
-                    status, response = await self.transport.post_json(
+                    transport = (
+                        NativeUrllibOpenAITransport()
+                        if request.planning_profile in NATIVE_PLANNER_PROFILES
+                        and type(self.transport) is UrllibOpenAITransport
+                        else self.transport
+                    )
+                    status, response = await transport.post_json(
                         url=urljoin(route.planner_base_url, "v1/chat/completions"),
                         headers=self._headers(
                             request.idempotency_key, route.planner_api_key
@@ -2671,7 +2690,13 @@ class TengliOpenAICompatibleGateway:
                 route_fields[0] = ("model", route.image_model)
                 try:
                     self.external_network_request_count += 1
-                    status, response = await self.transport.post_multipart(
+                    transport = (
+                        NativeUrllibOpenAITransport()
+                        if request.single_dispatch
+                        and type(self.transport) is UrllibOpenAITransport
+                        else self.transport
+                    )
+                    status, response = await transport.post_multipart(
                         url=urljoin(route.image_base_url, "v1/images/edits"),
                         headers=self._headers(
                             request.idempotency_key, route.image_api_key

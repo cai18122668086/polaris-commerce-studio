@@ -22,13 +22,17 @@ from .planner_dispatch import require_route, validate_dispatch_result
 from .plans import canonical_hash
 
 INTAKE_PROFILE = "aurora_domestic_intake"
+IDENTITY_PROJECTION = "ORDERED_SOURCE_OBSERVATIONS_V1"
 
 
 def intake_response_schema(
     product_asset_ids: Sequence[str] = (),
     user_fact_ids: Sequence[str] | None = None,
+    *,
+    wire_settings: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     native_input, identity = _native_schemas()
+    identity = deepcopy(identity)
     observed_fact = deepcopy(native_input["properties"]["verified_facts"]["items"])
     observed_fact["properties"]["source_class"] = {"const": "OBSERVED_PRODUCT_EVIDENCE"}
     source_ref: dict[str, Any] = {"type": "string"}
@@ -49,7 +53,7 @@ def intake_response_schema(
         if expected:
             refs["items"]["enum"] = expected
     scan.setdefault("properties", {})["scanned_source_refs"] = refs
-    return {
+    result: dict[str, Any] = {
         "type": "object",
         "additionalProperties": False,
         "required": [
@@ -96,6 +100,89 @@ def intake_response_schema(
         },
     }
 
+    if wire_settings is not None:
+        result["required"].extend(["identity_features_source", "identity_observations"])
+        result["properties"]["identity_features_source"] = {
+            "const": IDENTITY_PROJECTION
+        }
+        identity["required"].remove("invariant_features")
+        identity["properties"].pop("invariant_features")
+        identity["additionalProperties"] = False
+        for source, target in (
+            ("product_name", "canonical_name"),
+            ("category", "category"),
+        ):
+            if wire_settings.get(source):
+                identity["properties"][target] = {"const": wire_settings[source]}
+        confirmation = wire_settings.get("brandless_confirmation")
+        if confirmation:
+            logo = identity["properties"]["brand_logo_source"]["properties"]
+            for key, value in {
+                "mode": "BRANDLESS",
+                "image_id": "NONE",
+                "authorization_basis": "NOT_APPLICABLE",
+                "readability": "NOT_APPLICABLE",
+                "usage": "FORBIDDEN_ALL_SCREENS",
+                "brandless_evidence": confirmation,
+            }.items():
+                logo[key] = {"const": value}
+        observations = result["properties"]["identity_observations"]
+        common = observations["items"]
+        observations.update(minItems=4, maxItems=4, items=False)
+        observations["prefixItems"] = []
+        for kind in ("silhouette", "proportions", "parts", "color_material"):
+            item = deepcopy(common)
+            item["properties"]["kind"] = {"const": kind}
+            observations["prefixItems"].append(item)
+    return result
+
+
+def project_identity_observations(
+    payload: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, str] | None]:
+    """Project actual observations into the native identity; keep old replies strict.
+
+    Only the explicit new wire protocol may derive this redundant field. Legacy
+    replies keep their original identity and continue to fail on disagreement.
+    The original result, raw text and observation bytes stay in IntakeStore.
+    """
+    value = deepcopy(dict(payload))
+    marker = value.pop("identity_features_source", None)
+    if marker is None:
+        return value, None
+    if marker != IDENTITY_PROJECTION:
+        raise DetailIntakeError(
+            "INTAKE_PROJECTION_INVALID", "Unknown identity observation source"
+        )
+    identity = value.get("identity")
+    if not isinstance(identity, dict):
+        return value, None
+    observations = value.get("identity_observations")
+    if (
+        "invariant_features" in identity
+        or not isinstance(observations, list)
+        or len(observations) != 4
+    ):
+        raise DetailIntakeError(
+            "INTAKE_PROJECTION_INVALID",
+            "The wire protocol requires one original observation list",
+        )
+    features = []
+    for row in observations:
+        if not isinstance(row, Mapping) or not isinstance(row.get("text"), str):
+            raise DetailIntakeError(
+                "INTAKE_PROJECTION_INVALID",
+                "Original identity observations are missing",
+            )
+        features.append(row["text"].strip())
+    identity["invariant_features"] = features
+    return value, {
+        "version": "source-observation-identity-projection-v1",
+        "source_payload_sha256": canonical_hash(payload),
+        "observations_sha256": canonical_hash(observations),
+        "identity_features_sha256": canonical_hash(features),
+    }
+
 
 def intake_prompt(
     settings: Mapping[str, Any],
@@ -127,8 +214,10 @@ def intake_prompt(
         "observations. When clear, provide exactly four "
         "identity_observations (silhouette, proportions, parts, "
         "color_material) describing actual visible geometry, region and "
-        "source_asset_id; identity.invariant_features must equal their "
-        "ordered text. Proportions must describe visible ratio/shape and "
+        "source_asset_id. Do not return identity.invariant_features: the server "
+        "copies the exact ordered observation texts into the native identity. "
+        "Set identity_features_source=ORDERED_SOURCE_OBSERVATIONS_V1. "
+        "Proportions must describe visible ratio/shape and "
         "parts must state actual count and relation. Retain the user's "
         "exact product_name/category when supplied. BRANDED requires a "
         "readable current-product logo, its exact observed_logo_text and "
@@ -170,6 +259,7 @@ def intake_prompt(
                     if source.get("role") == "product_reference"
                 ],
                 [fact["id"] for fact in user_fact_ledger(settings)],
+                wire_settings=settings,
             ),
         },
         ensure_ascii=False,

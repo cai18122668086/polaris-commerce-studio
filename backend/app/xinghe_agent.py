@@ -91,6 +91,7 @@ from .domestic_detail.intake import (
     intake_binding,
     intake_prompt,
     intake_response_schema,
+    project_identity_observations,
 )
 from .domestic_detail.native_approval import (
     compile_native_approval,
@@ -3701,14 +3702,23 @@ class XinghePlanningCoordinator:
                 raise DetailIntakeError(
                     result.error_code, result.error_message or "Source intake failed"
                 )
-            _schema(result.payload, intake_response_schema(), "/intake")
+            wire = isinstance(result.payload, Mapping) and "identity_features_source" in result.payload
+            _schema(result.payload, intake_response_schema(
+                [source["asset_id"] for source in sources if source.get("role") == "product_reference"],
+                [fact["id"] for fact in user_fact_ledger(settings)],
+                wire_settings=settings if wire else None,
+            ), "/intake")
+            assert isinstance(result.payload, Mapping)
+            projected, identity_projection = project_identity_observations(result.payload)
             contract = validate_intake(
-                result.payload,
+                projected,
                 settings=settings,
                 sources=sources,
                 brandless_confirmation=brandless,
                 resolution=resolution,
             )
+            if identity_projection is not None:
+                contract["identity_projection_receipt"] = identity_projection
             prior_intake = (resolution or {}).get("source_intake")
             if isinstance(prior_intake, Mapping):
                 current_facts = {
@@ -10281,6 +10291,7 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                     [source.asset_id for source in request.sources
                      if source.source_role == "product_reference"],
                     [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
+                    wire_settings=request.intake_settings or {},
                 ),
             },
         }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .local_contracts import effective_plan
+
 import re
 from typing import Iterable, List
 
@@ -96,7 +98,7 @@ def compile_prompt(
     stay in the request envelope and never enter the image model prompt.
     """
     facts = {item["id"]: item for item in session["input"].get("verified_facts", [])}
-    plan = module["plan"]
+    plan = effective_plan(module)
     fact_ids = [plan["lead_claim_id"]] + list(plan.get("supporting_claim_ids", []))
     fact_lines = []
     for fact_id in fact_ids:

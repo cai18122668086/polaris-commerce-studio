@@ -5,6 +5,7 @@ import hashlib
 import json
 
 from .artifact_binding import validate_artifact_binding
+from .local_contracts import effective_module
 from .performance_contract import resolve_performance_contract
 from .spatial_contract import resolve_spatial_contract
 from .state import HarnessError
@@ -16,6 +17,7 @@ def contract_sha256(value: dict) -> str:
 
 
 def review_contracts(modules: list[dict], count: int) -> list[dict]:
+    modules = [effective_module(module) for module in modules]
     return [{"module_id": module["id"], "contract": module["plan"],
              "contract_sha256": contract_sha256(module["plan"]),
              "spatial_contract": resolve_spatial_contract(module["plan"]),
@@ -23,6 +25,7 @@ def review_contracts(modules: list[dict], count: int) -> list[dict]:
 
 
 def validate_atomic_reports(judgment: dict, modules: list[dict], lineage: dict) -> list[dict]:
+    modules = [effective_module(module) for module in modules]
     reports = judgment.get("module_judgments")
     if not isinstance(reports, list) or [row.get("module_id") for row in reports] != [row["id"] for row in modules]:
         raise HarnessError("module_judgments must contain both ordered atomic screen reports")

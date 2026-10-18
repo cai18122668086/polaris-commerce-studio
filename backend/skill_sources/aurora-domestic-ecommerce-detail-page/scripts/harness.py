@@ -16,6 +16,7 @@ from PIL import Image, UnidentifiedImageError
 
 from runtime.audit_evidence import inspect_pair_audit, record_pair_audit
 from runtime.local_revision_review import revision_review_contract, validate_revision_observation
+from runtime.local_contracts import scope_contract_override, effective_plan, validate_request_contracts
 from runtime.delivery_manifest import build_final_manifest, inspect_final_manifest
 from runtime.assembly import assemble_vertical
 from runtime.artifact_binding import file_sha256, validate_artifact_binding
@@ -1760,6 +1761,9 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
             "merged_prompt_fingerprint": fingerprint(prompt),
             "screen_contracts": [{"module_id": item["id"], "prompt_fingerprint": fingerprint(screen_prompts[offset])} for offset, item in enumerate(pair_modules)],
         }
+    if any(item.get("local_contract_override") is not None for item in pair_modules):
+        request["local_contract_bindings"] = [{"module_id": item["id"], "effective_plan_sha256": fingerprint(effective_plan(item)),
+            "override_sha256": (item.get("local_contract_override") or {}).get("sha256")} for item in pair_modules]
     request["request_fingerprint"] = fingerprint(request)
     atomic_write_json(args.out, request)
     signed_request = preserve_signed_request(Path(args.out), Path(args.session).resolve().parent, token)
@@ -1978,6 +1982,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         raise HarnessError("The current render container is not an ordered two-screen pair")
     pair_modules = _pair_modules(session, session.get("current_index", 0))
     lineage = pair_artifacts(session, pair["pair_id"])
+    validate_request_contracts(session, lineage, pair_modules)
     judgment = load_json(args.judgment)
     validate_schema(judgment, "pair-judgment.schema.json", "pair judgment")
     require_fields(
@@ -2281,6 +2286,7 @@ def cmd_fork_local_revision(args: argparse.Namespace) -> dict:
     pair = _pair_for_index(source, index)
     if pair is None or len(pair["module_ids"]) != 2:
         raise HarnessError("Local revision requires its exact approved continuous pair")
+    contract_override = scope_contract_override(root, intent, source, pair)
     fork = {"version": "owned-local-revision-fork-v1", "intent_sha256": intent["sha256"],
             "source_session": str(source_path.resolve()), "source_session_sha256": args.source_session_sha256,
             "source_job_id": intent["source_job_id"], "job_id": intent["job_id"],
@@ -2289,6 +2295,9 @@ def cmd_fork_local_revision(args: argparse.Namespace) -> dict:
             "maximum_new_image_requests": 2, "delivery_mode": "USER_FINAL_REVIEW"}
     approval = {**source["approval"], "delivery_mode": "USER_FINAL_REVIEW",
                 "text": intent["approval_text"], "local_revision_intent_sha256": intent["sha256"]}
+    if contract_override is not None:
+        fork["local_contract_override_sha256"] = contract_override["sha256"]
+        approval["local_contract_override_sha256"] = contract_override["sha256"]
     feedback = json.loads(json.dumps(source.get("feedback_constraints") or {"global": {"preserve": [], "must_not_regress": []}, "by_module": {}}))
     local_feedback = feedback.setdefault("by_module", {}).setdefault(adjustment["module_id"], {"preserve": [], "must_not_regress": []})
     for key in ("preserve", "must_not_regress"):
@@ -2317,7 +2326,8 @@ def cmd_fork_local_revision(args: argparse.Namespace) -> dict:
                     or any(a.get("cycle_id") != current["cycle_id"] or a.get("cycle_attempt") != i
                            for i, a in enumerate(attempts[len(old_attempts):], 1))
                     or current.get("user_adjustment") != (adjustment if prior["id"] == adjustment["module_id"] else _sibling_preservation_adjustment(prior["id"]))
-                    or current.get("plan") != prior.get("plan")):
+                    or current.get("plan") != prior.get("plan")
+                    or current.get("local_contract_override") != (contract_override if prior["id"] == adjustment["module_id"] and contract_override is not None else prior.get("local_contract_override"))):
                 raise HarnessError("Existing local revision changed its original cycle or image ceiling")
         return {"session": str(target.resolve()), "revision_fork": fork, "reused": True}
     if target.exists():
@@ -2326,6 +2336,8 @@ def cmd_fork_local_revision(args: argparse.Namespace) -> dict:
     clone["session_dir"] = str(root)
     clone["approval"] = approval
     clone["revision_fork"] = fork
+    if contract_override is not None:
+        next(m for m in clone["modules"] if m["id"] == adjustment["module_id"])["local_contract_override"] = contract_override
     staging = root / (".local-revision-" + uuid.uuid4().hex + ".json")
     adjustment_path = root / (".local-adjustment-" + uuid.uuid4().hex + ".json")
     atomic_write_json(staging, clone)

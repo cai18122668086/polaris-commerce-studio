@@ -11,6 +11,7 @@ from .atomic_review import contract_sha256, validate_atomic_reports
 from .artifact_binding import validate_artifact_binding
 from .pixel_lineage import pair_artifacts
 from .local_revision_review import validate_revision_observation
+from .local_contracts import validate_request_contracts
 from .schema_validation import validate_schema
 from .state import HarnessError
 
@@ -92,6 +93,7 @@ def inspect_pair_audit(session: dict, pair_id: str) -> dict:
         if judgment["pair_id"] != pair_id or judgment["module_ids"] != lineage["module_ids"]:
             raise HarnessError("Original accepted audit identifies another pair")
         validate_artifact_binding(judgment, lineage["canvas"]["path"], "original accepted audit")
+        validate_request_contracts(session, lineage, modules)
         validate_atomic_reports(judgment, modules, lineage)
         validate_revision_observation(snapshot.get("revision_contract"), judgment, lineage)
         result = {"version": VERSION, "snapshot_reference": reference,

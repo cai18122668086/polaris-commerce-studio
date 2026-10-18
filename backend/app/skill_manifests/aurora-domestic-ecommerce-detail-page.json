@@ -6,7 +6,7 @@
     "**/*.pyc"
   ],
   "skill_id": "aurora-domestic-ecommerce-detail-page",
-  "content_hash": "81f77535f693e5748d57a7a050ece82d907121d2d338a458544cce9bfacd0a39",
+  "content_hash": "a567bc65dd5e65180f7e27b8f788a37d8de9b31a56989723faf638746a793b58",
   "capability": "ecommerce_detail_pack",
   "input_contract": {
     "schema_id": "polaris.skill.aurora-domestic-ecommerce-detail-page.input.v4.3",
@@ -236,6 +236,10 @@
       "sha256": "7485cec7e315fc457aeae0748e51990e7dfb41bf28da92dca79dffa48a645115"
     },
     {
+      "path": "schemas/local-typography-overrides.schema.json",
+      "sha256": "0caf98d5c0bd6b203cd1557ad89551e207ca80fc72e94d5e8216e9994bfd1ac4"
+    },
+    {
       "path": "schemas/long-page-judgment.schema.json",
       "sha256": "c5e703823af271fa217f276ef02f256c6ba211a968784acce2ce09f9e13dd896"
     },
@@ -273,7 +277,7 @@
     },
     {
       "path": "scripts/harness.py",
-      "sha256": "f7bf701897357b8abf35b0c212cf4247110dd6e444696efe87d780121d691532"
+      "sha256": "048698218ce13127643969f927376da9b7ed6533b7eaff5cf561c8b3fb8a3291"
     },
     {
       "path": "scripts/runtime/__init__.py",
@@ -289,11 +293,11 @@
     },
     {
       "path": "scripts/runtime/atomic_review.py",
-      "sha256": "1a72e415a5c364f8169c2740f11a5740c652f46e881957786b9d1a571fa95010"
+      "sha256": "20deab22c4c1a343b6767c343970405ec82e835b5c877619fcb3caa1a1966741"
     },
     {
       "path": "scripts/runtime/audit_evidence.py",
-      "sha256": "5fb9e99a6db36c6c2fa20a75d8f400ecb8aa7a4e744c97b4dda44b9b697ef2be"
+      "sha256": "7e089c20ddaf4fa24d063174abe621daaef5974f24d02264e78e89c084c02f9f"
     },
     {
       "path": "scripts/runtime/compliance_contract.py",
@@ -316,6 +320,10 @@
       "sha256": "f6a61e97c5580127018cde860e2f65ce16ce5874804d2ef782566b0eb4ab8568"
     },
     {
+      "path": "scripts/runtime/local_contracts.py",
+      "sha256": "afc8367913166a6acef1605a0fd6f364c0f6e22a5ca2f0108b35a2972afa70c6"
+    },
+    {
       "path": "scripts/runtime/local_revision_review.py",
       "sha256": "22f9b8afa35ed6301430dfb83b12c31b2984e1e315a3b1098eef9ff74beebe61"
     },
@@ -333,7 +341,7 @@
     },
     {
       "path": "scripts/runtime/prompt_compiler.py",
-      "sha256": "60a47b5fac82272dc6925305944f0318d991b56a3adc4736e04310c745fcb31c"
+      "sha256": "f529976b8615fc83291f655c628deb0be827d6ef5548c8d333ad7cf5248e7061"
     },
     {
       "path": "scripts/runtime/sales_architecture.py",

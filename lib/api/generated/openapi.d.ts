@@ -1612,6 +1612,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Domestic Detail Local Revision */
+        post: operations["create_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision/quote": {
         parameters: {
             query?: never;
@@ -2647,6 +2664,16 @@ export interface components {
             sha256: string;
             /** Width */
             width: number;
+        };
+        /** DomesticDetailLocalRevisionCreateRequest */
+        DomesticDetailLocalRevisionCreateRequest: {
+            adjustment: components["schemas"]["DomesticDetailLocalRevisionDelta"];
+            /** Approval Text */
+            approval_text: string;
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /** Quote Sha256 */
+            quote_sha256: string;
         };
         /** DomesticDetailLocalRevisionDelta */
         DomesticDetailLocalRevisionDelta: {
@@ -7606,6 +7633,44 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DetailIntakeResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticDetailLocalRevisionCreateRequest"];
             };
         };
         responses: {

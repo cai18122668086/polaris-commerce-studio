@@ -18,6 +18,70 @@ from .generation import (
 from .pixels import load_native_pair_pixels
 
 
+def original_pair_origin(
+    root: Path,
+    state: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    pair_id: str,
+    seen: frozenset[str] = frozenset(),
+) -> tuple[tuple[Path, ...], Mapping[str, Any]]:
+    """Follow immutable revision snapshots to the pair's actual paid origin."""
+    from .plans import canonical_hash
+
+    if str(root) in seen:
+        raise ValueError("Original pair revision ancestry contains a cycle")
+    fork = state.get("revision_fork")
+    if not fork or fork.get("pair_id") == pair_id:
+        return (root,), binding
+    paths = (root / "local-revision-intent.json", root / "source-session.json")
+    if any(
+        p.is_symlink() or p.is_junction()
+        for path in paths
+        for p in (path, *path.parents)
+    ):
+        raise ValueError("Original revision ancestry cannot traverse links")
+    intent = json.loads(paths[0].read_bytes())
+    raw = paths[1].read_bytes()
+    if (
+        intent.get("job_id") != root.name
+        or intent.get("sha256")
+        != canonical_hash({k: v for k, v in intent.items() if k != "sha256"})
+        or fork.get("intent_sha256") != intent["sha256"]
+        or fork.get("source_job_id") != intent["source_job_id"]
+        or hashlib.sha256(raw).hexdigest() != intent["source_session_sha256"]
+        or fork.get("source_session_sha256") != intent["source_session_sha256"]
+    ):
+        raise ValueError("Original pair revision snapshot changed")
+    source = json.loads(raw)
+    source_root = Path(source["session_dir"])
+    if not source_root.is_absolute() or source_root.name != intent["source_job_id"]:
+        raise ValueError("Original pair source owner changed")
+    pair = next(
+        p
+        for p in state["plan"]["output_strategy"]["continuous_pair_rendering"][
+            "pair_ids"
+        ]
+        if p["pair_id"] == pair_id
+    )
+    selected = set(pair["module_ids"])
+    if [m for m in state["modules"] if m["id"] in selected] != [
+        m for m in source["modules"] if m["id"] in selected
+    ]:
+        raise ValueError("Inherited original pair modules changed")
+    original_path = source_root / "generation-binding.json"
+    if any(
+        p.is_symlink() or p.is_junction()
+        for p in (original_path, *original_path.parents)
+    ):
+        raise ValueError("Original pair binding cannot traverse links")
+    original_binding = json.loads(original_path.read_bytes())
+    if original_binding["sha256"] != intent["source_generation_binding_sha256"]:
+        raise ValueError("Original pair generation binding changed")
+    return original_pair_origin(
+        source_root, source, original_binding, pair_id, seen | {str(root)}
+    )
+
+
 def resolve_native_edit_canvas(
     runner: AuroraDetailHarnessRunner,
     workspace: Path,
@@ -105,7 +169,10 @@ def resolve_native_edit_canvas(
                 raise ValueError(
                     "Local revision canvas differs from the original accepted pair"
                 )
-            roots = [root]
+            origin_roots, original_binding = original_pair_origin(
+                root, original, original_binding, request["pair_id"]
+            )
+            roots = list(origin_roots)
             lineage = verify_accepted_canvas(
                 roots,
                 original_binding,

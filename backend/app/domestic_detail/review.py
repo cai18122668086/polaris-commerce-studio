@@ -215,6 +215,15 @@ def _pair_observation(
 ) -> dict[str, Any]:
     """Keep explicit observations; never invent a missing identity comparison."""
     value = deepcopy(dict(raw))
+    from .revision_review import validate_local_observation
+
+    local_findings = validate_local_observation(
+        value,
+        request,
+        image_sha256=image_sha256,
+        width=width,
+        height=height,
+    )
     failures = value.get("material_failures")
     if isinstance(failures, list):
         value["material_failures"] = [
@@ -367,6 +376,7 @@ def _pair_observation(
         value["status"] == "MATERIAL_FAIL"
         and not value["material_failures"]
         and all(report["status"] == "PASS" for report in reports)
+        and not local_findings
     ):
         _invalid(
             "/material_failures", "a paid image repair needs a visible material finding"

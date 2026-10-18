@@ -5804,6 +5804,7 @@ class XingheImageProvider:
         max_concurrency: int,
         budget_limit_micros: int = DEFAULT_BUDGET_LIMIT_MICROS,
         skill_id: str = "xinghe-ecommerce-detail",
+        revision_settings: Settings | None = None,
     ) -> None:
         if max_concurrency not in {1, 2, 6}:
             raise ValueError("Xinghe concurrency must be one of 1, 2, or 6.")
@@ -5819,6 +5820,7 @@ class XingheImageProvider:
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._activity_lock = asyncio.Lock()
         self._active_requests = 0
+        self.revision_settings = revision_settings
         # Pair canvases are generated once and deterministically decomposed.
         # The second slice is held only until the immediately following item is
         # claimed; a missing cache is fail-closed rather than regenerating a
@@ -5858,7 +5860,16 @@ class XingheImageProvider:
         native_detail_request: dict[str, Any] | None = None
         native_detail_session: Path | None = None
         if pair_mode and pair_position == 1 and self._native_detail_runner is not None:
+            from .domestic_detail.revision_protocol import RevisionScopeError
+            from .domestic_detail.revision_runtime import prepare_revision
+
             try:
+                await prepare_revision(
+                    factory=self.session_factory, request=request,
+                    settings=self.revision_settings, storage=self.storage,
+                    gateway=self.gateway, runner=self._native_detail_runner,
+                    binding=generation_scope,
+                )
                 self._restore_native_detail_retry_checkpoint(
                     request, configuration, generation_scope
                 )
@@ -5888,6 +5899,7 @@ class XingheImageProvider:
                 DetailGenerationError,
                 DetailPlanError,
                 DetailReviewError,
+                RevisionScopeError,
             ) as exc:
                 return _provider_rejection(
                     getattr(exc, "code", "AURORA_NATIVE_RUNTIME_FAILED"),
@@ -6722,12 +6734,16 @@ class XingheImageProvider:
             raise DetailReviewError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Approved review authority changed while issuing the native request")
         supplied = native_request.get("approved_module_contracts") or []
         pair_modules = (session_for_audit.get("modules") or [])[expected_index:expected_index + 2]
-        if any(module.get("local_contract_override") for module in pair_modules):
+        if session_for_audit.get("revision_fork") or any(module.get("local_contract_override") for module in pair_modules):
             effective = runner.run(
                 "inspect-pair-review-contracts", workspace,
                 {"session": session_path, "pair-id": str(native_request["pair_id"])},
             )
             contracts_match = canonical_hash(supplied) == canonical_hash(effective["module_contracts"])
+            if session_for_audit.get("revision_fork"):
+                if not isinstance(effective.get("local_revision_contract"), Mapping):
+                    raise AuroraDetailHarnessError("NATIVE_DETAIL_REVISION_AUTHORITY_MISSING", "Owned local revision requires its original pixel review contract")
+                native_request["local_revision_contract"] = deepcopy(effective["local_revision_contract"])
         else:
             expected_contracts = [{"module_id": str(module["id"]), "contract": dict(module["plan"])}
                                   for module in pair_modules]
@@ -6865,7 +6881,13 @@ class XingheImageProvider:
         """
 
         if self.gateway.provider_name == "mock":
-            return self._native_detail_judgment(native_request, artifact)
+            judgment = self._native_detail_judgment(native_request, artifact)
+            from .domestic_detail.revision_review import synthetic_local_observation
+
+            local = synthetic_local_observation(native_request)
+            if local is not None:
+                judgment["local_revision_observation"] = local
+            return judgment
         try:
             authority = require_review_authority(native_request.get("review_authority"))
         except DetailReviewError as exc:
@@ -6888,7 +6910,15 @@ class XingheImageProvider:
             payload=artifact.payload,
             source_role="generated_pair_candidate",
         )
-        audit_sources = tuple(sources) + (candidate,)
+        from .domestic_detail.revision_review import original_revision_sources
+
+        if any(source.source_role.startswith("local_revision_original_") for source in sources):
+            raise XingheAgentError("NATIVE_DETAIL_REVISION_PIXEL_OBSERVATION_INVALID", "Original comparison frames must come from the verified accepted source")
+        try:
+            originals = original_revision_sources(native_request)
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
+        audit_sources = tuple(sources) + originals + (candidate,)
         if any(hashlib.sha256(source.payload).hexdigest() != source.sha256 for source in audit_sources):
             raise XingheAgentError("AURORA_NATIVE_REVIEW_SOURCE_CHANGED", "Review source bytes differ from their manifest")
         source_inventory = [
@@ -6900,7 +6930,13 @@ class XingheImageProvider:
         audit_receipts: list[dict[str, Any]] = []
 
         async def review(audit_request: PlannerRequest, phase: str) -> PlannerCallResult:
-            selected_route = select_route(self.gateway, audit_request.native_dispatch)
+            from .domestic_detail.revision_review import frozen_review_route
+
+            try:
+                original_route = frozen_review_route(detail_workspace(request.job_id), native_request, phase)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
+            selected_route = original_route if original_route is not None else select_route(self.gateway, audit_request.native_dispatch)
             audit_request = replace(audit_request, native_dispatch=selected_route)
             binding = {
                 "version": REVIEW_BINDING_VERSION,
@@ -6914,7 +6950,7 @@ class XingheImageProvider:
                     "approved_module_contracts_sha256"
                 ],
                 "source_inventory": source_inventory,
-                "provider": self.gateway.provider_name,
+                "provider": original_route["provider"] if original_route is not None else self.gateway.provider_name,
                 "model": selected_route["model"],
                 "dispatch_route": selected_route,
                 "prompt_sha256": hashlib.sha256(
@@ -6932,7 +6968,16 @@ class XingheImageProvider:
             try:
                 saved = store.completed()
                 reused = saved is not None
+                if original_route is not None and saved is None:
+                    raise DetailReviewError("NATIVE_DETAIL_REVISION_REVIEW_OUTCOME_UNKNOWN", "Preserve the original review; its completed result changed")
                 if saved is None:
+                    from .domestic_detail.revision_review import (
+                        require_new_review_history,
+                        require_review_budget,
+                    )
+
+                    require_new_review_history(detail_workspace(request.job_id), native_request, phase)
+                    require_review_budget(self.session_factory, request, native_request, self.gateway, new_request=True)
                     store.begin()
                     result = replace(_with_planner_observability(await self.gateway.plan(audit_request)), phase=phase + ":" + str(native_request.get("pair_id") or ""))
                     try:
@@ -6966,6 +7011,12 @@ class XingheImageProvider:
                         plan.payload = payload
                         plan.payload_hash = canonical_hash(payload)
                         db.commit()
+            from .domestic_detail.revision_review import require_review_budget
+
+            try:
+                require_review_budget(self.session_factory, request, native_request, self.gateway, new_request=False)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
             if result.error_code is None:
                 if not isinstance(result.audit_raw_content, str) or not result.audit_raw_content.strip():
                     raise XingheAgentError("AURORA_NATIVE_REVIEW_RAW_REPLY_MISSING", "A successful pixel review must preserve its original model message")
@@ -10234,6 +10285,14 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         from jsonschema import RefResolver
         schema = _inline_aurora_schema_refs(schema, RefResolver(schema_path.as_uri(), schema))
+        if request.planning_profile == "aurora_detail_pair_audit":
+            from .domestic_detail.revision_review import with_local_schema
+
+            try:
+                context = json.loads(request.product_information[0]) if request.product_information else {}
+            except (ValueError, TypeError):
+                context = {}
+            schema = with_local_schema(schema, context if isinstance(context, Mapping) else {})
         if request.planning_profile == "aurora_detail_identity_audit":
             schema = deepcopy(schema["properties"]["identity_silhouette"])
             schema["required"].append("audit_complete")

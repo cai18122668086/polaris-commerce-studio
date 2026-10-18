@@ -125,6 +125,87 @@ def _workspaces(
     return tuple(roots)
 
 
+def _pair_origin(
+    db: Session,
+    job: JobRecord,
+    binding: Mapping[str, Any],
+    state: Mapping[str, Any],
+    pair_id: str,
+    seen: frozenset[str] = frozenset(),
+) -> tuple[tuple[Path, ...], Mapping[str, Any]]:
+    """Each inherited pair retains its own original paid generation authority."""
+    if job.id in seen:
+        _reject("Local revision ancestry contains a cycle")
+    intent = job.configuration.get("local_revision")
+    if intent is None:
+        return _workspaces(db, job, binding), binding
+    from .revision_authorization import authorize_revision_quote
+
+    if (
+        not isinstance(intent, dict)
+        or intent.get("job_id") != job.id
+        or intent.get("workspace_id") != job.workspace_id
+        or intent.get("sha256")
+        != canonical_hash({k: v for k, v in intent.items() if k != "sha256"})
+    ):
+        _reject("Original local revision authority changed")
+    quote = intent["authority"]["quote"]
+    authority = authorize_revision_quote(
+        quote,
+        submitted_sha256=quote["sha256"],
+        approval_text=intent["approval_text"],
+        source_job_id=intent["source_job_id"],
+        workspace_id=job.workspace_id,
+        actor_id=intent["actor_id"],
+    )
+    root = detail_workspace(job.id)
+    fork = state.get("revision_fork") or {}
+    if (
+        canonical_hash(intent["authority"]) != canonical_hash(authority)
+        or fork.get("intent_sha256") != intent["sha256"]
+        or fork.get("source_job_id") != intent["source_job_id"]
+        or fork.get("pair_id") != quote["pair_id"]
+        or fork.get("module_ids") != quote["module_ids"]
+        or fork.get("source_session_sha256") != intent["source_session_sha256"]
+        or _sha(root / "source-session.json") != intent["source_session_sha256"]
+        or canonical_hash(_json(root / "local-revision-intent.json"))
+        != canonical_hash(intent)
+    ):
+        _reject("Native local revision differs from its original source authority")
+    if pair_id == quote["pair_id"]:
+        return _workspaces(db, job, binding), binding
+    source = db.get(JobRecord, intent["source_job_id"])
+    source_plan = db.get(JobPlanRecord, quote["source_plan_id"])
+    if (
+        source is None
+        or source.workspace_id != job.workspace_id
+        or source_plan is None
+        or source_plan.job_id != source.id
+        or source_plan.workspace_id != job.workspace_id
+        or canonical_hash(source_plan.payload) != quote["source_plan_payload_sha256"]
+    ):
+        _reject("An inherited pair lost its exact original source job and plan")
+    snapshot = _json(root / "source-session.json")
+    pair = next(
+        p
+        for p in state["plan"]["output_strategy"]["continuous_pair_rendering"][
+            "pair_ids"
+        ]
+        if p["pair_id"] == pair_id
+    )
+    selected = set(pair["module_ids"])
+    if [m for m in state["modules"] if m["id"] in selected] != [
+        m for m in snapshot["modules"] if m["id"] in selected
+    ]:
+        _reject("An inherited pair changed its original accepted modules")
+    original_binding = _json(detail_workspace(source.id) / "generation-binding.json")
+    if original_binding["sha256"] != intent["source_generation_binding_sha256"]:
+        _reject("An inherited pair changed its original generation binding")
+    return _pair_origin(
+        db, source, original_binding, snapshot, pair_id, seen | {job.id}
+    )
+
+
 async def _stored(
     storage: ImageStorage, workspace_id: str, key: str, payload: bytes
 ) -> None:
@@ -225,7 +306,6 @@ async def _verified_context(
         range(count)
     ):
         _reject("Durable screens are missing, duplicated or reordered")
-    roots = _workspaces(db, job, binding)
     pairs = state["plan"]["output_strategy"]["continuous_pair_rendering"]["pair_ids"]
     if len(pairs) != count // 2:
         _reject("Accepted native pair coverage is incomplete")
@@ -243,10 +323,18 @@ async def _verified_context(
             _accepted(m).get("normalized_image_sha256") != canvas_sha for m in selected
         ):
             _reject("Two accepted screens do not share their original pair canvas")
-        bundle = verify_accepted_canvas(
-            roots, binding, pair_id=pair["pair_id"], artifact_sha256=canvas_sha
+        pair_roots, pair_binding = _pair_origin(
+            db, job, binding, state, pair["pair_id"]
         )
-        pixels = load_native_pair_pixels(bundle, roots, group_key=group["group_key"])
+        bundle = verify_accepted_canvas(
+            pair_roots,
+            pair_binding,
+            pair_id=pair["pair_id"],
+            artifact_sha256=canvas_sha,
+        )
+        pixels = load_native_pair_pixels(
+            bundle, pair_roots, group_key=group["group_key"]
+        )
         keys = []
         for offset, raster in enumerate(pixels.screens):
             asset, link, item = rows[start + offset]
@@ -314,6 +402,11 @@ async def _verified_context(
                 "width": pixels.canvas.width,
                 "height": pixels.canvas.height,
                 "pixel_lineage_sha256": bundle["sha256"],
+                **(
+                    {"generation_binding_sha256": pair_binding["sha256"]}
+                    if pair_binding["sha256"] != binding["sha256"]
+                    else {}
+                ),
             }
         )
         audits.append(

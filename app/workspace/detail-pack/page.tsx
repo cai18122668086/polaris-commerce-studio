@@ -17,6 +17,7 @@ import type { CampaignSelection } from "@/features/jobs/api/campaign-reviews";
 import { AutomaticDeliveryChoice, AutomaticDeliveryRecovery } from "@/components/domestic-detail-automatic-delivery";
 import { automaticAuthorityForJob, useAutomaticDeliveryAuthorization, type AutomaticDeliveryAuthorization } from "@/features/jobs/api/automatic-delivery";
 import { DomesticDetailFinalReview, isCurrentFinalReview, NATIVE_DETAIL_FINAL_REVIEW_TEXT } from "@/components/domestic-detail-final-review";
+import { DomesticDetailLocalRevision } from "@/components/domestic-detail-local-revision";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
@@ -369,6 +370,7 @@ export default function DetailPackPage() {
               setCampaignChoice(selection ? { workspaceId: workspace?.id, sourceId: jobId, selection } : undefined);
             }} />}
             {currentFinalReview && <DomesticDetailFinalReview key={finalKey} review={currentFinalReview} workspaceId={workspace?.id} reviewed={finalReviewed} onReviewed={checked => setReviewedFinalKey(checked ? finalKey : "")} completed={job.data?.status === "completed"} />}
+            {currentFinalReview && workspace?.id && <DomesticDetailLocalRevision key={`revision:${finalKey}`} workspaceId={workspace.id} review={currentFinalReview} />}
           </>}
           {job.data?.status === "completed" && workflow.mode === "mock" && resultAssets.length === 0 && <div className="api-state"><ImagePlus size={22} /><p>任务流程已完成，当前生成服务未返回图片结果。</p></div>}
 

@@ -784,6 +784,11 @@ class DomesticDetailLocalRevisionQuoteRequest(BaseModel):
     adjustment: DomesticDetailLocalRevisionDelta
 
 
+class DomesticDetailLocalRevisionCreateRequest(DomesticDetailLocalRevisionQuoteRequest):
+    quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approval_text: str = Field(min_length=1, max_length=2000)
+
+
 class DomesticDetailLocalRevisionScreen(BaseModel):
     module_id: str
     asset_id: str

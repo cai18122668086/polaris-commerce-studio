@@ -285,8 +285,8 @@ async def prepare_revision(
     *,
     factory: sessionmaker[Session],
     request: ProviderRequest,
-    settings: Settings,
-    storage: ImageStorage,
+    settings: Settings | None,
+    storage: ImageStorage | None,
     gateway: Any,
     runner: AuroraDetailHarnessRunner,
     binding: Mapping[str, Any],
@@ -298,6 +298,11 @@ async def prepare_revision(
         original = db.get(JobRecord, request.job_id)
         if original is None or original.configuration.get("local_revision") is None:
             return False
+        if settings is None or storage is None:
+            _reject(
+                "The explicit current revision runtime settings "
+                "and storage are required"
+            )
         job, plan, intent = checked_request(db, request)
         source = db.get(JobRecord, intent["source_job_id"])
         quote = intent["authority"]["quote"]
@@ -500,3 +505,81 @@ async def prepare_revision(
     )
     bind_native_contract(root, binding, create=True)
     return True
+
+
+def require_revision_review_budget(
+    factory: sessionmaker[Session],
+    request: ProviderRequest,
+    native: Mapping[str, Any],
+    gateway: Any,
+    *,
+    new_request: bool,
+) -> None:
+    """A local cycle owns one scope call and at most four original review calls."""
+    from .revision_accounts import configured_revision_accounts
+    from .revision_review import local_contract
+
+    contract = local_contract(native)
+    if contract is None:
+        return
+    with factory() as db:
+        _, plan, intent = checked_request(db, request)
+        quote = intent["authority"]["quote"]
+        if (
+            contract["intent_sha256"] != intent["sha256"]
+            or contract["pair_id"] != quote["pair_id"]
+            or contract["module_ids"] != quote["module_ids"]
+            or contract["selected_module_id"] != quote["selected_module_id"]
+            or quote["maximum_review_model_requests"] != 4
+        ):
+            _reject("Current review differs from the original local cycle authority")
+        rows = (plan.payload.get("usage") or {}).get("planner") or []
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            _reject("Current review usage records are malformed")
+        scope = [r for r in rows if r.get("phase") == "aurora_detail_revision_scope"]
+        reviews = [
+            r
+            for r in rows
+            if r.get("phase")
+            in {
+                "aurora_detail_pair_audit:" + quote["pair_id"],
+                "aurora_detail_identity_audit:" + quote["pair_id"],
+            }
+        ]
+        keys = [
+            r.get("local_scope_binding_sha256")
+            if r in scope
+            else r.get("review_binding_sha256")
+            for r in rows
+        ]
+        if (
+            len(scope) != 1
+            or len(rows) != len(scope) + len(reviews)
+            or len(reviews) > 4
+            or (new_request and len(reviews) >= 4)
+            or any(not isinstance(key, str) or not key for key in keys)
+            or len(keys) != len(set(keys))
+            or any(
+                r.get("actual_cost_micros") is not None
+                and (
+                    type(r["actual_cost_micros"]) is not int
+                    or r["actual_cost_micros"] < 0
+                    or r["actual_cost_micros"] > quote["review_reserve_micros"]
+                )
+                for r in rows
+            )
+        ):
+            raise RevisionScopeError(
+                "NATIVE_DETAIL_REVISION_REVIEW_BUDGET_INVALID",
+                "Preserve original review results; the bounded cycle usage differs "
+                "or exceeds its quote",
+            )
+        if new_request:
+            accounts = configured_revision_accounts(gateway)
+            if (
+                accounts["review_dispatch_sha256"] != quote["review_dispatch_sha256"]
+                or accounts["image_dispatch_sha256"] != quote["image_dispatch_sha256"]
+                or gateway.high_price_micros != quote["image_unit_micros"]
+                or gateway.pricing_version != quote["pricing_version"]
+            ):
+                _reject("The selected accounts or prices changed before a new review")

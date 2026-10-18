@@ -2342,6 +2342,38 @@
         "title": "DomesticDetailLocalRevisionCanvas",
         "type": "object"
       },
+      "DomesticDetailLocalRevisionCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionDelta"
+          },
+          "approval_text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Approval Text",
+            "type": "string"
+          },
+          "final_review_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "quote_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Quote Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_review_sha256",
+          "adjustment",
+          "quote_sha256",
+          "approval_text"
+        ],
+        "title": "DomesticDetailLocalRevisionCreateRequest",
+        "type": "object"
+      },
       "DomesticDetailLocalRevisionDelta": {
         "additionalProperties": false,
         "properties": {
@@ -13255,6 +13287,88 @@
           }
         ],
         "summary": "Resolve Detail Intake",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision": {
+      "post": {
+        "operationId": "create_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticDetailLocalRevisionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Domestic Detail Local Revision",
         "tags": [
           "jobs"
         ]

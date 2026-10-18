@@ -26,6 +26,7 @@ from .aurora_execution_modes import (
     is_v20_aurora_mode,
 )
 from .config import (
+    Settings,
     default_masked_skill_root,
     default_skill_root,
     default_xinghe_skill_root,
@@ -2879,6 +2880,7 @@ def build_fake_coordinator(
     aurora_max_transient_retries: int = 2,
     aurora_retry_backoff_base_seconds: float = 2,
     aurora_retry_backoff_max_seconds: float = 30,
+    domestic_revision_settings: Settings | None = None,
 ) -> ExecutionCoordinator:
     from .amazon_visual_suite_provider import (
         AMAZON_VISUAL_SUITE_SKILL_ID,
@@ -2988,6 +2990,7 @@ def build_fake_coordinator(
         max_concurrency=1,
         budget_limit_micros=budget_limit_micros,
         skill_id=domestic_skill_id,
+        revision_settings=domestic_revision_settings,
     )
     domestic_detail_provider = DomesticDetailProvider(domestic_detail_delegate)
     amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)

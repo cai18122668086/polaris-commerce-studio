@@ -41,16 +41,19 @@ from tests.test_native_detail_local_adjustment import adjustment, inventory
 
 
 @pytest.mark.parametrize(
-    "automatic,scope_overrun,layout_override",
+    "automatic,scope_overrun,layout_override,pixel_review",
     [
-        (False, False, False),
-        (True, False, False),
-        (False, True, False),
-        (False, False, True),
+        (False, False, False, "none"),
+        (True, False, False, "none"),
+        (False, True, False, "none"),
+        (False, False, True, "complete"),
+        (False, False, True, "repair_identity"),
+        (False, False, True, "missing_local"),
+        (False, False, True, "overrun"),
     ],
 )
 def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
-    client, automatic, scope_overrun, layout_override, monkeypatch
+    client, automatic, scope_overrun, layout_override, pixel_review, monkeypatch
 ):
     if automatic:
         planned = planned_job(client)
@@ -68,6 +71,9 @@ def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
         source_id, fingerprint = source["id"], REVIEWS[source["id"]]
         prefix = f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{source_id}"
     client.app.state.settings.provider_quota_enabled = True
+    gateway = _gateway(client)
+    if pixel_review != "none":
+        monkeypatch.setattr(gateway, "provider_name", "offline-local-review")
     delta = adjustment("M04")
     response = client.post(
         prefix + "/local-revision/quote",
@@ -408,6 +414,26 @@ def test_public_lease_current_authority_then_one_scope_call_and_owned_fork(
     assert len(edit_proof["original_response_sha256"]) == 64
     assert inventory(detail_workspace(source_id)) == original_inventory
     assert len(gateway.image_calls) == before_calls[1]
+    if pixel_review != "none":
+        from tests.domestic_detail_revision_review_fixtures import (
+            run_local_review_boundary,
+        )
+
+        run_local_review_boundary(
+            client,
+            monkeypatch,
+            provider,
+            gateway,
+            request,
+            binding,
+            native_request,
+            ordered,
+            configuration,
+            sources,
+            pixel_review,
+        )
+        assert inventory(detail_workspace(source_id)) == original_inventory
+        assert len(gateway.image_calls) == before_calls[1]
 
 
 @pytest.mark.parametrize("sent", [False, True])

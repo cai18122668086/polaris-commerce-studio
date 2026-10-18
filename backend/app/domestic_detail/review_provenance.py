@@ -46,6 +46,9 @@ def review_runtime_hash() -> str:
                     "identity_review",
                     "review_provenance",
                     "planner_dispatch",
+                    "revision_review",
+                    "revision_runtime",
+                    "revision_accounts",
                 )
             },
         }
@@ -60,7 +63,7 @@ def pair_review_contract(
     inventory: list[dict[str, Any]],
 ) -> dict[str, Any]:
     authority = require_review_authority(native.get("review_authority"))
-    return {
+    value = {
         "pair_id": native.get("pair_id"),
         "module_ids": native.get("module_ids"),
         "pair_render": native.get("pair_render"),
@@ -81,6 +84,21 @@ def pair_review_contract(
             native.get("approved_module_contracts")
         ),
     }
+
+    from .revision_review import baseline_inventory, local_model_context
+
+    local = local_model_context(native)
+    if local is not None:
+        expected = baseline_inventory(native)
+        attached = [
+            row
+            for row in inventory
+            if str(row.get("role", "")).startswith("local_revision_original_")
+        ]
+        if attached != expected:
+            _invalid("Actual original canvas and both fixed slices must be attached")
+        value["local_revision_context"] = local
+    return value
 
 
 def _invalid(reason: str) -> NoReturn:
@@ -220,6 +238,17 @@ def _verify_review_provenance(
             "sha256": row["sha256"],
         }
         for row in lineage["slices"]
+    ]
+    from .revision_review import original_revision_sources
+
+    original_sources = original_revision_sources(native)
+    inventory += [
+        {
+            "asset_id": source.asset_id,
+            "role": source.source_role,
+            "sha256": source.sha256,
+        }
+        for source in original_sources
     ]
     inventory.append(
         {

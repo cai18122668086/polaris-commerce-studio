@@ -327,6 +327,7 @@ async def create_revision_job(
         local_revision_authority_sha256=authority["sha256"],
     )
     payload.pop("planner_request_count", None)
+    payload.pop("local_scope_billing_receipt", None)
     payload["planner_diagnostics"] = []
     payload["cost"] = {
         **payload.get("cost", {}),

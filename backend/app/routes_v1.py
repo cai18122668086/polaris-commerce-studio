@@ -115,6 +115,7 @@ from .schemas_v1 import (
     DomesticDetailAutomaticDeliveryAuthorization,
     DomesticDetailAutomaticDeliveryRecoveryRequest,
     DomesticDetailFinalReviewResponse,
+    DomesticDetailLocalRevisionCreateRequest,
     DomesticDetailLocalRevisionQuote,
     DomesticDetailLocalRevisionQuoteRequest,
     DomesticMainImageJobCreate,
@@ -3394,6 +3395,89 @@ def quote_domestic_detail_local_revision(
             str(exc),
         ) from exc
     return DomesticDetailLocalRevisionQuote.model_validate(quote)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/local-revision",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def create_domestic_detail_local_revision(
+    job_id: str,
+    payload: DomesticDetailLocalRevisionCreateRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.revision_jobs import create_revision_job
+
+    key = require_idempotency_key(idempotency_header)
+    source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    _ensure_detail_skill_provider_enabled(request, source)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(
+            session,
+            get_workspace_job(
+                session, workspace.workspace_id, cast(str, idem.resource_id)
+            ),
+        )
+    provider = request.app.state.task_runner.coordinator.provider
+    delegate = getattr(
+        getattr(provider, "domestic_detail_provider", None), "delegate", None
+    )
+    gateway = getattr(delegate, "gateway", None)
+    if gateway is None:
+        raise ApiError(
+            503,
+            "NATIVE_DETAIL_LOCAL_REVISION_UNAVAILABLE",
+            "详情局部修订路由当前不可用。",
+        )
+    try:
+        child = asyncio.run(
+            create_revision_job(
+                session,
+                source,
+                request.app.state.storage,
+                request.app.state.settings,
+                gateway,
+                actor_id=workspace.principal.user_id,
+                fingerprint=payload.final_review_sha256,
+                adjustment=payload.adjustment.model_dump(),
+                quote_sha256=payload.quote_sha256,
+                approval_text=payload.approval_text,
+            )
+        )
+    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_LOCAL_REVISION_INVALID"),
+            str(exc),
+        ) from exc
+    add_outbox_event(
+        session,
+        workspace_id=workspace.workspace_id,
+        job_id=child.id,
+        event_type="job.dispatch_requested",
+        suffix="local-revision",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=child.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, child)
 
 
 @router.post(

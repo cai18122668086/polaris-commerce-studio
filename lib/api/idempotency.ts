@@ -1,6 +1,7 @@
 export type IdempotentOperation =
   | "upload"
   | "create-job"
+  | "local-revision"
   | "cancel-job"
   | "retry-job"
   | "clone-job"

@@ -96,7 +96,9 @@ def _master_record(
         "native_detail_pair_master": True,
         "pair_id": pair["pair_id"],
         "pixel_lineage_sha256": pair["pixel_lineage_sha256"],
-        "generation_binding_sha256": context["generation_binding_sha256"],
+        "generation_binding_sha256": pair.get(
+            "generation_binding_sha256", context["generation_binding_sha256"]
+        ),
     }
     asset = db.get(AssetRecord, asset_id)
     if asset is None and register:

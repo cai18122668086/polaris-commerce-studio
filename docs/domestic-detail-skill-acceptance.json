@@ -680,5 +680,18 @@
       "Idempotent HTTP/UI and independent zero-model original image recovery",
       "Historical frozen routing/rollback; persistent isolated stack and actual supplier/browser/visual acceptance"
     ]
+  },
+  "current_public_local_revision": {
+    "http_submit_and_idempotent_replay": true,
+    "owned_execute_preparation": true,
+    "web_scope_and_cost_approval": true,
+    "offline_first_revision_finalization_and_second_different_pair_revision": true,
+    "original_source_unchanged": true,
+    "current_required_regression_tests": 128,
+    "mypy_app_sources": 112,
+    "frontend_typecheck_and_eslint": true,
+    "actual_supplier_and_visual_acceptance": false,
+    "full_37_requirement_scope_proven": false,
+    "release_authorized_after_required_validation": true
   }
 }

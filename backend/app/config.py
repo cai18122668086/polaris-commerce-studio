@@ -78,6 +78,10 @@ class Settings(BaseSettings):
 
     app_name: str = "Polaris Commerce Studio API"
     app_version: str = "1.1.0"
+
+    legacy_detail_api_url: Literal[
+        "", "http://api:8000", "http://legacy-api:8000"
+    ] = ""
     # Metrics remain disabled unless an operator provisions a dedicated scrape
     # token. Never expose request telemetry anonymously on the public edge.
     metrics_token: SecretStr = SecretStr("")

@@ -152,7 +152,7 @@ export default function DetailPackPage() {
   const approvalDocument = typeof auroraApproval?.approval_document_markdown === "string" ? auroraApproval.approval_document_markdown : "";
   const approvalFingerprint = typeof auroraApproval?.approval_document_sha256 === "string" ? auroraApproval.approval_document_sha256 : "";
   const approvalKey = `${job.data?.id}:${job.data?.plan?.revision}:${approvalFingerprint}`;
-  const nativeReviewed = job.data?.id === jobId && nativeApproval?.version === "domestic-native-approval-v1" && Boolean(nativeApproval?.artifact_id) && Boolean(approvalDocument) && reviewedApprovalKey === approvalKey && job.data?.plan?.validation_status === "valid";
+  const nativeReviewed = job.data?.id === jobId && (!isNativeDetail || (nativeApproval?.version === "domestic-native-approval-v1" && Boolean(nativeApproval?.artifact_id))) && Boolean(approvalDocument) && reviewedApprovalKey === approvalKey && job.data?.plan?.validation_status === "valid";
   const automaticScope = `${workspace?.id}:${jobId}:${job.data?.plan?.revision}:${nativeApproval?.document_sha256}`;
   const automaticRequested = automaticChoice?.scope === automaticScope && automaticChoice.requested;
   const automaticQuote = useAutomaticDeliveryAuthorization(workspace?.id, job.data, Boolean(automaticRequested));
@@ -348,7 +348,7 @@ export default function DetailPackPage() {
             </div>}
           </section>
 
-          {job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && nativeApproval && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
+          {job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && (!isNativeDetail || nativeApproval) && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
 
           {job.data?.id === jobId && isNativeDetail && job.data.status === "awaiting_confirmation" && job.data.plan?.validation_status === "valid" && <AutomaticDeliveryChoice requested={Boolean(automaticRequested)} quote={automaticQuote.data} selected={automaticConsent} busy={automaticQuote.isFetching} error={automaticQuote.error ?? undefined} onChange={(requested, authorization) => {
             setReviewedApprovalKey("");

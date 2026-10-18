@@ -41,6 +41,7 @@ from .ecommerce_session import EcommerceSessionManager
 from .ecommerce_worker_routes import router as ecommerce_worker_router
 from .errors import ApiError
 from .inspiration_routes import router as inspiration_router
+from .legacy_detail_proxy import LegacyDetailProxy
 from .models import WorkspaceLimitRecord
 from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse
@@ -274,6 +275,13 @@ def create_app(
     application.state.workspace_limits = lambda session, workspace_id: session.get(
         WorkspaceLimitRecord, workspace_id
     )
+
+    if app_settings.legacy_detail_api_url:
+        application.add_middleware(
+            LegacyDetailProxy,
+            origin=app_settings.legacy_detail_api_url,
+            session_factory=session_factory,
+        )
 
     auth_cors_headers: list[str] = []
     if auth_backend is not None:

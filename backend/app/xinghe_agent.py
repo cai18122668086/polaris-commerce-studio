@@ -114,6 +114,7 @@ from .domestic_detail.planner_dispatch import (
     require_route,
     result_with_dispatch,
     route_descriptor,
+    safe_native_provider_error,
     select_route,
     validate_dispatch_result,
 )
@@ -2502,6 +2503,14 @@ class TengliOpenAICompatibleGateway:
                 break
             if status >= 400:
                 envelope_diagnostics = _planner_envelope_diagnostics(response)  # type: ignore[arg-type]
+                native_error = {}
+                if request.planning_profile in NATIVE_PLANNER_PROFILES and isinstance(response, Mapping):
+                    native_error = safe_native_provider_error(
+                        response, (route.planner_api_key, self._api_key, self._planner_api_key, self._image_api_key),
+                    )
+                    if native_error:
+                        envelope_diagnostics["provider_envelope"]["native_provider_error"] = native_error
+                suffix = ": " + native_error["message"] if native_error.get("message") else "."
                 return PlannerCallResult(
                     payload=None,
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
@@ -2514,7 +2523,7 @@ class TengliOpenAICompatibleGateway:
                         if status == 429
                         else "PLANNER_REQUEST_FAILED"
                     ),
-                    error_message=f"Planner request failed with HTTP {status}.",
+                    error_message=f"Planner request failed with HTTP {status}" + suffix,
                     http_status=status,
                     provider_envelope=envelope_diagnostics["provider_envelope"],
                     request_id_presence=envelope_diagnostics["request_id_presence"],

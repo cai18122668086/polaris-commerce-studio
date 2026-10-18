@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+import re
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Any, cast
 
@@ -281,3 +282,27 @@ def planning_model(
     if bound is not None:
         return str(require_route(bound)["model"])
     return str(select_route(gateway)["model"])
+
+
+def safe_native_provider_error(
+    payload: Mapping[str, Any], secrets: Sequence[str]
+) -> dict[str, str]:
+    """Retain actionable native HTTP rejection data without credential echoes."""
+    error = payload.get("error")
+    if not isinstance(error, Mapping):
+        return {}
+    result = {}
+    for field in ("type", "code", "param", "message"):
+        value = error.get(field)
+        if not isinstance(value, (str, int)) or isinstance(value, bool):
+            continue
+        text = str(value)
+        for secret in secrets:
+            if secret:
+                text = text.replace(secret, "[redacted]")
+        text = re.sub(r"(?i)\bsk-[a-z0-9_-]+", "[redacted]", text)
+        text = re.sub(r"(?i)bearer\s+[^\s,;\"<>]+", "Bearer [redacted]", text)
+        text = " ".join(text.split())[: 320 if field == "message" else 100]
+        if text:
+            result[field] = text
+    return result

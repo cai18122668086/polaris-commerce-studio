@@ -10,6 +10,7 @@ from pathlib import Path
 from .atomic_review import contract_sha256, validate_atomic_reports
 from .artifact_binding import validate_artifact_binding
 from .pixel_lineage import pair_artifacts
+from .local_revision_review import validate_revision_observation
 from .schema_validation import validate_schema
 from .state import HarnessError
 
@@ -29,13 +30,15 @@ def _snapshot_path(lineage: dict) -> Path:
     return source.parent.parent / "audit-originals" / (hashlib.sha256(lineage["token"].encode()).hexdigest() + ".json")
 
 
-def record_pair_audit(judgment_path: str | Path, judgment: dict, recorded: dict, lineage: dict) -> dict:
+def record_pair_audit(judgment_path: str | Path, judgment: dict, recorded: dict, lineage: dict, *, revision_contract: dict | None = None) -> dict:
     original = Path(judgment_path).read_bytes()
     if contract_sha256(json.loads(original)) != contract_sha256(judgment):
         raise HarnessError("Original pair audit input changed during validation")
     value = {"binding": _binding(lineage), "audit_input_bytes_base64": base64.b64encode(original).decode(),
              "audit_input_sha256": hashlib.sha256(original).hexdigest(),
              "recorded_judgment": recorded, "recorded_judgment_sha256": contract_sha256(recorded)}
+    if revision_contract is not None:
+        value["revision_contract"] = revision_contract
     path = _snapshot_path(lineage)
     path.parent.mkdir(exist_ok=True)
     if path.parent.is_symlink() or path.parent.is_junction() or path.is_symlink():
@@ -90,6 +93,7 @@ def inspect_pair_audit(session: dict, pair_id: str) -> dict:
             raise HarnessError("Original accepted audit identifies another pair")
         validate_artifact_binding(judgment, lineage["canvas"]["path"], "original accepted audit")
         validate_atomic_reports(judgment, modules, lineage)
+        validate_revision_observation(snapshot.get("revision_contract"), judgment, lineage)
         result = {"version": VERSION, "snapshot_reference": reference,
                   "audit_input": judgment, "recorded_judgment": recorded}
         result["sha256"] = contract_sha256(result)

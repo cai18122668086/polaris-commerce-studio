@@ -15,6 +15,7 @@ from typing import List, Optional, Tuple
 from PIL import Image, UnidentifiedImageError
 
 from runtime.audit_evidence import inspect_pair_audit, record_pair_audit
+from runtime.local_revision_review import revision_review_contract, validate_revision_observation
 from runtime.delivery_manifest import build_final_manifest, inspect_final_manifest
 from runtime.assembly import assemble_vertical
 from runtime.artifact_binding import file_sha256, validate_artifact_binding
@@ -2033,6 +2034,8 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment", allow_material_failure=True, expected_scope=pair_observed_scope(judgment["module_judgments"]))
     failures = list(judgment["material_failures"])
     failures.extend(validate_atomic_reports(judgment, pair_modules, lineage))
+    revision_contract = revision_review_contract(session, pair["pair_id"])
+    failures.extend(validate_revision_observation(revision_contract, judgment, lineage))
     if judgment["status"] == "MATERIAL_FAIL" and not failures:
         raise HarnessError("MATERIAL_FAIL pair judgment requires visible material failures")
     # These findings come only from explicit negative pixel observations. Missing
@@ -2084,7 +2087,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     if seam["hard_cut_absent"] is False or seam["method_specific_pass"] is False:
         effective_passed = [name for name in effective_passed if name != "internal_seam"]
     recorded_judgment = {**judgment, "material_failures": failures, "effective_passed_layers": effective_passed}
-    review_evidence = record_pair_audit(args.judgment, judgment, recorded_judgment, lineage)
+    review_evidence = record_pair_audit(args.judgment, judgment, recorded_judgment, lineage, revision_contract=revision_contract)
     for item in pair_modules:
         attempt = item["attempts"][-1]
         attempt["judgment"] = recorded_judgment
@@ -3032,7 +3035,11 @@ def cmd_inspect_pair_review_contracts(args: argparse.Namespace) -> dict:
     if pair is None:
         raise HarnessError("Unknown pair review contract")
     by_id = {module["id"]: module for module in session["modules"]}
-    return {"module_contracts": review_contracts([by_id[key] for key in pair["module_ids"]], len(session["modules"]))}
+    result = {"module_contracts": review_contracts([by_id[key] for key in pair["module_ids"]], len(session["modules"]))}
+    revision_contract = revision_review_contract(session, args.pair_id)
+    if revision_contract is not None:
+        result["local_revision_contract"] = revision_contract
+    return result
 
 
 def cmd_inspect_pair_review_evidence(args: argparse.Namespace) -> dict:

@@ -4317,6 +4317,15 @@ def _validate_domestic_detail_retry(
     *,
     clone: bool = False,
 ) -> None:
+    if (
+        source.type == JobType.DETAIL_PACK.value
+        and source.configuration.get("local_revision") is not None
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_REVISION_RECONCILIATION_REQUIRED",
+            "请先核对原修订请求；新的局部修订须审阅当前结果并单独授权。",
+        )
     settings = source.configuration.get("settings") or {}
     if (
         source.type != JobType.DETAIL_PACK.value

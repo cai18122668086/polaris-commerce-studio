@@ -27,7 +27,7 @@ REVISION_APPROVAL_TEXT = (
 )
 REVISION_DISCLOSURE = (
     "本次双屏最多两次图片请求：初稿及一次自动修复；"
-    "像素审核模型最多四次，包含有界身份补充核验。"
+    "局部范围预检模型最多一次，像素审核模型最多四次，包含有界身份补充核验。"
     "原任务、原图和原费用保留；全局变更须重新策划。"
     "请求结果未知时先核对原请求，不以新周期补发。"
 )
@@ -158,7 +158,7 @@ def quote_value(
         raise DetailPlanError("The original accepted pair master changed")
     canvas = canvases[0]
     image_price, review_price = _price(image_unit_micros), _price(review_reserve_micros)
-    maximum = image_price * 2 + review_price * 4
+    maximum = image_price * 2 + review_price * 5
     value = {
         "version": QUOTE_VERSION,
         "source_job_id": source.id,
@@ -218,8 +218,10 @@ def quote_value(
         "image_unit_micros": image_price,
         "review_reserve_micros": review_price,
         "maximum_image_requests": 2,
+        "maximum_scope_model_requests": 1,
         "maximum_review_model_requests": 4,
-        "maximum_provider_requests": 6,
+        "maximum_model_requests": 5,
+        "maximum_provider_requests": 7,
         "maximum_cost_micros": maximum,
         "currency": "USD",
         "delivery_mode": "USER_FINAL_REVIEW",

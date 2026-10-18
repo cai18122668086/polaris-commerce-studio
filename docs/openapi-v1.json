@@ -2522,14 +2522,24 @@
             "title": "Maximum Image Requests",
             "type": "integer"
           },
+          "maximum_model_requests": {
+            "const": 5,
+            "title": "Maximum Model Requests",
+            "type": "integer"
+          },
           "maximum_provider_requests": {
-            "const": 6,
+            "const": 7,
             "title": "Maximum Provider Requests",
             "type": "integer"
           },
           "maximum_review_model_requests": {
             "const": 4,
             "title": "Maximum Review Model Requests",
+            "type": "integer"
+          },
+          "maximum_scope_model_requests": {
+            "const": 1,
+            "title": "Maximum Scope Model Requests",
             "type": "integer"
           },
           "module_ids": {
@@ -2693,7 +2703,9 @@
           "image_unit_micros",
           "review_reserve_micros",
           "maximum_image_requests",
+          "maximum_scope_model_requests",
           "maximum_review_model_requests",
+          "maximum_model_requests",
           "maximum_provider_requests",
           "maximum_cost_micros",
           "currency",

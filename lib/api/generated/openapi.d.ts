@@ -2743,15 +2743,25 @@ export interface components {
              */
             maximum_image_requests: 2;
             /**
+             * Maximum Model Requests
+             * @constant
+             */
+            maximum_model_requests: 5;
+            /**
              * Maximum Provider Requests
              * @constant
              */
-            maximum_provider_requests: 6;
+            maximum_provider_requests: 7;
             /**
              * Maximum Review Model Requests
              * @constant
              */
             maximum_review_model_requests: 4;
+            /**
+             * Maximum Scope Model Requests
+             * @constant
+             */
+            maximum_scope_model_requests: 1;
             /** Module Ids */
             module_ids: string[];
             /** Native Approval Document Sha256 */

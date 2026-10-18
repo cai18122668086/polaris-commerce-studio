@@ -152,12 +152,12 @@ def test_quote_maps_exact_pair_preserves_raw_delta_and_never_inherits_auto(
     )
     assert module_id in result["module_ids"]
     assert result["approved_screen_count"] == count
-    assert result["maximum_cost_micros"] == 1_180_000
+    assert result["maximum_cost_micros"] == 1_430_000
     assert (
         result["maximum_image_requests"],
         result["maximum_review_model_requests"],
         result["maximum_provider_requests"],
-    ) == (2, 4, 6)
+    ) == (2, 4, 7)
     assert (
         result["delivery_mode"] == "USER_FINAL_REVIEW"
         and "automatic_delivery_authorization" not in result
@@ -358,7 +358,7 @@ def test_actual_quote_is_read_only_and_source_actor_price_and_raw_bytes_are_boun
     assert (
         quote["maximum_cost_micros"]
         == 2 * gateway.high_price_micros
-        + 4 * client.app.state.settings.tengli_planner_reserve_micros
+        + 5 * client.app.state.settings.tengli_planner_reserve_micros
     )
     assert client.post(prefix + "/local-revision/quote", json=body).json() == quote
     current = dict(

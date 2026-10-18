@@ -838,8 +838,10 @@ class DomesticDetailLocalRevisionQuote(BaseModel):
     image_unit_micros: int = Field(ge=0)
     review_reserve_micros: int = Field(ge=0)
     maximum_image_requests: Literal[2]
+    maximum_scope_model_requests: Literal[1]
     maximum_review_model_requests: Literal[4]
-    maximum_provider_requests: Literal[6]
+    maximum_model_requests: Literal[5]
+    maximum_provider_requests: Literal[7]
     maximum_cost_micros: int = Field(ge=0)
     currency: Literal["USD"]
     delivery_mode: Literal["USER_FINAL_REVIEW"]

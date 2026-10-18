@@ -41,3 +41,12 @@ Latest offline validation: 21 bounded-authoring tests passed, Ruff passed, and m
 The owned API/worker/dispatcher are stopped and removed, the borrowed image key is cleared, and the owned supplier relay is stopped. Independent data volumes and all original evidence remain. The read-only conservative ledger projection is $14.75 with 59 requests for the current UTC accounting day/month; this is not a provider bill, and actual dollar charges are unknown. The existing $10/job, $30/day/month and 120-request limits were not raised.
 
 Next work must correct the saved story's fact-reference and recall/depth authority under the new preflight before requesting any remaining detailed screen. Do not blindly replay a failed job or treat an old structurally accepted story as a semantically valid plan. Keep the goal active until real acceptance and the already-authorized deployment are complete; no production changes have been made.
+
+
+### 2026-10-19 explicit scoped output contract
+
+Bounded authoring now includes the complete stage JSON Schema in the model-visible prompt, matching the intake path. The transport response_format remains present; no assumption is made that a compatible supplier enforces it. Repeated module properties use equivalent local $defs references to avoid duplicating the large rendering contracts in text.
+
+An explicit failed-only continuation can recover a known HTTP-success but invalid original reply as unapproved input to the existing single correction. It never skips current validation or creates approval. Immutable source receipts and their hashes remain intact; uncertain requests still stop in the dispatcher before recovery. Primary/recall disagreement is reported together with unknown-fact errors so a correction sees both defects at once.
+
+Validation: 23 bounded-authoring tests passed, including real coordinator/native approval, model-visible schema validation, and saved-invalid-reply continuation with no repeated initial request. Mypy passed across 115 source files. Real eight-screen/image acceptance and deployment remain outstanding at this checkpoint.

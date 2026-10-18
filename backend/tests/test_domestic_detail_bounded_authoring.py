@@ -400,3 +400,112 @@ def test_pair_omitted_frozen_fields_are_copied_from_one_story(client, monkeypatc
     assert result["status"] == "awaiting_confirmation", result.get("error_message")
     assert len(gateway.planner_calls) == 6
     assert not gateway.image_calls
+
+
+def test_prompt_contains_the_exact_nested_contract(client):
+    import json
+
+    from jsonschema import Draft202012Validator
+
+    from app.xinghe_agent import _fake_plan, _planner_prompt
+
+    source = upload_asset(client, filename="prompt-contract.png")
+    _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    for value in _gateway(client).planner_calls:
+        if not value.authoring_stage:
+            continue
+        prompt = _planner_prompt(value)
+        contract = json.loads(
+            prompt.split("RESPONSE_CONTRACT_JSON=", 1)[1].split("\nINPUT_JSON=", 1)[0]
+        )
+        Draft202012Validator.check_schema(contract)
+        payload = authoring.fake_phase(_fake_plan(value), value)
+        original = _planner_response_format(value)["json_schema"]["schema"]
+        assert Draft202012Validator(contract).is_valid(payload)
+        assert Draft202012Validator(original).is_valid(payload)
+        assert len(json.dumps(contract)) <= len(json.dumps(original))
+        if value.authoring_stage == "pair":
+            payload["modules"][0]["visible_copy"][0].pop("role")
+            assert not Draft202012Validator(contract).is_valid(payload)
+            assert not Draft202012Validator(original).is_valid(payload)
+
+
+def test_retry_corrects_saved_invalid_story_without_reauthoring(client, monkeypatch):
+    import json
+    from pathlib import Path
+
+    from app.xinghe_agent import detail_workspace
+    from tests.test_api import idem
+
+    gateway = _gateway(client)
+    original = gateway.plan
+    inject_invalid = True
+
+    async def invalid_until_retry(value):
+        result = await original(value)
+        if value.authoring_stage == "story" and inject_invalid:
+            payload = deepcopy(result.payload)
+            payload["selling_point_depth_contract"]["primary_claim_ids"][0] = "C99"
+            return replace(result, payload=payload)
+        return result
+
+    monkeypatch.setattr(gateway, "plan", invalid_until_retry)
+    source = upload_asset(client, filename="known-invalid-story.png")
+    first = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    assert (
+        client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}").json()[
+            "status"
+        ]
+        == "failed"
+    )
+    originals = {
+        str(p): p.read_bytes()
+        for p in (detail_workspace(first["id"]) / "planner-calls").glob("*")
+        if p.is_file()
+    }
+    before = len(gateway.planner_calls)
+    inject_invalid = False
+    retry = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}/retry",
+        headers=idem(),
+        json={"scope": "failed"},
+    )
+    assert retry.status_code == 201, retry.text
+    dispatch_pending(client)
+    second = retry.json()
+    planned = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{second['id']}"
+    ).json()
+    assert planned["status"] == "awaiting_confirmation", planned.get("error_message")
+    calls = gateway.planner_calls[before:]
+    assert [c.authoring_stage for c in calls] == [
+        "story",
+        "pair",
+        "pair",
+        "pair",
+        "pair",
+    ]
+    assert calls[0].authoring_context["prior_response"]
+    assert any(
+        e["constraint"] == "enum"
+        for e in calls[0].authoring_context["validation_errors"]
+    )
+    assert any(
+        e["constraint"] == "native_sales_depth"
+        for e in calls[0].authoring_context["validation_errors"]
+    )
+    recovery = json.loads(
+        (
+            detail_workspace(second["id"]) / "planning" / "story-recovery.json"
+        ).read_bytes()
+    )
+    assert recovery["stage_valid"] is False
+    assert recovery["provider_request_count"] == 0
+    assert all(Path(p).read_bytes() == raw for p, raw in originals.items())
+    assert not gateway.image_calls

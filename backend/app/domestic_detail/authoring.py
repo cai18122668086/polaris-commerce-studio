@@ -211,6 +211,25 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
     }
 
 
+def prompt_contract(schema: Mapping[str, Any]) -> dict[str, Any]:
+    """Share repeated module property schemas without changing their constraints."""
+    value = deepcopy(dict(schema))
+    slots = value["properties"]["modules"]["prefixItems"]
+    definitions = value.setdefault("$defs", {})
+    for key, prop in slots[0]["properties"].items():
+        if len(json.dumps(prop)) < 150 or not all(
+            slot["properties"].get(key) == prop for slot in slots[1:]
+        ):
+            continue
+        name = "module_" + key
+        definitions[name] = deepcopy(prop)
+        for slot in slots:
+            slot["properties"][key] = {"$ref": "#/$defs/" + name}
+    if not definitions:
+        value.pop("$defs")
+    return value
+
+
 def prompt(request: Any) -> str:
     context = deepcopy(request.authoring_context or {})
     errors = context.pop("validation_errors", None)
@@ -282,8 +301,18 @@ def prompt(request: Any) -> str:
             "campaign_and_story": context,
             "locked_intake": request.detail_intake,
         }
+    from ..xinghe_agent import _planner_response_format
+
+    contract = prompt_contract(
+        _planner_response_format(request)["json_schema"]["schema"]
+    )
     return (
         instruction
+        + "\nThe following JSON Schema is the complete output contract, including "
+        "required nested fields and allowed enum values. Resolve $ref against $defs. "
+        "The reference prose explains design intent; this contract defines field names."
+        + "\nRESPONSE_CONTRACT_JSON="
+        + json.dumps(contract, ensure_ascii=False, separators=(",", ":"))
         + "\nINPUT_JSON="
         + json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         + (
@@ -354,6 +383,28 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
     from ..xinghe_agent import _planner_response_format
 
     issues = errors_for(payload, _planner_response_format(request))
+    if request.authoring_stage == "story" and isinstance(payload, Mapping):
+        depth = payload.get("selling_point_depth_contract")
+        recall = payload.get("campaign_recall_contract")
+        if isinstance(depth, Mapping) and isinstance(recall, Mapping):
+            primary = depth.get("primary_claim_ids")
+            remembered = recall.get("must_remember_claim_ids")
+            if (
+                isinstance(primary, list)
+                and isinstance(remembered, list)
+                and all(isinstance(item, str) for item in primary + remembered)
+                and set(primary) != set(remembered)
+            ):
+                issues.append(
+                    {
+                        "path": "/",
+                        "constraint": "native_sales_depth",
+                        "message": (
+                            "Selling-point depth primary claims must equal "
+                            "the campaign must-remember claims"
+                        ),
+                    }
+                )
     if issues or request.authoring_stage != "story":
         return issues
     assert isinstance(payload, Mapping)
@@ -512,20 +563,27 @@ def recover_story(
             source_hashes.insert(0, canonical_hash(base))
         elif not correction:
             base = result
-        if stage_errors(projected, request):
-            continue
+        issues = stage_errors(projected, request)
         assert isinstance(projected, dict)
-        if request.authoring_stage == "story":
+        if request.authoring_stage == "story" and not issues:
             validate_aurora_domestic_plan(
                 projected, request.page_count, campaign_only=True
             )
         candidates.append(
-            (path.stat().st_mtime_ns, raw, result, projected, source_hashes)
+            (
+                not issues,
+                path.stat().st_mtime_ns,
+                raw,
+                result,
+                projected,
+                source_hashes,
+                issues,
+            )
         )
     if not candidates:
         return None
-    _, original, result, projected, source_hashes = max(
-        candidates, key=lambda row: row[0]
+    _, _, original, result, projected, source_hashes, issues = max(
+        candidates, key=lambda row: (row[0], row[1])
     )
     return {
         **result,
@@ -549,6 +607,8 @@ def recover_story(
                     NativePlanningStore(source_root, original).store.request_path
                 ),
                 "provider_request_count": 0,
+                "stage_valid": not issues,
+                "validation_errors": issues,
             }
         },
     }

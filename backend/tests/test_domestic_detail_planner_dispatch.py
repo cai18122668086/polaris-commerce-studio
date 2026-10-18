@@ -29,6 +29,7 @@ PROFILES = [
     "aurora_detail_pair_audit",
     "aurora_detail_campaign_audit",
     "aurora_detail_identity_audit",
+    "aurora_detail_revision_scope",
 ]
 
 

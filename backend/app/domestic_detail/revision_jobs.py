@@ -219,6 +219,7 @@ async def create_revision_job(
         "workspace_id": source.workspace_id,
         "actor_id": actor_id,
         "source_session_sha256": quote["source_native_session_sha256"],
+        "source_generation_binding_sha256": quote["source_generation_binding_sha256"],
         "adjustment": deepcopy(quote["adjustment"]),
         "approval_text": approval_text,
         "authority": authority,

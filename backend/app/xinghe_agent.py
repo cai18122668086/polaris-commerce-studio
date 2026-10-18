@@ -2414,6 +2414,8 @@ class TengliOpenAICompatibleGateway:
                     "max_completion_tokens": 12_000,
                 }
             )
+        elif request.planning_profile == "aurora_detail_revision_scope":
+            payload.update({"max_completion_tokens": 4096})
         elif request.planning_profile == "aurora_v20_visual_audit":
             payload.update(
                 {
@@ -10184,6 +10186,13 @@ def _single_image_analysis_fields(profile: str) -> set[str]:
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "aurora_detail_revision_scope":
+        from .domestic_detail.revision_protocol import scope_schema
+
+        return {"type": "json_schema", "json_schema": {
+            "name": "aurora_detail_revision_scope", "strict": False,
+            "schema": scope_schema(request),
+        }}
     if request.planning_profile == "aurora_detail_campaign_audit":
         from .domestic_detail.campaign_protocol import campaign_schema
 
@@ -10385,6 +10394,10 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.planning_profile == "aurora_detail_revision_scope":
+        from .domestic_detail.revision_protocol import scope_prompt
+
+        return scope_prompt(request)
     if request.planning_profile == "aurora_detail_campaign_audit":
         from .domestic_detail.campaign_protocol import campaign_prompt
 

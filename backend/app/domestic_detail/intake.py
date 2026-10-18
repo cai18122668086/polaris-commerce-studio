@@ -106,11 +106,15 @@ def intake_prompt(
         "material conflict MUST stop before identity/storyboard; omit "
         "identity and modules. Use O01.. for observed facts and cite "
         "source_class=OBSERVED_PRODUCT_EVIDENCE on every observed fact. "
-        "Keep USER_FACTS in the original Fxx ledger; never copy them into "
+        "Leave USER_FACTS in the server-owned Fxx ledger; never copy them into "
         "observed_facts or relabel user instructions as pixel observations. "
         "Use evidence_ref as an original product asset ID, with "
         "observed_region. Preserve the Fxx IDs and original user text "
-        "without rewriting. Do not repeat preservation policies as "
+        "without rewriting. USER_FACTS is input authority only: do not "
+        "emit a user_facts key or re-emit that ledger. The server retains "
+        "the original Fxx ledger independently. Return only top-level "
+        "properties allowed by RESPONSE_CONTRACT_JSON. Do not repeat "
+        "preservation policies as "
         "observations. When clear, provide exactly four "
         "identity_observations (silhouette, proportions, parts, "
         "color_material) describing actual visible geometry, region and "
@@ -124,7 +128,7 @@ def intake_prompt(
         "brandless_evidence. In BRANDLESS mode, "
         "identity.brand_logo_source.image_id must be the literal NONE, "
         "never a product asset ID: product references are not logo sources. "
-        "Follow IDENTITY_RESPONSE_CONTRACT, including its conditional "
+        "Follow RESPONSE_CONTRACT_JSON, including its conditional "
         "brand fields. If neither is available, set "
         "brand_confirmation_required=true, describe actual "
         "brand_observation, and omit identity; ask no other unnecessary "
@@ -150,14 +154,13 @@ def intake_prompt(
             "SETTINGS": dict(settings),
             "SOURCES": list(sources),
             "HUMAN_RESOLUTION": resolution,
-            "IDENTITY_RESPONSE_CONTRACT": _native_schemas()[1],
-            "OBSERVED_FACT_RESPONSE_CONTRACT": intake_response_schema(
+            "RESPONSE_CONTRACT_JSON": intake_response_schema(
                 [
                     source["asset_id"]
                     for source in sources
                     if source.get("role") == "product_reference"
                 ]
-            )["properties"]["observed_facts"],
+            ),
         },
         ensure_ascii=False,
     )

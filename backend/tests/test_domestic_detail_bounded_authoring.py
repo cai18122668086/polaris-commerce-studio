@@ -336,3 +336,67 @@ def test_error_merge_never_invents_missing_replacement():
     )
     assert result == {"modules": [{"valid": "keep", "broken": ["authored"]}]}
     assert original["modules"][0]["broken"] == []
+
+
+@pytest.mark.parametrize("problem", ["unknown_fact", "recall_drift", "dedicated_drift"])
+def test_story_semantics_stop_before_any_paid_pair(client, monkeypatch, problem):
+    gateway = _gateway(client)
+    original = gateway.plan
+
+    async def invalid_story(value):
+        result = await original(value)
+        if value.authoring_stage == "story":
+            payload = deepcopy(result.payload)
+            depth = payload["selling_point_depth_contract"]
+            if problem == "unknown_fact":
+                depth["primary_claim_ids"][0] = "C99"
+            elif problem == "recall_drift":
+                payload["campaign_recall_contract"]["must_remember_claim_ids"] = []
+            else:
+                first = depth["claim_depth"][0]
+                first["dedicated_module_ids"] = [
+                    m["id"]
+                    for m in payload["modules"]
+                    if m["lead_claim_id"] != first["claim_id"]
+                ][:1]
+            return replace(result, payload=payload)
+        return result
+
+    monkeypatch.setattr(gateway, "plan", invalid_story)
+    source = upload_asset(client, filename="invalid-story-semantics.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert result["status"] == "failed"
+    assert not any(c.authoring_stage == "pair" for c in gateway.planner_calls)
+    assert len(gateway.planner_calls) == 3
+    assert not gateway.image_calls
+
+
+def test_pair_omitted_frozen_fields_are_copied_from_one_story(client, monkeypatch):
+    gateway = _gateway(client)
+    original = gateway.plan
+
+    async def omit_spine(value):
+        result = await original(value)
+        if value.authoring_stage == "pair":
+            payload = deepcopy(result.payload)
+            for module in payload["modules"]:
+                for field in authoring.STORY_FIELDS:
+                    if field != "id":
+                        module.pop(field)
+            return replace(result, payload=payload)
+        return result
+
+    monkeypatch.setattr(gateway, "plan", omit_spine)
+    source = upload_asset(client, filename="frozen-spine.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert result["status"] == "awaiting_confirmation", result.get("error_message")
+    assert len(gateway.planner_calls) == 6
+    assert not gateway.image_calls

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+import sys
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import replace
@@ -107,6 +109,38 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
             },
         }
     )
+    from .intake import active_fact_ids
+
+    ids = active_fact_ids(request.detail_intake or {})
+    fact_arrays = {
+        "fact_ids",
+        "primary_claim_ids",
+        "must_remember_claim_ids",
+        "supporting_claim_ids",
+        "first_screen_value_claim_ids",
+        "closure_reinforcement_claim_ids",
+        "atomic_claim_ids",
+        "fact_dependencies",
+    }
+
+    def bind_fact_ids(node: Any) -> None:
+        if isinstance(node, dict):
+            for name, prop in node.get("properties", {}).items():
+                if (
+                    ids
+                    and name in {"claim_id", "lead_claim_id"}
+                    and isinstance(prop, dict)
+                ):
+                    prop["enum"] = ids
+                if ids and name in fact_arrays and isinstance(prop, dict):
+                    prop["items"] = {"type": "string", "enum": ids}
+            for value in node.values():
+                bind_fact_ids(value)
+        elif isinstance(node, list):
+            for value in node:
+                bind_fact_ids(value)
+
+    bind_fact_ids(schema)
     module = schema["properties"]["modules"]["items"]
     if request.authoring_stage == "story":
         module = {
@@ -138,6 +172,11 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
         item = deepcopy(module)
         item["properties"]["id"] = {"const": module_id}
         if request.authoring_stage == "pair":
+            item["required"] = [
+                key
+                for key in item["required"]
+                if key not in STORY_FIELDS or key == "id"
+            ]
             for key in STORY_FIELDS:
                 item["properties"][key] = {"const": locked[module_id][key]}
             policy = {
@@ -193,7 +232,11 @@ def prompt(request: Any) -> str:
             "required_progression_jobs and every_pair_requires_information_delta. "
             "output_strategy.module_count_candidates contains exactly ONE object: "
             "candidate_mode=DIRECT_DERIVATION, decision=SELECTED, count equal to "
-            "screen_count. Never emit rejected alternatives. Keep all required "
+            "screen_count. Never emit rejected alternatives. All claim references "
+            "must use active Fxx/Oxx fact IDs from locked_intake, never invented Cxx "
+            "aliases. primary_claim_ids and must_remember_claim_ids must be identical; "
+            "claim_depth accounts for that exact set, all DEEP. Every dedicated module "
+            "must lead with that same fact ID. Keep all required "
             "fit explanations and the six module_count_formula fields. "
             "Keep output_strategy.module_count exact. Pairs are adjacent M01/M02, "
             "M03/M04 etc with 3:8 canvases, two fixed 3:4 windows. Author their "
@@ -216,7 +259,10 @@ def prompt(request: Any) -> str:
             "Complete ONLY the two specified atomic screens of this already authored "
             "story. Return {modules:[upper,lower]} with all compact fields. Every "
             "spine field constrained by const is frozen. Keep each screen's own "
-            "duty, claims, copy, evidence and product presence; a pair is a raster "
+            "duty, claims, copy, evidence and product presence. Omit frozen spine "
+            "fields except id; the server copies those exact fields from the story. "
+            "Every visible_copy item requires text, role and anchor; fact_ids is not "
+            "a substitute. A pair is a raster "
             "container. Use the campaign's pair seam intent for the lower incoming "
             "transition. expression_signature is the exact '+' join of "
             "primary_subject_class,presentation_form,camera_scale,"
@@ -290,6 +336,64 @@ def selected_story(payload: object, page_count: int) -> object:
     return value
 
 
+def project_stage(payload: object, request: Any) -> object:
+    if request.authoring_stage == "story":
+        return selected_story(payload, request.page_count)
+    value = deepcopy(payload)
+    locked = {m["id"]: m for m in (request.authoring_context or {}).get("modules", [])}
+    if isinstance(value, dict) and isinstance(value.get("modules"), list):
+        for module in value["modules"]:
+            if isinstance(module, dict) and module.get("id") in locked:
+                for key in STORY_FIELDS:
+                    module.setdefault(key, deepcopy(locked[module["id"]][key]))
+    return value
+
+
+def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
+    """Run the same native sales validator before spending on detailed pairs."""
+    from ..xinghe_agent import _planner_response_format
+
+    issues = errors_for(payload, _planner_response_format(request))
+    if issues or request.authoring_stage != "story":
+        return issues
+    assert isinstance(payload, Mapping)
+    from ..skill_runtime import SkillManifestRegistry
+    from .contracts import normalize_native_plan_for_harness
+    from .intake import active_fact_ids
+
+    root = (
+        Path(__file__).resolve().parents[2]
+        / "skill_sources/aurora-domestic-ecommerce-detail-page"
+    )
+    SkillManifestRegistry.bundled().verify_source(
+        "aurora-domestic-ecommerce-detail-page", root
+    )
+    code = """import json,sys
+sys.path.insert(0,sys.argv[1])
+from runtime.sales_depth_contract import validate_sales_depth_contract
+from runtime.state import HarnessError
+value=json.load(sys.stdin)
+try:
+ validate_sales_depth_contract(value['plan'],set(value['fact_ids']))
+ print('[]')
+except (HarnessError,KeyError,TypeError,ValueError) as error:
+ print(json.dumps([{'path':'/','message':str(error),'constraint':'native_sales_depth'}]))
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", code, str(root / "scripts")],
+        input=json.dumps(
+            {
+                "plan": normalize_native_plan_for_harness(payload),
+                "fact_ids": active_fact_ids(request.detail_intake or {}),
+            }
+        ).encode(),
+        capture_output=True,
+        check=True,
+        timeout=15,
+    )
+    return json.loads(result.stdout)
+
+
 def merge_error_fields(
     original: object, correction: object, errors: list[dict[str, Any]]
 ) -> object:
@@ -337,7 +441,6 @@ def recover_story(
     ).get("validation_errors"):
         return None
     from ..xinghe_agent import (
-        _planner_response_format,
         normalize_usage,
         validate_aurora_domestic_plan,
     )
@@ -352,11 +455,7 @@ def recover_story(
         }
 
     def project(value: object) -> object:
-        return (
-            selected_story(value, request.page_count)
-            if request.authoring_stage == "story"
-            else deepcopy(value)
-        )
+        return project_stage(value, request)
 
     truth_fields = (
         "product_name",
@@ -374,7 +473,6 @@ def recover_story(
         "authoring_target_ids",
     )
     current = binding["semantic_request"]["semantics"]
-    schema = _planner_response_format(request)
     candidates = []
     base = None
     for path in sorted(
@@ -406,13 +504,15 @@ def recover_story(
         correction = bool(
             (semantics.get("authoring_context") or {}).get("validation_errors")
         )
-        if correction and base is not None and errors_for(projected, schema):
+        if correction and base is not None and stage_errors(projected, request):
             prior = project(base["payload"])
-            projected = merge_error_fields(prior, projected, errors_for(prior, schema))
+            projected = merge_error_fields(
+                prior, projected, stage_errors(prior, request)
+            )
             source_hashes.insert(0, canonical_hash(base))
         elif not correction:
             base = result
-        if errors_for(projected, schema):
+        if stage_errors(projected, request):
             continue
         assert isinstance(projected, dict)
         if request.authoring_stage == "story":
@@ -486,7 +586,6 @@ async def complete(
     from ..xinghe_agent import (
         AuroraDetailHarnessError,
         XingheAgentError,
-        _planner_response_format,
         detail_workspace,
         validate_aurora_domestic_plan,
         write_detail_contract,
@@ -501,14 +600,10 @@ async def complete(
         nonlocal corrections
 
         def candidate(value: Any) -> Any:
-            return (
-                selected_story(value, request.page_count)
-                if stage_request.authoring_stage == "story"
-                else deepcopy(value)
-            )
+            return project_stage(value, stage_request)
 
         value = candidate(response.payload)
-        errors = errors_for(value, _planner_response_format(stage_request))
+        errors = stage_errors(value, stage_request)
         if errors:
             if corrections:
                 raise XingheAgentError(
@@ -557,7 +652,7 @@ async def complete(
                     "validation_errors": prior_errors,
                 },
             )
-            errors = errors_for(value, _planner_response_format(stage_request))
+            errors = stage_errors(value, stage_request)
             if errors:
                 raise XingheAgentError(
                     "AURORA_AUTHORING_INVALID",

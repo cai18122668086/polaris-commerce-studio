@@ -242,12 +242,26 @@ def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
     root = detail_workspace(job["id"])
     checkpoint_path = root / "session.json"
     checkpoint = json.loads(checkpoint_path.read_bytes())
-    checkpoint.update(state="AUTHORIZED", current_index=2)
-    for module in checkpoint["modules"][2:]:
+    checkpoint.update(state="AWAITING_GENERATED_MODULE", current_index=2)
+    for module in checkpoint["modules"][2:4]:
+        module.update(
+            status="AWAITING_GENERATION",
+            accepted_asset=None,
+            repair_plan={
+                "material_failures": [{"visible_evidence": "修正原画布接缝"}],
+                "expected_visible_change": "保留商品并修正接缝",
+            },
+        )
+    for module in checkpoint["modules"][4:]:
         module.update(
             status="PENDING", accepted_asset=None, attempts=[], cycle_attempt_count=0
         )
     checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf8")
+    from app.xinghe_agent import XingheImageProvider
+
+    XingheImageProvider._reset_native_detail_generation(checkpoint_path)
+    checkpoint = json.loads(checkpoint_path.read_bytes())
+    assert [m["status"] for m in checkpoint["modules"][2:4]] == ["REPAIR_PREPARED"] * 2
     with client.app.state.session_factory() as db:
         record = db.get(JobRecord, job["id"])
         record.status, record.stage = "partial", "partial"
@@ -283,6 +297,16 @@ def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
         "succeeded"
     ] * 6
     assert len(_gateway(client).image_calls) - before == 3
+    edit_sources = [
+        source
+        for source in _gateway(client).image_calls[before].sources
+        if source.source_role == "generated_edit_canvas"
+    ]
+    assert len(edit_sources) == 1
+    assert (
+        edit_sources[0].sha256
+        == checkpoint["modules"][2]["attempts"][0]["normalized_image_sha256"]
+    )
     original_ids = {
         source.asset_id
         for source in _gateway(client).image_calls[0].sources

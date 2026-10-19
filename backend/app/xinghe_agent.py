@@ -6483,7 +6483,11 @@ class XingheImageProvider:
             state["state"] = "AUTHORIZED"
             for module in state.get("modules", []):
                 if module.get("status") == "AWAITING_GENERATION":
-                    module["status"] = "PENDING"
+                    module["status"] = (
+                        "REPAIR_PREPARED" if module.get("repair_plan")
+                        else "USER_ADJUSTMENT" if module.get("user_adjustment")
+                        else "PENDING"
+                    )
             state.setdefault("events", []).append({"event": "provider_retry_released", "at": datetime.now(UTC).isoformat(), "state": "AUTHORIZED"})
             session_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         except (OSError, TypeError, ValueError, json.JSONDecodeError):

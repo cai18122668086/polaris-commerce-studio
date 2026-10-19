@@ -67,6 +67,25 @@ def bind_pixel_metadata(
     from .atomic_review import atomic_context
 
     result = project_failed_scope(value)
+    identities = [result.get("identity_silhouette")]
+    identities += [
+        report.get("identity_silhouette")
+        for report in result.get("module_judgments") or []
+        if isinstance(report, dict)
+    ]
+    for identity in identities:
+        if not isinstance(identity, dict):
+            continue
+        features = identity.get("visible_features")
+        if (
+            isinstance(features, list)
+            and features
+            and all(isinstance(item, str) and item.strip() for item in features)
+            and any(len(item) < 8 for item in features)
+        ):
+            # Chinese labels may be concrete in fewer than eight characters.
+            # Join exact reported phrases without padding, deletion or inference.
+            identity["visible_features"] = ["；".join(features)]
     contracts, slices = atomic_context(request, canvas_sha256)
     result["pair_id"] = request["pair_id"]
     result["module_ids"] = request["module_ids"]

@@ -239,6 +239,73 @@ def canonical_intake_wire(
     return value
 
 
+def preserve_confirmed_history(
+    payload: Mapping[str, Any],
+    settings: Mapping[str, Any],
+    resolution: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, str] | None]:
+    """Keep confirmed history server-owned while checking every fact and choice.
+
+    The direct website path may reuse an original reply that paraphrases the
+    conflict explanation or repeats the already recorded human choice. Neither
+    field is new product evidence. Changed facts, alternatives or choices still
+    fail; the untouched response remains in IntakeStore.
+    """
+    value = deepcopy(dict(payload))
+    prior = (resolution or {}).get("source_intake")
+    if settings.get(
+        "website_contract_version"
+    ) != "WEBSITE_DIRECT_V2" or not isinstance(prior, Mapping):
+        return value, None
+    assert resolution is not None
+    validate_resolution(prior, resolution)
+    original = prior.get("source_conflicts", [])
+    incoming = value.get("source_conflicts", [])
+    choices = {row["conflict_id"]: row for row in resolution["resolutions"]}
+    if (
+        value.get("observed_facts") != prior.get("observed_facts")
+        or not isinstance(incoming, list)
+        or len(incoming) != len(original)
+    ):
+        raise DetailIntakeError(
+            "INTAKE_RESOLVED_SOURCE_CHANGED",
+            "Confirmed product observations or conflicts changed",
+        )
+    for before, after in zip(original, incoming, strict=True):
+        if not isinstance(after, Mapping) or any(
+            before.get(key) != after.get(key)
+            for key in ("id", "topic", "alternative_fact_ids", "status")
+        ):
+            raise DetailIntakeError(
+                "INTAKE_RESOLVED_SOURCE_CHANGED",
+                "Confirmed conflict identity or alternatives changed",
+            )
+        repeated = after.get("resolution")
+        if repeated is not None:
+            choice = choices.get(before["id"], {})
+            expected = {
+                key: choice.get(key)
+                for key in ("retained_fact_ids", "rejected_fact_ids")
+            }
+            expected["confirmation_text"] = resolution["confirmation_text"]
+            if repeated != expected:
+                raise DetailIntakeError(
+                    "INTAKE_RESOLVED_SOURCE_CHANGED",
+                    "The model changed the human resolution",
+                )
+        if set(after) - set(before) - {"resolution"}:
+            raise DetailIntakeError(
+                "INTAKE_RESOLVED_SOURCE_CHANGED", "Unexpected confirmed conflict fields"
+            )
+    value["source_conflicts"] = deepcopy(original)
+    return value, {
+        "version": "website-confirmed-history-v1",
+        "original_history_sha256": canonical_hash(original),
+        "human_resolution_sha256": canonical_hash(resolution),
+        "model_history_sha256": canonical_hash(incoming),
+    }
+
+
 def project_identity_observations(
     payload: Mapping[str, Any],
 ) -> tuple[dict[str, Any], dict[str, str] | None]:

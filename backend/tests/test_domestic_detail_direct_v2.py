@@ -5,6 +5,8 @@ from copy import deepcopy
 from io import BytesIO
 from zipfile import ZipFile
 
+import pytest
+
 from app.aurora_detail_runtime import detail_workspace
 from app.domestic_detail import direct
 from app.domestic_detail.plans import resolve_native_plan
@@ -44,8 +46,7 @@ def test_direct_brief_compiles_once_and_persists_four_native_pairs(client):
         headers=idem(),
         json={
             "approval_text": (
-                "我已逐屏审阅本次合成任务的最终结果，"
-                "并接受明确列出的残差。"
+                "我已逐屏审阅本次合成任务的最终结果，并接受明确列出的残差。"
             ),
             "final_review_sha256": response.json()["sha256"],
         },
@@ -75,3 +76,57 @@ def test_direct_brief_cannot_add_fact_ids_or_silently_drop_user_points(client):
     for screen in value["screens"]:
         screen["fact_ids"] = [first]
     assert any("coverage" in message for message in direct.errors(value, request))
+
+
+def test_confirmed_history_keeps_human_evidence_and_rejects_changed_truth():
+    from app.domestic_detail.facts import DetailIntakeError
+    from app.domestic_detail.intake import preserve_confirmed_history
+
+    conflict = {
+        "id": "C01",
+        "topic": "颜色",
+        "alternative_fact_ids": ["F01", "O01"],
+        "why_material": "原始颜色冲突说明",
+        "status": "UNRESOLVED",
+    }
+    prior = {
+        "source_conflicts": [conflict],
+        "observed_facts": [{"id": "O01", "text": "近黑鞋面"}],
+    }
+    resolution = {
+        "confirmation_text": "确认深棕色",
+        "source_intake": prior,
+        "resolutions": [
+            {
+                "conflict_id": "C01",
+                "retained_fact_ids": ["F01"],
+                "rejected_fact_ids": ["O01"],
+            }
+        ],
+    }
+    reply = deepcopy(prior)
+    reply["source_conflicts"][0].update(
+        why_material="模型改写了历史说明",
+        resolution={
+            "retained_fact_ids": ["F01"],
+            "rejected_fact_ids": ["O01"],
+            "confirmation_text": "确认深棕色",
+        },
+    )
+    raw = deepcopy(reply)
+    settings = {"website_contract_version": direct.VERSION}
+    canonical, receipt = preserve_confirmed_history(reply, settings, resolution)
+    assert canonical == prior
+    assert reply == raw
+    assert receipt["version"] == "website-confirmed-history-v1"
+    assert preserve_confirmed_history(reply, {}, resolution) == (raw, None)
+    for field in ("fact", "alternative", "choice"):
+        changed = deepcopy(reply)
+        if field == "fact":
+            changed["observed_facts"][0]["text"] = "模型换成红色鞋面"
+        elif field == "alternative":
+            changed["source_conflicts"][0]["alternative_fact_ids"] = ["F01", "O02"]
+        else:
+            changed["source_conflicts"][0]["resolution"]["retained_fact_ids"] = ["O01"]
+        with pytest.raises(DetailIntakeError, match="changed"):
+            preserve_confirmed_history(changed, settings, resolution)

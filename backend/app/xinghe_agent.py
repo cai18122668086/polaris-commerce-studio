@@ -3789,6 +3789,11 @@ class XinghePlanningCoordinator:
                 _schema(result.payload, intake_response_schema(), "/intake")
             assert isinstance(result.payload, Mapping)
             canonical_wire = canonical_intake_wire(result.payload, has_style_sources=bool(style_ids))
+            from .domestic_detail.intake import preserve_confirmed_history
+
+            canonical_wire, confirmed_history = preserve_confirmed_history(
+                canonical_wire, settings, resolution
+            )
             wire = "identity_features_source" in canonical_wire
             _schema(canonical_wire, intake_response_schema(
                 [source["asset_id"] for source in sources if source.get("role") == "product_reference"],
@@ -3810,6 +3815,8 @@ class XinghePlanningCoordinator:
             )
             if identity_projection is not None:
                 contract["identity_projection_receipt"] = identity_projection
+            if confirmed_history is not None:
+                contract["confirmed_history_receipt"] = confirmed_history
             prior_intake = (resolution or {}).get("source_intake")
             if isinstance(prior_intake, Mapping):
                 current_facts = {

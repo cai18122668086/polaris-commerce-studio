@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, CircleDollarSign, Clock3,
@@ -22,7 +22,7 @@ import { JobDeliverablesDownload } from "@/components/job-deliverables-download"
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
-import { useUploadAsset } from "@/features/assets/api/assets";
+import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useConfirmPlan, useCreateJob, useDomesticDetailFinalReview, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -100,19 +100,25 @@ function planItemPresentation(
   };
 }
 
+function SavedSource({ workspaceId, assetId, index }: { workspaceId?: string; assetId: string; index: number }) {
+  const access = useAssetAccessUrl(workspaceId, assetId);
+  return <div className="upload-thumb">{access.data?.url ? <img src={access.data.url} alt={`已保存商品图 ${index + 1}`} /> : <span>{access.error ? "素材加载失败" : "素材加载中"}</span>}<span>商品图 {index + 1}</span></div>;
+}
+
 export default function DetailPackPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
-  const [pageCount, setPageCount] = useState(8);
-  const [marketRegion, setMarketRegion] = useState<MarketRegion>("domestic");
-  const [marketplaceId, setMarketplaceId] = useState("tmall");
-  const [imageSize, setImageSize] = useState<MarketplaceImageSize>(DOMESTIC_DETAIL_SIZE);
-  const [language, setLanguage] = useState<"zh-CN" | "en-US">("zh-CN");
-  const [productName, setProductName] = useState("");
-  const [category, setCategory] = useState("");
-  const [targetBuyer, setTargetBuyer] = useState("");
-  const [sellingPoints, setSellingPoints] = useState("");
-  const [brandlessConfirmed, setBrandlessConfirmed] = useState(false);
+  const router = useRouter();
+  const [draftPageCount, setPageCount] = useState(8);
+  const [draftMarketRegion, setMarketRegion] = useState<MarketRegion>("domestic");
+  const [draftMarketplaceId, setMarketplaceId] = useState("tmall");
+  const [draftImageSize, setImageSize] = useState<MarketplaceImageSize>(DOMESTIC_DETAIL_SIZE);
+  const [draftLanguage, setLanguage] = useState<"zh-CN" | "en-US">("zh-CN");
+  const [draftProductName, setProductName] = useState("");
+  const [draftCategory, setCategory] = useState("");
+  const [draftTargetBuyer, setTargetBuyer] = useState("");
+  const [draftSellingPoints, setSellingPoints] = useState("");
+  const [draftBrandlessConfirmed, setBrandlessConfirmed] = useState(false);
   const [reviewedApprovalKey, setReviewedApprovalKey] = useState("");
   const [automaticChoice, setAutomaticChoice] = useState<{ scope: string; requested: boolean; authorization?: AutomaticDeliveryAuthorization }>();
   const [reviewedFinalKey, setReviewedFinalKey] = useState("");
@@ -131,6 +137,21 @@ export default function DetailPackPage() {
   const retryJob = useRetryJob(workspace?.id);
   const finalizeJob = useFinalizeJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
+  const saved = job.data?.id === jobId ? job.data.configuration.settings as Record<string, unknown> | undefined : undefined;
+  const savedString = (key: string, fallback: string) => jobId ? typeof saved?.[key] === "string" ? saved[key] as string : "" : fallback;
+  const marketRegion: MarketRegion = jobId ? saved?.market_region === "international" ? "international" : "domestic" : draftMarketRegion;
+  const marketplaceId = savedString("platform_code", draftMarketplaceId);
+  const imageSize = (savedString("size", draftImageSize ?? "1440x1920") || DOMESTIC_DETAIL_SIZE) as MarketplaceImageSize;
+  const language = jobId ? saved?.language === "en-US" ? "en-US" : "zh-CN" : draftLanguage;
+  const pageCount = jobId ? typeof saved?.page_count === "number" ? saved.page_count : 8 : draftPageCount;
+  const productName = savedString("product_name", draftProductName);
+  const category = savedString("category", draftCategory);
+  const targetBuyer = savedString("target_buyer", draftTargetBuyer);
+  const sellingPoints = jobId ? Array.isArray(saved?.selling_points) ? saved.selling_points.filter((point): point is string => typeof point === "string").join("\n") : "" : draftSellingPoints;
+  const brandlessConfirmed = jobId ? Boolean(saved?.brandless_confirmation) : draftBrandlessConfirmed;
+  const savedInput = job.data?.id === jobId ? job.data.configuration.input as Record<string, unknown> | undefined : undefined;
+  const savedAssetIds = Array.isArray(savedInput?.product_groups) ? savedInput.product_groups.flatMap(group => group && typeof group === "object" && Array.isArray(group.asset_ids) ? group.asset_ids.filter((id: unknown): id is string => typeof id === "string") : []) : [];
+  const sourceCount = jobId ? savedAssetIds.length : sources.length;
   const isNativeDetail = job.data?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1";
   const isDirectWebsiteDetail = (job.data?.configuration.settings as Record<string, unknown> | undefined)?.website_contract_version === "WEBSITE_DIRECT_V2";
   const activeCampaignChoice = campaignChoice?.workspaceId === workspace?.id && campaignChoice?.sourceId === jobId && job.data?.status !== "completed" ? campaignChoice.selection : undefined;
@@ -259,6 +280,7 @@ export default function DetailPackPage() {
       configuration,
     });
     setLocalJobId(created.id);
+    router.replace(`/workspace/detail-pack?jobId=${encodeURIComponent(created.id)}`);
   };
 
   const retry = async () => {
@@ -269,9 +291,10 @@ export default function DetailPackPage() {
       scope: "failed",
     });
     setLocalJobId(retried.id);
+    router.replace(`/workspace/detail-pack?jobId=${encodeURIComponent(retried.id)}`);
   };
 
-  const step = !productSources.length ? 0 : !productName.trim() ? 1 : !jobId ? 2 : job.data?.status === "awaiting_confirmation" ? 3 : 4;
+  const step = jobId ? job.data?.status === "awaiting_confirmation" || job.data?.status === "planning" ? 3 : 4 : !productSources.length ? 0 : !productName.trim() ? 1 : 2;
 
   return (
     <AppShell flush>
@@ -300,12 +323,12 @@ export default function DetailPackPage() {
           </div>
 
           <section className="detail-form-card">
-            <div className="form-section-head"><span className="number-chip">1</span><div><h2>商品素材</h2><p>每张图片都会先保存到当前工作区。</p></div>{sources.length > 0 && <span className="validation-chip"><CheckCircle2 size={15} />已上传 {sources.length} 张</span>}</div>
+            <div className="form-section-head"><span className="number-chip">1</span><div><h2>商品素材</h2><p>每张图片都会先保存到当前工作区。</p></div>{sourceCount > 0 && <span className="validation-chip"><CheckCircle2 size={15} />已上传 {sourceCount} 张</span>}</div>
             <div className="multi-uploader">
-              {sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={Boolean(jobId)} onChange={event => {
+              {jobId ? savedAssetIds.map((assetId, index) => <SavedSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={Boolean(jobId)} onChange={event => {
                 const role = event.target.value as UploadedSource["role"]; setBrandlessConfirmed(false); setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));
               }}><option value="product_reference">商品图</option><option value="style_reference">风格参考</option></select>}<button aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button><i><GripVertical size={14} /></i></div>)}
-              {sources.length < 8 && <button className="upload-more" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>{upload.isPending ? <LoaderCircle className="spin" size={23} /> : <ImagePlus size={23} />}<strong>{upload.isPending ? "上传中" : "添加素材"}</strong><small>最多 8 张</small></button>}
+              {!jobId && sources.length < 8 && <button className="upload-more" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>{upload.isPending ? <LoaderCircle className="spin" size={23} /> : <ImagePlus size={23} />}<strong>{upload.isPending ? "上传中" : "添加素材"}</strong><small>最多 8 张</small></button>}
               <input ref={fileInput} className="visually-hidden" type="file" multiple accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
             </div>
             {uploadError && <div className="api-state api-state--error" role="alert"><AlertCircle size={20} /><div><strong>部分素材未能上传</strong><p>{uploadError}</p></div></div>}
@@ -314,21 +337,21 @@ export default function DetailPackPage() {
           <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip">2</span><div><h2>商品信息</h2><p>请填写商品名称与核心卖点，用于生成页面方案。</p></div></div>
             <div className="form-grid">
-              <label><span>商品名称 <i>*</i></span><input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：鎏金焕亮精华液" /></label>
-              <label><span>商品类目</span><input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
-              <label><span>目标买家</span><input value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
+              <label><span>商品名称 <i>*</i></span><input disabled={Boolean(jobId)} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：鎏金焕亮精华液" /></label>
+              <label><span>商品类目</span><input disabled={Boolean(jobId)} value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
+              <label><span>目标买家</span><input disabled={Boolean(jobId)} value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
               <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize}</strong></div></label>
-              {marketRegion === "domestic" && <label className="full"><span><input style={{ width: "auto", marginRight: 8 }} type="checkbox" checked={brandlessConfirmed} onChange={event => setBrandlessConfirmed(event.target.checked)} />{BRANDLESS_CONFIRMATION}</span><small>有品牌的商品请上传能清楚辨认标识的本商品图片。</small></label>}
-              <label className="full"><span>核心卖点</span><textarea value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
+              {marketRegion === "domestic" && <label className="full"><span><input style={{ width: "auto", marginRight: 8 }} type="checkbox" disabled={Boolean(jobId)} checked={brandlessConfirmed} onChange={event => setBrandlessConfirmed(event.target.checked)} />{BRANDLESS_CONFIRMATION}</span><small>有品牌的商品请上传能清楚辨认标识的本商品图片。</small></label>}
+              <label className="full"><span>核心卖点</span><textarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
             </div>
           </section>
 
           <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip">3</span><div><h2>输出设置</h2><p>{workflow.mode === "provider" ? "确认后将开始生成，请先核对输出设置。" : "当前仅保存规划和任务状态，暂不生成图片。"}</p></div></div>
             <div className="output-options">
-              <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>简体中文</button><button className={language === "en-US" ? "active" : ""} onClick={() => setLanguage("en-US")}>English</button></div></div>
-              <div className="option-field"><span><FileCheck2 size={16} />详情页数</span><div className="page-count-control">{[8, 10, 12].map((count) => <button key={count} className={pageCount === count ? "active" : ""} onClick={() => setPageCount(count)}>{count} 页</button>)}</div></div>
-              {marketRegion === "international" && <div className="option-field"><span><Globe2 size={16} />图片尺寸</span><div className="page-count-control">{selectedMarketplace.sizePresets?.map((preset) => <button key={preset.value} className={imageSize === preset.value ? "active" : ""} onClick={() => setImageSize(preset.value)}>{preset.label}</button>)}</div></div>}
+              <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button className={language === "zh-CN" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("zh-CN")}>简体中文</button><button className={language === "en-US" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("en-US")}>English</button></div></div>
+              <div className="option-field"><span><FileCheck2 size={16} />详情页数</span><div className="page-count-control">{[8, 10, 12].map((count) => <button key={count} className={pageCount === count ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setPageCount(count)}>{count} 页</button>)}</div></div>
+              {marketRegion === "international" && <div className="option-field"><span><Globe2 size={16} />图片尺寸</span><div className="page-count-control">{selectedMarketplace.sizePresets?.map((preset) => <button key={preset.value} className={imageSize === preset.value ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setImageSize(preset.value)}>{preset.label}</button>)}</div></div>}
             </div>
           </section>
 
@@ -418,7 +441,7 @@ export default function DetailPackPage() {
         <HelpPanel
           mode="detail-pack"
           taskTitle={productName.trim() ? `${productName.trim()}详情套图` : "等待填写商品名称"}
-          assetSummary={sources.length ? `${sources.length} 张 · 同一分组` : "尚未上传"}
+          assetSummary={sourceCount ? `${sourceCount} 张 · 同一分组` : "尚未上传"}
           outputSummary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "中文" : "English"} · ${pageCount} 页`}
         />
       </div>

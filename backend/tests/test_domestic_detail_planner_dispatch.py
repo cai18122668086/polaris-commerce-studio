@@ -269,3 +269,77 @@ def test_real_dispatch_evidence_cannot_be_invented_or_retyped(tamper):
         value["audit_raw_content"] += "changed original"
     with pytest.raises(PlannerDispatchError):
         result_with_dispatch(value, route)
+
+
+@pytest.mark.parametrize("remaining", [1800.0, 240.0, 100.0, 0.0])
+def test_supplier_203_second_reply_respects_shared_timeout_and_campaign_deadline(
+    monkeypatch, remaining
+):
+    # Virtual elapsed time exercises the observed supplier latency without a wait.
+    clock = [1000.0]
+    monkeypatch.setattr("app.xinghe_agent.time.monotonic", lambda: clock[0])
+
+    class Transport:
+        calls = []
+
+        async def post_json(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs["timeout_seconds"] < 203:
+                clock[0] += kwargs["timeout_seconds"]
+                raise XingheAgentError(
+                    "PROVIDER_TRANSPORT_FAILED", "Synthetic timeout", retryable=True
+                )
+            clock[0] += 203
+            return 200, response()
+
+    transport = Transport()
+    provider = gateway(transport)
+    result = asyncio.run(provider.plan(request(
+        "aurora_domestic_detail", planning_deadline=1000.0 + remaining,
+    )))
+    dispatch = result.provider_envelope["native_planner_dispatch"]
+    if remaining == 0:
+        assert result.error_code == "AURORA_PLANNING_DEADLINE"
+        assert not transport.calls and not result.external_request
+        assert dispatch["outcome"] == "not_sent"
+    else:
+        assert len(transport.calls) == 1
+        assert transport.calls[0]["timeout_seconds"] == min(
+            provider.timeout_seconds, remaining
+        )
+        assert (result.error_code is None) == (remaining >= 203)
+        assert dispatch["outcome"] == (
+            "succeeded" if remaining >= 203 else "outcome_unknown"
+        )
+    validate_dispatch_result(asdict(result), provider.native_planner_route())
+
+
+def test_serial_authoring_has_one_deadline_and_no_180_second_override(monkeypatch):
+    from app.domestic_detail import authoring
+
+    clock = [1000.0]
+    monkeypatch.setattr("app.xinghe_agent.time.monotonic", lambda: clock[0])
+    timeouts = []
+
+    class Transport:
+        async def post_json(self, **kwargs):
+            timeouts.append(kwargs["timeout_seconds"])
+            assert kwargs["timeout_seconds"] >= 203
+            clock[0] += 203
+            return 200, response()
+
+    provider = gateway(Transport())
+    deadline = clock[0] + authoring.PLANNING_SECONDS
+    for index in range(6):  # story + one correction + four adjacent pairs
+        value = request(
+            "aurora_domestic_detail" if index < 2
+            else "aurora_domestic_modules_completion",
+            planning_deadline=deadline,
+        )
+        result = asyncio.run(provider.plan(value))
+        assert result.error_code is None
+    assert len(timeouts) == 6 and clock[0] < deadline
+    # An explicitly configured shorter gateway limit must still be honored.
+    provider.timeout_seconds = 240
+    asyncio.run(provider.plan(request("aurora_domestic_detail")))
+    assert timeouts[-1] == 240

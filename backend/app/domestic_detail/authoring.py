@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -32,8 +33,10 @@ STORY_FIELDS = (
     "presentation_form",
     "complete_product_role",
 )
-PLANNING_SECONDS = 600.0
-CALL_SECONDS = 180.0
+# One campaign is serial story + pairs + at most one correction.
+# A real supplier call completed in 203s, beyond the former 180s cap.
+# Individual calls use the shared gateway timeout; the campaign stays bounded.
+PLANNING_SECONDS = 1800.0
 REFERENCES = (
     "detail-story-grammar.md",
     "visual-proof.md",
@@ -496,6 +499,24 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
                         ),
                     }
                 )
+    if not issues and request.authoring_stage == "pair":
+        # Match the native pair rule before paying to author any later pair.
+        assert isinstance(payload, Mapping)
+        lower = payload["modules"][1]["transition_contract"]
+        for field, expected in zip(
+            ("source_region_previous", "target_region_current"),
+            request.authoring_target_ids,
+            strict=True,
+        ):
+            explicit = set(re.findall(
+                r"(?<![A-Za-z0-9])M\d{2}(?![A-Za-z0-9])", lower[field]
+            ))
+            if explicit - {expected}:
+                issues.append({
+                    "path": "/modules/1/transition_contract/" + field,
+                    "constraint": "native_pair_seam",
+                    "message": f"Incoming pair {field} must reference only {expected}",
+                })
     if issues or request.authoring_stage != "story":
         return issues
     assert isinstance(payload, Mapping)

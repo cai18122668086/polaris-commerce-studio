@@ -69,16 +69,12 @@ def test_foreign_pair_reference_is_repaired_before_approval(
     async def foreign_reference(request):
         result = await original(request)
         payload = deepcopy(result.payload)
-        if request.planning_profile == "aurora_domestic_detail":
-            payload["modules"][3]["transition_contract"][field] = "M02 外组区域"
-            seam_field = (
-                "internal_seam_source_region"
-                if field == "source_region_previous"
-                else "internal_seam_target_region"
-            )
-            payload["output_strategy"]["continuous_pair_rendering"]["pair_ids"][1][
-                seam_field
-            ] = "M02 外组区域"
+        if (
+            request.authoring_stage == "pair"
+            and request.authoring_target_ids == ("M03", "M04")
+            and not (request.authoring_context or {}).get("validation_errors")
+        ):
+            payload["modules"][1]["transition_contract"][field] = "M02 外组区域"
         return replace(result, payload=payload)
 
     monkeypatch.setattr(gateway, "plan", foreign_reference)
@@ -88,13 +84,19 @@ def test_foreign_pair_reference_is_repaired_before_approval(
     )
     dispatch_pending(client)
     planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
-    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value
-    assert [call.planning_profile for call in gateway.planner_calls] == [
-        "aurora_domestic_intake",
-        "aurora_domestic_detail",
-        "aurora_domestic_plan_repair",
-    ]
-    assert f"must reference only {expected}" in str(
-        gateway.planner_calls[-1].product_information
+    assert planned["status"] == JobStatus.AWAITING_CONFIRMATION.value, (
+        planned.get("error_code"), planned.get("error_message")
     )
+    assert [call.authoring_stage for call in gateway.planner_calls] == [
+        "", "story", "pair", "pair", "pair", "pair", "pair",
+    ]
+    correction = gateway.planner_calls[4]
+    assert correction.authoring_target_ids == ("M03", "M04")
+    errors = correction.authoring_context["validation_errors"]
+    assert errors == [{
+        "path": "/modules/1/transition_contract/" + field,
+        "constraint": "native_pair_seam",
+        "message": f"Incoming pair {field} must reference only {expected}",
+    }]
+    assert planned["plan"]["payload"]["native_approval"]["document_sha256"]
     assert gateway.image_calls == []

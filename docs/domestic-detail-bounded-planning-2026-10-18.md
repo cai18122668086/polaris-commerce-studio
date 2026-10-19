@@ -6,7 +6,7 @@ The domestic detail route now separates a concise campaign storyboard from four 
 
 - New eight-screen plans use exactly M01–M08. Each pair locks its authored selling spine and product-presence policy to the approved campaign story.
 - Each phase validates the actual response schema before further requests. There is one structural correction allowance per planning invocation. Provider unknown outcomes stop immediately; no transport POST retry is introduced.
-- Each planning invocation has a 600-second deadline and each remote planning call is capped at 180 seconds. Intake confirmation is a separate resume boundary, so time waiting for confirmation is not an end-to-end job deadline.
+- Each planning invocation now has a 1,800-second deadline; each remote call uses the shared gateway timeout (600 seconds by default), capped by the remaining invocation time. Intake confirmation is a separate resume boundary, so time waiting for confirmation is not an end-to-end job deadline.
 - Existing complete rejected candidates still use the preserved recovery path. The original stored provider results and request bindings are retained.
 - Valid integer `minimum_visual_payload` values and authored native `claim_depth` are preserved. Legacy single-module completion now rejects incorrect spatial zone counts.
 - After an explicit source-conflict resolution, historical UNRESOLVED conflict rows remain evidence. The prompt now requires identity authoring instead of again ordering the model to stop. With explicit brandless confirmation the actual provider schema requires non-null identity plus the four source observations. Unresolved conflicts still stop before identity.
@@ -64,3 +64,14 @@ A zero-network replay using the saved real story reduced the field projection fr
 
 
 The 9c91202 full CI subsequently exposed five stale adapter-fixture cases: three absence/token cases tried to populate detailed expression fields during the story-only stage, and two route/cost cases still expected the former two-call planner. The fixture now authors spine and detail at their respective stages and explicitly checks intake + story + four pair calls. All five focused cases passed with native four-pair execution, role-sensitive audit/repair behavior, exact routed model and billed-once assertions retained. This does not represent a new real supplier run.
+
+
+### 2026-10-19 channel duration confirmed by the user
+
+The user checked the supplier record and confirmed a displayed 3m23s duration. That is longer than the adapter's added 180-second call cap and consistent with the saved local timeout at 181.443 seconds. It supports removing that premature cap; it does not recover the missing response or prove the proposed plan valid.
+
+Bounded detail planning now uses the same configured per-call timeout as the shared main-image gateway (600 seconds by default). Story, correction and four serial pair calls share one 1,800-second invocation deadline. An expired deadline stops before dispatch, a shorter configured gateway timeout is respected, and a transport timeout still has one dispatch and no failover. The one-correction and dollar limits remain unchanged. Virtual-time regression cases reproduce a 203-second response and a six-call serial path without network calls.
+
+The prior CI's remaining two failures injected detailed transitions during the old full-plan stage. They now exercise the M03/M04 authoring stage, its one sparse correction, and actual native approval. The native rule rejecting an explicit foreign module in the lower screen's incoming seam is checked before later pair authoring; the final native check remains authoritative. No seam text or product facts are synthesized.
+
+Validation: 97 dispatch/bounded-authoring tests passed; after the seam change, all 27 seam/bounded-authoring cases passed. Original provider receipts are untouched. No real model/image call, merge or deployment was made in this repair. The next paid experiment requires a concrete one-run decision and cost headroom; the missing old JSON must never be marked as recovered or approved.

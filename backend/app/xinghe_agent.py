@@ -2478,6 +2478,15 @@ class TengliOpenAICompatibleGateway:
             for route_index, route in enumerate(routes):
                 route_payload = {**payload, "model": route.planner_model}
                 try:
+                    timeout_seconds = self.timeout_seconds
+                    if request.planning_deadline is not None:
+                        remaining = request.planning_deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise XingheAgentError(
+                                "AURORA_PLANNING_DEADLINE",
+                                "Bounded planning deadline exhausted",
+                            )
+                        timeout_seconds = min(timeout_seconds, remaining)
                     if native_state is not None:
                         select_route(self, native_state["route"])
                         if native_state["attempts"] != 0:
@@ -2499,9 +2508,7 @@ class TengliOpenAICompatibleGateway:
                             request.idempotency_key, route.planner_api_key
                         ),
                         payload=route_payload,
-                        timeout_seconds=(min(self.timeout_seconds, authoring.CALL_SECONDS,
-                            max(0.001, request.planning_deadline - time.monotonic()))
-                            if request.planning_deadline is not None else self.timeout_seconds),
+                        timeout_seconds=timeout_seconds,
                     )
                     if native_state is not None:
                         native_state["response_received"] = True

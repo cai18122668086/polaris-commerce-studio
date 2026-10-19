@@ -796,7 +796,34 @@ def recover_story(
         correction = bool(
             (semantics.get("authoring_context") or {}).get("validation_errors")
         )
-        if correction and base is not None and stage_errors(projected, request):
+        reconstruction = None
+        original_context = semantics.get("authoring_context") or {}
+        original_prior = original_context.get("prior_response")
+        original_errors = original_context.get("validation_errors")
+        if (
+            correction
+            and isinstance(original_prior, Mapping)
+            and isinstance(original_errors, list)
+            and original_errors
+            and all(
+                isinstance(error, Mapping) and isinstance(error.get("path"), str)
+                for error in original_errors
+            )
+        ):
+            # A failed-only continuation can contain just a sparse correction
+            # receipt. Its immutable request already carries the complete prior
+            # and exact authorized paths; no earlier call in this folder is needed.
+            projected = merge_error_fields(
+                project(original_prior), projected, original_errors
+            )
+            reconstruction = {
+                "rule": "merge-original-request-prior-and-original-error-paths-v1",
+                "prior_payload_sha256": canonical_hash(original_prior),
+                "validation_errors_sha256": canonical_hash(original_errors),
+            }
+        elif correction and base is not None and stage_errors(projected, request):
+            # Retain recovery of older complete-response receipts without a
+            # request-bound prior. Current validation still decides acceptance.
             prior = project(base["payload"])
             projected = merge_error_fields(
                 prior, projected, stage_errors(prior, request)
@@ -818,12 +845,13 @@ def recover_story(
                 result,
                 projected,
                 source_hashes,
+                reconstruction,
                 issues,
             )
         )
     if not candidates:
         return None
-    _, _, original, result, projected, source_hashes, issues = max(
+    _, _, original, result, projected, source_hashes, reconstruction, issues = max(
         candidates, key=lambda row: (row[0], row[1])
     )
     return {
@@ -843,6 +871,7 @@ def recover_story(
                 "source_binding_sha256": canonical_hash(original),
                 "source_result_sha256": canonical_hash(result),
                 "source_result_hashes": source_hashes,
+                "source_reconstruction": reconstruction,
                 "projected_payload_sha256": canonical_hash(projected),
                 "source_request_file": str(
                     NativePlanningStore(source_root, original).store.request_path

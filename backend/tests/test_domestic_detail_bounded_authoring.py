@@ -747,3 +747,98 @@ def test_unmapped_decision_jobs_are_localized_with_other_errors(
         assert not any(c.authoring_stage == "pair" for c in gateway.planner_calls)
         assert len(gateway.planner_calls) == 3
     assert not gateway.image_calls
+
+
+@pytest.mark.parametrize("stage", ["story", "pair"])
+def test_sparse_correction_only_receipt_restores_original_request_prior(
+    client, monkeypatch, tmp_path, stage
+):
+    import json
+    import shutil
+
+    from app.aurora_detail_runtime import detail_workspace
+    from app.domestic_detail.planning_calls import NativePlanningStore
+    from app.domestic_detail.plans import canonical_hash
+
+    gateway = _gateway(client)
+    original = gateway.plan
+
+    async def one_missing_field(value):
+        result = await original(value)
+        if value.authoring_stage != stage or (
+            stage == "pair" and value.authoring_target_ids != ("M01", "M02")
+        ):
+            return result
+        if (value.authoring_context or {}).get("validation_errors"):
+            return result
+        payload = deepcopy(result.payload)
+        if stage == "story":
+            payload.pop("campaign_thesis")
+        else:
+            payload["modules"][0]["visible_copy"][0].pop("role")
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", one_missing_field)
+    source = upload_asset(client, filename="correction-only-parent.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    planned = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert planned["status"] == "awaiting_confirmation", planned.get("error_message")
+    initial = next(
+        c for c in gateway.planner_calls
+        if c.authoring_stage == stage
+        and not (c.authoring_context or {}).get("validation_errors")
+    )
+    root = detail_workspace(job["id"]) / "planner-calls"
+    packets = []
+    for path in root.glob("*.request.json"):
+        binding = json.loads(path.read_bytes())["binding"]
+        semantics = binding["semantic_request"]["semantics"]
+        if semantics.get("authoring_stage") == stage and (
+            semantics.get("authoring_context") or {}
+        ).get("validation_errors"):
+            packets.append(binding)
+    assert len(packets) == 1
+    binding = packets[0]
+    saved_context = binding["semantic_request"]["semantics"]["authoring_context"]
+    only_correction = tmp_path / "only-correction-receipt"
+    only_correction.mkdir()
+    store = NativePlanningStore(root, binding).store
+    originals = {}
+    for path in root.glob(store.stem.name + ".*"):
+        originals[path.name] = path.read_bytes()
+        shutil.copyfile(path, only_correction / path.name)
+    assert len(list(only_correction.glob("*.request.json"))) == 1
+    current_binding = deepcopy(binding)
+    current_binding["semantic_request"]["semantics"]["authoring_context"] = (
+        deepcopy(initial.authoring_context)
+    )
+    recovered = authoring.recover_story(initial, only_correction, current_binding)
+    assert recovered is not None
+    assert not authoring.stage_errors(recovered["payload"], initial)
+    assert recovered["external_request"] is False
+    assert recovered["normalized_usage"]["reported"] is False
+    proof = recovered["provider_envelope"]["authored_input_recovery"]
+    assert proof["stage_valid"] is True and proof["provider_request_count"] == 0
+    assert proof["source_reconstruction"]["prior_payload_sha256"] == canonical_hash(
+        saved_context["prior_response"]
+    )
+    prior_payload = saved_context["prior_response"]
+    if stage == "story":
+        assert recovered["payload"]["modules"] == prior_payload["modules"]
+    else:
+        assert recovered["payload"]["modules"][1] == prior_payload["modules"][1]
+    assert all((root / name).read_bytes() == raw for name, raw in originals.items())
+    assert all(
+        (only_correction / name).read_bytes() == raw for name, raw in originals.items()
+    )
+    changed = replace(
+        initial, product_information=(*initial.product_information, "changed")
+    )
+    changed_binding = deepcopy(current_binding)
+    changed_semantics = changed_binding["semantic_request"]["semantics"]
+    changed_semantics["product_information"] = changed.product_information
+    assert authoring.recover_story(changed, only_correction, changed_binding) is None
+    assert not gateway.image_calls

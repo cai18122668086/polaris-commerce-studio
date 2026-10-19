@@ -228,8 +228,9 @@ def test_explicit_retry_keeps_original_authority_but_rejects_changed_scope(tmp_p
     assert json.loads((tmp_path / "generation-binding.json").read_bytes()) == original
 
 
+@pytest.mark.parametrize("lost_object_upload", [False, True])
 def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
-    client, monkeypatch
+    client, monkeypatch, lost_object_upload
 ):
     from sqlalchemy import select
 
@@ -256,12 +257,27 @@ def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
         module.update(
             status="PENDING", accepted_asset=None, attempts=[], cycle_attempt_count=0
         )
+    if lost_object_upload:
+        original = json.loads(checkpoint_path.read_bytes())
+        checkpoint.update(state="AUTHORIZED", current_index=4)
+        checkpoint["modules"][2:4] = original["modules"][2:4]
+        storage = client.app.state.storage
+        from app.xinghe_agent import XingheImageProvider
+
+        key = XingheImageProvider._aurora_pair_canvas_object_key(
+            WORKSPACE_ID, job["id"], _gateway(client).image_calls[0].group_key, "P02"
+        )
+        original_object = storage.root / key
+        assert original_object.is_file()
+        original_object.unlink()
     checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf8")
     from app.xinghe_agent import XingheImageProvider
 
     XingheImageProvider._reset_native_detail_generation(checkpoint_path)
     checkpoint = json.loads(checkpoint_path.read_bytes())
-    assert [m["status"] for m in checkpoint["modules"][2:4]] == ["REPAIR_PREPARED"] * 2
+    assert [m["status"] for m in checkpoint["modules"][2:4]] == (
+        ["COMPLETE"] if lost_object_upload else ["REPAIR_PREPARED"]
+    ) * 2
     with client.app.state.session_factory() as db:
         record = db.get(JobRecord, job["id"])
         record.status, record.stage = "partial", "partial"
@@ -293,20 +309,27 @@ def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
     dispatch_pending(client)
     result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target['id']}").json()
     assert result["status"] == "awaiting_final_review", result
+    if lost_object_upload:
+        assert original_object.is_file()
     assert [item["status"] for item in result["items"]] == ["reused"] * 2 + [
         "succeeded"
     ] * 6
-    assert len(_gateway(client).image_calls) - before == 3
+    assert len(_gateway(client).image_calls) - before == (
+        2 if lost_object_upload else 3
+    )
     edit_sources = [
         source
         for source in _gateway(client).image_calls[before].sources
         if source.source_role == "generated_edit_canvas"
     ]
-    assert len(edit_sources) == 1
-    assert (
-        edit_sources[0].sha256
-        == checkpoint["modules"][2]["attempts"][0]["normalized_image_sha256"]
-    )
+    if lost_object_upload:
+        assert not edit_sources
+    else:
+        assert len(edit_sources) == 1
+        assert (
+            edit_sources[0].sha256
+            == checkpoint["modules"][2]["attempts"][0]["normalized_image_sha256"]
+        )
     original_ids = {
         source.asset_id
         for source in _gateway(client).image_calls[0].sources
@@ -352,7 +375,9 @@ def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
             len([name for name in package.namelist() if name.startswith("screens/")])
             == 8
         )
-    assert len(_gateway(client).image_calls) - before == 3
+    assert len(_gateway(client).image_calls) - before == (
+        2 if lost_object_upload else 3
+    )
 
 
 def test_checkpoint_pixel_origins_follow_multiple_explicit_retries(tmp_path):

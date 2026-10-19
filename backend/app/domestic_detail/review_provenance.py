@@ -91,6 +91,8 @@ def pair_review_contract(
         ),
     }
 
+    if "review_transport_version" in native:
+        value["review_transport_version"] = native["review_transport_version"]
     from .revision_review import baseline_inventory, local_model_context
 
     local = local_model_context(native)
@@ -297,6 +299,16 @@ def _verify_review_provenance(
         ):
             _invalid("Original website review runtime fingerprint is missing")
     initial = deepcopy(saved[0]["payload"])
+    if native.get("review_profile") == "WEBSITE_LEAN_V1":
+        from .website_review import bind_pixel_metadata
+
+        initial = bind_pixel_metadata(
+            initial,
+            native,
+            lineage["canvas"]["sha256"],
+            lineage["canvas"]["width_px"],
+            lineage["canvas"]["height_px"],
+        )
     validate_pair_before_identity(
         initial,
         native,

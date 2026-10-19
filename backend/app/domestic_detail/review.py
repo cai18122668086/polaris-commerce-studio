@@ -215,6 +215,10 @@ def _pair_observation(
 ) -> dict[str, Any]:
     """Keep explicit observations; never invent a missing identity comparison."""
     value = deepcopy(dict(raw))
+    if request.get("review_profile") == "WEBSITE_LEAN_V1":
+        from .website_review import bind_pixel_metadata
+
+        value = bind_pixel_metadata(value, request, image_sha256, width, height)
     from .revision_review import validate_local_observation
 
     local_findings = validate_local_observation(

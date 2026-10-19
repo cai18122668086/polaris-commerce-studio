@@ -6579,6 +6579,11 @@ class XingheImageProvider:
         source_id = str(checkpoint.get("checkpoint_source_job_id") or request.job_id)
         group_key = str(configuration["group_key"])
         workspaces = checkpoint_workspaces(session_path.parent, generation_scope)
+        lineage = verify_accepted_canvas(workspaces, generation_scope, pair_id=pair_id, artifact_sha256=str(next(iter(hashes))))
+        try:
+            native_pixels = load_native_pair_pixels(lineage, workspaces, group_key=group_key)
+        except DetailPixelError as exc:
+            raise AuroraDetailHarnessError(exc.code, str(exc)) from exc
         for candidate_id in (root.name for root in workspaces):
             source_key = self._aurora_pair_canvas_object_key(request.workspace_id, candidate_id, group_key, pair_id)
             try:
@@ -6592,20 +6597,16 @@ class XingheImageProvider:
             source_id = candidate_id
             break
         else:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_CANVAS_MISSING", "Accepted canvas is missing from durable storage")
-        lineage = verify_accepted_canvas(
-            workspaces,
-            generation_scope,
-            pair_id=pair_id,
-            artifact_sha256=hashlib.sha256(payload).hexdigest(),
-        )
+            # A reconciled audit may precede the original object-store upload.
+            # Recover only the exact signed, paid and accepted native bytes.
+            payload = native_pixels.canvas.payload
+            source_id = next(root.name for root in workspaces if Path(lineage["canvas"]["path"]).is_relative_to(root))
+            source_key = self._aurora_pair_canvas_object_key(request.workspace_id, source_id, group_key, pair_id)
+            original = native_pixels.canvas
+            await self.storage.save_validated(ValidatedImage(payload=payload, filename=original.filename, content_type=original.content_type, width=original.width, height=original.height, object_key=source_key, sha256=original.sha256))
         if hashlib.sha256(payload).hexdigest() not in hashes:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Stored canvas does not match its accepted audit")
         canvas = _artifact_from_bytes(payload, filename=f"{group_key}-{pair_id}-canvas.png", expected_size=str(configuration["pair_canvas_size"]), preserve_provider_artifact=True)
-        try:
-            native_pixels = load_native_pair_pixels(lineage, workspaces, group_key=group_key)
-        except DetailPixelError as exc:
-            raise AuroraDetailHarnessError(exc.code, str(exc)) from exc
         if native_pixels.canvas.payload != payload:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Durable canvas differs from exact native accepted bytes")
         first, second = native_pixels.screens
@@ -6799,6 +6800,8 @@ class XingheImageProvider:
                 if current_module
                 else None
             ) or {}
+            from .domestic_detail.website_review import repair_findings
+
             repair_path = (
                 workspace / f"repair-{int(configuration.get('page') or 1):03d}.json"
             )
@@ -6809,15 +6812,20 @@ class XingheImageProvider:
                         current_module.get("id")
                         or f"M{int(configuration.get('page') or 1):02d}"
                     ),
-                    "material_failures": list(
-                        last_judgment.get("material_failures")
-                        or [{"visible_evidence": "像素审计发现需要修正的可见问题"}]
-                    ),
+                    "material_failures": (
+                        repair_findings(last_judgment)
+                        if native_session_value["plan"].get("website_contract_version") == "WEBSITE_LEAN_V1"
+                        else list(last_judgment.get("material_failures") or [])
+                    ) or [{"visible_evidence": "像素审计发现需要修正的可见问题"}],
                     "passed_layers": list(
                         last_judgment.get("effective_passed_layers") or []
                     ),
                     "root_cause": "按原生 pair 像素审计结果修正可见问题并保持商品身份锁定。",
-                    "unified_strategy": "仅保留 passed_layers 明确列出的通过层；修正 material_failures 中的全部问题，不得保留被判失败的接缝或文案。",
+                    "unified_strategy": (
+                        "以第一张附件中的现有3:8画布为底图，集中修正列出的全部可见问题。保留已正确的商品外观、事实、系列气质和批准构图；保持原有上下两屏职责与文字位置，不新增未批准画面、卡片或分屏。接缝有错时只重建固定边界附近的连续背景与光线，不移动切片或遮掩失败文案。"
+                        if native_session_value["plan"].get("website_contract_version") == "WEBSITE_LEAN_V1"
+                        else "仅保留 passed_layers 明确列出的通过层；修正 material_failures 中的全部问题，不得保留被判失败的接缝或文案。"
+                    ),
                     "expected_visible_change": "下一次 3:8 画布应使全部材料性检查通过。",
                 },
             )
@@ -6879,6 +6887,8 @@ class XingheImageProvider:
         # The signed request on disk stays immutable. Its app envelope carries
         # the exact approved native identity and fact dispositions for review.
         native_request["review_authority"] = review_authority
+        if native_request.get("review_profile") == "WEBSITE_LEAN_V1":
+            native_request["review_transport_version"] = "WEBSITE_OWNED_METADATA_V2"
         native_request["product_information"] = list(review_authority["product_information"])
         native_request["product_name"] = review_authority["product_name"]
         # Keep the blank format canvas local, as required by the Skill provider protocol.
@@ -7196,6 +7206,10 @@ class XingheImageProvider:
                 result.error_message or "Native detail semantic audit returned no judgment.",
             )
         judgment = dict(result.payload)
+        if native_request.get("review_profile") == "WEBSITE_LEAN_V1":
+            from .domestic_detail.website_review import bind_pixel_metadata
+
+            judgment = bind_pixel_metadata(judgment, native_request, artifact.sha256, artifact.width, artifact.height)
         identity = judgment.get("identity_silhouette")
         identity = dict(identity) if isinstance(identity, Mapping) else {}
         try:
@@ -10474,6 +10488,12 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             from .domestic_detail.revision_review import with_local_schema
 
             schema = with_local_schema(schema, context)
+            if context.get("review_transport_version") == "WEBSITE_OWNED_METADATA_V2":
+                from .domestic_detail.website_review import (
+                    transport_schema as website_transport_schema,
+                )
+
+                schema = website_transport_schema(schema)
         if request.planning_profile == "aurora_detail_identity_audit":
             schema = deepcopy(schema["properties"]["identity_silhouette"])
             schema["required"].append("audit_complete")

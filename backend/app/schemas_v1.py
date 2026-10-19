@@ -363,6 +363,7 @@ class DetailPackInput(BaseModel):
 
 
 class DetailPackConfiguration(BaseModel):
+    website_contract_version: Literal["WEBSITE_LEAN_V1"] | None = None
     brandless_confirmation: str | None = Field(
         default=None, min_length=2, max_length=240
     )

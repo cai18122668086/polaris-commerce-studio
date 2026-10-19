@@ -3461,7 +3461,7 @@ class XinghePlanningCoordinator:
 
     def _bounded_authoring_request(self, request: PlannerRequest) -> PlannerRequest:
         return replace(request, authoring_stage="story",
-            system_prompt=authoring.system_prompt(self.skill_root))
+            system_prompt=authoring.system_prompt(self.skill_root, stage="story"))
 
     async def _native_planner_call(self, request: PlannerRequest) -> PlannerCallResult:
         if self.skill_id != _AURORA_DOMESTIC_DETAIL_SKILL_ID:
@@ -6935,6 +6935,7 @@ class XingheImageProvider:
         scope = observed_pair_scope(reports)
         presence_for_scope = {"VISIBLE_COMPLETE_PRODUCT": "DOMINANT", "VISIBLE_IDENTITY_TOKEN": "IDENTITY_TOKEN_ONLY", "NO_VISIBLE_PRODUCT": "ABSENT"}
         return {
+            **({"website_contract_version": "WEBSITE_LEAN_V1"} if native_request.get("review_profile") == "WEBSITE_LEAN_V1" else {}),
             "pair_id": pair_id,
             "module_ids": module_ids,
             "module_judgments": reports,
@@ -10429,6 +10430,10 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             / "schemas"
             / "pair-judgment.schema.json"
         )
+        if request.planning_profile == "aurora_detail_pair_audit" and request.product_information:
+            context = json.loads(request.product_information[0])
+            if context.get("review_profile") == "WEBSITE_LEAN_V1":
+                schema_path = schema_path.with_name("pair-judgment-website-v1.schema.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         from jsonschema import RefResolver
         schema = _inline_aurora_schema_refs(schema, RefResolver(schema_path.as_uri(), schema))
@@ -10841,6 +10846,10 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             + json.dumps(list(request.product_information), ensure_ascii=False)
         )
     if request.planning_profile == "aurora_detail_pair_audit":
+        context = json.loads(request.product_information[0]) if request.product_information else {}
+        if context.get("review_profile") == "WEBSITE_LEAN_V1":
+            from .domestic_detail.website_review import prompt as website_review_prompt
+            return website_review_prompt(context, _planner_response_format(request)["json_schema"]["schema"])
         return (
             "Directly inspect the last attached image as the generated continuous "
             "3:8 pair canvas. source_inventory binds every attached image to its role "

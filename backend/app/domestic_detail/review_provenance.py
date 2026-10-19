@@ -49,6 +49,7 @@ def review_runtime_hash() -> str:
                     "revision_review",
                     "revision_runtime",
                     "revision_accounts",
+                    "website_review",
                 )
             },
         }
@@ -64,6 +65,10 @@ def pair_review_contract(
 ) -> dict[str, Any]:
     authority = require_review_authority(native.get("review_authority"))
     value = {
+        **(
+            {"review_profile": native["review_profile"]}
+            if "review_profile" in native else {}
+        ),
         "pair_id": native.get("pair_id"),
         "module_ids": native.get("module_ids"),
         "pair_render": native.get("pair_render"),

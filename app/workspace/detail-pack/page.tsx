@@ -229,6 +229,7 @@ export default function DetailPackPage() {
       page_count: pageCount,
       language,
       market_region: marketRegion,
+      website_contract_version: marketRegion === "domestic" ? "WEBSITE_LEAN_V1" as const : undefined,
       category: category.trim() || undefined,
       target_buyer: targetBuyer.trim() || undefined,
       // Aurora v4.3 requires explicit approval of the complete campaign

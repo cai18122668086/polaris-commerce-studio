@@ -614,7 +614,16 @@ def normalize_plan(session: dict, raw_plan: dict) -> dict:
         }
         for item in modules
     ]
+    website = raw_plan.get("website_contract_version")
+    if website is not None:
+        if website != "WEBSITE_LEAN_V1":
+            raise HarnessError("Unknown website contract version")
+        from .website_review import validate_plan_source
+        validate_plan_source(raw_plan)
+        for item in modules:
+            item["website_contract_version"] = website
     return {
+        **({"website_contract_version": website, "claim_coverage": copy.deepcopy(raw_plan["claim_coverage"])} if website is not None else {}),
         "plan_format": raw_plan["plan_format"],
         "planning_mode": "LIGHTWEIGHT_V41" if information_v41 else ("LIGHTWEIGHT_V41" if lightweight else raw_plan.get("planning_mode", "STRICT_ROUTE_AWARE")),
         "information_contract_version": raw_plan.get("information_contract_version", "4.1" if information_v41 else None),

@@ -33,6 +33,12 @@ def atomic_context(
                 or not isinstance(row["performance_contract"], dict)
             ):
                 raise ValueError("compiled module contract context differs")
+        profile = request.get("review_profile")
+        expected = {
+            row["contract"].get("website_contract_version") for row in contracts
+        }
+        if expected != {profile}:
+            raise ValueError("pixel profile differs from approved module contracts")
         return list(contracts), list(slices)
     except (KeyError, TypeError, ValueError) as exc:
         raise DetailReviewError(
@@ -175,6 +181,9 @@ def synthetic_module_judgments(
                 ),
             }
         )
+    if request.get("review_profile") == "WEBSITE_LEAN_V1":
+        from .website_review import synthetic_reports
+        return synthetic_reports(result)
     return deepcopy(result)
 
 

@@ -5,6 +5,16 @@ description: Plan, generate, inspect, repair, assemble, and deliver fact-grounde
 
 # 极光国内电商详情图（v4.3.1）
 
+## Optional website contract v1
+
+For website requests explicitly selecting `website_contract_version=WEBSITE_LEAN_V1`,
+read [website-lean-v1.md](references/website-lean-v1.md). This versioned profile uses
+one authored primary claim/job map and six core pixel checks per fixed slice. It
+replaces the repetitive aesthetic measurement checklist for those approved website
+plans only. Facts, identity, source boundaries, selling-point depth, pair geometry,
+actual pixels, original receipts and the one-repair limit remain mandatory. Existing
+plans and ordinary standalone requests retain their original contract.
+
 ## v4.3.1 internal seam correction
 
 An atomic screen's `transition_contract` describes the incoming handoff from its

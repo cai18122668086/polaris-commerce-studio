@@ -27,6 +27,7 @@ from runtime.image_format import ensure_format_canvas, image_dimensions, normali
 from runtime.prompt_compiler import compile_pair_prompt, compile_prompt
 from runtime.performance_contract import resolve_performance_contract
 from runtime.atomic_review import review_contracts, validate_atomic_reports
+from runtime.website_review import schema_name as review_schema_name
 from runtime.pixel_lineage import create_fixed_slices, pair_artifacts, preserve_provider_original, preserve_signed_request
 from runtime.plan_normalizer import (
     COMPACT_PLAN_FORMAT,
@@ -1764,6 +1765,8 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
             } if pair else None),
         },
     }
+    if session["plan"].get("website_contract_version") is not None:
+        request["review_profile"] = session["plan"]["website_contract_version"]
     if pair:
         pair_config = _pair_rendering(session) or {}
         pair_index = next((index for index, item in enumerate(pair_config.get("pair_ids", [])) if item.get("pair_id") == pair["pair_id"]), 0)
@@ -2017,7 +2020,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     lineage = pair_artifacts(session, pair["pair_id"])
     validate_request_contracts(session, lineage, pair_modules)
     judgment = load_json(args.judgment)
-    validate_schema(judgment, "pair-judgment.schema.json", "pair judgment")
+    validate_schema(judgment, review_schema_name(session["plan"]), "pair judgment")
     require_fields(
         judgment,
         ("pair_id", "module_ids", "status", "audit_complete", "pair_canvas", "checks", "screen_coverage", "internal_seam_evidence", "material_failures"),
@@ -2775,6 +2778,7 @@ def _approval_markdown(session: dict) -> str:
 
     lines = [
         f"方案已通过 Skill v{VERSION} 编译，当前停在生图前审批节点。",
+        *( ["本次采用精简检查：每屏核对商品、事实、文案、卖点、构图和证据，不做重复审美评分。"] if plan.get("website_contract_version") == "WEBSITE_LEAN_V1" else [] ),
         "",
         *identity_lines,
         *fact_lines,

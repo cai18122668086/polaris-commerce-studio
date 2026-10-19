@@ -15,6 +15,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from . import website_contract as website
+
 STORY_FIELDS = (
     "id",
     "duty",
@@ -47,7 +49,38 @@ REFERENCES = (
 )
 
 
-def system_prompt(root: Path) -> str:
+STAGE_REFERENCES = {
+    "story": (
+        "detail-story-grammar.md",
+        "storyboard-matrix.md",
+        "compliance-and-platform.md",
+        "reference-intelligence.md",
+    ),
+    "pair": ("visual-proof.md", "storyboard-matrix.md", "continuity-and-rhythm.md"),
+}
+PRESENCE_BY_ROLE = {
+    "DOMINANT": "REQUIRED_DOMINANT",
+    "SUPPORTING": "REQUIRED_SUPPORTING",
+    "IDENTITY_TOKEN_ONLY": "IDENTITY_TOKEN_ONLY",
+    "ABSENT": "ABSENT_PREFERRED",
+}
+SIGNATURE_FIELDS = (
+    "primary_subject_class",
+    "presentation_form",
+    "camera_scale",
+    "complete_product_role",
+)
+
+
+def frozen_rendering_fields(module: Mapping[str, Any]) -> tuple[str, str]:
+    """Project only exact decisions already made in the campaign storyboard."""
+    return (
+        PRESENCE_BY_ROLE[module["complete_product_role"]],
+        "+".join(module[key] for key in SIGNATURE_FIELDS),
+    )
+
+
+def system_prompt(root: Path, *, stage: str = "") -> str:
     policy = """Author a fact-grounded Aurora v4.3.1 campaign in bounded stages.
 The local native Harness owns compilation, approval, generation and pixel audit.
 This call only authors the requested planning stage. Do not reproduce execution
@@ -70,11 +103,13 @@ risk and approval workflow out of sales copy. Only schema JSON is returned.
 """
     return policy + "\n".join(
         f"\n--- {name} ---\n" + (root / "references" / name).read_text(encoding="utf-8")
-        for name in REFERENCES
+        for name in STAGE_REFERENCES.get(stage, REFERENCES)
     )
 
 
-def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
+def phase_schema(
+    full: Mapping[str, Any], request: Any, *, wire: bool = True
+) -> dict[str, Any]:
     schema = deepcopy(full["json_schema"]["schema"])
     native = json.loads(
         (
@@ -192,19 +227,23 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
             ]
             for key in STORY_FIELDS:
                 item["properties"][key] = {"const": locked[module_id][key]}
-            policy = {
-                "DOMINANT": "REQUIRED_DOMINANT",
-                "SUPPORTING": "REQUIRED_SUPPORTING",
-                "IDENTITY_TOKEN_ONLY": "IDENTITY_TOKEN_ONLY",
-                "ABSENT": "ABSENT_PREFERRED",
-            }[locked[module_id]["complete_product_role"]]
+            policy, signature = frozen_rendering_fields(locked[module_id])
+            item["required"] = [
+                key for key in item["required"] if key != "expression_signature"
+            ]
+            item["properties"]["expression_signature"] = {"const": signature}
             item["required"].append("product_presence_decision")
-            item["properties"]["product_presence_decision"]["properties"]["policy"] = {
-                "const": policy
-            }
+            decision = item["properties"]["product_presence_decision"]
+            decision["required"] = [
+                key for key in decision["required"] if key != "policy"
+            ]
+            decision["properties"]["policy"] = {"const": policy}
             expression = item["properties"]["expression"]
-            if "product_presence_policy" not in expression["required"]:
-                expression["required"].append("product_presence_policy")
+            expression["required"] = [
+                key
+                for key in expression["required"]
+                if key != "product_presence_policy"
+            ]
             expression["properties"]["product_presence_policy"] = {"const": policy}
         slots.append(item)
     schema["properties"]["modules"] = {
@@ -214,6 +253,8 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
         "prefixItems": slots,
         "items": False,
     }
+    if request.authoring_stage == "story" and website.enabled(request):
+        schema = website.schema_view(schema, wire=wire)
     errors = (request.authoring_context or {}).get("validation_errors")
     if errors:
         schema = correction_contract(schema, errors)
@@ -387,9 +428,12 @@ def prompt(request: Any) -> str:
             "Every visible_copy item requires text, role and anchor; fact_ids is not "
             "a substitute. A pair is a raster "
             "container. Use the campaign's pair seam intent for the lower incoming "
-            "transition. expression_signature is the exact '+' join of "
-            "primary_subject_class,presentation_form,camera_scale,"
-            "complete_product_role. "
+            "transition. Also omit expression_signature, "
+            "expression.product_presence_policy and product_presence_decision.policy: "
+            "the server derives these exact aliases from the frozen storyboard. "
+            "Still author both expression and product_presence_decision with their "
+            "creative explanations. Explicit contradictions or null values are "
+            "invalid, never replaced. "
             "content units must be distinct and bind actual fact IDs and visible copy. "
             "Do not repeat campaign objects. Do not guess facts from missing images: "
             "locked intake contains the original source observations and source IDs. "
@@ -400,11 +444,24 @@ def prompt(request: Any) -> str:
             "SELECTION_MATRIX=3. Labels occupy an existing spatial zone. "
             "No watermark, invented logo, internal risk or evidence workflow copy."
         )
+        # complete() adds this exact copy for native compilation. It is not a
+        # second factual authority and need not be sent alongside locked_intake.
+        if "product_intake" in context:
+            if context["product_intake"] != request.detail_intake:
+                raise ValueError("Campaign and locked product intake disagree")
+            context.pop("product_intake")
         body = {
             "target_module_ids": request.authoring_target_ids,
             "campaign_and_story": context,
             "locked_intake": request.detail_intake,
         }
+    if website.enabled(request):
+        if request.authoring_stage == "story":
+            instruction = website.STORY_INSTRUCTION
+        else:
+            body["campaign_and_story"] = website.prompt_context(
+                context, request.authoring_target_ids
+            )
     if errors:
         stage_instruction = instruction
         paths = {error["path"] for error in errors}
@@ -515,7 +572,8 @@ def selected_story(payload: object, page_count: int) -> object:
 
 def project_stage(payload: object, request: Any) -> object:
     if request.authoring_stage == "story":
-        return selected_story(payload, request.page_count)
+        value = website.project(payload) if website.enabled(request) else payload
+        return selected_story(value, request.page_count)
     value = deepcopy(payload)
     locked = {m["id"]: m for m in (request.authoring_context or {}).get("modules", [])}
     if isinstance(value, dict) and isinstance(value.get("modules"), list):
@@ -523,6 +581,16 @@ def project_stage(payload: object, request: Any) -> object:
             if isinstance(module, dict) and module.get("id") in locked:
                 for key in STORY_FIELDS:
                     module.setdefault(key, deepcopy(locked[module["id"]][key]))
+                policy, signature = frozen_rendering_fields(locked[module["id"]])
+                module.setdefault("expression_signature", signature)
+                # Missing creative containers remain invalid. Only mechanical
+                # aliases inherit; explicit wrong/null values remain untouched.
+                expression = module.get("expression")
+                if isinstance(expression, dict):
+                    expression.setdefault("product_presence_policy", policy)
+                decision = module.get("product_presence_decision")
+                if isinstance(decision, dict):
+                    decision.setdefault("policy", policy)
     return value
 
 
@@ -530,7 +598,20 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
     """Run the same native sales validator before spending on detailed pairs."""
     from ..xinghe_agent import _planner_response_format
 
-    issues = errors_for(payload, _planner_response_format(request))
+    response_format = _planner_response_format(request)
+    if request.authoring_stage == "story" and website.enabled(request):
+        full = _planner_response_format(replace(
+            request, authoring_stage="", planning_profile="aurora_domestic_detail"
+        ))
+        response_format = phase_schema(full, request, wire=False)
+        if isinstance(payload, Mapping):
+            views = website.derived_views(payload)
+            if views is not None:
+                for key, value in views.items():
+                    response_format["json_schema"]["schema"]["properties"][key] = {
+                        "const": value
+                    }
+    issues = errors_for(payload, response_format)
     if request.authoring_stage == "story" and isinstance(payload, Mapping):
         depth = payload.get("selling_point_depth_contract")
         recall = payload.get("campaign_recall_contract")
@@ -706,7 +787,12 @@ print(json.dumps(issues))
         check=True,
         timeout=15,
     )
-    return [*issues, *json.loads(result.stdout)]
+    issues = [*issues, *json.loads(result.stdout)]
+    if website.enabled(request):
+        for issue in issues:
+            if any(issue["path"].startswith("/" + key) for key in website.DERIVED):
+                issue["path"] = "/" + website.SOURCE
+    return issues
 
 
 def merge_error_fields(
@@ -836,8 +922,8 @@ def recover_story(
             # A failed-only continuation can contain just a sparse correction
             # receipt. Its immutable request already carries the complete prior
             # and exact authorized paths; no earlier call in this folder is needed.
-            projected = merge_error_fields(
-                project(original_prior), projected, original_errors
+            projected = project(
+                merge_error_fields(project(original_prior), projected, original_errors)
             )
             reconstruction = {
                 "rule": "merge-original-request-prior-and-original-error-paths-v1",
@@ -848,8 +934,8 @@ def recover_story(
             # Retain recovery of older complete-response receipts without a
             # request-bound prior. Current validation still decides acceptance.
             prior = project(base["payload"])
-            projected = merge_error_fields(
-                prior, projected, stage_errors(prior, request)
+            projected = project(
+                merge_error_fields(prior, projected, stage_errors(prior, request))
             )
             source_hashes.insert(0, canonical_hash(base))
         elif not correction:
@@ -914,6 +1000,15 @@ def fake_phase(payload: Mapping[str, Any], request: Any) -> dict[str, Any]:
     value = bounded_mock_campaign(payload, request.detail_intake)
     if request.authoring_stage == "story":
         value["modules"] = [{k: m[k] for k in STORY_FIELDS} for m in value["modules"]]
+        if website.enabled(request):
+            value[website.SOURCE] = [{
+                "claim_id": row["claim_id"],
+                "evidence_ceiling": row["evidence_ceiling"],
+                "module_jobs": deepcopy(row["module_jobs"]),
+                "rationale": row["non_duplicate_rationale"],
+            } for row in value["selling_point_depth_contract"]["claim_depth"]]
+            for key in website.DERIVED:
+                value.pop(key)
     elif request.authoring_stage == "pair":
         context = request.authoring_context
         locked = {m["id"]: m for m in context["modules"]}
@@ -983,8 +1078,10 @@ async def complete(
                     response.error_code,
                     response.error_message or "Authoring result unknown",
                 )
-            value = merge_error_fields(
-                prior_candidate, candidate(response.payload), prior_errors
+            value = candidate(
+                merge_error_fields(
+                    prior_candidate, candidate(response.payload), prior_errors
+                )
             )
             from .plans import canonical_hash
 
@@ -1063,6 +1160,7 @@ async def complete(
                 authoring_stage="pair",
                 authoring_target_ids=targets,
                 authoring_context=context,
+                system_prompt=system_prompt(coordinator.skill_root, stage="pair"),
                 sources=(),
                 idempotency_key=request.idempotency_key + ":" + "+".join(targets),
             )

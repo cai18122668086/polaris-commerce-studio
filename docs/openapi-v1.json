@@ -1586,6 +1586,18 @@
             "maxItems": 24,
             "title": "Verified Facts",
             "type": "array"
+          },
+          "website_contract_version": {
+            "anyOf": [
+              {
+                "const": "WEBSITE_LEAN_V1",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Contract Version"
           }
         },
         "required": [

@@ -89,7 +89,8 @@ def inspect_pair_audit(session: dict, pair_id: str) -> dict:
         ignored = {"material_failures", "effective_passed_layers"}
         if contract_sha256({k: v for k, v in recorded.items() if k not in ignored}) != contract_sha256({k: v for k, v in judgment.items() if k not in ignored}):
             raise HarnessError("Native audit decision does not preserve the original observations")
-        validate_schema(judgment, "pair-judgment.schema.json", "original accepted pair audit")
+        from .website_review import schema_name
+        validate_schema(judgment, schema_name(session["plan"]), "original accepted pair audit")
         if judgment["pair_id"] != pair_id or judgment["module_ids"] != lineage["module_ids"]:
             raise HarnessError("Original accepted audit identifies another pair")
         validate_artifact_binding(judgment, lineage["canvas"]["path"], "original accepted audit")

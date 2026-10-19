@@ -547,7 +547,9 @@
           }
         }
       }
-    }
+    },
+    "website_contract_version": {"const": "WEBSITE_LEAN_V1"},
+    "claim_coverage": {"type": "array", "minItems": 1, "items": {"type": "object"}}
   }
 }
 

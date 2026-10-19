@@ -2340,6 +2340,8 @@ export interface components {
             target_buyer?: string | null;
             /** Verified Facts */
             verified_facts?: string[];
+            /** Website Contract Version */
+            website_contract_version?: "WEBSITE_LEAN_V1" | null;
         };
         /** DetailPackInput */
         DetailPackInput: {

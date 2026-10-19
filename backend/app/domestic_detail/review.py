@@ -232,7 +232,9 @@ def _pair_observation(
         ]
     schema_path = (
         default_skill_root("aurora-domestic-ecommerce-detail-page")
-        / "schemas/pair-judgment.schema.json"
+        / ("schemas/pair-judgment-website-v1.schema.json"
+           if request.get("review_profile") == "WEBSITE_LEAN_V1"
+           else "schemas/pair-judgment.schema.json")
     )
     schema = json.loads(schema_path.read_bytes())
     if identity_pending:

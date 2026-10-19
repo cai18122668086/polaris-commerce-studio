@@ -20,7 +20,7 @@ from app.domestic_detail.revision_review import (
     observation_schema,
     with_local_schema,
 )
-from app.xinghe_agent import _planner_response_format
+from app.xinghe_agent import _planner_prompt, _planner_response_format
 from tests.domestic_detail_atomic_fixtures import review_context
 from tests.test_domestic_detail_review_authority import compiled_review_session
 from tests.test_native_detail_revision_pixel_review import observation
@@ -265,6 +265,7 @@ def test_ordinary_pair_schema_is_unchanged_without_local_contract(text):
     actual = _planner_response_format(request)
     baseline = _planner_response_format(replace(request, product_information=()))
     assert actual == baseline
+    assert "all 44 canonical checks" in _planner_prompt(request)
     assert (
         "local_revision_observation" not in actual["json_schema"]["schema"]["required"]
     )

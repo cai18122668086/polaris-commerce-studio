@@ -30,6 +30,15 @@ OBSERVATIONS = (
 )
 
 
+def request_context(information: tuple[str, ...]) -> dict[str, Any]:
+    """Ordinary legacy product prose is not a website review contract."""
+    try:
+        value = json.loads(information[0]) if information else {}
+    except (ValueError, TypeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def prompt(context: dict[str, Any], schema: dict[str, Any]) -> str:
     return (
         """Inspect the attached real product references, both generated fixed

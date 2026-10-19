@@ -10430,21 +10430,21 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             / "schemas"
             / "pair-judgment.schema.json"
         )
-        if request.planning_profile == "aurora_detail_pair_audit" and request.product_information:
-            context = json.loads(request.product_information[0])
-            if context.get("review_profile") == "WEBSITE_LEAN_V1":
-                schema_path = schema_path.with_name("pair-judgment-website-v1.schema.json")
+        from .domestic_detail.website_review import request_context
+
+        context = request_context(request.product_information)
+        if (
+            request.planning_profile == "aurora_detail_pair_audit"
+            and context.get("review_profile") == "WEBSITE_LEAN_V1"
+        ):
+            schema_path = schema_path.with_name("pair-judgment-website-v1.schema.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         from jsonschema import RefResolver
         schema = _inline_aurora_schema_refs(schema, RefResolver(schema_path.as_uri(), schema))
         if request.planning_profile == "aurora_detail_pair_audit":
             from .domestic_detail.revision_review import with_local_schema
 
-            try:
-                context = json.loads(request.product_information[0]) if request.product_information else {}
-            except (ValueError, TypeError):
-                context = {}
-            schema = with_local_schema(schema, context if isinstance(context, Mapping) else {})
+            schema = with_local_schema(schema, context)
         if request.planning_profile == "aurora_detail_identity_audit":
             schema = deepcopy(schema["properties"]["identity_silhouette"])
             schema["required"].append("audit_complete")
@@ -10846,10 +10846,12 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             + json.dumps(list(request.product_information), ensure_ascii=False)
         )
     if request.planning_profile == "aurora_detail_pair_audit":
-        context = json.loads(request.product_information[0]) if request.product_information else {}
-        if context.get("review_profile") == "WEBSITE_LEAN_V1":
+        from .domestic_detail.website_review import request_context
+
+        review_context = request_context(request.product_information)
+        if review_context.get("review_profile") == "WEBSITE_LEAN_V1":
             from .domestic_detail.website_review import prompt as website_review_prompt
-            return website_review_prompt(context, _planner_response_format(request)["json_schema"]["schema"])
+            return website_review_prompt(review_context, _planner_response_format(request)["json_schema"]["schema"])
         return (
             "Directly inspect the last attached image as the generated continuous "
             "3:8 pair canvas. source_inventory binds every attached image to its role "

@@ -379,7 +379,7 @@ export default function DetailPackPage() {
             <div className="estimate-grid">
               <span><CircleDollarSign size={18} /><div><p>本次服务</p><strong>{workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "服务暂不可用"}</strong></div></span>
               <span><Clock3 size={18} /><div><p>状态更新</p><strong>状态自动同步</strong></div></span>
-              <span><ShieldCheck size={18} /><div><p>图片产物</p><strong>{workflow.canDeliverImages ? "已生成图片" : "暂无图片结果"}</strong></div></span>
+              <span><ShieldCheck size={18} /><div><p>图片产物</p><strong>{resultAssets.length > 0 ? `${resultAssets.length} 张已生成` : "暂无图片结果"}</strong></div></span>
             </div>
             <div className="generation-actions">
               <p><Info size={14} />{workflow.mode === "provider" ? "确认后将开始整套图片生成。" : workflow.mode === "mock" ? "确认后将保存任务计划，当前暂不生成图片。" : "生成服务状态确认中，确认入口暂时关闭。"}</p>

@@ -546,3 +546,67 @@ def test_sparse_second_screen_correction_preserves_first_screen(client, monkeypa
     assert planned["plan"]["payload"]["native_approval"]["document_sha256"]
     assert len(gateway.planner_calls) == 7
     assert not gateway.image_calls
+
+
+@pytest.mark.parametrize("complete_correction", [False, True])
+def test_unknown_fact_and_extra_depth_are_corrected_together(
+    client, monkeypatch, complete_correction
+):
+    gateway = _gateway(client)
+    original = gateway.plan
+    observed = []
+
+    async def mixed_story_errors(value):
+        result = await original(value)
+        if value.authoring_stage != "story":
+            return result
+        payload = deepcopy(result.payload)
+        errors = (value.authoring_context or {}).get("validation_errors")
+        if errors:
+            observed.extend(errors)
+            assert any(e["constraint"] == "enum" for e in errors)
+            assert any(
+                e["path"] == "/selling_point_depth_contract/claim_depth"
+                and e["constraint"] == "native_sales_depth"
+                for e in errors
+            )
+            assert any(e["path"].endswith("/depth_tier") for e in errors)
+            assert not authoring.errors_for(payload, _planner_response_format(value))
+            # The correction must be allowed to remove a row, not just rename IDs.
+            assert len(payload["selling_point_depth_contract"]["claim_depth"]) < len(
+                value.authoring_context["prior_response"]["selling_point_depth_contract"][
+                    "claim_depth"
+                ]
+            )
+            if not complete_correction:
+                extra = deepcopy(
+                    payload["selling_point_depth_contract"]["claim_depth"][0]
+                )
+                extra.update(claim_id="O01", depth_tier="SUPPORT")
+                payload["selling_point_depth_contract"]["claim_depth"].append(extra)
+        else:
+            payload["modules"][0]["lead_claim_id"] = "C99"
+            extra = deepcopy(payload["selling_point_depth_contract"]["claim_depth"][0])
+            extra.update(claim_id="C04", depth_tier="SUPPORT")
+            payload["selling_point_depth_contract"]["claim_depth"].append(extra)
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", mixed_story_errors)
+    source = upload_asset(client, filename="mixed-depth-and-fact-errors.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert observed
+    assert len([c for c in gateway.planner_calls if c.authoring_stage == "story"]) == 2
+    if complete_correction:
+        assert result["status"] == "awaiting_confirmation", result.get("error_message")
+        assert result["plan"]["payload"]["native_approval"]["document_sha256"]
+        assert len(gateway.planner_calls) == 7
+    else:
+        assert result["status"] == "failed"
+        assert result["error_code"] == "AURORA_AUTHORING_INVALID"
+        assert not any(c.authoring_stage == "pair" for c in gateway.planner_calls)
+        assert len(gateway.planner_calls) == 3
+    assert not gateway.image_calls

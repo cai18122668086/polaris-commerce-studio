@@ -55,7 +55,9 @@ instructions or audit reports. Never invent product facts, branding, specificati
 materials, performance or evidence. Source photo watermarks/backgrounds are not
 product identity. Keep hypotheses separate from supplied facts. Use original fact IDs.
 Every PRIMARY claim needs DEEP coverage: overview, dedicated proof, use/result and
-closing recall across at least three screens. Preserve one story with distinct jobs.
+closing recall across at least three screens. claim_depth contains exactly the
+primary_claim_ids, with no supporting-only entries. Preserve one story with
+distinct jobs.
 8/10/12 screens require at least 4/5/6 subject classes and 5/6/7 presentation forms,
 with at most 3/3/4 dominant complete-product screens. Middle proof screens may omit
 the full product. Every normal screen needs useful visible content units bound to
@@ -96,6 +98,7 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
     depth["properties"].update(
         {
             "priority": {"const": "PRIMARY"},
+            "depth_tier": {"const": "DEEP"},
             "module_jobs": {
                 "type": "array",
                 "minItems": 1,
@@ -480,6 +483,34 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
     if request.authoring_stage == "story" and isinstance(payload, Mapping):
         depth = payload.get("selling_point_depth_contract")
         recall = payload.get("campaign_recall_contract")
+        if isinstance(depth, Mapping):
+            primary = depth.get("primary_claim_ids")
+            entries = depth.get("claim_depth")
+            # This native set rule is independent of fact-ID validity. Report it
+            # with enum errors so the sole correction can replace the whole list,
+            # including removing supporting entries instead of only renaming IDs.
+            if (
+                isinstance(primary, list)
+                and all(isinstance(item, str) for item in primary)
+                and isinstance(entries, list)
+                and all(
+                    isinstance(item, Mapping)
+                    and isinstance(item.get("claim_id"), str)
+                    for item in entries
+                )
+                and {item["claim_id"] for item in entries} != set(primary)
+            ):
+                issues.append(
+                    {
+                        "path": "/selling_point_depth_contract/claim_depth",
+                        "constraint": "native_sales_depth",
+                        "message": (
+                            "Selling-point depth entries must account for every "
+                            "primary claim exactly once; exclude supporting-only "
+                            "claims and give every primary claim DEEP treatment"
+                        ),
+                    }
+                )
         if isinstance(depth, Mapping) and isinstance(recall, Mapping):
             primary = depth.get("primary_claim_ids")
             remembered = recall.get("must_remember_claim_ids")

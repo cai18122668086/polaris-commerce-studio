@@ -75,3 +75,16 @@ Bounded detail planning now uses the same configured per-call timeout as the sha
 The prior CI's remaining two failures injected detailed transitions during the old full-plan stage. They now exercise the M03/M04 authoring stage, its one sparse correction, and actual native approval. The native rule rejecting an explicit foreign module in the lower screen's incoming seam is checked before later pair authoring; the final native check remains authoritative. No seam text or product facts are synthesized.
 
 Validation: 97 dispatch/bounded-authoring tests passed; after the seam change, all 27 seam/bounded-authoring cases passed. Original provider receipts are untouched. No real model/image call, merge or deployment was made in this repair. The next paid experiment requires a concrete one-run decision and cost headroom; the missing old JSON must never be marked as recovered or approved.
+
+
+### 2026-10-19 single authorized real test: response received, depth set rejected
+
+The user authorized exactly one additional controlled test after confirming the old channel duration. Candidate 4a81737 created job `job_11b97cc04fe24106952be10d1523dfe3` from the known-input parent; the older lost reply was not recovered or replayed. It reused intake and the invalid story and made one sparse story-correction call. The supplier returned HTTP 200 in 22.47 seconds with 37,014 input / 818 output tokens. Its uniquely matching dashboard row 34303786 reports $0.377298. This is a real response, not proof of the 600-second boundary under a slow call.
+
+The correction fixed fact references but native validation rejected the fourth, supporting-only depth entry: `claim_depth` must contain exactly the primary claim set. The existing early return on schema errors had hidden this independent set mismatch; the sparse repair therefore allowed changing only IDs and could not remove the extra row. The original schema also allowed SUPPORT despite the native compact format requiring DEEP for every primary entry.
+
+The adapter now reports depth-set mismatch together with fact-ID errors and requires DEEP in the model-visible schema. A set mismatch scopes correction to the full invalid depth array, allowing the model to remove a row; no claim mapping, row deletion or approval is synthesized locally. Final native validation remains unchanged.
+
+Validation: 29 bounded-authoring/seam regressions passed, including a mixed-error correction reaching native approval and an incomplete correction stopping before any pair; Ruff passed; mypy passed for 115 files. Zero-network replay of the actual archived request finds both omitted constraints before correction, while the saved real response remains rejected. This follow-up fix has not had a new real supplier test.
+
+The single-run authorization is consumed. This experiment generated zero images and stopped without a successor. Owned app services and the supplier relay are stopped, the borrowed image key is cleared, and data/evidence are preserved. No merge or deployment occurred. Evidence: `D:/Documents/ChatGPT/polaris-domestic-detail-isolation-20261018/shoe-controlled-once-20261019`. Another paid test requires separate authorization; do not infer it from this offline repair.

@@ -251,4 +251,10 @@ def test_provider_identity_schema_accepts_scoped_na_and_uncertainty():
     }
     assert not list(Draft202012Validator(schema).iter_errors(unknown))
     unknown["audit_complete"] = True
-    assert list(Draft202012Validator(schema).iter_errors(unknown))
+    # The provider only accepts an object at the schema root. Cross-field
+    # completeness is enforced by the server before any acceptance or repair.
+    from app.domestic_detail.identity_review import merge_identity_followup
+    from app.domestic_detail.review import DetailReviewError
+
+    with pytest.raises(DetailReviewError, match="complete scoped comparison"):
+        merge_identity_followup({}, unknown, "NO_VISIBLE_PRODUCT")

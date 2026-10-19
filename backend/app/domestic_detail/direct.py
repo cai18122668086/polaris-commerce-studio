@@ -67,14 +67,24 @@ def facts_for(request: Any) -> tuple[list[dict[str, Any]], list[str]]:
 
 def response_format(request: Any) -> dict[str, Any]:
     facts, _ = facts_for(request)
+    schema = contract().schema(request.page_count, [row["id"] for row in facts])
+    transitions = schema["properties"]["pair_transitions"]
+    transitions.pop("minItems")
+    transitions.pop("maxItems")
+    transitions["anyOf"] = [
+        {"minItems": length, "maxItems": length}
+        for length in (request.page_count // 2, request.page_count - 1)
+    ]
+    transitions["description"] = (
+        "Ordered transitions: one per two-screen pair, or one per adjacent "
+        "screen boundary across the whole page. Never mix these orders."
+    )
     return {
         "type": "json_schema",
         "json_schema": {
             "name": "website_detail_brief_v2",
             "strict": False,
-            "schema": contract().schema(
-                request.page_count, [row["id"] for row in facts]
-            ),
+            "schema": schema,
         },
     }
 
@@ -111,6 +121,20 @@ def prompt(request: Any) -> str:
     )
 
 
+def pair_brief(payload: dict[str, Any], count: int) -> dict[str, Any]:
+    """Project authored adjacent edges onto the four/five/six render seams.
+
+    For eight screens, render pairs 01+02, 03+04, 05+06, 07+08 use edges
+    0, 2, 4, 6. The original seven-edge reply stays in the immutable receipt.
+    No transition text is invented or repeated to fill missing entries.
+    """
+    value = deepcopy(payload)
+    transitions = value.get("pair_transitions")
+    if isinstance(transitions, list) and len(transitions) == count - 1:
+        value["pair_transitions"] = transitions[::2]
+    return value
+
+
 def errors(payload: object, request: Any) -> list[str]:
     from jsonschema import Draft202012Validator
 
@@ -122,15 +146,30 @@ def errors(payload: object, request: Any) -> list[str]:
     ]
     if structural:
         return structural
-    return list(contract().check_brief(payload, facts, required, request.page_count))
+    assert isinstance(payload, dict)
+    return list(
+        contract().check_brief(
+            pair_brief(payload, request.page_count), facts, required, request.page_count
+        )
+    )
 
 
 def build(payload: dict[str, Any], request: Any) -> dict[str, Any]:
     facts, required = facts_for(request)
     width, height = map(int, request.size.split("x"))
+    canonical = pair_brief(payload, request.page_count)
     value: dict[str, Any] = contract().authored_plan(
-        payload, facts, required, request.page_count, width, height
+        canonical, facts, required, request.page_count, width, height
     )
+    if canonical != payload:
+        from .plans import canonical_hash
+
+        value["website_brief_projection"] = {
+            "version": "adjacent-screen-edges-to-pair-seams-v1",
+            "source_brief_sha256": canonical_hash(payload),
+            "canonical_brief_sha256": canonical_hash(canonical),
+            "source_transition_indices": list(range(0, request.page_count - 1, 2)),
+        }
     value["product_intake"] = deepcopy(request.detail_intake)
     return value
 

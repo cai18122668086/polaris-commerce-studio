@@ -602,6 +602,10 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
     """Run the same native sales validator before spending on detailed pairs."""
     from ..xinghe_agent import _planner_response_format
 
+    if request.authoring_stage == "direct":
+        from .direct import errors
+
+        return [{"path": "/", "message": issue} for issue in errors(payload, request)]
     response_format = _planner_response_format(request)
     if request.authoring_stage == "story" and website.enabled(request):
         full = _planner_response_format(replace(
@@ -841,7 +845,7 @@ def recover_story(
     request: Any, source_root: Path, binding: Mapping[str, Any]
 ) -> dict[str, Any] | None:
     """Recover a story or pair from immutable replies on an explicit failed retry."""
-    if request.authoring_stage not in {"story", "pair"} or (
+    if request.authoring_stage not in {"story", "pair", "direct"} or (
         request.authoring_context or {}
     ).get("validation_errors"):
         return None

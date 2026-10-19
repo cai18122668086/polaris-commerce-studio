@@ -130,3 +130,25 @@ def test_confirmed_history_keeps_human_evidence_and_rejects_changed_truth():
             changed["source_conflicts"][0]["resolution"]["retained_fact_ids"] = ["O01"]
         with pytest.raises(DetailIntakeError, match="changed"):
             preserve_confirmed_history(changed, settings, resolution)
+
+
+def test_adjacent_edges_map_to_actual_pair_seams_without_rewriting(client):
+    from dataclasses import replace
+
+    planned(client, profile=direct.VERSION)
+    original_request = _gateway(client).planner_calls[-1]
+    for count in (8, 10, 12):
+        request = replace(original_request, page_count=count)
+        brief = direct.mock_brief(request)
+        pair_order = deepcopy(brief)
+        assert direct.errors(pair_order, request) == []
+        edges = [f"屏幕 {i + 1} 到 {i + 2} 的背景衔接" for i in range(count - 1)]
+        brief["pair_transitions"] = edges
+        assert direct.errors(brief, request) == []
+        plan = direct.build(brief, request)
+        assert brief["pair_transitions"] == edges
+        pairs = plan["output_strategy"]["continuous_pair_rendering"]["pair_ids"]
+        assert [pair["internal_seam_carrier"] for pair in pairs] == edges[::2]
+        direct.validate_plan(plan, count)
+        brief["pair_transitions"] = edges[:-1]
+        assert direct.errors(brief, request)

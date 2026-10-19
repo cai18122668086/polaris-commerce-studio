@@ -339,7 +339,16 @@ def build_native_input(
         "question_budget": 0,
         "conflict_policy": "BLOCK_PLAN_AND_BATCH_ASK",
     }
-    if validated.get("operating_analysis") is not None:
+    if settings.get("website_contract_version") == "WEBSITE_DIRECT_V2":
+        value["website_contract_version"] = "WEBSITE_DIRECT_V2"
+        value["identity_observations"] = deepcopy(validated["identity_observations"])
+    # Direct website plans carry the authored creative brief. Keep optional
+    # legacy sales ledgers in the original intake receipt, without activating
+    # their unrelated atomic-fact/depth gates in the native render input.
+    if (
+        settings.get("website_contract_version") != "WEBSITE_DIRECT_V2"
+        and validated.get("operating_analysis") is not None
+    ):
         value["operating_analysis"] = deepcopy(validated["operating_analysis"])
     return value
 

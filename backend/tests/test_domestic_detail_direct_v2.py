@@ -152,3 +152,39 @@ def test_adjacent_edges_map_to_actual_pair_seams_without_rewriting(client):
         direct.validate_plan(plan, count)
         brief["pair_transitions"] = edges[:-1]
         assert direct.errors(brief, request)
+
+
+def test_direct_input_preserves_observations_without_legacy_operating_gate(client):
+    from app.aurora_detail_runtime import build_native_input
+
+    planned(client, profile=direct.VERSION)
+    request = _gateway(client).planner_calls[-1]
+    intake = deepcopy(request.detail_intake)
+    intake["operating_analysis"] = {"retained_original_legacy_ledger": True}
+    originals = deepcopy(intake)
+    sources = [
+        {"id": source.asset_id, "role": source.source_role, "sha256": source.sha256}
+        for source in request.sources
+    ]
+    paths = [f"/original/{index}.png" for index, _ in enumerate(sources)]
+    value = build_native_input(
+        request.intake_settings,
+        product_images=sources,
+        image_paths=paths,
+        intake=intake,
+    )
+    assert "operating_analysis" not in value
+    assert value["identity_observations"] == intake["identity_observations"]
+    assert value["website_contract_version"] == direct.VERSION
+    assert intake == originals
+    assert value["verified_facts"] == [*intake["user_facts"], *intake["observed_facts"]]
+    legacy = dict(request.intake_settings)
+    legacy.pop("website_contract_version")
+    historical = build_native_input(
+        legacy,
+        product_images=sources,
+        image_paths=paths,
+        intake=intake,
+    )
+    assert historical["operating_analysis"] == intake["operating_analysis"]
+    assert "website_contract_version" not in historical

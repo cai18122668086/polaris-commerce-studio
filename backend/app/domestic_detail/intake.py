@@ -662,6 +662,13 @@ class IntakeStore:
                 continue
             old = json.loads(path.read_bytes()).get("binding", {})
             keys = set(self.binding) - {"sha256", "intake_runtime_sha256"}
+            if (self.binding.get("settings") or {}).get(
+                "website_contract_version"
+            ) == "WEBSITE_DIRECT_V2":
+                # An explicit failed retry revalidates original evidence under
+                # the current website contract; facts, sources, choice and
+                # supplier/model bindings must still match exactly.
+                keys.discard("skill_content_hash")
             if set(old) != set(self.binding) or any(
                 old.get(k) != self.binding.get(k) for k in keys
             ):

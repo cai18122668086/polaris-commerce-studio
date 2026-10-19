@@ -895,7 +895,10 @@ def recover_story(
         if (
             raw.get("phase") != binding["phase"]
             or raw.get("group_key") != binding["group_key"]
-            or raw.get("skill_content_hash") != binding["skill_content_hash"]
+            or (
+                request.authoring_stage != "direct"
+                and raw.get("skill_content_hash") != binding["skill_content_hash"]
+            )
             or raw.get("dispatch_route") != binding["dispatch_route"]
             or any(
                 canonical_hash(semantics.get(k)) != canonical_hash(current.get(k))

@@ -599,7 +599,11 @@ def cmd_lock_identity(args: argparse.Namespace) -> dict:
     identity = load_json(args.identity)
     validate_schema(identity, "identity.schema.json", "identity contract")
     require_fields(identity, ("canonical_name", "category", "reference_image_ids", "invariant_features", "allowed_states", "forbidden_mutations"), "identity")
-    _require_geometry_clauses(identity)
+    if session["input"].get("website_contract_version") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import validate_source_identity
+        validate_source_identity(session["input"], identity)
+    else:
+        _require_geometry_clauses(identity)
     if "uncertain_features" not in identity or not isinstance(identity["uncertain_features"], list):
         raise HarnessError("identity uncertain_features must be present as an array; it may be empty when no uncertainty remains")
     known_ids = {item["id"] for item in session["input"]["product_images"]}

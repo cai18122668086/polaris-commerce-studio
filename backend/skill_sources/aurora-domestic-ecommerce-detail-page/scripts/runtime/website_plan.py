@@ -18,6 +18,24 @@ ROLES = ("DOMINANT", "SUPPORTING", "IDENTITY_TOKEN_ONLY", "ABSENT")
 CAMERAS = ("wide", "medium", "close", "macro", "mixed")
 
 
+def validate_source_identity(raw: dict, identity: dict) -> None:
+    """Use four source-bound observations instead of category keyword scoring."""
+    from .state import HarnessError
+
+    observations = raw.get("identity_observations")
+    kinds = ["silhouette", "proportions", "parts", "color_material"]
+    known = {image["id"] for image in raw["product_images"]}
+    if not isinstance(observations, list) or len(observations) != len(kinds):
+        raise HarnessError("Website identity requires four source observations")
+    for kind, row in zip(kinds, observations, strict=True):
+        if not isinstance(row, dict) or row.get("kind") != kind or row.get("source_asset_id") not in known:
+            raise HarnessError("Website identity observation source or kind changed")
+        if not isinstance(row.get("region"), str) or not row["region"].strip() or not isinstance(row.get("text"), str) or len(row["text"].strip()) < 4:
+            raise HarnessError("Website identity needs concrete regions and descriptions")
+    if identity["invariant_features"] != [row["text"] for row in observations]:
+        raise HarnessError("Website identity must preserve the source observation texts")
+
+
 def schema(count: int, fact_ids: list[str]) -> dict:
     text = {"type": "string", "minLength": 1}
     screen = {

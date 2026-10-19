@@ -141,7 +141,13 @@ def generation_binding(
         "approval_document_sha256": aurora["approval_document_sha256"],
         "source_assets": assets,
     }
-    return {**value, "sha256": canonical_hash(value)}
+    current = {**value, "sha256": canonical_hash(value)}
+    if settings.get("website_contract_version") == "WEBSITE_DIRECT_V2":
+        from ..aurora_detail_runtime import detail_workspace
+
+        origin = payload["native_approval"]["source_job_id"]
+        return original_retry_scope(current, detail_workspace(origin))
+    return current
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -218,6 +224,45 @@ def original_retry_scope(
         )
     bind_workspace(source_workspace, original)
     return original
+
+
+def checkpoint_workspaces(workspace: Path, binding: Mapping[str, Any]) -> list[Path]:
+    """Resolve paid pixels through verified failed-retry checkpoint ancestry."""
+    roots: list[Path] = []
+    current = workspace
+    while True:
+        if current in roots:
+            raise DetailGenerationError(
+                "NATIVE_DETAIL_BINDING_INVALID", "Checkpoint ancestry contains a cycle"
+            )
+        bind_workspace(current, binding)
+        roots.append(current)
+        state = _read(current / "session.json")
+        source_id = state.get("checkpoint_source_job_id")
+        if not source_id:
+            return roots
+        if (
+            not isinstance(source_id, str)
+            or not source_id.startswith("job_")
+            or any(
+                not (char.isascii() and (char.isalnum() or char in "_-"))
+                for char in source_id
+            )
+        ):
+            raise DetailGenerationError(
+                "NATIVE_DETAIL_BINDING_INVALID", "Invalid checkpoint source owner"
+            )
+        origin = current.parent / source_id
+        if (
+            origin.is_symlink()
+            or origin.is_junction()
+            or origin.resolve().parent != workspace.resolve().parent
+        ):
+            raise DetailGenerationError(
+                "NATIVE_DETAIL_BINDING_INVALID",
+                "Checkpoint source escaped the job workspace",
+            )
+        current = origin
 
 
 def begin_invocation(

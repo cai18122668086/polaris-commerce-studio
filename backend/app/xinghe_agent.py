@@ -75,6 +75,7 @@ from .domestic_detail.generation import (
     begin_invocation,
     bind_native_contract,
     bind_workspace,
+    checkpoint_workspaces,
     finish_invocation,
     generation_binding,
     require_current_pipeline,
@@ -6448,7 +6449,7 @@ class XingheImageProvider:
                     "Confirmed generation context is missing",
                 )
             require_current_pipeline(job.configuration)
-            scope = generation_binding(
+            return generation_binding(
                 plan.payload,
                 job.configuration["settings"],
                 [
@@ -6463,13 +6464,6 @@ class XingheImageProvider:
                 group_key=str(request.configuration["item"]["group_key"]),
                 job_input=job.configuration.get("input") or {},
             )
-            if job.configuration["settings"].get("website_contract_version") == "WEBSITE_DIRECT_V2" and job.retry_scope == "failed" and job.retry_of_job_id:
-                source = db.get(JobRecord, job.retry_of_job_id)
-                if source is not None and source.workspace_id == job.workspace_id and source.configuration == job.configuration:
-                    from .domestic_detail.generation import original_retry_scope
-
-                    return original_retry_scope(scope, detail_workspace(source.id))
-            return scope
 
     @staticmethod
     def _reset_native_detail_generation(session_path: Path) -> None:
@@ -6580,7 +6574,8 @@ class XingheImageProvider:
             raise AuroraDetailHarnessError("AURORA_PAIR_CANVAS_STORAGE_UNAVAILABLE", "Checkpoint recovery requires durable storage")
         source_id = str(checkpoint.get("checkpoint_source_job_id") or request.job_id)
         group_key = str(configuration["group_key"])
-        for candidate_id in dict.fromkeys((request.job_id, source_id)):
+        workspaces = checkpoint_workspaces(session_path.parent, generation_scope)
+        for candidate_id in (root.name for root in workspaces):
             source_key = self._aurora_pair_canvas_object_key(request.workspace_id, candidate_id, group_key, pair_id)
             try:
                 payload = await self.storage.read_bytes(source_key)
@@ -6594,11 +6589,8 @@ class XingheImageProvider:
             break
         else:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_CANVAS_MISSING", "Accepted canvas is missing from durable storage")
-        origin_workspace = detail_workspace(
-            str(checkpoint.get("checkpoint_source_job_id") or request.job_id)
-        )
         lineage = verify_accepted_canvas(
-            list(dict.fromkeys((session_path.parent, origin_workspace))),
+            workspaces,
             generation_scope,
             pair_id=pair_id,
             artifact_sha256=hashlib.sha256(payload).hexdigest(),
@@ -6607,7 +6599,7 @@ class XingheImageProvider:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Stored canvas does not match its accepted audit")
         canvas = _artifact_from_bytes(payload, filename=f"{group_key}-{pair_id}-canvas.png", expected_size=str(configuration["pair_canvas_size"]), preserve_provider_artifact=True)
         try:
-            native_pixels = load_native_pair_pixels(lineage, list(dict.fromkeys((session_path.parent, origin_workspace))), group_key=group_key)
+            native_pixels = load_native_pair_pixels(lineage, workspaces, group_key=group_key)
         except DetailPixelError as exc:
             raise AuroraDetailHarnessError(exc.code, str(exc)) from exc
         if native_pixels.canvas.payload != payload:
@@ -6905,6 +6897,13 @@ class XingheImageProvider:
             str(Path(path).resolve()): source
             for path, source in zip(source_paths, sources, strict=True)
         }
+        source_by_id = {source.asset_id: source for source in sources}
+        for image in session_for_audit["input"]["product_images"]:
+            original = source_by_id.get(image["id"])
+            path = Path(image["path"])
+            if original is None or original.source_role != "product_reference" or hashlib.sha256(path.read_bytes()).hexdigest() != original.sha256:
+                raise AuroraDetailHarnessError("NATIVE_DETAIL_REFERENCE_MISMATCH", "Restored product reference differs from its approved original")
+            source_by_path[str(path.resolve())] = original
         for raw_path in native_request.get("reference_images") or []:
             path = Path(str(raw_path)).resolve()
             if path == Path(str(native_request.get("format_canvas") or "")).resolve():

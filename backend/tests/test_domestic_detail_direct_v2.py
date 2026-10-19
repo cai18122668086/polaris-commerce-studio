@@ -283,6 +283,17 @@ def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
         "succeeded"
     ] * 6
     assert len(_gateway(client).image_calls) - before == 3
+    original_ids = {
+        source.asset_id
+        for source in _gateway(client).image_calls[0].sources
+        if source.source_role == "product_reference"
+    }
+    for call in _gateway(client).image_calls[before:]:
+        assert {
+            source.asset_id
+            for source in call.sources
+            if source.source_role == "product_reference"
+        } == original_ids
     target_root = detail_workspace(target["id"])
     assert (
         json.loads((target_root / "generation-binding.json").read_bytes())
@@ -295,3 +306,49 @@ def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
                 == "b" * 64
             )
     assert json.loads(checkpoint_path.read_bytes()) == checkpoint
+    review = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target['id']}/detail-final-review"
+    )
+    assert review.status_code == 200, review.text
+    final = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target['id']}/finalize",
+        headers=idem(),
+        json={
+            "approval_text": "我已审阅恢复后的八张合成图片并确认交付",
+            "final_review_sha256": review.json()["sha256"],
+        },
+    )
+    assert final.status_code == 200, final.text
+    archive = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target['id']}/deliverables.zip"
+    )
+    assert archive.status_code == 200, archive.text
+    with ZipFile(BytesIO(archive.content)) as package:
+        assert (
+            len([name for name in package.namelist() if name.startswith("screens/")])
+            == 8
+        )
+    assert len(_gateway(client).image_calls) - before == 3
+
+
+def test_checkpoint_pixel_origins_follow_multiple_explicit_retries(tmp_path):
+    from app.domestic_detail.generation import (
+        DetailGenerationError,
+        checkpoint_workspaces,
+    )
+    from app.domestic_detail.plans import canonical_hash
+
+    binding = {"runtime_source_sha256": "a" * 64}
+    binding["sha256"] = canonical_hash(binding)
+    roots = [tmp_path / name for name in ("job_current", "job_parent", "job_original")]
+    for index, root in enumerate(roots):
+        root.mkdir()
+        (root / "generation-binding.json").write_text(json.dumps(binding))
+        state = {"checkpoint_source_job_id": roots[index + 1].name} if index < 2 else {}
+        (root / "session.json").write_text(json.dumps(state))
+    assert checkpoint_workspaces(roots[0], binding) == roots
+    (roots[-1] / "session.json").write_text(
+        json.dumps({"checkpoint_source_job_id": roots[0].name})
+    )
+    with pytest.raises(DetailGenerationError, match="cycle"):
+        checkpoint_workspaces(roots[0], binding)

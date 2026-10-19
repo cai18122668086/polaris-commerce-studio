@@ -12,6 +12,7 @@ from ..aurora_detail_runtime import AuroraDetailHarnessRunner
 from ..provider import ProviderArtifact
 from .generation import (
     DetailGenerationError,
+    checkpoint_workspaces,
     verify_accepted_canvas,
     verify_original_invocation,
 )
@@ -122,7 +123,7 @@ def resolve_native_edit_canvas(
                 raise ValueError(
                     "Repair canvas differs from the first current-cycle draft"
                 )
-            roots = [workspace]
+            roots = checkpoint_workspaces(workspace, binding)
             lineage = runner.run(
                 "inspect-pair-artifacts",
                 workspace,

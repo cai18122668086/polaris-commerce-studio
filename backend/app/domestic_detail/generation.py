@@ -192,6 +192,34 @@ def bind_workspace(
         )
 
 
+def original_retry_scope(
+    current: Mapping[str, Any], source_workspace: Path
+) -> dict[str, Any]:
+    """Reuse an approved website authority across an explicit failed retry.
+
+    Runtime fingerprints are historical provenance. Approval, plan, ordered
+    sources and all other scope fields still match exactly; new invocations
+    separately record the code that actually executes them.
+    """
+    path = source_workspace / "generation-binding.json"
+    if not path.exists():
+        return dict(current)
+    original = _read(path)
+    ignore = {"sha256", "runtime_source_sha256"}
+    if {k: v for k, v in current.items() if k not in ignore} != {
+        k: v for k, v in original.items() if k not in ignore
+    }:
+        return dict(current)
+    if original.get("sha256") != canonical_hash(
+        {k: v for k, v in original.items() if k != "sha256"}
+    ):
+        raise DetailGenerationError(
+            "NATIVE_DETAIL_BINDING_INVALID", "Original authority hash changed"
+        )
+    bind_workspace(source_workspace, original)
+    return original
+
+
 def begin_invocation(
     workspace: Path,
     binding: Mapping[str, Any],
@@ -220,6 +248,7 @@ def begin_invocation(
     envelope = {
         "version": BINDING_VERSION,
         "binding_sha256": binding["sha256"],
+        "execution_runtime_source_sha256": runtime_source_hash(),
         "pair_id": native_request.get("pair_id"),
         "native_request_sha256": canonical_hash(native_request),
         "native_request": dict(native_request),

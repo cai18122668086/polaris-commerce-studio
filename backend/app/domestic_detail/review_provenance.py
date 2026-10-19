@@ -67,7 +67,8 @@ def pair_review_contract(
     value = {
         **(
             {"review_profile": native["review_profile"]}
-            if "review_profile" in native else {}
+            if "review_profile" in native
+            else {}
         ),
         "pair_id": native.get("pair_id"),
         "module_ids": native.get("module_ids"),
@@ -285,6 +286,16 @@ def _verify_review_provenance(
         .content_hash,
         "review_runtime_sha256": review_runtime_hash(),
     }
+    if native.get("review_profile") == "WEBSITE_LEAN_V1":
+        # Verify original runtime provenance as original, then revalidate its
+        # unchanged pixel observations with the current six-check contract.
+        expected.pop("review_runtime_sha256")
+        if any(
+            not isinstance(row.get("review_runtime_sha256"), str)
+            or len(row["review_runtime_sha256"]) != 64
+            for row in bindings
+        ):
+            _invalid("Original website review runtime fingerprint is missing")
     initial = deepcopy(saved[0]["payload"])
     validate_pair_before_identity(
         initial,

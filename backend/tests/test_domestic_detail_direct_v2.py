@@ -205,3 +205,93 @@ def test_pair_and_identity_review_transport_has_supported_object_root():
         assert schema["type"] == "object"
         assert schema["properties"]
         assert not set(schema) & {"allOf", "anyOf", "oneOf", "enum", "const", "not"}
+
+
+def test_explicit_retry_keeps_original_authority_but_rejects_changed_scope(tmp_path):
+    from app.domestic_detail.generation import original_retry_scope
+    from app.domestic_detail.plans import canonical_hash
+
+    original = {
+        "runtime_source_sha256": "a" * 64,
+        "source_assets": ["original"],
+        "normalized_plan_sha256": "p" * 64,
+    }
+    original["sha256"] = canonical_hash(original)
+    (tmp_path / "generation-binding.json").write_text(json.dumps(original))
+    current = {**original, "runtime_source_sha256": "b" * 64}
+    current["sha256"] = canonical_hash(
+        {k: v for k, v in current.items() if k != "sha256"}
+    )
+    assert original_retry_scope(current, tmp_path) == original
+    changed = {**current, "source_assets": ["changed"]}
+    assert original_retry_scope(changed, tmp_path) == changed
+    assert json.loads((tmp_path / "generation-binding.json").read_bytes()) == original
+
+
+def test_direct_failed_retry_reuses_prefix_after_review_adapter_update(
+    client, monkeypatch
+):
+    from sqlalchemy import select
+
+    from app.domestic_detail import generation
+    from app.models import JobItemRecord, JobRecord, utc_now
+    from tests.test_api import dispatch_pending
+
+    job = planned(client, profile=direct.VERSION)
+    source = generate(client, job)
+    root = detail_workspace(job["id"])
+    checkpoint_path = root / "session.json"
+    checkpoint = json.loads(checkpoint_path.read_bytes())
+    checkpoint.update(state="AUTHORIZED", current_index=2)
+    for module in checkpoint["modules"][2:]:
+        module.update(
+            status="PENDING", accepted_asset=None, attempts=[], cycle_attempt_count=0
+        )
+    checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf8")
+    with client.app.state.session_factory() as db:
+        record = db.get(JobRecord, job["id"])
+        record.status, record.stage = "partial", "partial"
+        record.succeeded_item_count, record.failed_item_count = 2, 1
+        record.finished_at = utc_now()
+        items = db.scalars(
+            select(JobItemRecord)
+            .where(JobItemRecord.job_id == job["id"])
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        for index, item in enumerate(items[2:], 2):
+            item.status = "failed" if index == 2 else "skipped"
+            item.error_code = (
+                "AURORA_NATIVE_AUDIT_INVALID"
+                if index == 2
+                else "AURORA_DETAIL_SEQUENCE_HALTED"
+            )
+        db.commit()
+    before = len(_gateway(client).image_calls)
+    original_scope = json.loads((root / "generation-binding.json").read_bytes())
+    monkeypatch.setattr(generation, "runtime_source_hash", lambda: "b" * 64)
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{source['id']}/retry",
+        headers=idem(),
+        json={"scope": "failed"},
+    )
+    assert response.status_code == 201, response.text
+    target = response.json()
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target['id']}").json()
+    assert result["status"] == "awaiting_final_review", result
+    assert [item["status"] for item in result["items"]] == ["reused"] * 2 + [
+        "succeeded"
+    ] * 6
+    assert len(_gateway(client).image_calls) - before == 3
+    target_root = detail_workspace(target["id"])
+    assert (
+        json.loads((target_root / "generation-binding.json").read_bytes())
+        == original_scope
+    )
+    for path in (target_root / "generation-calls").glob("*.json"):
+        if not path.name.endswith(".completion.json"):
+            assert (
+                json.loads(path.read_bytes())["execution_runtime_source_sha256"]
+                == "b" * 64
+            )
+    assert json.loads(checkpoint_path.read_bytes()) == checkpoint

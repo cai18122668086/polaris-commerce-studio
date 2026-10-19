@@ -6448,7 +6448,7 @@ class XingheImageProvider:
                     "Confirmed generation context is missing",
                 )
             require_current_pipeline(job.configuration)
-            return generation_binding(
+            scope = generation_binding(
                 plan.payload,
                 job.configuration["settings"],
                 [
@@ -6463,6 +6463,13 @@ class XingheImageProvider:
                 group_key=str(request.configuration["item"]["group_key"]),
                 job_input=job.configuration.get("input") or {},
             )
+            if job.configuration["settings"].get("website_contract_version") == "WEBSITE_DIRECT_V2" and job.retry_scope == "failed" and job.retry_of_job_id:
+                source = db.get(JobRecord, job.retry_of_job_id)
+                if source is not None and source.workspace_id == job.workspace_id and source.configuration == job.configuration:
+                    from .domestic_detail.generation import original_retry_scope
+
+                    return original_retry_scope(scope, detail_workspace(source.id))
+            return scope
 
     @staticmethod
     def _reset_native_detail_generation(session_path: Path) -> None:

@@ -242,6 +242,22 @@ def _pair_observation(
         # still be asked once about the same pixels.
         schema["required"].remove("identity_silhouette")
         schema["properties"].pop("identity_silhouette")
+    if request.get("review_profile") == "WEBSITE_LEAN_V1":
+        from .website_review import OBSERVATIONS
+
+        allowed = {*OBSERVATIONS, "composition_observation", "brand_observation"}
+        for index, report in enumerate(value.get("module_judgments") or []):
+            observed = report.get("observations") if isinstance(report, dict) else None
+            if not isinstance(observed, dict):
+                continue
+            alias = observed.get("observed_complete_product_role")
+            if alias is not None and alias != observed.get("product_presence_observed"):
+                _invalid(
+                    f"/module_judgments/{index}/observations", "product roles disagree"
+                )
+            # Auxiliary legacy metadata is retained in the immutable original
+            # reply. It does not expand the six-check website rendering contract.
+            report["observations"] = {k: v for k, v in observed.items() if k in allowed}
     resolver = RefResolver(schema_path.as_uri(), schema)
     errors = sorted(
         Draft202012Validator(

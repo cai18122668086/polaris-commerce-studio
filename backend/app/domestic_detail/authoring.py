@@ -407,24 +407,47 @@ def prompt(request: Any) -> str:
         }
     if errors:
         stage_instruction = instruction
-        scope_instruction = (
-            "For this root-level relational error, return the COMPLETE stage JSON "
-            "required by the contract so dependent decisions can change together. "
-            if any(error["path"] == "/" for error in errors)
-            else "Return ONLY the sparse replacement JSON required by the contract, "
-            "not the whole campaign or whole pair. Omit unaffected properties. "
+        paths = {error["path"] for error in errors}
+        root_replacement = "/" in paths
+        whole_pair_replacement = request.authoring_stage == "pair" and (
+            "/modules" in paths
+            or (
+                len(request.authoring_target_ids) == 2
+                and all(f"/modules/{i}" in paths for i in range(2))
+            )
         )
+        full_stage_replacement = root_replacement or whole_pair_replacement
+        if root_replacement:
+            scope_instruction = (
+                "For this root-level relational error, return the COMPLETE stage JSON "
+                "required by the contract so dependent decisions can change together. "
+            )
+        elif whole_pair_replacement:
+            scope_instruction = (
+                "Return the COMPLETE two-screen pair JSON because the selected paths "
+                "replace the modules array or both complete module objects. Return "
+                "exactly the two target modules with all required rendering fields, "
+                "including already-valid proof, copy, typography and expression. "
+            )
+        else:
+            scope_instruction = (
+                "Return ONLY the sparse replacement JSON required by the contract, "
+                "not the whole campaign or whole pair. Omit unaffected properties. "
+            )
         instruction = (
             "Repair the supplied prior_response using the listed validation errors. "
             + scope_instruction
-            + "A null array placeholder means leave that original element unchanged; "
+            + "Every selected object or array is a COMPLETE replacement subtree, "
+            "not a missing-field patch. Include all its required members and copy "
+            "unchanged authorized values from prior_response. "
+            "A null array placeholder means leave that original element unchanged; "
             "it is not a replacement or deletion. The server merges only the listed "
             "invalid paths and then validates the complete result. Use active Fxx/Oxx "
             "fact IDs from locked_intake; preserve all valid creative decisions. "
             "The campaign must-remember facts must equal its primary facts after "
             "correcting references. Never invent source-fact mappings from ID suffixes."
         )
-        if any(error["path"] == "/" for error in errors):
+        if full_stage_replacement:
             instruction += "\nComplete-stage authoring rules: " + stage_instruction
     from ..xinghe_agent import _planner_response_format
 

@@ -842,3 +842,54 @@ def test_sparse_correction_only_receipt_restores_original_request_prior(
     changed_semantics["product_information"] = changed.product_information
     assert authoring.recover_story(changed, only_correction, changed_binding) is None
     assert not gateway.image_calls
+
+
+@pytest.mark.parametrize("scope", ["whole_array", "whole_objects"])
+def test_complete_pair_correction_prompt_matches_replacement_contract(
+    client, monkeypatch, scope
+):
+    gateway = _gateway(client)
+    original = gateway.plan
+    observed = []
+
+    async def invalid_pair_container(value):
+        result = await original(value)
+        if value.authoring_stage != "pair" or value.authoring_target_ids != (
+            "M01", "M02"
+        ):
+            return result
+        payload = deepcopy(result.payload)
+        errors = (value.authoring_context or {}).get("validation_errors")
+        if errors:
+            observed.extend(errors)
+            instruction = authoring.prompt(value)
+            assert "COMPLETE two-screen pair JSON" in instruction
+            assert "not the whole campaign or whole pair" not in instruction
+            assert "Complete-stage authoring rules" in instruction
+            assert "COMPLETE replacement subtree" in instruction
+            schema = _planner_response_format(value)["json_schema"]["schema"]
+            modules = schema["properties"]["modules"]
+            assert modules["minItems"] == modules["maxItems"] == 2
+            assert all(
+                "proof" in slot["required"] and "typography" in slot["required"]
+                for slot in modules["prefixItems"]
+            )
+            assert not authoring.errors_for(payload, _planner_response_format(value))
+        elif scope == "whole_array":
+            payload["modules"].append(deepcopy(payload["modules"][0]))
+        else:
+            payload["modules"] = [{"id": module["id"]} for module in payload["modules"]]
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", invalid_pair_container)
+    source = upload_asset(client, filename="whole-pair-container-correction.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert observed
+    assert result["status"] == "awaiting_confirmation", result.get("error_message")
+    assert result["plan"]["payload"]["native_approval"]["document_sha256"]
+    assert len(gateway.planner_calls) == 7
+    assert not gateway.image_calls

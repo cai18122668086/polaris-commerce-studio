@@ -1,9 +1,9 @@
 """The small website brief reaches the existing native generation/delivery path."""
 
 import json
+from copy import deepcopy
 from io import BytesIO
 from zipfile import ZipFile
-from copy import deepcopy
 
 from app.aurora_detail_runtime import detail_workspace
 from app.domestic_detail import direct
@@ -43,7 +43,10 @@ def test_direct_brief_compiles_once_and_persists_four_native_pairs(client):
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/finalize",
         headers=idem(),
         json={
-            "approval_text": "我已逐屏审阅本次合成任务的最终结果，并接受明确列出的残差。",
+            "approval_text": (
+                "我已逐屏审阅本次合成任务的最终结果，"
+                "并接受明确列出的残差。"
+            ),
             "final_review_sha256": response.json()["sha256"],
         },
     )

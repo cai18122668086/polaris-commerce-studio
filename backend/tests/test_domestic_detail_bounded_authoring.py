@@ -695,3 +695,55 @@ def test_source_structure_facts_are_given_to_native_preflight(client):
         for e in issues
     )
     assert payload["formula_split_contract"]["evaluated_claims"] == []
+
+
+@pytest.mark.parametrize("complete_correction", [False, True])
+def test_unmapped_decision_jobs_are_localized_with_other_errors(
+    client, monkeypatch, complete_correction
+):
+    gateway = _gateway(client)
+    original = gateway.plan
+    observed = []
+
+    async def missing_job_map(value):
+        result = await original(value)
+        if value.authoring_stage != "story":
+            return result
+        payload = deepcopy(result.payload)
+        errors = (value.authoring_context or {}).get("validation_errors")
+        if errors:
+            observed.extend(errors)
+            mapping = next(
+                e for e in errors
+                if e["path"] == "/selling_point_depth_contract/claim_depth/0"
+            )
+            assert mapping["missing_jobs"]
+            assert any(e["constraint"] == "enum" for e in errors)
+            assert not any(e["path"] == "/" for e in errors)
+            assert "not the whole campaign" in authoring.prompt(value)
+            assert "multiple job rows" in authoring.prompt(value)
+            assert set(payload) == {"modules", "selling_point_depth_contract"}
+            if complete_correction:
+                return result
+        else:
+            payload["modules"][0]["lead_claim_id"] = "C99"
+        payload["selling_point_depth_contract"]["claim_depth"][0]["module_jobs"].pop()
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", missing_job_map)
+    source = upload_asset(client, filename="missing-decision-job-map.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert observed
+    if complete_correction:
+        assert result["status"] == "awaiting_confirmation", result.get("error_message")
+        assert result["plan"]["payload"]["native_approval"]["document_sha256"]
+        assert len(gateway.planner_calls) == 7
+    else:
+        assert result["status"] == "failed"
+        assert not any(c.authoring_stage == "pair" for c in gateway.planner_calls)
+        assert len(gateway.planner_calls) == 3
+    assert not gateway.image_calls

@@ -346,7 +346,11 @@ def prompt(request: Any) -> str:
             "screen_count. Never emit rejected alternatives. All claim references "
             "must use active Fxx/Oxx fact IDs from locked_intake, never invented Cxx "
             "aliases. primary_claim_ids and must_remember_claim_ids must be identical; "
-            "claim_depth accounts for that exact set, all DEEP. Every dedicated module "
+            "claim_depth accounts for that exact set, all DEEP. For every claim_depth "
+            "entry, set(module_jobs[].module_id) must equal set(scheduled_module_ids), "
+            "and set(module_jobs[].job) must equal set(required_decision_jobs). Map "
+            "every listed decision job explicitly; one module may have multiple "
+            "job rows. Do not list unassigned decision jobs. Every dedicated module "
             "must lead with that same fact ID. Recall proof-map keys must use those "
             "same verified IDs. formula_split_contract.evaluated_claims must account "
             "exactly once for each INGREDIENT_FORMULA or STRUCTURE_COMPONENT fact "
@@ -535,6 +539,44 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
                         ),
                     }
                 )
+            # These native cross-field equalities remain meaningful when an
+            # unrelated schema error exists. Report every affected claim at once
+            # and replace its authored entry, never invent module duties locally.
+            for index, item in enumerate(entries if isinstance(entries, list) else []):
+                if not isinstance(item, Mapping):
+                    continue
+                mapped = item.get("module_jobs")
+                jobs = item.get("required_decision_jobs")
+                scheduled = item.get("scheduled_module_ids")
+                if not (
+                    isinstance(mapped, list)
+                    and all(
+                        isinstance(row, Mapping)
+                        and isinstance(row.get("module_id"), str)
+                        and isinstance(row.get("job"), str)
+                        for row in mapped
+                    )
+                    and isinstance(jobs, list)
+                    and isinstance(scheduled, list)
+                    and all(isinstance(value, str) for value in jobs + scheduled)
+                ):
+                    continue
+                mapped_jobs = {row["job"] for row in mapped}
+                mapped_modules = {row["module_id"] for row in mapped}
+                if mapped_jobs != set(jobs) or mapped_modules != set(scheduled):
+                    issues.append({
+                        "path": f"/selling_point_depth_contract/claim_depth/{index}",
+                        "constraint": "native_sales_depth",
+                        "message": (
+                            "module_jobs must exactly explain scheduled modules and "
+                            "required decision jobs; map every listed job explicitly. "
+                            "One module may have multiple job rows."
+                        ),
+                        "missing_jobs": sorted(set(jobs) - mapped_jobs),
+                        "unexpected_jobs": sorted(mapped_jobs - set(jobs)),
+                        "missing_modules": sorted(set(scheduled) - mapped_modules),
+                        "unexpected_modules": sorted(mapped_modules - set(scheduled)),
+                    })
         if isinstance(depth, Mapping) and isinstance(recall, Mapping):
             primary = depth.get("primary_claim_ids")
             remembered = recall.get("must_remember_claim_ids")

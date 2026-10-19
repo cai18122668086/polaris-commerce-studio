@@ -531,6 +531,10 @@ def _derive_module(session: dict, raw: dict, order: int, module_count: int, plan
 
 def normalize_plan(session: dict, raw_plan: dict) -> dict:
     """Expand a v4.3 compact authoring plan into the runtime contract."""
+    if raw_plan.get("plan_format") == "WEBSITE_DIRECT_V2":
+        from .website_plan import compile_native
+
+        return compile_native(session, raw_plan)
     if raw_plan.get("plan_format") not in COMPATIBLE_COMPACT_PLAN_FORMATS:
         if str(raw_plan.get("plan_format", "")).startswith("COMPACT_"):
             raise HarnessError("Only COMPACT_V1_3 is supported by Skill v4.3; recompile the plan")

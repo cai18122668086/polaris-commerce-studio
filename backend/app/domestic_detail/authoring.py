@@ -364,6 +364,10 @@ def prompt_contract(schema: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def prompt(request: Any) -> str:
+    if request.authoring_stage == "direct":
+        from .direct import prompt as direct_prompt
+
+        return direct_prompt(request)
     context = deepcopy(request.authoring_context or {})
     errors = context.pop("validation_errors", None)
     if request.authoring_stage == "story":
@@ -995,6 +999,10 @@ def recover_story(
 
 def fake_phase(payload: Mapping[str, Any], request: Any) -> dict[str, Any]:
     """Project the explicit synthetic fixture through the real stage schemas."""
+    if request.authoring_stage == "direct":
+        from .direct import mock_brief
+
+        return mock_brief(request)
     from .mock_intake import bounded_mock_campaign
 
     value = bounded_mock_campaign(payload, request.detail_intake)
@@ -1031,6 +1039,10 @@ def fake_phase(payload: Mapping[str, Any], request: Any) -> dict[str, Any]:
 async def complete(
     coordinator: Any, request: Any, result: Any, results: list[Any]
 ) -> dict[str, Any]:
+    if request.authoring_stage == "direct":
+        from .direct import complete as direct_complete
+
+        return await direct_complete(coordinator, request, result, results)
     # Local import avoids a module-load cycle with the shared gateway.
     from ..xinghe_agent import (
         AuroraDetailHarnessError,

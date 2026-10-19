@@ -97,6 +97,10 @@ def compile_prompt(
     Internal IDs, workflow transitions, enum labels and raw user feedback deliberately
     stay in the request envelope and never enter the image model prompt.
     """
+    if module["plan"].get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from .website_plan import screen_prompt
+
+        return screen_prompt(session, module, pair_window, repair)
     facts = {item["id"]: item for item in session["input"].get("verified_facts", [])}
     plan = effective_plan(module)
     fact_ids = [plan["lead_claim_id"]] + list(plan.get("supporting_claim_ids", []))
@@ -722,6 +726,10 @@ def compile_pair_prompt(
     """
     if len(modules) != 2:
         raise HarnessError("compile_pair_prompt requires exactly two screen contracts")
+    if session["plan"].get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from .website_plan import pair_prompt
+
+        return pair_prompt(session, modules, repair)
     output = modules[0]["plan"]["output"]
     width = int(output["width_px"])
     height = int(output["height_px"])

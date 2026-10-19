@@ -26,7 +26,7 @@ def explicit_synthetic_storage(client, monkeypatch):
     )
 
 
-def planned(client):
+def planned(client, profile=website_contract.PROFILE):
     source = upload_asset(client, filename="website-v1-product.png")
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
@@ -47,7 +47,7 @@ def planned(client):
                 "page_count": 8,
                 "selling_points": ["合成商品可见外观", "合成商品局部结构"],
                 "brandless_confirmation": "测试商品无品牌，不添加独立标志",
-                "website_contract_version": website_contract.PROFILE,
+                "website_contract_version": profile,
             },
         },
     )

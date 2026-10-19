@@ -799,6 +799,10 @@ def _preflight_authoring_plan(session: dict, raw_plan: dict) -> dict:
     authoring normalization may add runtime fields, while original replies remain
     immutable. Strict validate_plan still runs before approval is persisted.
     """
+    if raw_plan.get("plan_format") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import compile_native
+
+        return compile_native(session, raw_plan)
     errors: list[str] = []
     try:
         validate_schema(raw_plan, "compact-detail-plan.schema.json", "compact plan")
@@ -937,6 +941,16 @@ def validate_reference_expression_system(session: dict, plan: dict, fact_ids: se
 
 
 def validate_plan(session: dict, plan: dict) -> None:
+    if plan.get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import compile_native
+
+        if session.get("conflict_checkpoint", {}).get("required"):
+            raise HarnessError("Resolve product source conflicts before planning")
+        if plan != compile_native(session, plan["website_source_plan"]):
+            raise HarnessError("Compiled website plan differs from its facts or approved brief")
+        for module in plan["modules"]:
+            _require_module_logo_policy(session, module)
+        return
     if any(item.get("status") == "UNRESOLVED" for item in session["input"].get("source_conflicts", [])):
         raise HarnessError("Full planning is forbidden while product-source conflicts remain unresolved")
     require_fields(plan, ("campaign_thesis", "dominant_decision_type", "output_strategy", "reference_expression_system", "style_constitution", "series_visual_dna", "typography_rhythm", "modules"), "plan")
@@ -1539,8 +1553,9 @@ def cmd_compile_plan(args: argparse.Namespace) -> dict:
     session["current_index"] = 0
     session["state"] = "AWAITING_PLAN_APPROVAL"
     approval_markdown = _approval_markdown(session)
-    grouping_markdown = _pair_grouping_markdown(session)
-    approval_markdown = approval_markdown.rstrip() + "\n\n" + grouping_markdown.lstrip()
+    if plan.get("planning_mode") != "WEBSITE_DIRECT_V2":
+        grouping_markdown = _pair_grouping_markdown(session)
+        approval_markdown = approval_markdown.rstrip() + "\n\n" + grouping_markdown.lstrip()
     _persist_approval_document(session, args.session, approval_markdown)
     raw_bytes = len(json.dumps(raw_plan, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     compiled_bytes = len(json.dumps(plan, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
@@ -2711,6 +2726,10 @@ def _approval_packet(plan: dict) -> dict:
 
 
 def _approval_markdown(session: dict) -> str:
+    if session["plan"].get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import approval_markdown
+
+        return approval_markdown(session)
     plan = session["plan"]
     input_data = session["input"]
     strategy = plan["output_strategy"]

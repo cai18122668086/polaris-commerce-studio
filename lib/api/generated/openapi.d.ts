@@ -2341,7 +2341,7 @@ export interface components {
             /** Verified Facts */
             verified_facts?: string[];
             /** Website Contract Version */
-            website_contract_version?: "WEBSITE_LEAN_V1" | null;
+            website_contract_version?: ("WEBSITE_LEAN_V1" | "WEBSITE_DIRECT_V2") | null;
         };
         /** DetailPackInput */
         DetailPackInput: {

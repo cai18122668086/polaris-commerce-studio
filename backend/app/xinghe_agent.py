@@ -3460,6 +3460,10 @@ class XinghePlanningCoordinator:
         )
 
     def _bounded_authoring_request(self, request: PlannerRequest) -> PlannerRequest:
+        from .domestic_detail import direct
+
+        if direct.enabled(request):
+            return replace(request, authoring_stage="direct", system_prompt=direct.SYSTEM)
         return replace(request, authoring_stage="story",
             system_prompt=authoring.system_prompt(self.skill_root, stage="story"))
 
@@ -10378,6 +10382,10 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.authoring_stage == "direct":
+        from .domestic_detail.direct import response_format
+
+        return response_format(request)
     if request.authoring_stage:
         full = _planner_response_format(replace(request, authoring_stage="",
             planning_profile="aurora_domestic_detail"))
@@ -12282,6 +12290,14 @@ def validate_aurora_domestic_plan(
             "Aurora domestic detail requires 8, 10, or 12 modules.",
         )
     root = dict(_require_mapping(payload, "AURORA_PLAN_SCHEMA_INVALID", path="/"))
+    if root.get("plan_format") == "WEBSITE_DIRECT_V2":
+        from .domestic_detail.direct import validate_plan
+
+        try:
+            validate_plan(root, page_count)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise XingheAgentError("WEBSITE_DETAIL_PLAN_INVALID", str(exc)) from exc
+        return _project_aurora_plan(root)
     # These three values are protocol constants owned by the installed skill,
     # not product claims. Fill them only when the planner omits them. A wrong
     # explicit value still fails schema validation.
@@ -12583,6 +12599,12 @@ def validate_aurora_domestic_plan(
                     "actual_module_ids": pair.get("module_ids"),
                     "message": f"P{index:02d} must use {expected}; align its seam carrier, source/target regions and geometry with these two authored module duties."}],
             )
+    return _project_aurora_plan(root)
+
+
+def _project_aurora_plan(root: Mapping[str, Any]) -> dict[str, Any]:
+    modules = root["modules"]
+    pair_contract = root["output_strategy"]["continuous_pair_rendering"]
     projected_screens: list[dict[str, Any]] = []
     for module in modules:
         module = _require_mapping(module, "AURORA_PLAN_SCHEMA_INVALID")

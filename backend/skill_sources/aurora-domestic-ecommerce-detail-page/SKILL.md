@@ -653,3 +653,19 @@ Long-page preview and audit remain optional. A consumer must preserve original m
 `fork-campaign-review --session <new-session.json> --source-session <owned-source-snapshot.json> --source-session-sha256 <sha256>` creates a separate review snapshot of an accepted campaign. The caller must first verify original C4 review provenance and durable pixels, then preserve the source session's exact bytes in the new owned workspace. The command checks the pinned version, accepted inventory, source byte hash and absence of an unfinished generation. It preserves all accepted modules, identities, facts, original approval and audit references, and writes only the new review session. It clears copied assembly/final controls so optional preview/audit can run in that workspace; it never calls a model, redraws images or grants additional automatic-delivery authority. Repeating the same fork verifies and reuses the existing snapshot without rewriting it.
 
 Native command failures preserve the original `error` text and additionally report `error_type` plus `failure_kind` (`LOCAL_IO` or `CONTRACT_REJECTION`) on stderr. A consumer must keep local storage failure distinct from rejected observations; neither condition grants visual acceptance or another paid request.
+
+
+## Website direct planning v2
+
+Website requests selecting `WEBSITE_DIRECT_V2` use the small shared contract in
+`scripts/runtime/website_plan.py`: one observed intake, one whole-page creative
+brief, deterministic native compilation, plan approval, sequential continuous
+pairs, fixed slices and the existing six-check website pixel profile. The brief
+keeps real fact IDs, short approved copy, visual direction, composition, camera,
+product presence and one transition per pair. Do not create pain, formula,
+primary-depth or recall ledgers or issue separate pair-completion planning calls.
+User facts must be represented; unused photo observations remain identity evidence
+and do not become extra independent campaigns. Product truth, identity, dimensions,
+approval bindings, original provider outcomes and the one-repair limit remain.
+This version replaces the ordinary website planning workload, while historical
+contracts and standalone route-aware operation retain their existing behavior.

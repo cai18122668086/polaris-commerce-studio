@@ -20,6 +20,8 @@ def normalize_native_plan_for_harness(plan: Mapping[str, Any]) -> dict[str, Any]
     """
 
     normalized = json.loads(json.dumps(plan, ensure_ascii=False))
+    if normalized.get("plan_format") == "WEBSITE_DIRECT_V2":
+        return normalized
     modules = normalized.get("modules")
     if not isinstance(modules, list):
         return normalized

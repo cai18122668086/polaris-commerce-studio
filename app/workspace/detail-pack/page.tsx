@@ -132,6 +132,7 @@ export default function DetailPackPage() {
   const finalizeJob = useFinalizeJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
   const isNativeDetail = job.data?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1";
+  const isDirectWebsiteDetail = (job.data?.configuration.settings as Record<string, unknown> | undefined)?.website_contract_version === "WEBSITE_DIRECT_V2";
   const activeCampaignChoice = campaignChoice?.workspaceId === workspace?.id && campaignChoice?.sourceId === jobId && job.data?.status !== "completed" ? campaignChoice.selection : undefined;
   const finalReview = useDomesticDetailFinalReview(workspace?.id, job.data, activeCampaignChoice);
   const currentFinalReview = isCurrentFinalReview(finalReview.data, jobId, job.data?.expected_item_count ?? 0) ? finalReview.data : undefined;
@@ -229,7 +230,7 @@ export default function DetailPackPage() {
       page_count: pageCount,
       language,
       market_region: marketRegion,
-      website_contract_version: marketRegion === "domestic" ? "WEBSITE_LEAN_V1" as const : undefined,
+      website_contract_version: marketRegion === "domestic" ? "WEBSITE_DIRECT_V2" as const : undefined,
       category: category.trim() || undefined,
       target_buyer: targetBuyer.trim() || undefined,
       // Aurora v4.3 requires explicit approval of the complete campaign
@@ -351,7 +352,7 @@ export default function DetailPackPage() {
 
           {job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && (!isNativeDetail || nativeApproval) && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
 
-          {job.data?.id === jobId && isNativeDetail && job.data.status === "awaiting_confirmation" && job.data.plan?.validation_status === "valid" && <AutomaticDeliveryChoice requested={Boolean(automaticRequested)} quote={automaticQuote.data} selected={automaticConsent} busy={automaticQuote.isFetching} error={automaticQuote.error ?? undefined} onChange={(requested, authorization) => {
+          {job.data?.id === jobId && isNativeDetail && !isDirectWebsiteDetail && job.data.status === "awaiting_confirmation" && job.data.plan?.validation_status === "valid" && <AutomaticDeliveryChoice requested={Boolean(automaticRequested)} quote={automaticQuote.data} selected={automaticConsent} busy={automaticQuote.isFetching} error={automaticQuote.error ?? undefined} onChange={(requested, authorization) => {
             setReviewedApprovalKey("");
             setAutomaticChoice({ scope: automaticScope, requested, authorization });
           }} />}
@@ -366,12 +367,12 @@ export default function DetailPackPage() {
           {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>
             {finalReview.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在核对当前成图和审核记录…</p></div>}
             {finalReview.error && <div className="api-state api-state--error" role="alert"><p>{errorMessage(finalReview.error)}</p><button onClick={() => void finalReview.refetch()}>重新核对审阅内容</button></div>}
-            {job.data && <DomesticDetailCampaignReview key={`${workspace?.id}:${jobId}`} workspaceId={workspace?.id} source={job.data} fingerprint={currentFinalReview?.sha256} selected={activeCampaignChoice} canAttach={!originalAutomaticAuthority} onSelection={selection => {
+            {job.data && !isDirectWebsiteDetail && <DomesticDetailCampaignReview key={`${workspace?.id}:${jobId}`} workspaceId={workspace?.id} source={job.data} fingerprint={currentFinalReview?.sha256} selected={activeCampaignChoice} canAttach={!originalAutomaticAuthority} onSelection={selection => {
               setReviewedFinalKey("");
               setCampaignChoice(selection ? { workspaceId: workspace?.id, sourceId: jobId, selection } : undefined);
             }} />}
             {currentFinalReview && <DomesticDetailFinalReview key={finalKey} review={currentFinalReview} workspaceId={workspace?.id} reviewed={finalReviewed} onReviewed={checked => setReviewedFinalKey(checked ? finalKey : "")} completed={job.data?.status === "completed"} />}
-            {currentFinalReview && workspace?.id && <DomesticDetailLocalRevision key={`revision:${finalKey}`} workspaceId={workspace.id} review={currentFinalReview} />}
+            {currentFinalReview && workspace?.id && !isDirectWebsiteDetail && <DomesticDetailLocalRevision key={`revision:${finalKey}`} workspaceId={workspace.id} review={currentFinalReview} />}
           </>}
           {job.data?.status === "completed" && workflow.mode === "mock" && resultAssets.length === 0 && <div className="api-state"><ImagePlus size={22} /><p>任务流程已完成，当前生成服务未返回图片结果。</p></div>}
 

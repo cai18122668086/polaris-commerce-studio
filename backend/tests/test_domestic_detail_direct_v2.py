@@ -188,3 +188,20 @@ def test_direct_input_preserves_observations_without_legacy_operating_gate(clien
     )
     assert historical["operating_analysis"] == intake["operating_analysis"]
     assert "website_contract_version" not in historical
+
+
+def test_pair_and_identity_review_transport_has_supported_object_root():
+    from types import SimpleNamespace
+
+    from app.xinghe_agent import _planner_response_format
+
+    for profile in ("aurora_detail_pair_audit", "aurora_detail_identity_audit"):
+        request = SimpleNamespace(
+            authoring_stage="",
+            planning_profile=profile,
+            product_information=(json.dumps({"review_profile": "WEBSITE_LEAN_V1"}),),
+        )
+        schema = _planner_response_format(request)["json_schema"]["schema"]
+        assert schema["type"] == "object"
+        assert schema["properties"]
+        assert not set(schema) & {"allOf", "anyOf", "oneOf", "enum", "const", "not"}

@@ -10470,6 +10470,9 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             schema["properties"]["visible_evidence"] = {"type": "string"}
             for name in ("shape_consistent", "colorway_consistent", "texture_consistent"):
                 schema["properties"][name] = {"oneOf": [{"type": ["boolean", "null"]}, {"const": "NOT_APPLICABLE"}]}
+        # The provider requires an object at the response root. Conditional
+        # audit rules remain in the bundled schemas and server-side validators.
+        schema.pop("allOf", None)
         return {
             "type": "json_schema",
             "json_schema": {

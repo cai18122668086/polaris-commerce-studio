@@ -230,11 +230,10 @@ def _pair_observation(
             {"visible_evidence": item} if isinstance(item, str) else item
             for item in failures
         ]
-    schema_path = (
-        default_skill_root("aurora-domestic-ecommerce-detail-page")
-        / ("schemas/pair-judgment-website-v1.schema.json"
-           if request.get("review_profile") == "WEBSITE_LEAN_V1"
-           else "schemas/pair-judgment.schema.json")
+    schema_path = default_skill_root("aurora-domestic-ecommerce-detail-page") / (
+        "schemas/pair-judgment-website-v1.schema.json"
+        if request.get("review_profile") == "WEBSITE_LEAN_V1"
+        else "schemas/pair-judgment.schema.json"
     )
     schema = json.loads(schema_path.read_bytes())
     if identity_pending:
@@ -284,8 +283,14 @@ def _pair_observation(
     if binding["visual_inspection_output"] in (None, "", {}, []):
         _invalid("/artifact_binding/visual_inspection_output", "inspection is absent")
     checks = value["checks"]
-    if any(name not in checks for name in PAIR_CHECKS):
-        _invalid("/checks", "all nine explicit pair observations are required")
+    website = request.get("review_profile") == "WEBSITE_LEAN_V1"
+    required_checks: tuple[str, ...] = PAIR_CHECKS
+    if website:
+        from .website_review import CHECKS
+
+        required_checks = CHECKS
+    if any(name not in checks for name in required_checks):
+        _invalid("/checks", "all explicit pair observations are required")
     seam = value["internal_seam_evidence"]
     expected_method = (request.get("pair_render") or {}).get("internal_seam_method_id")
     if not expected_method or seam["method_id"] != expected_method:
@@ -346,9 +351,13 @@ def _pair_observation(
         _invalid("/status", "PASS contradicts a failing atomic module")
     information = value.get("information_audit")
     if not isinstance(information, dict):
-        _invalid("/information_audit", "explicit information observations are required")
+        if not website:
+            _invalid(
+                "/information_audit", "explicit information observations are required"
+            )
+        information = {}
     negative = (
-        any(checks[name]["pass"] is False for name in PAIR_CHECKS)
+        any(checks[name]["pass"] is False for name in required_checks)
         or any(
             (value.get("identity_silhouette") or {}).get(name) is False
             for name in IDENTITY_KEYS
@@ -359,17 +368,22 @@ def _pair_observation(
             not row["duty_visible"] or not row["selling_points_visible"]
             for row in coverage
         )
-        or any(
-            information[name] is False
-            for name in (
-                "new_information_visible",
-                "hero_subject_clear",
-                "purchase_judgment_enabled",
-                "detail_page_not_posterized",
+        or (
+            not website
+            and (
+                any(
+                    information[name] is False
+                    for name in (
+                        "new_information_visible",
+                        "hero_subject_clear",
+                        "purchase_judgment_enabled",
+                        "detail_page_not_posterized",
+                    )
+                )
+                or information["repetition_without_progression"] is True
+                or information["co_equal_hero_detected"] is True
             )
         )
-        or information["repetition_without_progression"] is True
-        or information["co_equal_hero_detected"] is True
         or bool(value["unauthorized_ocr_text"] or value["forbidden_text_hits"])
     )
     if value["status"] == "PASS" and (negative or value["material_failures"]):

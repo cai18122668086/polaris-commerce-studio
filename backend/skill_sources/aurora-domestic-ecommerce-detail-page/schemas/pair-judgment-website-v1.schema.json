@@ -83,7 +83,15 @@
             "minLength": 8
           }
         }
-      }
+      },
+      "required": [
+        "identity",
+        "facts",
+        "legibility",
+        "approved_plan_fidelity",
+        "composition_and_continuity",
+        "proof_integrity"
+      ]
     },
     "screen_coverage": {
       "type": "array",

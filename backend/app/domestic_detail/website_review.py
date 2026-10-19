@@ -54,8 +54,7 @@ preferences are advisory. Missing product, unsupported claim, essential illegibi
 lost screen duty, misleading proof, broken geometry or a content-destroying seam
 is material. Never fill an observation from the approved plan.
 Preserve exact module order, canvas/slice hashes, crop boxes and contract hashes
-from the context. Record artifact_binding and its same raw OCR. There are nine
-joint pair checks and six core atomic checks. A PASS cannot hide a false check or
+from the context. Record artifact_binding and its same raw OCR. Both the joint pair checks and each screen use these same six core checks. A PASS cannot hide a false check or
 material failure. Compare identity only within actual visible scope: full product,
 identity token or no visible product, with NOT_APPLICABLE for unseen comparisons.
 If an observation is unknown, audit_complete=false and describe uncertainty; it

@@ -6942,6 +6942,10 @@ class XingheImageProvider:
             key: {"pass": True, "visible_evidence": evidence}
             for key in ("identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression")
         }
+        if native_request.get("review_profile") == "WEBSITE_LEAN_V1":
+            from .domestic_detail.website_review import CHECKS
+
+            checks = {key: {"pass": True, "visible_evidence": evidence} for key in CHECKS}
         reports = synthetic_module_judgments(native_request, artifact.sha256, datetime.now(UTC).isoformat())
         scope = observed_pair_scope(reports)
         presence_for_scope = {"VISIBLE_COMPLETE_PRODUCT": "DOMINANT", "VISIBLE_IDENTITY_TOKEN": "IDENTITY_TOKEN_ONLY", "NO_VISIBLE_PRODUCT": "ABSENT"}

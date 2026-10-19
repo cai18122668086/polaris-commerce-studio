@@ -2088,6 +2088,8 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         raise HarnessError("PASS pair seam evidence must pass the declared method and contain no hard cut")
     checks = judgment["checks"]
     required_checks = ("identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression")
+    if session["plan"].get("website_contract_version") == "WEBSITE_LEAN_V1":
+        from runtime.website_review import CHECKS as required_checks
     missing = [name for name in required_checks if name not in checks]
     if missing:
         raise HarnessError("Pair judgment missing checks: " + ", ".join(missing))
@@ -2115,7 +2117,7 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     for finding in observed_failures:
         if finding not in failures:
             failures.append(finding)
-    if session.get("plan", {}).get("information_contract_version") == "4.1":
+    if session.get("plan", {}).get("information_contract_version") == "4.1" and session["plan"].get("website_contract_version") != "WEBSITE_LEAN_V1":
         info = judgment.get("information_audit")
         require_fields(info or {}, ("upper_buyer_question", "lower_buyer_question", "new_information_visible", "new_information_evidence", "repetition_without_progression", "hero_subject_clear", "co_equal_hero_detected", "purchase_judgment_enabled", "detail_page_not_posterized"), "pair information audit")
         if info["new_information_visible"] is not True or info["repetition_without_progression"] is True or info["purchase_judgment_enabled"] is not True or info["detail_page_not_posterized"] is not True:

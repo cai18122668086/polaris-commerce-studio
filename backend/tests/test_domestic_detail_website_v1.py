@@ -19,7 +19,9 @@ def explicit_synthetic_storage(client, monkeypatch):
     monkeypatch.setattr(_gateway(client), "provider_name", "synthetic")
 
     async def observe(self, request, native, sources, artifact):
-        return self._native_detail_judgment(native, artifact)
+        return self._normalize_native_pair_judgment(
+            self._native_detail_judgment(native, artifact), native, artifact
+        )
 
     monkeypatch.setattr(
         XingheImageProvider, "_native_detail_judgment_with_review", observe

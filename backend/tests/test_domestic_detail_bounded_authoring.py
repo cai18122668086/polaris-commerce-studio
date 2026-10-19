@@ -610,3 +610,88 @@ def test_unknown_fact_and_extra_depth_are_corrected_together(
         assert not any(c.authoring_stage == "pair" for c in gateway.planner_calls)
         assert len(gateway.planner_calls) == 3
     assert not gateway.image_calls
+
+
+@pytest.mark.parametrize("complete_correction", [False, True])
+def test_formula_and_recall_conflicts_share_one_native_correction(
+    client, monkeypatch, complete_correction
+):
+    from app.xinghe_agent import _planner_prompt
+
+    gateway = _gateway(client)
+    original = gateway.plan
+    observed = []
+
+    async def invalid_campaign(value):
+        result = await original(value)
+        if value.authoring_stage != "story":
+            return result
+        payload = deepcopy(result.payload)
+        errors = (value.authoring_context or {}).get("validation_errors")
+        if errors:
+            observed.extend(errors)
+            assert any(e["constraint"] == "native_formula_split" for e in errors)
+            assert any(
+                e["path"] == "/campaign_recall_contract/proof_module_ids_by_claim"
+                for e in errors
+            )
+            assert set(payload) == set(value.authoring_context["prior_response"])
+            assert "root-level relational error" in _planner_prompt(value)
+            assert "STRUCTURE_COMPONENT" in _planner_prompt(value)
+            assert "not the whole campaign" not in _planner_prompt(value)
+            assert not authoring.stage_errors(
+                payload, replace(value, authoring_context=None)
+            )
+            if complete_correction:
+                return result
+        # The mock intake has no formula/structure facts. Extra evaluation is
+        # therefore rejected by the pinned native validator, not a parallel rule.
+        payload["formula_split_contract"]["evaluated_claims"] = [{"claim_id": "F01"}]
+        recall = payload["campaign_recall_contract"]
+        proof = recall["proof_module_ids_by_claim"]
+        key = next(iter(proof))
+        proof["C99"] = proof.pop(key)
+        payload["modules"][0]["lead_claim_id"] = "C99"
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", invalid_campaign)
+    source = upload_asset(client, filename="formula-recall-mixed-errors.png")
+    job = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert observed
+    if complete_correction:
+        assert result["status"] == "awaiting_confirmation", result.get("error_message")
+        assert result["plan"]["payload"]["native_approval"]["document_sha256"]
+        assert len(gateway.planner_calls) == 7
+    else:
+        assert result["status"] == "failed"
+        assert not any(c.authoring_stage == "pair" for c in gateway.planner_calls)
+        assert len(gateway.planner_calls) == 3
+    assert not gateway.image_calls
+
+
+def test_source_structure_facts_are_given_to_native_preflight(client):
+    from app.xinghe_agent import _fake_plan
+
+    source = upload_asset(client, filename="structured-fact-preflight.png")
+    _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    story = next(
+        c for c in _gateway(client).planner_calls if c.authoring_stage == "story"
+    )
+    payload = authoring.fake_phase(_fake_plan(story), story)
+    assert not authoring.stage_errors(payload, story)
+    intake = deepcopy(story.detail_intake)
+    intake["user_facts"][0]["claim_kind"] = "STRUCTURE_COMPONENT"
+    issues = authoring.stage_errors(payload, replace(story, detail_intake=intake))
+    assert any(
+        e["constraint"] == "native_formula_split"
+        and "every structured" in e["message"]
+        for e in issues
+    )
+    assert payload["formula_split_contract"]["evaluated_claims"] == []

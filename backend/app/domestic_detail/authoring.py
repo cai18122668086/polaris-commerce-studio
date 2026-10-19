@@ -121,6 +121,7 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
     fact_arrays = {
         "fact_ids",
         "primary_claim_ids",
+        "priority_claim_ids",
         "must_remember_claim_ids",
         "supporting_claim_ids",
         "first_screen_value_claim_ids",
@@ -140,6 +141,12 @@ def phase_schema(full: Mapping[str, Any], request: Any) -> dict[str, Any]:
                     prop["enum"] = ids
                 if ids and name in fact_arrays and isinstance(prop, dict):
                     prop["items"] = {"type": "string", "enum": ids}
+                if (
+                    ids
+                    and name == "proof_module_ids_by_claim"
+                    and isinstance(prop, dict)
+                ):
+                    prop["propertyNames"] = {"enum": ids}
             for value in node.values():
                 bind_fact_ids(value)
         elif isinstance(node, list):
@@ -340,7 +347,15 @@ def prompt(request: Any) -> str:
             "must use active Fxx/Oxx fact IDs from locked_intake, never invented Cxx "
             "aliases. primary_claim_ids and must_remember_claim_ids must be identical; "
             "claim_depth accounts for that exact set, all DEEP. Every dedicated module "
-            "must lead with that same fact ID. Keep all required "
+            "must lead with that same fact ID. Recall proof-map keys must use those "
+            "same verified IDs. formula_split_contract.evaluated_claims must account "
+            "exactly once for each INGREDIENT_FORMULA or STRUCTURE_COMPONENT fact "
+            "in locked_intake, excluding other claim kinds. Preserve each fact's "
+            "display_intent and user_prominence; named_ingredient equals whether "
+            "named_elements is nonempty, and formula_or_element must be one of those "
+            "verified names. A named core MUST_SHOW fact requires dedicated or "
+            "controlled merged expression; enabled and entries must reflect those "
+            "decisions and their actual module duties. Keep all required "
             "fit explanations and the six module_count_formula fields. "
             "Keep output_strategy.module_count exact. Pairs are adjacent M01/M02, "
             "M03/M04 etc with 3:8 canvases, two fixed 3:4 windows. Author their "
@@ -387,17 +402,26 @@ def prompt(request: Any) -> str:
             "locked_intake": request.detail_intake,
         }
     if errors:
+        stage_instruction = instruction
+        scope_instruction = (
+            "For this root-level relational error, return the COMPLETE stage JSON "
+            "required by the contract so dependent decisions can change together. "
+            if any(error["path"] == "/" for error in errors)
+            else "Return ONLY the sparse replacement JSON required by the contract, "
+            "not the whole campaign or whole pair. Omit unaffected properties. "
+        )
         instruction = (
             "Repair the supplied prior_response using the listed validation errors. "
-            "Return ONLY the sparse replacement JSON required by the output contract, "
-            "not the whole campaign or whole pair. Omit unaffected properties. "
-            "A null array placeholder means leave that original element unchanged; "
+            + scope_instruction
+            + "A null array placeholder means leave that original element unchanged; "
             "it is not a replacement or deletion. The server merges only the listed "
             "invalid paths and then validates the complete result. Use active Fxx/Oxx "
             "fact IDs from locked_intake; preserve all valid creative decisions. "
             "The campaign must-remember facts must equal its primary facts after "
             "correcting references. Never invent source-fact mappings from ID suffixes."
         )
+        if any(error["path"] == "/" for error in errors):
+            instruction += "\nComplete-stage authoring rules: " + stage_instruction
     from ..xinghe_agent import _planner_response_format
 
     contract = prompt_contract(
@@ -514,6 +538,23 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
         if isinstance(depth, Mapping) and isinstance(recall, Mapping):
             primary = depth.get("primary_claim_ids")
             remembered = recall.get("must_remember_claim_ids")
+            proof_map = recall.get("proof_module_ids_by_claim")
+            if (
+                isinstance(remembered, list)
+                and all(isinstance(item, str) for item in remembered)
+                and isinstance(proof_map, Mapping)
+                and set(proof_map) != set(remembered)
+            ):
+                issues.append(
+                    {
+                        "path": "/campaign_recall_contract/proof_module_ids_by_claim",
+                        "constraint": "native_recall",
+                        "message": (
+                            "Recall proof map must account for every "
+                            "must-remember claim exactly once"
+                        ),
+                    }
+                )
             if (
                 isinstance(primary, list)
                 and isinstance(remembered, list)
@@ -548,9 +589,8 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
                     "constraint": "native_pair_seam",
                     "message": f"Incoming pair {field} must reference only {expected}",
                 })
-    if issues or request.authoring_stage != "story":
+    if request.authoring_stage != "story" or not isinstance(payload, Mapping):
         return issues
-    assert isinstance(payload, Mapping)
     from ..skill_runtime import SkillManifestRegistry
     from .contracts import normalize_native_plan_for_harness
     from .intake import active_fact_ids
@@ -564,14 +604,23 @@ def stage_errors(payload: object, request: Any) -> list[dict[str, Any]]:
     )
     code = """import json,sys
 sys.path.insert(0,sys.argv[1])
-from runtime.sales_depth_contract import validate_sales_depth_contract
+from runtime.sales_depth_contract import (
+ validate_sales_depth_contract, validate_formula_split_contract,
+)
 from runtime.state import HarnessError
 value=json.load(sys.stdin)
-try:
- validate_sales_depth_contract(value['plan'],set(value['fact_ids']))
- print('[]')
-except (HarnessError,KeyError,TypeError,ValueError) as error:
- print(json.dumps([{'path':'/','message':str(error),'constraint':'native_sales_depth'}]))
+checks=[('native_formula_split',lambda:validate_formula_split_contract(
+ value['plan'],set(value['fact_ids']),value['facts']))]
+if value['check_sales_depth']:
+ checks.append(('native_sales_depth',lambda:validate_sales_depth_contract(
+  value['plan'],set(value['fact_ids']))))
+issues=[]
+for constraint,check in checks:
+ try:
+  check()
+ except (HarnessError,KeyError,TypeError,ValueError) as error:
+  issues.append({'path':'/','message':str(error),'constraint':constraint})
+print(json.dumps(issues))
 """
     result = subprocess.run(
         [sys.executable, "-I", "-B", "-c", code, str(root / "scripts")],
@@ -579,13 +628,20 @@ except (HarnessError,KeyError,TypeError,ValueError) as error:
             {
                 "plan": normalize_native_plan_for_harness(payload),
                 "fact_ids": active_fact_ids(request.detail_intake or {}),
+                # Use the same source facts as the final native input, not a
+                # guessed claim alias or a rewritten fact classification.
+                "facts": [
+                    *(request.detail_intake or {}).get("user_facts", []),
+                    *(request.detail_intake or {}).get("observed_facts", []),
+                ],
+                "check_sales_depth": not issues,
             }
         ).encode(),
         capture_output=True,
         check=True,
         timeout=15,
     )
-    return json.loads(result.stdout)
+    return [*issues, *json.loads(result.stdout)]
 
 
 def merge_error_fields(

@@ -233,6 +233,25 @@ def test_manual_selected_revision_reuses_other_pages_and_requires_new_approval(
     job = planned(client)
     gateway = _gateway(client)
     gateway.provider_name = "synthetic"
+    original_edit = gateway.edit
+
+    async def edit(request):
+        result = await original_edit(request)
+        # Refined-only PNG fixture; shared/main-image mock behavior stays intact.
+        output = BytesIO()
+        with Image.open(BytesIO(result.artifact.payload)) as synthetic:
+            synthetic.save(output, format="PNG")
+        data = output.getvalue()
+        return replace(result, artifact=ProviderArtifact(
+            payload=data,
+            filename=f"synthetic-{request.page_number}.png",
+            content_type="image/png",
+            width=1440,
+            height=1920,
+            sha256=hashlib.sha256(data).hexdigest(),
+        ))
+
+    monkeypatch.setattr(gateway, "edit", edit)
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/plan/confirm",
         headers=idem(),

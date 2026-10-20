@@ -2008,12 +2008,6 @@ class FakeXingheGateway:
                     active_concurrency=active,
                 )
             payload = _fake_jpeg(request.page_number, request.size)
-            if request.preserve_provider_artifact and request.output_format == "png":
-                # Only the offline fake materializes synthetic fixture pixels.
-                output = BytesIO()
-                with Image.open(BytesIO(payload)) as synthetic:
-                    synthetic.save(output, format="PNG")
-                payload = output.getvalue()
             artifact = _artifact_from_bytes(
                 payload,
                 filename=f"{request.group_key}-page-{request.page_number:03d}.jpg",

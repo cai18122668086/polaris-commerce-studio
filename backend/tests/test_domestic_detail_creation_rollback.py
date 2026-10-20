@@ -113,6 +113,26 @@ def test_creation_rollback_cannot_silently_ignore_missing_frozen_runtime():
         settings.validate_runtime_safety()
 
 
+def test_refined_creation_never_falls_back_to_a_different_legacy_skill(
+    client, monkeypatch
+):
+    frozen = FrozenAPI()
+    with TestClient(wrapped(client, frozen, monkeypatch)) as routed:
+        response = routed.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
+            json={
+                "type": "detail_pack",
+                "configuration": {
+                    "market_region": "domestic",
+                    "detail_skill": "refined",
+                },
+            },
+        )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "REFINED_DETAIL_SERVICE_UNAVAILABLE"
+    assert not frozen.calls
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_auxiliary_api_can_start_without_touching_crawl_recovery(
     settings, monkeypatch, enabled

@@ -12,10 +12,15 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 REVISION = "a" * 40
 BACKEND, FRONTEND = "sha256:" + "b" * 64, "sha256:" + "c" * 64
+PRIMARY_PROVIDER = {
+    "POLARIS_ANALYSIS_BASE_URL": "https://api.tengliapi.xyz",
+    "POLARIS_ANALYSIS_MODEL": "gpt-5.6-sol",
+    "POLARIS_ANALYSIS_API_KEY": "synthetic-private-key",
+}
 PROVIDER = {
     "POLARIS_ANALYSIS_BASE_URL": "https://api.ooapi.cc",
     "POLARIS_ANALYSIS_MODEL": "gpt-5.6-sol",
-    "POLARIS_ANALYSIS_API_KEY": "synthetic-private-key",
+    "POLARIS_ANALYSIS_API_KEY": "synthetic-one",
 }
 
 
@@ -24,6 +29,11 @@ def base():
         "image": "frozen:old",
         "build": {"context": "."},
         "environment": {
+            **PRIMARY_PROVIDER,
+            "POLARIS_PROVIDER_FAILOVER_ENABLED": "true",
+            "POLARIS_PROVIDER_FAILOVER_BASE_URL": PROVIDER["POLARIS_ANALYSIS_BASE_URL"],
+            "POLARIS_PROVIDER_FAILOVER_MODEL": PROVIDER["POLARIS_ANALYSIS_MODEL"],
+            "POLARIS_PROVIDER_FAILOVER_API_KEY": "synthetic-one,synthetic-two",
             "POLARIS_IMAGE_API_KEY": "synthetic-original-image-key",
             "POLARIS_TENGLI_DAILY_BUDGET_USD": "25",
             "POLARIS_TENGLI_MONTHLY_BUDGET_USD": "100",
@@ -79,6 +89,68 @@ def prepare(source=None, **changes):
 
 
 class ReleaseTest(unittest.TestCase):
+    def test_analysis_uses_one_existing_text_account_with_its_endpoint_and_model(self):
+        result = prepare()
+        for name in ("detail-api", "detail-worker"):
+            environment = result["services"][name]["environment"]
+            for key, value in PROVIDER.items():
+                self.assertEqual(environment[key], value)
+
+    def test_concatenated_account_pool_cannot_be_used_as_a_single_credential(self):
+        original = base()
+        environment = original["services"]["api"]["environment"]
+        environment.update(
+            {
+                "POLARIS_PROVIDER_FAILOVER_BASE_URL": "https://api.ooapi.cc",
+                "POLARIS_PROVIDER_FAILOVER_API_KEY": "synthetic-one,synthetic-two",
+            }
+        )
+        with self.assertRaises(ValueError):
+            prepare(
+                original,
+                provider={
+                    **PROVIDER,
+                    "POLARIS_ANALYSIS_BASE_URL": environment[
+                        "POLARIS_PROVIDER_FAILOVER_BASE_URL"
+                    ],
+                    "POLARIS_ANALYSIS_API_KEY": environment[
+                        "POLARIS_PROVIDER_FAILOVER_API_KEY"
+                    ],
+                },
+            )
+
+    def test_each_existing_account_is_supported_and_unknown_accounts_are_rejected(self):
+        for provider in (
+            PRIMARY_PROVIDER,
+            PROVIDER,
+            {**PROVIDER, "POLARIS_ANALYSIS_API_KEY": "synthetic-two"},
+        ):
+            result = prepare(provider=provider)
+            self.assertEqual(
+                result["services"]["detail-api"]["environment"][
+                    "POLARIS_ANALYSIS_API_KEY"
+                ],
+                provider["POLARIS_ANALYSIS_API_KEY"],
+            )
+        for provider in (
+            {**PROVIDER, "POLARIS_ANALYSIS_API_KEY": "unconfigured-account"},
+            {**PROVIDER, "POLARIS_ANALYSIS_MODEL": "unconfigured-model"},
+            {
+                **PRIMARY_PROVIDER,
+                "POLARIS_ANALYSIS_API_KEY": PROVIDER["POLARIS_ANALYSIS_API_KEY"],
+            },
+        ):
+            with self.assertRaises(ValueError):
+                prepare(provider=provider)
+
+    def test_disabled_account_pool_is_not_authority_for_a_release(self):
+        original = base()
+        original["services"]["api"]["environment"][
+            "POLARIS_PROVIDER_FAILOVER_ENABLED"
+        ] = "false"
+        with self.assertRaises(ValueError):
+            prepare(original)
+
     def test_original_api_and_default_worker_are_never_replaced(self):
         original = base()
         before = deepcopy(original)

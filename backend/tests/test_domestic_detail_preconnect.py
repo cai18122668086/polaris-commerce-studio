@@ -62,6 +62,8 @@ def fixture(
 
     def connect(connection):
         calls["connect"] += 1
+        if isinstance(connection, native.PreconnectedHTTPSConnection):
+            assert connection.timeout <= native.CONNECT_ATTEMPT_SECONDS
         if certificate:
             raise ssl.SSLCertVerificationError("synthetic invalid certificate")
         if calls["connect"] <= failed_connects:
@@ -109,6 +111,24 @@ def test_no_http_bytes_are_sent_when_setup_budget_is_exhausted(monkeypatch):
     assert sock.writes == []
 
 
+def test_connect_attempt_never_exceeds_remaining_total_budget(monkeypatch):
+    calls, sock = fixture(monkeypatch, failed_connects=99)
+    clock = iter([0.0, 27.0, 29.0, 29.5, 30.0])
+    monkeypatch.setattr(native.time, "monotonic", lambda: next(clock))
+    timeouts = []
+
+    def connect(connection):
+        timeouts.append(connection.timeout)
+        calls["connect"] += 1
+        raise TimeoutError("synthetic setup timeout")
+
+    monkeypatch.setattr(http.client.HTTPSConnection, "connect", connect)
+    with pytest.raises(XingheAgentError):
+        send()
+    assert timeouts == [3.0, 0.5]
+    assert not sock.writes
+
+
 def test_certificate_failure_is_never_retried_or_bypassed(monkeypatch):
     calls, sock = fixture(monkeypatch, certificate=True)
     with pytest.raises(XingheAgentError):
@@ -142,7 +162,8 @@ def test_standard_transport_keeps_original_single_connect_behavior(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "profile", ["aurora_domestic_intake", "aurora_v20_visual_audit"]
+    "profile",
+    ["aurora_domestic_intake", "aurora_v20_visual_audit", "xinghe_domestic_detail_4"],
 )
 def test_native_setup_path_does_not_change_domestic_main_planner(monkeypatch, profile):
     import asyncio
@@ -182,12 +203,17 @@ def test_native_setup_path_does_not_change_domestic_main_planner(monkeypatch, pr
         planning_profile=profile,
     )
     asyncio.run(gateway.plan(request))
-    assert calls == ["native" if profile == "aurora_domestic_intake" else "standard"]
+    assert calls == [
+        "native"
+        if profile in {"aurora_domestic_intake", "xinghe_domestic_detail_4"}
+        else "standard"
+    ]
 
 
 @pytest.mark.parametrize("single_dispatch", [False, True])
+@pytest.mark.parametrize("preserve_provider_artifact", [False, True])
 def test_only_domestic_detail_image_path_uses_native_setup(
-    monkeypatch, single_dispatch
+    monkeypatch, single_dispatch, preserve_provider_artifact
 ):
     import asyncio
 
@@ -224,9 +250,12 @@ def test_only_domestic_detail_image_path_uses_native_setup(
         idempotency_key="one",
         size="1440x1920",
         single_dispatch=single_dispatch,
+        preserve_provider_artifact=preserve_provider_artifact,
     )
     asyncio.run(gateway.edit(request))
-    assert calls == ["native" if single_dispatch else "standard"]
+    assert calls == [
+        "native" if single_dispatch or preserve_provider_artifact else "standard"
+    ]
 
 
 def test_proxy_setup_failure_cannot_reset_a_started_provider_post(monkeypatch):

@@ -363,6 +363,7 @@ class DetailPackInput(BaseModel):
 
 
 class DetailPackConfiguration(BaseModel):
+    detail_skill: Literal["quick", "refined"] = Field(default_factory=lambda: "quick")
     website_contract_version: (
         Literal["WEBSITE_LEAN_V1", "WEBSITE_DIRECT_V2"] | None
     ) = None
@@ -390,6 +391,12 @@ class DetailPackConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def default_domestic_delivery_size(self) -> "DetailPackConfiguration":
+        if self.detail_skill == "refined" and self.market_region != "domestic":
+            raise ValueError(
+                "Refined detail 4.0 is available for domestic markets only."
+            )
+        if self.detail_skill == "refined" and self.website_contract_version is not None:
+            raise ValueError("Refined detail cannot use an Aurora website contract.")
         if (
             self.market_region == "domestic"
             and self.brandless_confirmation is not None
@@ -400,13 +407,16 @@ class DetailPackConfiguration(BaseModel):
             )
         if self.market_region == "domestic" and "size" not in self.model_fields_set:
             self.size = "1440x1920"
-        if self.market_region == "domestic" and self.page_count not in {8, 10, 12}:
+        if (
+            self.market_region == "domestic"
+            and self.detail_skill == "quick"
+            and self.page_count not in {8, 10, 12}
+        ):
             raise ValueError(
                 "Domestic Aurora detail pages must contain 8, 10, or 12 screens."
             )
         if self.market_region == "domestic":
-            # Internal routing marker; clients cannot select a different
-            # domestic detail runtime.
+            # Both domestic skills require the user's explicit plan confirmation.
             self.auto_start_after_plan = False
         allowed_sizes = {
             "750x1000",

@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import provider_quota_ledger as quota_ledger
+from . import refined_detail
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
     is_parallel_aurora_mode,
@@ -701,7 +702,25 @@ class ExecutionCoordinator:
                     await asyncio.sleep(retry_delay)
                     continue
                 break
-            await asyncio.gather(*(self.execute_lease(lease) for lease in leases))
+
+            async def execute_staggered(
+                index: int, lease: AttemptLease, staggered: bool
+            ) -> bool:
+                if staggered and index:
+                    await asyncio.sleep(index * 3)
+                return await self.execute_lease(lease)
+
+            with self.session_factory() as session:
+                current_job = session.get(JobRecord, job_id)
+                refined_job = current_job is not None and refined_detail.is_refined(
+                    current_job.configuration
+                )
+            await asyncio.gather(
+                *(
+                    execute_staggered(index, lease, refined_job)
+                    for index, lease in enumerate(leases)
+                )
+            )
             if not is_parallel_aurora and self._domestic_batch_has_failure(
                 job_id, leases
             ):
@@ -1022,6 +1041,7 @@ class ExecutionCoordinator:
             return (
                 isinstance(settings, Mapping)
                 and settings.get("market_region") == "domestic"
+                and not refined_detail.is_refined(job.configuration)
             )
 
     def _is_parallel_aurora_job(self, job_id: str) -> bool:
@@ -1676,6 +1696,7 @@ class ExecutionCoordinator:
             job.type == JobType.DETAIL_PACK.value
             and isinstance(settings, Mapping)
             and settings.get("market_region") == "domestic"
+            and not refined_detail.is_refined(job.configuration)
         )
 
     @staticmethod
@@ -2725,7 +2746,10 @@ class ExecutionCoordinator:
             if current == JobStatus.CANCELLING:
                 target = JobStatus.CANCELLED
             elif succeeded == job.expected_item_count:
-                if job.type == JobType.DETAIL_PACK.value:
+                if (
+                    job.type == JobType.DETAIL_PACK.value
+                    and not refined_detail.is_refined(job.configuration)
+                ):
                     # Domestic Aurora and cross-border Skill detail pages both
                     # require an explicit human delivery decision after all
                     # modules are generated. Cross-border QA is disclosure and
@@ -2993,6 +3017,32 @@ def build_fake_coordinator(
         revision_settings=domestic_revision_settings,
     )
     domestic_detail_provider = DomesticDetailProvider(domestic_detail_delegate)
+    from .refined_detail import SKILL_ID as REFINED_DETAIL_SKILL_ID
+    from .refined_detail import RefinedDetailProvider
+
+    refined_skill_root = default_skill_root(REFINED_DETAIL_SKILL_ID)
+    refined_planner = XinghePlanningCoordinator(
+        session_factory,
+        gateway,
+        storage=storage,
+        skill_root=refined_skill_root,
+        base_url_signature=base_url_signature,
+        medium_price_micros=medium_price_micros,
+        high_price_micros=high_price_micros,
+        budget_limit_micros=budget_limit_micros,
+        skill_id=REFINED_DETAIL_SKILL_ID,
+    )
+    refined_detail_provider = RefinedDetailProvider(
+        XingheImageProvider(
+            session_factory,
+            gateway,
+            storage=storage,
+            skill_root=refined_skill_root,
+            max_concurrency=xinghe_concurrency,
+            budget_limit_micros=budget_limit_micros,
+            skill_id=REFINED_DETAIL_SKILL_ID,
+        )
+    )
     amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)
     amazon_planner = XinghePlanningCoordinator(
         session_factory,
@@ -3010,6 +3060,7 @@ def build_fake_coordinator(
         international_planner,
         domestic_planner,
         amazon_planner,
+        refined=refined_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
         session_factory,
@@ -3145,6 +3196,7 @@ def build_fake_coordinator(
         local_provider,
         new_routes,
         domestic_detail_provider=domestic_detail_provider,
+        refined_detail_provider=refined_detail_provider,
     )
     amazon_suite_reviewer = None
     if storage is not None:

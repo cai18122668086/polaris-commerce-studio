@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
+from . import refined_detail
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
 from .auth import (
@@ -81,6 +82,7 @@ from .model_pose_catalog import (
 )
 from .models import (
     AssetRecord,
+    AuditEventRecord,
     InspirationCaseRecord,
     JobAssetRecord,
     JobAttemptRecord,
@@ -1889,8 +1891,27 @@ def update_draft_job(
         updated_configuration = dict(payload.configuration)
         if job.type == JobType.DETAIL_PACK.value:
             updated_configuration.pop("domestic_detail_pipeline", None)
-            if job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION:
-                updated_configuration["domestic_detail_pipeline"] = PIPELINE_VERSION
+            pipeline = job.configuration.get("domestic_detail_pipeline")
+            if pipeline in {PIPELINE_VERSION, refined_detail.PIPELINE_VERSION}:
+                updated_configuration["domestic_detail_pipeline"] = pipeline
+                # Skill selection is immutable once the job has been created.
+                updated_settings = updated_configuration.get("settings")
+                if not isinstance(updated_settings, dict):
+                    raise ApiError(
+                        422, "DETAIL_SETTINGS_REQUIRED", "详情任务设置不能为空。"
+                    )
+                original_settings = job.configuration.get("settings") or {}
+                if any(
+                    updated_settings.get(key) != original_settings.get(key)
+                    for key in (
+                        "detail_skill",
+                        "market_region",
+                        "website_contract_version",
+                    )
+                ):
+                    raise ApiError(
+                        409, "DETAIL_SKILL_IMMUTABLE", "请新建任务选择其他详情方案。"
+                    )
         job.configuration = updated_configuration
     job.state_version += 1
     session.commit()
@@ -2060,7 +2081,13 @@ def retry_job(
             "NATIVE_DETAIL_CAMPAIGN_RECONCILIATION_REQUIRED",
             "请先核对原审核请求；新的整页审核须从原详情结果明确授权后发起。",
         )
-    if JobStatus(source.status) not in {
+    manual_refined_revision = (
+        source.type == JobType.DETAIL_PACK.value
+        and refined_detail.is_refined(source.configuration)
+        and source.status == JobStatus.COMPLETED.value
+        and payload.scope == RetryScope.SELECTED
+    )
+    if not manual_refined_revision and JobStatus(source.status) not in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,
         JobStatus.CANCELLED,
@@ -2102,6 +2129,43 @@ def retry_job(
     session.flush()
     _copy_job_relations_for_retry(session, source, retried, selected)
     session.flush()
+    if manual_refined_revision:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == retried.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None:
+            raise ApiError(409, "PLAN_NOT_READY", "原任务缺少可修订的完整方案。")
+        # User-requested corrections preserve every unselected artifact and
+        # require a fresh full-plan approval before any selected page is paid.
+        retried.status = JobStatus.AWAITING_CONFIRMATION.value
+        retried.stage = "awaiting_confirmation"
+        retried.queued_at = None
+        plan.confirmed_at = None
+        plan.payload = {**dict(plan.payload), "state": "awaiting_confirmation"}
+        plan.payload_hash = canonical_hash(plan.payload)
+        session.add(
+            AuditEventRecord(
+                workspace_id=workspace.workspace_id,
+                action="refined.manual_revision_created",
+                resource_type="job",
+                resource_id=retried.id,
+                request_id=plan.id,
+                details={
+                    "source_job_id": source.id,
+                    "selected_item_ids": selected,
+                    "reused_pages": retried.succeeded_item_count,
+                    "external_requests": 0,
+                },
+            )
+        )
+        complete_idempotency(
+            idem, resource_type="job", resource_id=retried.id, response_status=201
+        )
+        session.commit()
+        return job_detail_response(session, retried)
     _ensure_parallel_aurora_retry_snapshots(
         session,
         retried,
@@ -2268,6 +2332,7 @@ def update_plan(
         job.type == JobType.DETAIL_PACK.value
         and isinstance(settings, Mapping)
         and settings.get("market_region") == "domestic"
+        and not refined_detail.is_refined(job.configuration)
     ):
         if job.stage == "intake_confirmation_required":
             raise ApiError(
@@ -2750,7 +2815,11 @@ def confirm_plan(
         )
     if job.type == JobType.DETAIL_PACK.value:
         settings = job.configuration.get("settings")
-        if isinstance(settings, dict) and settings.get("market_region") == "domestic":
+        if (
+            isinstance(settings, dict)
+            and settings.get("market_region") == "domestic"
+            and not refined_detail.is_refined(job.configuration)
+        ):
             aurora = plan.payload.get("aurora_v4_3")
             if (
                 not isinstance(payload.approval_text, str)
@@ -2810,6 +2879,20 @@ def confirm_plan(
                     "AURORA_NATIVE_APPROVAL_REQUIRED",
                     "请使用当前完整原生审批文档和版本指纹确认方案。",
                 )
+    if refined_detail.is_refined(job.configuration):
+        approval = plan.payload.get("refined_approval") or {}
+        if (
+            payload.approval_document_sha256
+            != refined_detail.approval_hash(plan.payload)
+            or payload.approval_document_sha256 != approval.get("document_sha256")
+            or not payload.approval_text
+            or len(payload.approval_text.strip()) < 2
+        ):
+            raise ApiError(
+                409,
+                "REFINED_DETAIL_APPROVAL_REQUIRED",
+                "请审阅并确认当前精美详情方案。",
+            )
     if (
         job.type == JobType.DETAIL_PACK.value
         and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
@@ -2942,6 +3025,7 @@ def confirm_plan(
         job.type == JobType.DETAIL_PACK.value
         and isinstance(job.configuration.get("settings"), dict)
         and job.configuration["settings"].get("market_region") == "domestic"
+        and not refined_detail.is_refined(job.configuration)
     ):
         detail_payload = deepcopy(plan.payload)
         detail_aurora = detail_payload["aurora_v4_3"]
@@ -2962,6 +3046,27 @@ def confirm_plan(
             "plan_revision": plan.revision,
         }
         plan.payload = detail_payload
+    if (
+        refined_detail.is_refined(job.configuration)
+        and job.retry_of_job_id is not None
+        and job.retry_scope == RetryScope.SELECTED.value
+    ):
+        runnable_count = session.scalar(
+            select(func.count()).select_from(JobItemRecord).where(
+                JobItemRecord.job_id == job.id,
+                JobItemRecord.status == JobItemStatus.PENDING.value,
+            )
+        )
+        _reserve_real_provider_job_if_enabled(
+            session,
+            request,
+            job,
+            workspace.principal.user_id,
+            runnable_item_count=int(runnable_count or 0),
+        )
+        reserve_credits(
+            session, workspace.workspace_id, job, cast(int, job.estimated_credits)
+        )
     plan.confirmed_at = utc_now()
     transition_job(job, JobStatus.PROCESSING, stage="generating", progress=20)
     add_outbox_event(
@@ -3645,6 +3750,7 @@ def finalize_domestic_main_image(
         job.type == JobType.DETAIL_PACK.value
         and isinstance(detail_settings, Mapping)
         and detail_settings.get("market_region") == "domestic"
+        and not refined_detail.is_refined(job.configuration)
     ):
         from .domestic_detail.delivery import (
             DetailDeliveryError,
@@ -4064,7 +4170,13 @@ def _new_job_from_payload(
             "input": payload.input.model_dump(mode="json"),
             "settings": payload.configuration.model_dump(mode="json"),
             **(
-                {"domestic_detail_pipeline": PIPELINE_VERSION}
+                {
+                    "domestic_detail_pipeline": (
+                        refined_detail.PIPELINE_VERSION
+                        if payload.configuration.detail_skill == "refined"
+                        else PIPELINE_VERSION
+                    )
+                }
                 if isinstance(payload, DetailPackJobCreate)
                 and payload.configuration.market_region == "domestic"
                 else {}
@@ -4244,7 +4356,19 @@ def _reserve_real_provider_job_if_enabled(
             provider_requests += 2
     elif job.type == JobType.DETAIL_PACK.value:
         detail_settings = configuration.get("settings") or {}
-        if (
+        if refined_detail.is_refined(configuration):
+            planner_groups = group_count if runnable_item_count is None else 0
+            estimated_cost = (
+                image_cost * 2 + planner_groups * settings.tengli_planner_reserve_micros
+            )
+            # Reserve the existing gateway's transport fallback bound, without
+            # adding quality-review or redraw requests.
+            provider_requests = (
+                job.expected_item_count
+                if runnable_item_count is None
+                else runnable_item_count
+            ) * 2 + planner_groups
+        elif (
             isinstance(detail_settings, Mapping)
             and detail_settings.get("market_region") == "domestic"
         ):
@@ -4414,6 +4538,7 @@ def _validate_domestic_detail_retry(
     if (
         source.type != JobType.DETAIL_PACK.value
         or settings.get("market_region") != "domestic"
+        or refined_detail.is_refined(source.configuration)
     ):
         return
     from .aurora_detail_runtime import detail_workspace
@@ -4908,6 +5033,24 @@ def _validate_plan_payload(
         from .xinghe_agent import validate_editable_plan_payload
 
         errors = validate_editable_plan_payload(payload, job.expected_item_count)
+        if refined_detail.is_refined(job.configuration) and not errors:
+            from .xinghe_agent import XingheAgentError
+
+            try:
+                refined_detail.validate_payload(payload, job.expected_item_count)
+                if refined_detail.approval_hash(payload) != (
+                    payload.get("refined_approval") or {}
+                ).get("document_sha256"):
+                    errors.append(
+                        {
+                            "field": "refined_approval",
+                            "message": "精美方案已变化，请重新规划并确认。",
+                        }
+                    )
+            except XingheAgentError as exc:
+                errors.append(
+                    {"field": exc.json_pointer or "plan", "message": str(exc)}
+                )
         settings = (
             job.configuration.get("settings")
             if isinstance(job.configuration, Mapping)
@@ -4916,6 +5059,7 @@ def _validate_plan_payload(
         if (
             isinstance(settings, Mapping)
             and settings.get("market_region") == "domestic"
+            and not refined_detail.is_refined(job.configuration)
         ):
             aurora = payload.get("aurora_v4_3")
             if not isinstance(aurora, Mapping):

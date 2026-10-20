@@ -12,6 +12,7 @@ from app.outbox import _dispatch
     "kind,pipeline,expected",
     [
         ("detail_pack", "aurora-domestic-detail-v4.3.1", "domestic_detail_v431"),
+        ("detail_pack", "xinghe-domestic-detail-v4.0", "domestic_detail_v431"),
         ("domestic_detail_review", None, "domestic_detail_v431"),
         ("detail_pack", None, None),
         ("detail_pack", "aurora-domestic-detail-v4.3", None),

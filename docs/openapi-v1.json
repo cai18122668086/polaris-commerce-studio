@@ -1492,6 +1492,14 @@
             "title": "Conflict Scan",
             "type": "object"
           },
+          "detail_skill": {
+            "enum": [
+              "quick",
+              "refined"
+            ],
+            "title": "Detail Skill",
+            "type": "string"
+          },
           "language": {
             "default": "zh-CN",
             "maxLength": 16,

@@ -2306,6 +2306,11 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * Detail Skill
+             * @enum {string}
+             */
+            detail_skill?: "quick" | "refined";
+            /**
              * Language
              * @default zh-CN
              */

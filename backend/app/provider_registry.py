@@ -41,16 +41,22 @@ class RegisteredOperationRoutingProvider(OperationRoutingProvider):
         routes: Mapping[str, Provider],
         *,
         domestic_detail_provider: Provider,
+        refined_detail_provider: Provider | None = None,
     ) -> None:
         super().__init__(default_provider, detail_provider, local_provider)
         self.routes = dict(routes)
         self.domestic_detail_provider = domestic_detail_provider
+        self.refined_detail_provider = refined_detail_provider
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if (
             request.operation == "detail_pack"
             and _market_region(request.configuration) == "domestic"
         ):
+            if _job_settings(request.configuration).get("detail_skill") == "refined":
+                return await (
+                    self.refined_detail_provider or UnavailableProvider()
+                ).execute(request)
             return await self.domestic_detail_provider.execute(request)
         provider = self.routes.get(request.operation)
         if provider is not None:
@@ -108,11 +114,13 @@ class DetailMarketRoutingPlanner:
         international: DetailPlanner,
         domestic: DetailPlanner,
         amazon: DetailPlanner | None = None,
+        refined: DetailPlanner | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.international = international
         self.domestic = domestic
         self.amazon = amazon
+        self.refined = refined
 
     def __getattr__(self, name: str) -> object:
         return getattr(self.international, name)
@@ -129,11 +137,19 @@ class DetailMarketRoutingPlanner:
                 if isinstance(settings, Mapping)
                 else "international"
             )
+            refined = (
+                isinstance(settings, Mapping)
+                and settings.get("detail_skill") == "refined"
+            )
         if is_amazon:
             if self.amazon is None:
                 return JobStatus.FAILED
             return await self.amazon.plan(job_id)
         planner = self.domestic if market_region == "domestic" else self.international
+        if market_region == "domestic" and refined:
+            if self.refined is None:
+                return JobStatus.FAILED
+            planner = self.refined
         return await planner.plan(job_id)
 
 
@@ -148,9 +164,7 @@ class UnavailableProvider:
         return ProviderResult(
             outcome=ProviderOutcome.FAILED,
             error_code="PROVIDER_NOT_CONFIGURED",
-            error_message=(
-                f"No real provider is configured for {request.operation}."
-            ),
+            error_message=(f"No real provider is configured for {request.operation}."),
             usage_reported=True,
             raw_usage={
                 "provider_type": "unavailable",

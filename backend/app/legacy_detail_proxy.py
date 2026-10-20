@@ -119,6 +119,21 @@ class LegacyDetailProxy:
                 and isinstance(configuration, dict)
                 and configuration.get("market_region") == "domestic"
             )
+            if (
+                creation_rollback
+                and isinstance(configuration, dict)
+                and configuration.get("detail_skill") == "refined"
+            ):
+                await JSONResponse(
+                    {
+                        "error": {
+                            "code": "REFINED_DETAIL_SERVICE_UNAVAILABLE",
+                            "message": "精美详情服务暂不可用，请稍后再试。",
+                        }
+                    },
+                    status_code=503,
+                )(scope, receive, send)
+                return
         if not historical and not creation_rollback:
             if body is not None:
                 original_receive = receive

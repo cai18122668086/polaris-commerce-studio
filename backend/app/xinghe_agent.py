@@ -34,6 +34,7 @@ from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import refined_detail
 from .aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
@@ -370,7 +371,7 @@ _AMAZON_PLANNER_PROTOCOL_FILES = (
     "references/generation-backend.md",
 )
 _COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset(
-    {"xinghe-ecommerce-detail-domestic-3", "aurora-domestic-ecommerce-detail-page"}
+    {"xinghe-ecommerce-detail-domestic-3", "aurora-domestic-ecommerce-detail-page", refined_detail.SKILL_ID}
 )
 _AURORA_DOMESTIC_DETAIL_SKILL_ID = "aurora-domestic-ecommerce-detail-page"
 _AURORA_PLANNER_PROTOCOL_FILES = (
@@ -394,7 +395,7 @@ _AURORA_PLANNER_PROTOCOL_FILES = (
     "references/commercial-aversion-control.md",
 )
 _DOMESTIC_DETAIL_SKILL_IDS = frozenset(
-    {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID}
+    {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID}
 )
 _PLANNER_PROTOCOL_FILES_BY_SKILL = {
     "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
@@ -1301,9 +1302,16 @@ def compile_page_prompt(
     size: str,
     source_roles: Sequence[str] | None = None,
     include_protocol_fields: bool = False,
+    skill_id: str | None = None,
 ) -> str:
     """Compile the template's fidelity and prompt-density contract."""
 
+    if skill_id == refined_detail.SKILL_ID:
+        return refined_detail.compile_prompt(
+            structured_plan=structured_plan, screen=screen, page_number=page_number,
+            page_count=page_count, language=language, product_name=product_name,
+            product_information=product_information, source_roles=source_roles, size=size,
+        )
     analysis = _require_mapping(
         structured_plan.get("analysis"),
         "PLANNER_SCHEMA_INVALID",
@@ -1835,6 +1843,15 @@ def load_planner_system_prompt(
             "SKILL_PROTOCOL_LOAD_FAILED",
             f"Pinned planner protocol could not be loaded ({type(exc).__name__}).",
         ) from exc
+    if skill_id == refined_detail.SKILL_ID:
+        sections.append(
+            "\nWEBSITE ADAPTER: You only author the full strategy as structured JSON. "
+            "The website owns provider selection, credentials, durable storage and delivery. "
+            "Do not invoke workstation helpers or request keys. Generation is one independent "
+            "3:4 image per module, using the configured website gateway and site concurrency limits. "
+            "Preserve all creative strategy and product-truth rules. "
+            "The skill's audit/regeneration override applies: no automatic quality rejection/redraw."
+        )
     return "".join(sections)
 
 
@@ -1991,6 +2008,12 @@ class FakeXingheGateway:
                     active_concurrency=active,
                 )
             payload = _fake_jpeg(request.page_number, request.size)
+            if request.preserve_provider_artifact and request.output_format == "png":
+                # Only the offline fake materializes synthetic fixture pixels.
+                output = BytesIO()
+                with Image.open(BytesIO(payload)) as synthetic:
+                    synthetic.save(output, format="PNG")
+                payload = output.getvalue()
             artifact = _artifact_from_bytes(
                 payload,
                 filename=f"{request.group_key}-page-{request.page_number:03d}.jpg",
@@ -2437,7 +2460,9 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
-        if request.planning_profile == "amazon_visual_suite":
+        if request.planning_profile == refined_detail.PROFILE:
+            payload.update({"max_completion_tokens": 24000})
+        elif request.planning_profile == "amazon_visual_suite":
             payload.update(
                 {
                     "max_completion_tokens": 12_000,
@@ -2499,7 +2524,10 @@ class TengliOpenAICompatibleGateway:
                     self.external_network_request_count += 1
                     transport = (
                         NativeUrllibOpenAITransport()
-                        if request.planning_profile in NATIVE_PLANNER_PROFILES
+                        if (
+                            request.planning_profile in NATIVE_PLANNER_PROFILES
+                            or request.planning_profile == refined_detail.PROFILE
+                        )
                         and type(self.transport) is UrllibOpenAITransport
                         else self.transport
                     )
@@ -2542,7 +2570,10 @@ class TengliOpenAICompatibleGateway:
             if status >= 400:
                 envelope_diagnostics = _planner_envelope_diagnostics(response)  # type: ignore[arg-type]
                 native_error = {}
-                if request.planning_profile in NATIVE_PLANNER_PROFILES and isinstance(response, Mapping):
+                if (
+                    request.planning_profile in NATIVE_PLANNER_PROFILES
+                    or request.planning_profile == refined_detail.PROFILE
+                ) and isinstance(response, Mapping):
                     native_error = safe_native_provider_error(
                         response, (route.planner_api_key, self._api_key, self._planner_api_key, self._image_api_key),
                     )
@@ -2711,7 +2742,7 @@ class TengliOpenAICompatibleGateway:
                     self.external_network_request_count += 1
                     transport = (
                         NativeUrllibOpenAITransport()
-                        if request.single_dispatch
+                        if (request.single_dispatch or request.preserve_provider_artifact)
                         and type(self.transport) is UrllibOpenAITransport
                         else self.transport
                     )
@@ -3322,7 +3353,7 @@ class XinghePlanningCoordinator:
                         system_prompt
                         + (
                             ""
-                            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                            if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID}
                             else _auto_identity_resolution_system_prompt(request)
                         )
                     ),
@@ -3428,9 +3459,15 @@ class XinghePlanningCoordinator:
                                 "Aurora returned an unresolved identity-evidence board; "
                                 "the plan cannot enter image generation.",
                             )
+                    elif self.skill_id == refined_detail.SKILL_ID:
+                        if not isinstance(result.payload, Mapping):
+                            raise XingheAgentError("REFINED_DETAIL_PLAN_INVALID", "The complete plan must be an object.")
+                        structured = _bounded_protocol_mapping(result.payload, path="/")
+                        structured = refined_detail.normalize_strategy(structured)
+                        refined_detail.validate_strategy(structured, request.page_count)
+                        validated.append(structured)
                     else:
-                        validated.append(
-                            validate_planner_payload(
+                        structured = validate_planner_payload(
                                 result.payload,
                                 request.page_count,
                                 preserve_protocol_fields=(
@@ -3441,7 +3478,7 @@ class XinghePlanningCoordinator:
                                     request.planning_profile == "crossborder_detail"
                                 ),
                             )
-                        )
+                        validated.append(structured)
             except XingheAgentError as exc:
                 return self._fail_planning(
                     job_id,
@@ -4545,9 +4582,8 @@ class XinghePlanningCoordinator:
             from .new_detail_skill_provider import AdapterValidationError
 
             try:
-                detail_prompt_configuration = domestic_detail_prompt_configuration(
-                    settings
-                )
+                configure = refined_detail.prompt_configuration if self.skill_id == refined_detail.SKILL_ID else domestic_detail_prompt_configuration
+                detail_prompt_configuration = configure(settings)
             except AdapterValidationError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
         elif crossborder_protocol:
@@ -4772,13 +4808,16 @@ class XinghePlanningCoordinator:
                     if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
                     else identity_directives,
                     intake_settings=dict(settings)
-                    if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                    if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID}
                     else None,
                     intake_resolution=configuration.get(
                         "domestic_detail_intake_resolution"
                     ),
                     domestic_protocol=domestic_protocol,
                     planning_profile=(
+                        refined_detail.PROFILE
+                        if self.skill_id == refined_detail.SKILL_ID
+                        else
                         "crossborder_detail"
                         if self.skill_id == "xinghe-crossborder-detail-3"
                         else "aurora_domestic_detail"
@@ -5321,6 +5360,7 @@ class XinghePlanningCoordinator:
                             prompt = pages[-1]["pair_prompt"]
                     else:
                         prompt = compile_page_prompt(
+                            skill_id=self.skill_id,
                             structured_plan=structured,
                             screen=screen,
                             page_number=page_index,
@@ -5626,6 +5666,12 @@ class XinghePlanningCoordinator:
                     ),
                 },
             }
+            if self.skill_id == refined_detail.SKILL_ID:
+                payload["refined_approval"] = {
+                    "version": "xinghe-detail-4-approval-v1",
+                    "document_markdown": refined_detail.approval_document(payload),
+                    "document_sha256": refined_detail.approval_hash(payload),
+                }
             if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
                 job_settings = (
                     job.configuration.get("settings")
@@ -6062,6 +6108,7 @@ class XingheImageProvider:
                 else request.idempotency_key
             ),
             single_dispatch=pair_mode,
+            preserve_provider_artifact=self.skill_id == refined_detail.SKILL_ID,
             size=(
                 native_size or str(configuration.get("pair_canvas_size"))
                 if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
@@ -7840,6 +7887,8 @@ def synchronize_confirmed_plan(
 
     if job.type != JobType.DETAIL_PACK.value:
         return
+    if refined_detail.is_refined(job.configuration):
+        refined_detail.validate_payload(plan.payload, job.expected_item_count)
     payload = dict(plan.payload)
     # A conflict-blocked Aurora packet is an internal intake artifact.  It is
     # never a valid rendering contract and must not be allowed to reach the
@@ -7910,6 +7959,43 @@ def synchronize_confirmed_plan(
         .order_by(JobItemRecord.ordinal)
         .with_for_update()
     ).all()
+    if refined_detail.is_refined(job.configuration) and job.retry_of_job_id:
+        source_plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job.retry_of_job_id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        reused = [
+            index for index, item in enumerate(items)
+            if item.status == JobItemStatus.REUSED.value
+        ]
+        if reused and (
+            source_plan is None
+            or any(
+                pages[index] != source_plan.payload["pages"][index]
+                for index in reused
+            )
+            or any(
+                group.get(key) != old_group.get(key)
+                for group, old_group in zip(
+                    groups, source_plan.payload["groups"], strict=True
+                )
+                for key in ("campaign_style_lock", "design_strength_lock")
+            )
+            or any(
+                group["plan_protocol_fields"].get(key)
+                != old_group["plan_protocol_fields"].get(key)
+                for group, old_group in zip(
+                    groups, source_plan.payload["groups"], strict=True
+                )
+                for key in ("style_system_lock", "product_identity_physics_lock")
+            )
+        ):
+            raise XingheAgentError(
+                "REFINED_REUSED_PAGE_CHANGED",
+                "Unselected pages and shared visual locks must remain unchanged.",
+            )
     high_count = 0
     for item, page_value in zip(items, pages, strict=True):
         page = dict(page_value)
@@ -8002,6 +8088,7 @@ def synchronize_confirmed_plan(
                 confirmed_prompt = str(existing.get("pair_prompt") or "")
         else:
             confirmed_prompt = compile_page_prompt(
+                skill_id=refined_detail.SKILL_ID if refined_detail.is_refined(job.configuration) else None,
                 structured_plan=structured,
                 screen=prompt_page,
                 page_number=int(page["page"]),
@@ -8525,6 +8612,10 @@ def _fake_usage(
 
 
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == refined_detail.PROFILE:
+        from .refined_detail_mock import fake_strategy
+
+        return fake_strategy(_fake_plan(replace(request, planning_profile="detail_pack", domestic_protocol=False)), request)
     if request.planning_profile == "aurora_v20_visual_audit":
         page_index = max(0, min(5, request.page_count - 1))
         candidate = request.sources[-1]
@@ -10417,6 +10508,11 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == refined_detail.PROFILE:
+        return {"type": "json_schema", "json_schema": {
+            "name": "xinghe_detail_4_plan", "strict": False,
+            "schema": refined_detail.strategy_schema(request.page_count),
+        }}
     if request.authoring_stage == "direct":
         from .domestic_detail.direct import response_format
 
@@ -10716,6 +10812,8 @@ def _planner_prompt(request: PlannerRequest) -> str:
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile == refined_detail.PROFILE:
+        return refined_detail.planner_prompt(request)
     if request.planning_profile == "aurora_detail_revision_scope":
         from .domestic_detail.revision_protocol import scope_prompt
 

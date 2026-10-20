@@ -219,7 +219,7 @@ def _dispatch(
             job.type == "domestic_detail_review"
             or job.type == "detail_pack"
             and job.configuration.get("domestic_detail_pipeline")
-            == "aurora-domestic-detail-v4.3.1"
+            in {"aurora-domestic-detail-v4.3.1", "xinghe-domestic-detail-v4.0"}
         ):
             # Keep legacy tasks and other products on their existing workers.
             # A dedicated current-runtime consumer owns only this new queue.

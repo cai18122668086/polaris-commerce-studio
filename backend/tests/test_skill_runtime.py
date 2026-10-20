@@ -330,6 +330,7 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
         "xinghe-ecommerce-creative-image",
         "xinghe-ecommerce-detail",
         "xinghe-ecommerce-detail-domestic-3",
+        "xinghe-ecommerce-detail-domestic-4",
         "xinghe-reference-image-remix-3",
         "xinghe-wanneng-shengtu-3-0",
     )

@@ -47,19 +47,43 @@ def overlay(
         != f"/opt/polaris/releases/{revision}/deploy/Caddyfile.domestic-detail-native"
     ):
         raise ValueError("Use the reviewed Caddyfile inside this exact release")
-    if (
-        set(provider) != _PROVIDER_KEYS
-        or provider["POLARIS_ANALYSIS_BASE_URL"] != "https://api.ooapi.cc"
-        or provider["POLARIS_ANALYSIS_MODEL"] != "gpt-5.6-sol"
-        or not provider["POLARIS_ANALYSIS_API_KEY"]
-    ):
-        raise ValueError(
-            "Provide the isolated-acceptance analysis configuration privately"
-        )
     original = base["services"]
     for name in ("api", "worker", "dispatcher", "frontend", "caddy", "migrate"):
         if name not in original:
             raise ValueError("A required original production service is missing")
+    # Match one existing account with its own endpoint and model. The website
+    # may keep its working text-planning accounts in the fallback pool while
+    # the legacy primary token belongs to an image-only account.
+    primary = original["api"]["environment"]
+    accounts = [{key: primary.get(key) for key in _PROVIDER_KEYS}]
+    if str(primary.get("POLARIS_PROVIDER_FAILOVER_ENABLED", "false")).lower() == "true":
+        accounts.extend(
+            {
+                "POLARIS_ANALYSIS_BASE_URL": primary.get(
+                    "POLARIS_PROVIDER_FAILOVER_BASE_URL"
+                ),
+                "POLARIS_ANALYSIS_MODEL": primary.get(
+                    "POLARIS_PROVIDER_FAILOVER_MODEL"
+                ),
+                "POLARIS_ANALYSIS_API_KEY": key,
+            }
+            for key in re.split(
+                r"[\s,]+", primary.get("POLARIS_PROVIDER_FAILOVER_API_KEY", "").strip()
+            )
+            if key
+        )
+    if (
+        set(provider) != _PROVIDER_KEYS
+        or any(
+            not isinstance(provider[key], str) or not provider[key].strip()
+            for key in _PROVIDER_KEYS
+        )
+        or re.search(r"[\s,]", provider["POLARIS_ANALYSIS_API_KEY"])
+        or provider not in accounts
+    ):
+        raise ValueError(
+            "Detail analysis must match one existing configured planning account"
+        )
     api = deepcopy(original["api"])
     worker = deepcopy(original["worker"])
     for role, service in (("api", api), ("worker", worker)):

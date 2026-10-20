@@ -13,6 +13,7 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 logger = logging.getLogger(__name__)
 MAX_CONNECT_ATTEMPTS = 5
 CONNECT_BUDGET_SECONDS = 30.0
+CONNECT_ATTEMPT_SECONDS = 10.0
 
 
 class PreconnectedHTTPSConnection(http.client.HTTPSConnection):
@@ -47,7 +48,10 @@ class PreconnectedHTTPSConnection(http.client.HTTPSConnection):
         deadline = time.monotonic() + min(CONNECT_BUDGET_SECONDS, numeric_timeout)
         try:
             for attempt in range(MAX_CONNECT_ATTEMPTS):
-                self.timeout = min(5.0, max(0.001, deadline - time.monotonic()))
+                self.timeout = min(
+                    CONNECT_ATTEMPT_SECONDS,
+                    max(0.001, deadline - time.monotonic()),
+                )
                 try:
                     super().connect()
                 except ssl.SSLCertVerificationError:

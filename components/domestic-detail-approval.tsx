@@ -39,11 +39,12 @@ export function NativeApprovalDocument({ document, label = "完整逐屏方案" 
   return <div aria-label={label}>{blocks}</div>;
 }
 
-export function DomesticDetailApproval({ document, fingerprint, reviewed, onReviewed }: {
+export function DomesticDetailApproval({ document, fingerprint, reviewed, onReviewed, description = "请审阅商品事实、每屏内容、构图及双屏衔接，再确认开始生成。" }: {
   document: string; fingerprint: string; reviewed: boolean; onReviewed: (reviewed: boolean) => void;
+  description?: string;
 }) {
   return <section className="detail-form-card" aria-label="完整详情方案审批">
-    <div className="form-section-head"><div><h2>完整详情方案</h2><p>请审阅商品事实、每屏内容、构图及双屏衔接，再确认开始生成。</p></div></div>
+    <div className="form-section-head"><div><h2>完整详情方案</h2><p>{description}</p></div></div>
     <NativeApprovalDocument document={document} />
     <p style={{ overflowWrap: "anywhere", fontSize: 12 }}>方案指纹：{fingerprint}</p>
     <p><a download="detail-approval.md" href={`data:text/markdown;charset=utf-8,${encodeURIComponent(document)}`}>下载完整方案</a></p>

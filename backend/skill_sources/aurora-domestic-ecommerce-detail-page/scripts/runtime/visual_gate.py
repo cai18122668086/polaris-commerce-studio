@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from .identity_scope import scope_for_presence, validate_identity_observation
 from .performance_contract import resolve_performance_contract
 from .spatial_contract import resolve_spatial_contract
 from .state import HarnessError, require_fields
@@ -340,48 +341,17 @@ def _eligible_advisory_visual_marks(observations: dict) -> list[str]:
     return eligible
 
 
-def require_identity_silhouette(judgment: dict, context: str) -> None:
-    """Positive identity lock: the rendered product must match the original.
-
-    The 2026-09-17 trash-bin campaign passed screens whose product had drifted
-    into a round-bodied, wood-textured look, because the `identity` check only
-    enumerated forbidden features (no lid, no pedal) and never verified what
-    the product *is*. Every judgment must now carry an explicit positive
-    comparison against the user's original product images: silhouette shape,
-    colorway and surface texture. Any "no" is a material failure, not an
-    advisory note — shape drift compounds screen by screen and cannot be
-    repaired after the long page is assembled.
-    """
+def require_identity_silhouette(judgment: dict, context: str, *, allow_material_failure: bool = False, expected_scope: str | None = None) -> None:
     silhouette = judgment.get("identity_silhouette")
     if not isinstance(silhouette, dict):
-        raise HarnessError(
-            f"{context}: judgment must carry an identity_silhouette block "
-            "(shape_consistent / colorway_consistent / texture_consistent / visible_evidence)"
-        )
-    require_fields(
-        silhouette,
-        ("shape_consistent", "colorway_consistent", "texture_consistent", "visible_evidence"),
-        f"{context}: identity_silhouette",
-    )
-    if len(str(silhouette.get("visible_evidence", "")).strip()) < 8:
-        raise HarnessError(
-            f"{context}: identity_silhouette.visible_evidence must describe the "
-            "observed silhouette, colorway and texture against the product original"
-        )
-    drifted = [
-        name
-        for name in ("shape_consistent", "colorway_consistent", "texture_consistent")
-        if silhouette[name] is not True
-    ]
-    if drifted:
-        raise HarnessError(
-            f"{context}: product identity drift detected in identity_silhouette "
-            f"({', '.join(drifted)}) — the rendered product does not match the "
-            "original product images; repair before acceptance"
-        )
+        raise HarnessError(context + ": explicit identity_silhouette is required")
+    validate_identity_observation(silhouette, context, expected_scope)
+    drifted = [key for key in ("shape_consistent", "colorway_consistent", "texture_consistent") if silhouette[key] is False]
+    if drifted and not (allow_material_failure and judgment.get("status") == "MATERIAL_FAIL"):
+        raise HarnessError(context + ": observed product identity drift: " + ", ".join(drifted))
 
 
-def validate_module_judgment(value: dict, module: dict) -> None:
+def validate_module_judgment(value: dict, module: dict, *, pair_canvas_audit: bool = False) -> list[dict]:
     module_id = module["id"]
     require_fields(value, ("module_id", "status", "checks", "audit_complete", "observations"), "module judgment")
     if value["module_id"] != module_id:
@@ -394,7 +364,8 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     missing = [name for name in CHECKS if name not in value["checks"]]
     if missing:
         raise HarnessError("Judgment missing checks: " + ", ".join(missing))
-    require_identity_silhouette(value, f"module {module_id} judgment")
+    observed_scope = scope_for_presence((value.get("observations") or {}).get("product_presence_observed"))
+    require_identity_silhouette(value, f"module {module_id} judgment", allow_material_failure=True, expected_scope=observed_scope)
     failures = value.get("material_failures", [])
     if module.get("plan", {}).get("authoring_plan_format") == "COMPACT_V1_3":
         _validate_concrete_check_evidence(value["checks"], f"module {module_id}")
@@ -410,7 +381,7 @@ def validate_module_judgment(value: dict, module: dict) -> None:
             "typography_primary_mode_observed", "typography_anchor_zone_observed",
             "typography_anchor_target_observation", "typography_hierarchy_observation",
             "typography_neighbor_difference_observation",
-            "product_prominence_percent", "headline_rank", "evidence_is_primary_visual",
+            "product_prominence_percent", "evidence_is_primary_visual",
             "depth_layers", "type_roles_seen", "unequal_information_groups_seen",
             "visual_tension_seen", "mobile_scan_order", "commercial_closure_visible",
             "background_competition", "independent_brand_logo_count",
@@ -478,7 +449,7 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     # screen is judged.  Without this gate, a model can honestly report that
     # each half is attractive while silently accepting two unrelated posters
     # separated by a hard horizontal cut.
-    if module.get("pair_id") and int(module.get("order", 1)) % 2 == 1:
+    if not pair_canvas_audit and module.get("pair_id") and int(module.get("order", 1)) % 2 == 1:
         seam_audit = value.get("pair_seam_audit")
         if not isinstance(seam_audit, dict):
             hard_failures.append("Continuous-pair judgment is missing the pair seam audit")
@@ -648,7 +619,7 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     elif performance["product_prominence_min_percent"] > 0 and prominence < performance["product_prominence_min_percent"]:
         hard_failures.append("Product prominence is below the approved visual-performance minimum")
     headline_rank = observations.get("headline_rank")
-    if performance["headline_must_enter_top_three"]:
+    if performance["headline_must_enter_top_three"] and not (pair_canvas_audit and observations["headline_visible"] is False):
         if not isinstance(headline_rank, int) or isinstance(headline_rank, bool):
             hard_failures.append("Required headline visual rank was not measured")
         elif headline_rank > performance["headline_rank_max"]:
@@ -700,20 +671,25 @@ def validate_module_judgment(value: dict, module: dict) -> None:
     elif competition_rank[observed_competition] > competition_rank[performance["background_competition_max"]]:
         hard_failures.append("Background competition exceeds the approved ceiling")
 
+    silhouette = value["identity_silhouette"]
+    identity_drift = any(silhouette[key] is False for key in ("shape_consistent", "colorway_consistent", "texture_consistent"))
+    if identity_drift:
+        hard_failures.append("Observed product silhouette, colorway or texture differs from the original")
+    if pair_canvas_audit and performance["headline_must_enter_top_three"] and observations["headline_visible"] is False:
+        hard_failures.append("The approved headline is visibly absent")
     if value["status"] == "PASS" and (failures or failed_checks or hard_failures):
         raise HarnessError("PASS judgment violates hard pixel gates: " + "; ".join(hard_failures or failed_checks))
     if value["status"] == "MATERIAL_FAIL" and not failures:
         raise HarnessError("MATERIAL_FAIL requires visible material failures")
+    if value["status"] == "MATERIAL_FAIL" and not (failed_checks or hard_failures):
+        raise HarnessError("MATERIAL_FAIL contradicts entirely passing atomic observations")
+    derived = [{"check": name, "visible_evidence": value["checks"][name]["visible_evidence"]} for name in failed_checks]
+    derived.extend({"check": "native_atomic_gate", "visible_evidence": reason, "observations": observations} for reason in hard_failures)
+    return derived
 
 
-def validate_long_page_judgment(value: dict, plan: dict | None = None) -> None:
-    require_fields(value, ("status", "checks", "audit_complete"), "long-page judgment")
-    if value["status"] not in ("PASS", "PASS_WITH_RESIDUALS"):
-        raise HarnessError("Long-page status must be PASS or PASS_WITH_RESIDUALS")
-    if value["audit_complete"] is not True:
-        raise HarnessError("Long-page pixel audit must be complete")
-    if plan and plan.get("plan_format") == "COMPACT_V1_3":
-        _validate_concrete_check_evidence(value["checks"], "long-page")
+
+def required_long_page_checks(plan: dict | None = None) -> tuple[str, ...]:
     required = (
         "story_order", "repetition", "density_rhythm", "visual_continuity",
         "layout_variation", "typography_rhythm", "proof_integrity",
@@ -748,6 +724,19 @@ def validate_long_page_judgment(value: dict, plan: dict | None = None) -> None:
     pair_config = ((plan or {}).get("output_strategy") or {}).get("continuous_pair_rendering") if plan else None
     if isinstance(pair_config, dict) and pair_config.get("enabled"):
         required += ("continuous_pair_integrity", "pair_internal_seams", "pair_to_pair_seams")
+    return required
+
+
+def validate_long_page_judgment(value: dict, plan: dict | None = None) -> None:
+    require_fields(value, ("status", "checks", "audit_complete"), "long-page judgment")
+    if value["status"] not in ("PASS", "PASS_WITH_RESIDUALS"):
+        raise HarnessError("Long-page status must be PASS or PASS_WITH_RESIDUALS")
+    if value["audit_complete"] is not True:
+        raise HarnessError("Long-page pixel audit must be complete")
+    if plan and plan.get("plan_format") == "COMPACT_V1_3":
+        _validate_concrete_check_evidence(value["checks"], "long-page")
+    required = required_long_page_checks(plan)
+    pair_config = ((plan or {}).get("output_strategy") or {}).get("continuous_pair_rendering") if plan else None
     missing = [name for name in required if name not in value["checks"]]
     if missing:
         raise HarnessError("Long-page judgment missing checks: " + ", ".join(missing))

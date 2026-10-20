@@ -1,11 +1,16 @@
 export type IdempotentOperation =
   | "upload"
   | "create-job"
+  | "local-revision"
   | "cancel-job"
   | "retry-job"
   | "clone-job"
+  | "resolve-intake"
   | "confirm-plan"
-  | "finalize-job";
+  | "finalize-job"
+  | "campaign-review"
+  | "recover-campaign-review"
+  | "recover-automatic-delivery";
 
 export class IdempotencyIntentRegistry {
   private readonly keys = new Map<string, string>();

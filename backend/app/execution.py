@@ -26,6 +26,7 @@ from .aurora_execution_modes import (
     is_v20_aurora_mode,
 )
 from .config import (
+    Settings,
     default_masked_skill_root,
     default_skill_root,
     default_xinghe_skill_root,
@@ -602,7 +603,9 @@ class ExecutionCoordinator:
                     ).limit(1))
                 if failed is not None:
                     return self._mark_amazon_quality_blocked(job_id)
-            return current
+            return await self._maybe_finalize_domestic_automatic_delivery(
+                job_id, current
+            )
         if current == JobStatus.CANCELLING:
             return self.cancel(job_id)
         if current == JobStatus.PLANNING:
@@ -724,7 +727,22 @@ class ExecutionCoordinator:
                 # skill still moves to user final review so the residual issue
                 # is disclosed and the user can explicitly approve the set.
                 return self._mark_aurora_final_review_pending(job_id)
-        return self.finalize_job(job_id)
+        return await self._maybe_finalize_domestic_automatic_delivery(
+            job_id, self.finalize_job(job_id)
+        )
+
+    async def _maybe_finalize_domestic_automatic_delivery(
+        self, job_id: str, current: JobStatus | None
+    ) -> JobStatus | None:
+        if current != JobStatus.AWAITING_FINAL_REVIEW or not (
+            self._is_aurora_domestic_detail_job(job_id)
+        ):
+            return current
+        from .domestic_detail.automatic_delivery import complete_authorized_delivery
+
+        return await complete_authorized_delivery(
+            self.session_factory, self.artifact_storage, job_id
+        )
 
     def _mark_amazon_quality_blocked(self, job_id: str) -> JobStatus | None:
         """Fence rejected outputs and finalize through normal usage settlement."""
@@ -1511,7 +1529,6 @@ class ExecutionCoordinator:
                         "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
                         "AURORA_PAIR_CACHE_MISSING",
                         "IMAGE_RESPONSE_SIZE_INVALID",
-                        "PROVIDER_OUTCOME_UNKNOWN",
                         "USAGE_RECORD_FAILED",
                     }
                     for candidate in pair_rows:
@@ -1542,6 +1559,8 @@ class ExecutionCoordinator:
                             candidate.error_message = None
                             candidate.error_details = None
                             candidate.state_version += 1
+                        elif candidate.status == JobItemStatus.FAILED.value:
+                            return None
                         break
                 if next_pair is not None:
                     item_query = item_query.where(
@@ -1711,6 +1730,7 @@ class ExecutionCoordinator:
         attempt.finished_at = now
         pair_reconcile = (
             job.type == JobType.DETAIL_PACK.value
+            and not self._is_domestic_detail_job_record(job)
             and isinstance(item.configuration, Mapping)
             and bool(item.configuration.get("pair_id"))
             and attempt.attempt_no <= 2
@@ -1762,6 +1782,13 @@ class ExecutionCoordinator:
         item.error_message = (
             "Provider outcome is unknown; manual reconciliation required."
         )
+        if self._is_domestic_detail_job_record(job):
+            item.error_details = {
+                "retryable": False,
+                "outcome_unknown": True,
+                "manual_reconciliation_required": True,
+                "provider_idempotency_key": attempt.provider_idempotency_key,
+            }
         item.finished_at = now
         item.state_version += 1
         return None, True
@@ -2260,6 +2287,7 @@ class ExecutionCoordinator:
                 attempt.status = AttemptStatus.OUTCOME_UNKNOWN.value
                 pair_reconcile = (
                     job.type == JobType.DETAIL_PACK.value
+                    and not self._is_domestic_detail_job_record(job)
                     and isinstance(item.configuration, Mapping)
                     and bool(item.configuration.get("pair_id"))
                     and attempt.attempt_no <= 2
@@ -2852,6 +2880,7 @@ def build_fake_coordinator(
     aurora_max_transient_retries: int = 2,
     aurora_retry_backoff_base_seconds: float = 2,
     aurora_retry_backoff_max_seconds: float = 30,
+    domestic_revision_settings: Settings | None = None,
 ) -> ExecutionCoordinator:
     from .amazon_visual_suite_provider import (
         AMAZON_VISUAL_SUITE_SKILL_ID,
@@ -2961,6 +2990,7 @@ def build_fake_coordinator(
         max_concurrency=1,
         budget_limit_micros=budget_limit_micros,
         skill_id=domestic_skill_id,
+        revision_settings=domestic_revision_settings,
     )
     domestic_detail_provider = DomesticDetailProvider(domestic_detail_delegate)
     amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)
@@ -3104,6 +3134,11 @@ def build_fake_coordinator(
                 else UnavailableProvider()
             ),
         }
+    from .domestic_detail.campaign_provider import DomesticCampaignReviewProvider
+
+    new_routes[JobType.DOMESTIC_DETAIL_REVIEW.value] = DomesticCampaignReviewProvider(
+        session_factory, gateway, storage,
+    )
     provider = RegisteredOperationRoutingProvider(
         default_provider,
         detail_provider,

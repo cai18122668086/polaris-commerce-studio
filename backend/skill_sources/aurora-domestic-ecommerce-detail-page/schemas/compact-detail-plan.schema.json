@@ -223,6 +223,9 @@
             "type": "object",
             "required": ["expression_mode", "claim_visualizability", "primary_visual_carrier", "visual_scene_sentence", "copy_responsibility"],
             "properties": {
+              "expression_mode": {"enum": ["IMAGE_FIRST", "IMAGE_PLUS_COPY", "COPY_ONLY_JUSTIFIED"]},
+              "claim_visualizability": {"enum": ["VISUALIZABLE", "PARTIALLY_VISUALIZABLE", "TEXT_VERIFIABLE_ONLY"]},
+              "primary_visual_carrier": {"enum": ["PRODUCT_HERO", "PAIN_SCENE", "ACTION_CONTACT", "STATE_CONTRAST", "PROCESS_PATH", "MATERIAL_MACRO", "RESULT_SCENE", "SCALE_RELATION", "DOCUMENT_EVIDENCE", "PRODUCT_DETAIL", "USE_SCENE", "SELECTION", "SPECIFICATION", "TRUST", "PURCHASE_CLOSURE"]},
               "product_presence_policy": {"enum": ["REQUIRED_DOMINANT", "REQUIRED_SUPPORTING", "IDENTITY_TOKEN_ONLY", "OPTIONAL", "ABSENT_ALLOWED", "ABSENT_PREFERRED"]},
               "evidence_subject_policy": {"enum": ["PRODUCT_DOMINANT", "CLAIM_OBJECT_DOMINANT", "ACTION_RESULT_DOMINANT", "SCENE_DOMINANT"]},
               "visualization_mode": {"enum": ["DIRECT_OBSERVATION", "CONCEPTUAL_NON_DIAGNOSTIC", "CONTEXTUAL_ONLY"]},
@@ -272,6 +275,288 @@
           },
           "structure": {
             "type": "object",
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "FULL_BLEED_HERO"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "SPLIT_PANEL"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "STACKED_BANDS"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "NESTED_INFO_BOARD"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "PROCESS_STRIP_PLUS_RESULT"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "CENTRAL_OBJECT_ORBIT"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "FRAMED_LIFESTYLE_PLUS_CARDS"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "PRODUCT_PAIR_PLUS_TABLE"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "MACRO_DIAGRAM"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "PORTRAIT_STRIP_PLUS_PAIN_ARRAY"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "ASYMMETRIC_EDITORIAL"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "COMPARISON_SPLIT"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "SELECTION_MATRIX"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "structure_family": {
+                      "const": "SPECIFICATION_BOARD"
+                    }
+                  },
+                  "required": [
+                    "structure_family"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "zone_briefs": {
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              }
+            ],
             "required": ["structure_family", "zone_briefs", "structure_difference_from_previous", "forbidden_fallbacks"],
             "properties": {
               "zone_briefs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
@@ -317,7 +602,9 @@
           }
         }
       }
-    }
+    },
+    "website_contract_version": {"const": "WEBSITE_LEAN_V1"},
+    "claim_coverage": {"type": "array", "minItems": 1, "items": {"type": "object"}}
   }
 }
 

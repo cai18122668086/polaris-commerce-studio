@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
+import re
 import sys
 import time
 import uuid
@@ -13,16 +15,25 @@ from typing import List, Optional, Tuple
 
 from PIL import Image, UnidentifiedImageError
 
+from runtime.audit_evidence import inspect_pair_audit, record_pair_audit
+from runtime.local_revision_review import revision_review_contract, validate_revision_observation
+from runtime.local_contracts import scope_contract_override, effective_plan, validate_request_contracts
+from runtime.delivery_manifest import build_final_manifest, inspect_final_manifest
 from runtime.assembly import assemble_vertical
 from runtime.artifact_binding import file_sha256, validate_artifact_binding
 from runtime.compliance_contract import validate_high_risk_cosmetic_claims, validate_high_risk_plan_copy
+from runtime.identity_scope import pair_observed_scope
 from runtime.image_format import ensure_format_canvas, image_dimensions, normalize_generated_image
 from runtime.prompt_compiler import compile_pair_prompt, compile_prompt
 from runtime.performance_contract import resolve_performance_contract
+from runtime.atomic_review import review_contracts, validate_atomic_reports
+from runtime.website_review import schema_name as review_schema_name
+from runtime.pixel_lineage import create_fixed_slices, pair_artifacts, preserve_provider_original, preserve_signed_request
 from runtime.plan_normalizer import (
     COMPACT_PLAN_FORMAT,
     normalize_plan,
     style_constitution_errors,
+    validate_expression_signature,
 )
 from runtime.sales_depth_contract import validate_sales_depth_contract, validate_formula_split_contract
 from runtime.sales_architecture import (
@@ -46,12 +57,12 @@ from runtime.state import (
     require_fields,
     require_state,
 )
-from runtime.visual_gate import require_identity_silhouette, validate_long_page_judgment, validate_module_judgment
+from runtime.visual_gate import require_identity_silhouette, required_long_page_checks, validate_long_page_judgment, validate_module_judgment
 from runtime.information_contract import validate_information_contract
 from runtime.schema_validation import validate_schema
 
 
-VERSION = "4.3.0"
+VERSION = "4.3.1"
 COMPATIBLE_SESSION_VERSIONS = {VERSION}
 
 INTERNAL_REVIEW_PROFILE_NAME = "INTERNAL_REVIEW_1440_3_4"
@@ -174,62 +185,10 @@ def _pair_modules(session: dict, index: int) -> list[dict]:
 
 def _pair_canvas_slices(source: str | Path, session: dict, pair: dict, attempt: int) -> list[dict]:
     strategy = session["plan"]["output_strategy"]
-    width = int(strategy["canvas_width_px"])
-    height = int(strategy["module_height_px"])
-    target = Path(source).resolve()
-    output_dir = Path(session["session_dir"]) / "pair-slices" / pair["pair_id"]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    result = []
-    try:
-        with Image.open(target) as opened:
-            image = opened.convert("RGB")
-            if image.size != (width, height * 2):
-                raise HarnessError(
-                    f"Continuous pair canvas must be {width}x{height * 2}px after normalization; found {image.size[0]}x{image.size[1]}"
-                )
-            for offset, module_id in enumerate(pair["module_ids"]):
-                path = output_dir / f"{module_id}-attempt-{attempt:02d}.png"
-                crop = image.crop((0, offset * height, width, (offset + 1) * height))
-                crop.save(path, format="PNG", optimize=True)
-                crop.close()
-                result.append({
-                    "module_id": module_id,
-                    "path": str(path.resolve()),
-                    "start_y": offset * height,
-                    "end_y": (offset + 1) * height,
-                })
-            image.close()
-    except (OSError, UnidentifiedImageError) as exc:
-        raise HarnessError(f"Continuous pair canvas is not a readable raster image: {target}") from exc
-    return result
-
-
-def _verify_pair_slice_integrity(slices: list[dict], session: dict) -> None:
-    """Verify both derived 3:4 delivery files are readable and exact-sized.
-
-    Pair slicing is deterministic, but the resulting files are still delivery
-    artifacts and must be checked independently before they are accepted.
-    """
-    strategy = session["plan"]["output_strategy"]
-    expected = (int(strategy["canvas_width_px"]), int(strategy["module_height_px"]))
-    if len(slices) != 2:
-        raise HarnessError("A continuous pair must derive exactly two single-screen delivery files")
-    for item in slices:
-        path = Path(item["path"])
-        if not path.is_file():
-            raise HarnessError(f"Derived pair slice is missing: {path}")
-        try:
-            with Image.open(path) as opened:
-                opened.verify()
-            with Image.open(path) as opened:
-                actual = opened.size
-        except (OSError, UnidentifiedImageError) as exc:
-            raise HarnessError(f"Derived pair slice is not a readable raster image: {path}") from exc
-        if actual != expected:
-            raise HarnessError(
-                f"Derived pair slice must be {expected[0]}x{expected[1]}px; "
-                f"found {actual[0]}x{actual[1]} for {path.name}"
-            )
+    return create_fixed_slices(
+        Path(source), Path(session["session_dir"]), pair["pair_id"], pair["module_ids"],
+        int(strategy["canvas_width_px"]), int(strategy["module_height_px"]), attempt,
+    )
 
 
 def _pair_prompt(session: dict, modules: list[dict], *, repair: bool, format_canvas_lock: bool) -> tuple[str, list[str]]:
@@ -602,9 +561,10 @@ def cmd_resolve_conflicts(args: argparse.Namespace) -> dict:
         raise HarnessError("Conflict resolution must preserve the user's confirmation words")
     conflicts = {item["id"]: item for item in session["input"].get("source_conflicts", []) if item["status"] == "UNRESOLVED"}
     supplied = {item.get("conflict_id"): item for item in resolution["resolutions"]}
-    if set(supplied) != set(conflicts):
+    if len(supplied) != len(resolution["resolutions"]) or set(supplied) != set(conflicts):
         raise HarnessError("One batched resolution must cover every unresolved conflict exactly once")
     rejected_fact_ids = set()
+    retained_fact_ids = set()
     for conflict_id, item in supplied.items():
         require_fields(item, ("conflict_id", "retained_fact_ids", "rejected_fact_ids"), "conflict resolution item")
         conflict = conflicts[conflict_id]
@@ -620,6 +580,9 @@ def cmd_resolve_conflicts(args: argparse.Namespace) -> dict:
             "rejected_fact_ids": sorted(rejected),
         }
         rejected_fact_ids.update(rejected)
+        retained_fact_ids.update(retained)
+    if retained_fact_ids & rejected_fact_ids:
+        raise HarnessError("A fact cannot be both retained and rejected across conflicts")
     all_fact_ids = {item["id"] for item in session["input"]["verified_facts"]}
     session["planning_fact_ids"] = sorted(all_fact_ids - rejected_fact_ids)
     session["conflict_checkpoint"] = {"required": False, "conflict_ids": [], "resolved_at": now()}
@@ -636,7 +599,11 @@ def cmd_lock_identity(args: argparse.Namespace) -> dict:
     identity = load_json(args.identity)
     validate_schema(identity, "identity.schema.json", "identity contract")
     require_fields(identity, ("canonical_name", "category", "reference_image_ids", "invariant_features", "allowed_states", "forbidden_mutations"), "identity")
-    _require_geometry_clauses(identity)
+    if session["input"].get("website_contract_version") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import validate_source_identity
+        validate_source_identity(session["input"], identity)
+    else:
+        _require_geometry_clauses(identity)
     if "uncertain_features" not in identity or not isinstance(identity["uncertain_features"], list):
         raise HarnessError("identity uncertain_features must be present as an array; it may be empty when no uncertainty remains")
     known_ids = {item["id"] for item in session["input"]["product_images"]}
@@ -790,6 +757,18 @@ def _collect_plan_preflight_errors(session: dict, plan: dict) -> list[str]:
         ) if field not in module]
         if missing:
             errors.append(f"{module.get('id', f'M{index:02d}')} missing: {', '.join(missing)}")
+        evidence = module.get("visual_evidence")
+        if isinstance(evidence, dict):
+            missing_evidence = [field for field in (
+                "evidence_class", "proof_device", "visible_content", "forbidden_inventions",
+            ) if field not in evidence]
+            if missing_evidence:
+                errors.append(
+                    f"{module.get('id', f'M{index:02d}')} visual_evidence missing: "
+                    + ", ".join(missing_evidence)
+                )
+        else:
+            errors.append(f"{module.get('id', f'M{index:02d}')} visual_evidence must be an object")
         try:
             resolve_spatial_contract(module)
         except (HarnessError, KeyError, TypeError, ValueError) as exc:
@@ -817,17 +796,46 @@ def _collect_plan_preflight_errors(session: dict, plan: dict) -> list[str]:
     return _unique_strings(errors)
 
 
+def _preflight_authoring_plan(session: dict, raw_plan: dict) -> dict:
+    """Report independent schema and semantic faults in one bounded repair request.
+
+    Diagnostic normalization never authorizes an invalid plan. Work on a copy:
+    authoring normalization may add runtime fields, while original replies remain
+    immutable. Strict validate_plan still runs before approval is persisted.
+    """
+    if raw_plan.get("plan_format") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import compile_native
+
+        return compile_native(session, raw_plan)
+    errors: list[str] = []
+    try:
+        validate_schema(raw_plan, "compact-detail-plan.schema.json", "compact plan")
+    except HarnessError as exc:
+        errors.append(str(exc))
+    plan = None
+    try:
+        plan = normalize_plan(session, copy.deepcopy(raw_plan))
+        try:
+            validate_schema(plan["output_strategy"]["continuous_pair_rendering"], "continuous-pair-render.schema.json", "continuous pair rendering")
+        except (HarnessError, KeyError, TypeError, ValueError) as exc:
+            errors.append(f"continuous pair schema: {exc}")
+        errors.extend(_collect_plan_preflight_errors(session, plan))
+    except (HarnessError, KeyError, TypeError, ValueError) as exc:
+        errors.append(f"diagnostic normalization: {exc}")
+    errors = _unique_strings(errors)
+    if errors:
+        raise HarnessError(f"Plan preflight found {len(errors)} issue(s):\n- " + "\n- ".join(errors))
+    if plan is None:
+        raise HarnessError("Plan preflight could not normalize the authored contract")
+    return plan
+
+
 def cmd_preflight_plan(args: argparse.Namespace) -> dict:
     """Run the batch preflight without mutating the session or creating approval files."""
     session = load_json(args.session)
     require_state(session, "IDENTITY_LOCKED")
     raw_plan = load_json(args.plan)
-    validate_schema(raw_plan, "compact-detail-plan.schema.json", "compact plan")
-    plan = normalize_plan(session, raw_plan)
-    validate_schema(plan["output_strategy"]["continuous_pair_rendering"], "continuous-pair-render.schema.json", "continuous pair rendering")
-    errors = _collect_plan_preflight_errors(session, plan)
-    if errors:
-        raise HarnessError(f"Plan preflight found {len(errors)} issue(s):\n- " + "\n- ".join(errors))
+    plan = _preflight_authoring_plan(session, raw_plan)
     return {"status": "PREFLIGHT_PASS", "module_count": len(plan["modules"]), "pair_count": len(plan["modules"]) // 2}
 
 
@@ -862,7 +870,91 @@ def _require_module_logo_policy(session: dict, module: dict) -> None:
         )
 
 
+def validate_reference_expression_system(session: dict, plan: dict, fact_ids: set[str]) -> None:
+    """Validate actual analyzed references and their exact screen schedule."""
+    known_module_ids = {item["id"] for item in plan["modules"]}
+    reference_system = plan["reference_expression_system"]
+    require_fields(reference_system, ("anti_copy_rule",), "reference expression system")
+    for optional_empty_key in ("coverage", "adopted_patterns"):
+        if optional_empty_key not in reference_system or not isinstance(reference_system[optional_empty_key], list):
+            raise HarnessError(f"reference expression system missing required list field: {optional_empty_key}")
+    if reference_system["anti_copy_rule"] != "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET":
+        raise HarnessError("Reference use must adapt expression grammar without copying brand, copy or assets")
+    supplied_reference_items = {
+        item["id"]: item for item in session["input"].get("reference_materials", [])
+    }
+    supplied_reference_units = {
+        unit["id"]: {**unit, "reference_id": item["id"]}
+        for item in supplied_reference_items.values()
+        for unit in item.get("analyzed_units", [])
+    }
+    supplied_refs = set(supplied_reference_items)
+    coverage_refs = {item.get("reference_id") for item in reference_system["coverage"]}
+    if coverage_refs != supplied_refs:
+        raise HarnessError("Every supplied reference material must be explicitly adopted or rejected")
+    patterns = {item.get("id"): item for item in reference_system["adopted_patterns"]}
+    for pattern_id, pattern in patterns.items():
+        pattern_fields = ["id", "source_reference_ids", "source_unit_ids", "observed_method", "adaptation_for_product", "scheduled_module_ids", "do_not_copy"]
+        if plan.get("expression_contract_version") == "4.3":
+            pattern_fields.extend(["fact_dependencies", "copy_or_claims_not_inherited"])
+        require_fields(pattern, tuple(pattern_fields), "reference expression pattern")
+        if set(pattern["source_reference_ids"]) - supplied_refs:
+            raise HarnessError(f"Reference pattern {pattern_id} cites unknown materials")
+        cited_units = set(pattern["source_unit_ids"])
+        if cited_units - set(supplied_reference_units):
+            raise HarnessError(f"Reference pattern {pattern_id} cites unknown analyzed screen units")
+        if {supplied_reference_units[unit_id]["reference_id"] for unit_id in cited_units} - set(pattern["source_reference_ids"]):
+            raise HarnessError(f"Reference pattern {pattern_id} source units do not belong to its source references")
+        observed_methods = {
+            supplied_reference_units[unit_id]["observed_expression_method"]
+            for unit_id in cited_units
+        }
+        if pattern["observed_method"] not in observed_methods:
+            raise HarnessError(
+                f"Reference pattern {pattern_id} must use an expression method actually recorded in its analyzed source material"
+            )
+        if set(pattern["scheduled_module_ids"]) - known_module_ids:
+            raise HarnessError(f"Reference pattern {pattern_id} is scheduled to unknown modules")
+        if not pattern["scheduled_module_ids"]:
+            raise HarnessError(f"Reference pattern {pattern_id} must be scheduled to at least one module")
+        if plan.get("expression_contract_version") == "4.3":
+            if not pattern["fact_dependencies"] or set(pattern["fact_dependencies"]) - fact_ids:
+                raise HarnessError(f"Reference pattern {pattern_id} must bind to active verified facts")
+            if not pattern["copy_or_claims_not_inherited"]:
+                raise HarnessError(f"Reference pattern {pattern_id} must name reference claims/copy that are not inherited")
+    for item in reference_system["coverage"]:
+        require_fields(item, ("reference_id", "disposition", "pattern_ids", "reason"), "reference coverage item")
+        cited_patterns = set(item["pattern_ids"])
+        if cited_patterns - set(patterns):
+            raise HarnessError(f"Reference {item['reference_id']} cites unknown expression patterns")
+        if item["disposition"] == "ADOPTED_GRAMMAR" and not cited_patterns:
+            raise HarnessError(f"Adopted reference {item['reference_id']} must feed at least one expression pattern")
+        if item["disposition"] == "REJECTED_IRRELEVANT" and cited_patterns:
+            raise HarnessError(f"Rejected reference {item['reference_id']} cannot feed an expression pattern")
+    known_pattern_ids = set(patterns)
+    for module in plan["modules"]:
+        scheduled_patterns = {pattern_id for pattern_id, pattern in patterns.items()
+                              if module["id"] in pattern["scheduled_module_ids"]}
+        if scheduled_patterns - set(module["reference_pattern_ids"]):
+            raise HarnessError(f"Module {module['id']} must inherit every scheduled analyzed reference-expression pattern")
+        if set(module["reference_pattern_ids"]) - known_pattern_ids:
+            raise HarnessError(f"Module {module['id']} cites unknown reference-expression patterns")
+        for pattern_id in module["reference_pattern_ids"]:
+            if module["id"] not in patterns[pattern_id]["scheduled_module_ids"]:
+                raise HarnessError(f"Reference pattern {pattern_id} is not scheduled for module {module['id']}")
+
+
 def validate_plan(session: dict, plan: dict) -> None:
+    if plan.get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import compile_native
+
+        if session.get("conflict_checkpoint", {}).get("required"):
+            raise HarnessError("Resolve product source conflicts before planning")
+        if plan != compile_native(session, plan["website_source_plan"]):
+            raise HarnessError("Compiled website plan differs from its facts or approved brief")
+        for module in plan["modules"]:
+            _require_module_logo_policy(session, module)
+        return
     if any(item.get("status") == "UNRESOLVED" for item in session["input"].get("source_conflicts", [])):
         raise HarnessError("Full planning is forbidden while product-source conflicts remain unresolved")
     require_fields(plan, ("campaign_thesis", "dominant_decision_type", "output_strategy", "reference_expression_system", "style_constitution", "series_visual_dna", "typography_rhythm", "modules"), "plan")
@@ -974,17 +1066,24 @@ def validate_plan(session: dict, plan: dict) -> None:
                 raise HarnessError(f"Continuous render pair {pair['pair_id']} must use pair_merge_type=PAIR_PLAN_MERGE")
             if pair["module_ids"] != expected_ids[(index - 1) * 2:index * 2]:
                 raise HarnessError("Continuous render pair module_ids must match storyboard order")
-            upper_transition = plan_module_by_id[pair["module_ids"][0]].get("transition_contract") or {}
+            lower_transition = plan_module_by_id[pair["module_ids"][1]].get("transition_contract") or {}
             expected_seam_fields = {
-                "internal_seam_method_id": upper_transition.get("method_id"),
-                "internal_seam_carrier": upper_transition.get("seam_carrier"),
-                "internal_seam_source_region": upper_transition.get("source_region_previous"),
-                "internal_seam_target_region": upper_transition.get("target_region_current"),
-                "internal_seam_geometry": upper_transition.get("handoff_geometry"),
+                "internal_seam_method_id": lower_transition.get("method_id"),
+                "internal_seam_carrier": lower_transition.get("seam_carrier"),
+                "internal_seam_source_region": lower_transition.get("source_region_previous"),
+                "internal_seam_target_region": lower_transition.get("target_region_current"),
+                "internal_seam_geometry": lower_transition.get("handoff_geometry"),
             }
             for field, expected in expected_seam_fields.items():
                 if pair.get(field) != expected:
-                    raise HarnessError(f"Continuous render pair {pair['pair_id']} {field} must mirror its upper-screen transition contract")
+                    raise HarnessError(f"Continuous render pair {pair['pair_id']} {field} must mirror its lower-screen incoming transition contract")
+            for field, expected_module in (
+                ("internal_seam_source_region", pair["module_ids"][0]),
+                ("internal_seam_target_region", pair["module_ids"][1]),
+            ):
+                explicit = set(re.findall(r"(?<![A-Za-z0-9])M\d{2}(?![A-Za-z0-9])", str(pair.get(field) or "")))
+                if explicit - {expected_module}:
+                    raise HarnessError(f"Pair {pair['pair_id']} {field} must reference only {expected_module}")
             seen.extend(pair["module_ids"])
             seam = pair.get("internal_seam_zone", {})
             require_fields(seam, ("start_y", "end_y"), "continuous pair internal seam zone")
@@ -1121,6 +1220,8 @@ def validate_plan(session: dict, plan: dict) -> None:
     expected_order = 1
     previous_module = None
     for module in plan["modules"]:
+        if module.get("expression_contract_version") == "4.3":
+            validate_expression_signature(module)
         require_fields(
             module,
             ("id", "order", "duty", "buyer_question", "lead_conclusion", "lead_claim_id", "selling_point_cluster_ids", "visual_proof_direction", "visual_evidence", "visual_proof_contract", "module_spatial_structure_contract", "copy_intent", "composition_family", "camera_scale", "text_system", "reading_path", "copy_density", "visual_payload_density", "proof_relation_strength", "commercial_energy", "breathing_screen", "brand_anchor", "independent_logo_policy", "independent_logo_source_id", "inherited_dna_tokens", "variation_from_previous", "output"),
@@ -1401,75 +1502,7 @@ def validate_plan(session: dict, plan: dict) -> None:
         if not (set(cluster["assigned_module_ids"]) - other_assignments):
             raise HarnessError(f"Selling-point cluster {cluster['id']} is marked MUST_SEPARATE but has no dedicated module")
 
-    reference_system = plan["reference_expression_system"]
-    require_fields(reference_system, ("anti_copy_rule",), "reference expression system")
-    for optional_empty_key in ("coverage", "adopted_patterns"):
-        if optional_empty_key not in reference_system or not isinstance(reference_system[optional_empty_key], list):
-            raise HarnessError(f"reference expression system missing required list field: {optional_empty_key}")
-    if reference_system["anti_copy_rule"] != "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET":
-        raise HarnessError("Reference use must adapt expression grammar without copying brand, copy or assets")
-    supplied_reference_items = {
-        item["id"]: item for item in session["input"].get("reference_materials", [])
-    }
-    supplied_reference_units = {
-        unit["id"]: {**unit, "reference_id": item["id"]}
-        for item in supplied_reference_items.values()
-        for unit in item.get("analyzed_units", [])
-    }
-    supplied_refs = set(supplied_reference_items)
-    coverage_refs = {item.get("reference_id") for item in reference_system["coverage"]}
-    if coverage_refs != supplied_refs:
-        raise HarnessError("Every supplied reference material must be explicitly adopted or rejected")
-    patterns = {item.get("id"): item for item in reference_system["adopted_patterns"]}
-    if supplied_refs and len(patterns) < 1:
-        raise HarnessError("Analyzed reference materials were supplied, so at least one expression pattern must be adapted")
-    for pattern_id, pattern in patterns.items():
-        pattern_fields = ["id", "source_reference_ids", "source_unit_ids", "observed_method", "adaptation_for_product", "scheduled_module_ids", "do_not_copy"]
-        if plan.get("expression_contract_version") == "4.3":
-            pattern_fields.extend(["fact_dependencies", "copy_or_claims_not_inherited"])
-        require_fields(pattern, tuple(pattern_fields), "reference expression pattern")
-        if set(pattern["source_reference_ids"]) - supplied_refs:
-            raise HarnessError(f"Reference pattern {pattern_id} cites unknown materials")
-        cited_units = set(pattern["source_unit_ids"])
-        if cited_units - set(supplied_reference_units):
-            raise HarnessError(f"Reference pattern {pattern_id} cites unknown analyzed screen units")
-        if {supplied_reference_units[unit_id]["reference_id"] for unit_id in cited_units} - set(pattern["source_reference_ids"]):
-            raise HarnessError(f"Reference pattern {pattern_id} source units do not belong to its source references")
-        observed_methods = {
-            supplied_reference_units[unit_id]["observed_expression_method"]
-            for unit_id in cited_units
-        }
-        if pattern["observed_method"] not in observed_methods:
-            raise HarnessError(
-                f"Reference pattern {pattern_id} must use an expression method actually recorded in its analyzed source material"
-            )
-        if set(pattern["scheduled_module_ids"]) - known_module_ids:
-            raise HarnessError(f"Reference pattern {pattern_id} is scheduled to unknown modules")
-        if not pattern["scheduled_module_ids"]:
-            raise HarnessError(f"Reference pattern {pattern_id} must be scheduled to at least one module")
-        if plan.get("expression_contract_version") == "4.3":
-            if not pattern["fact_dependencies"] or set(pattern["fact_dependencies"]) - fact_ids:
-                raise HarnessError(f"Reference pattern {pattern_id} must bind to active verified facts")
-            if not pattern["copy_or_claims_not_inherited"]:
-                raise HarnessError(f"Reference pattern {pattern_id} must name reference claims/copy that are not inherited")
-    for item in reference_system["coverage"]:
-        require_fields(item, ("reference_id", "disposition", "pattern_ids", "reason"), "reference coverage item")
-        cited_patterns = set(item["pattern_ids"])
-        if cited_patterns - set(patterns):
-            raise HarnessError(f"Reference {item['reference_id']} cites unknown expression patterns")
-        if item["disposition"] == "ADOPTED_GRAMMAR" and not cited_patterns:
-            raise HarnessError(f"Adopted reference {item['reference_id']} must feed at least one expression pattern")
-        if item["disposition"] == "REJECTED_IRRELEVANT" and cited_patterns:
-            raise HarnessError(f"Rejected reference {item['reference_id']} cannot feed an expression pattern")
-    known_pattern_ids = set(patterns)
-    for module in plan["modules"]:
-        if supplied_refs and not module["reference_pattern_ids"]:
-            raise HarnessError(f"Module {module['id']} must inherit at least one analyzed reference-expression pattern")
-        if set(module["reference_pattern_ids"]) - known_pattern_ids:
-            raise HarnessError(f"Module {module['id']} cites unknown reference-expression patterns")
-        for pattern_id in module["reference_pattern_ids"]:
-            if module["id"] not in patterns[pattern_id]["scheduled_module_ids"]:
-                raise HarnessError(f"Reference pattern {pattern_id} is not scheduled for module {module['id']}")
+    validate_reference_expression_system(session, plan, fact_ids)
     for item in coverage:
         require_fields(item, ("claim_id", "disposition", "rationale", "defer_reason_code"), "claim coverage item")
         if "module_ids" not in item or not isinstance(item["module_ids"], list):
@@ -1507,12 +1540,7 @@ def cmd_compile_plan(args: argparse.Namespace) -> dict:
         raise HarnessError("Full planning is blocked until the user resolves the batched conflict checkpoint")
     compile_started = time.perf_counter()
     raw_plan = load_json(args.plan)
-    validate_schema(raw_plan, "compact-detail-plan.schema.json", "compact plan")
-    plan = normalize_plan(session, raw_plan)
-    validate_schema(plan["output_strategy"]["continuous_pair_rendering"], "continuous-pair-render.schema.json", "continuous pair rendering")
-    preflight_errors = _collect_plan_preflight_errors(session, plan)
-    if preflight_errors:
-        raise HarnessError(f"Plan preflight found {len(preflight_errors)} issue(s):\n- " + "\n- ".join(preflight_errors))
+    plan = _preflight_authoring_plan(session, raw_plan)
     validate_plan(session, plan)
     session["plan"] = plan
     session["modules"] = [
@@ -1529,20 +1557,10 @@ def cmd_compile_plan(args: argparse.Namespace) -> dict:
     session["current_index"] = 0
     session["state"] = "AWAITING_PLAN_APPROVAL"
     approval_markdown = _approval_markdown(session)
-    grouping_markdown = _pair_grouping_markdown(session)
-    approval_markdown = approval_markdown.rstrip() + "\n\n" + grouping_markdown.lstrip()
-    approval_path = Path(args.session).with_name("campaign-approval.md")
-    atomic_write_text(approval_path, approval_markdown)
-    session["approval_document"] = {
-        "path": str(approval_path.resolve()),
-        "sha256": hashlib.sha256(approval_markdown.encode("utf-8")).hexdigest(),
-        "format": "MANDATORY_VERBATIM_MARKDOWN",
-    }
-    session["pair_grouping_document"] = {
-        "path": str(approval_path.resolve()),
-        "sha256": session["approval_document"]["sha256"],
-        "format": "MERGED_IN_CAMPAIGN_APPROVAL",
-    }
+    if plan.get("planning_mode") != "WEBSITE_DIRECT_V2":
+        grouping_markdown = _pair_grouping_markdown(session)
+        approval_markdown = approval_markdown.rstrip() + "\n\n" + grouping_markdown.lstrip()
+    _persist_approval_document(session, args.session, approval_markdown)
     raw_bytes = len(json.dumps(raw_plan, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     compiled_bytes = len(json.dumps(plan, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     session["planning_metrics"] = {
@@ -1557,6 +1575,23 @@ def cmd_compile_plan(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def _persist_approval_document(session: dict, session_path: str | Path, markdown: str) -> None:
+    # atomic_write_text owns exactly one terminal LF. Hash those same bytes.
+    markdown = markdown.rstrip() + "\n"
+    approval_path = Path(session_path).with_name("campaign-approval.md")
+    atomic_write_text(approval_path, markdown)
+    session["approval_document"] = {
+        "path": str(approval_path.resolve()),
+        "sha256": hashlib.sha256(markdown.encode("utf-8")).hexdigest(),
+        "format": "MANDATORY_VERBATIM_MARKDOWN",
+    }
+    session["pair_grouping_document"] = {
+        "path": str(approval_path.resolve()),
+        "sha256": session["approval_document"]["sha256"],
+        "format": "MERGED_IN_CAMPAIGN_APPROVAL",
+    }
+
+
 def cmd_authorize(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     require_state(session, "AWAITING_PLAN_APPROVAL")
@@ -1568,6 +1603,12 @@ def cmd_authorize(args: argparse.Namespace) -> dict:
             "Authorization must cite the exact compiler-generated campaign-approval.md fingerprint; "
             "do not authorize from a handwritten or abbreviated plan summary"
         )
+    try:
+        actual_approval_sha = hashlib.sha256(Path(approval_document["path"]).read_bytes()).hexdigest()
+    except (KeyError, OSError, TypeError) as exc:
+        raise HarnessError("The compiler-generated approval file is missing") from exc
+    if actual_approval_sha != approval_document.get("sha256"):
+        raise HarnessError("The compiler-generated approval file bytes changed; recompile and review again")
     strategy = session["plan"]["output_strategy"]
     if args.approved_module_count != strategy["module_count"]:
         raise HarnessError("Approved module count does not match the compiled plan")
@@ -1593,6 +1634,48 @@ def cmd_authorize(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def _local_revision_request_count(session: dict) -> int | None:
+    fork = session.get("revision_fork")
+    if fork is None:
+        return None
+    if fork.get("version") != "owned-local-revision-fork-v1":
+        raise HarnessError("Unknown local revision authority")
+    source = Path(fork["source_session"])
+    if source.resolve().parent != Path(session["session_dir"]).resolve() or source.name != "source-session.json":
+        raise HarnessError("Local revision source snapshot escaped its owner")
+    if file_sha256(source) != fork["source_session_sha256"]:
+        raise HarnessError("Original local revision snapshot changed")
+    original = load_json(source).get("generation_requests", [])
+    requests = session.get("generation_requests", [])
+    if (not isinstance(original, list) or not isinstance(requests, list)
+            or any(not isinstance(r, dict) for r in requests)
+            or requests[:len(original)] != original):
+        raise HarnessError("Local revision changed its original signed request history")
+    fresh = requests[len(original):]
+    if (len(fresh) > 2 or len({r.get("token") for r in fresh}) != len(fresh)
+            or any(not r.get("token") or r.get("pair_id") != fork["pair_id"]
+                   or r.get("module_ids") != fork["module_ids"]
+                   or not Path(r["request"]).resolve().is_relative_to(Path(session["session_dir"]).resolve()) for r in fresh)):
+        raise HarnessError("Local revision request history violates its two-request budget")
+    signed = Path(session["session_dir"]) / "signed-requests"
+    if signed.is_symlink() or signed.is_junction():
+        raise HarnessError("Local revision signed requests cannot traverse links")
+    actual_files = {p.resolve() for p in signed.glob("*.json")}
+    expected_files = {Path(r["request"]).resolve() for r in fresh}
+    if actual_files != expected_files:
+        raise HarnessError("Local revision signed request history differs from its session; reconcile original requests")
+    for row in fresh:
+        path = Path(row["request"])
+        if path.is_symlink() or file_sha256(path) != row.get("request_sha256"):
+            raise HarnessError("Local revision original signed request bytes changed")
+        value = load_json(path)
+        if (value.get("token") != row["token"] or value.get("pair_id") != fork["pair_id"]
+                or value.get("module_ids") != fork["module_ids"]
+                or value.get("request_fingerprint") != fingerprint({k: v for k, v in value.items() if k != "request_fingerprint"})):
+            raise HarnessError("Local revision original signed request scope changed")
+    return len(fresh)
+
+
 def cmd_generate_next(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     if session.get("version") not in COMPATIBLE_SESSION_VERSIONS:
@@ -1600,6 +1683,9 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
             f"Session version {session.get('version')} is not compatible with harness {VERSION}; restart and recompile the approved storyboard matrix"
         )
     require_state(session, "AUTHORIZED")
+    revision_requests = _local_revision_request_count(session)
+    if revision_requests is not None and revision_requests >= 2:
+        raise HarnessError("Local revision request budget exhausted; reconcile the original two requests without reopening the cycle")
     _require_pair_generation_contract(session)
     module = current_module(session)
     pair = _pair_for_index(session, session.get("current_index", 0))
@@ -1698,11 +1784,13 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
             } if pair else None),
         },
     }
+    if session["plan"].get("website_contract_version") is not None:
+        request["review_profile"] = session["plan"]["website_contract_version"]
     if pair:
         pair_config = _pair_rendering(session) or {}
         pair_index = next((index for index, item in enumerate(pair_config.get("pair_ids", [])) if item.get("pair_id") == pair["pair_id"]), 0)
         bridges = pair_config.get("pair_to_pair_transition_tokens", [])
-        pair_transition = pair_modules[0]["plan"].get("transition_contract") or {}
+        pair_transition = pair_modules[1]["plan"].get("transition_contract") or {}
         request["pair_render"] = {
             "mode": "CONTINUOUS_PAIR",
             "pair_merge_type": "PAIR_PLAN_MERGE",
@@ -1728,13 +1816,18 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
             "merged_prompt_fingerprint": fingerprint(prompt),
             "screen_contracts": [{"module_id": item["id"], "prompt_fingerprint": fingerprint(screen_prompts[offset])} for offset, item in enumerate(pair_modules)],
         }
+    if any(item.get("local_contract_override") is not None for item in pair_modules):
+        request["local_contract_bindings"] = [{"module_id": item["id"], "effective_plan_sha256": fingerprint(effective_plan(item)),
+            "override_sha256": (item.get("local_contract_override") or {}).get("sha256")} for item in pair_modules]
     request["request_fingerprint"] = fingerprint(request)
     atomic_write_json(args.out, request)
+    signed_request = preserve_signed_request(Path(args.out), Path(args.session).resolve().parent, token)
     session.setdefault("generation_requests", []).append({
         "token": token,
         "pair_id": request.get("pair_id"),
         "module_ids": request["module_ids"],
-        "request": str(Path(args.out).resolve()),
+        "request": str(signed_request),
+        "request_sha256": file_sha256(signed_request),
         "request_fingerprint": request["request_fingerprint"],
         "issued_at": now(),
     })
@@ -1744,13 +1837,16 @@ def cmd_generate_next(args: argparse.Namespace) -> dict:
     for item in pair_modules:
         item["status"] = "AWAITING_GENERATION"
     save(args.session, session, f"generation_requested:{pair['pair_id'] if pair else module['id']}")
-    return {"request": str(Path(args.out).resolve()), **request}
+    return {"request": str(Path(args.out).resolve()), **request, "approved_module_contracts": review_contracts(pair_modules, len(session["modules"]))}
 
 
 def cmd_record_generation(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     _require_pair_generation_contract(session)
-    session.setdefault("session_dir", str(Path(args.session).resolve().parent))
+    workspace = Path(args.session).resolve().parent
+    if Path(session.get("session_dir", workspace)).resolve() != workspace:
+        raise HarnessError("Generation session directory changed")
+    session["session_dir"] = str(workspace)
     require_state(session, "AWAITING_GENERATED_MODULE")
     if args.token != session.get("active_token"):
         raise HarnessError("Stale or incorrect generation token")
@@ -1762,15 +1858,14 @@ def cmd_record_generation(args: argparse.Namespace) -> dict:
     pair_modules = _pair_modules(session, session.get("current_index", 0)) if pair else [module]
     output = module["plan"]["output"]
     target_height = int(output["height_px"]) * (2 if pair else 1)
+    original = preserve_provider_original(image, workspace, args.token)
     normalized = normalize_generated_image(
-        image,
+        original,
         int(output["width_px"]),
         target_height,
     )
     attempt_number = len(pair_modules[0]["attempts"]) + 1
     slices = _pair_canvas_slices(normalized["path"], session, pair, attempt_number) if pair else []
-    if pair:
-        _verify_pair_slice_integrity(slices, session)
     slice_by_id = {item["module_id"]: item for item in slices}
     for item in pair_modules:
         item["cycle_attempt_count"] = item.get("cycle_attempt_count", 0) + 1
@@ -1791,6 +1886,8 @@ def cmd_record_generation(args: argparse.Namespace) -> dict:
             },
             "token": args.token,
             "source_image": normalized["source_path"],
+            "provider_output_path": str(image.resolve()),
+            "normalization": {key: value for key, value in normalized.items() if key != "path"},
             "source_image_sha256": file_sha256(normalized["source_path"]),
             "normalized_image_sha256": file_sha256(normalized["path"]),
             "source_width_px": normalized["source_width_px"],
@@ -1939,8 +2036,10 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
     if not pair or pair.get("module_ids", [None])[0] != upper["id"]:
         raise HarnessError("The current render container is not an ordered two-screen pair")
     pair_modules = _pair_modules(session, session.get("current_index", 0))
+    lineage = pair_artifacts(session, pair["pair_id"])
+    validate_request_contracts(session, lineage, pair_modules)
     judgment = load_json(args.judgment)
-    validate_schema(judgment, "pair-judgment.schema.json", "pair judgment")
+    validate_schema(judgment, review_schema_name(session["plan"]), "pair judgment")
     require_fields(
         judgment,
         ("pair_id", "module_ids", "status", "audit_complete", "pair_canvas", "checks", "screen_coverage", "internal_seam_evidence", "material_failures"),
@@ -1971,8 +2070,8 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         require_fields(coverage, ("module_id", "duty_visible", "selling_points_visible", "visible_evidence"), "pair screen coverage")
         if coverage["module_id"] not in pair["module_ids"] or coverage["module_id"] in coverage_ids:
             raise HarnessError("Pair screen coverage must contain each adjacent module exactly once")
-        if coverage["duty_visible"] is not True or not coverage["selling_points_visible"] or len(str(coverage["visible_evidence"]).strip()) < 8:
-            raise HarnessError("Pair screen coverage must visibly confirm each screen duty and selling-point payload")
+        if judgment["status"] == "PASS" and (coverage["duty_visible"] is not True or not coverage["selling_points_visible"]):
+            raise HarnessError("PASS pair screen coverage must visibly confirm each screen duty and selling-point payload")
         coverage_ids.append(coverage["module_id"])
     if coverage_ids != pair["module_ids"]:
         raise HarnessError("Pair screen coverage must preserve upper-to-lower screen order")
@@ -1982,19 +2081,43 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         ("method_id", "source_region", "target_region", "carrier", "geometry", "hard_cut_absent", "method_specific_pass", "visible_evidence"),
         "pair internal seam evidence",
     )
-    planned = pair_modules[0]["plan"].get("transition_contract") or {}
+    planned = pair_modules[1]["plan"].get("transition_contract") or {}
     if seam["method_id"] != planned.get("method_id"):
-        raise HarnessError("Pair seam evidence method does not match the approved upper-screen transition contract")
-    if seam["hard_cut_absent"] is not True or seam["method_specific_pass"] is not True:
-        raise HarnessError("Pair seam evidence must pass the declared method and contain no hard cut")
+        raise HarnessError("Pair seam evidence method does not match the approved lower-screen incoming transition contract")
+    if judgment["status"] == "PASS" and (seam["hard_cut_absent"] is not True or seam["method_specific_pass"] is not True):
+        raise HarnessError("PASS pair seam evidence must pass the declared method and contain no hard cut")
     checks = judgment["checks"]
     required_checks = ("identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression")
+    if session["plan"].get("website_contract_version") == "WEBSITE_LEAN_V1":
+        from runtime.website_review import CHECKS as required_checks
     missing = [name for name in required_checks if name not in checks]
     if missing:
         raise HarnessError("Pair judgment missing checks: " + ", ".join(missing))
-    require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment")
+    require_identity_silhouette(judgment, f"pair {judgment['pair_id']} judgment", allow_material_failure=True, expected_scope=pair_observed_scope(judgment["module_judgments"]))
     failures = list(judgment["material_failures"])
-    if session.get("plan", {}).get("information_contract_version") == "4.1":
+    failures.extend(validate_atomic_reports(judgment, pair_modules, lineage))
+    revision_contract = revision_review_contract(session, pair["pair_id"])
+    failures.extend(validate_revision_observation(revision_contract, judgment, lineage))
+    if judgment["status"] == "MATERIAL_FAIL" and not failures:
+        raise HarnessError("MATERIAL_FAIL pair judgment requires visible material failures")
+    # These findings come only from explicit negative pixel observations. Missing
+    # fields remain schema errors and never grant an automatic image repair.
+    observed_failures = [
+        {"check": name, "visible_evidence": checks[name]["visible_evidence"]}
+        for name in required_checks if checks[name]["pass"] is False
+    ]
+    if seam["hard_cut_absent"] is False or seam["method_specific_pass"] is False:
+        observed_failures.append({"check": "internal_seam", "visible_evidence": seam["visible_evidence"]})
+    silhouette = judgment["identity_silhouette"]
+    if any(silhouette[name] is False for name in ("shape_consistent", "colorway_consistent", "texture_consistent")):
+        observed_failures.append({"check": "identity_silhouette", "visible_evidence": silhouette["visible_evidence"]})
+    for coverage in judgment["screen_coverage"]:
+        if coverage["duty_visible"] is False or not coverage["selling_points_visible"]:
+            observed_failures.append({"check": "screen_coverage", "module_id": coverage["module_id"], "visible_evidence": coverage["visible_evidence"]})
+    for finding in observed_failures:
+        if finding not in failures:
+            failures.append(finding)
+    if session.get("plan", {}).get("information_contract_version") == "4.1" and session["plan"].get("website_contract_version") != "WEBSITE_LEAN_V1":
         info = judgment.get("information_audit")
         require_fields(info or {}, ("upper_buyer_question", "lower_buyer_question", "new_information_visible", "new_information_evidence", "repetition_without_progression", "hero_subject_clear", "co_equal_hero_detected", "purchase_judgment_enabled", "detail_page_not_posterized"), "pair information audit")
         if info["new_information_visible"] is not True or info["repetition_without_progression"] is True or info["purchase_judgment_enabled"] is not True or info["detail_page_not_posterized"] is not True:
@@ -2013,16 +2136,25 @@ def cmd_audit_pair(args: argparse.Namespace) -> dict:
         raise HarnessError("PASS pair judgment violates group audit gates: " + "; ".join(hard_failures or failed_checks))
     if judgment["status"] == "MATERIAL_FAIL" and not failures:
         raise HarnessError("MATERIAL_FAIL pair judgment requires visible material failures")
-    latest_slices = [
-        (item.get("attempts") or [])[-1].get("pair_slice")
-        for item in pair_modules
-        if (item.get("attempts") or []) and (item.get("attempts") or [])[-1].get("pair_slice")
-    ]
-    if latest_slices:
-        _verify_pair_slice_integrity(latest_slices, session)
+    cycle_counts = [item.get("cycle_attempt_count") for item in pair_modules]
+    if any(type(count) is not int for count in cycle_counts) or cycle_counts[0] not in (1, 2) or cycle_counts != [cycle_counts[0]] * len(pair_modules):
+        raise HarnessError("Pair audit requires the same first or second cycle attempt on both screens")
+    # Preserve raw reports unchanged. Whole-pair preservation claims require
+    # both complete atomic reports; never invent an identity pass on failure.
+    effective_passed = [name for name in judgment.get("passed_layers", []) if name in checks and checks[name]["pass"] is True]
+    if any(report["status"] != "PASS" for report in judgment["module_judgments"]):
+        effective_passed = []
+    if silhouette["comparison_scope"] != "VISIBLE_COMPLETE_PRODUCT" or any(silhouette[name] is False for name in ("shape_consistent", "colorway_consistent", "texture_consistent")):
+        effective_passed = [name for name in effective_passed if name != "identity"]
+    if seam["hard_cut_absent"] is False or seam["method_specific_pass"] is False:
+        effective_passed = [name for name in effective_passed if name != "internal_seam"]
+    recorded_judgment = {**judgment, "material_failures": failures, "effective_passed_layers": effective_passed}
+    review_evidence = record_pair_audit(args.judgment, judgment, recorded_judgment, lineage, revision_contract=revision_contract)
     for item in pair_modules:
         attempt = item["attempts"][-1]
-        attempt["judgment"] = judgment
+        attempt["judgment"] = recorded_judgment
+        attempt["review_evidence"] = review_evidence
+        attempt["artifact_lineage_sha256"] = lineage["sha256"]
         if judgment["status"] == "PASS":
             item["accepted_asset"] = attempt["image"]
             item["status"] = "COMPLETE"
@@ -2072,6 +2204,19 @@ def cmd_prepare_repair(args: argparse.Namespace) -> dict:
     return summary(session)
 
 
+def _sibling_preservation_adjustment(module_id: str) -> dict:
+    return {
+        "module_id": module_id,
+        "verbatim_instruction": "Preserve sibling screen while regenerating the approved continuous pair.",
+        "change_scope": "local", "change_kind": "OTHER_LOCAL",
+        "change_only": ["Preserve this sibling screen; only reconnect its approved continuous-pair seam."],
+        "preserve": ["Keep this sibling's accepted composition, product geometry, wording and visual proof."],
+        "must_not_regress": ["Keep this sibling's identity, verified facts, readability and approved seam."],
+        "changes_identity": False, "changes_facts": False, "changes_target_buyer": False,
+        "changes_campaign_style": False, "changes_module_sequence": False,
+    }
+
+
 def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
     session = load_json(args.session)
     require_state(session, "AUTHORIZED", "REPAIR_EXHAUSTED", "AWAITING_ASSEMBLY", "AWAITING_USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED", "FINALIZED")
@@ -2112,23 +2257,285 @@ def cmd_apply_user_adjustment(args: argparse.Namespace) -> dict:
                 continue
             sibling["prior_accepted_asset"] = sibling.get("accepted_asset")
             sibling["accepted_asset"] = None
+            sibling.setdefault("revision_history", []).append({
+                "cycle_id": sibling.get("cycle_id", 1),
+                "instruction": "Preserve sibling screen while regenerating the approved continuous pair.",
+                "source_module_id": module["id"],
+                "verbatim_user_instruction": adjustment["verbatim_instruction"],
+                "attempt_count": sibling.get("cycle_attempt_count", 0),
+                "closed_at": now(),
+            })
             sibling["cycle_id"] = sibling.get("cycle_id", 1) + 1
             sibling["cycle_attempt_count"] = 0
             sibling["cycle_base_asset"] = pair_base
             sibling["repair_plan"] = None
-            sibling["user_adjustment"] = {**adjustment, "module_id": sibling["id"], "verbatim_instruction": "Preserve sibling screen while regenerating the approved continuous pair."}
+            sibling["user_adjustment"] = _sibling_preservation_adjustment(sibling["id"])
             sibling["status"] = "USER_ADJUSTMENT"
     ledger = session.setdefault("feedback_constraints", {"global": {"preserve": [], "must_not_regress": []}, "by_module": {}})
     module_ledger = ledger.setdefault("by_module", {}).setdefault(module["id"], {"preserve": [], "must_not_regress": []})
     for key in ("preserve", "must_not_regress"):
         module_ledger[key] = _unique_strings(module_ledger.get(key, []) + adjustment[key])
-    session["current_index"] = index
+    session["current_index"] = (
+        min(i for i, item in enumerate(session["modules"]) if item["id"] in pair["module_ids"])
+        if pair else index
+    )
     session["assembly"] = None
     session["long_page_audit"] = None
     session["final"] = None
     session["state"] = "AUTHORIZED"
     save(args.session, session, f"user_adjustment_applied:{module['id']}")
     return summary(session)
+
+
+def cmd_fork_local_revision(args: argparse.Namespace) -> dict:
+    """Open one owned local cycle; never reopen or mutate the source session."""
+    import os
+
+    source_path, target = Path(args.source_session), Path(args.session)
+    for path in (source_path, target, Path(args.revision_intent)):
+        if any(p.is_symlink() or p.is_junction() for p in (path, *path.parents)):
+            raise HarnessError("Local revision cannot traverse links")
+    root = target.resolve().parent
+    if (target.name != "session.json" or source_path.name != "source-session.json"
+            or source_path.resolve().parent != root
+            or Path(args.revision_intent).resolve().parent != root):
+        raise HarnessError("Local revision inputs must belong to the new owned workspace")
+    source_bytes = source_path.read_bytes()
+    if file_sha256(source_path) != args.source_session_sha256:
+        raise HarnessError("Original local revision source bytes changed")
+    source = load_json(source_path)
+    original_root = Path(source.get("session_dir") or "")
+    if (not original_root.is_absolute() or not original_root.is_dir()
+            or root.is_relative_to(original_root.resolve())
+            or original_root.resolve().is_relative_to(root)):
+        raise HarnessError("Local revision requires a separate source and target workspace")
+    cmd_inspect_campaign_review_contract(argparse.Namespace(session=str(source_path)))
+    if source.get("pending") or source.get("active_token"):
+        raise HarnessError("Reconcile the source's unfinished generation before revising it")
+    intent = load_json(args.revision_intent)
+    def fingerprint(value: dict) -> str:
+        return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+    if (intent.get("version") != "domestic-detail-local-revision-v1"
+            or intent.get("sha256") != fingerprint({k: v for k, v in intent.items() if k != "sha256"})
+            or intent.get("job_id") != root.name
+            or intent.get("source_job_id") != original_root.name
+            or intent.get("job_id") == intent.get("source_job_id")
+            or intent.get("source_session_sha256") != args.source_session_sha256
+            or not all(isinstance(intent.get(k), str) and len(intent[k].strip()) >= 2
+                       for k in ("workspace_id", "actor_id", "approval_text"))):
+        raise HarnessError("A complete original local revision authority is required")
+    adjustment = intent.get("adjustment")
+    if not isinstance(adjustment, dict):
+        raise HarnessError("Explicit original local change instructions are required")
+    validate_schema(adjustment, "user-adjustment.schema.json", "user adjustment")
+    flags = ("changes_identity", "changes_facts", "changes_target_buyer", "changes_campaign_style", "changes_module_sequence")
+    if (adjustment.get("change_scope") != "local" or any(adjustment.get(k) is not False for k in flags)
+            or not str(adjustment.get("verbatim_instruction") or "").strip()
+            or str(adjustment.get("verbatim_instruction")).strip().lower() in {"continue", "retry", "继续", "重试", "重新生成"}
+            or any(not values or any(not isinstance(v, str) or not v.strip() for v in values)
+                   for values in (adjustment.get("change_only"), adjustment.get("preserve"), adjustment.get("must_not_regress")))):
+        raise HarnessError("Global or unspecified changes require replanning and new approval")
+    modules = source["modules"]
+    index = next((i for i, m in enumerate(modules) if m["id"] == adjustment["module_id"]), None)
+    if index is None:
+        raise HarnessError("Unknown module in local revision")
+    pair = _pair_for_index(source, index)
+    if pair is None or len(pair["module_ids"]) != 2:
+        raise HarnessError("Local revision requires its exact approved continuous pair")
+    contract_override = scope_contract_override(root, intent, source, pair)
+    fork = {"version": "owned-local-revision-fork-v1", "intent_sha256": intent["sha256"],
+            "source_session": str(source_path.resolve()), "source_session_sha256": args.source_session_sha256,
+            "source_job_id": intent["source_job_id"], "job_id": intent["job_id"],
+            "source_approval": source["approval"], "source_revision_fork": source.get("revision_fork"),
+            "adjustment": adjustment, "pair_id": pair["pair_id"], "module_ids": pair["module_ids"],
+            "maximum_new_image_requests": 2, "delivery_mode": "USER_FINAL_REVIEW"}
+    approval = {**source["approval"], "delivery_mode": "USER_FINAL_REVIEW",
+                "text": intent["approval_text"], "local_revision_intent_sha256": intent["sha256"]}
+    if contract_override is not None:
+        fork["local_contract_override_sha256"] = contract_override["sha256"]
+        approval["local_contract_override_sha256"] = contract_override["sha256"]
+    feedback = json.loads(json.dumps(source.get("feedback_constraints") or {"global": {"preserve": [], "must_not_regress": []}, "by_module": {}}))
+    local_feedback = feedback.setdefault("by_module", {}).setdefault(adjustment["module_id"], {"preserve": [], "must_not_regress": []})
+    for key in ("preserve", "must_not_regress"):
+        local_feedback[key] = _unique_strings(local_feedback.get(key, []) + adjustment[key])
+    def verify_existing() -> dict:
+        existing = load_json(target)
+        if (existing.get("revision_fork") != fork or existing.get("approval") != approval
+                or existing.get("session_dir") != str(root) or len(existing.get("modules", [])) != len(modules)):
+            raise HarnessError("Existing local revision differs from its original authority")
+        controls = {"state", "events", "updated_at", "final", "assembly", "long_page_audit", "session_dir", "revision_fork", "modules", "approval", "pending", "active_token", "active_render_container", "current_index", "feedback_constraints", "generation_requests"}
+        _local_revision_request_count(existing)
+        if existing.get("feedback_constraints") != feedback:
+            raise HarnessError("Existing local revision changed its feedback scope")
+        if {k: v for k, v in existing.items() if k not in controls} != {k: v for k, v in source.items() if k not in controls}:
+            raise HarnessError("Existing local revision changed its approved source contract")
+        for prior, current in zip(modules, existing["modules"]):
+            if prior["id"] not in pair["module_ids"]:
+                if current != prior:
+                    raise HarnessError("A local revision changed another accepted pair")
+                continue
+            old_attempts, attempts = prior.get("attempts", []), current.get("attempts", [])
+            if (current.get("id") != prior["id"] or current.get("cycle_id") != prior.get("cycle_id", 1) + 1
+                    or type(current.get("cycle_attempt_count")) is not int or not 0 <= current["cycle_attempt_count"] <= 2
+                    or attempts[:len(old_attempts)] != old_attempts or not 0 <= len(attempts) - len(old_attempts) <= 2
+                    or current["cycle_attempt_count"] != len(attempts) - len(old_attempts)
+                    or any(a.get("cycle_id") != current["cycle_id"] or a.get("cycle_attempt") != i
+                           for i, a in enumerate(attempts[len(old_attempts):], 1))
+                    or current.get("user_adjustment") != (adjustment if prior["id"] == adjustment["module_id"] else _sibling_preservation_adjustment(prior["id"]))
+                    or current.get("plan") != prior.get("plan")
+                    or current.get("local_contract_override") != (contract_override if prior["id"] == adjustment["module_id"] and contract_override is not None else prior.get("local_contract_override"))):
+                raise HarnessError("Existing local revision changed its original cycle or image ceiling")
+        return {"session": str(target.resolve()), "revision_fork": fork, "reused": True}
+    if target.exists():
+        return verify_existing()
+    clone = json.loads(source_bytes)
+    clone["session_dir"] = str(root)
+    clone["approval"] = approval
+    clone["revision_fork"] = fork
+    if contract_override is not None:
+        next(m for m in clone["modules"] if m["id"] == adjustment["module_id"])["local_contract_override"] = contract_override
+    staging = root / (".local-revision-" + uuid.uuid4().hex + ".json")
+    adjustment_path = root / (".local-adjustment-" + uuid.uuid4().hex + ".json")
+    atomic_write_json(staging, clone)
+    atomic_write_json(adjustment_path, adjustment)
+    cmd_apply_user_adjustment(argparse.Namespace(session=str(staging), adjustment=str(adjustment_path)))
+    # Publish the complete new session exclusively. A retry cannot overwrite a
+    # session that already advanced, reopen its cycle or touch source artifacts.
+    with staging.open("rb+") as handle:
+        os.fsync(handle.fileno())
+    try:
+        os.link(staging, target)
+    except FileExistsError:
+        result = verify_existing()
+    else:
+        result = {"session": str(target.resolve()), "revision_fork": fork, "reused": False}
+    if source_path.read_bytes() != source_bytes:
+        raise HarnessError("Original source snapshot changed while creating a revision")
+    staging.unlink()
+    adjustment_path.unlink()
+    return result
+
+
+def cmd_fork_campaign_review(args: argparse.Namespace) -> dict:
+    """Create an owned review snapshot of the original accepted campaign."""
+    source_path, target = Path(args.source_session), Path(args.session)
+    expected = args.source_session_sha256
+    if not re.fullmatch(r"[0-9a-f]{64}", expected) or file_sha256(source_path) != expected:
+        raise HarnessError("Original campaign-review session bytes changed")
+    if source_path.resolve().parent != target.resolve().parent or source_path.resolve() == target.resolve():
+        raise HarnessError("Campaign-review source snapshot must belong to the new review workspace")
+    if source_path.is_symlink() or target.is_symlink() or target.parent.is_symlink() or target.parent.is_junction():
+        raise HarnessError("Campaign-review snapshots cannot traverse links")
+    source = load_json(source_path)
+    inspection = cmd_inspect_campaign_review_contract(argparse.Namespace(session=str(source_path)))
+    if source.get("pending") is not None:
+        raise HarnessError("Reconcile the source's unfinished generation before reviewing it")
+    def authority_sha(value: dict) -> str:
+        controls = {"state", "events", "updated_at", "final", "assembly", "long_page_audit", "session_dir", "review_fork"}
+        return hashlib.sha256(json.dumps(
+            {key: item for key, item in value.items() if key not in controls},
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")).hexdigest()
+    original_authority_sha = authority_sha(source)
+    accepted_sha = hashlib.sha256(json.dumps(
+        source["modules"], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")).hexdigest()
+    fork = {"source_session": str(source_path.resolve()), "source_session_sha256": expected,
+            "accepted_modules_sha256": accepted_sha, "source_authority_sha256": original_authority_sha,
+            "inspection_scope": inspection["scope"]}
+    if target.exists():
+        existing = load_json(target)
+        actual_sha = hashlib.sha256(json.dumps(
+            existing.get("modules"), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")).hexdigest()
+        if (existing.get("review_fork") != fork or actual_sha != accepted_sha or existing.get("version") != VERSION
+                or authority_sha(existing) != original_authority_sha
+                or existing.get("session_dir") != str(target.resolve().parent)
+                or existing.get("state") not in {"AWAITING_USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED", "FINALIZED"}):
+            raise HarnessError("Existing campaign-review snapshot differs from its original accepted source")
+        return {"session": str(target.resolve()), "review_fork": fork, "reused": True}
+    # Existing images, identities, facts, approval and audit originals stay in
+    # their original workspace. Only the new review snapshot is changed.
+    source["session_dir"] = str(target.resolve().parent)
+    source["review_fork"] = fork
+    source["assembly"] = None
+    source["long_page_audit"] = None
+    source["final"] = None
+    source["state"] = (
+        "AUTO_FINALIZE_AUTHORIZED"
+        if (source.get("approval") or {}).get("delivery_mode") == "AUTO_FINALIZE_AUTHORIZED"
+        else "AWAITING_USER_FINAL_REVIEW"
+    )
+    save(str(target), source, "campaign_review_forked")
+    return {"session": str(target.resolve()), "review_fork": fork, "reused": False}
+
+
+def cmd_inspect_campaign_review_contract(args: argparse.Namespace) -> dict:
+    """Requirements and byte inventory only; never a new visual acceptance."""
+    session = load_json(args.session)
+    if session.get("version") != VERSION:
+        raise HarnessError("Campaign review requires its exact pinned native session version")
+    require_state(session, "AWAITING_USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED", "FINALIZED")
+    modules = session.get("modules") or []
+    plan = session.get("plan") or {}
+    if len(modules) not in {8, 10, 12} or [m.get("id") for m in modules] != [m.get("id") for m in plan.get("modules", [])]:
+        raise HarnessError("Campaign review inventory differs from the approved screen sequence")
+    inventory = []
+    for order, module in enumerate(modules, 1):
+        if type(module.get("order")) is not int or module["order"] != order or module.get("status") not in COMPLETE_STATUSES:
+            raise HarnessError("Campaign review requires accepted screens in exact native order")
+        image = module.get("accepted_asset")
+        if not isinstance(image, str) or not Path(image).is_file():
+            raise HarnessError("Campaign review is missing an original accepted screen")
+        inventory.append({"module_id": module["id"], "image": image, "image_sha256": file_sha256(image), "status": module["status"]})
+    pair_config = (plan.get("output_strategy") or {}).get("continuous_pair_rendering") or {}
+    pairs = pair_config.get("pair_ids") or []
+    if not pair_config.get("enabled") or len(pairs) != len(modules) // 2 or len({p.get("pair_id") for p in pairs}) != len(pairs):
+        raise HarnessError("Campaign review requires exact adjacent pair coverage")
+    for index, pair in enumerate(pairs):
+        if pair.get("module_ids") != [m["module_id"] for m in inventory[index * 2:index * 2 + 2]]:
+            raise HarnessError("Campaign review pair inventory differs from approved adjacent windows")
+    schema = load_json(Path(__file__).resolve().parents[1] / "schemas" / "long-page-judgment.schema.json")
+    sections = list(schema["required"])
+    if pair_config.get("enabled"):
+        sections.extend(("pair_audits", "pair_transition_audits"))
+        for name, count in (("pair_audits", len(pairs)), ("pair_transition_audits", len(pairs) - 1)):
+            schema["properties"][name]["minItems"] = count
+            schema["properties"][name]["maxItems"] = count
+    if plan.get("expression_contract_version") == "4.3":
+        sections.append("expression_diversity_audit")
+    if plan.get("plan_format") == "COMPACT_V1_3":
+        sections.append("claim_fulfillment")
+        claim_ids = (plan.get("selling_point_depth_contract") or {}).get("primary_claim_ids") or []
+        module_ids = [m["id"] for m in modules]
+        schema["properties"]["claim_fulfillment"] = {
+            "type": "array", "minItems": len(claim_ids), "maxItems": len(claim_ids),
+            "items": {"type": "object",
+                "required": ["claim_id", "overview_visible", "dedicated_visible", "use_or_result_visible", "recall_visible", "observed_module_ids", "visible_evidence"],
+                "properties": {
+                    "claim_id": {"enum": claim_ids},
+                    **{name: {"type": "boolean"} for name in ("overview_visible", "dedicated_visible", "use_or_result_visible", "recall_visible")},
+                    "observed_module_ids": {"type": "array", "uniqueItems": True, "minItems": 3, "items": {"enum": module_ids}},
+                    "visible_evidence": {"type": "string", "minLength": 20},
+                }},
+        }
+    schema["required"] = list(dict.fromkeys(sections))
+    dynamic_checks = list(required_long_page_checks(plan))
+    all_checks = list(dict.fromkeys(dynamic_checks + schema["properties"]["checks"]["required"]))
+    return {
+        "version": VERSION,
+        "scope": "REQUIREMENTS_AND_ASSET_INVENTORY_ONLY",
+        "visual_quality_accepted": False,
+        "original_review_provenance_verified": False,
+        "preview_optional": True,
+        "required_checks": all_checks,
+        "native_dynamic_required_checks": dynamic_checks,
+        "judgment_schema": schema,
+        "approved_expression_diversity_contract": plan.get("campaign_expression_diversity_contract"),
+        "modules": inventory,
+        "pairs": pairs,
+    }
 
 
 def cmd_assemble(args: argparse.Namespace) -> dict:
@@ -2170,47 +2577,14 @@ def cmd_audit_long_page(args: argparse.Namespace) -> dict:
 
 
 def _write_final_manifest(session: dict, args: argparse.Namespace, approval_text: str, approval_mode: str) -> dict:
-    residuals = [{"module_id": module["id"], "issues": module["residual_issues"]} for module in session["modules"] if module["residual_issues"]]
-    render_containers = []
-    pair_config = (session.get("plan", {}).get("output_strategy", {}).get("continuous_pair_rendering") or {})
-    if isinstance(pair_config, dict) and pair_config.get("enabled"):
-        for pair in pair_config.get("pair_ids", []):
-            first = next((item for item in session["modules"] if item["id"] == pair["module_ids"][0]), None)
-            accepted = next((attempt for attempt in reversed(first.get("attempts", [])) if attempt.get("image") == first.get("accepted_asset")), None) if first else None
-            render_containers.append({
-                "mode": "CONTINUOUS_PAIR",
-                "pair_id": pair["pair_id"],
-                "module_ids": pair["module_ids"],
-                "pair_canvas": accepted.get("pair_canvas") if accepted else None,
-                "slice_height_px": session["plan"]["output_strategy"]["module_height_px"],
-            })
-    manifest = {
-        "skill": "aurora-domestic-ecommerce-detail-page",
-        "version": VERSION,
-        "product_name": session["input"]["product_name"],
-        "platform_profile": session["input"]["platform_profile"],
-        "approval": {"text": approval_text, "at": now(), "mode": approval_mode},
-        "long_page": (session.get("assembly") or {}).get("long_page"),
-        "modules": [{
-            "id": module["id"], "order": module["order"], "asset": module["accepted_asset"],
-            "asset_sha256": file_sha256(module["accepted_asset"]) if module.get("accepted_asset") else None,
-            "audit_binding": next((
-                attempt.get("judgment", {}).get("artifact_binding")
-                for attempt in reversed(module.get("attempts", []))
-                if attempt.get("judgment") and attempt.get("image") == module.get("accepted_asset")
-            ), None),
-        } for module in session["modules"]],
-        "slices": (session.get("assembly") or {}).get("slices", []),
-        "render_containers": render_containers,
-        "seam_audit": {
-            "pair_audits": (session.get("long_page_audit") or {}).get("pair_audits", []),
-            "pair_transition_audits": (session.get("long_page_audit") or {}).get("pair_transition_audits", []),
-        },
-        "residual_issues": residuals,
-        "backend_confirmation_required": session["input"]["platform_profile"]["verification_status"] != "VERIFIED_CURRENT_BACKEND",
-    }
+    approval = {"text": approval_text, "at": now(), "mode": approval_mode}
+    manifest = build_final_manifest(session, VERSION, approval)
     atomic_write_json(args.output, manifest)
-    session["final"] = {"manifest": str(Path(args.output).resolve()), "approval": manifest["approval"]}
+    session["final"] = {
+        "manifest": str(Path(args.output).resolve()),
+        "manifest_sha256": file_sha256(args.output),
+        "approval": manifest["approval"],
+    }
     session["state"] = "FINALIZED"
     save(args.session, session, "finalized")
     return manifest
@@ -2358,14 +2732,64 @@ def _approval_packet(plan: dict) -> dict:
 
 
 def _approval_markdown(session: dict) -> str:
+    if session["plan"].get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from runtime.website_plan import approval_markdown
+
+        return approval_markdown(session)
     plan = session["plan"]
     input_data = session["input"]
     strategy = plan["output_strategy"]
     packet = _approval_packet(plan)
     analysis = input_data.get("operating_analysis", {})
     facts_by_id = {item["id"]: item for item in input_data.get("verified_facts", [])}
-    confirmed_ids = analysis.get("confirmed_fact_ids") or session.get("planning_fact_ids", [])
-    confirmed_facts = [facts_by_id[item]["text"] for item in confirmed_ids if item in facts_by_id]
+    active_ids = set(session.get("planning_fact_ids", facts_by_id))
+    coverage_by_id = {item["claim_id"]: item for item in strategy.get("claim_coverage", [])}
+    confirmed_ids = analysis.get("confirmed_fact_ids") or list(facts_by_id)
+    confirmed_facts = [facts_by_id[item]["text"] for item in confirmed_ids
+                       if item in facts_by_id and item in active_ids
+                       and coverage_by_id.get(item, {}).get("disposition") != "DEFERRED"]
+    identity = session.get("identity", {})
+    brand = identity.get("brand_logo_source", {})
+    if brand.get("mode", "BRANDED") == "BRANDLESS":
+        brand_summary = "无品牌；原始确认：" + str(brand.get("brandless_evidence") or "未记录")
+    else:
+        brand_summary = "品牌原文：" + str(brand.get("observed_logo_text") or "未记录") + "；来源图编号：" + str(brand.get("image_id") or "未记录") + "；可见区域：" + str(brand.get("observed_region") or "未记录")
+    identity_lines = [
+        "## 锁定的商品身份", "",
+        "| 商品与品类 | 来源图编号 | 必须保持的可见特征 | 允许状态 | 禁止变化 | 待核对特征 | 品牌依据 |",
+        "|---|---|---|---|---|---|---|",
+        "| " + " | ".join(_md_cell(value) for value in (
+            [identity.get("canonical_name", "未记录"), identity.get("category", "未记录")],
+            identity.get("reference_image_ids", []), identity.get("invariant_features", []),
+            identity.get("allowed_states", []), identity.get("forbidden_mutations", []),
+            identity.get("uncertain_features", []), brand_summary,
+        )) + " |", "",
+    ]
+    fact_lines = ["## 事实来源与本次处置", "",
+                  "| 事实编号 | 原始内容 | 来源及引用 | 本次处置 |",
+                  "|---|---|---|---|"]
+    source_names = {"USER_FACT": "用户原文", "OBSERVED_PRODUCT_EVIDENCE": "商品图观察", "DOCUMENTED_EVIDENCE": "材料证据"}
+    for fact_id, fact in facts_by_id.items():
+        coverage = coverage_by_id.get(fact_id, {})
+        if fact_id not in active_ids:
+            disposition = "已按用户确认排除，不进入本次表达"
+        elif coverage.get("disposition") == "DEFERRED":
+            disposition = "暂缓表达：" + str(coverage.get("rationale") or coverage.get("defer_reason_code") or "原因未记录")
+        elif coverage.get("disposition") in {"LEAD", "SUPPORT"}:
+            disposition = "主责表达" if coverage["disposition"] == "LEAD" else "辅助事实"
+            disposition += "；对应屏：" + _as_compact_text(coverage.get("module_ids", []))
+        else:
+            disposition = "待核对：未记录明确处置"
+        reference = str(fact.get("evidence_ref") or "未记录")
+        for prefix, label in (("settings/selling_points/", "用户卖点第"), ("settings/verified_facts/", "用户补充事实第")):
+            if reference.startswith(prefix) and reference[len(prefix):].isdigit():
+                reference = label + str(int(reference[len(prefix):]) + 1) + "条"
+                break
+        source = source_names.get(fact.get("source_class"), "来源未确认") + "：" + reference
+        if fact.get("observed_region"):
+            source += "；可见区域：" + str(fact["observed_region"])
+        fact_lines.append("| " + " | ".join(_md_cell(value) for value in (fact_id, fact["text"], source, disposition)) + " |")
+    fact_lines.append("")
     supplied_points = [item.get("text", "") for item in input_data.get("user_supplied_selling_points", [])]
     buyer_pain = [
         f"{item.get('buyer', '')}：{item.get('scenario', '')}"
@@ -2379,7 +2803,10 @@ def _approval_markdown(session: dict) -> str:
 
     lines = [
         f"方案已通过 Skill v{VERSION} 编译，当前停在生图前审批节点。",
+        *( ["本次采用精简检查：每屏核对商品、事实、文案、卖点、构图和证据，不做重复审美评分。"] if plan.get("website_contract_version") == "WEBSITE_LEAN_V1" else [] ),
         "",
+        *identity_lines,
+        *fact_lines,
         "| 采用路由 | 确认的产品事实 | 用户指定卖点 | 推演人群与痛点 | 推荐定位 | 待验证假设 |",
         "|---|---|---|---|---|---|",
         "| " + " | ".join([
@@ -2556,7 +2983,7 @@ def _pair_grouping_markdown(session: dict) -> str:
         upper_id, lower_id = pair["module_ids"]
         upper = modules[upper_id]
         lower = modules[lower_id]
-        transition = upper.get("transition_contract") or {}
+        transition = lower.get("transition_contract") or {}
         lines.extend([
             "",
             f"## {pair['pair_id']}｜{upper_id} + {lower_id}",
@@ -2660,12 +3087,45 @@ def summary(session: dict) -> dict:
         if state == "AWAITING_PLAN_APPROVAL":
             result["approval_packet"] = _approval_packet(session["plan"])
             result["approval_document"] = session.get("approval_document")
-            result["approval_markdown"] = _approval_markdown(session)
+            document = session.get("approval_document") or {}
+            try:
+                raw_document = Path(document["path"]).read_bytes()
+                markdown = raw_document.decode("utf-8")
+            except (KeyError, OSError, TypeError, UnicodeError) as exc:
+                raise HarnessError("The compiled approval document is missing or unreadable") from exc
+            if hashlib.sha256(raw_document).hexdigest() != document.get("sha256"):
+                raise HarnessError("The compiled approval document bytes changed")
+            result["approval_markdown"] = markdown
             result["approval_output_instruction"] = (
                 "Show approval_markdown verbatim as the complete user-facing response; "
                 "do not abbreviate, paraphrase, replace it with a page-order list, or add a second plan."
             )
     return result
+
+
+def cmd_inspect_pair_review_contracts(args: argparse.Namespace) -> dict:
+    session = load_json(args.session)
+    pair = next((pair for pair in session["plan"]["output_strategy"]["continuous_pair_rendering"]["pair_ids"] if pair["pair_id"] == args.pair_id), None)
+    if pair is None:
+        raise HarnessError("Unknown pair review contract")
+    by_id = {module["id"]: module for module in session["modules"]}
+    result = {"module_contracts": review_contracts([by_id[key] for key in pair["module_ids"]], len(session["modules"]))}
+    revision_contract = revision_review_contract(session, args.pair_id)
+    if revision_contract is not None:
+        result["local_revision_contract"] = revision_contract
+    return result
+
+
+def cmd_inspect_pair_review_evidence(args: argparse.Namespace) -> dict:
+    return inspect_pair_audit(load_json(args.session), args.pair_id)
+
+
+def cmd_inspect_pair_artifacts(args: argparse.Namespace) -> dict:
+    return pair_artifacts(load_json(args.session), args.pair_id, args.selection)
+
+
+def cmd_inspect_final_manifest(args: argparse.Namespace) -> dict:
+    return inspect_final_manifest(load_json(args.session), args.manifest, VERSION)
 
 
 def cmd_inspect(args: argparse.Namespace) -> dict:
@@ -2676,7 +3136,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Aurora domestic e-commerce detail-page state harness")
     sub = root.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect"):
+    for name in ("start", "resolve-conflicts", "lock-identity", "preflight-plan", "compile-plan", "authorize", "generate-next", "record-generation", "record-generation-batch", "audit-current", "audit-pair", "prepare-repair", "apply-user-adjustment", "assemble", "audit-long-page", "finalize", "auto-finalize", "inspect", "inspect-pair-artifacts", "inspect-pair-review-contracts", "inspect-pair-review-evidence", "inspect-final-manifest", "inspect-campaign-review-contract", "fork-campaign-review", "fork-local-revision"):
         commands[name] = sub.add_parser(name)
     commands["start"].add_argument("--input", required=True); commands["start"].add_argument("--session", required=True)
     for name in commands:
@@ -2696,6 +3156,16 @@ def parser() -> argparse.ArgumentParser:
     commands["record-generation-batch"].add_argument("--manifest", required=True)
     commands["audit-current"].add_argument("--judgment", required=True)
     commands["audit-pair"].add_argument("--judgment", required=True)
+    commands["inspect-pair-artifacts"].add_argument("--pair-id", required=True)
+    commands["inspect-pair-review-contracts"].add_argument("--pair-id", required=True)
+    commands["inspect-pair-review-evidence"].add_argument("--pair-id", required=True)
+    commands["inspect-final-manifest"].add_argument("--manifest", required=True)
+    commands["fork-local-revision"].add_argument("--source-session", required=True)
+    commands["fork-local-revision"].add_argument("--source-session-sha256", required=True)
+    commands["fork-local-revision"].add_argument("--revision-intent", required=True)
+    commands["fork-campaign-review"].add_argument("--source-session", required=True)
+    commands["fork-campaign-review"].add_argument("--source-session-sha256", required=True)
+    commands["inspect-pair-artifacts"].add_argument("--selection", choices=("LATEST_RECORDED", "ACCEPTED"), default="LATEST_RECORDED")
     commands["prepare-repair"].add_argument("--repair-plan", required=True)
     commands["apply-user-adjustment"].add_argument("--adjustment", required=True)
     commands["assemble"].add_argument("--output", required=True)
@@ -2711,7 +3181,11 @@ HANDLERS = {
     "authorize": cmd_authorize, "generate-next": cmd_generate_next, "record-generation": cmd_record_generation,
     "record-generation-batch": cmd_record_generation_batch,
     "audit-current": cmd_audit_current, "prepare-repair": cmd_prepare_repair,
-    "audit-pair": cmd_audit_pair, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
+    "audit-pair": cmd_audit_pair, "inspect-pair-artifacts": cmd_inspect_pair_artifacts, "inspect-pair-review-contracts": cmd_inspect_pair_review_contracts, "inspect-pair-review-evidence": cmd_inspect_pair_review_evidence, "apply-user-adjustment": cmd_apply_user_adjustment, "assemble": cmd_assemble,
+    "inspect-final-manifest": cmd_inspect_final_manifest,
+    "inspect-campaign-review-contract": cmd_inspect_campaign_review_contract,
+    "fork-campaign-review": cmd_fork_campaign_review,
+    "fork-local-revision": cmd_fork_local_revision,
     "audit-long-page": cmd_audit_long_page, "finalize": cmd_finalize, "auto-finalize": cmd_auto_finalize, "inspect": cmd_inspect,
 }
 
@@ -2722,7 +3196,7 @@ def main() -> int:
         print(json.dumps(HANDLERS[args.command](args), ensure_ascii=False, indent=2))
         return 0
     except (HarnessError, KeyError, ValueError, OSError) as exc:
-        print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({"error": str(exc), "error_type": type(exc).__name__, "failure_kind": "LOCAL_IO" if isinstance(exc, OSError) else "CONTRACT_REJECTION"}, ensure_ascii=False), file=sys.stderr)
         return 2
 
 

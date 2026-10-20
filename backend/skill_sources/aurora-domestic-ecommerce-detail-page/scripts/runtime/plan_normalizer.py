@@ -285,6 +285,12 @@ def _derive_output_strategy(session: dict, raw: dict, module_count: int) -> dict
     }
 
 
+def validate_expression_signature(module: dict) -> None:
+    expected = "+".join(str(module.get(key, "")) for key in ("primary_subject_class", "presentation_form", "camera_scale", "complete_product_role"))
+    if module.get("expression_signature") != expected:
+        raise HarnessError("Module expression_signature must be the exact authored subject+presentation+camera+product-role tuple")
+
+
 def _derive_module(session: dict, raw: dict, order: int, module_count: int, plan_format: str) -> dict:
     require_fields(
         raw,
@@ -299,6 +305,7 @@ def _derive_module(session: dict, raw: dict, order: int, module_count: int, plan
         ),
         "compact plan module",
     )
+    validate_expression_signature(raw)
     for list_key in ("pain_ids", "value_bridge_ids"):
         _require_list(raw.get(list_key), f"compact plan module {list_key}", allow_empty=True)
     proof = raw["proof"]
@@ -524,6 +531,10 @@ def _derive_module(session: dict, raw: dict, order: int, module_count: int, plan
 
 def normalize_plan(session: dict, raw_plan: dict) -> dict:
     """Expand a v4.3 compact authoring plan into the runtime contract."""
+    if raw_plan.get("plan_format") == "WEBSITE_DIRECT_V2":
+        from .website_plan import compile_native
+
+        return compile_native(session, raw_plan)
     if raw_plan.get("plan_format") not in COMPATIBLE_COMPACT_PLAN_FORMATS:
         if str(raw_plan.get("plan_format", "")).startswith("COMPACT_"):
             raise HarnessError("Only COMPACT_V1_3 is supported by Skill v4.3; recompile the plan")
@@ -607,7 +618,16 @@ def normalize_plan(session: dict, raw_plan: dict) -> dict:
         }
         for item in modules
     ]
+    website = raw_plan.get("website_contract_version")
+    if website is not None:
+        if website != "WEBSITE_LEAN_V1":
+            raise HarnessError("Unknown website contract version")
+        from .website_review import validate_plan_source
+        validate_plan_source(raw_plan)
+        for item in modules:
+            item["website_contract_version"] = website
     return {
+        **({"website_contract_version": website, "claim_coverage": copy.deepcopy(raw_plan["claim_coverage"])} if website is not None else {}),
         "plan_format": raw_plan["plan_format"],
         "planning_mode": "LIGHTWEIGHT_V41" if information_v41 else ("LIGHTWEIGHT_V41" if lightweight else raw_plan.get("planning_mode", "STRICT_ROUTE_AWARE")),
         "information_contract_version": raw_plan.get("information_contract_version", "4.1" if information_v41 else None),

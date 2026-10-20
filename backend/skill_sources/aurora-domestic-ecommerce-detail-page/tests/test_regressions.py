@@ -691,8 +691,112 @@ def fail_judgment(module_record, issue="Typography is not attached to the planne
     }
 
 
+class NativeApprovalContentTests(unittest.TestCase):
+    def test_locked_identity_and_brand_confirmation_are_visible(self):
+        current = session()
+        current["plan"] = plan()
+        current["identity"] = identity_brandless("用户确认当前商品无品牌，不添加独立标志")
+        markdown = harness._approval_markdown(current)
+        for feature in current["identity"]["invariant_features"]:
+            self.assertIn(feature, markdown)
+        self.assertIn("锁定的商品身份", markdown)
+        self.assertIn("用户确认当前商品无品牌，不添加独立标志", markdown)
+        self.assertIn("不得改成普通圆形风扇", markdown)
+
+    def test_excluded_and_deferred_facts_are_visible_but_not_confirmed_summary(self):
+        current = session()
+        current["input"] = raw_input(with_conflict=True)
+        current["input"]["operating_analysis"] = {"confirmed_fact_ids": ["F1", "F2", "F3"]}
+        current["planning_fact_ids"] = ["F1", "F3"]
+        current["plan"] = plan()
+        current["plan"]["output_strategy"]["claim_coverage"].append({
+            "claim_id": "F3", "disposition": "DEFERRED", "module_ids": [],
+            "rationale": "该容量主张暂缓进入本次画面", "defer_reason_code": "HIGH_RISK_UNDOCUMENTED",
+        })
+        markdown = harness._approval_markdown(current)
+        rows = markdown.splitlines()
+        summary_index = next(index for index, row in enumerate(rows) if "确认的产品事实" in row)
+        self.assertNotIn("3000mAh", rows[summary_index + 2])
+        self.assertNotIn("5000mAh", rows[summary_index + 2])
+        self.assertIn("3000mAh", markdown)
+        self.assertIn("5000mAh", markdown)
+        self.assertIn("已按用户确认排除", markdown)
+        self.assertIn("暂缓表达", markdown)
+
+    def test_summary_returns_exact_persisted_document_including_grouping_and_lf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = V4ContractTests()._portable_approval_session()
+            current["state"] = "AWAITING_PLAN_APPROVAL"
+            path = Path(directory) / "session.json"
+            markdown = harness._approval_markdown(current) + "\n\n" + harness._pair_grouping_markdown(current)
+            harness._persist_approval_document(current, path, markdown)
+            raw = (path.parent / "campaign-approval.md").read_bytes()
+            self.assertEqual(harness.summary(current)["approval_markdown"].encode("utf-8"), raw)
+            (path.parent / "campaign-approval.md").write_bytes(raw + b"changed")
+            with self.assertRaisesRegex(HarnessError, "document bytes changed"):
+                harness.summary(current)
+
+
+class ConflictResolutionContractTests(unittest.TestCase):
+    def _reject_without_session_mutation(self, *, duplicate=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            session_path, resolution_path = root / "session.json", root / "resolution.json"
+            current = session()
+            current.update({"input": raw_input(with_conflict=True), "state": "AWAITING_CONFLICT_RESOLUTION", "events": []})
+            first = {"conflict_id": "C1", "retained_fact_ids": ["F2"], "rejected_fact_ids": ["F3"]}
+            if duplicate:
+                second = copy.deepcopy(first)
+                message = "exactly once"
+            else:
+                current["input"]["source_conflicts"].append({**copy.deepcopy(current["input"]["source_conflicts"][0]), "id": "C2"})
+                current["input"]["conflict_scan"]["conflict_ids"] = ["C1", "C2"]
+                second = {"conflict_id": "C2", "retained_fact_ids": ["F3"], "rejected_fact_ids": ["F2"]}
+                message = "both retained and rejected"
+            session_path.write_text(json.dumps(current), encoding="utf-8")
+            before = session_path.read_bytes()
+            resolution_path.write_text(json.dumps({"confirmation_text": "User selected these specification alternatives", "resolutions": [first, second]}), encoding="utf-8")
+            with self.assertRaisesRegex(HarnessError, message):
+                harness.cmd_resolve_conflicts(type("Args", (), {"session": str(session_path), "resolution": str(resolution_path)})())
+            self.assertEqual(session_path.read_bytes(), before)
+
+    def test_cross_conflict_choices_cannot_reject_a_retained_fact(self):
+        self._reject_without_session_mutation()
+
+    def test_duplicate_conflict_answer_cannot_be_silently_overwritten(self):
+        self._reject_without_session_mutation(duplicate=True)
+
+
+class ReferenceExpressionContractTests(unittest.TestCase):
+    def test_explicitly_rejected_references_need_no_adopted_pattern(self):
+        current, value = session(with_reference=True), plan(with_reference=True)
+        value["reference_expression_system"]["coverage"][0].update({
+            "disposition": "REJECTED_IRRELEVANT", "pattern_ids": [],
+            "reason": "The analyzed reference does not help the product story.",
+        })
+        value["reference_expression_system"]["adopted_patterns"] = []
+        for item in value["modules"]:
+            item["reference_pattern_ids"] = []
+        harness.validate_reference_expression_system(current, value, set(current["planning_fact_ids"]))
+
+
+    def test_reference_patterns_apply_only_to_their_scheduled_screens(self):
+        current, value = session(with_reference=True), plan(with_reference=True)
+        value["reference_expression_system"]["adopted_patterns"][0]["scheduled_module_ids"] = ["M02"]
+        for item in value["modules"]:
+            item["reference_pattern_ids"] = ["RP1"] if item["id"] == "M02" else []
+        harness.validate_reference_expression_system(current, value, set(current["planning_fact_ids"]))
+        value["modules"][1]["reference_pattern_ids"] = []
+        with self.assertRaisesRegex(HarnessError, "every scheduled"):
+            harness.validate_reference_expression_system(current, value, set(current["planning_fact_ids"]))
+
+
+
 @unittest.skip("Superseded by the v4.1 contract regression suite below")
 class RegressionTests(unittest.TestCase):
+
+
+
     def test_v11_compact_plan_is_expanded_and_records_metrics(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1558,7 +1662,7 @@ class RegressionTests(unittest.TestCase):
 
 class V4ContractTests(unittest.TestCase):
     def test_v4_version_and_state_machine_remove_independent_pair_approval(self):
-        self.assertEqual(harness.VERSION, "4.3.0")
+        self.assertEqual(harness.VERSION, "4.3.1")
         self.assertNotIn("AWAITING_PAIR_GROUPING_APPROVAL", STATES)
         self.assertNotIn("AWAITING_PAIR_GROUPING_APPROVAL", harness.allowed_actions("AWAITING_PLAN_APPROVAL"))
         self.assertNotIn("authorize-grouping", harness.HANDLERS)
@@ -1581,18 +1685,78 @@ class V4ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(HarnessError, "8, 10, or 12"):
             normalize_plan(session(), invalid)
 
-    def test_v4_plan_has_one_direct_derivation_and_no_ratio_candidates(self):
-        plan_path = Path(r"E:\详情\plan-v4.json")
-        self.assertTrue(plan_path.exists())
-        value = json.loads(plan_path.read_text(encoding="utf-8-sig"))
-        candidates = value["output_strategy"]["module_count_candidates"]
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["candidate_mode"], "DIRECT_DERIVATION")
-        self.assertNotIn("ratio_candidates", value["output_strategy"])
-        self.assertNotIn("ratio_rationale", value["output_strategy"])
+    def _portable_approval_session(self):
+        current = session()
+        value = plan()
+        value["modules"] = []
+        for index in range(1, 9):
+            item = copy.deepcopy(module(min(index, 3)))
+            item.update({"id": f"M{index:02d}", "order": index})
+            item["transition_contract"] = {
+                "method_id": "BACKGROUND_STRINGING", "seam_carrier": "本组连续光带",
+                "source_region_previous": f"M{max(1, index-1):02d} 底部",
+                "target_region_current": f"M{index:02d} 顶部",
+                "handoff_geometry": "上屏底部向下屏顶部连续交接",
+            }
+            value["modules"].append(item)
+        strategy = value["output_strategy"]
+        strategy["module_count"] = 8
+        strategy["module_count_candidates"] = [{
+            "candidate_mode": "DIRECT_DERIVATION", "count": 8,
+            "coverage_tradeoff": "每项商品证据对应明确买家判断并保持八屏递进",
+            "selling_point_fit": "测试商品证据覆盖", "story_obligation_fit": "身份到购买收尾",
+            "decision": "SELECTED",
+        }]
+        strategy["continuous_pair_rendering"] = {
+            "enabled": True, "pair_merge_type": "PAIR_PLAN_MERGE",
+            "pair_count": 4, "pair_canvas_height_px": 3840,
+            "pair_ids": [{"pair_id": f"P{index:02d}",
+                          "module_ids": [f"M{index*2-1:02d}", f"M{index*2:02d}"]}
+                         for index in range(1, 5)],
+        }
+        current["plan"] = value
+        return current
+
+    def test_v4_compiler_rejects_alternative_count_records(self):
+        current = self._portable_approval_session()
+        value = current["plan"]
+        value["output_strategy"]["module_count_candidates"].append(
+            copy.deepcopy(value["output_strategy"]["module_count_candidates"][0])
+        )
+        with self.assertRaisesRegex(HarnessError, "one direct derivation"):
+            harness.validate_plan(current, value)
+
+    def test_v431_native_approval_hash_covers_written_bytes_and_rejects_edits(self):
+        import hashlib
+        current = self._portable_approval_session()
+        current.update({"state": "AWAITING_PLAN_APPROVAL", "version": harness.VERSION})
+        markdown = harness._approval_markdown(current) + harness._pair_grouping_markdown(current)
+        with tempfile.TemporaryDirectory() as directory:
+            session_path = Path(directory) / "session.json"
+            harness._persist_approval_document(current, session_path, markdown)
+            document = Path(current["approval_document"]["path"])
+            original = document.read_bytes()
+            self.assertEqual(hashlib.sha256(original).hexdigest(), current["approval_document"]["sha256"])
+            self.assertTrue(original.endswith(b"\n"))
+            self.assertFalse(original.endswith(b"\n\n"))
+            session_path.write_text(json.dumps(current, ensure_ascii=False), encoding="utf-8")
+            args = type("Args", (), {
+                "session": session_path, "approval_text": "确认这份完整审批文件",
+                "approval_document_sha256": current["approval_document"]["sha256"],
+                "approved_module_count": 8, "approved_pair_canvas_aspect_ratio": "3:8",
+                "delivery_mode": "USER_FINAL_REVIEW",
+            })()
+            document.write_bytes(original + b"unauthorized edit")
+            with self.assertRaisesRegex(HarnessError, "file bytes changed"):
+                harness.cmd_authorize(args)
+            self.assertEqual(json.loads(session_path.read_text(encoding="utf-8"))["state"], "AWAITING_PLAN_APPROVAL")
+            document.write_bytes(original)
+            harness.cmd_authorize(args)
+            self.assertEqual(json.loads(session_path.read_text(encoding="utf-8"))["state"], "AUTHORIZED")
 
     def test_v4_approval_is_single_hierarchical_packet(self):
-        value = Path(r"E:\详情\campaign-approval.md").read_text(encoding="utf-8-sig")
+        current = self._portable_approval_session()
+        value = harness._approval_markdown(current) + harness._pair_grouping_markdown(current)
         self.assertIn("第一层：单屏原子规划", value)
         self.assertIn("第二层：", value)
         self.assertIn("组内两屏衔接", value)
@@ -1740,6 +1904,39 @@ class V42IntegrityTests(unittest.TestCase):
         self.assertNotIn("maxItems", field)
         self.assertTrue(field["uniqueItems"])
 
+    def test_compact_spatial_counts_match_every_native_layout(self):
+        from runtime.spatial_contract import ZONE_LAYOUTS
+        schema = json.loads((ROOT / "schemas/compact-detail-plan.schema.json").read_bytes())
+        structure = schema["properties"]["modules"]["items"]["properties"]["structure"]
+        counts = {row["if"]["properties"]["structure_family"]["const"]: row["then"]["properties"]["zone_briefs"] for row in structure["allOf"]}
+        self.assertEqual(set(counts), set(ZONE_LAYOUTS))
+        for family, zones in ZONE_LAYOUTS.items():
+            self.assertEqual(counts[family], {"minItems": len(zones), "maxItems": len(zones)})
+
+    def test_schema_errors_do_not_hide_independent_spatial_diagnostics(self):
+        value = session()
+        expanded = plan()
+        template = expanded["modules"][0]
+        expanded["modules"] = []
+        for order in range(1, 9):
+            module = copy.deepcopy(template)
+            module["id"] = f"M{order:02d}"
+            module["order"] = order
+            module["authoring_plan_format"] = "COMPACT_V1_3"
+            module["module_spatial_structure_contract"] = {
+                "structure_family": "FULL_BLEED_HERO", "zone_briefs": ["main", "extra"],
+                "structure_difference_from_previous": "different", "forbidden_fallbacks": ["a", "b", "c"],
+            }
+            expanded["modules"].append(module)
+        before = copy.deepcopy(expanded)
+        with self.assertRaises(HarnessError) as caught:
+            harness._preflight_authoring_plan(value, expanded)
+        message = str(caught.exception)
+        self.assertIn("compact-detail-plan.schema.json", message)
+        self.assertIn("M01 spatial contract", message)
+        self.assertIn("requires exactly 1 concrete zone briefs", message)
+        self.assertEqual(expanded, before)
+
     def test_v42_schema_is_first_layer(self):
         with self.assertRaisesRegex(HarnessError, "failed input.schema.json"):
             validate_schema({"product_name": "x"}, "input.schema.json", "input")
@@ -1773,6 +1970,36 @@ class V42IntegrityTests(unittest.TestCase):
         expanded["modules"][0]["module_spatial_structure_contract"].pop("structure_difference_from_previous")
         errors = harness._collect_plan_preflight_errors(value, expanded)
         self.assertTrue(any("prompt compiler readiness" in item for item in errors))
+
+    def test_preflight_names_the_module_and_missing_evidence_field(self):
+        value = session()
+        expanded = plan()
+        template = expanded["modules"][0]
+        expanded["modules"] = []
+        for order in range(1, 9):
+            module = copy.deepcopy(template)
+            module["id"] = f"M{order:02d}"
+            module["order"] = order
+            expanded["modules"].append(module)
+        expanded["output_strategy"].update(
+            module_count=8,
+            module_count_candidates=[{"candidate_mode": "DIRECT_DERIVATION"}],
+            selling_point_clusters=[],
+            claim_coverage=[],
+            continuous_pair_rendering={
+                "pair_merge_type": "PAIR_PLAN_MERGE",
+                "pair_ids": [
+                    {"pair_id": f"P{index:02d}", "module_ids": [f"M{index * 2 - 1:02d}", f"M{index * 2:02d}"]}
+                    for index in range(1, 5)
+                ],
+            },
+        )
+        expanded["modules"][-1]["visual_evidence"].pop("forbidden_inventions")
+        before = copy.deepcopy(expanded)
+        errors = harness._collect_plan_preflight_errors(value, expanded)
+        self.assertTrue(any("M08 visual_evidence missing: forbidden_inventions" in item for item in errors))
+        self.assertFalse(any("prompt compiler readiness" in item for item in errors))
+        self.assertEqual(expanded, before)
 
     def test_v42_artifact_binding_rejects_wrong_hash(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -2170,7 +2397,10 @@ class V43ExpressionDiversityTests(unittest.TestCase):
         })
         upper["plan"]["module_visual_expression_contract"]["product_presence_policy"] = "REQUIRED_DOMINANT"
         transition = {"method_id": "BACKGROUND_STRINGING", "source_region_previous": "上屏底部雾带", "target_region_current": "下屏顶部雾带", "seam_carrier": "连续冷白雾带", "handoff_geometry": "由左向右下延续", "outgoing_carrier": "冷白雾带", "allowed_change": "由商品舞台转为动作路径", "shared_invariants": ["日光黄", "冷白雾带"]}
-        upper["plan"]["transition_contract"] = transition
+        upper["plan"]["transition_contract"] = {
+            **transition, "method_id": "CHAPTER_BAND",
+            "source_region_previous": "OUTSIDE_PAIR_SOURCE",
+        }
         lower["plan"]["transition_contract"] = {**transition, "incoming_carrier": "冷白雾带"}
         current["plan"]["modules"] = [upper["plan"], lower["plan"]]
         current["plan"]["output_strategy"] = {"continuous_pair_rendering": {"pair_merge_type": "PAIR_PLAN_MERGE", "pair_ids": [{"pair_id": "P01", "module_ids": ["M01", "M02"]}]}}
@@ -2178,6 +2408,9 @@ class V43ExpressionDiversityTests(unittest.TestCase):
         prompt, _ = harness.compile_pair_prompt(current, [upper, lower])
         self.assertIn("上方=DOMINANT；下方=ABSENT", prompt)
         self.assertIn("上方需要商品绝不自动授权下方出现商品", prompt)
+        self.assertIn("内部接缝方法=BACKGROUND_STRINGING", prompt)
+        self.assertIn("来源区域=上屏底部雾带", prompt)
+        self.assertNotIn("OUTSIDE_PAIR_SOURCE", prompt)
 
     def test_v43_adopted_reference_pattern_schema_requires_scheduling(self):
         schema = json.loads((ROOT / "schemas" / "compact-detail-plan.schema.json").read_text(encoding="utf-8"))

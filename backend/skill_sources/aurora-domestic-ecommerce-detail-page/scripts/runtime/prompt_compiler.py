@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .local_contracts import effective_plan
+
 import re
 from typing import Iterable, List
 
@@ -95,8 +97,12 @@ def compile_prompt(
     Internal IDs, workflow transitions, enum labels and raw user feedback deliberately
     stay in the request envelope and never enter the image model prompt.
     """
+    if module["plan"].get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from .website_plan import screen_prompt
+
+        return screen_prompt(session, module, pair_window, repair)
     facts = {item["id"]: item for item in session["input"].get("verified_facts", [])}
-    plan = module["plan"]
+    plan = effective_plan(module)
     fact_ids = [plan["lead_claim_id"]] + list(plan.get("supporting_claim_ids", []))
     fact_lines = []
     for fact_id in fact_ids:
@@ -184,6 +190,12 @@ def compile_prompt(
         method_instruction=method_instruction,
         overlap="（允许明确断开，仅适用于章节转场）" if not transition.get("visible_overlap_required", True) else "，不得只用相似配色替代",
     )
+    if pair_window and pair_window.get("position") == "上方":
+        transition_instruction = (
+            "本屏进入侧位于当前组画布之外，不在本组重画上一组画面。"
+            "当前组内部承接仅使用下方窗口已批准的进入合同。"
+        )
+
     presence_policy = expression.get("product_presence_policy", "REQUIRED_DOMINANT")
     presence_decision = plan.get("product_presence_decision") or {}
     carrier_priority = {
@@ -714,6 +726,10 @@ def compile_pair_prompt(
     """
     if len(modules) != 2:
         raise HarnessError("compile_pair_prompt requires exactly two screen contracts")
+    if session["plan"].get("planning_mode") == "WEBSITE_DIRECT_V2":
+        from .website_plan import pair_prompt
+
+        return pair_prompt(session, modules, repair)
     output = modules[0]["plan"]["output"]
     width = int(output["width_px"])
     height = int(output["height_px"])
@@ -761,7 +777,7 @@ def compile_pair_prompt(
         if series_master
         else ""
     )
-    method = _clean(upper_transition.get("method_id")) or "明确的可见接缝方法"
+    method = _clean(lower_transition.get("method_id")) or "明确的可见接缝方法"
     method_instruction = TRANSITION_METHOD_INSTRUCTIONS.get(
         method,
         "边界两侧必须出现可追踪的同一视觉载体，不得只用相似配色或标题制造连续感。",
@@ -776,10 +792,10 @@ def compile_pair_prompt(
         "- 上方窗口和下方窗口必须共享同一连续视觉世界，但各自保留自己的主视觉主体、空间结构、文案白名单和购买结论。\n"
         f"- 商品出镜相互独立：上方={_clean(modules[0]['plan'].get('complete_product_role'))}；下方={_clean(modules[1]['plan'].get('complete_product_role'))}。"
         "上方需要商品绝不自动授权下方出现商品；下方需要商品也绝不回填上方。完整商品只有在各自窗口合同明确允许时才能出现。\n"
-        f"- 内部接缝方法={method}；来源区域={_clean(upper_transition.get('source_region_previous'))}；"
-        f"目标区域={_clean(upper_transition.get('target_region_current'))}；"
-        f"接缝载体={_clean(upper_transition.get('seam_carrier'))}；"
-        f"接缝几何={_clean(upper_transition.get('handoff_geometry'))}。\n"
+        f"- 内部接缝方法={method}；来源区域={_clean(lower_transition.get('source_region_previous'))}；"
+        f"目标区域={_clean(lower_transition.get('target_region_current'))}；"
+        f"接缝载体={_clean(lower_transition.get('seam_carrier'))}；"
+        f"接缝几何={_clean(lower_transition.get('handoff_geometry'))}。\n"
         f"- 方法执行要求：{method_instruction}\n"
         "- 接缝硬约束：y=边界上下至少保留一个可见载体连续跨越接缝，载体必须在边界两侧实际相连或发生明确状态/方向变化；任何横向直线、白色/黑色分隔带、卡片边框、场景硬切、背景重置、标题断行或上下两套独立版式都视为失败。\n"
         f"- 与相邻长图的过渡令牌（仅用于共享色场/材质/光线，不承担卖点）：{shared_pair_transition}\n"
@@ -792,11 +808,11 @@ def compile_pair_prompt(
         f"{master_instruction}"
         "TRANSITION_SYNTHESIS_LOCK:\n"
         "- 这不是两段提示词的机械首尾拼接。请先设计一个可视化的过渡节拍，再把两个窗口放入同一空间。\n"
-        f"- 上方窗口交付的载体={_clean(upper_transition.get('outgoing_carrier') or upper_transition.get('seam_carrier') or upper_transition.get('outgoing_anchor'))}；"
-        f"边界中的变化={_clean(upper_transition.get('allowed_change') or '载体在方向、尺度、材质或状态上自然变化')}；"
+        f"- 上方窗口交付的载体={_clean(upper_transition.get('outgoing_carrier') or lower_transition.get('seam_carrier'))}；"
+        f"边界中的变化={_clean(lower_transition.get('allowed_change') or '载体在方向、尺度、材质或状态上自然变化')}；"
         f"下方窗口接收的载体={_clean(lower_transition.get('incoming_carrier') or lower_transition.get('incoming_anchor'))}。\n"
-        f"- 过渡方向={_clean(upper_transition.get('spatial_direction') or lower_transition.get('spatial_direction') or '沿既定动线自然延续')}；"
-        f"共享不变量={_joined(upper_transition.get('shared_invariants', []), empty='系列色彩、光线与材质')}；"
+        f"- 过渡方向={_clean(lower_transition.get('spatial_direction') or '沿既定动线自然延续')}；"
+        f"共享不变量={_joined(lower_transition.get('shared_invariants', []), empty='系列色彩、光线与材质')}；"
         "允许改变的是主体、景别或结构，不允许突然换景、重置光线或复制完整主体。\n"
         "- 在边界附近先安排接缝载体和干净过渡区，再放置标题与辅助信息；不得让完整标题、卡片、重复商品或硬分割线占据接缝。边界前后约 160px 的过渡带必须属于同一连续画面，不能是纯白留白或新的海报顶部。\n"
         "- 两个窗口之间必须有可追踪的画面连接；仅相似配色、相同字体或把两张独立海报放在同一长图内不算完成。\n"

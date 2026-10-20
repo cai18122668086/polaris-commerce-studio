@@ -332,6 +332,17 @@ def _raise_amazon_review_retry_not_applicable(blocker_ids: set[str]) -> None:
 
 def allowed_actions(job: JobRecord) -> list[str]:
     current = JobStatus(job.status)
+    if job.type == JobType.DOMESTIC_DETAIL_REVIEW.value:
+        return (
+            ["cancel"]
+            if current
+            in {
+                JobStatus.QUEUED,
+                JobStatus.PROCESSING,
+                JobStatus.CANCELLING,
+            }
+            else []
+        )
     actions: list[str] = []
     if current == JobStatus.DRAFT:
         actions.extend(["edit", "submit", "cancel"])
@@ -345,7 +356,13 @@ def allowed_actions(job: JobRecord) -> list[str]:
     elif current == JobStatus.AWAITING_FINAL_REVIEW:
         actions.extend(["finalize", "cancel"])
     if current == JobStatus.AWAITING_CONFIRMATION:
-        actions.extend(["edit_plan", "confirm_plan"])
+        if (
+            job.type == JobType.DETAIL_PACK.value
+            and job.stage == "intake_confirmation_required"
+        ):
+            actions.append("resolve_intake")
+        else:
+            actions.extend(["edit_plan", "confirm_plan"])
     if current in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,
@@ -1021,9 +1038,8 @@ def retry_item_ids(
             .limit(1)
         )
         policy = plan.payload.get("execution_policy") if plan is not None else None
-        if (
-            isinstance(policy, Mapping)
-            and is_v20_aurora_mode(policy.get("execution_mode"))
+        if isinstance(policy, Mapping) and is_v20_aurora_mode(
+            policy.get("execution_mode")
         ):
             selected.extend(
                 item.id

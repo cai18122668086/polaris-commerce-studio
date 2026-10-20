@@ -2,6 +2,7 @@ export type JobAction =
   | "cancel"
   | "retry"
   | "confirm_plan"
+  | "resolve_intake"
   | "finalize"
   | "edit_plan"
   | "clone"

@@ -1405,12 +1405,75 @@
         "title": "CurrentUserResponse",
         "type": "object"
       },
+      "DetailIntakeResolutionRequest": {
+        "properties": {
+          "additional_product_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Additional Product Asset Ids",
+            "type": "array"
+          },
+          "brandless_confirmation": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brandless Confirmation"
+          },
+          "confirmation_text": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Confirmation Text",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/IntakeConflictResolution"
+            },
+            "maxItems": 24,
+            "title": "Resolutions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "confirmation_text"
+        ],
+        "title": "DetailIntakeResolutionRequest",
+        "type": "object"
+      },
       "DetailPackConfiguration": {
         "properties": {
           "auto_start_after_plan": {
             "default": true,
             "title": "Auto Start After Plan",
             "type": "boolean"
+          },
+          "brandless_confirmation": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brandless Confirmation"
           },
           "category": {
             "anyOf": [
@@ -1523,6 +1586,21 @@
             "maxItems": 24,
             "title": "Verified Facts",
             "type": "array"
+          },
+          "website_contract_version": {
+            "anyOf": [
+              {
+                "enum": [
+                  "WEBSITE_LEAN_V1",
+                  "WEBSITE_DIRECT_V2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Contract Version"
           }
         },
         "required": [
@@ -1730,6 +1808,1017 @@
           "vision_model"
         ],
         "title": "DevelopmentProviderSettingsUpdate",
+        "type": "object"
+      },
+      "DomesticCampaignRecoveryQuote": {
+        "properties": {
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "image_requests": {
+            "const": 0,
+            "title": "Image Requests",
+            "type": "integer"
+          },
+          "model_requests": {
+            "const": 0,
+            "title": "Model Requests",
+            "type": "integer"
+          },
+          "original_request_context_sha256": {
+            "title": "Original Request Context Sha256",
+            "type": "string"
+          },
+          "original_result_journal_sha256": {
+            "title": "Original Result Journal Sha256",
+            "type": "string"
+          },
+          "original_review_job_id": {
+            "title": "Original Review Job Id",
+            "type": "string"
+          },
+          "reserve_micros": {
+            "const": 0,
+            "title": "Reserve Micros",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          },
+          "version": {
+            "const": "campaign-saved-result-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "original_review_job_id",
+          "source_job_id",
+          "original_result_journal_sha256",
+          "original_request_context_sha256",
+          "model_requests",
+          "image_requests",
+          "reserve_micros",
+          "currency",
+          "sha256"
+        ],
+        "title": "DomesticCampaignRecoveryQuote",
+        "type": "object"
+      },
+      "DomesticCampaignRecoveryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "original_result_journal_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Original Result Journal Sha256",
+            "type": "string"
+          },
+          "quote_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Quote Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "original_result_journal_sha256",
+          "quote_sha256"
+        ],
+        "title": "DomesticCampaignRecoveryRequest",
+        "type": "object"
+      },
+      "DomesticCampaignReviewQuote": {
+        "properties": {
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "dispatch_route_sha256": {
+            "title": "Dispatch Route Sha256",
+            "type": "string"
+          },
+          "final_review_sha256": {
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "image_requests": {
+            "const": 0,
+            "title": "Image Requests",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_requests": {
+            "const": 1,
+            "title": "Model Requests",
+            "type": "integer"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reserve_micros": {
+            "title": "Reserve Micros",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_context_sha256": {
+            "title": "Source Context Sha256",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          },
+          "version": {
+            "const": "domestic-campaign-review-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "source_job_id",
+          "final_review_sha256",
+          "source_context_sha256",
+          "provider",
+          "model",
+          "dispatch_route_sha256",
+          "reserve_micros",
+          "currency",
+          "model_requests",
+          "image_requests",
+          "sha256"
+        ],
+        "title": "DomesticCampaignReviewQuote",
+        "type": "object"
+      },
+      "DomesticCampaignReviewReport": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "original_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Message"
+          },
+          "original_message_state": {
+            "enum": [
+              "PRESERVED_UTF8",
+              "UNAVAILABLE"
+            ],
+            "title": "Original Message State",
+            "type": "string"
+          },
+          "report": {
+            "additionalProperties": true,
+            "title": "Report",
+            "type": "object"
+          },
+          "request_context": {
+            "additionalProperties": true,
+            "title": "Request Context",
+            "type": "object"
+          },
+          "scope": {
+            "const": "OPTIONAL_CAMPAIGN_REVIEW_ONLY",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report",
+          "request_context",
+          "original_message",
+          "original_message_state",
+          "model",
+          "source_job_id",
+          "scope"
+        ],
+        "title": "DomesticCampaignReviewReport",
+        "type": "object"
+      },
+      "DomesticCampaignReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_text": {
+            "maxLength": 240,
+            "minLength": 2,
+            "title": "Approval Text",
+            "type": "string"
+          },
+          "authorized_reserve_micros": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 2000000.0,
+            "title": "Authorized Reserve Micros",
+            "type": "integer"
+          },
+          "final_review_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "quote_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Quote Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_review_sha256",
+          "approval_text",
+          "authorized_reserve_micros",
+          "quote_sha256"
+        ],
+        "title": "DomesticCampaignReviewRequest",
+        "type": "object"
+      },
+      "DomesticCampaignReviewSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "report_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Report Sha256",
+            "type": "string"
+          },
+          "review_job_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Review Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_job_id",
+          "report_sha256"
+        ],
+        "title": "DomesticCampaignReviewSelection",
+        "type": "object"
+      },
+      "DomesticDetailAutomaticDeliveryAuthorization": {
+        "properties": {
+          "actor_user_id": {
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "approval_document_sha256": {
+            "title": "Approval Document Sha256",
+            "type": "string"
+          },
+          "authorization_text": {
+            "title": "Authorization Text",
+            "type": "string"
+          },
+          "completion_disclosure": {
+            "title": "Completion Disclosure",
+            "type": "string"
+          },
+          "contract_binding_sha256": {
+            "title": "Contract Binding Sha256",
+            "type": "string"
+          },
+          "delivery_extra_image_requests": {
+            "const": 0,
+            "title": "Delivery Extra Image Requests",
+            "type": "integer"
+          },
+          "delivery_extra_model_requests": {
+            "const": 0,
+            "title": "Delivery Extra Model Requests",
+            "type": "integer"
+          },
+          "delivery_mode": {
+            "const": "AUTO_FINALIZE_AUTHORIZED",
+            "title": "Delivery Mode",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "native_approval_document_sha256": {
+            "title": "Native Approval Document Sha256",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "plan_revision": {
+            "title": "Plan Revision",
+            "type": "integer"
+          },
+          "runtime_source_sha256": {
+            "title": "Runtime Source Sha256",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_input_sha256": {
+            "title": "Source Input Sha256",
+            "type": "string"
+          },
+          "version": {
+            "const": "domestic-detail-auto-delivery-authorization-v1",
+            "title": "Version",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "job_id",
+          "workspace_id",
+          "actor_user_id",
+          "plan_id",
+          "plan_revision",
+          "native_approval_document_sha256",
+          "approval_document_sha256",
+          "contract_binding_sha256",
+          "source_input_sha256",
+          "runtime_source_sha256",
+          "delivery_mode",
+          "authorization_text",
+          "completion_disclosure",
+          "delivery_extra_model_requests",
+          "delivery_extra_image_requests",
+          "sha256"
+        ],
+        "title": "DomesticDetailAutomaticDeliveryAuthorization",
+        "type": "object"
+      },
+      "DomesticDetailAutomaticDeliveryRecoveryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "authorization_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Authorization Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_sha256"
+        ],
+        "title": "DomesticDetailAutomaticDeliveryRecoveryRequest",
+        "type": "object"
+      },
+      "DomesticDetailFinalReviewResponse": {
+        "properties": {
+          "automatic_delivery_authorization": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automatic Delivery Authorization"
+          },
+          "campaign_audit_status": {
+            "const": "NOT_REQUESTED",
+            "title": "Campaign Audit Status",
+            "type": "string"
+          },
+          "context_sha256": {
+            "title": "Context Sha256",
+            "type": "string"
+          },
+          "delivery_mode": {
+            "anyOf": [
+              {
+                "const": "AUTO_FINALIZE_AUTHORIZED",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Mode"
+          },
+          "document_markdown": {
+            "title": "Document Markdown",
+            "type": "string"
+          },
+          "generation_binding_sha256": {
+            "title": "Generation Binding Sha256",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "pair_canvases": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pair Canvases",
+            "type": "array"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "plan_revision": {
+            "title": "Plan Revision",
+            "type": "integer"
+          },
+          "quality_state": {
+            "enum": [
+              "PAIR_REVIEW_PASSED",
+              "WITH_RESIDUALS"
+            ],
+            "title": "Quality State",
+            "type": "string"
+          },
+          "residual_issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Residual Issues",
+            "type": "array"
+          },
+          "screens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Screens",
+            "type": "array"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "skill_version": {
+            "title": "Skill Version",
+            "type": "string"
+          },
+          "supplementary_campaign_review": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplementary Campaign Review"
+          },
+          "version": {
+            "const": "domestic-detail-final-review-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "job_id",
+          "plan_id",
+          "plan_revision",
+          "skill_version",
+          "context_sha256",
+          "generation_binding_sha256",
+          "sha256",
+          "document_markdown",
+          "quality_state",
+          "campaign_audit_status",
+          "screens",
+          "pair_canvases",
+          "residual_issues"
+        ],
+        "title": "DomesticDetailFinalReviewResponse",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionCanvas": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "pixel_lineage_sha256": {
+            "title": "Pixel Lineage Sha256",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "sha256",
+          "width",
+          "height",
+          "pixel_lineage_sha256"
+        ],
+        "title": "DomesticDetailLocalRevisionCanvas",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionDelta"
+          },
+          "approval_text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Approval Text",
+            "type": "string"
+          },
+          "final_review_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "quote_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Quote Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_review_sha256",
+          "adjustment",
+          "quote_sha256",
+          "approval_text"
+        ],
+        "title": "DomesticDetailLocalRevisionCreateRequest",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionDelta": {
+        "additionalProperties": false,
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "TYPOGRAPHY_LAYOUT",
+              "COPY_CONTENT",
+              "VISUAL_DETAIL",
+              "OTHER_LOCAL"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "change_only": {
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Change Only",
+            "type": "array"
+          },
+          "change_scope": {
+            "const": "local",
+            "title": "Change Scope",
+            "type": "string"
+          },
+          "changes_campaign_style": {
+            "const": false,
+            "title": "Changes Campaign Style",
+            "type": "boolean"
+          },
+          "changes_facts": {
+            "const": false,
+            "title": "Changes Facts",
+            "type": "boolean"
+          },
+          "changes_identity": {
+            "const": false,
+            "title": "Changes Identity",
+            "type": "boolean"
+          },
+          "changes_module_sequence": {
+            "const": false,
+            "title": "Changes Module Sequence",
+            "type": "boolean"
+          },
+          "changes_target_buyer": {
+            "const": false,
+            "title": "Changes Target Buyer",
+            "type": "boolean"
+          },
+          "module_id": {
+            "pattern": "^M(?:0[1-9]|1[0-2])$",
+            "title": "Module Id",
+            "type": "string"
+          },
+          "must_not_regress": {
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Must Not Regress",
+            "type": "array"
+          },
+          "preserve": {
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Preserve",
+            "type": "array"
+          },
+          "verbatim_instruction": {
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Verbatim Instruction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "module_id",
+          "verbatim_instruction",
+          "change_scope",
+          "change_kind",
+          "change_only",
+          "preserve",
+          "must_not_regress",
+          "changes_identity",
+          "changes_facts",
+          "changes_target_buyer",
+          "changes_campaign_style",
+          "changes_module_sequence"
+        ],
+        "title": "DomesticDetailLocalRevisionDelta",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionQuote": {
+        "properties": {
+          "actor_user_id": {
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "adjustment": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionDelta"
+          },
+          "approved_screen_count": {
+            "enum": [
+              8,
+              10,
+              12
+            ],
+            "title": "Approved Screen Count",
+            "type": "integer"
+          },
+          "authorization_text": {
+            "title": "Authorization Text",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "delivery_mode": {
+            "const": "USER_FINAL_REVIEW",
+            "title": "Delivery Mode",
+            "type": "string"
+          },
+          "disclosure": {
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "dispatch_kind": {
+            "enum": [
+              "http",
+              "synthetic"
+            ],
+            "title": "Dispatch Kind",
+            "type": "string"
+          },
+          "final_review_sha256": {
+            "title": "Final Review Sha256",
+            "type": "string"
+          },
+          "image_dispatch_sha256": {
+            "title": "Image Dispatch Sha256",
+            "type": "string"
+          },
+          "image_model": {
+            "title": "Image Model",
+            "type": "string"
+          },
+          "image_provider": {
+            "title": "Image Provider",
+            "type": "string"
+          },
+          "image_unit_micros": {
+            "minimum": 0.0,
+            "title": "Image Unit Micros",
+            "type": "integer"
+          },
+          "maximum_cost_micros": {
+            "minimum": 0.0,
+            "title": "Maximum Cost Micros",
+            "type": "integer"
+          },
+          "maximum_image_requests": {
+            "const": 2,
+            "title": "Maximum Image Requests",
+            "type": "integer"
+          },
+          "maximum_model_requests": {
+            "const": 5,
+            "title": "Maximum Model Requests",
+            "type": "integer"
+          },
+          "maximum_provider_requests": {
+            "const": 7,
+            "title": "Maximum Provider Requests",
+            "type": "integer"
+          },
+          "maximum_review_model_requests": {
+            "const": 4,
+            "title": "Maximum Review Model Requests",
+            "type": "integer"
+          },
+          "maximum_scope_model_requests": {
+            "const": 1,
+            "title": "Maximum Scope Model Requests",
+            "type": "integer"
+          },
+          "module_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Module Ids",
+            "type": "array"
+          },
+          "native_approval_document_sha256": {
+            "title": "Native Approval Document Sha256",
+            "type": "string"
+          },
+          "original_approval_receipt_sha256": {
+            "title": "Original Approval Receipt Sha256",
+            "type": "string"
+          },
+          "pair_id": {
+            "title": "Pair Id",
+            "type": "string"
+          },
+          "pricing_version": {
+            "title": "Pricing Version",
+            "type": "string"
+          },
+          "review_dispatch_sha256": {
+            "title": "Review Dispatch Sha256",
+            "type": "string"
+          },
+          "review_model": {
+            "title": "Review Model",
+            "type": "string"
+          },
+          "review_reserve_micros": {
+            "minimum": 0.0,
+            "title": "Review Reserve Micros",
+            "type": "integer"
+          },
+          "revision_policy_sha256": {
+            "title": "Revision Policy Sha256",
+            "type": "string"
+          },
+          "runtime_source_sha256": {
+            "title": "Runtime Source Sha256",
+            "type": "string"
+          },
+          "selected_module_id": {
+            "title": "Selected Module Id",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "skill_content_hash": {
+            "title": "Skill Content Hash",
+            "type": "string"
+          },
+          "source_approved_scope_sha256": {
+            "title": "Source Approved Scope Sha256",
+            "type": "string"
+          },
+          "source_context_sha256": {
+            "title": "Source Context Sha256",
+            "type": "string"
+          },
+          "source_generation_binding_sha256": {
+            "title": "Source Generation Binding Sha256",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "string"
+          },
+          "source_native_session_sha256": {
+            "title": "Source Native Session Sha256",
+            "type": "string"
+          },
+          "source_pair_canvas": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionCanvas"
+          },
+          "source_plan_id": {
+            "title": "Source Plan Id",
+            "type": "string"
+          },
+          "source_plan_payload_sha256": {
+            "title": "Source Plan Payload Sha256",
+            "type": "string"
+          },
+          "source_plan_revision": {
+            "title": "Source Plan Revision",
+            "type": "integer"
+          },
+          "source_quality_state": {
+            "enum": [
+              "PAIR_REVIEW_PASSED",
+              "WITH_RESIDUALS"
+            ],
+            "title": "Source Quality State",
+            "type": "string"
+          },
+          "source_residual_issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Residual Issues",
+            "type": "array"
+          },
+          "source_screens": {
+            "items": {
+              "$ref": "#/components/schemas/DomesticDetailLocalRevisionScreen"
+            },
+            "title": "Source Screens",
+            "type": "array"
+          },
+          "version": {
+            "const": "domestic-detail-local-revision-quote-v1",
+            "title": "Version",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "source_job_id",
+          "workspace_id",
+          "actor_user_id",
+          "source_plan_id",
+          "source_plan_revision",
+          "source_plan_payload_sha256",
+          "final_review_sha256",
+          "source_context_sha256",
+          "source_native_session_sha256",
+          "source_generation_binding_sha256",
+          "native_approval_document_sha256",
+          "original_approval_receipt_sha256",
+          "source_approved_scope_sha256",
+          "skill_content_hash",
+          "runtime_source_sha256",
+          "revision_policy_sha256",
+          "approved_screen_count",
+          "selected_module_id",
+          "pair_id",
+          "module_ids",
+          "source_screens",
+          "source_pair_canvas",
+          "source_quality_state",
+          "source_residual_issues",
+          "adjustment",
+          "image_dispatch_sha256",
+          "review_dispatch_sha256",
+          "image_provider",
+          "image_model",
+          "review_model",
+          "dispatch_kind",
+          "pricing_version",
+          "image_unit_micros",
+          "review_reserve_micros",
+          "maximum_image_requests",
+          "maximum_scope_model_requests",
+          "maximum_review_model_requests",
+          "maximum_model_requests",
+          "maximum_provider_requests",
+          "maximum_cost_micros",
+          "currency",
+          "delivery_mode",
+          "authorization_text",
+          "disclosure",
+          "sha256"
+        ],
+        "title": "DomesticDetailLocalRevisionQuote",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionQuoteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/DomesticDetailLocalRevisionDelta"
+          },
+          "final_review_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Review Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_review_sha256",
+          "adjustment"
+        ],
+        "title": "DomesticDetailLocalRevisionQuoteRequest",
+        "type": "object"
+      },
+      "DomesticDetailLocalRevisionScreen": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "module_id",
+          "asset_id",
+          "ordinal",
+          "sha256",
+          "width",
+          "height"
+        ],
+        "title": "DomesticDetailLocalRevisionScreen",
         "type": "object"
       },
       "DomesticMainImageConfiguration": {
@@ -2143,6 +3232,18 @@
             "minLength": 2,
             "title": "Approval Text",
             "type": "string"
+          },
+          "final_review_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Review Sha256"
           }
         },
         "required": [
@@ -2733,6 +3834,39 @@
           "prompt"
         ],
         "title": "InspirationCaseUpdate",
+        "type": "object"
+      },
+      "IntakeConflictResolution": {
+        "properties": {
+          "conflict_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Conflict Id",
+            "type": "string"
+          },
+          "rejected_fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 36,
+            "title": "Rejected Fact Ids",
+            "type": "array"
+          },
+          "retained_fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 36,
+            "minItems": 1,
+            "title": "Retained Fact Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conflict_id",
+          "retained_fact_ids"
+        ],
+        "title": "IntakeConflictResolution",
         "type": "object"
       },
       "JobAssetResponse": {
@@ -3472,6 +4606,7 @@
           "model_pose_transfer",
           "creative_image",
           "detail_pack",
+          "domestic_detail_review",
           "amazon_visual_suite",
           "domestic_main_image"
         ],
@@ -3838,6 +4973,18 @@
             ],
             "title": "Approval Document Sha256"
           },
+          "approval_protocol": {
+            "anyOf": [
+              {
+                "const": "domestic-native-approval-v1",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Protocol"
+          },
           "approval_text": {
             "anyOf": [
               {
@@ -3876,10 +5023,63 @@
             ],
             "title": "Approved Pair Canvas Aspect Ratio"
           },
+          "automatic_delivery_authorization_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automatic Delivery Authorization Sha256"
+          },
+          "automatic_delivery_authorization_text": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automatic Delivery Authorization Text"
+          },
+          "domestic_detail_delivery_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "USER_FINAL_REVIEW",
+                  "AUTO_FINALIZE_AUTHORIZED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domestic Detail Delivery Mode"
+          },
           "expected_revision": {
             "minimum": 1.0,
             "title": "Expected Revision",
             "type": "integer"
+          },
+          "native_approval_document_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Approval Document Sha256"
           }
         },
         "required": [
@@ -11093,6 +12293,571 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover": {
+      "post": {
+        "operationId": "recover_automatic_detail_delivery_api_v1_workspaces__workspace_id__jobs__job_id__automatic_delivery_recover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticDetailAutomaticDeliveryRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Recover Automatic Detail Delivery",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review": {
+      "post": {
+        "operationId": "create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticCampaignReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Domestic Campaign Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/preview.png": {
+      "get": {
+        "operationId": "get_domestic_campaign_preview_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_preview_png_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Domestic Campaign Preview",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/quote": {
+      "get": {
+        "operationId": "quote_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_quote_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "final_review_sha256",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Final Review Sha256",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticCampaignReviewQuote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Quote Domestic Campaign Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover": {
+      "post": {
+        "operationId": "recover_domestic_campaign_result_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticCampaignRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Recover Domestic Campaign Result",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recovery-quote": {
+      "get": {
+        "operationId": "quote_domestic_campaign_recovery_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recovery_quote_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticCampaignRecoveryQuote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Quote Domestic Campaign Recovery",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/report": {
+      "get": {
+        "operationId": "get_domestic_campaign_report_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticCampaignReviewReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Domestic Campaign Report",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-reviews": {
+      "get": {
+        "operationId": "list_domestic_campaign_reviews_api_v1_workspaces__workspace_id__jobs__job_id__campaign_reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Domestic Campaign Reviews",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel": {
       "post": {
         "operationId": "cancel_job_api_v1_workspaces__workspace_id__jobs__job_id__cancel_post",
@@ -11304,6 +13069,79 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review": {
+      "post": {
+        "operationId": "prepare_domestic_detail_final_review_api_v1_workspaces__workspace_id__jobs__job_id__detail_final_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DomesticCampaignReviewSelection"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticDetailFinalReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Prepare Domestic Detail Final Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize": {
       "post": {
         "description": "Record the user's complete-set approval through the native v2 Harness.",
@@ -11387,6 +13225,236 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve": {
+      "post": {
+        "operationId": "resolve_detail_intake_api_v1_workspaces__workspace_id__jobs__job_id__intake_resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetailIntakeResolutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Resolve Detail Intake",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision": {
+      "post": {
+        "operationId": "create_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticDetailLocalRevisionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Domestic Detail Local Revision",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision/quote": {
+      "post": {
+        "operationId": "quote_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_quote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomesticDetailLocalRevisionQuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticDetailLocalRevisionQuote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Quote Domestic Detail Local Revision",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan": {
       "put": {
         "operationId": "update_plan_api_v1_workspaces__workspace_id__jobs__job_id__plan_put",
@@ -11448,6 +13516,62 @@
           }
         ],
         "summary": "Update Plan",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/automatic-delivery-authorization": {
+      "get": {
+        "operationId": "get_automatic_detail_delivery_authorization_api_v1_workspaces__workspace_id__jobs__job_id__plan_automatic_delivery_authorization_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomesticDetailAutomaticDeliveryAuthorization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Automatic Detail Delivery Authorization",
         "tags": [
           "jobs"
         ]

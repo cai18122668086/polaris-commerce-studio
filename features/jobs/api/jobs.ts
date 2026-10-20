@@ -14,6 +14,7 @@ import { mapApiError } from "@/lib/api/error-mapper";
 import {
   activeJobStatuses,
   isActiveJob,
+  type DomesticDetailFinalReview,
   type JobCreate,
   type JobDetail,
   type JobStatus,
@@ -84,7 +85,12 @@ export function useJob(
     },
     refetchInterval(current) {
       const status = current.state.data?.status;
-      return status && isActiveJob(status) ? 1_500 : false;
+      if (status && isActiveJob(status)) return 1_500;
+      const data = current.state.data;
+      const native = data?.plan?.payload.aurora_v4_3 as Record<string, unknown> | undefined;
+      const receipt = native?.approval_receipt as Record<string, unknown> | undefined;
+      const automatic = receipt?.automatic_delivery_authorization as Record<string, unknown> | undefined;
+      return status === "awaiting_final_review" && data?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1" && automatic?.delivery_mode === "AUTO_FINALIZE_AUTHORIZED" && data.stage !== "automatic_delivery_reconciliation_required" ? 1_500 : false;
     },
   });
 }
@@ -259,20 +265,52 @@ export function useRetryJob(workspaceId: string | undefined) {
   );
 }
 
+export function useResolveDetailIntake(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, AuthorizedJobAction & {
+    revision: number; confirmationText: string;
+    resolutions: { conflict_id: string; retained_fact_ids: string[]; rejected_fact_ids: string[] }[];
+    brandlessConfirmation?: string; additionalProductAssetIds?: string[];
+  }>(workspaceId, "resolve-intake", (input) => ({
+    jobId: input.jobId,
+    revision: input.revision,
+    confirmationText: input.confirmationText,
+    resolutions: input.resolutions,
+    brandlessConfirmation: input.brandlessConfirmation,
+    additionalProductAssetIds: input.additionalProductAssetIds ?? [],
+  }), async (id, input, key) => {
+    assertJobAction(input.allowedActions, "resolve_intake");
+    const result = await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve", {
+      params: { path: { workspace_id: id, job_id: input.jobId }, header: { "Idempotency-Key": key } },
+      body: { expected_revision: input.revision, confirmation_text: input.confirmationText,
+        resolutions: input.resolutions, brandless_confirmation: input.brandlessConfirmation,
+        additional_product_asset_ids: input.additionalProductAssetIds ?? [] },
+    });
+    return unwrapApiResponse(result);
+  });
+}
+
 export function useConfirmPlan(workspaceId: string | undefined) {
   return useJobMutation<
     JobDetail,
     AuthorizedJobAction & {
       revision: number;
+      approvalProtocol?: "domestic-native-approval-v1";
+      nativeApprovalDocumentSha256?: string;
       approvalText?: string;
       approvalDocumentSha256?: string;
       approvedModuleCount?: number;
       approvedPairCanvasAspectRatio?: "3:8";
+      automaticDeliveryAuthorization?: { sha256: string; authorization_text: string };
     }
   >(
     workspaceId,
     "confirm-plan",
-    ({ jobId, revision }) => ({ jobId, revision }),
+    (input) => ({ jobId: input.jobId, revision: input.revision,
+      approvalProtocol: input.approvalProtocol, nativeApprovalDocumentSha256: input.nativeApprovalDocumentSha256,
+      approvalText: input.approvalText, approvalDocumentSha256: input.approvalDocumentSha256,
+      approvedModuleCount: input.approvedModuleCount,
+      approvedPairCanvasAspectRatio: input.approvedPairCanvasAspectRatio,
+      ...(input.automaticDeliveryAuthorization ? { automaticDeliveryAuthorization: { sha256: input.automaticDeliveryAuthorization.sha256, authorization_text: input.automaticDeliveryAuthorization.authorization_text } } : {}) }),
     async (id, input, key) => {
       assertJobAction(input.allowedActions, "confirm_plan");
       const result = await apiClient.POST(
@@ -283,7 +321,10 @@ export function useConfirmPlan(workspaceId: string | undefined) {
             header: { "Idempotency-Key": key },
           },
           body: {
+            ...(input.automaticDeliveryAuthorization ? { domestic_detail_delivery_mode: "AUTO_FINALIZE_AUTHORIZED" as const, automatic_delivery_authorization_text: input.automaticDeliveryAuthorization.authorization_text, automatic_delivery_authorization_sha256: input.automaticDeliveryAuthorization.sha256 } : {}),
             expected_revision: input.revision,
+            approval_protocol: input.approvalProtocol,
+            native_approval_document_sha256: input.nativeApprovalDocumentSha256,
             approval_text: input.approvalText,
             approval_document_sha256: input.approvalDocumentSha256,
             approved_module_count: input.approvedModuleCount,
@@ -296,11 +337,26 @@ export function useConfirmPlan(workspaceId: string | undefined) {
   );
 }
 
+export function useDomesticDetailFinalReview(workspaceId: string | undefined, job: JobDetail | undefined, selection?: { review_job_id: string; report_sha256: string }) {
+  return useQuery<DomesticDetailFinalReview>({
+    queryKey: [...jobKeys.detail(workspaceId ?? "pending", job?.id ?? "pending"), "final-review", job?.plan?.revision, job?.status, selection ?? null],
+    enabled: Boolean(workspaceId && job?.configuration.domestic_detail_pipeline === "aurora-domestic-detail-v4.3.1" && ["awaiting_final_review", "completed"].includes(job.status)),
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review",
+        { params: { path: { workspace_id: workspaceId!, job_id: job!.id } }, ...(selection ? { body: selection } : {}), signal },
+      );
+      return unwrapApiResponse(result);
+    },
+  });
+}
+
 export function useFinalizeJob(workspaceId: string | undefined) {
-  return useJobMutation<JobDetail, AuthorizedJobAction & { approvalText: string }>(
+  return useJobMutation<JobDetail, AuthorizedJobAction & { approvalText: string; finalReviewSha256?: string }>(
     workspaceId,
     "finalize-job",
-    ({ jobId, approvalText }) => ({ jobId, approvalText }),
+    ({ jobId, approvalText, finalReviewSha256 }) => ({ jobId, approvalText, ...(finalReviewSha256 ? { finalReviewSha256 } : {}) }),
     async (id, input, key) => {
       assertJobAction(input.allowedActions, "finalize");
       const result = await apiClient.POST(
@@ -310,7 +366,7 @@ export function useFinalizeJob(workspaceId: string | undefined) {
             path: { workspace_id: id, job_id: input.jobId },
             header: { "Idempotency-Key": key },
           },
-          body: { approval_text: input.approvalText },
+          body: { approval_text: input.approvalText, ...(input.finalReviewSha256 ? { final_review_sha256: input.finalReviewSha256 } : {}) },
         },
       );
       return unwrapApiResponse(result);

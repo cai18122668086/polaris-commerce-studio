@@ -3,7 +3,42 @@ name: aurora-domestic-ecommerce-detail-page
 description: Plan, generate, inspect, repair, assemble, and deliver fact-grounded domestic Chinese e-commerce detail pages with a product-driven 8, 10, or 12-screen storyboard rendered in mandatory adjacent two-screen 3:8 continuous pairs and deterministically decomposed into single-screen deliveries. Use for creating or revising 淘宝、天猫、京东、拼多多等国内电商详情页、详情长图、商品卖点长页、分组策划、逐组生图、切图或详情页验收. Also use when resuming after user feedback or interruption; the workflow rehydrates product identity, approved story, series visual DNA, and current-pair constraints before continuing.
 ---
 
-# 极光国内电商详情图（v4.3）
+# 极光国内电商详情图（v4.3.1）
+
+## Optional website contract v1
+
+For website requests explicitly selecting `website_contract_version=WEBSITE_LEAN_V1`,
+read [website-lean-v1.md](references/website-lean-v1.md). This versioned profile uses
+one authored primary claim/job map and six core pixel checks per fixed slice. It
+replaces the repetitive aesthetic measurement checklist for those approved website
+plans only. Facts, identity, source boundaries, selling-point depth, pair geometry,
+actual pixels, original receipts and the one-repair limit remain mandatory. Existing
+plans and ordinary standalone requests retain their original contract.
+
+## v4.3.1 internal seam correction
+
+An atomic screen's `transition_contract` describes the incoming handoff from its
+previous screen to itself. For an adjacent pair `(upper, lower)`, the internal
+seam therefore uses the **lower screen's incoming transition**, from the upper
+screen's bottom region to the lower screen's top region. Validation, approval,
+generation requests, prompt compilation and pixel audit must bind that same
+contract. Explicit screen references outside that pair are rejected. The upper
+screen's own incoming handoff belongs to the previous pair and must not replace
+the current pair's internal seam.
+
+This patch preserves the v4.3 story, product, fact, geometry, repair and audit
+gates. Existing v4.3.0 sessions remain historical state; do not rewrite or
+automatically reauthorize them under this patch.
+
+## Immutable accepted audit evidence
+
+Every validated pair audit now seals its exact input JSON bytes and native decision in an immutable per-render-token file under `audit-originals`. Both slice attempts bind the same snapshot, render token, cycle, signed request and exact pixel lineage. The read-only `inspect-pair-review-evidence --session <session> --pair-id <pair>` verifies the accepted pair against that original snapshot and revalidates its atomic report bindings. It must reject missing/changed snapshots, changed accepted observations, sibling disagreement or references to another attempt/pair. A later repair keeps the first audit intact and uses a different snapshot for its own signed token.
+
+Website recovery additionally requires every cited immutable provider-review request, response and original UTF-8 model message. Reconstruct the accepted observation from the original pair report and its optional one same-pixel identity follow-up, preserve explicit false/applicability, and compare it to the sealed audit input. A prior file-complete canvas never substitutes for these receipts. Compare typed canonical JSON fingerprints; a boolean true must not equal an integer 1 in accepted observations or receipt copies. Missing or uncertain evidence stops reuse without a new provider call. Explicit offline synthetic fixtures remain distinguishable from actual provider/pixel quality acceptance. Historical tasks keep their original pinned runtime and are not silently rewritten to acquire this evidence.
+
+## Truthful identity observation scope
+
+The canonical `schemas/identity-observation.schema.json` distinguishes actual full product, identity token and no visible product. Derive scope from each slice's observed presence, never from planned permission: `VISIBLE_COMPLETE_PRODUCT` requires three boolean comparisons and concrete visible features; `VISIBLE_IDENTITY_TOKEN` compares only visible features and marks unobservable comparisons `NOT_APPLICABLE`; `NO_VISIBLE_PRODUCT` requires three `NOT_APPLICABLE` values and no claimed visible product features. Unknown visibility/comparisons remain incomplete and stop processing. Aggregate pair scope is the strongest actual scope of its two slice reports. Explicit false observations survive bounded identity follow-up. Unexpected full product or unexpected absence is still a role/presence failure, with the existing single whole-pair repair budget and preserved residuals. See [product-presence-rhythm.md](references/product-presence-rhythm.md).
 
 ## v4.3 expression diversity and anti-posterization
 
@@ -74,6 +109,24 @@ Apply this authority order:
 - Treat module count and aspect ratio as approved campaign decisions. Do not generate until both are exposed to and approved by the user.
 - One module may carry several related points, but must have one clear lead conclusion.
 - Never interpret successful file creation, schema validation, or image-generation receipt as visual success. Inspect actual pixels.
+
+## Native final delivery evidence
+
+The finalize and auto-finalize commands share one native manifest projection.
+Accepted module order, exact file hashes, original pixel audit bindings, review
+snapshots, accepted pair-canvas hashes and material residuals remain explicit.
+An optional long-page audit is preserved when present; its absence never becomes
+a passing campaign-audit claim. Finalization records the exact manifest byte
+hash in the native session.
+
+The inspect-final-manifest --session <session> --manifest <exact-output> command
+is read-only. It checks the finalized state, recorded output path and byte hash,
+then reconstructs the expected manifest from the same accepted native truth.
+Missing or changed output, altered residuals, unfinished modules and unapproved
+automatic delivery are rejected. Website delivery must additionally verify its
+original generation/review evidence and durable output bytes before accepting
+the user's final review. Historical finalized sessions lacking this evidence
+keep their original pinned runtime.
 
 ## v4.3 non-negotiable gates
 
@@ -585,6 +638,34 @@ Two rules that are not negotiable:
 
 可直接粘贴的 prompt 段落模板见该 skill `references/hard-lock-template.md`。
 
-> **状态：已启用硬门禁（B 层）** 本 skill 的 `harness.py` 在 `cmd_lock_identity` 强制 `invariant_features` / `allowed_states` 至少含 3 条具体几何描述（截面/宽高比/结构分段，命中 `GEOMETRY_FACETS` 或数字比例），否则 BLOCKED。出图后由 `visual_gate.py` 里已有的 `require_identity_silhouette` 强制 `identity_silhouette` 块（shape/colorway/texture_consistent 三者必须为 True）兜底。两环合起来 = 出图前锁几何 + 出图后锁形态，产品一致性不再依赖模型自觉。
+> **状态：已启用硬门禁（B 层）** 本 skill 的 `harness.py` 在 `cmd_lock_identity` 强制 `invariant_features` / `allowed_states` 至少含 3 条具体几何描述（截面/宽高比/结构分段，命中 `GEOMETRY_FACETS` 或数字比例），否则 BLOCKED。出图后由 `visual_gate.py` 里已有的 `require_identity_silhouette` 强制 `identity_silhouette` 块（依据实际可见范围比较：完整商品三项布尔值；身份线索仅比较可见特征；商品缺席三项为 NOT_APPLICABLE，未知不能通过）兜底。两环合起来 = 出图前锁几何 + 出图后锁形态，产品一致性不再依赖模型自觉。
 
 <!-- IDENTITY-CONSISTENCY-LOCK:END -->
+
+审批文件指纹必须覆盖实际 UTF-8 文件字节（含唯一末尾 LF）；授权前同时核对编译器指纹与文件实际 SHA-256，文件被改动必须重新编译和审阅。
+
+### Optional campaign review contract inspection
+
+`inspect-campaign-review-contract --session <session.json>` is read-only. It returns the union of schema-required and dynamically required long-page checks (the latter from the same native function used by `audit-long-page`), the judgment schema, the approved expression-diversity constraints, and the ordered accepted screen/pair byte inventory. It does not assemble a long image, invoke a model, authorize automatic finalization, verify original review provenance, or grant visual acceptance. The website must separately verify the original accepted artifacts and raw review evidence before using this inventory.
+
+Long-page preview and audit remain optional. A consumer must preserve original model observations and actual dispatch/usage evidence and must not fill pass/observation fields from the approved plan. Pair, information, expression, pain/solution, and product-presence contracts can add required checks; a static schema-only checklist is incomplete.
+
+`fork-campaign-review --session <new-session.json> --source-session <owned-source-snapshot.json> --source-session-sha256 <sha256>` creates a separate review snapshot of an accepted campaign. The caller must first verify original C4 review provenance and durable pixels, then preserve the source session's exact bytes in the new owned workspace. The command checks the pinned version, accepted inventory, source byte hash and absence of an unfinished generation. It preserves all accepted modules, identities, facts, original approval and audit references, and writes only the new review session. It clears copied assembly/final controls so optional preview/audit can run in that workspace; it never calls a model, redraws images or grants additional automatic-delivery authority. Repeating the same fork verifies and reuses the existing snapshot without rewriting it.
+
+Native command failures preserve the original `error` text and additionally report `error_type` plus `failure_kind` (`LOCAL_IO` or `CONTRACT_REJECTION`) on stderr. A consumer must keep local storage failure distinct from rejected observations; neither condition grants visual acceptance or another paid request.
+
+
+## Website direct planning v2
+
+Website requests selecting `WEBSITE_DIRECT_V2` use the small shared contract in
+`scripts/runtime/website_plan.py`: one observed intake, one whole-page creative
+brief, deterministic native compilation, plan approval, sequential continuous
+pairs, fixed slices and the existing six-check website pixel profile. The brief
+keeps real fact IDs, short approved copy, visual direction, composition, camera,
+product presence and one transition per pair. Do not create pain, formula,
+primary-depth or recall ledgers or issue separate pair-completion planning calls.
+User facts must be represented; unused photo observations remain identity evidence
+and do not become extra independent campaigns. Product truth, identity, dimensions,
+approval bindings, original provider outcomes and the one-repair limit remain.
+This version replaces the ordinary website planning workload, while historical
+contracts and standalone route-aware operation retain their existing behavior.

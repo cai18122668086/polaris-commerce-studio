@@ -40,6 +40,7 @@ class MockTaskRunner:
         aurora_max_transient_retries: int = 2,
         aurora_retry_backoff_base_seconds: float = 2,
         aurora_retry_backoff_max_seconds: float = 30,
+        domestic_revision_settings: Settings | None = None,
     ) -> None:
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
@@ -63,6 +64,7 @@ class MockTaskRunner:
             aurora_max_transient_retries=aurora_max_transient_retries,
             aurora_retry_backoff_base_seconds=aurora_retry_backoff_base_seconds,
             aurora_retry_backoff_max_seconds=aurora_retry_backoff_max_seconds,
+            domestic_revision_settings=domestic_revision_settings,
         )
 
     @property
@@ -191,6 +193,7 @@ def build_task_runner(
             session_factory,
             settings.mock_job_delay_seconds,
             storage=storage,
+            domestic_revision_settings=settings,
             xinghe_concurrency=settings.xinghe_concurrency,
             budget_limit_micros=int(settings.tengli_smoke_budget_usd * 1_000_000),
             medium_price_micros=settings.xinghe_medium_price_micros,
@@ -231,6 +234,7 @@ def build_tengli_task_runner(
         0,
         storage=storage,
         xinghe_gateway=build_tengli_gateway(settings),
+        domestic_revision_settings=settings,
         xinghe_concurrency=concurrency,
         budget_limit_micros=int(settings.tengli_smoke_budget_usd * 1_000_000),
         medium_price_micros=settings.xinghe_medium_price_micros,

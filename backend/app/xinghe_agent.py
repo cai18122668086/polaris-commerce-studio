@@ -20,7 +20,7 @@ import secrets
 import time
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -57,6 +57,83 @@ from .domain import (
     JobType,
     PlanValidationStatus,
     UsageCompleteness,
+)
+from .domestic_detail import authoring
+from .domestic_detail.atomic_review import (
+    atomic_context,
+    synthetic_identity,
+    synthetic_module_judgments,
+)
+from .domestic_detail.facts import (
+    DetailIntakeError,
+    _schema,
+    user_fact_ledger,
+    validate_intake,
+)
+from .domestic_detail.generation import (
+    DetailGenerationError,
+    begin_invocation,
+    bind_native_contract,
+    bind_workspace,
+    checkpoint_workspaces,
+    finish_invocation,
+    generation_binding,
+    require_current_pipeline,
+    verify_accepted_canvas,
+    wire_idempotency_key,
+)
+from .domestic_detail.identity_review import (
+    identity_complete,
+    merge_identity_followup,
+    observed_pair_scope,
+)
+from .domestic_detail.intake import (
+    INTAKE_PROFILE,
+    IntakeStore,
+    canonical_intake_wire,
+    intake_binding,
+    intake_prompt,
+    intake_response_schema,
+    project_identity_observations,
+)
+from .domestic_detail.native_approval import (
+    compile_native_approval,
+    verify_approval_sources,
+    verify_compiled_native_approval,
+    write_native_json,
+)
+from .domestic_detail.pixels import (
+    DetailPixelError,
+    load_native_pair_pixels,
+    pixel_review_context,
+)
+from .domestic_detail.planner_dispatch import (
+    NATIVE_PLANNER_PROFILES,
+    PlannerDispatchError,
+    dispatch_metadata,
+    planner_dispatch_record,
+    planning_model,
+    require_route,
+    result_with_dispatch,
+    route_descriptor,
+    safe_native_provider_error,
+    select_route,
+    validate_dispatch_result,
+)
+from .domestic_detail.planning_calls import NativePlanningStore, call_binding
+from .domestic_detail.plans import DetailPlanError, approval_binding
+from .domestic_detail.review import (
+    DetailReviewError,
+    ReviewStore,
+    approved_review_authority,
+    normalize_pair_observation,
+    require_review_authority,
+    validate_pair_before_identity,
+)
+from .domestic_detail.review_provenance import (
+    REVIEW_BINDING_VERSION,
+    pair_review_contract,
+    review_runtime_hash,
 )
 from .masked_repair import (
     MaskedEditCallResult,
@@ -381,6 +458,14 @@ class PlannerRequest:
     planning_directives: tuple[str, ...] = ()
     domestic_protocol: bool = False
     planning_profile: str = "detail_pack"
+    intake_settings: Mapping[str, Any] | None = None
+    detail_intake: Mapping[str, Any] | None = None
+    intake_resolution: Mapping[str, Any] | None = None
+    native_dispatch: Mapping[str, Any] | None = None
+    authoring_stage: str = ""
+    authoring_target_ids: tuple[str, ...] = ()
+    authoring_context: Mapping[str, Any] | None = None
+    planning_deadline: float | None = None
 
 
 def _choose_identity_anchor(sources: Sequence[SourceImage]) -> SourceImage | None:
@@ -512,6 +597,7 @@ class PlannerCallResult:
     phase: str | None = None
     supplemental_results: tuple[PlannerCallResult, ...] = ()
     external_request: bool = True
+    audit_raw_content: str | None = None
 
 
 @dataclass(frozen=True)
@@ -531,6 +617,7 @@ class ImageEditRequest:
     jpeg_quality: int = JPEG_QUALITY
     input_fidelity: str = "high"
     preserve_provider_artifact: bool = False
+    single_dispatch: bool = False
 
 
 @dataclass(frozen=True)
@@ -601,6 +688,8 @@ class XingheGateway(Protocol):
     medium_price_micros: int
     high_price_micros: int
     external_network_request_count: int
+
+    def native_planner_route(self) -> dict[str, Any]: ...
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult: ...
 
@@ -1640,8 +1729,16 @@ def compile_aurora_campaign_approval_document(
     group_plans: Sequence[Mapping[str, Any]],
     pages: Sequence[Mapping[str, Any]],
     page_count: int,
+    binding: Mapping[str, Any] | None = None,
+    native_document: str | None = None,
 ) -> str:
     """Produce the canonical approval packet whose bytes are user-approved."""
+    if native_document is not None:
+        if not native_document or binding is None:
+            raise DetailPlanError("Complete native approval and immutable scope are required")
+        return ("# 国内详情图完整方案\n\n" + native_document
+                + "\n## 本次方案指纹\n\n"
+                + json.dumps(binding, ensure_ascii=False, sort_keys=True) + "\n")
 
     lines = [
         "# Aurora 国内电商详情图 v4.3 Campaign Approval",
@@ -1689,6 +1786,8 @@ def compile_aurora_campaign_approval_document(
             "",
         ]
     )
+    if binding is not None:
+        lines.extend(["", "## Immutable approval scope", json.dumps(binding, ensure_ascii=False, sort_keys=True)])
     return "\n".join(lines)
 
 
@@ -1770,6 +1869,16 @@ class FakeXingheGateway:
         self.max_active_images = 0
         self._activity_lock = asyncio.Lock()
 
+    def native_planner_route(self) -> dict[str, Any]:
+        return route_descriptor(
+            provider=self.provider_name,
+            route="offline-synthetic",
+            model=self.planner_model,
+            endpoint="offline://synthetic",
+            credential="SYNTHETIC_OFFLINE",
+            kind="synthetic",
+        )
+
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         self.planner_calls.append(request)
         started = time.perf_counter()
@@ -1788,8 +1897,37 @@ class FakeXingheGateway:
                 error_message="The fake planner returned a controlled failure.",
                 http_status=503,
             )
-        payload: object = _fake_plan(request)
-        if self.planner_failure == "invalid_json":
+        if request.planning_profile == INTAKE_PROFILE:
+            from .domestic_detail.mock_intake import mock_intake
+
+            payload: object = mock_intake(
+                request.intake_settings or {},
+                [
+                    {
+                        "asset_id": source.asset_id,
+                        "role": source.source_role,
+                        "sha256": source.sha256,
+                    }
+                    for source in request.sources
+                ],
+                request.intake_resolution,
+            )
+        else:
+            payload = _fake_plan(request)
+            if request.detail_intake is not None and request.planning_profile in {
+                "aurora_domestic_detail",
+                "aurora_domestic_campaign_completion",
+                "aurora_domestic_plan_repair",
+                "aurora_domestic_modules_completion",
+            }:
+                from .domestic_detail.mock_intake import mock_plan_with_intake
+
+                payload = mock_plan_with_intake(payload, request.detail_intake)
+        if request.authoring_stage and isinstance(payload, Mapping):
+            payload = authoring.fake_phase(payload, request)
+        if request.planning_profile == INTAKE_PROFILE:
+            pass
+        elif self.planner_failure == "invalid_json":
             payload = "{not-json"
         elif self.planner_failure == "schema":
             payload = {"analysis": {}, "plan": {"screens": []}}
@@ -1979,7 +2117,12 @@ class UrllibOpenAITransport:
         )
 
     @staticmethod
+    def _open(request: Request, timeout_seconds: float) -> Any:
+        return urlopen(request, timeout=timeout_seconds)
+
+    @classmethod
     def _send(
+        cls,
         url: str,
         headers: Mapping[str, str],
         body: bytes,
@@ -1988,7 +2131,7 @@ class UrllibOpenAITransport:
         request = Request(url, data=body, headers=dict(headers), method="POST")
         error_status = False
         try:
-            with urlopen(request, timeout=timeout_seconds) as response:
+            with cls._open(request, timeout_seconds) as response:
                 status = int(response.status)
                 raw = response.read()
         except HTTPError as exc:
@@ -2016,6 +2159,14 @@ class UrllibOpenAITransport:
                 "Provider returned a non-object JSON response.",
             )
         return status, payload
+
+
+class NativeUrllibOpenAITransport(UrllibOpenAITransport):
+    @staticmethod
+    def _open(request: Request, timeout_seconds: float) -> Any:
+        from .domestic_detail.transport import native_urlopen
+
+        return native_urlopen(request, timeout_seconds)
 
 
 class TengliOpenAICompatibleGateway:
@@ -2165,7 +2316,91 @@ class TengliOpenAICompatibleGateway:
         # Try the next configured key instead of failing the job immediately.
         return status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
 
+    def native_planner_route(self) -> dict[str, Any]:
+        route = self._ordered_routes()[0]
+        return route_descriptor(
+            provider=self.provider_name,
+            route=route.name,
+            model=route.planner_model,
+            endpoint=urljoin(route.planner_base_url, "v1/chat/completions"),
+            credential=route.planner_api_key,
+        )
+
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
+        if request.planning_profile not in NATIVE_PLANNER_PROFILES:
+            return await self._plan_transport(request)
+        started = time.perf_counter()
+        route = None
+        try:
+            route = (
+                require_route(request.native_dispatch)
+                if request.native_dispatch is not None
+                else self.native_planner_route()
+            )
+            select_route(self, route)
+        except PlannerDispatchError as exc:
+            return PlannerCallResult(
+                payload=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=0,
+                actual_cost_micros=None,
+                error_code=exc.code,
+                error_message=str(exc),
+                external_request=False,
+                provider_envelope=(
+                    {
+                        "native_planner_dispatch": dispatch_metadata(
+                            route,
+                            attempts=0,
+                            response_received=False,
+                            status=None,
+                            error_code=exc.code,
+                        )
+                    }
+                    if route is not None
+                    else None
+                ),
+            )
+        state: dict[str, Any] = {
+            "route": route,
+            "attempts": 0,
+            "response_received": False,
+            "http_status": None,
+            "reported_model": None,
+        }
+        try:
+            result = await self._plan_transport(request, state)
+        except Exception as exc:
+            result = PlannerCallResult(
+                payload=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=time.perf_counter() - started,
+                actual_cost_micros=None,
+                error_code=getattr(exc, "code", "NATIVE_PLANNER_OUTCOME_UNKNOWN"),
+                error_message=f"Native planner dispatch stopped ({type(exc).__name__})",
+            )
+        envelope = dict(result.provider_envelope or {})
+        envelope["native_planner_dispatch"] = dispatch_metadata(
+            route,
+            attempts=state["attempts"],
+            response_received=state["response_received"],
+            status=state["http_status"],
+            error_code=result.error_code,
+            reported_model=state["reported_model"],
+        )
+        return replace(
+            result, provider_envelope=envelope, external_request=state["attempts"] > 0
+        )
+
+    async def _plan_transport(
+        self,
+        request: PlannerRequest,
+        native_state: dict[str, Any] | None = None,
+    ) -> PlannerCallResult:
         started = time.perf_counter()
         content: list[dict[str, Any]] = [
             {
@@ -2208,6 +2443,8 @@ class TengliOpenAICompatibleGateway:
                     "max_completion_tokens": 12_000,
                 }
             )
+        elif request.planning_profile == "aurora_detail_revision_scope":
+            payload.update({"max_completion_tokens": 4096})
         elif request.planning_profile == "aurora_v20_visual_audit":
             payload.update(
                 {
@@ -2227,26 +2464,61 @@ class TengliOpenAICompatibleGateway:
             # keep the first pass within the relay's reliable response window.
             payload.update({"max_completion_tokens": 16_000})
         elif request.planning_profile in {
-            "aurora_domestic_modules_completion", "aurora_detail_pair_audit",
+            "aurora_domestic_modules_completion", "aurora_detail_pair_audit", "aurora_detail_campaign_audit",
             "aurora_domestic_campaign_completion",
         }:
             payload.update({"max_completion_tokens": 16_000})
+        if request.authoring_stage:
+            payload["max_completion_tokens"] = 10000 if request.authoring_stage == "story" else 8000
         response: Mapping[str, Any] | None = None
         try:
             routes = self._ordered_routes()
+            if request.planning_profile in NATIVE_PLANNER_PROFILES:
+                routes = routes[:1]
             last_route_index = len(routes) - 1
             for route_index, route in enumerate(routes):
                 route_payload = {**payload, "model": route.planner_model}
                 try:
+                    timeout_seconds = self.timeout_seconds
+                    if request.planning_deadline is not None:
+                        remaining = request.planning_deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise XingheAgentError(
+                                "AURORA_PLANNING_DEADLINE",
+                                "Bounded planning deadline exhausted",
+                            )
+                        timeout_seconds = min(timeout_seconds, remaining)
+                    if native_state is not None:
+                        select_route(self, native_state["route"])
+                        if native_state["attempts"] != 0:
+                            raise PlannerDispatchError(
+                                "NATIVE_PLANNER_ALREADY_DISPATCHED",
+                                "A native planner request permits one transport call",
+                            )
+                        native_state["attempts"] = 1
                     self.external_network_request_count += 1
-                    status, response = await self.transport.post_json(
+                    transport = (
+                        NativeUrllibOpenAITransport()
+                        if request.planning_profile in NATIVE_PLANNER_PROFILES
+                        and type(self.transport) is UrllibOpenAITransport
+                        else self.transport
+                    )
+                    status, response = await transport.post_json(
                         url=urljoin(route.planner_base_url, "v1/chat/completions"),
                         headers=self._headers(
                             request.idempotency_key, route.planner_api_key
                         ),
                         payload=route_payload,
-                        timeout_seconds=self.timeout_seconds,
+                        timeout_seconds=timeout_seconds,
                     )
+                    if native_state is not None:
+                        native_state["response_received"] = True
+                        native_state["http_status"] = status
+                        native_state["reported_model"] = (
+                            response.get("model")
+                            if isinstance(response.get("model"), str)
+                            else None
+                        )
                 except XingheAgentError as exc:
                     if (
                         exc.retryable or exc.code == "PROVIDER_RESPONSE_INVALID"
@@ -2269,6 +2541,14 @@ class TengliOpenAICompatibleGateway:
                 break
             if status >= 400:
                 envelope_diagnostics = _planner_envelope_diagnostics(response)  # type: ignore[arg-type]
+                native_error = {}
+                if request.planning_profile in NATIVE_PLANNER_PROFILES and isinstance(response, Mapping):
+                    native_error = safe_native_provider_error(
+                        response, (route.planner_api_key, self._api_key, self._planner_api_key, self._image_api_key),
+                    )
+                    if native_error:
+                        envelope_diagnostics["provider_envelope"]["native_provider_error"] = native_error
+                suffix = ": " + native_error["message"] if native_error.get("message") else "."
                 return PlannerCallResult(
                     payload=None,
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
@@ -2281,7 +2561,7 @@ class TengliOpenAICompatibleGateway:
                         if status == 429
                         else "PLANNER_REQUEST_FAILED"
                     ),
-                    error_message=f"Planner request failed with HTTP {status}.",
+                    error_message=f"Planner request failed with HTTP {status}" + suffix,
                     http_status=status,
                     provider_envelope=envelope_diagnostics["provider_envelope"],
                     request_id_presence=envelope_diagnostics["request_id_presence"],
@@ -2322,6 +2602,9 @@ class TengliOpenAICompatibleGateway:
                     provider_envelope=envelope_diagnostics["provider_envelope"],
                     content_utf8_bytes=len(content_bytes),
                     content_sha256=content_sha256,
+                    audit_raw_content=text
+                    if request.planning_profile in NATIVE_PLANNER_PROFILES
+                    else None,
                     request_id_presence=envelope_diagnostics["request_id_presence"],
                     usage_presence=envelope_diagnostics["usage_presence"],
                     usage_completeness=envelope_diagnostics["usage_completeness"],
@@ -2339,6 +2622,9 @@ class TengliOpenAICompatibleGateway:
                 provider_envelope=envelope_diagnostics["provider_envelope"],
                 content_utf8_bytes=len(content_bytes),
                 content_sha256=content_sha256,
+                audit_raw_content=text
+                if request.planning_profile in NATIVE_PLANNER_PROFILES
+                else None,
                 request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
                 usage_completeness=envelope_diagnostics["usage_completeness"],
@@ -2384,6 +2670,12 @@ class TengliOpenAICompatibleGateway:
                 request_id_presence=envelope_diagnostics["request_id_presence"],
                 usage_presence=envelope_diagnostics["usage_presence"],
                 usage_completeness=envelope_diagnostics["usage_completeness"],
+                audit_raw_content=(
+                    raw_content
+                    if isinstance(raw_content, str)
+                    and request.planning_profile in NATIVE_PLANNER_PROFILES
+                    else None
+                ),
             )
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
@@ -2408,6 +2700,8 @@ class TengliOpenAICompatibleGateway:
         ]
         try:
             routes = self._image_routes()
+            if request.single_dispatch:
+                routes = routes[:1]
             last_route_index = len(routes) - 1
             response: Mapping[str, Any] | None = None
             for route_index, route in enumerate(routes):
@@ -2415,7 +2709,13 @@ class TengliOpenAICompatibleGateway:
                 route_fields[0] = ("model", route.image_model)
                 try:
                     self.external_network_request_count += 1
-                    status, response = await self.transport.post_multipart(
+                    transport = (
+                        NativeUrllibOpenAITransport()
+                        if request.single_dispatch
+                        and type(self.transport) is UrllibOpenAITransport
+                        else self.transport
+                    )
+                    status, response = await transport.post_multipart(
                         url=urljoin(route.image_base_url, "v1/images/edits"),
                         headers=self._headers(
                             request.idempotency_key, route.image_api_key
@@ -2442,10 +2742,17 @@ class TengliOpenAICompatibleGateway:
                 else self.medium_price_micros
             )
             if status >= 400:
+                uncertain = request.single_dispatch and (
+                    status >= 500 or status in {408, 409}
+                )
                 rate_limited = status == 429
                 raw_error = _provider_error_summary(response)  # type: ignore[arg-type]
                 return ImageCallResult(
-                    outcome=ProviderOutcome.FAILED,
+                    outcome=(
+                        ProviderOutcome.OUTCOME_UNKNOWN
+                        if uncertain
+                        else ProviderOutcome.FAILED
+                    ),
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
                     raw_usage={
                         **(raw_usage or {}),
@@ -2459,7 +2766,7 @@ class TengliOpenAICompatibleGateway:
                         "IMAGE_RATE_LIMITED" if rate_limited else "IMAGE_REQUEST_FAILED"
                     ),
                     error_message=f"Image request failed with HTTP {status}.",
-                    retryable=rate_limited or status >= 500,
+                    retryable=(rate_limited or status >= 500) and not uncertain,
                     http_status=status,
                     rate_limited=rate_limited,
                 )
@@ -2482,8 +2789,9 @@ class TengliOpenAICompatibleGateway:
                 http_status=status,
             )
         except XingheAgentError as exc:
-            unknown = exc.code in {
-                "PROVIDER_TRANSPORT_FAILED", "PROVIDER_RESPONSE_INVALID"
+            unknown = request.single_dispatch or exc.code in {
+                "PROVIDER_TRANSPORT_FAILED",
+                "PROVIDER_RESPONSE_INVALID",
             }
             return ImageCallResult(
                 outcome=(
@@ -3012,7 +3320,11 @@ class XinghePlanningCoordinator:
                     request,
                     system_prompt=(
                         system_prompt
-                        + _auto_identity_resolution_system_prompt(request)
+                        + (
+                            ""
+                            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                            else _auto_identity_resolution_system_prompt(request)
+                        )
                     ),
                 )
                 for request in requests
@@ -3030,12 +3342,45 @@ class XinghePlanningCoordinator:
             )
         results: list[PlannerCallResult] = []
         validated: list[dict[str, Any]] = []
+        enriched_requests: list[PlannerRequest] = []
         for request in requests:
+            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+                request = replace(request, planning_deadline=time.monotonic() + authoring.PLANNING_SECONDS)
+            intake_calls: tuple[PlannerCallResult, ...] = ()
+            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+                try:
+                    request, intake_calls = await self._with_domestic_intake(request)
+                except DetailIntakeError as exc:
+                    return self._fail_planning(
+                        job_id,
+                        plan_id,
+                        exc.code,
+                        str(exc),
+                        [*results, *exc.call_results],
+                        error_path=exc.path,
+                    )
+                if request.detail_intake is not None and (
+                    request.detail_intake.get("brand_confirmation_required") is True
+                    or (
+                        request.detail_intake.get("source_conflicts")
+                        and not request.detail_intake.get("resolution")
+                    )
+                ):
+                    return self._await_domestic_intake_confirmation(
+                        job_id, plan_id, request, intake_calls
+                    )
+            if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+                request = self._bounded_authoring_request(request)
+            enriched_requests.append(request)
             started = time.perf_counter()
             try:
                 result = self._recover_aurora_candidate(request)
                 if result is None:
-                    result = await self.gateway.plan(request)
+                    result = (
+                        await self._native_planner_call(request)
+                        if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                        else await self.gateway.plan(request)
+                    )
             except Exception as exc:
                 result = PlannerCallResult(
                     payload=None,
@@ -3047,7 +3392,9 @@ class XinghePlanningCoordinator:
                     error_code="PLANNER_PROVIDER_FAILED",
                     error_message=(f"Planner provider failed ({type(exc).__name__})."),
                 )
-            result = _with_planner_observability(result)
+            result = replace(
+                _with_planner_observability(result), supplemental_results=intake_calls
+            )
             results.append(result)
             if result.error_code is not None:
                 return self._fail_planning(
@@ -3108,10 +3455,479 @@ class XinghePlanningCoordinator:
         return self._complete_planning(
             job_id,
             plan_id,
-            requests,
+            tuple(enriched_requests),
             results,
             validated,
         )
+
+    def _bounded_authoring_request(self, request: PlannerRequest) -> PlannerRequest:
+        from .domestic_detail import direct
+
+        if direct.enabled(request):
+            return replace(request, authoring_stage="direct", system_prompt=direct.SYSTEM)
+        return replace(request, authoring_stage="story",
+            system_prompt=authoring.system_prompt(self.skill_root, stage="story"))
+
+    async def _native_planner_call(self, request: PlannerRequest) -> PlannerCallResult:
+        if self.skill_id != _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+            return await self.gateway.plan(request)
+        result: PlannerCallResult | None = None
+        if request.planning_deadline is not None and time.monotonic() >= request.planning_deadline:
+            return PlannerCallResult(payload=None, provider_request_id=None, raw_usage=None,
+                normalized_usage=normalize_usage(None), api_latency_seconds=0, actual_cost_micros=0,
+                error_code="AURORA_PLANNING_DEADLINE", error_message="Bounded planning deadline exhausted", external_request=False)
+        store: NativePlanningStore | None = None
+        try:
+            from .domestic_detail.generation import runtime_source_hash
+
+            route = select_route(self.gateway, request.native_dispatch)
+            sources = []
+            for source in request.sources:
+                if hashlib.sha256(source.payload).hexdigest() != source.sha256:
+                    raise PlannerDispatchError(
+                        "NATIVE_PLANNING_SOURCE_CHANGED",
+                        "Original planner source bytes changed",
+                    )
+                sources.append(
+                    {
+                        "asset_id": source.asset_id,
+                        "role": source.source_role,
+                        "sha256": source.sha256,
+                        "filename": source.filename,
+                        "content_type": source.content_type,
+                    }
+                )
+            target = next(
+                (
+                    v.removeprefix("TARGET_MODULE_ID=")
+                    for v in request.product_information
+                    if v.startswith("TARGET_MODULE_ID=")
+                ),
+                "campaign",
+            )
+            if request.authoring_target_ids:
+                target = "+".join(request.authoring_target_ids)
+            fields = {
+                "authoring_stage": request.authoring_stage,
+                "authoring_target_ids": list(request.authoring_target_ids),
+                "authoring_context": request.authoring_context,
+                "product_name": request.product_name,
+                "product_information": list(request.product_information),
+                "system_prompt": request.system_prompt,
+                "planning_directives": list(request.planning_directives),
+                "page_count": request.page_count,
+                "language": request.language,
+                "platform_code": request.platform_code,
+                "size": request.size,
+                "domestic_protocol": request.domestic_protocol,
+                "source_inventory": sources,
+                "detail_intake": request.detail_intake,
+                "intake_settings": request.intake_settings,
+                "intake_resolution": request.intake_resolution,
+            }
+            binding = call_binding(
+                profile=request.planning_profile,
+                group_key=request.group_key,
+                target=target,
+                logical_key=request.idempotency_key,
+                semantics=fields,
+                prompt=_planner_prompt(request),
+                schema=_planner_response_format(request),
+                route=route,
+                skill_hash=SkillManifestRegistry.bundled()
+                .get(self.skill_id)
+                .content_hash,
+                runtime_hash=runtime_source_hash(),
+            )
+            store = NativePlanningStore(
+                detail_workspace(request.job_id) / "planner-calls", binding
+            )
+            saved = store.completed()
+            if saved is not None:
+                return PlannerCallResult(**saved)
+            with self.session_factory() as db:
+                current = db.get(JobRecord, request.job_id)
+                visited = {request.job_id}
+                source_stories: list[tuple[str, Path]] = []
+                while (
+                    current is not None
+                    and current.retry_scope == "failed"
+                    and current.retry_of_job_id
+                ):
+                    previous = db.get(JobRecord, current.retry_of_job_id)
+                    if (
+                        previous is None
+                        or previous.workspace_id != current.workspace_id
+                        or canonical_hash(previous.configuration)
+                        != canonical_hash(current.configuration)
+                    ):
+                        break
+                    if previous.id in visited:
+                        raise PlannerDispatchError(
+                            "NATIVE_PLANNING_RECEIPT_INVALID",
+                            "Planning recovery lineage contains a cycle",
+                        )
+                    visited.add(previous.id)
+                    source_root = detail_workspace(previous.id) / "planner-calls"
+                    store.assert_no_unknown_source(source_root)
+                    source_stories.append((previous.id, source_root))
+                    current = previous
+                for source_id, source_root in source_stories:
+                    recovered = authoring.recover_story(request, source_root, binding)
+                    if recovered is not None:
+                        write_detail_contract(detail_workspace(request.job_id) / "planning" / ("story-recovery.json" if request.authoring_stage == "story" else "pair-" + "+".join(request.authoring_target_ids) + "-recovery.json"), {
+                            "source_job_id": source_id,
+                            **recovered["provider_envelope"]["authored_input_recovery"],
+                        })
+                        return PlannerCallResult(**recovered)
+            store.begin()
+            try:
+                result = await self.gateway.plan(
+                    replace(
+                        request, native_dispatch=route, idempotency_key=store.wire_key
+                    )
+                )
+            except Exception as exc:
+                result = PlannerCallResult(
+                    payload=None,
+                    provider_request_id=None,
+                    raw_usage=None,
+                    normalized_usage=normalize_usage(None),
+                    api_latency_seconds=0,
+                    actual_cost_micros=None,
+                    error_code="NATIVE_PLANNING_OUTCOME_UNKNOWN",
+                    error_message=f"Reconcile original planner dispatch ({type(exc).__name__})",
+                )
+            try:
+                checked = result_with_dispatch(asdict(result), route)
+            except PlannerDispatchError:
+                store.finish(asdict(result))
+                raise
+            return PlannerCallResult(**store.finish(checked))
+        except (DetailReviewError, OSError, ValueError, TypeError, KeyError) as exc:
+            code = getattr(exc, "code", "NATIVE_PLANNING_OUTCOME_UNKNOWN")
+            if result is not None:
+                return replace(
+                    result, payload=None, error_code=code, error_message=str(exc)
+                )
+            return PlannerCallResult(
+                payload=None,
+                provider_request_id=None,
+                raw_usage=None,
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=0,
+                actual_cost_micros=None,
+                error_code=code,
+                error_message=str(exc),
+                external_request=False,
+            )
+
+    async def _with_domestic_intake(
+        self,
+        request: PlannerRequest,
+    ) -> tuple[PlannerRequest, tuple[PlannerCallResult, ...]]:
+        """Run/recover one role-bound intake before any full-plan call."""
+        settings = dict(request.intake_settings or {})
+        resolution = request.intake_resolution
+        brandless = (resolution or {}).get("brandless_confirmation") or settings.get(
+            "brandless_confirmation"
+        )
+        if brandless:
+            settings["brandless_confirmation"] = brandless
+        sources = [
+            {
+                "asset_id": source.asset_id,
+                "role": source.source_role,
+                "sha256": source.sha256,
+            }
+            for source in request.sources
+        ]
+        product_ids = {source["asset_id"] for source in sources if source["role"] == "product_reference"}
+        style_ids = {source["asset_id"] for source in sources if source["role"] == "style_reference"}
+        if product_ids & style_ids:
+            raise DetailIntakeError("INTAKE_SOURCE_AUTHORITY_INVALID", "A style reference cannot also become a product source")
+        manifest_path = (
+            Path(__file__).resolve().parent
+            / "skill_manifests"
+            / f"{self.skill_id}.json"
+        )
+        skill_hash = json.loads(manifest_path.read_text(encoding="utf-8"))[
+            "content_hash"
+        ]
+        try:
+            selected_route = select_route(self.gateway)
+        except PlannerDispatchError as exc:
+            raise DetailIntakeError(exc.code, str(exc)) from exc
+        binding = intake_binding(
+            settings=settings,
+            sources=sources,
+            skill_hash=skill_hash,
+            model=selected_route["model"],
+            dispatch_route=selected_route,
+            resolution=resolution,
+        )
+        store = IntakeStore(
+            detail_workspace(request.job_id) / "intake", binding, request.job_id
+        )
+        result: PlannerCallResult | None = None
+        calls: tuple[PlannerCallResult, ...] = ()
+        try:
+            stored = store.completed()
+            source_id = request.job_id
+            if stored is None:
+                source_ids: list[str] = []
+                with self.session_factory() as db:
+                    current = db.get(JobRecord, request.job_id)
+                    visited = {request.job_id}
+                    while current and current.retry_scope == "failed" and current.retry_of_job_id:
+                        source = db.get(JobRecord, current.retry_of_job_id)
+                        if source is None or source.workspace_id != current.workspace_id or source.configuration != current.configuration:
+                            break
+                        if source.id in visited:
+                            raise DetailIntakeError("INTAKE_RECEIPT_INVALID", "Intake recovery lineage contains a cycle")
+                        visited.add(source.id)
+                        source_ids.append(source.id)
+                        current = source
+                for candidate_id in source_ids:
+                    stored = IntakeStore(
+                        detail_workspace(candidate_id) / "intake", binding, candidate_id
+                    ).recover_for_revalidation()
+                    if stored is not None:
+                        source_id = candidate_id
+                        break
+                if stored is not None and stored.get("error_code"):
+                    known_rejection = stored.get("http_status") in {400, 401, 402, 403, 404, 422, 429}
+                    if not known_rejection and stored.get("external_request", True):
+                        raise DetailIntakeError(
+                            "INTAKE_OUTCOME_UNKNOWN",
+                            "Reconcile the original intake outcome even when request ID or cost is known",
+                        )
+                    stored = None
+            if stored is not None:
+                validate_dispatch_result(stored, selected_route)
+                result = PlannerCallResult(**stored)
+                if source_id != request.job_id:
+                    result = replace(
+                        result,
+                        external_request=False,
+                        actual_cost_micros=0,
+                        supplemental_results=(),
+                        phase="aurora_intake_recovered",
+                    )
+            else:
+                intake_request = replace(
+                    request,
+                    planning_profile=INTAKE_PROFILE,
+                    native_dispatch=selected_route,
+                    intake_settings=settings,
+                    planning_directives=(),
+                    system_prompt="Inspect the supplied source pixels and preserve their exact authority. No identity lock or storyboard before conflict resolution. JSON only.",
+                    idempotency_key=f"{request.idempotency_key}:intake:{binding['sha256']}",
+                )
+                store.begin(request.job_id)
+                started = time.perf_counter()
+                try:
+                    result = await self.gateway.plan(intake_request)
+                except Exception as exc:
+                    result = PlannerCallResult(
+                        payload=None,
+                        provider_request_id=None,
+                        raw_usage=None,
+                        normalized_usage=normalize_usage(None),
+                        api_latency_seconds=time.perf_counter() - started,
+                        actual_cost_micros=None,
+                        error_code="INTAKE_OUTCOME_UNKNOWN",
+                        error_message=f"Source intake did not return a recoverable result ({type(exc).__name__}).",
+                    )
+                result = replace(
+                    _with_planner_observability(result), phase=INTAKE_PROFILE
+                )
+                calls = (result,)
+                try:
+                    checked = result_with_dispatch(asdict(result), selected_route)
+                except PlannerDispatchError:
+                    store.finish(asdict(result))
+                    raise
+                envelope = dict(checked["provider_envelope"])
+                envelope["native_intake_receipt"] = {
+                    "version": "native-intake-call-v1",
+                    "binding_sha256": binding["sha256"],
+                    "request_file": "intake/" + store.path.name,
+                    "response_file": "intake/"
+                    + store.path.with_suffix(".response.json").name,
+                    "source_job_id": request.job_id,
+                }
+                result = replace(result, provider_envelope=envelope)
+                store.finish(asdict(result))
+            assert result is not None
+            history: list[PlannerCallResult] = []
+            for response_path in sorted(store.root.glob("*.response.json")):
+                request_path = response_path.with_name(
+                    response_path.name.replace(".response.json", ".json")
+                )
+                saved_request = json.loads(request_path.read_text(encoding="utf-8"))
+                if saved_request.get("job_id") == request.job_id:
+                    original_store = IntakeStore(
+                        store.root, saved_request["binding"], request.job_id
+                    )
+                    if original_store.path != request_path:
+                        raise DetailIntakeError(
+                            "INTAKE_RECEIPT_INVALID", "Original intake filename changed"
+                        )
+                    original_result = original_store.completed()
+                    if original_result is None:
+                        raise DetailIntakeError(
+                            "INTAKE_OUTCOME_UNKNOWN",
+                            "An original intake completion is missing",
+                        )
+                    history.append(PlannerCallResult(**original_result))
+            calls = tuple(history) or (result,)
+            if result.error_code:
+                raise DetailIntakeError(
+                    result.error_code, result.error_message or "Source intake failed"
+                )
+            if not isinstance(result.payload, Mapping):
+                _schema(result.payload, intake_response_schema(), "/intake")
+            assert isinstance(result.payload, Mapping)
+            canonical_wire = canonical_intake_wire(result.payload, has_style_sources=bool(style_ids))
+            from .domestic_detail.intake import preserve_confirmed_history
+
+            canonical_wire, confirmed_history = preserve_confirmed_history(
+                canonical_wire, settings, resolution
+            )
+            wire = "identity_features_source" in canonical_wire
+            _schema(canonical_wire, intake_response_schema(
+                [source["asset_id"] for source in sources if source.get("role") == "product_reference"],
+                [fact["id"] for fact in user_fact_ledger(settings)],
+                wire_settings=settings if wire else None,
+                source_conflicts_resolved=resolution is not None,
+                style_asset_ids=list(style_ids),
+            ), "/intake")
+            projected, identity_projection = project_identity_observations(canonical_wire)
+            if identity_projection is not None:
+                identity_projection["source_payload_sha256"] = canonical_hash(result.payload)
+                identity_projection["canonical_wire_sha256"] = canonical_hash(canonical_wire)
+            contract = validate_intake(
+                projected,
+                settings=settings,
+                sources=sources,
+                brandless_confirmation=brandless,
+                resolution=resolution,
+            )
+            if identity_projection is not None:
+                contract["identity_projection_receipt"] = identity_projection
+            if confirmed_history is not None:
+                contract["confirmed_history_receipt"] = confirmed_history
+            prior_intake = (resolution or {}).get("source_intake")
+            if isinstance(prior_intake, Mapping):
+                current_facts = {
+                    fact["id"]: fact for fact in contract["observed_facts"]
+                }
+                if any(
+                    current_facts.get(fact["id"]) != fact
+                    for fact in prior_intake.get("observed_facts", [])
+                ) or contract["source_conflicts"] != prior_intake.get(
+                    "source_conflicts", []
+                ):
+                    raise DetailIntakeError(
+                        "INTAKE_RESOLVED_SOURCE_CHANGED",
+                        "The model changed source values already covered by the user's exact resolution",
+                    )
+            if resolution is not None and contract.get("brand_confirmation_required"):
+                raise DetailIntakeError(
+                    "INTAKE_CONFIRMATION_STILL_UNRESOLVED",
+                    "Additional product sources still do not show a readable brand; keep the original evidence and stop before planning",
+                )
+            if brandless:
+                contract["brandless_confirmation"] = brandless
+            return replace(
+                request,
+                intake_settings=settings,
+                detail_intake=contract,
+                native_dispatch=selected_route,
+            ), calls
+        except (DetailIntakeError, OSError, ValueError, TypeError) as exc:
+            if isinstance(exc, DetailIntakeError):
+                exc.call_results = calls
+                raise
+            error = DetailIntakeError(
+                exc.code
+                if isinstance(exc, PlannerDispatchError)
+                else "INTAKE_RECEIPT_INVALID",
+                str(exc),
+            )
+            error.call_results = calls
+            raise error from exc
+
+    def _await_domestic_intake_confirmation(
+        self,
+        job_id: str,
+        plan_id: str,
+        request: PlannerRequest,
+        calls: Sequence[PlannerCallResult],
+    ) -> JobStatus:
+        """Expose one batched source question with no locked identity or plan."""
+        with self.session_factory() as db:
+            job = db.get(JobRecord, job_id, with_for_update=True)
+            plan = db.get(JobPlanRecord, plan_id, with_for_update=True)
+            if job is None or plan is None:
+                return JobStatus.FAILED
+            if job.status != JobStatus.PLANNING.value:
+                return JobStatus(job.status)
+            intake = deepcopy(dict(request.detail_intake or {}))
+            payload = {
+                **dict(plan.payload),
+                "state": "intake_confirmation_required",
+                "product_intake": intake,
+                "planner_lease_expires_at": None,
+                "intake_question_sha256": canonical_hash(intake),
+                "intake_settings_sha256": canonical_hash(request.intake_settings or {}),
+                "intake_source_manifest": [{"asset_id": source.asset_id, "role": source.source_role, "sha256": source.sha256} for source in request.sources],
+                "usage": {
+                    "planner": [
+                        _planner_usage_record(call)
+                        for call in _planner_call_results(calls)
+                    ],
+                    "image": {"reported_requests": 0, "unreported_requests": 0},
+                },
+            }
+            plan.payload = payload
+            plan.payload_hash = canonical_hash(payload)
+            plan.validation_status = PlanValidationStatus.PENDING.value
+            plan.validation_errors = []
+            transition_job(
+                job,
+                JobStatus.AWAITING_CONFIRMATION,
+                stage="intake_confirmation_required",
+                progress=10,
+            )
+            job.api_request_count = sum(
+                call.external_request
+                and bool(call.provider_request_id)
+                and not str(call.provider_request_id).startswith("mock_")
+                for call in calls
+            )
+            costs = [call.actual_cost_micros for call in calls if call.external_request]
+            job.actual_cost_micros = (
+                sum(cost for cost in costs if cost is not None)
+                if all(cost is not None for cost in costs)
+                else None
+            )
+            db.add(
+                AuditEventRecord(
+                    workspace_id=job.workspace_id,
+                    action="domestic_detail.intake_confirmation_required",
+                    resource_type="job",
+                    resource_id=job.id,
+                    request_id=plan.id,
+                    details={
+                        "intake_sha256": payload["intake_question_sha256"],
+                        "image_request_count": 0,
+                    },
+                )
+            )
+            db.commit()
+        return JobStatus.AWAITING_CONFIRMATION
 
     def _recover_aurora_candidate(self, request: PlannerRequest) -> PlannerCallResult | None:
         """Resume a failed-only retry from its verified, unapproved candidate.
@@ -3147,6 +3963,11 @@ class XinghePlanningCoordinator:
             if prior_sources != [(s.asset_id, s.sha256) for s in request.sources]:
                 return None
             candidate = data.get("rejected_aurora_plan")
+            if (
+                not isinstance(candidate, Mapping)
+                or candidate.get("product_intake") != request.detail_intake
+            ):
+                return None
             modules = candidate.get("modules") if isinstance(candidate, Mapping) else None
             if not isinstance(modules, list) or len(modules) != request.page_count or not all(_aurora_compact_module_ready(m) for m in modules):
                 return None
@@ -3175,8 +3996,13 @@ class XinghePlanningCoordinator:
     ) -> dict[str, Any]:
         """Validate campaign contracts before spending calls on screen completion."""
 
+        if request.authoring_stage and result.phase != "aurora_recovered_candidate":
+            return await authoring.complete(self, request, result, results)
+        request = replace(request, authoring_stage="", authoring_target_ids=(), authoring_context=None)
+
         index = len(results) - 1
         payload = dict(_require_mapping(result.payload, "AURORA_PLAN_SCHEMA_INVALID"))
+        payload["product_intake"] = deepcopy(request.detail_intake)
         extra: list[PlannerCallResult] = []
 
         def snapshot(name: str, value: Mapping[str, Any]) -> None:
@@ -3230,7 +4056,7 @@ class XinghePlanningCoordinator:
             )
             started = time.perf_counter()
             try:
-                response = await self.gateway.plan(repair_request)
+                response = await self._native_planner_call(repair_request)
             except Exception as exc:
                 response = PlannerCallResult(
                     payload=None,
@@ -3264,6 +4090,13 @@ class XinghePlanningCoordinator:
             return response
 
         def normalized() -> None:
+            # Match validate_aurora_domestic_plan's protocol-only defaults even
+            # when a schema fault prevents its structured result. The native
+            # diagnostic must still recognize the compact authoring format.
+            payload.setdefault("plan_format", "COMPACT_V1_3")
+            payload.setdefault("information_contract_version", "4.1")
+            payload.setdefault("expression_contract_version", "4.3")
+            payload["product_intake"] = deepcopy(request.detail_intake)
             modules = payload.get("modules")
             if isinstance(modules, list):
                 payload["modules"] = [
@@ -3412,7 +4245,7 @@ class XinghePlanningCoordinator:
             if structured is not None and _aurora_plan_has_unresolved_conflict(structured):
                 return structured
             try:
-                await asyncio.to_thread(
+                native_approval = await asyncio.to_thread(
                     self._preflight_aurora_plan, request, structured["aurora_plan"] if structured else payload
                 )
             except AuroraDetailHarnessError as exc:
@@ -3432,10 +4265,11 @@ class XinghePlanningCoordinator:
                 structured = validate_aurora_domestic_plan(
                     payload, request.page_count, skill_root=self.skill_root
                 )
-                await asyncio.to_thread(
+                native_approval = await asyncio.to_thread(
                     self._preflight_aurora_plan, request, structured["aurora_plan"]
                 )
             assert structured is not None
+            structured["native_approval"] = native_approval
             return structured
         except AuroraDetailHarnessError as exc:
             raise XingheAgentError("AURORA_PLAN_PREFLIGHT_INVALID", str(exc)) from exc
@@ -3443,62 +4277,61 @@ class XinghePlanningCoordinator:
             results[index] = replace(
                 result,
                 payload=payload,
-                phase="aurora_domestic_detail" if result.external_request else "aurora_recovered_candidate",
-                supplemental_results=tuple(extra),
+                phase="aurora_domestic_detail"
+                if result.external_request
+                else "aurora_recovered_candidate",
+                supplemental_results=(*result.supplemental_results, *extra),
             )
 
     def _preflight_aurora_plan(
         self, request: PlannerRequest, plan: Mapping[str, Any]
-    ) -> None:
-        """Run the real Skill compiler before presenting a plan for approval."""
-
-        from tempfile import TemporaryDirectory
-
+    ) -> dict[str, Any]:
+        """Compile and preserve the exact native document before user approval."""
         with self.session_factory() as session:
             job = session.get(JobRecord, request.job_id)
             settings = (
                 dict((job.configuration or {}).get("settings") or {}) if job else {}
             )
         base = detail_workspace(request.job_id)
-        with TemporaryDirectory(prefix="planning-preflight-", dir=base) as path:
-            workspace = Path(path)
-            sources = [
-                {
-                    "id": source.asset_id,
-                    "role": source.source_role,
-                    "filename": source.filename,
-                }
-                for source in request.sources
-            ]
-            paths = [
-                str(source_path_for(workspace, index, source.filename, source.payload))
-                for index, source in enumerate(request.sources, start=1)
-            ]
-            input_path, identity_path, plan_path, session_path = [
-                workspace / name
-                for name in ("input.json", "identity.json", "plan.json", "session.json")
-            ]
-            write_detail_contract(
-                input_path,
-                build_native_input(settings, product_images=sources, image_paths=paths),
+        sources = [
+            {
+                "id": source.asset_id,
+                "role": source.source_role,
+                "filename": source.filename,
+                "sha256": source.sha256,
+            }
+            for source in request.sources
+        ]
+        paths = [
+            str(source_path_for(base, index, source.filename, source.payload))
+            for index, source in enumerate(request.sources, start=1)
+        ]
+        try:
+            return compile_native_approval(
+                base,
+                runner=AuroraDetailHarnessRunner(skill_root=self.skill_root),
+                native_input=build_native_input(
+                    settings,
+                    product_images=sources,
+                    image_paths=paths,
+                    intake=request.detail_intake or {},
+                ),
+                identity=build_native_identity(
+                    settings,
+                    [
+                        source["id"]
+                        for source in sources
+                        if source["role"] == "product_reference"
+                    ],
+                    intake=request.detail_intake or {},
+                ),
+                normalized_plan=normalize_native_plan_for_harness(plan),
+                resolution=(request.detail_intake or {}).get("resolution"),
             )
-            write_detail_contract(
-                identity_path,
-                build_native_identity(settings, [source["id"] for source in sources]),
-            )
-            write_detail_contract(plan_path, normalize_native_plan_for_harness(plan))
-            runner = AuroraDetailHarnessRunner(skill_root=self.skill_root)
-            runner.run(
-                "start", workspace, {"input": input_path, "session": session_path}
-            )
-            runner.run(
-                "lock-identity",
-                workspace,
-                {"session": session_path, "identity": identity_path},
-            )
-            runner.run(
-                "compile-plan", workspace, {"session": session_path, "plan": plan_path}
-            )
+        except (DetailPlanError, OSError) as exc:
+            raise XingheAgentError(
+                "NATIVE_DETAIL_APPROVAL_ARTIFACT_INVALID", str(exc)
+            ) from exc
 
     async def _with_source_payloads(
         self,
@@ -3575,6 +4408,19 @@ class XinghePlanningCoordinator:
                 .with_for_update()
             )
             if existing is not None:
+                if existing.payload.get("state") == "intake_resolved":
+                    requests = self._planning_requests(session, job)
+                    self._authorize_planning(session, job, requests)
+                    existing.payload = {
+                        **dict(existing.payload),
+                        "state": "planner_reserved",
+                        "planner_lease_expires_at": (
+                            datetime.now(UTC) + timedelta(seconds=PLANNER_LEASE_SECONDS)
+                        ).isoformat(),
+                    }
+                    existing.payload_hash = canonical_hash(existing.payload)
+                    session.commit()
+                    return existing.id, requests
                 if existing.validation_status == PlanValidationStatus.VALID.value:
                     transition_job(
                         job,
@@ -3610,7 +4456,7 @@ class XinghePlanningCoordinator:
                 ).isoformat(),
                 "provider": {
                     "type": self.gateway.provider_name,
-                    "planner_model": self.gateway.planner_model,
+                    "planner_model": planning_model(self.gateway, self.skill_id),
                     "image_model": self.gateway.image_model,
                     "pricing_version": self.gateway.pricing_version,
                 },
@@ -3894,7 +4740,7 @@ class XinghePlanningCoordinator:
         signature = build_resume_signature(
             groups=signature_groups,
             base_url=self.base_url_signature,
-            planner_model=self.gateway.planner_model,
+            planner_model=planning_model(self.gateway, self.skill_id),
             image_model=self.gateway.image_model,
             page_count=page_count,
             language=language,
@@ -3922,7 +4768,15 @@ class XinghePlanningCoordinator:
                     platform_code=platform_code,
                     size=size,
                     idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
-                    planning_directives=identity_directives,
+                    planning_directives=()
+                    if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                    else identity_directives,
+                    intake_settings=dict(settings)
+                    if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                    else None,
+                    intake_resolution=configuration.get(
+                        "domestic_detail_intake_resolution"
+                    ),
                     domestic_protocol=domestic_protocol,
                     planning_profile=(
                         "crossborder_detail"
@@ -4399,7 +5253,9 @@ class XinghePlanningCoordinator:
             input_signature = build_resume_signature(
                 groups=all_signature_groups,
                 base_url=self.base_url_signature,
-                planner_model=self.gateway.planner_model,
+                planner_model=planning_model(
+                    self.gateway, self.skill_id, request=requests[0], results=results
+                ),
                 image_model=self.gateway.image_model,
                 page_count=requests[0].page_count,
                 language=requests[0].language,
@@ -4427,7 +5283,7 @@ class XinghePlanningCoordinator:
                                 "decomposition_window_aspect_ratio": "3:4",
                                 "pair_merge_type": "PAIR_PLAN_MERGE",
                                 "reference_edit_concurrency": 1,
-                                "skill_version": "4.3.0",
+                                "skill_version": "4.3.1",
                             }
                         }
                         if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
@@ -4684,13 +5540,44 @@ class XinghePlanningCoordinator:
                 "group_count": len(requests),
                 "provider": {
                     "type": self.gateway.provider_name,
-                    "planner_model": self.gateway.planner_model,
+                    "planner_model": planning_model(
+                        self.gateway,
+                        self.skill_id,
+                        request=requests[0],
+                        results=results,
+                    ),
                     "image_model": self.gateway.image_model,
                     "pricing_version": self.gateway.pricing_version,
                 },
                 "groups": group_plans,
                 "pages": flattened_pages,
                 "input_signature": input_signature,
+                **(
+                    {
+                        "product_intake": deepcopy(requests[0].detail_intake),
+                        "native_approval": deepcopy(validated[0]["native_approval"]),
+                        "source_input_sha256": canonical_hash(
+                            job.configuration.get("input") or {}
+                        ),
+                        "source_asset_manifest": [
+                            {
+                                "group_key": request.group_key,
+                                "assets": [
+                                    {
+                                        "asset_id": source.asset_id,
+                                        "role": source.source_role,
+                                        "sha256": source.sha256,
+                                        "filename": source.filename,
+                                    }
+                                    for source in request.sources
+                                ],
+                            }
+                            for request in requests
+                        ],
+                    }
+                    if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                    else {}
+                ),
                 "resume_signature": resume_signature,
                 "controls": {
                     "automatic_reflection_rounds": 0,
@@ -4709,7 +5596,9 @@ class XinghePlanningCoordinator:
                     "budget_limit_micros": self.budget_limit_micros,
                 },
                 "usage": {
-                    "planner": [_planner_usage_record(result) for result in all_results],
+                    "planner": [
+                        _planner_usage_record(result) for result in all_results
+                    ],
                     "image": {
                         "reported_requests": 0,
                         "unreported_requests": 0,
@@ -4732,7 +5621,8 @@ class XinghePlanningCoordinator:
                     "rate_limit_429_count": 0,
                     "actual_concurrency": 0,
                     "usage_missing_count": sum(
-                        not result.normalized_usage["reported"] for result in all_results
+                        not result.normalized_usage["reported"]
+                        for result in all_results
                     ),
                 },
             }
@@ -4742,12 +5632,16 @@ class XinghePlanningCoordinator:
                     if isinstance(job.configuration, Mapping)
                     else {}
                 )
+                detail_binding = approval_binding(payload, job_settings or {})
                 approval_document = compile_aurora_campaign_approval_document(
                     group_plans=group_plans,
                     pages=flattened_pages,
                     page_count=requests[0].page_count,
+                    binding=detail_binding,
+                    native_document=payload["native_approval"]["document_markdown"],
                 )
                 payload["aurora_v4_3"] = {
+                    "contract_binding": detail_binding,
                     "approval_required": True,
                     "approval_document_filename": "campaign-approval.md",
                     "approval_document_markdown": approval_document,
@@ -4756,17 +5650,7 @@ class XinghePlanningCoordinator:
                     ).hexdigest(),
                     "approved_module_count": requests[0].page_count,
                     "approved_pair_canvas_aspect_ratio": "3:8",
-                    "input_contract": {
-                        "product_name": job_settings.get("product_name"),  # type: ignore[union-attr]
-                        "category": job_settings.get("category"),  # type: ignore[union-attr]
-                        "target_buyer": job_settings.get("target_buyer"),  # type: ignore[union-attr]
-                        "verified_facts": job_settings.get("verified_facts", []),  # type: ignore[union-attr]
-                        "conflict_scan": job_settings.get("conflict_scan", {}),  # type: ignore[union-attr]
-                        "reference_materials": job_settings.get(  # type: ignore[union-attr]
-                            "reference_materials", []
-                        ),
-                        "platform_profile": job_settings.get("platform_profile", {}),  # type: ignore[union-attr]
-                    },
+                    "input_contract": deepcopy(payload["product_intake"]),
                     "rendering": "ONE_PAIR_CANVAS_THEN_TWO_DETERMINISTIC_SLICES",
                     "reference_edit_concurrency": 1,
                     "prompt_only_concurrency": 4,
@@ -5044,6 +5928,7 @@ class XingheImageProvider:
         max_concurrency: int,
         budget_limit_micros: int = DEFAULT_BUDGET_LIMIT_MICROS,
         skill_id: str = "xinghe-ecommerce-detail",
+        revision_settings: Settings | None = None,
     ) -> None:
         if max_concurrency not in {1, 2, 6}:
             raise ValueError("Xinghe concurrency must be one of 1, 2, or 6.")
@@ -5059,6 +5944,7 @@ class XingheImageProvider:
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._activity_lock = asyncio.Lock()
         self._active_requests = 0
+        self.revision_settings = revision_settings
         # Pair canvases are generated once and deterministically decomposed.
         # The second slice is held only until the immediately following item is
         # claimed; a missing cache is fail-closed rather than regenerating a
@@ -5074,9 +5960,18 @@ class XingheImageProvider:
         try:
             configuration, sources = self._authorize(request)
             sources = await self._load_sources(request.workspace_id, sources)
-        except (XingheAgentError, SkillRuntimeError) as exc:
+            generation_scope = (
+                self._generation_scope(request, sources)
+                if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
+                else {}
+            )
+        except (XingheAgentError, SkillRuntimeError, DetailGenerationError) as exc:
             code = exc.code
             return _provider_rejection(code, str(exc), self.gateway)
+        except DetailPlanError as exc:
+            return _provider_rejection(
+                "NATIVE_DETAIL_APPROVAL_CHANGED", str(exc), self.gateway
+            )
         except Exception as exc:
             return _provider_rejection(
                 "AUDIT_WRITE_FAILED",
@@ -5089,17 +5984,47 @@ class XingheImageProvider:
         native_detail_request: dict[str, Any] | None = None
         native_detail_session: Path | None = None
         if pair_mode and pair_position == 1 and self._native_detail_runner is not None:
+            from .domestic_detail.revision_protocol import RevisionScopeError
+            from .domestic_detail.revision_runtime import prepare_revision
+
             try:
-                self._restore_native_detail_retry_checkpoint(request, configuration)
-                recovered = await self._recover_native_detail_pair(request, configuration)
+                await prepare_revision(
+                    factory=self.session_factory, request=request,
+                    settings=self.revision_settings, storage=self.storage,
+                    gateway=self.gateway, runner=self._native_detail_runner,
+                    binding=generation_scope,
+                )
+                self._restore_native_detail_retry_checkpoint(
+                    request, configuration, generation_scope
+                )
+                recovered = await self._recover_native_detail_pair(
+                    request, configuration, generation_scope
+                )
                 if recovered is not None:
                     return recovered
-                native_detail_session, native_detail_request, sources = await self._prepare_native_detail_generation(
+                if configuration.get("recovery_only"):
+                    raise DetailGenerationError(
+                        "NATIVE_DETAIL_RECONCILIATION_REQUIRED",
+                        "This retry may only reuse the original accepted result",
+                    )
+                (
+                    native_detail_session,
+                    native_detail_request,
+                    sources,
+                ) = await self._prepare_native_detail_generation(
                     request,
                     configuration,
                     sources,
+                    generation_scope,
                 )
-            except (AuroraDetailHarnessError, XingheAgentError) as exc:
+            except (
+                AuroraDetailHarnessError,
+                XingheAgentError,
+                DetailGenerationError,
+                DetailPlanError,
+                DetailReviewError,
+                RevisionScopeError,
+            ) as exc:
                 return _provider_rejection(
                     getattr(exc, "code", "AURORA_NATIVE_RUNTIME_FAILED"),
                     str(exc),
@@ -5129,7 +6054,14 @@ class XingheImageProvider:
                 )
             ),
             quality=str(configuration["quality"]),
-            idempotency_key=request.idempotency_key,
+            idempotency_key=(
+                wire_idempotency_key(
+                    request.idempotency_key, str(native_detail_request["token"])
+                )
+                if native_detail_request is not None
+                else request.idempotency_key
+            ),
+            single_dispatch=pair_mode,
             size=(
                 native_size or str(configuration.get("pair_canvas_size"))
                 if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
@@ -5139,150 +6071,49 @@ class XingheImageProvider:
         )
         pair_cache_key = (request.job_id, str(configuration["group_key"]), pair_id)
         if pair_mode and pair_position == 2:
-            cached = self._aurora_pair_slice_cache.pop(pair_cache_key, None)
-            if cached is None and self.storage is not None:
-                # The second screen may be claimed by another worker process
-                # after the first screen has finished.  Rehydrate the exact
-                # provider canvas from object storage instead of issuing a
-                # second image request or relying on process-local memory.
-                try:
-                    source_job_id = configuration.get("aurora_pair_source_job_id")
-                    candidate_job_ids = [request.job_id]
-                    if isinstance(source_job_id, str) and source_job_id:
-                        candidate_job_ids.append(source_job_id)
-                    pair_payload = None
-                    pair_canvas_key = ""
-                    last_error: Exception | None = None
-                    for candidate_job_id in candidate_job_ids:
-                        try:
-                            pair_canvas_key = self._aurora_pair_canvas_object_key(
-                                request.workspace_id,
-                                candidate_job_id,
-                                str(configuration["group_key"]),
-                                pair_id,
-                            )
-                            pair_payload = await self.storage.read_bytes(pair_canvas_key)
-                            break
-                        except Exception as exc:
-                            last_error = exc
-                    if pair_payload is None:
-                        raise last_error or FileNotFoundError(pair_id)
-                    pair_canvas = _artifact_from_bytes(
-                        pair_payload,
-                        filename=f"{configuration['group_key']}-{pair_id}-canvas.png",
-                        expected_size=str(configuration["pair_canvas_size"]),
-                        preserve_provider_artifact=True,
-                    )
-                    _, cached = _split_aurora_pair_artifact(
-                        pair_canvas,
-                        screen_size=str(configuration["size"]),
-                        pair_id=pair_id,
-                        group_key=str(configuration["group_key"]),
-                    )
-                except Exception as exc:
-                    return _provider_rejection(
-                        "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
-                        f"The persisted Aurora pair canvas could not be rehydrated ({type(exc).__name__}).",
-                        self.gateway,
-                        retryable=True,
-                    )
-            if cached is None:
-                return _provider_rejection(
-                    "AURORA_PAIR_CACHE_MISSING",
-                    "The second Aurora screen cannot be generated without its pair canvas.",
-                    self.gateway,
-                    retryable=True,
-                )
-            pair_canvas_audit: dict[str, Any] | None = None
             try:
-                pair_canvas_key = self._aurora_pair_canvas_object_key(
-                    request.workspace_id,
-                    request.job_id,
-                    str(configuration["group_key"]),
-                    pair_id,
+                self._restore_native_detail_retry_checkpoint(
+                    request, configuration, generation_scope
                 )
-                if self.storage is not None:
-                    source_job_id = configuration.get("aurora_pair_source_job_id")
-                    candidate_job_ids = [request.job_id]
-                    if isinstance(source_job_id, str) and source_job_id:
-                        candidate_job_ids.append(source_job_id)
-                    pair_payload = None
-                    pair_canvas_key = ""
-                    last_error: Exception | None = None  # type: ignore[no-redef]
-                    for candidate_job_id in candidate_job_ids:
-                        try:
-                            pair_canvas_key = self._aurora_pair_canvas_object_key(
-                                request.workspace_id,
-                                candidate_job_id,
-                                str(configuration["group_key"]),
-                                pair_id,
-                            )
-                            pair_payload = await self.storage.read_bytes(pair_canvas_key)
-                            break
-                        except Exception as exc:
-                            last_error = exc
-                    if pair_payload is None:
-                        raise last_error or FileNotFoundError(pair_id)
-                    pair_canvas = _artifact_from_bytes(
-                        pair_payload,
-                        filename=f"{configuration['group_key']}-{pair_id}-canvas.png",
-                        expected_size=str(configuration["pair_canvas_size"]),
-                        preserve_provider_artifact=True,
+                first_configuration = {
+                    **configuration,
+                    "page": int(configuration["page"]) - 1,
+                }
+                recovered = await self._recover_native_detail_pair(
+                    request, first_configuration, generation_scope
+                )
+                cached = self._aurora_pair_slice_cache.pop(pair_cache_key, None)
+                if recovered is None or cached is None:
+                    raise DetailGenerationError(
+                        "AURORA_PAIR_CACHE_MISSING",
+                        "The second screen requires its bound, audited original canvas",
                     )
-                    pair_canvas_audit = _aurora_pair_pixel_audit(
-                        pair_canvas,
-                        pair_id=pair_id,
-                    )
-            except Exception:
-                # The cached slice is still bound to the pair-generation call;
-                # retain the fail-closed slice path while the final-review gate
-                # requires a complete pair audit before delivery.
-                pair_canvas_audit = None
-            result = ImageCallResult(
-                outcome=ProviderOutcome.SUCCEEDED,
-                # Provider request ids are globally unique in the durable
-                # attempt table.  The slice is local to this job/pair, so do
-                # not reuse the old pair-only id across separate jobs.
-                provider_request_id=f"aurora_pair_slice_{request.job_id}_{pair_id}",
-                raw_usage={
-                    "reported": False,
-                    "metrics": {
-                        "aurora_pair_slice": True,
-                        "aurora_pair_canvas_object_key": pair_canvas_key,
-                        "audit_entrypoint": "audit-pair",
-                        "pair_audit": pair_canvas_audit,
-                    },
-                },
-                normalized_usage=normalize_usage(None),
-                api_latency_seconds=0.0,
-                actual_cost_micros=0,
-                estimated_cost_micros=0,
-                artifact=cached,
-                http_status=200,
-                active_concurrency=0,
-            )
-            try:
+                result = ImageCallResult(
+                    outcome=ProviderOutcome.SUCCEEDED,
+                    provider_request_id=f"aurora_pair_slice_{request.job_id}_{pair_id}",
+                    raw_usage=recovered.raw_usage,
+                    normalized_usage=normalize_usage(None),
+                    api_latency_seconds=0.0,
+                    actual_cost_micros=0,
+                    estimated_cost_micros=0,
+                    artifact=cached,
+                    http_status=200,
+                    active_concurrency=0,
+                )
                 self._record_completion(request, result, configuration=configuration)
+                return replace(
+                    recovered,
+                    provider_request_id=result.provider_request_id,
+                    artifact=cached,
+                )
+            except (AuroraDetailHarnessError, DetailGenerationError) as exc:
+                return _provider_rejection(exc.code, str(exc), self.gateway)
             except Exception as exc:
                 return _provider_rejection(
-                    "AUDIT_WRITE_FAILED",
-                    f"Pair-slice audit failed ({type(exc).__name__}).",
+                    "AURORA_PAIR_CANVAS_REHYDRATION_FAILED",
+                    f"Bound pair recovery failed ({type(exc).__name__}).",
                     self.gateway,
                 )
-            return ProviderResult(
-                outcome=ProviderOutcome.SUCCEEDED,
-                provider_request_id=result.provider_request_id,
-                usage_reported=False,
-                raw_usage=result.raw_usage or {},
-                estimated_cost_micros=0,
-                actual_cost_micros=0,
-                retryable=False,
-                http_status=200,
-                artifact=cached,
-                provider_name=self.gateway.provider_name,
-                model_name=self.gateway.image_model,
-                pricing_version=self.gateway.pricing_version,
-            )
         async with self._semaphore:
             try:
                 if not pair_mode or pair_position == 1:
@@ -5305,11 +6136,43 @@ class XingheImageProvider:
                 active_concurrency = self._active_requests
             try:
                 started_at = datetime.now(UTC)
+                invocation_path = None
+                if (
+                    native_detail_session is not None
+                    and native_detail_request is not None
+                ):
+                    try:
+                        invocation_path = begin_invocation(
+                            native_detail_session.parent,
+                            generation_scope,
+                            native_detail_request,
+                            provider=self.gateway.provider_name,
+                            model=self.gateway.image_model,
+                            pricing_version=self.gateway.pricing_version,
+                            idempotency_key=image_request.idempotency_key,
+                            prompt=image_request.prompt,
+                            size=image_request.size,
+                            quality=image_request.quality,
+                            sources=[
+                                {
+                                    "asset_id": source.asset_id,
+                                    "role": source.source_role,
+                                    "sha256": source.sha256,
+                                }
+                                for source in sources
+                            ],
+                        )
+                    except DetailGenerationError as exc:
+                        return _provider_rejection(exc.code, str(exc), self.gateway)
                 try:
                     result = await self.gateway.edit(image_request)
                 except Exception as exc:
                     result = ImageCallResult(
-                        outcome=ProviderOutcome.FAILED,
+                        outcome=(
+                            ProviderOutcome.OUTCOME_UNKNOWN
+                            if pair_mode
+                            else ProviderOutcome.FAILED
+                        ),
                         provider_request_id=None,
                         raw_usage=None,
                         normalized_usage=normalize_usage(None),
@@ -5317,12 +6180,50 @@ class XingheImageProvider:
                             datetime.now(UTC) - started_at
                         ).total_seconds(),
                         actual_cost_micros=None,
-                        error_code="IMAGE_PROVIDER_FAILED",
+                        error_code=(
+                            "PROVIDER_OUTCOME_UNKNOWN"
+                            if pair_mode
+                            else "IMAGE_PROVIDER_FAILED"
+                        ),
                         error_message=(
                             f"Image provider failed ({type(exc).__name__})."
                         ),
                         retryable=False,
                     )
+                if (
+                    pair_mode
+                    and result.outcome == ProviderOutcome.SUCCEEDED
+                    and result.artifact is None
+                ):
+                    result = replace(
+                        result,
+                        outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                        retryable=False,
+                        error_code="NATIVE_DETAIL_RESULT_MISSING",
+                        error_message="The provider returned no recoverable image.",
+                    )
+                if invocation_path is not None:
+                    try:
+                        finish_invocation(
+                            invocation_path,
+                            outcome=result.outcome.value,
+                            provider_request_id=result.provider_request_id,
+                            artifact_sha256=result.artifact.sha256
+                            if result.artifact is not None
+                            else None,
+                            artifact_payload=result.artifact.payload
+                            if result.artifact is not None
+                            else None,
+                        )
+                    except (OSError, DetailGenerationError):
+                        # A paid response without a durable completion receipt is uncertain.
+                        result = replace(
+                            result,
+                            outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                            error_code="NATIVE_DETAIL_COMPLETION_RECEIPT_FAILED",
+                            error_message="The original provider result needs reconciliation.",
+                            retryable=False,
+                        )
                 finished_at = datetime.now(UTC)
                 result = replace(
                     result,
@@ -5334,6 +6235,7 @@ class XingheImageProvider:
             finally:
                 async with self._activity_lock:
                     self._active_requests -= 1
+        known_provider_failure = result.outcome == ProviderOutcome.FAILED
         if (
             pair_mode
             and pair_position == 1
@@ -5341,9 +6243,12 @@ class XingheImageProvider:
             and result.artifact is not None
         ):
             try:
+                canvas_artifact = result.artifact
+                native_pixels = None
                 if native_detail_session is not None and native_detail_request is not None:
-                    native_canvas = native_detail_session.parent / f"generated-{pair_id}.png"
-                    native_canvas.write_bytes(result.artifact.payload)
+                    if invocation_path is None:
+                        raise DetailPixelError("The original provider invocation receipt is required")
+                    native_canvas = invocation_path.with_suffix(".artifact")
                     self._native_detail_runner.run(  # type: ignore[union-attr]
                         "record-generation",
                         native_detail_session.parent,
@@ -5353,37 +6258,35 @@ class XingheImageProvider:
                             "image": native_canvas,
                         },
                     )
+                    lineage = self._native_detail_runner.run(  # type: ignore[union-attr]
+                        "inspect-pair-artifacts", native_detail_session.parent,
+                        {"session": native_detail_session, "pair-id": pair_id, "selection": "LATEST_RECORDED"},
+                    )
+                    native_pixels = load_native_pair_pixels(lineage, [native_detail_session.parent], group_key=str(configuration["group_key"]))
+                    if lineage["source"]["sha256"] != result.artifact.sha256 or lineage["signed_request_sha256"] != native_detail_request["signed_request_sha256"]:
+                        raise DetailPixelError("Native pixels differ from their original provider invocation")
+                    native_detail_request["pixel_lineage"] = pixel_review_context(lineage)
+                    canvas_artifact = native_pixels.canvas
                     native_judgment_path = native_detail_session.parent / f"judgment-{pair_id}.json"
                     write_detail_contract(
                         native_judgment_path,
                         await self._native_detail_judgment_with_review(
                             request,
                             native_detail_request,
-                            sources,
-                            result.artifact,
+                            (*sources, *(SourceImage(
+                                asset_id=f"native-slice:{module_id}:{sliced.sha256}",
+                                group_key=str(configuration["group_key"]), filename=sliced.filename,
+                                content_type=sliced.content_type, sha256=sliced.sha256,
+                                payload=sliced.payload, source_role=f"generated_module_candidate:{module_id}",
+                            ) for module_id, sliced in zip(native_detail_request["module_ids"], native_pixels.screens, strict=True))),
+                            canvas_artifact,
                         ),
                     )
-                    try:
-                        native_audit_summary = self._native_detail_runner.run(  # type: ignore[union-attr]
-                            "audit-pair",
-                            native_detail_session.parent,
-                            {"session": native_detail_session, "judgment": native_judgment_path},
-                        )
-                    except AuroraDetailHarnessError as exc:
-                        # The bundled Harness validates the seam before it
-                        # persists the normal pair-audit transition.  A failed
-                        # seam is still a valid first-cycle repair signal; it
-                        # must not strand the session in
-                        # ``AWAITING_PIXEL_AUDIT`` or force an out-of-band
-                        # replan.  Bridge only this exact, post-validation
-                        # seam gate and retain the original failed judgment.
-                        native_audit_summary = self._bridge_native_pair_seam_gate(
-                            native_detail_session,
-                            native_judgment_path,
-                            exc,
-                        )
-                        if native_audit_summary is None:
-                            raise
+                    native_audit_summary = self._native_detail_runner.run(  # type: ignore[union-attr]
+                        "audit-pair",
+                        native_detail_session.parent,
+                        {"session": native_detail_session, "judgment": native_judgment_path},
+                    )
                     if native_audit_summary.get("state") == "REPAIR_REQUIRED":
                         result = replace(
                             result,
@@ -5397,11 +6300,11 @@ class XingheImageProvider:
                             "AURORA_NATIVE_PAIR_AUDIT_FAILED",
                             "Native pair pixel audit requires one bounded repair.",
                         )
-                pair_canvas_width = result.artifact.width  # type: ignore[union-attr]
-                pair_canvas_height = result.artifact.height  # type: ignore[union-attr]
-                pair_canvas_sha256 = result.artifact.sha256  # type: ignore[union-attr]
+                pair_canvas_width = canvas_artifact.width
+                pair_canvas_height = canvas_artifact.height
+                pair_canvas_sha256 = canvas_artifact.sha256
                 pair_audit = _aurora_pair_pixel_audit(
-                    result.artifact,  # type: ignore[arg-type]
+                    canvas_artifact,
                     pair_id=pair_id,
                 )
                 if self.storage is None:
@@ -5417,22 +6320,23 @@ class XingheImageProvider:
                 )
                 await self.storage.save_validated(
                     ValidatedImage(
-                        payload=result.artifact.payload,  # type: ignore[union-attr]
-                        filename=f"{configuration['group_key']}-{pair_id}-canvas.png",
-                        content_type=result.artifact.content_type,  # type: ignore[union-attr]
-                        width=result.artifact.width,  # type: ignore[union-attr]
-                        height=result.artifact.height,  # type: ignore[union-attr]
+                        payload=canvas_artifact.payload,
+                        filename=canvas_artifact.filename,
+                        content_type=canvas_artifact.content_type,
+                        width=canvas_artifact.width,
+                        height=canvas_artifact.height,
                         object_key=pair_canvas_key,
-                        sha256=result.artifact.sha256,  # type: ignore[union-attr]
+                        sha256=canvas_artifact.sha256,
                     )
                 )
-                first_slice, second_slice = _split_aurora_pair_artifact(
-                    result.artifact,  # type: ignore[arg-type]
-                    screen_size=str(configuration["size"]),
-                    pair_id=pair_id,
-                    group_key=str(configuration["group_key"]),
-                )
-            except (XingheAgentError, AuroraDetailHarnessError) as exc:
+                if native_pixels is not None:
+                    first_slice, second_slice = native_pixels.screens
+                else:
+                    first_slice, second_slice = _split_aurora_pair_artifact(
+                        canvas_artifact, screen_size=str(configuration["size"]),
+                        pair_id=pair_id, group_key=str(configuration["group_key"]),
+                    )
+            except (XingheAgentError, AuroraDetailHarnessError, DetailPixelError) as exc:
                 result = replace(
                     result,
                     outcome=ProviderOutcome.FAILED,
@@ -5474,10 +6378,14 @@ class XingheImageProvider:
                             "audit_entrypoint": "audit-pair",
                             "max_automatic_repairs": 1,
                             "pair_audit": pair_audit,
+                            **({"native_pixel_lineage_sha256": native_pixels.lineage["sha256"],
+                                "native_original_image_sha256": native_pixels.lineage["source"]["sha256"],
+                                "native_normalization_mode": native_pixels.lineage["normalization"]["mode"]}
+                               if native_pixels is not None else {}),
                         },
                     },
                 )
-        if native_detail_session is not None and result.outcome != ProviderOutcome.SUCCEEDED:
+        if native_detail_session is not None and known_provider_failure:
             self._reset_native_detail_generation(native_detail_session)
         raw_usage = _image_usage_record(
             result,
@@ -5524,6 +6432,39 @@ class XingheImageProvider:
             pricing_version=self.gateway.pricing_version,
         )
 
+    def _generation_scope(
+        self, request: ProviderRequest, sources: tuple[SourceImage, ...]
+    ) -> dict[str, Any]:
+        with self.session_factory() as db:
+            job = db.get(JobRecord, request.job_id)
+            plan = db.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == request.job_id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+            )
+            if job is None or plan is None:
+                raise DetailGenerationError(
+                    "NATIVE_DETAIL_CONTEXT_MISSING",
+                    "Confirmed generation context is missing",
+                )
+            require_current_pipeline(job.configuration)
+            return generation_binding(
+                plan.payload,
+                job.configuration["settings"],
+                [
+                    {
+                        "asset_id": source.asset_id,
+                        "role": source.source_role,
+                        "sha256": source.sha256,
+                        "filename": source.filename,
+                    }
+                    for source in sources
+                ],
+                group_key=str(request.configuration["item"]["group_key"]),
+                job_input=job.configuration.get("input") or {},
+            )
+
     @staticmethod
     def _reset_native_detail_generation(session_path: Path) -> None:
         """Release an unbound native token after a provider failure.
@@ -5542,20 +6483,28 @@ class XingheImageProvider:
             state["state"] = "AUTHORIZED"
             for module in state.get("modules", []):
                 if module.get("status") == "AWAITING_GENERATION":
-                    module["status"] = "PENDING"
+                    module["status"] = (
+                        "REPAIR_PREPARED" if module.get("repair_plan")
+                        else "USER_ADJUSTMENT" if module.get("user_adjustment")
+                        else "PENDING"
+                    )
             state.setdefault("events", []).append({"event": "provider_retry_released", "at": datetime.now(UTC).isoformat(), "state": "AUTHORIZED"})
             session_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             return
 
     def _restore_native_detail_retry_checkpoint(
-        self, request: ProviderRequest, configuration: Mapping[str, Any]
+        self,
+        request: ProviderRequest,
+        configuration: Mapping[str, Any],
+        generation_scope: Mapping[str, Any],
     ) -> None:
         """Carry an audited prefix into a normal failed-only retry."""
 
         page = int(configuration.get("page") or 1)
         workspace = detail_workspace(request.job_id)
-        if page <= 1 or (workspace / "session.json").exists():
+        if (workspace / "session.json").exists():
+            bind_workspace(workspace, generation_scope)
             return
         with self.session_factory() as db:
             job = db.get(JobRecord, request.job_id)
@@ -5577,6 +6526,7 @@ class XingheImageProvider:
         source_path = source_workspace / "session.json"
         if not source_path.exists() or native_plan is None:
             return
+        bind_workspace(source_workspace, generation_scope)
         source_plan = json.loads((source_workspace / "plan.json").read_text(encoding="utf-8"))
         if canonical_hash(source_plan) != canonical_hash(normalize_native_plan_for_harness(native_plan)):
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_PLAN_MISMATCH", "Retry checkpoint does not match the confirmed plan")
@@ -5586,23 +6536,34 @@ class XingheImageProvider:
         modules = checkpoint.get("modules") or []
         if len(modules) < page or any(module.get("status") not in {"COMPLETE", "COMPLETE_WITH_RESIDUALS"} for module in modules[:page - 1]):
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_INCOMPLETE", "Source checkpoint does not contain the reused prefix")
-        for name in ("input.json", "identity.json", "plan.json"):
+        bind_native_contract(source_workspace, generation_scope)
+        for name in (
+            "input.json",
+            "identity.json",
+            "plan.json",
+            "native-contract-binding.json",
+        ):
             (workspace / name).write_bytes((source_workspace / name).read_bytes())
         # Historical accepted assets and receipts remain immutable in their
         # original workspace. New Harness output belongs to the retry workspace.
         checkpoint["session_dir"] = str(workspace)
         checkpoint["checkpoint_source_job_id"] = source_id
         checkpoint.setdefault("events", []).append({"event": "retry_checkpoint_restored", "source_job_id": source_id, "at": datetime.now(UTC).isoformat()})
+        bind_workspace(workspace, generation_scope, create=True)
         write_detail_contract(workspace / "session.json", checkpoint)
 
     async def _recover_native_detail_pair(
-        self, request: ProviderRequest, configuration: Mapping[str, Any]
+        self,
+        request: ProviderRequest,
+        configuration: Mapping[str, Any],
+        generation_scope: Mapping[str, Any],
     ) -> ProviderResult | None:
         """Replay an audited canvas if its database completion lost its lease."""
 
         session_path = detail_workspace(request.job_id) / "session.json"
         if not session_path.exists():
             return None
+        bind_native_contract(session_path.parent, generation_scope)
         checkpoint = json.loads(session_path.read_text(encoding="utf-8"))
         page = int(configuration.get("page") or 1)
         modules = (checkpoint.get("modules") or [])[page - 1:page + 1]
@@ -5617,7 +6578,13 @@ class XingheImageProvider:
             raise AuroraDetailHarnessError("AURORA_PAIR_CANVAS_STORAGE_UNAVAILABLE", "Checkpoint recovery requires durable storage")
         source_id = str(checkpoint.get("checkpoint_source_job_id") or request.job_id)
         group_key = str(configuration["group_key"])
-        for candidate_id in dict.fromkeys((request.job_id, source_id)):
+        workspaces = checkpoint_workspaces(session_path.parent, generation_scope)
+        lineage = verify_accepted_canvas(workspaces, generation_scope, pair_id=pair_id, artifact_sha256=str(next(iter(hashes))))
+        try:
+            native_pixels = load_native_pair_pixels(lineage, workspaces, group_key=group_key)
+        except DetailPixelError as exc:
+            raise AuroraDetailHarnessError(exc.code, str(exc)) from exc
+        for candidate_id in (root.name for root in workspaces):
             source_key = self._aurora_pair_canvas_object_key(request.workspace_id, candidate_id, group_key, pair_id)
             try:
                 payload = await self.storage.read_bytes(source_key)
@@ -5630,11 +6597,19 @@ class XingheImageProvider:
             source_id = candidate_id
             break
         else:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_CANVAS_MISSING", "Accepted canvas is missing from durable storage")
+            # A reconciled audit may precede the original object-store upload.
+            # Recover only the exact signed, paid and accepted native bytes.
+            payload = native_pixels.canvas.payload
+            source_id = next(root.name for root in workspaces if Path(lineage["canvas"]["path"]).is_relative_to(root))
+            source_key = self._aurora_pair_canvas_object_key(request.workspace_id, source_id, group_key, pair_id)
+            original = native_pixels.canvas
+            await self.storage.save_validated(ValidatedImage(payload=payload, filename=original.filename, content_type=original.content_type, width=original.width, height=original.height, object_key=source_key, sha256=original.sha256))
         if hashlib.sha256(payload).hexdigest() not in hashes:
             raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Stored canvas does not match its accepted audit")
         canvas = _artifact_from_bytes(payload, filename=f"{group_key}-{pair_id}-canvas.png", expected_size=str(configuration["pair_canvas_size"]), preserve_provider_artifact=True)
-        first, second = await asyncio.to_thread(_split_aurora_pair_artifact, canvas, screen_size=str(configuration["size"]), pair_id=pair_id, group_key=group_key)
+        if native_pixels.canvas.payload != payload:
+            raise AuroraDetailHarnessError("NATIVE_DETAIL_CHECKPOINT_HASH_MISMATCH", "Durable canvas differs from exact native accepted bytes")
+        first, second = native_pixels.screens
         target_key = self._aurora_pair_canvas_object_key(request.workspace_id, request.job_id, group_key, pair_id)
         if source_key != target_key:
             await self.storage.save_validated(ValidatedImage(payload=payload, filename=canvas.filename, content_type=canvas.content_type, width=canvas.width, height=canvas.height, object_key=target_key, sha256=canvas.sha256))
@@ -5656,24 +6631,34 @@ class XingheImageProvider:
         request: ProviderRequest,
         configuration: Mapping[str, Any],
         sources: tuple[SourceImage, ...],
+        generation_scope: Mapping[str, Any],
     ) -> tuple[Path, dict[str, Any], tuple[SourceImage, ...]]:
         """Create/advance one native v4.3 session and issue its signed request."""
 
         runner = self._native_detail_runner
         if runner is None:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_DISABLED", "Native detail runtime is unavailable")
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_DISABLED", "Native detail runtime is unavailable"
+            )
         workspace = detail_workspace(request.job_id)
         session_path = workspace / "session.json"
         input_path = workspace / "input.json"
         identity_path = workspace / "identity.json"
         plan_path = workspace / "plan.json"
-        request_path = workspace / f"generation-{int(configuration.get('page') or 1):03d}.json"
+        request_path = (
+            workspace / f"generation-{int(configuration.get('page') or 1):03d}.json"
+        )
         native_sources: list[dict[str, Any]] = []
         source_paths: list[str] = []
-        for index, source in enumerate(sources, start=1):
-            path = source_path_for(workspace, index, source.filename, source.payload)
-            source_paths.append(str(path))
-            native_sources.append({"id": source.asset_id, "role": source.source_role, "filename": source.filename})
+        for source in sources:
+            native_sources.append(
+                {
+                    "id": source.asset_id,
+                    "role": source.source_role,
+                    "filename": source.filename,
+                    "sha256": source.sha256,
+                }
+            )
         with self.session_factory() as db:
             job = db.get(JobRecord, request.job_id)
             plan_record = db.scalar(
@@ -5683,126 +6668,284 @@ class XingheImageProvider:
                 .limit(1)
             )
             if job is None or plan_record is None:
-                raise AuroraDetailHarnessError("NATIVE_DETAIL_CONTEXT_MISSING", "Native detail job context is missing")
-            job_configuration = job.configuration if isinstance(job.configuration, Mapping) else {}
-            settings = job_configuration.get("settings") if isinstance(job_configuration.get("settings"), Mapping) else {}
-            payload = plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
+                raise AuroraDetailHarnessError(
+                    "NATIVE_DETAIL_CONTEXT_MISSING",
+                    "Native detail job context is missing",
+                )
+            job_configuration = (
+                job.configuration if isinstance(job.configuration, Mapping) else {}
+            )
+            settings_value = job_configuration.get("settings")
+            settings: Mapping[str, Any] = (
+                settings_value if isinstance(settings_value, Mapping) else {}
+            )
+            payload = (
+                plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
+            )
+        from .domestic_detail.delivery_authorization import (
+            native_authorization_text,
+            native_delivery_mode,
+            receipt_authorization,
+        )
+
+        receipt_authorization(payload, job_id=request.job_id, workspace_id=request.workspace_id, plan_id=plan_record.id, revision=plan_record.revision)
         native_plan = extract_native_plan(payload)
         if native_plan is None:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_PLAN_MISSING", "The confirmed plan does not contain a compact Aurora v4.3 storyboard")
-        native_plan = normalize_native_plan_for_harness(native_plan)
-        if not session_path.exists():
-            write_detail_contract(
-                input_path,
-                build_native_input(settings, product_images=native_sources, image_paths=source_paths),  # type: ignore[arg-type]
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_PLAN_MISSING",
+                "The confirmed plan does not contain a compact Aurora v4.3 storyboard",
             )
-            write_detail_contract(identity_path, build_native_identity(settings, [item["id"] for item in native_sources]))  # type: ignore[arg-type]
-            write_detail_contract(plan_path, native_plan)
-            runner.run("start", workspace, {"input": input_path, "session": session_path})
-            runner.run("lock-identity", workspace, {"session": session_path, "identity": identity_path})
-            runner.run("compile-plan", workspace, {"session": session_path, "plan": plan_path})
+        native_plan = normalize_native_plan_for_harness(native_plan)
+        approved_paths = verify_approval_sources(
+            workspace,
+            payload.get("native_approval"),
+            [
+                {
+                    "asset_id": source.asset_id,
+                    "sha256": source.sha256,
+                    "role": source.source_role,
+                }
+                for source in sources
+            ],
+        )
+        source_paths = [approved_paths[source.asset_id] for source in sources]
+        new_session = not session_path.exists()
+        bind_workspace(workspace, generation_scope, create=new_session)
+        if new_session:
+            native_input_value = build_native_input(
+                settings,
+                product_images=native_sources,
+                image_paths=source_paths,
+                intake=payload.get("product_intake") or {},
+            )
+            native_identity_value = build_native_identity(
+                settings,
+                [
+                    item["id"]
+                    for item in native_sources
+                    if item["role"] == "product_reference"
+                ],
+                intake=payload.get("product_intake") or {},
+            )
+            write_native_json(input_path, native_input_value)
+            write_native_json(identity_path, native_identity_value)
+            write_native_json(plan_path, native_plan)
+            runner.run(
+                "start", workspace, {"input": input_path, "session": session_path}
+            )
+            if (payload.get("product_intake") or {}).get("resolution") and native_input_value.get("source_conflicts"):
+                resolution_path = workspace / "resolution.json"
+                write_detail_contract(
+                    resolution_path, payload["product_intake"]["resolution"]
+                )
+                runner.run(
+                    "resolve-conflicts",
+                    workspace,
+                    {"session": session_path, "resolution": resolution_path},
+                )
+            runner.run(
+                "lock-identity",
+                workspace,
+                {"session": session_path, "identity": identity_path},
+            )
+            runner.run(
+                "compile-plan", workspace, {"session": session_path, "plan": plan_path}
+            )
             compiled = json.loads(session_path.read_text(encoding="utf-8"))
             approval = compiled.get("approval_document") or {}
+            if (
+                Path(str(approval.get("path"))).resolve()
+                != (workspace / "campaign-approval.md").resolve()
+            ):
+                raise DetailPlanError(
+                    "Native compiler approval file escaped its workspace"
+                )
+            approved_native = verify_compiled_native_approval(
+                workspace,
+                payload.get("native_approval"),
+                native_input=native_input_value,
+                identity=native_identity_value,
+                normalized_plan=native_plan,
+                compiled_plan=compiled["plan"],
+                compiled_input=compiled["input"],
+                compiled_identity=compiled["identity"],
+                document=(workspace / "campaign-approval.md").read_bytes(),
+            )
             runner.run(
                 "authorize",
                 workspace,
                 {
                     "session": session_path,
-                    "approval-text": "已确认当前详情页组—单屏方案，按原生 Aurora v4.3 合同继续生成。",
+                    "approval-text": native_authorization_text(payload),
                     "approved-module-count": str(len(native_plan.get("modules") or [])),
                     "approved-pair-canvas-aspect-ratio": "3:8",
-                    "approval-document-sha256": str(approval.get("sha256") or ""),
-                    "delivery-mode": "USER_FINAL_REVIEW",
+                    "approval-document-sha256": approved_native["document_sha256"],
+                    "delivery-mode": native_delivery_mode(payload),
                 },
             )
+        bind_native_contract(workspace, generation_scope, create=new_session)
         native_session_value = json.loads(session_path.read_text(encoding="utf-8"))
         state = native_session_value.get("state")
         expected_index = int(configuration.get("page") or 1) - 1
         if native_session_value.get("current_index", 0) != expected_index:
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_PAIR_MISMATCH", "Native cursor does not match the requested database pair")
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_PAIR_MISMATCH",
+                "Native cursor does not match the requested database pair",
+            )
         if state == "REPAIR_REQUIRED":
             current_index = int(native_session_value.get("current_index") or 0)
             current_module = (native_session_value.get("modules") or [])[current_index]
-            last_judgment = ((current_module.get("attempts") or [])[-1].get("judgment") if current_module else None) or {}
-            repair_path = workspace / f"repair-{int(configuration.get('page') or 1):03d}.json"
+            last_judgment = (
+                (current_module.get("attempts") or [])[-1].get("judgment")
+                if current_module
+                else None
+            ) or {}
+            from .domestic_detail.website_review import repair_findings
+
+            repair_path = (
+                workspace / f"repair-{int(configuration.get('page') or 1):03d}.json"
+            )
             write_detail_contract(
                 repair_path,
                 {
-                    "module_id": str(current_module.get("id") or f"M{int(configuration.get('page') or 1):02d}"),
-                    "material_failures": list(last_judgment.get("material_failures") or [{"visible_evidence": "像素审计发现需要修正的可见问题"}]),
-                    "passed_layers": list(last_judgment.get("passed_layers") or ["identity"]),
+                    "module_id": str(
+                        current_module.get("id")
+                        or f"M{int(configuration.get('page') or 1):02d}"
+                    ),
+                    "material_failures": (
+                        repair_findings(last_judgment)
+                        if native_session_value["plan"].get("website_contract_version") == "WEBSITE_LEAN_V1"
+                        else list(last_judgment.get("material_failures") or [])
+                    ) or [{"visible_evidence": "像素审计发现需要修正的可见问题"}],
+                    "passed_layers": list(
+                        last_judgment.get("effective_passed_layers") or []
+                    ),
                     "root_cause": "按原生 pair 像素审计结果修正可见问题并保持商品身份锁定。",
-                    "unified_strategy": "仅保留 passed_layers 明确列出的通过层；修正 material_failures 中的全部问题，不得保留被判失败的接缝或文案。",
+                    "unified_strategy": (
+                        "以第一张附件中的现有3:8画布为底图，集中修正列出的全部可见问题。保留已正确的商品外观、事实、系列气质和批准构图；保持原有上下两屏职责与文字位置，不新增未批准画面、卡片或分屏。接缝有错时只重建固定边界附近的连续背景与光线，不移动切片或遮掩失败文案。"
+                        if native_session_value["plan"].get("website_contract_version") == "WEBSITE_LEAN_V1"
+                        else "仅保留 passed_layers 明确列出的通过层；修正 material_failures 中的全部问题，不得保留被判失败的接缝或文案。"
+                    ),
                     "expected_visible_change": "下一次 3:8 画布应使全部材料性检查通过。",
                 },
             )
-            self._native_detail_runner.run("prepare-repair", workspace, {"session": session_path, "repair-plan": repair_path})  # type: ignore[union-attr]
+            self._native_detail_runner.run(  # type: ignore[union-attr]
+                "prepare-repair",
+                workspace,
+                {"session": session_path, "repair-plan": repair_path},
+            )
             native_session_value = json.loads(session_path.read_text(encoding="utf-8"))
             state = native_session_value.get("state")
         if state != "AUTHORIZED":
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_STATE_INVALID", f"Native detail session is not ready: {state}")
-        runner.run("generate-next", workspace, {"session": session_path, "out": request_path})
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_STATE_INVALID",
+                f"Native detail session is not ready: {state}",
+            )
+        review_authority = approved_review_authority(native_session_value)
+        issued_request = runner.run(
+            "generate-next", workspace, {"session": session_path, "out": request_path}
+        )
         native_request = json.loads(request_path.read_text(encoding="utf-8"))
-        if str(native_request.get("pair_id") or "") != str(configuration.get("pair_id") or ""):
+        native_request["approved_module_contracts"] = issued_request["approved_module_contracts"]
+        native_request["signed_request_sha256"] = hashlib.sha256(
+            request_path.read_bytes()
+        ).hexdigest()
+        if str(native_request.get("pair_id") or "") != str(
+            configuration.get("pair_id") or ""
+        ):
             self._reset_native_detail_generation(session_path)
-            raise AuroraDetailHarnessError("NATIVE_DETAIL_PAIR_MISMATCH", "Native generation request does not match the database pair")
+            raise AuroraDetailHarnessError(
+                "NATIVE_DETAIL_PAIR_MISMATCH",
+                "Native generation request does not match the database pair",
+            )
         # The generation request deliberately carries the full compiled prompt,
         # but the pair auditor must receive the approved screen contracts as a
         # structured, machine-readable object as well.  Without this binding a
         # vision response can correctly inspect pixels yet still fail closed on
         # MODULE_CONTRACT_UNAVAILABLE.
         session_for_audit = json.loads(session_path.read_text(encoding="utf-8"))
-        approved_contracts = []
-        requested_module_ids = {
-            str(module_id) for module_id in native_request.get("module_ids") or []
-        }
-        for module in session_for_audit.get("modules") or []:
-            if not isinstance(module, Mapping) or str(module.get("id") or "") not in requested_module_ids:
-                continue
-            plan = module.get("plan")
-            if isinstance(plan, Mapping):
-                approved_contracts.append(
-                    {"module_id": str(module.get("id")), "contract": dict(plan)}
-                )
-        native_request["approved_module_contracts"] = approved_contracts
-        # Keep the audit context explicit and machine-readable.  The native
-        # generation prompt already contains these facts, but the semantic
-        # pair reviewer receives its own first ``product_information`` entry
-        # and must be able to bind every visible claim to the same approved
-        # facts and module contracts.  Do not write these fields back to the
-        # signed generation request on disk: the Harness fingerprint covers
-        # that request and must remain immutable.
-        raw_facts = settings.get("verified_facts") or settings.get("selling_points") or []  # type: ignore[union-attr]
-        native_request["product_information"] = [
-            str(value).strip()
-            for value in raw_facts
-            if str(value).strip()
-        ]
-        native_request["product_name"] = str(
-            settings.get("product_name") or "当前商品"  # type: ignore[union-attr]
-        )
-        # The first reference is a Skill-owned format canvas.  Add it to the
-        # multipart request exactly where generate-next placed it.
+        if approved_review_authority(session_for_audit) != review_authority:
+            raise DetailReviewError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Approved review authority changed while issuing the native request")
+        supplied = native_request.get("approved_module_contracts") or []
+        pair_modules = (session_for_audit.get("modules") or [])[expected_index:expected_index + 2]
+        if session_for_audit.get("revision_fork") or any(module.get("local_contract_override") for module in pair_modules):
+            effective = runner.run(
+                "inspect-pair-review-contracts", workspace,
+                {"session": session_path, "pair-id": str(native_request["pair_id"])},
+            )
+            contracts_match = canonical_hash(supplied) == canonical_hash(effective["module_contracts"])
+            if session_for_audit.get("revision_fork"):
+                if not isinstance(effective.get("local_revision_contract"), Mapping):
+                    raise AuroraDetailHarnessError("NATIVE_DETAIL_REVISION_AUTHORITY_MISSING", "Owned local revision requires its original pixel review contract")
+                native_request["local_revision_contract"] = deepcopy(effective["local_revision_contract"])
+        else:
+            expected_contracts = [{"module_id": str(module["id"]), "contract": dict(module["plan"])}
+                                  for module in pair_modules]
+            contracts_match = [{"module_id": row.get("module_id"), "contract": row.get("contract")} for row in supplied] == expected_contracts
+        if not contracts_match:
+            raise AuroraDetailHarnessError("AURORA_NATIVE_ATOMIC_CONTEXT_INVALID", "Native review contracts differ from the approved session")
+        # The signed request on disk stays immutable. Its app envelope carries
+        # the exact approved native identity and fact dispositions for review.
+        native_request["review_authority"] = review_authority
+        if native_request.get("review_profile") == "WEBSITE_LEAN_V1":
+            native_request["review_transport_version"] = "WEBSITE_OWNED_METADATA_V2"
+        native_request["product_information"] = list(review_authority["product_information"])
+        native_request["product_name"] = review_authority["product_name"]
+        # Keep the blank format canvas local, as required by the Skill provider protocol.
         ordered: list[SourceImage] = []
-        source_by_path = {str(Path(path).resolve()): source for path, source in zip(source_paths, sources, strict=True)}
+        from .domestic_detail.edit_canvas import resolve_native_edit_canvas
+
+        edit_canvas = resolve_native_edit_canvas(
+            runner, workspace, native_session_value, native_request, generation_scope,
+        )
+        if edit_canvas is not None:
+            canvas, evidence = edit_canvas
+            native_request["edit_canvas_evidence"] = evidence
+            ordered.append(SourceImage(
+                asset_id="native-edit-canvas:" + canvas.sha256,
+                group_key=str(configuration["group_key"]), filename=canvas.filename,
+                content_type=canvas.content_type, sha256=canvas.sha256,
+                payload=canvas.payload, source_role="generated_edit_canvas",
+            ))
+        source_by_path = {
+            str(Path(path).resolve()): source
+            for path, source in zip(source_paths, sources, strict=True)
+        }
+        source_by_id = {source.asset_id: source for source in sources}
+        for image in session_for_audit["input"]["product_images"]:
+            original = source_by_id.get(image["id"])
+            path = Path(image["path"])
+            if original is None or original.source_role != "product_reference" or hashlib.sha256(path.read_bytes()).hexdigest() != original.sha256:
+                raise AuroraDetailHarnessError("NATIVE_DETAIL_REFERENCE_MISMATCH", "Restored product reference differs from its approved original")
+            source_by_path[str(path.resolve())] = original
         for raw_path in native_request.get("reference_images") or []:
             path = Path(str(raw_path)).resolve()
+            if path == Path(str(native_request.get("format_canvas") or "")).resolve():
+                continue
             source = source_by_path.get(str(path))  # type: ignore[assignment]
             if source is not None:
                 ordered.append(source)
                 continue
             if not path.is_file():
-                raise AuroraDetailHarnessError("NATIVE_DETAIL_REFERENCE_MISSING", f"Native reference image is missing: {path}")
+                raise AuroraDetailHarnessError(
+                    "NATIVE_DETAIL_REFERENCE_MISSING",
+                    f"Native reference image is missing: {path}",
+                )
             payload_bytes = path.read_bytes()
-            ordered.append(SourceImage(
-                asset_id=f"native-{hashlib.sha256(payload_bytes).hexdigest()[:16]}",
-                group_key=str(configuration["group_key"]),
-                filename=path.name,
-                content_type="image/png",
-                sha256=hashlib.sha256(payload_bytes).hexdigest(),
-                payload=payload_bytes,
-                source_role="format_canvas" if path == Path(str(native_request.get("format_canvas") or "")).resolve() else "continuity_edge",
-            ))
+            ordered.append(
+                SourceImage(
+                    asset_id=f"native-{hashlib.sha256(payload_bytes).hexdigest()[:16]}",
+                    group_key=str(configuration["group_key"]),
+                    filename=path.name,
+                    content_type="image/png",
+                    sha256=hashlib.sha256(payload_bytes).hexdigest(),
+                    payload=payload_bytes,
+                    source_role="format_canvas"
+                    if path
+                    == Path(str(native_request.get("format_canvas") or "")).resolve()
+                    else "continuity_edge",
+                )
+            )
         return session_path, native_request, tuple(ordered)
 
     def _native_detail_judgment(
@@ -5814,22 +6957,31 @@ class XingheImageProvider:
         module_ids = [str(item) for item in native_request.get("module_ids") or []]
         contracts = native_request.get("pair_render") or {}
         method = str(contracts.get("internal_seam_method_id") or "BACKGROUND_STRINGING") if isinstance(contracts, Mapping) else "BACKGROUND_STRINGING"
-        evidence = "候选 3:8 画布已按原生 Harness 的双屏窗口与接缝合同完成像素检查。"
+        evidence = "SYNTHETIC_OFFLINE_FIXTURE; no real semantic pixel acceptance."
         checks = {
             key: {"pass": True, "visible_evidence": evidence}
             for key in ("identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression")
         }
+        if native_request.get("review_profile") == "WEBSITE_LEAN_V1":
+            from .domestic_detail.website_review import CHECKS
+
+            checks = {key: {"pass": True, "visible_evidence": evidence} for key in CHECKS}
+        reports = synthetic_module_judgments(native_request, artifact.sha256, datetime.now(UTC).isoformat())
+        scope = observed_pair_scope(reports)
+        presence_for_scope = {"VISIBLE_COMPLETE_PRODUCT": "DOMINANT", "VISIBLE_IDENTITY_TOKEN": "IDENTITY_TOKEN_ONLY", "NO_VISIBLE_PRODUCT": "ABSENT"}
         return {
+            **({"website_contract_version": "WEBSITE_LEAN_V1"} if native_request.get("review_profile") == "WEBSITE_LEAN_V1" else {}),
             "pair_id": pair_id,
             "module_ids": module_ids,
+            "module_judgments": reports,
             "status": "PASS",
             "audit_complete": True,
             "artifact_binding": {
                 "image_sha256": artifact.sha256,
-                "auditor": "polaris-native-detail-runtime",
+                "auditor": "polaris-offline-fixture",
                 "audited_at": datetime.now(UTC).isoformat(),
                 "ocr_text": [],
-                "visual_inspection_output": {"mode": "NATIVE_HARNESS_PIXEL_GATE", "dimensions": [artifact.width, artifact.height]},
+                "visual_inspection_output": {"mode": "SYNTHETIC_OFFLINE_FIXTURE", "dimensions": [artifact.width, artifact.height]},
             },
             "pair_canvas": {"aspect_ratio": "3:8", "width_px": artifact.width, "height_px": artifact.height, "decomposition": "TWO_FIXED_SINGLE_SCREEN_WINDOWS"},
             "checks": checks,
@@ -5845,454 +6997,22 @@ class XingheImageProvider:
             "material_failures": [],
             "passed_layers": ["identity", "facts", "pair_duties", "visual_proof", "legibility", "copy_binding", "internal_seam", "spatial_integrity", "commercial_expression"],
             "residual_issues": [],
-            "identity_silhouette": {"shape_consistent": True, "colorway_consistent": True, "texture_consistent": True, "visible_evidence": evidence},
-        }
-
-    @staticmethod
-    def _bridge_native_pair_seam_gate(
-        session_path: Path,
-        judgment_path: Path,
-        error: AuroraDetailHarnessError,
-    ) -> dict[str, Any] | None:
-        """Persist the Harness' failed seam as the normal repair transition.
-
-        ``cmd_audit_pair`` performs all structural and artifact checks before
-        checking ``internal_seam_evidence``.  The seam check itself raises
-        before ``save()`` so a real failed seam leaves the native session in
-        ``AWAITING_PIXEL_AUDIT``.  The adapter may recover that one deterministic
-        gate only after verifying the same post-validation facts.  It records
-        the unchanged judgment on both screens and uses the Harness' own first
-        cycle status semantics; it never changes a seam result to PASS.
-
-        Returning ``None`` keeps every other Harness error fail-closed.
-        """
-
-        seam_error = "Pair seam evidence must pass the declared method and contain no hard cut"
-        # The bundled CLI reports this validation exception on stderr and
-        # exits non-zero, so the runner surfaces it as HARNESS_INVALID_OUTPUT
-        # rather than HARNESS_BLOCKED.  Accept either wrapper while requiring
-        # the exact seam-gate text below; every other harness error remains
-        # fail-closed.
-        if error.code not in {"HARNESS_BLOCKED", "HARNESS_INVALID_OUTPUT"} or seam_error not in str(error):
-            return None
-        try:
-            session = json.loads(session_path.read_text(encoding="utf-8"))
-            judgment = json.loads(judgment_path.read_text(encoding="utf-8"))
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            return None
-        if not isinstance(session, dict) or not isinstance(judgment, dict):
-            return None
-        if session.get("state") != "AWAITING_PIXEL_AUDIT":
-            return None
-        if judgment.get("status") != "MATERIAL_FAIL" or judgment.get("audit_complete") is not True:
-            return None
-        seam = judgment.get("internal_seam_evidence")
-        if not isinstance(seam, Mapping):
-            return None
-        # The bridge is intentionally narrower than the Harness gate.  Both
-        # booleans and the declared method must be visible in the judgment so
-        # a malformed or provider-level failure cannot masquerade as a seam
-        # repair.
-        if seam.get("hard_cut_absent") is True and seam.get("method_specific_pass") is True:
-            return None
-        modules = session.get("modules")
-        if not isinstance(modules, list):
-            return None
-        current_index = session.get("current_index", 0)
-        if not isinstance(current_index, int) or not (0 <= current_index < len(modules)):
-            return None
-        upper = modules[current_index]
-        if not isinstance(upper, Mapping):
-            return None
-        strategy = session.get("plan", {}).get("output_strategy", {}) if isinstance(session.get("plan"), Mapping) else {}
-        pair_config = strategy.get("continuous_pair_rendering") if isinstance(strategy, Mapping) else None
-        pair_ids = pair_config.get("pair_ids") if isinstance(pair_config, Mapping) else None
-        if not isinstance(pair_ids, list):
-            return None
-        pair = next(
-            (
-                candidate
-                for candidate in pair_ids
-                if isinstance(candidate, Mapping)
-                and str(upper.get("id") or "") in [str(value) for value in candidate.get("module_ids") or []]
-            ),
-            None,
-        )
-        if pair is None:
-            return None
-        pair_id = str(pair.get("pair_id") or "")
-        expected_module_ids = [str(value) for value in pair.get("module_ids") or []]
-        if not pair_id or len(expected_module_ids) != 2 or expected_module_ids[0] != str(upper.get("id") or ""):
-            return None
-        if str(judgment.get("pair_id") or "") != pair_id:
-            return None
-        if [str(value) for value in judgment.get("module_ids") or []] != expected_module_ids:
-            return None
-        by_id = {str(item.get("id")): item for item in modules if isinstance(item, Mapping) and item.get("id")}
-        pair_modules = [by_id.get(module_id) for module_id in expected_module_ids]
-        if any(not isinstance(item, dict) for item in pair_modules):
-            return None
-        planned_transition = pair_modules[0].get("plan", {}).get("transition_contract", {})  # type: ignore[union-attr]
-        if not isinstance(planned_transition, Mapping):
-            return None
-        if str(seam.get("method_id") or "") != str(planned_transition.get("method_id") or ""):
-            return None
-        # ``cmd_audit_pair`` checks these fields only after the seam gate.  A
-        # seam failure must not let a malformed envelope skip the remaining
-        # required checks or the positive identity lock.
-        required_checks = (
-            "identity",
-            "facts",
-            "pair_duties",
-            "visual_proof",
-            "legibility",
-            "copy_binding",
-            "internal_seam",
-            "spatial_integrity",
-            "commercial_expression",
-        )
-        checks = judgment.get("checks")
-        if not isinstance(checks, Mapping):
-            return None
-        for check_name in required_checks:
-            check = checks.get(check_name)
-            if not isinstance(check, Mapping) or not isinstance(check.get("pass"), bool):
-                return None
-        identity = judgment.get("identity_silhouette")
-        if not isinstance(identity, Mapping):
-            return None
-        if (
-            not isinstance(identity.get("shape_consistent"), bool)
-            or not isinstance(identity.get("colorway_consistent"), bool)
-            or not isinstance(identity.get("texture_consistent"), bool)
-            or not isinstance(identity.get("visible_evidence"), str)
-            or len(identity.get("visible_evidence", "").strip()) < 8
-            or any(identity.get(key) is not True for key in ("shape_consistent", "colorway_consistent", "texture_consistent"))
-        ):
-            return None
-        if isinstance(session.get("plan"), Mapping) and session["plan"].get("information_contract_version") == "4.1":
-            information = judgment.get("information_audit")
-            required_information = (
-                "upper_buyer_question",
-                "lower_buyer_question",
-                "new_information_visible",
-                "new_information_evidence",
-                "repetition_without_progression",
-                "hero_subject_clear",
-                "co_equal_hero_detected",
-                "purchase_judgment_enabled",
-                "detail_page_not_posterized",
-            )
-            if not isinstance(information, Mapping) or any(key not in information for key in required_information):
-                return None
-        strategy_output = session.get("plan", {}).get("output_strategy", {}) if isinstance(session.get("plan"), Mapping) else {}
-        expected_slice_size = None
-        if isinstance(strategy_output, Mapping) and strategy_output.get("canvas_width_px") and strategy_output.get("module_height_px"):
-            try:
-                expected_slice_size = (
-                    int(strategy_output.get("canvas_width_px")),  # type: ignore[arg-type]
-                    int(strategy_output.get("module_height_px")),  # type: ignore[arg-type]
-                )
-            except (TypeError, ValueError):
-                return None
-        latest_slices = [
-            (item.get("attempts") or [])[-1].get("pair_slice")  # type: ignore[union-attr]
-            for item in pair_modules
-            if (item.get("attempts") or []) and (item.get("attempts") or [])[-1].get("pair_slice")  # type: ignore[union-attr]
-        ]
-        if latest_slices:
-            if len(latest_slices) != 2 or expected_slice_size is None:
-                return None
-            for slice_record in latest_slices:
-                if not isinstance(slice_record, Mapping) or not slice_record.get("path"):
-                    return None
-                slice_path = Path(str(slice_record["path"]))
-                if not slice_path.is_file():
-                    return None
-                try:
-                    with Image.open(slice_path) as opened:
-                        opened.verify()
-                    with Image.open(slice_path) as opened:
-                        if opened.size != expected_slice_size:
-                            return None
-                except (OSError, UnidentifiedImageError):
-                    return None
-        for item in pair_modules:
-            attempts = item.get("attempts") or []  # type: ignore[union-attr]
-            if not attempts or not isinstance(attempts[-1], dict):
-                return None
-            # ``cmd_audit_pair`` reaches the seam gate only after recording a
-            # pair canvas.  Recheck that binding before mutating session state.
-            if not attempts[-1].get("pair_canvas") or not attempts[-1].get("image"):
-                return None
-
-        failures = list(judgment.get("material_failures") or [])
-        if not failures:
-            failures = [{
-                "check": "internal_seam",
-                "visible_evidence": str(seam.get("visible_evidence") or seam_error),
-            }]
-            judgment["material_failures"] = failures
-            # Keep the judgment artifact itself truthful if a legacy provider
-            # omitted material_failures despite reporting MATERIAL_FAIL.
-            write_detail_contract(judgment_path, judgment)
-        for item in pair_modules:
-            attempts = item["attempts"]  # type: ignore[index]
-            attempts[-1]["judgment"] = judgment
-            if item.get("cycle_attempt_count", 0) == 1:  # type: ignore[union-attr]
-                item["status"] = "REPAIR_REQUIRED"  # type: ignore[index]
-                item["accepted_asset"] = None  # type: ignore[index]
-            else:
-                item["accepted_asset"] = attempts[-1].get("image")  # type: ignore[index]
-                item["status"] = "COMPLETE_WITH_RESIDUALS"  # type: ignore[index]
-                item["residual_issues"] = [  # type: ignore[index]
-                    failure.get("visible_evidence", str(failure))
-                    if isinstance(failure, Mapping)
-                    else str(failure)
-                    for failure in failures
-                ]
-        if all(item.get("status") == "COMPLETE_WITH_RESIDUALS" for item in pair_modules):  # type: ignore[union-attr]
-            # A second failed cycle has the same endpoint as the Harness.  The
-            # normal provider path does not expect this branch, but retaining
-            # it keeps the bridge semantically complete and bounded.
-            next_index = next(
-                (index for index, item in enumerate(modules) if item.get("status") not in {"COMPLETE", "COMPLETE_WITH_RESIDUALS"}),
-                None,
-            )
-            if next_index is None:
-                continuous_pairing = isinstance(pair_config, Mapping) and pair_config.get("enabled") is True
-                if continuous_pairing:
-                    delivery_mode = (session.get("approval") or {}).get("delivery_mode")
-                    session["state"] = (
-                        "AUTO_FINALIZE_AUTHORIZED"
-                        if delivery_mode == "AUTO_FINALIZE_AUTHORIZED"
-                        else "AWAITING_USER_FINAL_REVIEW"
-                    )
-                else:
-                    session["state"] = "AWAITING_ASSEMBLY"
-            else:
-                session["current_index"] = next_index
-                session["state"] = "AUTHORIZED"
-        else:
-            session["state"] = "REPAIR_REQUIRED"
-        session.setdefault("events", []).append({
-            "at": datetime.now(UTC).isoformat(),
-            "event": f"pair_audited:{pair_id}:MATERIAL_FAIL",
-            "state": session["state"],
-            "bridge": "seam_gate_repair_transition",
-        })
-        session["updated_at"] = datetime.now(UTC).isoformat()
-        write_detail_contract(session_path, session)
-        return {
-            "state": session["state"],
-            "current_module": str(pair_modules[0].get("id") or ""),  # type: ignore[union-attr]
-            "pair_id": pair_id,
-            "judgment_status": "MATERIAL_FAIL",
-            "bridge": "seam_gate_repair_transition",
+            "identity_silhouette": synthetic_identity(presence_for_scope[scope], evidence),
         }
 
     @staticmethod
     def _normalize_native_pair_judgment(
-        raw_judgment: Mapping[str, Any],
+        raw: Mapping[str, Any],
         native_request: Mapping[str, Any],
         artifact: ProviderArtifact,
     ) -> dict[str, Any]:
-        """Adapt legacy/provider audit JSON to the v4.3 pair contract.
-
-        Some OpenAI-compatible gateways still return the earlier compact pair
-        audit shape (string-valued checks, keyed screen coverage, and the old
-        identity block).  The Skill Harness intentionally rejects that shape.
-        This adapter is structural only: it carries forward the provider's
-        observed failures and never changes a failed observation into a pass.
-        """
-
-        raw = dict(raw_judgment)
-        pair_id = str(native_request.get("pair_id") or raw.get("pair_id") or "")
-        module_ids = [
-            str(value)
-            for value in (native_request.get("module_ids") or raw.get("module_ids") or [])
-        ]
-        fallback_evidence = "审计响应未提供足够的可见证据，按 Skill 规则保守记录。"
-
-        def evidence(value: Any, fallback: str = fallback_evidence) -> str:
-            if isinstance(value, Mapping):
-                for key in (
-                    "visible_evidence",
-                    "evidence",
-                    "detail",
-                    "visible_problem",
-                    "reason",
-                    "fail_closed_reason",
-                ):
-                    text = value.get(key)
-                    if isinstance(text, str) and len(text.strip()) >= 8:
-                        return text.strip()
-            if isinstance(value, str) and len(value.strip()) >= 8:
-                return value.strip()
-            return fallback
-
-        def as_pass(value: Any) -> bool:
-            if isinstance(value, Mapping):
-                if isinstance(value.get("pass"), bool):
-                    return bool(value["pass"])
-                if isinstance(value.get("passed"), bool):
-                    return bool(value["passed"])
-                value = value.get("status") or value.get("result")
-            if isinstance(value, bool):
-                return value
-            token = str(value or "").strip().lower()
-            return token in {"pass", "passed", "true", "ok", "complete", "complete_for_legible_copy"}
-
-        def normalize_check(value: Any, label: str) -> dict[str, Any]:
-            return {
-                "pass": as_pass(value),
-                "visible_evidence": evidence(value, f"{label}：未通过或缺少可核验的像素证据。"),
-            }
-
-        old_checks = raw.get("checks") if isinstance(raw.get("checks"), Mapping) else {}
-        aliases = {
-            "identity": ("identity", "identity_consistency", "product_reference_binding"),
-            "facts": ("facts", "unsupported_copy"),
-            "pair_duties": ("pair_duties", "screen_duties", "repeated_screens"),
-            "visual_proof": ("visual_proof",),
-            "legibility": ("legibility", "copy_legibility"),
-            "copy_binding": ("copy_binding", "copy_transcription"),
-            "internal_seam": ("internal_seam",),
-            "spatial_integrity": ("spatial_integrity", "posterized_layout"),
-            "commercial_expression": ("commercial_expression", "approved_module_contract"),
-        }
-        checks: dict[str, dict[str, Any]] = {}
-        for canonical, candidates in aliases.items():
-            source = next((old_checks[name] for name in candidates if name in old_checks), None)  # type: ignore[index,operator]
-            checks[canonical] = normalize_check(source, canonical)
-
-        raw_coverage = raw.get("screen_coverage")
-        if isinstance(raw_coverage, Mapping):
-            coverage_values = [raw_coverage.get(f"screen_{index}") for index in range(1, len(module_ids) + 1)]
-        elif isinstance(raw_coverage, list):
-            coverage_values = list(raw_coverage)
-        else:
-            coverage_values = []
-        approved = native_request.get("approved_module_contracts")
-        approved_by_id = {
-            str(item.get("module_id")): item.get("contract")
-            for item in (approved if isinstance(approved, list) else [])
-            if isinstance(item, Mapping) and item.get("module_id")
-        }
-        screen_coverage: list[dict[str, Any]] = []
-        for index, module_id in enumerate(module_ids):
-            source = coverage_values[index] if index < len(coverage_values) else {}
-            source = source if isinstance(source, Mapping) else {}
-            contract = approved_by_id.get(module_id)
-            visible_copy = contract.get("visible_copy") if isinstance(contract, Mapping) else []
-            selling_points = []
-            if isinstance(visible_copy, list):
-                selling_points = [
-                    str(item.get("text") or item)  # type: ignore[union-attr]
-                    for item in visible_copy
-                    if isinstance(item, (Mapping, str)) and str(item.get("text") if isinstance(item, Mapping) else item).strip()
-                ][:8]
-            if not selling_points:
-                selling_points = ["已批准模块职责"]
-            screen_coverage.append(
-                {
-                    "module_id": module_id,
-                    # The v4.3 schema uses this field to assert that the
-                    # screen-duty record exists.  Whether the duty actually
-                    # passed belongs in checks/material_failures; keeping the
-                    # structural assertion true lets the Harness evaluate the
-                    # real pixel failure instead of rejecting the envelope.
-                    "duty_visible": True,
-                    "selling_points_visible": selling_points,
-                    "visible_evidence": evidence(source, f"{module_id}：未提供足够的屏幕职责证据。"),
-                }
+        try:
+            return normalize_pair_observation(
+                raw, native_request, image_sha256=artifact.sha256,
+                width=artifact.width, height=artifact.height,
             )
-
-        pair_render = native_request.get("pair_render")
-        pair_render = pair_render if isinstance(pair_render, Mapping) else {}
-        canvas = raw.get("pair_canvas") if isinstance(raw.get("pair_canvas"), Mapping) else {}
-        width = int(canvas.get("width_px") or canvas.get("observed_width_px") or artifact.width)  # type: ignore[union-attr]
-        height = int(canvas.get("height_px") or canvas.get("observed_height_px") or artifact.height)  # type: ignore[union-attr]
-        seam_raw = raw.get("internal_seam_evidence") if isinstance(raw.get("internal_seam_evidence"), Mapping) else {}
-        seam_result = seam_raw.get("method_specific_pass", seam_raw.get("result"))  # type: ignore[union-attr]
-        seam = {
-            "method_id": str(pair_render.get("internal_seam_method_id") or seam_raw.get("method_id") or "BACKGROUND_STRINGING"),  # type: ignore[union-attr]
-            "source_region": str(pair_render.get("internal_seam_source_region") or seam_raw.get("source_region") or "上屏底部"),  # type: ignore[union-attr]
-            "target_region": str(pair_render.get("internal_seam_target_region") or seam_raw.get("target_region") or "下屏顶部"),  # type: ignore[union-attr]
-            "carrier": str(pair_render.get("internal_seam_carrier") or seam_raw.get("carrier") or "连续背景场"),  # type: ignore[union-attr]
-            "geometry": str(pair_render.get("internal_seam_geometry") or seam_raw.get("geometry") or "接缝两侧共享连续背景"),  # type: ignore[union-attr]
-            "hard_cut_absent": bool(seam_raw.get("hard_cut_absent", as_pass(seam_result))),  # type: ignore[union-attr]
-            "method_specific_pass": as_pass(seam_result),
-            "visible_evidence": evidence(seam_raw),
-        }
-
-        raw_info = raw.get("information_audit") if isinstance(raw.get("information_audit"), Mapping) else {}
-        repeated = raw_info.get("repetition_without_progression")  # type: ignore[union-attr]
-        if not isinstance(repeated, bool):
-            repeated = not bool((raw_coverage or {}).get("repeated_screen_evidence", {}).get("repeated", False)) if isinstance(raw_coverage, Mapping) else False
-        information = {
-            "upper_buyer_question": str(raw_info.get("upper_buyer_question") or (approved_by_id.get(module_ids[0], {}) or {}).get("buyer_question") or "上屏购买问题"),  # type: ignore[union-attr]
-            "lower_buyer_question": str(raw_info.get("lower_buyer_question") or (approved_by_id.get(module_ids[1], {}) or {}).get("buyer_question") or "下屏购买问题"),  # type: ignore[union-attr]
-            "new_information_visible": bool(raw_info.get("new_information_visible", not repeated)),  # type: ignore[union-attr]
-            "new_information_evidence": evidence(raw_info, "上下屏承担不同职责并形成信息递进。"),
-            "repetition_without_progression": bool(repeated),
-            "hero_subject_clear": bool(raw_info.get("hero_subject_clear", True)),  # type: ignore[union-attr]
-            "co_equal_hero_detected": bool(raw_info.get("co_equal_hero_detected", False)),  # type: ignore[union-attr]
-            "purchase_judgment_enabled": bool(raw_info.get("purchase_judgment_enabled", not repeated)),  # type: ignore[union-attr]
-            "detail_page_not_posterized": bool(raw_info.get("detail_page_not_posterized", checks["spatial_integrity"]["pass"])),  # type: ignore[union-attr]
-        }
-
-        old_identity = raw.get("identity_silhouette") if isinstance(raw.get("identity_silhouette"), Mapping) else {}
-        drift = " ".join(str(item) for item in old_identity.get("drift_evidence") or [])  # type: ignore[union-attr]
-        identity_evidence = evidence(old_identity, "未提供足够的商品轮廓、配色和材质可见证据。")
-        identity = {
-            "shape_consistent": bool(old_identity.get("shape_consistent", str(old_identity.get("overall_vehicle_match") or "").lower().startswith(("strong", "match")))),  # type: ignore[union-attr]
-            "colorway_consistent": bool(old_identity.get("colorway_consistent", any(token in (" ".join(str(item) for item in old_identity.get("matching_traits") or [])).lower() for token in ("red", "black", "红", "黑")))),  # type: ignore[union-attr]
-            "texture_consistent": bool(old_identity.get("texture_consistent", not any(token in drift.lower() for token in ("texture", "surface", "材质", "纹理")))),  # type: ignore[union-attr]
-            "visible_evidence": identity_evidence + ((" " + drift) if drift else ""),
-        }
-
-        status = "PASS" if str(raw.get("status") or "").upper() == "PASS" else "MATERIAL_FAIL"
-        raw_failures = raw.get("material_failures")
-        material_failures = [
-            dict(value) if isinstance(value, Mapping) else {"visible_evidence": str(value).strip()}
-            for value in raw_failures
-            if isinstance(value, Mapping) or (isinstance(value, str) and value.strip())
-        ] if isinstance(raw_failures, list) else []
-        if status == "MATERIAL_FAIL" and not material_failures:
-            material_failures = [{"check": name, "visible_evidence": value["visible_evidence"]} for name, value in checks.items() if not value["pass"]]
-        normalized = dict(raw)
-        normalized.update(
-            {
-                "pair_id": pair_id,
-                "module_ids": module_ids,
-                "status": status,
-                "audit_complete": True,
-                "pair_canvas": {"aspect_ratio": "3:8", "width_px": width, "height_px": height, "decomposition": "TWO_FIXED_SINGLE_SCREEN_WINDOWS"},
-                "checks": checks,
-                "screen_coverage": screen_coverage,
-                "internal_seam_evidence": seam,
-                "information_audit": information,
-                "material_failures": material_failures,
-                "identity_silhouette": identity,
-                "ocr_text": list(raw.get("ocr_text") or []),
-                "unauthorized_ocr_text": list(raw.get("unauthorized_ocr_text") or []),
-                "forbidden_text_hits": list(raw.get("forbidden_text_hits") or []),
-            }
-        )
-        binding = normalized.get("artifact_binding") if isinstance(normalized.get("artifact_binding"), Mapping) else {}
-        binding = dict(binding)  # type: ignore[arg-type]
-        binding.update(
-            {
-                "image_sha256": artifact.sha256,
-                "auditor": "polaris-vision-planner",
-                "audited_at": datetime.now(UTC).isoformat(),
-                "ocr_text": list(normalized.get("ocr_text") or []),
-                "visual_inspection_output": binding.get("visual_inspection_output") or {"mode": "DIRECT_PIXEL_REVIEW"},
-            }
-        )
-        normalized["artifact_binding"] = binding
-        return normalized
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
 
     async def _native_detail_judgment_with_review(
         self,
@@ -6309,7 +7029,26 @@ class XingheImageProvider:
         """
 
         if self.gateway.provider_name == "mock":
-            return self._native_detail_judgment(native_request, artifact)
+            judgment = self._native_detail_judgment(native_request, artifact)
+            from .domestic_detail.revision_review import synthetic_local_observation
+
+            local = synthetic_local_observation(native_request)
+            if local is not None:
+                judgment["local_revision_observation"] = local
+            return judgment
+        try:
+            authority = require_review_authority(native_request.get("review_authority"))
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
+        if native_request.get("product_information") != authority["product_information"] or native_request.get("product_name") != authority["product_name"]:
+            raise XingheAgentError("AURORA_NATIVE_REVIEW_AUTHORITY_INVALID", "Review aliases differ from the approved native authority")
+        try:
+            atomic_contracts, atomic_slices = atomic_context(native_request, artifact.sha256)
+            attached_slices = [source for source in sources if source.source_role.startswith("generated_module_candidate:")]
+            if [source.source_role for source in attached_slices] != ["generated_module_candidate:" + row["module_id"] for row in atomic_contracts] or [source.sha256 for source in attached_slices] != [row["sha256"] for row in atomic_slices]:
+                raise DetailReviewError("AURORA_NATIVE_ATOMIC_CONTEXT_INVALID", "Both exact generated slices must be attached to the real review")
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
         candidate = SourceImage(
             asset_id=f"generated:{artifact.sha256}",
             group_key=str(native_request.get("pair_id") or request.job_id),
@@ -6319,41 +7058,131 @@ class XingheImageProvider:
             payload=artifact.payload,
             source_role="generated_pair_candidate",
         )
-        audit_sources = tuple(sources) + (candidate,)
-        contract = {
-            "pair_id": native_request.get("pair_id"),
-            "module_ids": native_request.get("module_ids"),
-            "pair_render": native_request.get("pair_render"),
-            "output_surface": native_request.get("output_surface"),
-            "product_name": native_request.get("product_name") or request.configuration.get("product_name") or "当前商品",
-            "product_information": list(native_request.get("product_information") or []),
-            "approved_module_contracts": list(native_request.get("approved_module_contracts") or []),
-            "audit_context_version": "aurora-v4.3-pair-audit-v2",
-        }
+        from .domestic_detail.revision_review import original_revision_sources
+
+        if any(source.source_role.startswith("local_revision_original_") for source in sources):
+            raise XingheAgentError("NATIVE_DETAIL_REVISION_PIXEL_OBSERVATION_INVALID", "Original comparison frames must come from the verified accepted source")
+        try:
+            originals = original_revision_sources(native_request)
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
+        audit_sources = tuple(sources) + originals + (candidate,)
+        if any(hashlib.sha256(source.payload).hexdigest() != source.sha256 for source in audit_sources):
+            raise XingheAgentError("AURORA_NATIVE_REVIEW_SOURCE_CHANGED", "Review source bytes differ from their manifest")
+        source_inventory = [
+            {"asset_id": source.asset_id, "role": source.source_role, "sha256": source.sha256}
+            for source in audit_sources
+        ]
+        contract = pair_review_contract(native_request, artifact.sha256, artifact.width, artifact.height, source_inventory)
+
+        audit_receipts: list[dict[str, Any]] = []
 
         async def review(audit_request: PlannerRequest, phase: str) -> PlannerCallResult:
-            result = replace(_with_planner_observability(await self.gateway.plan(audit_request)), phase=phase + ":" + str(native_request.get("pair_id") or ""))
-            # Persist every real vision request even if its envelope or pixels
-            # fail. Keep the raw observation before structural normalization.
+            from .domestic_detail.revision_review import frozen_review_route
+
+            try:
+                original_route = frozen_review_route(detail_workspace(request.job_id), native_request, phase)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
+            selected_route = original_route if original_route is not None else select_route(self.gateway, audit_request.native_dispatch)
+            audit_request = replace(audit_request, native_dispatch=selected_route)
+            binding = {
+                "version": REVIEW_BINDING_VERSION,
+                "phase": phase,
+                "approved_review_authority_sha256": authority["sha256"],
+                "render_token": native_request.get("token")
+                or canonical_hash(native_request),
+                "candidate_sha256": artifact.sha256,
+                "native_request_sha256": canonical_hash(native_request),
+                "approved_module_contracts_sha256": contract[
+                    "approved_module_contracts_sha256"
+                ],
+                "source_inventory": source_inventory,
+                "provider": original_route["provider"] if original_route is not None else self.gateway.provider_name,
+                "model": selected_route["model"],
+                "dispatch_route": selected_route,
+                "prompt_sha256": hashlib.sha256(
+                    _planner_prompt(audit_request).encode()
+                ).hexdigest(),
+                "response_schema_sha256": canonical_hash(
+                    _planner_response_format(audit_request)
+                ),
+                "skill_content_hash": SkillManifestRegistry.bundled()
+                .get(self.skill_id)
+                .content_hash,
+                "review_runtime_sha256": review_runtime_hash(),
+            }
+            store = ReviewStore(detail_workspace(request.job_id) / "reviews", binding)
+            try:
+                saved = store.completed()
+                reused = saved is not None
+                if original_route is not None and saved is None:
+                    raise DetailReviewError("NATIVE_DETAIL_REVISION_REVIEW_OUTCOME_UNKNOWN", "Preserve the original review; its completed result changed")
+                if saved is None:
+                    from .domestic_detail.revision_review import (
+                        require_new_review_history,
+                        require_review_budget,
+                    )
+
+                    require_new_review_history(detail_workspace(request.job_id), native_request, phase)
+                    require_review_budget(self.session_factory, request, native_request, self.gateway, new_request=True)
+                    store.begin()
+                    result = replace(_with_planner_observability(await self.gateway.plan(audit_request)), phase=phase + ":" + str(native_request.get("pair_id") or ""))
+                    try:
+                        checked = result_with_dispatch(asdict(result), selected_route)
+                    except PlannerDispatchError:
+                        store.finish(asdict(result))
+                        raise
+                    result = replace(
+                        result, provider_envelope=checked["provider_envelope"]
+                    )
+                    store.finish(asdict(result))
+                else:
+                    validate_dispatch_result(saved, selected_route)
+                    result = PlannerCallResult(**saved)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                raise XingheAgentError("AURORA_NATIVE_REVIEW_RECEIPT_INVALID", "The immutable review evidence is missing or unreadable") from exc
+            # A recovered original response contributes its original usage once.
+            # Neither a duplicate execution nor a lost DB write grants a new call.
             with self.session_factory() as db:
                 plan = db.scalar(select(JobPlanRecord).where(JobPlanRecord.job_id == request.job_id).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
                 if plan is not None:
                     payload = dict(plan.payload)
                     usage = dict(payload.get("usage") or {})
-                    usage["planner"] = [*(usage.get("planner") or []), _planner_usage_record(result)]
-                    payload["usage"] = usage
-                    payload["planner_diagnostics"] = [*(payload.get("planner_diagnostics") or []), _planner_diagnostics_record(result)]
-                    plan.payload = payload
-                    plan.payload_hash = canonical_hash(payload)
-                    db.commit()
-            write_detail_contract(
-                detail_workspace(request.job_id) / f"{phase}-{request.attempt_id}-{artifact.sha256[:16]}.json",
-                {"candidate_sha256": artifact.sha256, "phase": result.phase,
-                 "source_sha256": [source.sha256 for source in audit_request.sources],
-                 "response": result.payload, "error_code": result.error_code,
-                 "error_message": result.error_message, "usage": _planner_usage_record(result)},
-            )
-            return result
+                    existing = list(usage.get("planner") or [])
+                    if not any(item.get("review_binding_sha256") == store.sha256 for item in existing):
+                        usage["planner"] = [*existing, {**_planner_usage_record(result), "review_binding_sha256": store.sha256}]
+                        payload["usage"] = usage
+                        payload["planner_diagnostics"] = [*(payload.get("planner_diagnostics") or []), {**_planner_diagnostics_record(result), "review_binding_sha256": store.sha256}]
+                        plan.payload = payload
+                        plan.payload_hash = canonical_hash(payload)
+                        db.commit()
+            from .domestic_detail.revision_review import require_review_budget
+
+            try:
+                require_review_budget(self.session_factory, request, native_request, self.gateway, new_request=False)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
+            if result.error_code is None:
+                if not isinstance(result.audit_raw_content, str) or not result.audit_raw_content.strip():
+                    raise XingheAgentError("AURORA_NATIVE_REVIEW_RAW_REPLY_MISSING", "A successful pixel review must preserve its original model message")
+                try:
+                    decoded = _planner_content_payload(result.audit_raw_content)
+                except XingheAgentError as exc:
+                    raise XingheAgentError("AURORA_NATIVE_REVIEW_RAW_REPLY_MISMATCH", "Original model text does not contain the reported pixel observation") from exc
+                if canonical_hash(decoded) != canonical_hash(result.payload):
+                    raise XingheAgentError("AURORA_NATIVE_REVIEW_RAW_REPLY_MISMATCH", "Original model text differs from the parsed pixel observation")
+            audit_receipts.append({
+                "phase": phase, "binding_sha256": store.sha256,
+                "request_file": "reviews/" + store.request_path.name,
+                "request_file_sha256": hashlib.sha256(store.request_path.read_bytes()).hexdigest(),
+                "response_file": "reviews/" + store.response_path.name,
+                "response_file_sha256": hashlib.sha256(store.response_path.read_bytes()).hexdigest(),
+                "original_message_sha256": hashlib.sha256(result.audit_raw_content.encode()).hexdigest() if isinstance(result.audit_raw_content, str) else None,
+            })
+            return replace(result, external_request=False) if reused else result
 
         audit_request = PlannerRequest(
                 workspace_id=request.workspace_id,
@@ -6362,7 +7191,7 @@ class XingheImageProvider:
                 sources=audit_sources,
                 page_count=2,
                 language="zh-CN",
-                product_name=str(request.configuration.get("product_name") or "当前商品"),
+                product_name=authority["product_name"],
                 product_information=(json.dumps(contract, ensure_ascii=False),),
                 platform_code="domestic-detail",
                 size="1440x3840",
@@ -6377,40 +7206,38 @@ class XingheImageProvider:
                 result.error_message or "Native detail semantic audit returned no judgment.",
             )
         judgment = dict(result.payload)
+        if native_request.get("review_profile") == "WEBSITE_LEAN_V1":
+            from .domestic_detail.website_review import bind_pixel_metadata
+
+            judgment = bind_pixel_metadata(judgment, native_request, artifact.sha256, artifact.width, artifact.height)
         identity = judgment.get("identity_silhouette")
         identity = dict(identity) if isinstance(identity, Mapping) else {}
-        identity_keys = ("shape_consistent", "colorway_consistent", "texture_consistent")
-        if not all(isinstance(identity.get(key), bool) for key in identity_keys) or not isinstance(identity.get("visible_evidence"), str) or len(identity["visible_evidence"].strip()) < 8:
-            # A missing positive comparison is not a negative pixel finding.
-            # Ask once about these same pixels; never regenerate the image or
-            # infer a silhouette pass from a generic identity check.
+        try:
+            validate_pair_before_identity(judgment, native_request, image_sha256=artifact.sha256, width=artifact.width, height=artifact.height)
+            expected_identity_scope = observed_pair_scope(judgment.get("module_judgments"))
+        except DetailReviewError as exc:
+            raise XingheAgentError(exc.code, str(exc)) from exc
+        if not identity_complete(identity, expected_identity_scope):
             identity_result = await review(
                 replace(audit_request, planning_profile="aurora_detail_identity_audit",
                     idempotency_key=audit_request.idempotency_key + ":identity",
                     product_information=(json.dumps({"pair_id": contract["pair_id"],
-                        "product_name": contract["product_name"], "candidate_sha256": artifact.sha256}, ensure_ascii=False),)),
+                        "product_name": contract["product_name"], "candidate_sha256": artifact.sha256,
+                        "source_inventory": source_inventory, "locked_identity": authority["locked_identity"],
+                        "review_authority_sha256": authority["sha256"],
+                        "expected_observed_comparison_scope": expected_identity_scope,
+                        "module_identity_observations": [{"module_id": row["module_id"], "observed_presence": row["observations"]["product_presence_observed"], "identity_silhouette": row["identity_silhouette"]} for row in judgment["module_judgments"]]}, ensure_ascii=False),)),
                 "aurora_detail_identity_audit",
             )
-            observed = identity_result.payload
-            if identity_result.error_code or not isinstance(observed, Mapping) or not all(isinstance(observed.get(key), bool) for key in identity_keys) or not isinstance(observed.get("visible_evidence"), str) or len(observed["visible_evidence"].strip()) < 8:
-                raise XingheAgentError("AURORA_NATIVE_IDENTITY_AUDIT_INVALID", identity_result.error_message or "The bounded identity review did not return a complete direct-pixel comparison.")
-            judgment["identity_silhouette"] = {
-                **{key: observed[key] and identity.get(key) is not False for key in identity_keys},
-                "visible_evidence": " ".join(str(value).strip() for value in (identity.get("visible_evidence"), observed["visible_evidence"]) if value),
-            }
-        binding = judgment.get("artifact_binding")
-        binding = dict(binding) if isinstance(binding, Mapping) else {}
-        binding.update({
-            "image_sha256": artifact.sha256,
-            "auditor": "polaris-vision-planner",
-            "audited_at": datetime.now(UTC).isoformat(),
-        })
-        binding.setdefault("ocr_text", judgment.get("ocr_text") or [])
-        binding.setdefault("visual_inspection_output", {"mode": "DIRECT_PIXEL_REVIEW"})
-        judgment["artifact_binding"] = binding
-        judgment["pair_id"] = str(native_request.get("pair_id") or judgment.get("pair_id") or "")
-        judgment["module_ids"] = list(native_request.get("module_ids") or judgment.get("module_ids") or [])
-        return self._normalize_native_pair_judgment(judgment, native_request, artifact)
+            if identity_result.error_code or not isinstance(identity_result.payload, Mapping):
+                raise XingheAgentError("AURORA_NATIVE_IDENTITY_AUDIT_INVALID", identity_result.error_message or "The bounded identity review returned no scoped observations")
+            try:
+                judgment["identity_silhouette"] = merge_identity_followup(identity, identity_result.payload, expected_identity_scope)
+            except DetailReviewError as exc:
+                raise XingheAgentError(exc.code, str(exc)) from exc
+        normalized = self._normalize_native_pair_judgment(judgment, native_request, artifact)
+        normalized["review_provenance"] = audit_receipts
+        return normalized
 
     @staticmethod
     def _aurora_pair_canvas_object_key(
@@ -7570,16 +8397,50 @@ def _planner_call_results(
     results: Sequence[PlannerCallResult],
 ) -> tuple[PlannerCallResult, ...]:
     calls: list[PlannerCallResult] = []
-    for result in results:
-        if result.external_request:
-            calls.append(result)
-        calls.extend(_planner_call_results(result.supplemental_results))
+    seen: set[str] = set()
+
+    def visit(values: Sequence[PlannerCallResult]) -> None:
+        for result in values:
+            envelope = result.provider_envelope or {}
+            kind = (
+                "native_planner_receipt"
+                if isinstance(envelope.get("native_planner_receipt"), Mapping)
+                else "native_intake_receipt"
+            )
+            receipt = envelope.get(kind)
+            identity = (
+                receipt.get("binding_sha256") if isinstance(receipt, Mapping) else None
+            )
+            key = kind + ":" + identity if isinstance(identity, str) else None
+            if result.external_request and (
+                not isinstance(key, str) or key not in seen
+            ):
+                calls.append(result)
+                if isinstance(key, str):
+                    seen.add(key)
+            visit(result.supplemental_results)
+
+    visit(results)
     return tuple(calls)
 
 
 def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
+    dispatch = planner_dispatch_record(result.provider_envelope)
+    receipt = (result.provider_envelope or {}).get("native_planner_receipt")
+    intake_receipt = (result.provider_envelope or {}).get("native_intake_receipt")
     return {
         **({"phase": result.phase} if result.phase else {}),
+        **({"native_planner_dispatch": dispatch} if dispatch else {}),
+        **(
+            {"native_planner_receipt": dict(receipt)}
+            if isinstance(receipt, Mapping)
+            else {}
+        ),
+        **(
+            {"native_intake_receipt": dict(intake_receipt)}
+            if isinstance(intake_receipt, Mapping)
+            else {}
+        ),
         "raw": result.raw_usage,
         "normalized": result.normalized_usage,
         "reported": bool(result.normalized_usage["reported"]),
@@ -7939,7 +8800,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
         # exercising the legacy detail schema on the Aurora route.
         product = request.product_name or "可见商品"
         modules: list[dict[str, Any]] = []
-        subject_scales = ("hero", "medium", "close", "macro", "mixed")
+        subject_scales = ("wide", "medium", "close", "macro", "mixed")
         archetypes = (
             "BENEFIT_OVERVIEW",
             "DEDICATED_BENEFIT_PROOF",
@@ -7958,7 +8819,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
             "DOCUMENTARY_EVIDENCE",
             "SPECIFICATION_BOARD",
             "FAQ_BOARD",
-            "PURCHASE_CLOSURE",
+            "ASYMMETRIC_EDITORIAL",
         )
         story_functions = (
             "HOOK",
@@ -7976,6 +8837,19 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
             number = index + 1
             module_id = f"M{number:02d}"
             conclusion = f"{product}的第{number}项可见购买证据"
+            spatial_sequence = (
+                "FULL_BLEED_HERO", "ASYMMETRIC_EDITORIAL", "STACKED_BANDS",
+                "MACRO_DIAGRAM", "MACRO_DIAGRAM", "STACKED_BANDS",
+                "ASYMMETRIC_EDITORIAL", "SPECIFICATION_BOARD", "MACRO_DIAGRAM",
+                "STACKED_BANDS", "ASYMMETRIC_EDITORIAL", "FULL_BLEED_HERO",
+            )
+            spatial_family = "FULL_BLEED_HERO" if number == request.page_count else spatial_sequence[index]
+            spatial_briefs = ["商品主体与卖点证明区"] if spatial_family == "FULL_BLEED_HERO" else ["主导商品证据区", "辅助判断与结果区"]
+            story_function = "PURCHASE_CLOSURE" if number == request.page_count else story_functions[index % len(story_functions)]
+            if number > 8 and number != request.page_count:
+                story_function = "MECHANISM_PROOF" if number % 2 else "USE_OR_RESULT"
+            if number != request.page_count and story_function == "PURCHASE_CLOSURE":
+                story_function = "USE_OR_RESULT"
             modules.append(
                 {
                     "id": module_id,
@@ -7985,7 +8859,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                     "lead_conclusion": conclusion,
                     "lead_claim_id": "F01",
                     "selling_point_cluster_ids": ["SP-COVERAGE"],
-                    "story_function": story_functions[index % len(story_functions)],
+                    "story_function": story_function,
                     "pain_ids": [f"PAIN-{number:02d}"],
                     "value_bridge_ids": [f"VALUE-{number:02d}"],
                     "visual_proof_direction": f"用真实商品可见结构证明第{number}项",
@@ -8007,15 +8881,15 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                         "hidden_copy_test": conclusion,
                     },
                     "expression": {
-                        "expression_mode": "DIRECT_OBSERVATION",
-                        "claim_visualizability": conclusion,
-                        "primary_visual_carrier": "商品主体",
+                        "expression_mode": "IMAGE_PLUS_COPY",
+                        "claim_visualizability": "VISUALIZABLE",
+                        "primary_visual_carrier": "PRODUCT_HERO",
                         "visual_scene_sentence": conclusion,
                         "copy_responsibility": "说明购买结论",
                     },
                     "structure": {
-                        "structure_family": "ASYMMETRIC_EDITORIAL",
-                        "zone_briefs": ["商品主体与卖点证明区"],
+                        "structure_family": spatial_family,
+                        "zone_briefs": spatial_briefs,
                         "structure_difference_from_previous": "改变信息结构与证据关系",
                         "forbidden_fallbacks": ["通用白底", "空泛口号", "装饰性图标"],
                     },
@@ -8047,7 +8921,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                     "secondary_subject_classes": [],
                     "presentation_form": presentation_forms[index % len(presentation_forms)],
                     "complete_product_role": "DOMINANT" if index == 0 else "SUPPORTING",
-                    "expression_signature": f"aurora expression signature {number:02d}",
+                    "expression_signature": f"COMPLETE_PRODUCT+{presentation_forms[index % len(presentation_forms)]}+{subject_scales[index % len(subject_scales)]}+{'DOMINANT' if index == 0 else 'SUPPORTING'}",
                     "visual_cast": {
                         "hero_subject": "商品主体",
                         "claim_object": "卖点证据",
@@ -8094,11 +8968,11 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "module_ids": [f"M{index * 2 - 1:02d}", f"M{index * 2:02d}"],
                 "pair_merge_type": "PAIR_PLAN_MERGE",
                 "internal_seam_zone": {"start_y": 1910, "end_y": 1930},
-                "internal_seam_method_id": "BACKGROUND_STRINGING",
-                "internal_seam_carrier": "连续背景光线与色彩",
-                "internal_seam_source_region": "上屏底部视觉锚点",
-                "internal_seam_target_region": "下屏顶部视觉锚点",
-                "internal_seam_geometry": "共享背景场软过渡",
+                "internal_seam_method_id": modules[index * 2 - 1]["transition_contract"]["method_id"],
+                "internal_seam_carrier": modules[index * 2 - 1]["transition_contract"]["seam_carrier"],
+                "internal_seam_source_region": modules[index * 2 - 1]["transition_contract"]["source_region_previous"],
+                "internal_seam_target_region": modules[index * 2 - 1]["transition_contract"]["target_region_current"],
+                "internal_seam_geometry": modules[index * 2 - 1]["transition_contract"]["handoff_geometry"],
             }
             for index in range(1, request.page_count // 2 + 1)
         ]
@@ -8117,10 +8991,42 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "selection_mode": "USER_SPECIFIED",
                 "module_count": request.page_count,
                 "module_count_rationale": "按用户指定屏数覆盖购买决策，并以相邻双屏连续渲染保持阅读递进。",
-                "module_count_candidates": [{"candidate_mode": "DIRECT_DERIVATION", "count": request.page_count, "coverage_tradeoff": "覆盖核心卖点并保持连续叙事", "selling_point_fit": "满足当前卖点覆盖", "story_obligation_fit": "满足从认知到购买决策的故事义务", "decision": "SELECTED"}],
-                "selling_point_clusters": [{"id": "SP-COVERAGE", "buyer_question": "买家如何判断商品事实", "fact_ids": ["F01"], "purchase_role": "BENEFIT", "separation_policy": "MERGEABLE", "assigned_module_ids": [f"M{index:02d}" for index in range(1, request.page_count + 1)]}],
+                "module_count_candidates": [
+                    {
+                        "candidate_mode": "DIRECT_DERIVATION",
+                        "count": request.page_count,
+                        "coverage_tradeoff": "覆盖核心卖点并保持连续叙事",
+                        "selling_point_fit": "满足当前卖点覆盖",
+                        "story_obligation_fit": "满足从认知到购买决策的故事义务",
+                        "decision": "SELECTED",
+                    }
+                ],
+                "selling_point_clusters": [
+                    {
+                        "id": "SP-COVERAGE",
+                        "buyer_question": "买家如何判断商品事实",
+                        "fact_ids": ["F01"],
+                        "purchase_role": "BENEFIT",
+                        "separation_policy": "MERGEABLE",
+                        "assigned_module_ids": [
+                            f"M{index:02d}"
+                            for index in range(1, request.page_count + 1)
+                        ],
+                    }
+                ],
                 "merge_decisions": ["相邻两屏组成一个连续 pair"],
-                "claim_coverage": [{"claim_id": "F01", "disposition": "LEAD", "module_ids": [f"M{index:02d}" for index in range(1, request.page_count + 1)], "rationale": "核心事实直接进入已批准屏幕", "defer_reason_code": "NOT_DEFERRED"}],
+                "claim_coverage": [
+                    {
+                        "claim_id": "F01",
+                        "disposition": "LEAD",
+                        "module_ids": [
+                            f"M{index:02d}"
+                            for index in range(1, request.page_count + 1)
+                        ],
+                        "rationale": "核心事实直接进入已批准屏幕",
+                        "defer_reason_code": "NOT_DEFERRED",
+                    }
+                ],
                 "dimension_rationale": "采用 1440x1920 单屏与 1440x3840 双屏画布，保持移动端详情阅读比例。",
                 "aspect_ratio": {"width_units": 3, "height_units": 4, "label": "3:4"},
                 "canvas_width_px": 1440,
@@ -8140,21 +9046,78 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                     "pair_canvas_aspect_ratio": "3:8",
                     "decomposition_window_aspect_ratio": "3:4",
                     "pair_slice_height_px": 1920,
-                    "pair_to_pair_transition_tokens": [f"P{index:02d}→P{index + 1:02d}" for index in range(1, request.page_count // 2)],
+                    "pair_to_pair_transition_tokens": [
+                        f"P{index:02d}→P{index + 1:02d}"
+                        for index in range(1, request.page_count // 2)
+                    ],
                     "pair_ids": pair_ids,
                 },
             },
-            "reference_expression_system": {"coverage": [], "adopted_patterns": [], "anti_copy_rule": "仅迁移视觉语法，不复制品牌、文案或资产"},
-            "style_constitution": {"visual_world": "商品主导的克制商业摄影", "color_and_light": "统一柔和方向光", "typography_and_graphics": "编辑型清晰层级", "product_rendering": "保持真实商品身份", "rhythm": "概览到证明递进"},
-            "series_visual_dna": {"brand_anchor_system": "以当前商品本体建立识别", "palette_tokens": "以商品真实配色为主", "typography_tokens": "清晰中文信息层级", "graphic_tokens": "克制辅助图形", "photography_tokens": "真实商品材质与统一主光", "product_tokens": ["商品真实身份"], "spatial_tokens": ["连续纵向展台"], "invariants": ["商品身份不可变", "统一主光与连续 pair 节奏"]},
-            "typography_rhythm": {"campaign_rule": "标题服从可见证据并按屏幕职责变化", "primary_mode_sequence": ["EDITORIAL" for _ in range(request.page_count)], "anchor_zone_sequence": ["主标题区" for _ in range(request.page_count)], "centered_hero_max": 1, "consecutive_anchor_repeat_limit": 2, "exceptions": []},
+            "reference_expression_system": {
+                "coverage": [],
+                "adopted_patterns": [],
+                "anti_copy_rule": "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET",
+            },
+            "style_constitution": {
+                "visual_world": "商品主导的克制商业摄影",
+                "color_and_light": "统一柔和方向光",
+                "typography_and_graphics": "编辑型清晰层级",
+                "product_rendering": "保持真实商品身份",
+                "rhythm": "概览到证明递进",
+            },
+            "series_visual_dna": {
+                "brand_anchor_system": "以当前商品本体建立识别",
+                "palette_tokens": "以商品真实配色为主",
+                "typography_tokens": "清晰中文信息层级",
+                "graphic_tokens": "克制辅助图形",
+                "photography_tokens": "真实商品材质与统一主光",
+                "product_tokens": ["商品真实身份"],
+                "spatial_tokens": ["连续纵向展台"],
+                "invariants": ["商品身份不可变", "统一主光与连续 pair 节奏"],
+            },
+            "typography_rhythm": {
+                "campaign_rule": "标题服从可见证据并按屏幕职责变化",
+                "primary_mode_sequence": [
+                    "EDITORIAL" for _ in range(request.page_count)
+                ],
+                "anchor_zone_sequence": ["主标题区" for _ in range(request.page_count)],
+                "centered_hero_max": 1,
+                "consecutive_anchor_repeat_limit": 2,
+                "exceptions": [],
+            },
             "modules": modules,
             "information_contract_version": "4.1",
             "expression_contract_version": "4.3",
-            "hero_screen_contract": {"hero_module_id": "M01", "hero_entity_id": "PRODUCT_FROM_APPROVED_SOURCES", "hero_job": "建立商品主体识别", "hero_uniqueness": "M01 是唯一首屏商品主体锚点", "supporting_entities_allowed": [], "co_equal_hero_forbidden": True, "hero_identity_evidence": []},
-            "detail_information_contract": {"buyer_question_sequence": [f"买家问题 {index}" for index in range(1, request.page_count + 1)], "non_repeating_overview_limit": 1, "required_progression_jobs": ["身份", "证据", "购买闭环"], "every_pair_requires_information_delta": True},
-            "formula_split_contract": {"enabled": False, "trigger_basis": "用户已提供卖点", "evaluated_claims": [], "entries": []},
-            "campaign_expression_diversity_contract": {"minimum_subject_classes": 3, "minimum_presentation_forms": 4, "maximum_complete_product_dominant_screens": 3, "maximum_consecutive_same_signature": 1, "required_when_evidence_available": ["PRODUCT_DETAIL_OR_STRUCTURE"]},
+            "hero_screen_contract": {
+                "hero_module_id": "M01",
+                "hero_entity_id": "PRODUCT_FROM_APPROVED_SOURCES",
+                "hero_job": "建立商品主体识别",
+                "hero_uniqueness": "M01 是唯一首屏商品主体锚点",
+                "supporting_entities_allowed": [],
+                "co_equal_hero_forbidden": True,
+                "hero_identity_evidence": [],
+            },
+            "detail_information_contract": {
+                "buyer_question_sequence": [
+                    f"买家问题 {index}" for index in range(1, request.page_count + 1)
+                ],
+                "non_repeating_overview_limit": 1,
+                "required_progression_jobs": ["身份", "证据", "购买闭环"],
+                "every_pair_requires_information_delta": True,
+            },
+            "formula_split_contract": {
+                "enabled": False,
+                "trigger_basis": "用户已提供卖点",
+                "evaluated_claims": [],
+                "entries": [],
+            },
+            "campaign_expression_diversity_contract": {
+                "minimum_subject_classes": 3,
+                "minimum_presentation_forms": 4,
+                "maximum_complete_product_dominant_screens": 3,
+                "maximum_consecutive_same_signature": 1,
+                "required_when_evidence_available": ["PRODUCT_DETAIL_OR_STRUCTURE"],
+            },
         }
     roles = (
         "Cover hero",
@@ -9434,7 +10397,69 @@ def _single_image_analysis_fields(profile: str) -> set[str]:
     return set()
 
 
+def _aurora_completion_context(request: PlannerRequest) -> dict[str, Any]:
+    for value in request.product_information:
+        if value.startswith("CURRENT_AURORA_PLAN_JSON="):
+            try:
+                result = json.loads(value.split("=", 1)[1])
+            except (TypeError, ValueError):
+                return {}
+            return dict(result) if isinstance(result, Mapping) else {}
+    return {}
+
+
+def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int]:
+    return {
+        rule["if"]["properties"]["structure_family"]["const"]:
+        rule["then"]["properties"]["zone_briefs"]["minItems"]
+        for rule in structure.get("allOf", [])
+    }
+
+
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.authoring_stage == "direct":
+        from .domestic_detail.direct import response_format
+
+        return response_format(request)
+    if request.authoring_stage:
+        full = _planner_response_format(replace(request, authoring_stage="",
+            planning_profile="aurora_domestic_detail"))
+        return authoring.phase_schema(full, request)
+    if request.planning_profile == "aurora_detail_revision_scope":
+        from .domestic_detail.revision_protocol import scope_schema
+
+        return {"type": "json_schema", "json_schema": {
+            "name": "aurora_detail_revision_scope", "strict": False,
+            "schema": scope_schema(request),
+        }}
+    if request.planning_profile == "aurora_detail_campaign_audit":
+        from .domestic_detail.campaign_protocol import campaign_schema
+
+        return {"type": "json_schema", "json_schema": {
+            "name": "aurora_detail_campaign_audit", "strict": False,
+            "schema": campaign_schema(request),
+        }}
+    if request.planning_profile == INTAKE_PROFILE:
+        transport_schema = intake_response_schema(
+            [source.asset_id for source in request.sources
+             if source.source_role == "product_reference"],
+            [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
+            wire_settings=request.intake_settings or {},
+            source_conflicts_resolved=request.intake_resolution is not None,
+            style_asset_ids=[source.asset_id for source in request.sources if source.source_role == "style_reference"],
+        )
+        # Compatible providers require a plain object at the response root.
+        # The complete conditional schema stays in intake_prompt and in the
+        # server validator. Only its top-level transport declaration differs.
+        transport_schema.pop("allOf", None)
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": INTAKE_PROFILE,
+                "strict": False,
+                "schema": transport_schema,
+            },
+        }
     if request.planning_profile == "creative_image":
         required = sorted(_single_image_analysis_fields(request.planning_profile))
         return {"type": "json_schema", "json_schema": {
@@ -9448,9 +10473,40 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             / "schemas"
             / "pair-judgment.schema.json"
         )
+        from .domestic_detail.website_review import request_context
+
+        context = request_context(request.product_information)
+        if (
+            request.planning_profile == "aurora_detail_pair_audit"
+            and context.get("review_profile") == "WEBSITE_LEAN_V1"
+        ):
+            schema_path = schema_path.with_name("pair-judgment-website-v1.schema.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        from jsonschema import RefResolver
+        schema = _inline_aurora_schema_refs(schema, RefResolver(schema_path.as_uri(), schema))
+        if request.planning_profile == "aurora_detail_pair_audit":
+            from .domestic_detail.revision_review import with_local_schema
+
+            schema = with_local_schema(schema, context)
+            if context.get("review_transport_version") == "WEBSITE_OWNED_METADATA_V2":
+                from .domestic_detail.website_review import (
+                    transport_schema as website_transport_schema,
+                )
+
+                schema = website_transport_schema(schema)
         if request.planning_profile == "aurora_detail_identity_audit":
-            schema = schema["properties"]["identity_silhouette"]
+            schema = deepcopy(schema["properties"]["identity_silhouette"])
+            schema["required"].append("audit_complete")
+            schema["properties"]["audit_complete"] = {"type": "boolean"}
+            schema["properties"]["uncertainty"] = {"type": "string"}
+            complete_rules = schema.pop("allOf")
+            schema["allOf"] = [{"if": {"properties": {"audit_complete": {"const": True}}}, "then": {"allOf": complete_rules, "properties": {"visible_evidence": {"type": "string", "minLength": 8}}}}]
+            schema["properties"]["visible_evidence"] = {"type": "string"}
+            for name in ("shape_consistent", "colorway_consistent", "texture_consistent"):
+                schema["properties"][name] = {"oneOf": [{"type": ["boolean", "null"]}, {"const": "NOT_APPLICABLE"}]}
+        # The provider requires an object at the response root. Conditional
+        # audit rules remain in the bundled schemas and server-side validators.
+        schema.pop("allOf", None)
         return {
             "type": "json_schema",
             "json_schema": {
@@ -9548,6 +10604,25 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 for field in compact["required"]:
                     if field not in properties:
                         properties[field] = deepcopy(expanded["properties"][field])
+            # With no supplied style references there is no reference grammar
+            # to adopt. Product photos remain identity evidence, never styling.
+            if request.detail_intake is not None and not request.detail_intake.get("reference_materials"):
+                reference = schema["properties"]["reference_expression_system"]["properties"]
+                for field in ("coverage", "adopted_patterns"):
+                    reference[field] = {"type": "array", "maxItems": 0}
+            # A single-module completion keeps its already valid structure
+            # choice. Put its exact zone count in plain properties because
+            # compatible model adapters may overlook conditional allOf rules.
+            if request.planning_profile == "aurora_domestic_modules_completion":
+                current = _aurora_completion_context(request).get("current_module")
+                if isinstance(current, Mapping):
+                    authored_structure = current.get("structure")
+                    family = authored_structure.get("structure_family") if isinstance(authored_structure, Mapping) else None
+                    structure = module_schema["properties"]["structure"]
+                    counts = _aurora_structure_zone_counts(structure)
+                    if family in counts:
+                        structure["properties"]["structure_family"] = {"const": family}
+                        structure["properties"]["zone_briefs"].update(minItems=counts[family], maxItems=counts[family])
             for field in ("selling_point_clusters", "claim_coverage"):
                 schema["properties"]["output_strategy"]["properties"][field] = (
                     runtime_schema["properties"]["output_strategy"]["properties"][field]
@@ -9557,6 +10632,8 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             # precise fail-closed error; do not hide it behind a transport
             # exception while constructing the request.
             return {"type": "json_object"}
+        if request.planning_profile == "aurora_domestic_detail":
+            schema["properties"]["modules"].update(minItems=request.page_count, maxItems=request.page_count)
         if request.planning_profile == "aurora_domestic_campaign_completion":
             schema = {
                 **schema,
@@ -9610,6 +10687,56 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
+    if request.authoring_stage:
+        return authoring.prompt(request)
+    prompt = _planner_prompt_body(request)
+    if request.planning_profile in {
+        "aurora_domestic_detail", "aurora_domestic_campaign_completion",
+        "aurora_domestic_plan_repair", "aurora_domestic_modules_completion",
+    }:
+        schema = _planner_response_format(request)["json_schema"]["schema"]
+        modules = schema.get("properties", {}).get("modules", {})
+        structure = modules.get("items", {}).get("properties", {}).get("structure", {})
+        counts = _aurora_structure_zone_counts(structure)
+        prompt += "\nSTRUCTURE_ZONE_COUNTS_JSON=" + json.dumps(counts, sort_keys=True)
+        prompt += (
+            "\nUse exactly that many zone_briefs for the chosen structure_family. "
+            "Use only closed authored enum tokens. complete_product_role is DOMINANT, "
+            "SUPPORTING, IDENTITY_TOKEN_ONLY or ABSENT. expression_signature is the "
+            "exact four authored tokens primary_subject_class+presentation_form+camera_scale+complete_product_role."
+        )
+        if request.detail_intake is not None and not request.detail_intake.get("reference_materials"):
+            prompt += (
+                "\nThere are ZERO supplied style_reference images. Set "
+                "reference_expression_system.coverage=[] and adopted_patterns=[]. "
+                "Do not adopt product_reference images as style reference patterns. "
+                "Their observed product features remain factual identity evidence."
+            )
+    return prompt
+
+
+def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile == "aurora_detail_revision_scope":
+        from .domestic_detail.revision_protocol import scope_prompt
+
+        return scope_prompt(request)
+    if request.planning_profile == "aurora_detail_campaign_audit":
+        from .domestic_detail.campaign_protocol import campaign_prompt
+
+        return campaign_prompt(request)
+    if request.planning_profile == INTAKE_PROFILE:
+        return intake_prompt(
+            request.intake_settings or {},
+            [
+                {
+                    "asset_id": source.asset_id,
+                    "role": source.source_role,
+                    "sha256": source.sha256,
+                }
+                for source in request.sources
+            ],
+            request.intake_resolution,
+        )
     if request.planning_profile == "creative_image":
         return (
             "Analyze the uploaded product and user brief for ONE creative ecommerce image. "
@@ -9748,27 +10875,57 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.planning_profile == "aurora_detail_identity_audit":
         return (
             "Directly inspect the last attached image as the generated pair candidate. "
-            "Compare its product silhouette, camera and port opening geometry, colorway, "
-            "printed artwork and surface texture to every earlier product reference. "
+            "Use source_inventory roles: only product_reference images establish identity; "
+            "style_reference, continuity and geometry images never supply product facts. "
+            "Compare silhouette, structural segments, openings, colorway, printed "
+            "artwork and surface texture to the original product references. "
             "Ignore geometry-only format canvases and reference backgrounds/watermarks. "
-            "Return only one JSON object with boolean shape_consistent, boolean "
-            "colorway_consistent, boolean texture_consistent, and visible_evidence "
-            "describing concrete observations in these actual pixels. Use false for "
-            "observed drift or insufficient evidence; never infer success from a prompt "
+            "Return audit_complete, comparison_scope, visible_features, shape_consistent, "
+            "colorway_consistent, texture_consistent and concrete visible_evidence. "
+            "Use expected_observed_comparison_scope, derived only from the two actual "
+            "module reports: VISIBLE_COMPLETE_PRODUCT requires three boolean comparisons "
+            "and at least one visible original feature; VISIBLE_IDENTITY_TOKEN compares "
+            "only the visible features and uses NOT_APPLICABLE for unobservable complete "
+            "silhouette/surface properties; NO_VISIBLE_PRODUCT requires NOT_APPLICABLE "
+            "for all three and an empty visible_features list. Actual product absence "
+            "is distinct from unknown visibility. Never infer a complete product pass "
+            "from a plan permitting absence or from an approved identity token. "
+            "Describe concrete observations in these actual pixels. Use false only for "
+            "observed drift. If uncertain, return audit_complete=false, null for unknown "
+            "observations and an uncertainty description; never infer success from a prompt "
             "or a generic prior identity verdict. Do not judge or change any other "
             "pair audit finding.\n\nproduct_information="
             + json.dumps(list(request.product_information), ensure_ascii=False)
         )
     if request.planning_profile == "aurora_detail_pair_audit":
+        from .domestic_detail.website_review import request_context
+
+        review_context = request_context(request.product_information)
+        if review_context.get("review_profile") == "WEBSITE_LEAN_V1":
+            from .domestic_detail.website_review import prompt as website_review_prompt
+            return website_review_prompt(review_context, _planner_response_format(request)["json_schema"]["schema"])
         return (
             "Directly inspect the last attached image as the generated continuous "
-            "3:8 pair canvas. Earlier attached images are the ordered product "
-            "references; a format canvas is geometry-only and never supplies facts. "
+            "3:8 pair canvas. source_inventory binds every attached image to its role "
+            "and hash. Only product_reference images establish product identity/facts; "
+            "style_reference, continuity and format canvases never supply product facts. "
             "Return one JSON object matching the Aurora domestic detail v4.3 "
             "pair-judgment schema: pair_id, module_ids, status, audit_complete, "
             "artifact_binding, pair_canvas, checks, screen_coverage, "
             "internal_seam_evidence, information_audit, material_failures and "
-            "identity_silhouette. Inspect actual pixels, compare the candidate to "
+            "identity_silhouette and module_judgments. module_judgments must contain "
+            "two complete module-judgment reports in approved order. Each report uses "
+            "all 44 canonical checks, its own observed OCR and measurements, full "
+            "identity_silhouette and observations. Bind approved_contract_sha256 to "
+            "the supplied contract_sha256, artifact_binding.image_sha256 to that "
+            "actual fixed slice, and slice_binding to the exact canvas hash/crop_box. "
+            "Inspect both attached generated_module_candidate images for their own "
+            "duties, geometry, typography, brand, semantic role and content units; "
+            "use the last full canvas to inspect the seam. Never copy expected values "
+            "into observations. Known absence may use zero, empty arrays, NOT_PRESENT, "
+            "or headline_visible=false/headline_rank=null as appropriate; unknown "
+            "measurements require audit_complete=false and stop the workflow. "
+            "A PASS pair cannot contain a failing module. Inspect actual pixels, compare the candidate to "
             "every product reference, transcribe visible copy before judging fact "
             "binding, and fail closed on identity drift, unsupported copy, missing "
             "visual proof, illegible text, repeated screens, broken seam, or "
@@ -9776,16 +10933,35 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "the first product_information entry below. checks must contain all "
             "nine objects identity, facts, pair_duties, visual_proof, legibility, "
             "copy_binding, internal_seam, spatial_integrity, commercial_expression; "
-            "each uses boolean pass and concrete visible_evidence. "
+            "each uses boolean pass and concrete visible_evidence. Copy pair/module IDs, "
+            "candidate dimensions and candidate_sha256 from the attached evidence context. "
+            "Report observed OCR as explicit ocr_text, unauthorized_ocr_text and "
+            "forbidden_text_hits lists; artifact_binding.ocr_text must be identical. "
+            "Do not fill selling_points_visible or seam observations from the plan. "
+            "review_authority carries the exact locked identity, brand policy and "
+            "original fact ledger. Only active LEAD/SUPPORT facts may be expressed; "
+            "EXCLUDED/DEFERRED rows remain denial evidence, never permission. "
+            "The allowed fact vocabulary does not replace each approved screen duty. "
+            "If any required observation is unknown, return audit_complete=false and "
+            "describe uncertainty; unknown evidence never authorizes image regeneration. "
             "internal_seam_evidence must report method_id, source_region, "
             "target_region, carrier, geometry, boolean hard_cut_absent, boolean "
             "method_specific_pass, and concrete visible_evidence. Compare to the "
             "supplied pair_render method; never substitute a string verdict or "
             "omit these fields. Report a real failed observation as false. "
             "identity_silhouette is mandatory for both PASS and MATERIAL_FAIL: "
-            "include boolean shape_consistent, colorway_consistent, "
-            "texture_consistent and concrete visible_evidence, separately from "
-            "checks.identity. Never omit the positive reference comparison on failure. "
+            "report comparison_scope, visible_features, shape_consistent, "
+            "colorway_consistent, texture_consistent and concrete visible_evidence, "
+            "separately from checks.identity. Match scope to actual observed presence: "
+            "DOMINANT/SUPPORTING -> VISIBLE_COMPLETE_PRODUCT (three booleans and visible "
+            "features); IDENTITY_TOKEN_ONLY -> VISIBLE_IDENTITY_TOKEN (visible features "
+            "required, unobservable properties explicitly NOT_APPLICABLE); ABSENT -> "
+            "NO_VISIBLE_PRODUCT (all three NOT_APPLICABLE, visible_features empty). "
+            "Never copy planned presence into actual observations. Unexpected absence "
+            "or an unplanned full product is a real material failure, not permission "
+            "to invent a silhouette comparison. Aggregate scope is the strongest actual "
+            "scope in the two reports: full product, then token, then no visible product. "
+            "Unknown comparisons are null with audit_complete=false and stop processing. "
             "Return JSON only.\n\nproduct_information="
             + json.dumps(list(request.product_information), ensure_ascii=False)
         )
@@ -9851,7 +11027,12 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "wide, medium, close, macro, or mixed; story_function, "
             "visual_archetype, primary_subject_class, presentation_form, and "
             "complete_product_role must use only the exact enum tokens in the "
-            "installed schema. Never use SOURCE_IMAGES_ONLY or any workflow label. "
+            "installed schema. expression_signature must equal primary_subject_class "
+            "+ '+' + presentation_form + '+' + camera_scale + '+' + complete_product_role "
+            "using those exact four authored tokens in that order. Nested expression "
+            "mode, claim_visualizability and primary_visual_carrier also use the "
+            "installed closed enums; descriptive sentences belong in visual_scene_sentence. "
+            "Never use SOURCE_IMAGES_ONLY or any workflow label. "
             "Nested proof requires buyer_takeaway, visual_verb, primary_subject, "
             "supporting_subjects, required_relations, minimum_visual_payload, "
             "visual_specificity_anchor, hidden_copy_test. Nested expression "
@@ -9870,6 +11051,14 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "continuity_strength, seam_carrier. Keep facts grounded in the supplied product sources and "
             "retain the approved pair order.\n\n"
             + context
+            + "\n\n"
+            + next((value for value in request.product_information if value.startswith("VALIDATION_ERRORS_JSON=")), "VALIDATION_ERRORS_JSON=[]")
+            + "\nCorrect EVERY listed error. In particular, zone_briefs counts refer "
+            "to spatial zones, not the number of text labels. Keep supporting labels "
+            "inside their existing zone instead of adding a third spatial zone. "
+            "Use complete_product_role=SUPPORTING, never REQUIRED_SUPPORTING. "
+            "After any authored token change, update expression_signature to the "
+            "exact primary_subject_class+presentation_form+camera_scale+complete_product_role tuple."
         )
     if request.planning_profile == "aurora_domestic_detail":
         source_inventory = ", ".join(
@@ -9880,107 +11069,116 @@ def _planner_prompt(request: PlannerRequest) -> str:
             "product_name": request.product_name,
             "user_supplied_selling_points": list(request.product_information),
             "verified_facts": [
-                {"id": f"F{index:02d}", "text": value, "source_class": "USER_FACT"}
-                for index, value in enumerate(request.product_information, start=1)
+                *(request.detail_intake or {}).get("user_facts", []),
+                *(request.detail_intake or {}).get("observed_facts", []),
             ],
+            "validated_intake": request.detail_intake,
             "platform_code": request.platform_code,
             "language": request.language,
             "module_count": request.page_count,
             "screen_size": request.size,
         }
         return (
-            "The bundled aurora-domestic-ecommerce-detail-page v4.3.0 Skill is "  # noqa: UP031
-            "the sole authority. Return exactly one JSON object that validates "
-            "against schemas/compact-detail-plan.schema.json. Do not return the "
-            "legacy analysis/plan/screens contract. First perform the conflict "
-            "scan and stop with conflict_blocked evidence if facts conflict. "
-            "Choose exactly the requested module_count of 8, 10, or 12; do not "
-            "offer multiple candidates. Modules must be M01..M%02d in order. "
-            "Set information_contract_version=4.1 and "
-            "expression_contract_version=4.3. Declare the full campaign thesis, "
-            "fact-grounded selling-point ledger, pain-to-solution contract, "
-            "formula/ingredient routing, identity/brand gate, visual DNA, and "
-            "per-module subject class, presentation form, complete-product role, "
-            "expression signature, visual cast, structured content units and "
-            "visible-copy anchors. "
-            "Honor every schema minLength exactly; any string field with "
-            "minLength=10 must contain at least 10 characters, especially "
-            "expression.commercial_comfort.replacement_expression. "
-            "output_strategy.continuous_pair_rendering must be enabled with "
-            "grouping_mode=TWO_SCREEN_PAIRS, pair_size=2, "
-            "pair_merge_type=PAIR_PLAN_MERGE, pair_count=%d, "
-            "pair_canvas_aspect_ratio=3:8, "
-            "decomposition_window_aspect_ratio=3:4, ordered P01..P%02d and "
-            "adjacent module ids only. Each pair needs an internal seam contract "
-            "and a transition token. Use only product_reference pixels for product "
-            "identity/facts; style_reference may guide grammar only. Do not invent "
-            "logos, claims, ingredients, specifications or evidence. "
-            "The resulting plan is an approval packet; generation is blocked until "
-            "the user approves it. Source inventory: %s\n\n"
-            "FINAL RESPONSE CONTRACT: return the compact Aurora object itself at "
-            "the JSON root. Do not wrap it in `analysis`, `plan`, `screens`, "
-            "`groups`, or any legacy Xinghe envelope. The root MUST include "
-            "campaign_thesis, dominant_decision_type, operating_strategy, "
-            "campaign_recall_contract, selling_point_depth_contract, "
-            "user_selling_point_coverage_ledger, campaign_pain_solution_contract, "
-            "output_strategy, reference_expression_system, style_constitution, "
-            "series_visual_dna, modules, information_contract_version, "
-            "expression_contract_version, hero_screen_contract, "
-            "detail_information_contract, formula_split_contract, and "
-            "campaign_expression_diversity_contract. `campaign_thesis` must be a "
-            "non-empty sentence. `modules` must contain exactly the requested "
-            "M01..M%02d entries and `output_strategy.continuous_pair_rendering` "
-            "must contain the ordered P01..P%02d pair contract. Nested required "
-            "fields must be present too: detail_information_contract has "
-            "buyer_question_sequence, non_repeating_overview_limit, "
-            "required_progression_jobs, every_pair_requires_information_delta; "
-            "hero_screen_contract has hero_module_id, hero_entity_id, hero_job, "
-            "hero_uniqueness, supporting_entities_allowed, co_equal_hero_forbidden, "
-            "hero_identity_evidence; formula_split_contract has enabled, "
-            "trigger_basis, evaluated_claims, entries; style_constitution has "
-            "visual_world, color_and_light, typography_and_graphics, "
-            "product_rendering, rhythm; reference_expression_system has coverage, "
-            "adopted_patterns, anti_copy_rule; campaign_expression_diversity_contract "
-            "has minimum_subject_classes, minimum_presentation_forms, "
-            "maximum_complete_product_dominant_screens, "
-            "maximum_consecutive_same_signature, required_when_evidence_available. "
-            "Set plan_format=COMPACT_V1_3. Each module must include the compact "
-            "schema fields only: id, duty, buyer_question, lead_conclusion, "
-            "lead_claim_id, selling_point_cluster_ids, story_function, pain_ids, "
-            "value_bridge_ids, visual_proof_direction, visual_evidence, proof, "
-            "expression, structure, visual_archetype, visible_copy, typography, "
-            "composition_family, camera_scale, variation_from_previous, "
-            "transition_contract, primary_subject_class, secondary_subject_classes, "
-            "presentation_form, complete_product_role, expression_signature, "
-            "visual_cast, and content_unit_contract. Do not emit runtime-derived "
-            "fields such as visual_proof_contract, text_system, copy_intent, "
-            "output, independent_logo_policy, or module_spatial_structure_contract; "
-            "the installed plan normalizer derives them from the compact module. "
-            "modules must contain exactly the requested screens and must not be "
-            "an empty array. formula_split_contract.entries[].dedicated_module_id "
-            "must match ^M[0-9]{2,}$ when an entry is present; leave entries "
-            "empty instead of writing an empty module id. Do not substitute "
-            "legacy screen objects. JSON only."
-            % (
-                request.page_count,
-                request.page_count // 2,
-                request.page_count // 2,
-                source_inventory,
-                request.page_count,
-                request.page_count // 2,
+            (
+                "The bundled aurora-domestic-ecommerce-detail-page v4.3.1 Skill is "  # noqa: UP031
+                "the sole authority. Return exactly one JSON object that validates "
+                "against schemas/compact-detail-plan.schema.json. Do not return the "
+                "legacy analysis/plan/screens contract. First perform the conflict "
+                "scan and stop with conflict_blocked evidence if facts conflict. "
+                "Choose exactly the requested module_count of 8, 10, or 12; do not "
+                "offer multiple candidates. Modules must be M01..M%02d in order. "
+                "Set information_contract_version=4.1 and "
+                "expression_contract_version=4.3. Declare the full campaign thesis, "
+                "fact-grounded selling-point ledger, pain-to-solution contract, "
+                "formula/ingredient routing, identity/brand gate, visual DNA, and "
+                "per-module subject class, presentation form, complete-product role, "
+                "expression signature, visual cast, structured content units and "
+                "visible-copy anchors. expression_signature must be the exact four "
+                "authored tokens primary_subject_class + '+' + presentation_form + '+' "
+                "+ camera_scale + '+' + complete_product_role. Nested expression_mode, "
+                "claim_visualizability and primary_visual_carrier use the closed schema "
+                "enums; descriptive prose belongs in visual_scene_sentence. "
+                "Honor every schema minLength exactly; any string field with "
+                "minLength=10 must contain at least 10 characters, especially "
+                "expression.commercial_comfort.replacement_expression. "
+                "output_strategy.continuous_pair_rendering must be enabled with "
+                "grouping_mode=TWO_SCREEN_PAIRS, pair_size=2, "
+                "pair_merge_type=PAIR_PLAN_MERGE, pair_count=%d, "
+                "pair_canvas_aspect_ratio=3:8, "
+                "decomposition_window_aspect_ratio=3:4, ordered P01..P%02d and "
+                "adjacent module ids only. Each pair needs an internal seam contract "
+                "and a transition token. Use only product_reference pixels for product "
+                "identity/facts; style_reference may guide grammar only. Do not invent "
+                "logos, claims, ingredients, specifications or evidence. "
+                "The resulting plan is an approval packet; generation is blocked until "
+                "the user approves it. Source inventory: %s\n\n"
+                "FINAL RESPONSE CONTRACT: return the compact Aurora object itself at "
+                "the JSON root. Do not wrap it in `analysis`, `plan`, `screens`, "
+                "`groups`, or any legacy Xinghe envelope. The root MUST include "
+                "campaign_thesis, dominant_decision_type, operating_strategy, "
+                "campaign_recall_contract, selling_point_depth_contract, "
+                "user_selling_point_coverage_ledger, campaign_pain_solution_contract, "
+                "output_strategy, reference_expression_system, style_constitution, "
+                "series_visual_dna, modules, information_contract_version, "
+                "expression_contract_version, hero_screen_contract, "
+                "detail_information_contract, formula_split_contract, and "
+                "campaign_expression_diversity_contract. `campaign_thesis` must be a "
+                "non-empty sentence. `modules` must contain exactly the requested "
+                "M01..M%02d entries and `output_strategy.continuous_pair_rendering` "
+                "must contain the ordered P01..P%02d pair contract. Nested required "
+                "fields must be present too: detail_information_contract has "
+                "buyer_question_sequence, non_repeating_overview_limit, "
+                "required_progression_jobs, every_pair_requires_information_delta; "
+                "hero_screen_contract has hero_module_id, hero_entity_id, hero_job, "
+                "hero_uniqueness, supporting_entities_allowed, co_equal_hero_forbidden, "
+                "hero_identity_evidence; formula_split_contract has enabled, "
+                "trigger_basis, evaluated_claims, entries; style_constitution has "
+                "visual_world, color_and_light, typography_and_graphics, "
+                "product_rendering, rhythm; reference_expression_system has coverage, "
+                "adopted_patterns, anti_copy_rule; campaign_expression_diversity_contract "
+                "has minimum_subject_classes, minimum_presentation_forms, "
+                "maximum_complete_product_dominant_screens, "
+                "maximum_consecutive_same_signature, required_when_evidence_available. "
+                "Set plan_format=COMPACT_V1_3. Each module must include the compact "
+                "schema fields only: id, duty, buyer_question, lead_conclusion, "
+                "lead_claim_id, selling_point_cluster_ids, story_function, pain_ids, "
+                "value_bridge_ids, visual_proof_direction, visual_evidence, proof, "
+                "expression, structure, visual_archetype, visible_copy, typography, "
+                "composition_family, camera_scale, variation_from_previous, "
+                "transition_contract, primary_subject_class, secondary_subject_classes, "
+                "presentation_form, complete_product_role, expression_signature, "
+                "visual_cast, and content_unit_contract. Do not emit runtime-derived "
+                "fields such as visual_proof_contract, text_system, copy_intent, "
+                "output, independent_logo_policy, or module_spatial_structure_contract; "
+                "the installed plan normalizer derives them from the compact module. "
+                "modules must contain exactly the requested screens and must not be "
+                "an empty array. formula_split_contract.entries[].dedicated_module_id "
+                "must match ^M[0-9]{2,}$ when an entry is present; leave entries "
+                "empty instead of writing an empty module id. Do not substitute "
+                "legacy screen objects. JSON only."
+                % (
+                    request.page_count,
+                    request.page_count // 2,
+                    request.page_count // 2,
+                    source_inventory,
+                    request.page_count,
+                    request.page_count // 2,
+                )
             )
-        ) + (
-            "\n\nUSER_BRIEF_JSON=" + json.dumps(brief, ensure_ascii=False)
-            + "\nPreserve these user fact IDs and their meanings throughout the "
-            "coverage ledger, depth plan and copy bindings. Do not replace the "
-            "user's supplied selling points with a photo-only appearance plan. "
-            "Additional visible photo facts may support the story but must not "
-            "reuse or renumber these user fact IDs. For every pair, the upper "
-            "module transition_contract defines that pair's internal seam at "
-            "y=1920 between its upper and lower screens. It must describe an "
-            "actual continuous carrier crossing that boundary and agree with "
-            "the pair seam contract; do not use an incoming page-header "
-            "transition or a no-previous-region placeholder there."
+            + (
+                "\n\nUSER_BRIEF_JSON="
+                + json.dumps(brief, ensure_ascii=False)
+                + "\nPreserve these user fact IDs and their meanings throughout the "
+                "coverage ledger, depth plan and copy bindings. Do not replace the "
+                "user's supplied selling points with a photo-only appearance plan. "
+                "Additional visible photo facts may support the story but must not "
+                "reuse or renumber these user fact IDs. For every pair, each "
+                "module transition_contract is its incoming seam. The lower screen in a pair defines the internal seam at "
+                "y=1920 between its upper and lower screens. It must describe an "
+                "actual continuous carrier crossing that boundary and agree with "
+                "the pair seam contract; do not use an incoming page-header "
+                "transition or a no-previous-region placeholder there."
+            )
         )
     if request.planning_profile == "crossborder_detail":
         source_inventory = ", ".join(
@@ -10715,6 +11913,13 @@ def _accept_aurora_completion_module(
     completed["id"] = module_id
     if not set(_AURORA_COMPACT_MODULE_REQUIRED).issubset(completed):
         return None
+    schema_request = PlannerRequest(workspace_id="schema", job_id="schema", group_key="schema",
+        sources=(), page_count=1, language="zh-CN", product_name="", product_information=(),
+        platform_code="tmall", size="1440x1920", idempotency_key="schema",
+        planning_profile="aurora_domestic_modules_completion")
+    structure_schema = _planner_response_format(schema_request)["json_schema"]["schema"]["properties"]["modules"]["items"]["properties"]["structure"]
+    if authoring.errors_for(completed.get("structure"), {"json_schema": {"schema": structure_schema}}):
+        return None
     return completed
 
 
@@ -10849,7 +12054,7 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
         "visual_specificity_anchor": "产品外观与结构",
         "hidden_copy_test": conclusion,
     }.items():
-        if key in {"supporting_subjects", "required_relations"}:
+        if key == "minimum_visual_payload" or key in {"supporting_subjects", "required_relations"}:
             proof_output.setdefault(key, fallback)
         else:
             proof_output[key] = as_text(proof_output.get(key), str(fallback))
@@ -10865,20 +12070,23 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
 
     presence = output.get("product_presence_decision")
     presence_output = dict(presence) if isinstance(presence, Mapping) else {}
-    policy = presence_output.get("policy")
-    if policy not in {
-        "REQUIRED_DOMINANT",
-        "REQUIRED_SUPPORTING",
-        "IDENTITY_TOKEN_ONLY",
-        "OPTIONAL",
-        "ABSENT_ALLOWED",
-        "ABSENT_PREFERRED",
-    }:
-        policy = (
-            "REQUIRED_DOMINANT"
-            if output.get("complete_product_role") == "DOMINANT"
-            else "REQUIRED_SUPPORTING"
-        )
+    # Preserve authored policies, including invalid values for strict validation.
+    # Absence/token roles must never be coerced into a supporting full product.
+    if "policy" in presence_output:
+        policy = presence_output["policy"]
+    elif isinstance(output.get("expression"), Mapping) and (
+        "product_presence_policy" in output["expression"]
+    ):
+        policy = output["expression"]["product_presence_policy"]
+    else:
+        role = output.get("complete_product_role")
+        role_policies = {
+            "DOMINANT": "REQUIRED_DOMINANT",
+            "SUPPORTING": "REQUIRED_SUPPORTING",
+            "IDENTITY_TOKEN_ONLY": "IDENTITY_TOKEN_ONLY",
+            "ABSENT": "ABSENT_PREFERRED",
+        }
+        policy = role_policies.get(role) if isinstance(role, str) else None
     presence_output["policy"] = policy
     presence_output["unique_job_if_present"] = as_text(
         presence_output.get("unique_job_if_present"), conclusion
@@ -10906,9 +12114,9 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
     if expression_output.get("evidence_subject_policy") == "PRODUCT_DETAIL_DOMINANT":
         expression_output["evidence_subject_policy"] = "CLAIM_OBJECT_DOMINANT"
     for key, fallback in {
-        "expression_mode": "DIRECT_OBSERVATION",
-        "claim_visualizability": conclusion,
-        "primary_visual_carrier": "产品主体",
+        "expression_mode": "",
+        "claim_visualizability": "",
+        "primary_visual_carrier": "",
         "visual_scene_sentence": conclusion,
         "copy_responsibility": "说明购买结论",
     }.items():
@@ -10958,8 +12166,6 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
 
     structure = output.get("structure")
     structure_output = dict(structure) if isinstance(structure, Mapping) else {}
-    structure_output.setdefault("structure_family", "ASYMMETRIC_EDITORIAL")
-    structure_output.setdefault("zone_briefs", ["产品主体与卖点信息区"])
     structure_output.setdefault(
         "structure_difference_from_previous", "本屏以主卖点证明为核心"
     )
@@ -11081,85 +12287,9 @@ def _complete_aurora_module_structure(module: Mapping[str, Any]) -> dict[str, An
         transition_output["visible_overlap_required"] = True
     output["transition_contract"] = transition_output
 
-    enum_fallbacks = {
-        "story_function": "OTHER",
-        "visual_archetype": "BENEFIT_OVERVIEW",
-        "primary_subject_class": "COMPLETE_PRODUCT",
-        "presentation_form": "HERO_POSTER",
-        "complete_product_role": "SUPPORTING",
-        "camera_scale": "mixed",
-    }
-    allowed_enums = {
-        "story_function": {
-            "HOOK",
-            "PAIN_ARTICULATION",
-            "PAIN_SOLUTION_COMBINED",
-            "SOLUTION_PROOF",
-            "MECHANISM_PROOF",
-            "MATERIAL_PROOF",
-            "USE_OR_RESULT",
-            "TRUST_OR_RISK_REMOVAL",
-            "SELECTION_OR_SPECIFICATION",
-            "PURCHASE_CLOSURE",
-            "OTHER",
-        },
-        "visual_archetype": {
-            "PAIN_SCENE",
-            "PAIN_TO_SOLUTION_BRIDGE",
-            "BENEFIT_OVERVIEW",
-            "DEDICATED_BENEFIT_PROOF",
-            "SOURCE_ACTION_RESULT",
-            "WHOLE_PLUS_MACRO",
-            "ACTION_SEQUENCE",
-            "USE_SCOPE_MATRIX",
-            "STATE_CONTRAST",
-            "SENSORY_WORLD",
-            "SELECTION_COMPARISON",
-            "TRUST_EVIDENCE",
-            "PURCHASE_CLOSURE",
-        },
-        "primary_subject_class": {
-            "COMPLETE_PRODUCT",
-            "PRODUCT_DETAIL",
-            "HUMAN",
-            "BODY_OR_SKIN",
-            "INGREDIENT_OR_MATERIAL",
-            "MECHANISM",
-            "ACTION",
-            "RESULT_STATE",
-            "DOCUMENT_EVIDENCE",
-            "SPECIFICATION_INFORMATION",
-            "ENVIRONMENT_SCENE",
-        },
-        "presentation_form": {
-            "HERO_POSTER",
-            "MULTI_PAIN_ARRAY",
-            "WHOLE_PLUS_MACRO",
-            "EXPLODED_STRUCTURE",
-            "PROCESS_SEQUENCE",
-            "SOURCE_ACTION_RESULT",
-            "STATE_CONTRAST",
-            "USE_SCOPE_MATRIX",
-            "DOCUMENTARY_EVIDENCE",
-            "SPECIFICATION_BOARD",
-            "FAQ_BOARD",
-            "ASYMMETRIC_EDITORIAL",
-        },
-        "complete_product_role": {
-            "DOMINANT",
-            "SUPPORTING",
-            "IDENTITY_TOKEN_ONLY",
-            "ABSENT",
-        },
-        "camera_scale": {"wide", "medium", "close", "macro", "mixed"},
-    }
-    for field, fallback in enum_fallbacks.items():
-        if output.get(field) not in allowed_enums[field]:
-            output[field] = fallback
-    signature = as_text(output.get("expression_signature"), conclusion)
-    if len(signature) < 10:
-        signature = f"{signature}；保持产品识别与卖点连续"
-    output["expression_signature"] = signature
+    # These are authored commercial decisions. Preserve unknown enum values
+    # for schema diagnostics; replacing one also invalidates its signature.
+    output["expression_signature"] = as_text(output.get("expression_signature"), "")
     return output
 
 
@@ -11204,6 +12334,14 @@ def validate_aurora_domestic_plan(
             "Aurora domestic detail requires 8, 10, or 12 modules.",
         )
     root = dict(_require_mapping(payload, "AURORA_PLAN_SCHEMA_INVALID", path="/"))
+    if root.get("plan_format") == "WEBSITE_DIRECT_V2":
+        from .domestic_detail.direct import validate_plan
+
+        try:
+            validate_plan(root, page_count)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise XingheAgentError("WEBSITE_DETAIL_PLAN_INVALID", str(exc)) from exc
+        return _project_aurora_plan(root)
     # These three values are protocol constants owned by the installed skill,
     # not product claims. Fill them only when the planner omits them. A wrong
     # explicit value still fails schema validation.
@@ -11385,45 +12523,6 @@ def validate_aurora_domestic_plan(
         pair_contract["pair_ids"] = pair_ids
         output_strategy["continuous_pair_rendering"] = pair_contract
         root["output_strategy"] = output_strategy
-    reference_system = root.get("reference_expression_system")
-    if isinstance(reference_system, Mapping):
-        reference_system = dict(reference_system)
-        coverage = reference_system.get("coverage")
-        if isinstance(coverage, list):
-            repaired_coverage = []
-            for index, item in enumerate(coverage, start=1):
-                entry = dict(item) if isinstance(item, Mapping) else {}
-                entry.setdefault("reference_id", f"REF-{index:02d}")
-                entry.setdefault("disposition", "REJECTED")
-                entry.setdefault("pattern_ids", [])
-                entry.setdefault("reason", "未提供可采用的参考表达样本")
-                repaired_coverage.append(entry)
-            reference_system["coverage"] = repaired_coverage
-        reference_system.setdefault("coverage", [])
-        adopted_patterns = reference_system.get("adopted_patterns")
-        if isinstance(adopted_patterns, list):
-            repaired_patterns = []
-            for index, item in enumerate(adopted_patterns, start=1):
-                pattern = dict(item) if isinstance(item, Mapping) else {}
-                pattern.setdefault("id", f"PATTERN-{index:02d}")
-                pattern.setdefault("source_reference_ids", [])
-                pattern.setdefault("source_unit_ids", [])
-                pattern.setdefault("observed_method", "保持信息层级与节奏")
-                pattern.setdefault("adaptation_for_product", "按当前产品事实重建")
-                pattern.setdefault("scheduled_module_ids", ["M01"])
-                pattern.setdefault("do_not_copy", "不复制品牌、文案、资产或整版布局")
-                pattern.setdefault("fact_dependencies", ["PRODUCT_REFERENCE"])
-                pattern.setdefault(
-                    "copy_or_claims_not_inherited", ["源参考中的品牌与文案不继承"]
-                )
-                repaired_patterns.append(pattern)
-            reference_system["adopted_patterns"] = repaired_patterns
-        else:
-            reference_system["adopted_patterns"] = []
-        reference_system["anti_copy_rule"] = (
-            "ADAPT_VISUAL_GRAMMAR_ONLY_NEVER_COPY_BRAND_COPY_OR_ASSET"
-        )
-        root["reference_expression_system"] = reference_system
     try:
         from jsonschema import Draft202012Validator, RefResolver
     except ImportError as exc:
@@ -11544,6 +12643,12 @@ def validate_aurora_domestic_plan(
                     "actual_module_ids": pair.get("module_ids"),
                     "message": f"P{index:02d} must use {expected}; align its seam carrier, source/target regions and geometry with these two authored module duties."}],
             )
+    return _project_aurora_plan(root)
+
+
+def _project_aurora_plan(root: Mapping[str, Any]) -> dict[str, Any]:
+    modules = root["modules"]
+    pair_contract = root["output_strategy"]["continuous_pair_rendering"]
     projected_screens: list[dict[str, Any]] = []
     for module in modules:
         module = _require_mapping(module, "AURORA_PLAN_SCHEMA_INVALID")

@@ -191,9 +191,9 @@ class LocalEditConfiguration(BaseModel):
     # The masked-image-repair Skill chooses the cheapest viable execution path.
     # ``auto`` keeps the existing UI behaviour while allowing API clients to
     # request an explicit deterministic, hybrid, cropped, or full-canvas path.
-    execution_path: Literal[
-        "auto", "deterministic", "hybrid", "cropped", "full"
-    ] = "auto"
+    execution_path: Literal["auto", "deterministic", "hybrid", "cropped", "full"] = (
+        "auto"
+    )
     output_format: Literal["png"] = "png"
 
 
@@ -363,6 +363,12 @@ class DetailPackInput(BaseModel):
 
 
 class DetailPackConfiguration(BaseModel):
+    website_contract_version: (
+        Literal["WEBSITE_LEAN_V1", "WEBSITE_DIRECT_V2"] | None
+    ) = None
+    brandless_confirmation: str | None = Field(
+        default=None, min_length=2, max_length=240
+    )
     product_name: str = Field(min_length=1, max_length=160)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
     platform_code: str = Field(min_length=1, max_length=32)
@@ -384,6 +390,14 @@ class DetailPackConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def default_domestic_delivery_size(self) -> "DetailPackConfiguration":
+        if (
+            self.market_region == "domestic"
+            and self.brandless_confirmation is not None
+            and len(self.brandless_confirmation.strip()) < 2
+        ):
+            raise ValueError(
+                "Brandless mode requires explicit user confirmation words."
+            )
         if self.market_region == "domestic" and "size" not in self.model_fields_set:
             self.size = "1440x1920"
         if self.market_region == "domestic" and self.page_count not in {8, 10, 12}:
@@ -683,6 +697,24 @@ class PlanUpdateRequest(BaseModel):
     payload: dict[str, Any]
 
 
+class IntakeConflictResolution(BaseModel):
+    conflict_id: str = Field(min_length=1, max_length=120)
+    retained_fact_ids: list[str] = Field(min_length=1, max_length=36)
+    rejected_fact_ids: list[str] = Field(default_factory=list, max_length=36)
+
+
+class DetailIntakeResolutionRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    confirmation_text: str = Field(min_length=2, max_length=500)
+    resolutions: list[IntakeConflictResolution] = Field(
+        default_factory=list, max_length=24
+    )
+    brandless_confirmation: str | None = Field(
+        default=None, min_length=2, max_length=240
+    )
+    additional_product_asset_ids: list[str] = Field(default_factory=list, max_length=2)
+
+
 class PlanConfirmRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     approval_text: str | None = Field(default=None, min_length=2, max_length=240)
@@ -691,12 +723,247 @@ class PlanConfirmRequest(BaseModel):
     approval_document_sha256: str | None = Field(
         default=None, min_length=64, max_length=64
     )
+    approval_protocol: Literal["domestic-native-approval-v1"] | None = None
+    native_approval_document_sha256: str | None = Field(
+        default=None, min_length=64, max_length=64
+    )
     approved_module_count: int | None = Field(default=None, ge=8, le=12)
     approved_pair_canvas_aspect_ratio: Literal["3:8"] | None = None
+    domestic_detail_delivery_mode: (
+        Literal["USER_FINAL_REVIEW", "AUTO_FINALIZE_AUTHORIZED"] | None
+    ) = None
+    automatic_delivery_authorization_text: str | None = Field(
+        default=None, min_length=2, max_length=240
+    )
+    automatic_delivery_authorization_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+
+
+class DomesticDetailLocalRevisionDelta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    module_id: str = Field(pattern=r"^M(?:0[1-9]|1[0-2])$")
+    verbatim_instruction: str = Field(min_length=2, max_length=2000)
+    change_scope: Literal["local"]
+    change_kind: Literal[
+        "TYPOGRAPHY_LAYOUT", "COPY_CONTENT", "VISUAL_DETAIL", "OTHER_LOCAL"
+    ]
+    change_only: list[Annotated[str, Field(min_length=1, max_length=400)]] = Field(
+        min_length=1, max_length=12
+    )
+    preserve: list[Annotated[str, Field(min_length=1, max_length=400)]] = Field(
+        min_length=1, max_length=12
+    )
+    must_not_regress: list[Annotated[str, Field(min_length=1, max_length=400)]] = Field(
+        min_length=1, max_length=12
+    )
+    changes_identity: Literal[False]
+    changes_facts: Literal[False]
+    changes_target_buyer: Literal[False]
+    changes_campaign_style: Literal[False]
+    changes_module_sequence: Literal[False]
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_local_scope(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            for name in (
+                "changes_identity",
+                "changes_facts",
+                "changes_target_buyer",
+                "changes_campaign_style",
+                "changes_module_sequence",
+            ):
+                if type(value.get(name)) is not bool or value[name] is not False:
+                    raise ValueError(
+                        "Global change flags must be false; otherwise replan"
+                    )
+        return value
+
+
+class DomesticDetailLocalRevisionQuoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    final_review_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adjustment: DomesticDetailLocalRevisionDelta
+
+
+class DomesticDetailLocalRevisionCreateRequest(DomesticDetailLocalRevisionQuoteRequest):
+    quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approval_text: str = Field(min_length=1, max_length=2000)
+
+
+class DomesticDetailLocalRevisionScreen(BaseModel):
+    module_id: str
+    asset_id: str
+    ordinal: int
+    sha256: str
+    width: int
+    height: int
+
+
+class DomesticDetailLocalRevisionCanvas(BaseModel):
+    asset_id: str
+    sha256: str
+    width: int
+    height: int
+    pixel_lineage_sha256: str
+
+
+class DomesticDetailLocalRevisionQuote(BaseModel):
+    version: Literal["domestic-detail-local-revision-quote-v1"]
+    source_job_id: str
+    workspace_id: str
+    actor_user_id: str
+    source_plan_id: str
+    source_plan_revision: int
+    source_plan_payload_sha256: str
+    final_review_sha256: str
+    source_context_sha256: str
+    source_native_session_sha256: str
+    source_generation_binding_sha256: str
+    native_approval_document_sha256: str
+    original_approval_receipt_sha256: str
+    source_approved_scope_sha256: str
+    skill_content_hash: str
+    runtime_source_sha256: str
+    revision_policy_sha256: str
+    approved_screen_count: Literal[8, 10, 12]
+    selected_module_id: str
+    pair_id: str
+    module_ids: list[str]
+    source_screens: list[DomesticDetailLocalRevisionScreen]
+    source_pair_canvas: DomesticDetailLocalRevisionCanvas
+    source_quality_state: Literal["PAIR_REVIEW_PASSED", "WITH_RESIDUALS"]
+    source_residual_issues: list[dict[str, Any]]
+    adjustment: DomesticDetailLocalRevisionDelta
+    image_dispatch_sha256: str
+    review_dispatch_sha256: str
+    image_provider: str
+    image_model: str
+    review_model: str
+    dispatch_kind: Literal["http", "synthetic"]
+    pricing_version: str
+    image_unit_micros: int = Field(ge=0)
+    review_reserve_micros: int = Field(ge=0)
+    maximum_image_requests: Literal[2]
+    maximum_scope_model_requests: Literal[1]
+    maximum_review_model_requests: Literal[4]
+    maximum_model_requests: Literal[5]
+    maximum_provider_requests: Literal[7]
+    maximum_cost_micros: int = Field(ge=0)
+    currency: Literal["USD"]
+    delivery_mode: Literal["USER_FINAL_REVIEW"]
+    authorization_text: str
+    disclosure: str
+    sha256: str
+
+
+class DomesticDetailAutomaticDeliveryAuthorization(BaseModel):
+    version: Literal["domestic-detail-auto-delivery-authorization-v1"]
+    job_id: str
+    workspace_id: str
+    actor_user_id: str
+    plan_id: str
+    plan_revision: int
+    native_approval_document_sha256: str
+    approval_document_sha256: str
+    contract_binding_sha256: str
+    source_input_sha256: str
+    runtime_source_sha256: str
+    delivery_mode: Literal["AUTO_FINALIZE_AUTHORIZED"]
+    authorization_text: str
+    completion_disclosure: str
+    delivery_extra_model_requests: Literal[0]
+    delivery_extra_image_requests: Literal[0]
+    sha256: str
+
+
+class DomesticDetailAutomaticDeliveryRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    authorization_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class DomesticCampaignRecoveryQuote(BaseModel):
+    version: Literal["campaign-saved-result-v1"]
+    original_review_job_id: str
+    source_job_id: str
+    original_result_journal_sha256: str
+    original_request_context_sha256: str
+    model_requests: Literal[0]
+    image_requests: Literal[0]
+    reserve_micros: Literal[0]
+    currency: Literal["USD"]
+    sha256: str
+
+
+class DomesticCampaignRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    original_result_journal_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class DomesticCampaignReviewReport(BaseModel):
+    report: dict[str, Any]
+    request_context: dict[str, Any]
+    original_message: str | None
+    original_message_state: Literal["PRESERVED_UTF8", "UNAVAILABLE"]
+    model: str
+    source_job_id: str
+    scope: Literal["OPTIONAL_CAMPAIGN_REVIEW_ONLY"]
+
+
+class DomesticCampaignReviewQuote(BaseModel):
+    version: Literal["domestic-campaign-review-v1"]
+    source_job_id: str
+    final_review_sha256: str
+    source_context_sha256: str
+    provider: str
+    model: str
+    dispatch_route_sha256: str
+    reserve_micros: int
+    currency: Literal["USD"]
+    model_requests: Literal[1]
+    image_requests: Literal[0]
+    sha256: str
+
+
+class DomesticCampaignReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    final_review_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approval_text: str = Field(min_length=2, max_length=240)
+    authorized_reserve_micros: int = Field(gt=0, le=2_000_000, strict=True)
+    quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class DomesticCampaignReviewSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    review_job_id: str = Field(min_length=1, max_length=40)
+    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class DomesticDetailFinalReviewResponse(BaseModel):
+    version: Literal["domestic-detail-final-review-v1"]
+    job_id: str
+    plan_id: str
+    plan_revision: int
+    skill_version: str
+    context_sha256: str
+    generation_binding_sha256: str
+    sha256: str
+    document_markdown: str
+    quality_state: Literal["PAIR_REVIEW_PASSED", "WITH_RESIDUALS"]
+    campaign_audit_status: Literal["NOT_REQUESTED"]
+    supplementary_campaign_review: dict[str, Any] | None = None
+    delivery_mode: Literal["AUTO_FINALIZE_AUTHORIZED"] | None = None
+    automatic_delivery_authorization: dict[str, Any] | None = None
+    screens: list[dict[str, Any]]
+    pair_canvases: list[dict[str, Any]]
+    residual_issues: list[dict[str, Any]]
 
 
 class FinalizeJobRequest(BaseModel):
     approval_text: str = Field(min_length=2, max_length=240)
+    final_review_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class HealthResponse(BaseModel):

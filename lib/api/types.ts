@@ -6,6 +6,7 @@ export type AssetList = components["schemas"]["AssetListResponse"];
 export type AssetOriginKind = components["schemas"]["AssetOriginKind"];
 export type Job = components["schemas"]["JobListItemResponse"];
 export type JobDetail = components["schemas"]["JobDetailResponse"];
+export type DomesticDetailFinalReview = components["schemas"]["DomesticDetailFinalReviewResponse"];
 export type JobList = components["schemas"]["JobListResponse"];
 export type JobStatus = components["schemas"]["JobStatus"];
 export type JobItemStatus = components["schemas"]["JobItemStatus"];

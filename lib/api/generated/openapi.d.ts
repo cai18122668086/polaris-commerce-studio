@@ -1371,6 +1371,142 @@ export interface paths {
         patch: operations["update_draft_job_api_v1_workspaces__workspace_id__jobs__job_id__patch"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Automatic Detail Delivery */
+        post: operations["recover_automatic_detail_delivery_api_v1_workspaces__workspace_id__jobs__job_id__automatic_delivery_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Domestic Campaign Review */
+        post: operations["create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/preview.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domestic Campaign Preview */
+        get: operations["get_domestic_campaign_preview_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_preview_png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quote Domestic Campaign Review */
+        get: operations["quote_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_quote_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Domestic Campaign Result */
+        post: operations["recover_domestic_campaign_result_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recovery-quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quote Domestic Campaign Recovery */
+        get: operations["quote_domestic_campaign_recovery_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recovery_quote_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domestic Campaign Report */
+        get: operations["get_domestic_campaign_report_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Domestic Campaign Reviews */
+        get: operations["list_domestic_campaign_reviews_api_v1_workspaces__workspace_id__jobs__job_id__campaign_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -1422,6 +1558,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Domestic Detail Final Review */
+        post: operations["prepare_domestic_detail_final_review_api_v1_workspaces__workspace_id__jobs__job_id__detail_final_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize": {
         parameters: {
             query?: never;
@@ -1442,6 +1595,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Detail Intake */
+        post: operations["resolve_detail_intake_api_v1_workspaces__workspace_id__jobs__job_id__intake_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Domestic Detail Local Revision */
+        post: operations["create_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quote Domestic Detail Local Revision */
+        post: operations["quote_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan": {
         parameters: {
             query?: never;
@@ -1452,6 +1656,23 @@ export interface paths {
         get?: never;
         /** Update Plan */
         put: operations["update_plan_api_v1_workspaces__workspace_id__jobs__job_id__plan_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan/automatic-delivery-authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Automatic Detail Delivery Authorization */
+        get: operations["get_automatic_detail_delivery_authorization_api_v1_workspaces__workspace_id__jobs__job_id__plan_automatic_delivery_authorization_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2056,6 +2277,19 @@ export interface components {
             id: string;
             status: components["schemas"]["UserStatus"];
         };
+        /** DetailIntakeResolutionRequest */
+        DetailIntakeResolutionRequest: {
+            /** Additional Product Asset Ids */
+            additional_product_asset_ids?: string[];
+            /** Brandless Confirmation */
+            brandless_confirmation?: string | null;
+            /** Confirmation Text */
+            confirmation_text: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Resolutions */
+            resolutions?: components["schemas"]["IntakeConflictResolution"][];
+        };
         /** DetailPackConfiguration */
         DetailPackConfiguration: {
             /**
@@ -2063,6 +2297,8 @@ export interface components {
              * @default true
              */
             auto_start_after_plan: boolean;
+            /** Brandless Confirmation */
+            brandless_confirmation?: string | null;
             /** Category */
             category?: string | null;
             /** Conflict Scan */
@@ -2104,6 +2340,8 @@ export interface components {
             target_buyer?: string | null;
             /** Verified Facts */
             verified_facts?: string[];
+            /** Website Contract Version */
+            website_contract_version?: ("WEBSITE_LEAN_V1" | "WEBSITE_DIRECT_V2") | null;
         };
         /** DetailPackInput */
         DetailPackInput: {
@@ -2176,6 +2414,465 @@ export interface components {
             image_model: string;
             /** Vision Model */
             vision_model: string;
+        };
+        /** DomesticCampaignRecoveryQuote */
+        DomesticCampaignRecoveryQuote: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /**
+             * Image Requests
+             * @constant
+             */
+            image_requests: 0;
+            /**
+             * Model Requests
+             * @constant
+             */
+            model_requests: 0;
+            /** Original Request Context Sha256 */
+            original_request_context_sha256: string;
+            /** Original Result Journal Sha256 */
+            original_result_journal_sha256: string;
+            /** Original Review Job Id */
+            original_review_job_id: string;
+            /**
+             * Reserve Micros
+             * @constant
+             */
+            reserve_micros: 0;
+            /** Sha256 */
+            sha256: string;
+            /** Source Job Id */
+            source_job_id: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "campaign-saved-result-v1";
+        };
+        /** DomesticCampaignRecoveryRequest */
+        DomesticCampaignRecoveryRequest: {
+            /** Original Result Journal Sha256 */
+            original_result_journal_sha256: string;
+            /** Quote Sha256 */
+            quote_sha256: string;
+        };
+        /** DomesticCampaignReviewQuote */
+        DomesticCampaignReviewQuote: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /** Dispatch Route Sha256 */
+            dispatch_route_sha256: string;
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /**
+             * Image Requests
+             * @constant
+             */
+            image_requests: 0;
+            /** Model */
+            model: string;
+            /**
+             * Model Requests
+             * @constant
+             */
+            model_requests: 1;
+            /** Provider */
+            provider: string;
+            /** Reserve Micros */
+            reserve_micros: number;
+            /** Sha256 */
+            sha256: string;
+            /** Source Context Sha256 */
+            source_context_sha256: string;
+            /** Source Job Id */
+            source_job_id: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-campaign-review-v1";
+        };
+        /** DomesticCampaignReviewReport */
+        DomesticCampaignReviewReport: {
+            /** Model */
+            model: string;
+            /** Original Message */
+            original_message: string | null;
+            /**
+             * Original Message State
+             * @enum {string}
+             */
+            original_message_state: "PRESERVED_UTF8" | "UNAVAILABLE";
+            /** Report */
+            report: {
+                [key: string]: unknown;
+            };
+            /** Request Context */
+            request_context: {
+                [key: string]: unknown;
+            };
+            /**
+             * Scope
+             * @constant
+             */
+            scope: "OPTIONAL_CAMPAIGN_REVIEW_ONLY";
+            /** Source Job Id */
+            source_job_id: string;
+        };
+        /** DomesticCampaignReviewRequest */
+        DomesticCampaignReviewRequest: {
+            /** Approval Text */
+            approval_text: string;
+            /** Authorized Reserve Micros */
+            authorized_reserve_micros: number;
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /** Quote Sha256 */
+            quote_sha256: string;
+        };
+        /** DomesticCampaignReviewSelection */
+        DomesticCampaignReviewSelection: {
+            /** Report Sha256 */
+            report_sha256: string;
+            /** Review Job Id */
+            review_job_id: string;
+        };
+        /** DomesticDetailAutomaticDeliveryAuthorization */
+        DomesticDetailAutomaticDeliveryAuthorization: {
+            /** Actor User Id */
+            actor_user_id: string;
+            /** Approval Document Sha256 */
+            approval_document_sha256: string;
+            /** Authorization Text */
+            authorization_text: string;
+            /** Completion Disclosure */
+            completion_disclosure: string;
+            /** Contract Binding Sha256 */
+            contract_binding_sha256: string;
+            /**
+             * Delivery Extra Image Requests
+             * @constant
+             */
+            delivery_extra_image_requests: 0;
+            /**
+             * Delivery Extra Model Requests
+             * @constant
+             */
+            delivery_extra_model_requests: 0;
+            /**
+             * Delivery Mode
+             * @constant
+             */
+            delivery_mode: "AUTO_FINALIZE_AUTHORIZED";
+            /** Job Id */
+            job_id: string;
+            /** Native Approval Document Sha256 */
+            native_approval_document_sha256: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Revision */
+            plan_revision: number;
+            /** Runtime Source Sha256 */
+            runtime_source_sha256: string;
+            /** Sha256 */
+            sha256: string;
+            /** Source Input Sha256 */
+            source_input_sha256: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-detail-auto-delivery-authorization-v1";
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** DomesticDetailAutomaticDeliveryRecoveryRequest */
+        DomesticDetailAutomaticDeliveryRecoveryRequest: {
+            /** Authorization Sha256 */
+            authorization_sha256: string;
+        };
+        /** DomesticDetailFinalReviewResponse */
+        DomesticDetailFinalReviewResponse: {
+            /** Automatic Delivery Authorization */
+            automatic_delivery_authorization?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Campaign Audit Status
+             * @constant
+             */
+            campaign_audit_status: "NOT_REQUESTED";
+            /** Context Sha256 */
+            context_sha256: string;
+            /** Delivery Mode */
+            delivery_mode?: "AUTO_FINALIZE_AUTHORIZED" | null;
+            /** Document Markdown */
+            document_markdown: string;
+            /** Generation Binding Sha256 */
+            generation_binding_sha256: string;
+            /** Job Id */
+            job_id: string;
+            /** Pair Canvases */
+            pair_canvases: {
+                [key: string]: unknown;
+            }[];
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Revision */
+            plan_revision: number;
+            /**
+             * Quality State
+             * @enum {string}
+             */
+            quality_state: "PAIR_REVIEW_PASSED" | "WITH_RESIDUALS";
+            /** Residual Issues */
+            residual_issues: {
+                [key: string]: unknown;
+            }[];
+            /** Screens */
+            screens: {
+                [key: string]: unknown;
+            }[];
+            /** Sha256 */
+            sha256: string;
+            /** Skill Version */
+            skill_version: string;
+            /** Supplementary Campaign Review */
+            supplementary_campaign_review?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-detail-final-review-v1";
+        };
+        /** DomesticDetailLocalRevisionCanvas */
+        DomesticDetailLocalRevisionCanvas: {
+            /** Asset Id */
+            asset_id: string;
+            /** Height */
+            height: number;
+            /** Pixel Lineage Sha256 */
+            pixel_lineage_sha256: string;
+            /** Sha256 */
+            sha256: string;
+            /** Width */
+            width: number;
+        };
+        /** DomesticDetailLocalRevisionCreateRequest */
+        DomesticDetailLocalRevisionCreateRequest: {
+            adjustment: components["schemas"]["DomesticDetailLocalRevisionDelta"];
+            /** Approval Text */
+            approval_text: string;
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /** Quote Sha256 */
+            quote_sha256: string;
+        };
+        /** DomesticDetailLocalRevisionDelta */
+        DomesticDetailLocalRevisionDelta: {
+            /**
+             * Change Kind
+             * @enum {string}
+             */
+            change_kind: "TYPOGRAPHY_LAYOUT" | "COPY_CONTENT" | "VISUAL_DETAIL" | "OTHER_LOCAL";
+            /** Change Only */
+            change_only: string[];
+            /**
+             * Change Scope
+             * @constant
+             */
+            change_scope: "local";
+            /**
+             * Changes Campaign Style
+             * @constant
+             */
+            changes_campaign_style: false;
+            /**
+             * Changes Facts
+             * @constant
+             */
+            changes_facts: false;
+            /**
+             * Changes Identity
+             * @constant
+             */
+            changes_identity: false;
+            /**
+             * Changes Module Sequence
+             * @constant
+             */
+            changes_module_sequence: false;
+            /**
+             * Changes Target Buyer
+             * @constant
+             */
+            changes_target_buyer: false;
+            /** Module Id */
+            module_id: string;
+            /** Must Not Regress */
+            must_not_regress: string[];
+            /** Preserve */
+            preserve: string[];
+            /** Verbatim Instruction */
+            verbatim_instruction: string;
+        };
+        /** DomesticDetailLocalRevisionQuote */
+        DomesticDetailLocalRevisionQuote: {
+            /** Actor User Id */
+            actor_user_id: string;
+            adjustment: components["schemas"]["DomesticDetailLocalRevisionDelta"];
+            /**
+             * Approved Screen Count
+             * @enum {integer}
+             */
+            approved_screen_count: 8 | 10 | 12;
+            /** Authorization Text */
+            authorization_text: string;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /**
+             * Delivery Mode
+             * @constant
+             */
+            delivery_mode: "USER_FINAL_REVIEW";
+            /** Disclosure */
+            disclosure: string;
+            /**
+             * Dispatch Kind
+             * @enum {string}
+             */
+            dispatch_kind: "http" | "synthetic";
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+            /** Image Dispatch Sha256 */
+            image_dispatch_sha256: string;
+            /** Image Model */
+            image_model: string;
+            /** Image Provider */
+            image_provider: string;
+            /** Image Unit Micros */
+            image_unit_micros: number;
+            /** Maximum Cost Micros */
+            maximum_cost_micros: number;
+            /**
+             * Maximum Image Requests
+             * @constant
+             */
+            maximum_image_requests: 2;
+            /**
+             * Maximum Model Requests
+             * @constant
+             */
+            maximum_model_requests: 5;
+            /**
+             * Maximum Provider Requests
+             * @constant
+             */
+            maximum_provider_requests: 7;
+            /**
+             * Maximum Review Model Requests
+             * @constant
+             */
+            maximum_review_model_requests: 4;
+            /**
+             * Maximum Scope Model Requests
+             * @constant
+             */
+            maximum_scope_model_requests: 1;
+            /** Module Ids */
+            module_ids: string[];
+            /** Native Approval Document Sha256 */
+            native_approval_document_sha256: string;
+            /** Original Approval Receipt Sha256 */
+            original_approval_receipt_sha256: string;
+            /** Pair Id */
+            pair_id: string;
+            /** Pricing Version */
+            pricing_version: string;
+            /** Review Dispatch Sha256 */
+            review_dispatch_sha256: string;
+            /** Review Model */
+            review_model: string;
+            /** Review Reserve Micros */
+            review_reserve_micros: number;
+            /** Revision Policy Sha256 */
+            revision_policy_sha256: string;
+            /** Runtime Source Sha256 */
+            runtime_source_sha256: string;
+            /** Selected Module Id */
+            selected_module_id: string;
+            /** Sha256 */
+            sha256: string;
+            /** Skill Content Hash */
+            skill_content_hash: string;
+            /** Source Approved Scope Sha256 */
+            source_approved_scope_sha256: string;
+            /** Source Context Sha256 */
+            source_context_sha256: string;
+            /** Source Generation Binding Sha256 */
+            source_generation_binding_sha256: string;
+            /** Source Job Id */
+            source_job_id: string;
+            /** Source Native Session Sha256 */
+            source_native_session_sha256: string;
+            source_pair_canvas: components["schemas"]["DomesticDetailLocalRevisionCanvas"];
+            /** Source Plan Id */
+            source_plan_id: string;
+            /** Source Plan Payload Sha256 */
+            source_plan_payload_sha256: string;
+            /** Source Plan Revision */
+            source_plan_revision: number;
+            /**
+             * Source Quality State
+             * @enum {string}
+             */
+            source_quality_state: "PAIR_REVIEW_PASSED" | "WITH_RESIDUALS";
+            /** Source Residual Issues */
+            source_residual_issues: {
+                [key: string]: unknown;
+            }[];
+            /** Source Screens */
+            source_screens: components["schemas"]["DomesticDetailLocalRevisionScreen"][];
+            /**
+             * Version
+             * @constant
+             */
+            version: "domestic-detail-local-revision-quote-v1";
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** DomesticDetailLocalRevisionQuoteRequest */
+        DomesticDetailLocalRevisionQuoteRequest: {
+            adjustment: components["schemas"]["DomesticDetailLocalRevisionDelta"];
+            /** Final Review Sha256 */
+            final_review_sha256: string;
+        };
+        /** DomesticDetailLocalRevisionScreen */
+        DomesticDetailLocalRevisionScreen: {
+            /** Asset Id */
+            asset_id: string;
+            /** Height */
+            height: number;
+            /** Module Id */
+            module_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Sha256 */
+            sha256: string;
+            /** Width */
+            width: number;
         };
         /** DomesticMainImageConfiguration */
         DomesticMainImageConfiguration: {
@@ -2316,6 +3013,8 @@ export interface components {
         FinalizeJobRequest: {
             /** Approval Text */
             approval_text: string;
+            /** Final Review Sha256 */
+            final_review_sha256?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2595,6 +3294,15 @@ export interface components {
              */
             workflow_type: "reference_remix" | "product_prompt" | "local_edit" | "legacy_unclassified";
         };
+        /** IntakeConflictResolution */
+        IntakeConflictResolution: {
+            /** Conflict Id */
+            conflict_id: string;
+            /** Rejected Fact Ids */
+            rejected_fact_ids?: string[];
+            /** Retained Fact Ids */
+            retained_fact_ids: string[];
+        };
         /** JobAssetResponse */
         JobAssetResponse: {
             /** Asset Id */
@@ -2800,7 +3508,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "amazon_visual_suite" | "domestic_main_image";
+        JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "domestic_detail_review" | "amazon_visual_suite" | "domestic_main_image";
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /**
@@ -2954,14 +3662,24 @@ export interface components {
         PlanConfirmRequest: {
             /** Approval Document Sha256 */
             approval_document_sha256?: string | null;
+            /** Approval Protocol */
+            approval_protocol?: "domestic-native-approval-v1" | null;
             /** Approval Text */
             approval_text?: string | null;
             /** Approved Module Count */
             approved_module_count?: number | null;
             /** Approved Pair Canvas Aspect Ratio */
             approved_pair_canvas_aspect_ratio?: "3:8" | null;
+            /** Automatic Delivery Authorization Sha256 */
+            automatic_delivery_authorization_sha256?: string | null;
+            /** Automatic Delivery Authorization Text */
+            automatic_delivery_authorization_text?: string | null;
+            /** Domestic Detail Delivery Mode */
+            domestic_detail_delivery_mode?: ("USER_FINAL_REVIEW" | "AUTO_FINALIZE_AUTHORIZED") | null;
             /** Expected Revision */
             expected_revision: number;
+            /** Native Approval Document Sha256 */
+            native_approval_document_sha256?: string | null;
         };
         /** PlanResponse */
         PlanResponse: {
@@ -6445,6 +7163,285 @@ export interface operations {
             };
         };
     };
+    recover_automatic_detail_delivery_api_v1_workspaces__workspace_id__jobs__job_id__automatic_delivery_recover_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticDetailAutomaticDeliveryRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticCampaignReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domestic_campaign_preview_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_preview_png_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_domestic_campaign_review_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_quote_get: {
+        parameters: {
+            query: {
+                final_review_sha256: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticCampaignReviewQuote"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_domestic_campaign_result_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recover_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticCampaignRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_domestic_campaign_recovery_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_recovery_quote_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticCampaignRecoveryQuote"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domestic_campaign_report_api_v1_workspaces__workspace_id__jobs__job_id__campaign_review_report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticCampaignReviewReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_domestic_campaign_reviews_api_v1_workspaces__workspace_id__jobs__job_id__campaign_reviews_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_job_api_v1_workspaces__workspace_id__jobs__job_id__cancel_post: {
         parameters: {
             query?: never;
@@ -6549,6 +7546,42 @@ export interface operations {
             };
         };
     };
+    prepare_domestic_detail_final_review_api_v1_workspaces__workspace_id__jobs__job_id__detail_final_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DomesticCampaignReviewSelection"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticDetailFinalReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     finalize_domestic_main_image_api_v1_workspaces__workspace_id__jobs__job_id__finalize_post: {
         parameters: {
             query?: never;
@@ -6587,6 +7620,118 @@ export interface operations {
             };
         };
     };
+    resolve_detail_intake_api_v1_workspaces__workspace_id__jobs__job_id__intake_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailIntakeResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticDetailLocalRevisionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_domestic_detail_local_revision_api_v1_workspaces__workspace_id__jobs__job_id__local_revision_quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomesticDetailLocalRevisionQuoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticDetailLocalRevisionQuote"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_plan_api_v1_workspaces__workspace_id__jobs__job_id__plan_put: {
         parameters: {
             query?: never;
@@ -6610,6 +7755,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_automatic_detail_delivery_authorization_api_v1_workspaces__workspace_id__jobs__job_id__plan_automatic_delivery_authorization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomesticDetailAutomaticDeliveryAuthorization"];
                 };
             };
             /** @description Validation Error */

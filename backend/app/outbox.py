@@ -212,7 +212,21 @@ def _dispatch(
     task: Any = cancel_job_task if event_type == "job.cancel_requested" else process_job
     # Celery task ids are observability identifiers only. Database attempts and
     # lease fencing are the sole duplicate-execution guard.
-    task.apply_async(args=[job_id], headers={"outbox_dedupe_key": dedupe_key})
+    options: dict[str, Any] = {}
+    with task_runner.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        if job is not None and (
+            job.type == "domestic_detail_review"
+            or job.type == "detail_pack"
+            and job.configuration.get("domestic_detail_pipeline")
+            == "aurora-domestic-detail-v4.3.1"
+        ):
+            # Keep legacy tasks and other products on their existing workers.
+            # A dedicated current-runtime consumer owns only this new queue.
+            options["queue"] = "domestic_detail_v431"
+    task.apply_async(
+        args=[job_id], headers={"outbox_dedupe_key": dedupe_key}, **options
+    )
 
 
 def _safe_error(exc: Exception) -> str:

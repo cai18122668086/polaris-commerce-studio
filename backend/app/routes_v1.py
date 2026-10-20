@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -53,6 +54,19 @@ from .domain import (
     PlanValidationStatus,
     RetryScope,
 )
+from .domestic_detail.generation import (
+    PIPELINE_VERSION,
+    DetailGenerationError,
+    generation_binding,
+    require_current_pipeline,
+    require_recoverable_pair,
+)
+from .domestic_detail.plans import (
+    DetailPlanError,
+    approval_binding,
+    validate_approval_binding,
+    validate_plan_views,
+)
 from .errors import ApiError, UploadValidationError
 from .inspiration_routes import _sync_configuration_status
 from .masked_repair import (
@@ -69,6 +83,7 @@ from .models import (
     AssetRecord,
     InspirationCaseRecord,
     JobAssetRecord,
+    JobAttemptRecord,
     JobItemRecord,
     JobPlanRecord,
     JobRecord,
@@ -87,9 +102,22 @@ from .schemas_v1 import (
     CapabilityStatus,
     CreativeImageJobCreate,
     CurrentUserResponse,
+    DetailIntakeResolutionRequest,
     DetailPackJobCreate,
     DevelopmentProviderSettingsResponse,
     DevelopmentProviderSettingsUpdate,
+    DomesticCampaignRecoveryQuote,
+    DomesticCampaignRecoveryRequest,
+    DomesticCampaignReviewQuote,
+    DomesticCampaignReviewReport,
+    DomesticCampaignReviewRequest,
+    DomesticCampaignReviewSelection,
+    DomesticDetailAutomaticDeliveryAuthorization,
+    DomesticDetailAutomaticDeliveryRecoveryRequest,
+    DomesticDetailFinalReviewResponse,
+    DomesticDetailLocalRevisionCreateRequest,
+    DomesticDetailLocalRevisionQuote,
+    DomesticDetailLocalRevisionQuoteRequest,
     DomesticMainImageJobCreate,
     DraftJobUpdate,
     ErrorResponse,
@@ -1111,6 +1139,7 @@ async def create_asset_access_url(
     url = None
     if (
         payload.variant == "original"
+        and not asset.asset_metadata.get("native_detail_pair_master")
         and request.app.state.settings.asset_access_url_mode == "auto"
     ):
         url = await request.app.state.storage.create_access_url(
@@ -1189,6 +1218,18 @@ def _asset_for_storage(
     return asset
 
 
+async def _asset_content_bytes(request: Request, asset: AssetRecord) -> bytes:
+    if asset.asset_metadata.get("native_detail_pair_master"):
+        from .domestic_detail.delivery import DetailDeliveryError
+        from .domestic_detail.review_packet import read_pair_master
+
+        try:
+            return await read_pair_master(request.app.state.storage, asset)
+        except DetailDeliveryError as exc:
+            raise ApiError(exc.status_code, exc.code, str(exc)) from exc
+    return await request.app.state.storage.read_bytes(asset.object_key)
+
+
 @router.get(
     "/workspaces/{workspace_id}/assets/{asset_id}/content",
     name="get_signed_asset_content",
@@ -1241,7 +1282,7 @@ async def get_signed_asset_content(
         try:
             body = await request.app.state.thumbnails.get(
                 f"{asset.object_key}:{asset.sha256}",
-                lambda: request.app.state.storage.read_bytes(asset.object_key),
+                lambda: _asset_content_bytes(request, asset),
             )
         except ThumbnailBusy:
             return Response(
@@ -1261,7 +1302,7 @@ async def get_signed_asset_content(
     }
     if request.headers.get("If-None-Match") == etag:
         return Response(status_code=304, headers=headers)
-    body = await request.app.state.storage.read_bytes(asset.object_key)
+    body = await _asset_content_bytes(request, asset)
     return Response(
         body,
         media_type=asset.content_type,
@@ -1667,6 +1708,40 @@ async def download_job_deliverables(
     session: SessionDependency,
 ) -> Response:
     job = get_workspace_job(session, workspace.workspace_id, job_id)
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
+    ):
+        from .domestic_detail.delivery import DetailDeliveryError
+        from .domestic_detail.review_packet import delivery_archive
+
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None:
+            raise ApiError(
+                409, "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING", "原始方案缺失。"
+            )
+        try:
+            body = await delivery_archive(session, job, plan, request.app.state.storage)
+        except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
+            raise ApiError(
+                getattr(exc, "status_code", 409),
+                getattr(exc, "code", "NATIVE_DETAIL_DELIVERY_INVALID"),
+                str(exc),
+            ) from exc
+        return Response(
+            body,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": build_content_disposition(
+                    "attachment", f"detail-pack-{job.id}.zip"
+                )
+            },
+        )
     if job.type not in {
         JobType.DETAIL_PACK.value,
         JobType.AMAZON_VISUAL_SUITE.value,
@@ -1811,7 +1886,12 @@ def update_draft_job(
     if payload.display_name is not None:
         job.display_name = payload.display_name
     if payload.configuration is not None:
-        job.configuration = payload.configuration
+        updated_configuration = dict(payload.configuration)
+        if job.type == JobType.DETAIL_PACK.value:
+            updated_configuration.pop("domestic_detail_pipeline", None)
+            if job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION:
+                updated_configuration["domestic_detail_pipeline"] = PIPELINE_VERSION
+        job.configuration = updated_configuration
     job.state_version += 1
     session.commit()
     return job_detail_response(session, job)
@@ -1974,6 +2054,12 @@ def retry_job(
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
     source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if source.type == JobType.DOMESTIC_DETAIL_REVIEW.value:
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_CAMPAIGN_RECONCILIATION_REQUIRED",
+            "请先核对原审核请求；新的整页审核须从原详情结果明确授权后发起。",
+        )
     if JobStatus(source.status) not in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,
@@ -2010,6 +2096,7 @@ def retry_job(
             "JOB_NOT_RETRYABLE",
             "当前重试范围内没有可重试条目。",
         )
+    _validate_domestic_detail_retry(session, source, selected)
     retried = _copy_job_for_retry(session, source, payload.scope, selected)
     session.add(retried)
     session.flush()
@@ -2064,6 +2151,12 @@ def clone_job(
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
     source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if source.type == JobType.DOMESTIC_DETAIL_REVIEW.value:
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_CAMPAIGN_RECONCILIATION_REQUIRED",
+            "请先核对原审核请求；新的整页审核须从原详情结果明确授权后发起。",
+        )
     if JobStatus(source.status) not in TERMINAL_JOB_STATUSES:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -2092,6 +2185,7 @@ def clone_job(
         select(JobItemRecord).where(JobItemRecord.job_id == source.id)
     ).all()
     selected = [item.id for item in source_items]
+    _validate_domestic_detail_retry(session, source, selected, clone=True)
     cloned = _copy_job_for_retry(session, source, RetryScope.FULL, selected)
     cloned.root_job_id = None
     cloned.retry_of_job_id = None
@@ -2175,25 +2269,101 @@ def update_plan(
         and isinstance(settings, Mapping)
         and settings.get("market_region") == "domestic"
     ):
+        if job.stage == "intake_confirmation_required":
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "INTAKE_CONFIRMATION_REQUIRED",
+                "请先确认商品事实，再审阅完整规划。",
+            )
+        from .domestic_detail.plans import resolve_native_plan
+
+        try:
+            old_native = resolve_native_plan(current.payload)
+            new_native = resolve_native_plan(editable_payload)
+            if (
+                old_native is None
+                or new_native is None
+                or any(
+                    editable_payload.get(field) != current.payload.get(field)
+                    for field in (
+                        "product_intake",
+                        "native_approval",
+                        "input_signature",
+                        "source_input_sha256",
+                        "source_asset_manifest",
+                    )
+                )
+            ):
+                raise DetailPlanError(
+                    "Source intake and original source manifests are immutable"
+                )
+        except DetailPlanError as exc:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "INTAKE_AUTHORITY_IMMUTABLE",
+                "规划编辑不能改写原始商品观察或素材来源。",
+                {"reason": str(exc)},
+            ) from exc
         # Rebind the campaign approval document whenever the plan is edited;
         # an old approval fingerprint may never authorize changed pages.
+        from .aurora_detail_runtime import (
+            AuroraDetailHarnessError,
+            AuroraDetailHarnessRunner,
+            detail_workspace,
+            normalize_native_plan_for_harness,
+        )
+        from .domestic_detail.native_approval import (
+            compile_native_approval,
+            load_native_approval,
+        )
+        from .domestic_detail.plans import validate_plan_views
         from .xinghe_agent import compile_aurora_campaign_approval_document
 
         groups = editable_payload.get("groups")
         pages = editable_payload.get("pages")
         if isinstance(groups, list) and isinstance(pages, list):
-            approval_document = compile_aurora_campaign_approval_document(
-                group_plans=[group for group in groups if isinstance(group, Mapping)],
-                pages=[page for page in pages if isinstance(page, Mapping)],
-                page_count=int(settings.get("page_count", 0)),
-            )
+            try:
+                new_native = validate_plan_views(editable_payload)
+                original_contracts = load_native_approval(
+                    detail_workspace(job.id), current.payload.get("native_approval")
+                )
+                editable_payload["native_approval"] = compile_native_approval(
+                    detail_workspace(job.id),
+                    runner=AuroraDetailHarnessRunner(),
+                    native_input=original_contracts["input"],
+                    identity=original_contracts["identity"],
+                    normalized_plan=normalize_native_plan_for_harness(new_native),
+                    resolution=(current.payload.get("product_intake") or {}).get(
+                        "resolution"
+                    ),
+                )
+                detail_binding = approval_binding(editable_payload, settings)
+            except (ValueError, TypeError, KeyError, AuroraDetailHarnessError, OSError):
+                detail_binding = None
             aurora = editable_payload.get("aurora_v4_3")
             if isinstance(aurora, dict):
                 aurora = dict(aurora)
-                aurora["approval_document_markdown"] = approval_document
-                aurora["approval_document_sha256"] = hashlib.sha256(
-                    approval_document.encode("utf-8")
-                ).hexdigest()
+                aurora.pop("approval_receipt", None)
+                aurora["contract_binding"] = detail_binding
+                if detail_binding is None:
+                    aurora["approval_document_markdown"] = ""
+                    aurora["approval_document_sha256"] = None
+                if detail_binding is not None:
+                    approval_document = compile_aurora_campaign_approval_document(
+                        group_plans=[
+                            group for group in groups if isinstance(group, Mapping)
+                        ],
+                        pages=[page for page in pages if isinstance(page, Mapping)],
+                        page_count=int(settings.get("page_count", 0)),
+                        binding=detail_binding,
+                        native_document=editable_payload["native_approval"][
+                            "document_markdown"
+                        ],
+                    )
+                    aurora["approval_document_markdown"] = approval_document
+                    aurora["approval_document_sha256"] = hashlib.sha256(
+                        approval_document.encode("utf-8")
+                    ).hexdigest()
                 editable_payload["aurora_v4_3"] = aurora
     validation_errors = _validate_plan_payload(job, editable_payload)
     plan = JobPlanRecord(
@@ -2232,6 +2402,287 @@ def update_plan(
         validation_errors=plan.validation_errors,
         confirmed_at=plan.confirmed_at,
     )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def resolve_detail_intake(
+    job_id: str,
+    payload: DetailIntakeResolutionRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.facts import DetailIntakeError
+    from .domestic_detail.intake import validate_resolution
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve",
+        idempotency_key=key,
+        request_hash=canonical_hash(
+            {"job_id": job.id, **payload.model_dump(mode="json")}
+        ),
+    )
+    if replay:
+        return job_detail_response(session, job)
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.status != JobStatus.AWAITING_CONFIRMATION.value
+        or job.stage != "intake_confirmation_required"
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_NOT_AWAITING_CONFIRMATION",
+            "当前没有待确认的商品事实。",
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if plan is None or plan.revision != payload.expected_revision:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "PLAN_REVISION_CONFLICT",
+            "事实确认内容已更新，请刷新后重试。",
+        )
+    intake = plan.payload.get("product_intake")
+    if not isinstance(intake, dict) or canonical_hash(intake) != plan.payload.get(
+        "intake_question_sha256"
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_BINDING_CHANGED",
+            "事实来源已变化，请重新核对。",
+        )
+    if canonical_hash(job.configuration.get("settings") or {}) != plan.payload.get(
+        "intake_settings_sha256"
+    ):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_BINDING_CHANGED",
+            "商品事实已变化，不能沿用旧确认。",
+        )
+    for source in plan.payload.get("intake_source_manifest", []):
+        asset = session.get(AssetRecord, source["asset_id"])
+        role_exists = session.scalar(
+            select(JobAssetRecord.id)
+            .where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.asset_id == source["asset_id"],
+                JobAssetRecord.role == source["role"],
+                JobAssetRecord.direction == JobAssetDirection.INPUT.value,
+            )
+            .limit(1)
+        )
+        if (
+            asset is None
+            or asset.workspace_id != job.workspace_id
+            or asset.deleted_at is not None
+            or asset.sha256 != source["sha256"]
+            or role_exists is None
+        ):
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "INTAKE_BINDING_CHANGED",
+                "商品图片或来源用途已变化，不能沿用旧确认。",
+            )
+    if job.configuration.get("domestic_detail_intake_resolution"):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "INTAKE_RESOLUTION_ALREADY_APPLIED",
+            "本次事实确认已保存，不能重复改写原确认。",
+        )
+    resolution: dict[str, Any] = {
+        "confirmation_text": payload.confirmation_text,
+        "resolutions": [row.model_dump(mode="json") for row in payload.resolutions],
+    }
+    try:
+        validate_resolution(intake, resolution)
+    except DetailIntakeError as exc:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            exc.code,
+            "请一次确认全部冲突值，并明确排除其余值。",
+            {"reason": str(exc)},
+        ) from exc
+    if (
+        intake.get("brand_confirmation_required")
+        and not payload.brandless_confirmation
+        and not payload.additional_product_asset_ids
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_BRAND_CONFIRMATION_REQUIRED",
+            "请明确确认无品牌，或补充清晰的本商品品牌图片。",
+        )
+    if (
+        payload.brandless_confirmation is not None
+        and len(payload.brandless_confirmation.strip()) < 2
+    ):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_BRAND_CONFIRMATION_REQUIRED",
+            "请明确填写无品牌确认。",
+        )
+    style_ids = set(job.configuration["input"].get("reference_asset_ids", []))
+    if style_ids.intersection(payload.additional_product_asset_ids):
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_SOURCE_AUTHORITY_INVALID",
+            "风格参考不能改作商品品牌证据，请补充本商品图片。",
+        )
+    configuration = deepcopy(job.configuration)
+    product_ids = configuration["input"]["product_groups"][0]["asset_ids"]
+    for asset_id in payload.additional_product_asset_ids:
+        asset = session.scalar(
+            select(AssetRecord).where(
+                AssetRecord.id == asset_id,
+                AssetRecord.workspace_id == job.workspace_id,
+                AssetRecord.lifecycle_status == AssetLifecycleStatus.READY.value,
+                AssetRecord.deleted_at.is_(None),
+            )
+        )
+        if asset is None:
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INPUT_ASSET_NOT_FOUND",
+                "补充图片不存在或不属于当前工作区。",
+            )
+        if (
+            asset.media_kind != AssetMediaKind.IMAGE.value
+            or not asset.content_type.startswith("image/")
+        ):
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INTAKE_PRODUCT_IMAGE_REQUIRED",
+                "补充素材必须是商品图片。",
+            )
+        if asset_id not in product_ids:
+            product_ids.append(asset_id)
+            session.add(
+                JobAssetRecord(
+                    workspace_id=job.workspace_id,
+                    job_id=job.id,
+                    asset_id=asset_id,
+                    direction=JobAssetDirection.INPUT.value,
+                    role="product_reference",
+                    ordinal=len(product_ids) - 1,
+                    is_deliverable=False,
+                    validation={},
+                )
+            )
+    if len(product_ids) > 8:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INTAKE_SOURCE_LIMIT",
+            "商品素材总数不能超过 8 张。",
+        )
+    resolution.update(
+        {
+            "brandless_confirmation": payload.brandless_confirmation,
+            "source_intake": deepcopy(intake),
+            "source_intake_sha256": canonical_hash(intake),
+            "actor_user_id": workspace.principal.user_id,
+            "confirmed_at": utc_now().isoformat(),
+        }
+    )
+    configuration["domestic_detail_intake_resolution"] = resolution
+    job.configuration = configuration
+    plan.payload = {
+        **dict(plan.payload),
+        "state": "intake_resolved",
+        "intake_resolution": resolution,
+        "planner_lease_expires_at": None,
+    }
+    plan.payload_hash = canonical_hash(plan.payload)
+    plan.revision += 1
+    transition_job(
+        job, JobStatus.PLANNING, stage="analyzing_confirmed_sources", progress=10
+    )
+    add_outbox_event(
+        session,
+        workspace_id=job.workspace_id,
+        job_id=job.id,
+        event_type="job.dispatch_requested",
+        suffix=f"intake-{plan.revision}",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, job)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/plan/automatic-delivery-authorization",
+    response_model=DomesticDetailAutomaticDeliveryAuthorization,
+    tags=["jobs"],
+)
+def get_automatic_detail_delivery_authorization(
+    job_id: str,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> DomesticDetailAutomaticDeliveryAuthorization:
+    from .aurora_detail_runtime import detail_workspace
+    from .domestic_detail.delivery_authorization import authorization_quote
+    from .domestic_detail.native_approval import verify_approval_sources
+
+    job = get_workspace_job(session, workspace.workspace_id, job_id)
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+        or job.status != "awaiting_confirmation"
+        or job.stage == "intake_confirmation_required"
+        or plan is None
+        or plan.validation_status != "valid"
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_AUTO_DELIVERY_NOT_READY",
+            "请先完成商品事实确认并审阅当前完整方案。",
+        )
+    try:
+        validate_approval_binding(plan.payload, job.configuration["settings"])
+        verify_approval_sources(
+            detail_workspace(job.id),
+            plan.payload.get("native_approval"),
+            plan.payload["source_asset_manifest"][0]["assets"],
+        )
+        quote = authorization_quote(
+            job_id=job.id,
+            workspace_id=job.workspace_id,
+            actor_id=workspace.principal.user_id,
+            plan_id=plan.id,
+            revision=plan.revision,
+            payload=plan.payload,
+        )
+    except (ValueError, OSError, KeyError) as exc:
+        raise ApiError(
+            409, "NATIVE_DETAIL_AUTO_DELIVERY_AUTHORIZATION_INVALID", str(exc)
+        ) from exc
+    return DomesticDetailAutomaticDeliveryAuthorization.model_validate(quote)
 
 
 @router.post(
@@ -2279,6 +2730,24 @@ def confirm_plan(
             "任务当前状态不允许确认计划。",
         )
     _ensure_detail_skill_provider_enabled(request, job)
+    automatic_delivery_authorization = None
+    auto_fields_supplied = any(
+        value is not None
+        for value in (
+            payload.domestic_detail_delivery_mode,
+            payload.automatic_delivery_authorization_text,
+            payload.automatic_delivery_authorization_sha256,
+        )
+    )
+    if auto_fields_supplied and not (
+        job.type == JobType.DETAIL_PACK.value
+        and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_AUTO_DELIVERY_SCOPE_INVALID",
+            "自动交付授权只适用于当前国内详情方案。",
+        )
     if job.type == JobType.DETAIL_PACK.value:
         settings = job.configuration.get("settings")
         if isinstance(settings, dict) and settings.get("market_region") == "domestic":
@@ -2301,6 +2770,23 @@ def confirm_plan(
                     "AURORA_APPROVAL_PACKET_MISSING",
                     "Aurora 详情图必须先生成完整的 group→screen 审批包。",
                 )
+            try:
+                from .aurora_detail_runtime import detail_workspace
+                from .domestic_detail.native_approval import verify_approval_sources
+
+                validate_approval_binding(plan.payload, settings)
+                verify_approval_sources(
+                    detail_workspace(job.id),
+                    plan.payload.get("native_approval"),
+                    plan.payload["source_asset_manifest"][0]["assets"],
+                )
+            except DetailPlanError as exc:
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "AURORA_APPROVAL_BINDING_INVALID",
+                    "商品输入、完整方案或 Skill 已变化，请重新审阅当前审批包。",
+                    {"reason": str(exc)},
+                ) from exc
             if (
                 payload.approval_document_sha256
                 != aurora.get("approval_document_sha256")
@@ -2313,6 +2799,39 @@ def confirm_plan(
                     "AURORA_APPROVAL_PACKET_MISMATCH",
                     "审批包指纹、屏数或 3:8 pair 画布比例不匹配。",
                 )
+            native_approval = plan.payload["native_approval"]
+            if (
+                payload.approval_protocol != native_approval["version"]
+                or payload.native_approval_document_sha256
+                != native_approval["document_sha256"]
+            ):
+                raise ApiError(
+                    status.HTTP_409_CONFLICT,
+                    "AURORA_NATIVE_APPROVAL_REQUIRED",
+                    "请使用当前完整原生审批文档和版本指纹确认方案。",
+                )
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
+    ):
+        from .domestic_detail.delivery_authorization import confirm_authorization
+
+        try:
+            automatic_delivery_authorization = confirm_authorization(
+                mode=payload.domestic_detail_delivery_mode,
+                text=payload.automatic_delivery_authorization_text,
+                fingerprint=payload.automatic_delivery_authorization_sha256,
+                job_id=job.id,
+                workspace_id=job.workspace_id,
+                actor_id=workspace.principal.user_id,
+                plan_id=plan.id,
+                revision=plan.revision,
+                payload=plan.payload,
+            )
+        except ValueError as exc:
+            raise ApiError(
+                409, "NATIVE_DETAIL_AUTO_DELIVERY_AUTHORIZATION_INVALID", str(exc)
+            ) from exc
     if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
         settings = request.app.state.settings
         if (
@@ -2333,6 +2852,27 @@ def confirm_plan(
         idempotency_key=key,
         request_hash=canonical_hash(
             {
+                **(
+                    {
+                        "approval_protocol": payload.approval_protocol,
+                        "native_approval_document_sha256": (
+                            payload.native_approval_document_sha256
+                        ),
+                    }
+                    if job.type == JobType.DETAIL_PACK.value
+                    and isinstance(job.configuration.get("settings"), dict)
+                    and job.configuration["settings"].get("market_region") == "domestic"
+                    else {}
+                ),
+                **(
+                    {
+                        "automatic_delivery_authorization": (
+                            automatic_delivery_authorization
+                        )
+                    }
+                    if automatic_delivery_authorization is not None
+                    else {}
+                ),
                 "job_id": job.id,
                 "expected_revision": payload.expected_revision,
                 "approval_text": payload.approval_text,
@@ -2398,6 +2938,30 @@ def confirm_plan(
                 "六图规划未能通过 Aurora Harness 授权，不能开始生成。",
                 {"reason": getattr(exc, "code", type(exc).__name__)},
             ) from exc
+    if (
+        job.type == JobType.DETAIL_PACK.value
+        and isinstance(job.configuration.get("settings"), dict)
+        and job.configuration["settings"].get("market_region") == "domestic"
+    ):
+        detail_payload = deepcopy(plan.payload)
+        detail_aurora = detail_payload["aurora_v4_3"]
+        detail_aurora["approval_receipt"] = {
+            **(
+                {"automatic_delivery_authorization": automatic_delivery_authorization}
+                if automatic_delivery_authorization is not None
+                else {}
+            ),
+            "approval_protocol": payload.approval_protocol,
+            "native_approval_document_sha256": payload.native_approval_document_sha256,
+            "pipeline": PIPELINE_VERSION,
+            "approval_text": payload.approval_text,
+            "approval_document_sha256": payload.approval_document_sha256,
+            "contract_binding_sha256": detail_aurora["contract_binding"]["sha256"],
+            "approved_at": utc_now().isoformat(),
+            "actor_user_id": workspace.principal.user_id,
+            "plan_revision": plan.revision,
+        }
+        plan.payload = detail_payload
     plan.confirmed_at = utc_now()
     transition_job(job, JobStatus.PROCESSING, stage="generating", progress=20)
     add_outbox_event(
@@ -2413,6 +2977,646 @@ def confirm_plan(
     session.commit()
     _schedule_outbox(request, background_tasks)
     return job_detail_response(session, job)
+
+
+def _campaign_report_for_job(
+    session: Session, workspace_id: str, job_id: str
+) -> tuple[dict[str, Any], bytes]:
+    from .domestic_detail.campaign_reports import load_campaign_report
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    job = get_workspace_job(session, workspace_id, job_id)
+    try:
+        return load_campaign_report(job)
+    except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_REPORT_INVALID"),
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/report",
+    response_model=DomesticCampaignReviewReport,
+    tags=["jobs"],
+)
+def get_domestic_campaign_report(
+    job_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> DomesticCampaignReviewReport:
+    report, _ = _campaign_report_for_job(session, workspace.workspace_id, job_id)
+    return DomesticCampaignReviewReport.model_validate(report)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/preview.png",
+    response_class=Response,
+    tags=["jobs"],
+    responses={
+        200: {
+            "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}
+        }
+    },
+)
+def get_domestic_campaign_preview(
+    job_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> Response:
+    _, preview = _campaign_report_for_job(session, workspace.workspace_id, job_id)
+    return Response(
+        preview,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": 'inline; filename="campaign-preview.png"',
+        },
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recovery-quote",
+    response_model=DomesticCampaignRecoveryQuote,
+    tags=["jobs"],
+)
+def quote_domestic_campaign_recovery(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> DomesticCampaignRecoveryQuote:
+    from .domestic_detail.campaign_recovery import recovery_quote, recovery_source
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    parent = get_workspace_job(session, workspace.workspace_id, job_id)
+    try:
+        evidence = asyncio.run(
+            recovery_source(session, parent, request.app.state.storage)
+        )
+        return DomesticCampaignRecoveryQuote.model_validate(
+            recovery_quote(parent, evidence)
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_SAVED_RESULT_UNAVAILABLE"),
+            str(exc),
+        ) from exc
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def recover_domestic_campaign_result(
+    job_id: str,
+    payload: DomesticCampaignRecoveryRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.campaign_recovery import create_recovery_job
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    key = require_idempotency_key(idempotency_header)
+    parent = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/recover",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(
+            session,
+            get_workspace_job(
+                session, workspace.workspace_id, cast(str, idem.resource_id)
+            ),
+        )
+    try:
+        recovery = asyncio.run(
+            create_recovery_job(
+                session,
+                parent,
+                request.app.state.storage,
+                actor_id=workspace.principal.user_id,
+                journal_sha256=payload.original_result_journal_sha256,
+                quote_sha256=payload.quote_sha256,
+            )
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_SAVED_RESULT_UNAVAILABLE"),
+            str(exc),
+        ) from exc
+    if recovery.status == "queued":
+        add_outbox_event(
+            session,
+            workspace_id=workspace.workspace_id,
+            job_id=recovery.id,
+            event_type="job.dispatch_requested",
+            suffix="saved-original-result",
+        )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=recovery.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, recovery)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-reviews",
+    response_model=JobListResponse,
+    tags=["jobs"],
+)
+def list_domestic_campaign_reviews(
+    job_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: str | None = None,
+) -> JobListResponse:
+    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    if (
+        source.type != JobType.DETAIL_PACK.value
+        or source.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_CAMPAIGN_SOURCE_NOT_READY",
+            "当前任务不是可用的国内详情来源。",
+        )
+    scope = canonical_hash(
+        {
+            "workspace_id": workspace.workspace_id,
+            "source_job_id": source.id,
+            "kind": "domestic-campaign-history-v1",
+        }
+    )
+    filters = [
+        JobRecord.workspace_id == workspace.workspace_id,
+        JobRecord.type == JobType.DOMESTIC_DETAIL_REVIEW.value,
+        JobRecord.configuration["source_job_id"].as_string() == source.id,
+        job_history_is_available(),
+    ]
+    if cursor:
+        created_raw, review_id = decode_cursor(cursor, scope)
+        created = datetime.fromisoformat(created_raw)
+        filters.append(
+            or_(
+                JobRecord.created_at < created,
+                and_(JobRecord.created_at == created, JobRecord.id < review_id),
+            )
+        )
+    rows = session.scalars(
+        select(JobRecord)
+        .where(*filters)
+        .order_by(JobRecord.created_at.desc(), JobRecord.id.desc())
+        .limit(limit + 1)
+    ).all()
+    items = rows[:limit]
+    return JobListResponse(
+        items=[job_list_response(item) for item in items],
+        next_cursor=encode_cursor(items[-1].created_at, items[-1].id, scope)
+        if len(rows) > limit and items
+        else None,
+        has_more=len(rows) > limit,
+    )
+
+
+def _campaign_review_provider(request: Request) -> Any:
+    provider = request.app.state.task_runner.coordinator.provider.routes.get(
+        JobType.DOMESTIC_DETAIL_REVIEW.value
+    )
+    if provider is None or not callable(getattr(provider, "describe_route", None)):
+        raise ApiError(
+            503, "NATIVE_DETAIL_CAMPAIGN_UNAVAILABLE", "整页审核服务当前不可用。"
+        )
+    return provider
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review/quote",
+    response_model=DomesticCampaignReviewQuote,
+    tags=["jobs"],
+)
+def quote_domestic_campaign_review(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+    final_review_sha256: Annotated[str, Query(pattern=r"^[0-9a-f]{64}$")],
+) -> DomesticCampaignReviewQuote:
+    from .domestic_detail.campaign_jobs import campaign_quote, source_scope
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    try:
+        _, context, _, _, _ = asyncio.run(
+            source_scope(
+                session,
+                source,
+                request.app.state.storage,
+                final_review_sha256,
+            )
+        )
+        route = _campaign_review_provider(request).describe_route()
+        quote = campaign_quote(
+            source.id, final_review_sha256, context, request.app.state.settings, route
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_INVALID"),
+            str(exc),
+        ) from exc
+    return DomesticCampaignReviewQuote.model_validate(quote)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/campaign-review",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def create_domestic_campaign_review(
+    job_id: str,
+    payload: DomesticCampaignReviewRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.campaign_jobs import create_campaign_review_job
+    from .domestic_detail.delivery import DetailDeliveryError
+
+    key = require_idempotency_key(idempotency_header)
+    source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/campaign-review",
+        idempotency_key=key,
+        request_hash=canonical_hash(
+            {"source_job_id": source.id, **payload.model_dump()}
+        ),
+    )
+    if replay:
+        return job_detail_response(
+            session,
+            get_workspace_job(
+                session,
+                workspace.workspace_id,
+                cast(str, idem.resource_id),
+            ),
+        )
+    try:
+        review = asyncio.run(
+            create_campaign_review_job(
+                session,
+                source,
+                request.app.state.storage,
+                request.app.state.settings,
+                actor_id=workspace.principal.user_id,
+                fingerprint=payload.final_review_sha256,
+                approval_text=payload.approval_text,
+                authorized_reserve_micros=payload.authorized_reserve_micros,
+                quote_sha256=payload.quote_sha256,
+                dispatch_route=_campaign_review_provider(request).describe_route(),
+            )
+        )
+    except (
+        DetailDeliveryError,
+        DetailGenerationError,
+        DetailPlanError,
+        ValueError,
+        OSError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_CAMPAIGN_INVALID"),
+            str(exc),
+        ) from exc
+    add_outbox_event(
+        session,
+        workspace_id=workspace.workspace_id,
+        job_id=review.id,
+        event_type="job.dispatch_requested",
+        suffix="initial",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=review.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, review)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/local-revision/quote",
+    response_model=DomesticDetailLocalRevisionQuote,
+    tags=["jobs"],
+)
+def quote_domestic_detail_local_revision(
+    job_id: str,
+    payload: DomesticDetailLocalRevisionQuoteRequest,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> DomesticDetailLocalRevisionQuote:
+    from .domestic_detail.revision_authorization import build_revision_quote
+
+    source = get_workspace_job(session, workspace.workspace_id, job_id)
+    _ensure_detail_skill_provider_enabled(request, source)
+    provider = request.app.state.task_runner.coordinator.provider
+    delegate = getattr(
+        getattr(provider, "domestic_detail_provider", None), "delegate", None
+    )
+    gateway = getattr(delegate, "gateway", None)
+    if gateway is None:
+        raise ApiError(
+            503,
+            "NATIVE_DETAIL_LOCAL_REVISION_UNAVAILABLE",
+            "详情局部修订路由当前不可用。",
+        )
+    try:
+        quote = asyncio.run(
+            build_revision_quote(
+                session,
+                source,
+                request.app.state.storage,
+                request.app.state.settings,
+                gateway,
+                fingerprint=payload.final_review_sha256,
+                adjustment=payload.adjustment.model_dump(),
+                actor_id=workspace.principal.user_id,
+            )
+        )
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_LOCAL_REVISION_QUOTE_INVALID"),
+            str(exc),
+        ) from exc
+    return DomesticDetailLocalRevisionQuote.model_validate(quote)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/local-revision",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def create_domestic_detail_local_revision(
+    job_id: str,
+    payload: DomesticDetailLocalRevisionCreateRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.revision_jobs import create_revision_job
+
+    key = require_idempotency_key(idempotency_header)
+    source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    _ensure_detail_skill_provider_enabled(request, source)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job_id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(
+            session,
+            get_workspace_job(
+                session, workspace.workspace_id, cast(str, idem.resource_id)
+            ),
+        )
+    provider = request.app.state.task_runner.coordinator.provider
+    delegate = getattr(
+        getattr(provider, "domestic_detail_provider", None), "delegate", None
+    )
+    gateway = getattr(delegate, "gateway", None)
+    if gateway is None:
+        raise ApiError(
+            503,
+            "NATIVE_DETAIL_LOCAL_REVISION_UNAVAILABLE",
+            "详情局部修订路由当前不可用。",
+        )
+    try:
+        child = asyncio.run(
+            create_revision_job(
+                session,
+                source,
+                request.app.state.storage,
+                request.app.state.settings,
+                gateway,
+                actor_id=workspace.principal.user_id,
+                fingerprint=payload.final_review_sha256,
+                adjustment=payload.adjustment.model_dump(),
+                quote_sha256=payload.quote_sha256,
+                approval_text=payload.approval_text,
+            )
+        )
+    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_LOCAL_REVISION_INVALID"),
+            str(exc),
+        ) from exc
+    add_outbox_event(
+        session,
+        workspace_id=workspace.workspace_id,
+        job_id=child.id,
+        event_type="job.dispatch_requested",
+        suffix="local-revision",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=child.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, child)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def recover_automatic_detail_delivery(
+    job_id: str,
+    payload: DomesticDetailAutomaticDeliveryRecoveryRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail.delivery_authorization import receipt_authorization
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    try:
+        if (
+            job.type != JobType.DETAIL_PACK.value
+            or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+            or plan is None
+        ):
+            raise ValueError(
+                "This is not an original automatic domestic detail delivery"
+            )
+        authorization = receipt_authorization(
+            plan.payload,
+            job_id=job.id,
+            workspace_id=job.workspace_id,
+            plan_id=plan.id,
+            revision=plan.revision,
+        )
+        if (
+            authorization is None
+            or authorization["sha256"] != payload.authorization_sha256
+        ):
+            raise ValueError("The original automatic-delivery authorization changed")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ApiError(
+            409, "NATIVE_DETAIL_AUTO_DELIVERY_AUTHORIZATION_INVALID", str(exc)
+        ) from exc
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/automatic-delivery/recover",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job.id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(session, job)
+    if job.status not in {"awaiting_final_review", "completed"}:
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_AUTO_DELIVERY_NOT_READY",
+            "等待当前生成任务结束后，才能恢复原自动打包。",
+        )
+    if job.status == "awaiting_final_review":
+        job.stage = "automatic_delivery_reconciliation_requested"
+        add_outbox_event(
+            session,
+            workspace_id=job.workspace_id,
+            job_id=job.id,
+            event_type="job.dispatch_requested",
+            suffix=f"automatic-delivery-recovery-{idem.id}",
+        )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, job)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/detail-final-review",
+    response_model=DomesticDetailFinalReviewResponse,
+    response_model_exclude_none=True,
+    tags=["jobs"],
+)
+def prepare_domestic_detail_final_review(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    payload: DomesticCampaignReviewSelection | None = None,
+) -> DomesticDetailFinalReviewResponse:
+    from .domestic_detail.delivery import DetailDeliveryError
+    from .domestic_detail.review_packet import prepare_final_review
+
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+        or job.status not in {"awaiting_final_review", "completed"}
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_FINAL_REVIEW_NOT_READY",
+            "当前任务尚不能进行国内详情最终审阅。",
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+    )
+    if plan is None:
+        raise ApiError(409, "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING", "原始方案缺失。")
+    try:
+        packet = asyncio.run(
+            prepare_final_review(
+                session,
+                job,
+                plan,
+                request.app.state.storage,
+                payload.model_dump() if payload is not None else None,
+            )
+        )
+    except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
+        raise ApiError(
+            getattr(exc, "status_code", 409),
+            getattr(exc, "code", "NATIVE_DETAIL_DELIVERY_INVALID"),
+            str(exc),
+        ) from exc
+    session.commit()
+    return DomesticDetailFinalReviewResponse.model_validate(packet)
 
 
 @router.post(
@@ -2442,7 +3646,27 @@ def finalize_domestic_main_image(
         and isinstance(detail_settings, Mapping)
         and detail_settings.get("market_region") == "domestic"
     ):
-        if JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
+        from .domestic_detail.delivery import (
+            DetailDeliveryError,
+            finalize_native_delivery,
+        )
+
+        idem, replay = claim_idempotency(
+            session,
+            workspace_id=workspace.workspace_id,
+            actor_user_id=workspace.principal.user_id,
+            method="POST",
+            route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
+            idempotency_key=key,
+            request_hash=canonical_hash(
+                {
+                    "job_id": job.id,
+                    "approval_text": payload.approval_text,
+                    "final_review_sha256": payload.final_review_sha256,
+                }
+            ),
+        )
+        if not replay and JobStatus(job.status) != JobStatus.AWAITING_FINAL_REVIEW:
             raise ApiError(
                 status.HTTP_409_CONFLICT,
                 "JOB_NOT_AWAITING_FINAL_REVIEW",
@@ -2454,100 +3678,31 @@ def finalize_domestic_main_image(
             .order_by(JobPlanRecord.revision.desc())
             .limit(1)
         )
-        links = session.scalars(
-            select(JobAssetRecord)
-            .where(
-                JobAssetRecord.job_id == job.id,
-                JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
-                JobAssetRecord.is_deliverable.is_(True),
-            )
-            .order_by(JobAssetRecord.ordinal)
-        ).all()
-        if plan is None or len(links) != job.expected_item_count:
+        if plan is None:
             raise ApiError(
                 status.HTTP_409_CONFLICT,
-                "AURORA_DETAIL_AUDIT_INCOMPLETE",
-                "详情图 pair 审计产物尚未完整，不能最终交付。",
+                "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING",
+                "原始详情方案缺失，无法确认交付。",
             )
-        if (
-            not isinstance(payload.approval_text, str)
-            or len(payload.approval_text.strip()) < 2
-        ):
-            raise ApiError(
-                status.HTTP_409_CONFLICT,
-                "AURORA_FINAL_APPROVAL_TEXT_REQUIRED",
-                "请明确确认已完成详情图最终审核。",
+        try:
+            final_manifest = asyncio.run(
+                finalize_native_delivery(
+                    session,
+                    job,
+                    plan,
+                    request.app.state.storage,
+                    actor_id=workspace.principal.user_id,
+                    approval_text=payload.approval_text,
+                    final_review_sha256=payload.final_review_sha256,
+                    allow_create=not replay,
+                )
             )
-        idem, replay = claim_idempotency(
-            session,
-            workspace_id=workspace.workspace_id,
-            actor_user_id=workspace.principal.user_id,
-            method="POST",
-            route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/finalize",
-            idempotency_key=key,
-            request_hash=canonical_hash(
-                {"job_id": job.id, "approval_text": payload.approval_text}
-            ),
-        )
+        except DetailDeliveryError as exc:
+            raise ApiError(exc.status_code, exc.code, str(exc)) from exc
         if replay:
             return job_detail_response(session, job)
-        pair_audits_by_id: dict[str, Mapping[str, Any]] = {}
-        pair_canvas_refs_by_id: dict[str, dict[str, Any]] = {}
-        for link in links:
-            validation = link.validation
-            if not isinstance(validation, Mapping):
-                continue
-            audit = validation.get("pair_audit")
-            if not isinstance(audit, Mapping):
-                continue
-            pair_id = str(
-                audit.get("pair_id") or validation.get("aurora_pair_id") or ""
-            )
-            if not pair_id:
-                continue
-            pair_audits_by_id.setdefault(pair_id, audit)
-            pair_canvas_refs_by_id.setdefault(
-                pair_id,
-                {
-                    "pair_id": pair_id,
-                    "object_key": validation.get("aurora_pair_canvas_object_key"),
-                    "sha256": validation.get("aurora_pair_canvas_sha256"),
-                    "storage": validation.get("aurora_pair_canvas_storage"),
-                },
-            )
-        pair_audits = list(pair_audits_by_id.values())
-        pair_canvas_asset_refs = list(pair_canvas_refs_by_id.values())
-        expected_pair_count = max(1, job.expected_item_count // 2)
-        if (
-            len(pair_audits) != expected_pair_count
-            or len(pair_canvas_asset_refs) != expected_pair_count
-            or any(
-                not ref["object_key"] or not ref["sha256"]
-                for ref in pair_canvas_asset_refs
-            )
-        ):
-            raise ApiError(
-                status.HTTP_409_CONFLICT,
-                "AURORA_DETAIL_AUDIT_INCOMPLETE",
-                "详情图 pair 画布引用或审计记录尚未完整，不能最终交付。",
-            )
-        plan_payload = dict(plan.payload)
+        plan_payload = deepcopy(plan.payload)
         aurora = dict(plan_payload.get("aurora_v4_3") or {})
-        final_manifest = {
-            "skill_id": "aurora-domestic-ecommerce-detail-page",
-            "version": "4.3.0",
-            "state": "FINALIZED",
-            "approval_text": payload.approval_text,
-            "pair_canvas_aspect_ratio": "3:8",
-            "decomposition_window_aspect_ratio": "3:4",
-            "pair_audits": pair_audits,
-            "pair_canvas_asset_refs": pair_canvas_asset_refs,
-            "page_asset_refs": [link.asset_id for link in links],
-            "delivery": "USER_FINAL_REVIEW",
-            "semantic_audit_disclosure": (
-                "STRUCTURAL_PIXEL_GATE_ONLY; semantic review accepted by user"
-            ),
-        }
         aurora["delivery"] = final_manifest
         plan_payload["aurora_v4_3"] = aurora
         plan_payload["final_manifest"] = final_manifest
@@ -2559,6 +3714,7 @@ def finalize_domestic_main_image(
         transition_job(job, JobStatus.COMPLETED, stage="completed", progress=100)
         session.commit()
         return job_detail_response(session, job)
+
     if (
         job.type == JobType.DETAIL_PACK.value
         and isinstance(detail_settings, Mapping)
@@ -2623,10 +3779,10 @@ def finalize_domestic_main_image(
         }
         final_manifest = {
             "skill_id": "xinghe-crossborder-detail-3",
-            "platform_code": detail_settings.get("platform_code"),  # type: ignore[dict-item]
+            "platform_code": detail_settings.get("platform_code"),
             "page_asset_refs": [link.asset_id for link in links],
             "delivery": "USER_MANUAL_QA_APPROVAL",
-            "qa_review": qa_review,  # type: ignore[dict-item]
+            "qa_review": qa_review,
         }
         plan_payload["crossborder_quality_review"] = qa_review
         plan_payload["crossborder_final_manifest"] = final_manifest
@@ -2907,6 +4063,12 @@ def _new_job_from_payload(
         configuration={
             "input": payload.input.model_dump(mode="json"),
             "settings": payload.configuration.model_dump(mode="json"),
+            **(
+                {"domestic_detail_pipeline": PIPELINE_VERSION}
+                if isinstance(payload, DetailPackJobCreate)
+                and payload.configuration.market_region == "domestic"
+                else {}
+            ),
         },
         expected_item_count=item_count,
         estimated_cost_min_micros=minimum,
@@ -3091,7 +4253,7 @@ def _reserve_real_provider_job_if_enabled(
             # and two actual-pixel reviews, each with at most one targeted
             # same-image identity-envelope review. Reserve the full bound.
             page_count = int(detail_settings.get("page_count") or 8)
-            authoring_requests = group_count * (page_count + 3)
+            authoring_requests = group_count * (page_count + 5)
             review_requests = job.expected_item_count * 2
             planner_requests = authoring_requests + review_requests
             estimated_cost = (
@@ -3232,6 +4394,100 @@ def _add_items_and_inputs(
         )
 
 
+def _validate_domestic_detail_retry(
+    session: Session,
+    source: JobRecord,
+    selected: list[str],
+    *,
+    clone: bool = False,
+) -> None:
+    if (
+        source.type == JobType.DETAIL_PACK.value
+        and source.configuration.get("local_revision") is not None
+    ):
+        raise ApiError(
+            409,
+            "NATIVE_DETAIL_REVISION_RECONCILIATION_REQUIRED",
+            "请先核对原修订请求；新的局部修订须审阅当前结果并单独授权。",
+        )
+    settings = source.configuration.get("settings") or {}
+    if (
+        source.type != JobType.DETAIL_PACK.value
+        or settings.get("market_region") != "domestic"
+    ):
+        return
+    from .aurora_detail_runtime import detail_workspace
+
+    try:
+        require_current_pipeline(source.configuration)
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == source.id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        items = session.scalars(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id == source.id, JobItemRecord.id.in_(selected)
+            )
+        ).all()
+        for item in items:
+            uncertain = (
+                item.error_code == "PROVIDER_OUTCOME_UNKNOWN"
+                or session.scalar(
+                    select(JobAttemptRecord.id)
+                    .where(
+                        JobAttemptRecord.job_item_id == item.id,
+                        JobAttemptRecord.status == "outcome_unknown",
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
+            if not uncertain:
+                continue
+            if clone or plan is None:
+                raise DetailGenerationError(
+                    "NATIVE_DETAIL_RECONCILIATION_REQUIRED",
+                    "Uncertain calls cannot be cloned into new paid requests",
+                )
+            binding = generation_binding(
+                plan.payload,
+                settings,
+                item.configuration["source_assets"],
+                group_key=str(item.configuration["group_key"]),
+                job_input=source.configuration.get("input") or {},
+            )
+            workspace = detail_workspace(source.id)
+            checkpoint = json.loads(
+                (workspace / "session.json").read_text(encoding="utf-8")
+            )
+            origin = detail_workspace(
+                str(checkpoint.get("checkpoint_source_job_id") or source.id)
+            )
+            page = int(item.configuration["page"])
+            page -= 1 if int(item.configuration.get("pair_position") or 1) == 2 else 0
+            require_recoverable_pair(
+                list(dict.fromkeys((workspace, origin))),
+                binding,
+                page=page,
+                pair_id=str(item.configuration["pair_id"]),
+            )
+    except (
+        DetailGenerationError,
+        DetailPlanError,
+        OSError,
+        ValueError,
+        KeyError,
+    ) as exc:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "NATIVE_DETAIL_RECONCILIATION_REQUIRED",
+            "原请求结果尚未核对，不能再次付费生成；请先核对原结果。",
+            {"reason": str(exc)},
+        ) from exc
+
+
 def _copy_job_for_retry(
     session: Session,
     source: JobRecord,
@@ -3333,6 +4589,25 @@ def _copy_job_relations_for_retry(
             and item.id in preserved_set_audit_ids
         )
         copied_configuration = dict(item.configuration or {})
+        if (
+            source.type == JobType.DETAIL_PACK.value
+            and (source.configuration.get("settings") or {}).get("market_region")
+            == "domestic"
+            and retry_this
+            and (
+                item.error_code == "PROVIDER_OUTCOME_UNKNOWN"
+                or session.scalar(
+                    select(JobAttemptRecord.id)
+                    .where(
+                        JobAttemptRecord.job_item_id == item.id,
+                        JobAttemptRecord.status == "outcome_unknown",
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
+        ):
+            copied_configuration["recovery_only"] = True
         # A parallel v2 retry may reuse page 0 while retrying page 1.  The
         # native Campaign Style gate still needs the accepted page-0 pixels;
         # retain the source job id so the provider can read that durable
@@ -3680,6 +4955,13 @@ def _validate_plan_payload(
                         "field": "groups.0.plan_protocol_fields.aurora_plan",
                         "message": "Full Aurora compact plan is required.",
                     }
+                )
+            try:
+                validate_plan_views(payload)
+                validate_approval_binding(payload, settings)
+            except DetailPlanError as exc:
+                errors.append(
+                    {"field": "aurora_v4_3.contract_binding", "message": str(exc)}
                 )
         return errors
     if job.type == JobType.AMAZON_VISUAL_SUITE.value:

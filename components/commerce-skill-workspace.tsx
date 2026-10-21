@@ -544,8 +544,10 @@ export function CommerceSkillWorkspace({
         ),
       ),
   );
+  const automaticAmazonPlan = isAmazon && Boolean(job.data?.configuration.automatic_amazon_submission);
   const canConfirmAmazonPlan = Boolean(
     isAmazon &&
+      !automaticAmazonPlan &&
       job.data?.status === "awaiting_confirmation" &&
       job.data.plan &&
       amazonPlanPages.length > 0 &&
@@ -578,6 +580,9 @@ export function CommerceSkillWorkspace({
 
   const progressText = useMemo(() => {
     if (!job.data) return "任务创建后将自动轮询状态";
+    if (automaticAmazonPlan && job.data.status === "planning") {
+      return "正在规划，完成校验后将自动生成 21 张图片";
+    }
     if (isAmazonReviewInfrastructureFailure) {
       const generatedCount = resultAssets.length;
       return generatedCount === expectedCount
@@ -585,7 +590,7 @@ export function CommerceSkillWorkspace({
         : `${generatedCount} / ${expectedCount} 张图片已生成，自动视觉审核未完成`;
     }
     return `${job.data.succeeded_item_count} / ${job.data.expected_item_count} 项完成`;
-  }, [expectedCount, isAmazonReviewInfrastructureFailure, job.data, resultAssets.length]);
+  }, [automaticAmazonPlan, expectedCount, isAmazonReviewInfrastructureFailure, job.data, resultAssets.length]);
 
   const replaceRoleSelection = (role: RoleKey, ids: string[]) => {
     const requested = [...new Set(ids)].slice(0, AMAZON_SOURCE_ASSET_LIMIT);
@@ -726,6 +731,7 @@ export function CommerceSkillWorkspace({
         competitor_reference_asset_ids: selections.competitor,
       },
       configuration: {
+        auto_start_after_plan: true,
         marketplace:
           amazonPlatforms.find((platform) => platform.value === platformCode)?.value ??
           amazonPlatforms[0].value,
@@ -1116,7 +1122,7 @@ export function CommerceSkillWorkspace({
               </section>
             ) : null}
 
-            {isAmazon && job.data?.status === "awaiting_confirmation" && amazonPlanPages.length > 0 ? (
+            {isAmazon && !automaticAmazonPlan && job.data?.status === "awaiting_confirmation" && amazonPlanPages.length > 0 ? (
               <section className={styles.card} aria-labelledby="amazon-plan-review-title">
                 <div className={styles.sectionHeading}>
                   <div>

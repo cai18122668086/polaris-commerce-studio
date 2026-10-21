@@ -1859,6 +1859,11 @@ export interface components {
              * @default
              */
             a_plus_copy: string;
+            /**
+             * Auto Start After Plan
+             * @default true
+             */
+            auto_start_after_plan: boolean;
             /** Brand Colors */
             brand_colors?: string[];
             /** Bullet Points */

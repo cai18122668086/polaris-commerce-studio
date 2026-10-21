@@ -391,7 +391,9 @@ def test_amazon_provider_rejects_missing_persisted_plan_context() -> None:
     assert delegate.requests == []
 
 
-def _create_amazon_job(client: TestClient, asset_id: str) -> dict[str, Any]:
+def _create_amazon_job(
+    client: TestClient, asset_id: str, *, auto_start: bool | None = False
+) -> dict[str, Any]:
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
         headers=idem(),
@@ -403,6 +405,10 @@ def _create_amazon_job(client: TestClient, asset_id: str) -> dict[str, Any]:
                 "white_background_product_asset_ids": [asset_id],
             },
             "configuration": {
+                **(
+                    {"auto_start_after_plan": auto_start}
+                    if auto_start is not None else {}
+                ),
                 "marketplace": "amazon-us",
                 "product_name": "Visible product",
                 "listing_title": "Visible product listing",

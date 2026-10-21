@@ -1316,6 +1316,20 @@ class ExecutionCoordinator:
             job = session.get(JobRecord, job_id, with_for_update=True)
             if job is None:
                 return None
+            if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+                from .amazon_auto_start import confirm_validated_plan
+
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(JobPlanRecord.job_id == job.id)
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                if plan is not None:
+                    confirm_validated_plan(session, job, plan)
+                    session.commit()
+                return JobStatus(job.status)
             settings = job.configuration.get("settings")
             if not isinstance(settings, dict):
                 return JobStatus(job.status)

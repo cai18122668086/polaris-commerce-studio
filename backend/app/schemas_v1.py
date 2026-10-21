@@ -480,6 +480,7 @@ class AmazonVisualSuiteInput(BaseModel):
 
 
 class AmazonVisualSuiteConfiguration(BaseModel):
+    auto_start_after_plan: bool = True
     marketplace: AmazonMarketplace = AMAZON_DEFAULT_MARKETPLACE
     product_name: str = Field(default="", max_length=160)
     category: str = Field(default="", max_length=120)

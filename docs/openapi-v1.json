@@ -138,6 +138,11 @@
             "title": "A Plus Copy",
             "type": "string"
           },
+          "auto_start_after_plan": {
+            "default": true,
+            "title": "Auto Start After Plan",
+            "type": "boolean"
+          },
           "brand_colors": {
             "items": {
               "type": "string"

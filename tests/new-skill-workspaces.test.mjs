@@ -253,11 +253,14 @@ test("Amazon form exposes only three concise Chinese content fields", async () =
   }
 });
 
-test("Amazon workflow reviews and confirms the backend 21-page plan", async () => {
+test("Amazon automatically generates after planning and retains historical confirmation", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
   const jobApi = await utf8("features/jobs/api/jobs.ts");
 
   assert.match(workspace, /readAmazonPlanPages\(job\.data\?\.plan\?\.payload\)/);
+  assert.match(workspace, /auto_start_after_plan: true/);
+  assert.match(workspace, /isAmazon && !automaticAmazonPlan && job\.data\?\.status/);
+  assert.match(workspace, /完成校验后将自动生成 21 张图片/);
   assert.match(workspace, /job\.data\?\.status === "awaiting_confirmation"/);
   assert.match(workspace, /确认 21 项页面规划/);
   assert.match(workspace, /amazonPlanPages\.map/);

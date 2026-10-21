@@ -215,13 +215,16 @@ def _dispatch(
     options: dict[str, Any] = {}
     with task_runner.session_factory() as session:
         job = session.get(JobRecord, job_id)
+        from .amazon_auto_start import eligible as automatic_amazon
+
         if job is not None and (
             job.type == "domestic_detail_review"
             or job.type == "detail_pack"
             and job.configuration.get("domestic_detail_pipeline")
             in {"aurora-domestic-detail-v4.3.1", "xinghe-domestic-detail-v4.0"}
+            or automatic_amazon(job)
         ):
-            # Keep legacy tasks and other products on their existing workers.
+            # Keep historical tasks and other products on their frozen workers.
             # A dedicated current-runtime consumer owns only this new queue.
             options["queue"] = "domestic_detail_v431"
     task.apply_async(

@@ -5952,6 +5952,10 @@ class XinghePlanningCoordinator:
             stage="awaiting_confirmation",
             progress=15,
         )
+        from .amazon_auto_start import confirm_validated_plan
+
+        # Confirm and bind all 21 items atomically with the finished plan.
+        confirm_validated_plan(session, job, plan)
         session.add(
             AuditEventRecord(
                 workspace_id=job.workspace_id,
@@ -5963,12 +5967,12 @@ class XinghePlanningCoordinator:
                     "page_count": AMAZON_EXPECTED_ITEM_COUNT,
                     "high_count": AMAZON_EXPECTED_ITEM_COUNT,
                     "estimated_pending_micros": estimated_pending_cost,
-                    "manual_confirmation_required": True,
+                    "manual_confirmation_required": plan.confirmed_at is None,
                 },
             )
         )
         session.commit()
-        return JobStatus.AWAITING_CONFIRMATION
+        return JobStatus(job.status)
 
 
 class XingheImageProvider:

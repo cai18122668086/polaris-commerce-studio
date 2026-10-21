@@ -24,8 +24,8 @@ from .delivery import (
 )
 from .delivery_authorization import (
     AUTO_MODE,
+    job_receipt_authorization,
     native_authorization_text,
-    receipt_authorization,
 )
 from .generation import PIPELINE_VERSION
 from .plans import canonical_hash
@@ -60,13 +60,7 @@ async def complete_authorized_delivery(
             receipt = plan.payload.get("aurora_v4_3", {}).get("approval_receipt") or {}
             if "automatic_delivery_authorization" not in receipt:
                 return current
-            authorization = receipt_authorization(
-                plan.payload,
-                job_id=job.id,
-                workspace_id=job.workspace_id,
-                plan_id=plan.id,
-                revision=plan.revision,
-            )
+            authorization = job_receipt_authorization(db, job, plan)
             if authorization is None or storage is None:
                 _reject(
                     "Automatic delivery requires its original authority "

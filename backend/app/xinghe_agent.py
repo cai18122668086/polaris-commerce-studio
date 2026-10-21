@@ -6797,12 +6797,13 @@ class XingheImageProvider:
                 plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
             )
         from .domestic_detail.delivery_authorization import (
+            job_receipt_authorization,
             native_authorization_text,
             native_delivery_mode,
-            receipt_authorization,
         )
 
-        receipt_authorization(payload, job_id=request.job_id, workspace_id=request.workspace_id, plan_id=plan_record.id, revision=plan_record.revision)
+        with self.session_factory() as db:
+            job_receipt_authorization(db, job, plan_record)
         native_plan = extract_native_plan(payload)
         if native_plan is None:
             raise AuroraDetailHarnessError(

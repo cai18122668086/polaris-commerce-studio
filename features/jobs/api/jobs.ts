@@ -294,7 +294,7 @@ export function useContinueDetailBrand(workspaceId: string | undefined) {
     workspaceId, "continue-detail-brand", input => ({ jobId: input.jobId, revision: input.revision }),
     async (id, input, key) => {
       assertJobAction(input.allowedActions, "resolve_intake");
-      const result = await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/brand/continue", {
+      const result = await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}", {
         params: { path: { workspace_id: id, job_id: input.jobId }, header: { "Idempotency-Key": key } },
         body: { expected_revision: input.revision },
       });

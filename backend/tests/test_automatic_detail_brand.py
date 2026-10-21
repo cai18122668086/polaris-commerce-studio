@@ -280,8 +280,9 @@ def test_old_successful_brand_question_gets_one_separately_receipted_reanalysis(
     assert len(gateway.planner_calls) == 3
 
 
+@pytest.mark.parametrize("suffix", ["/intake/brand/continue", ""])
 def test_legacy_brand_question_continuation_is_idempotent_without_fake_human_resolution(
-    client, monkeypatch
+    client, monkeypatch, suffix
 ):
     from app.models import JobRecord
 
@@ -294,7 +295,7 @@ def test_legacy_brand_question_continuation_is_idempotent_without_fake_human_res
     monkeypatch.setattr(automatic_brand, "enabled", enabled)
     key = idem()
     body = {"expected_revision": pending["plan"]["revision"]}
-    url = f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/intake/brand/continue"
+    url = f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}{suffix}"
     assert client.post(url, headers=key, json=body).status_code == 202
     assert client.post(url, headers=key, json=body).status_code == 202
     with client.app.state.session_factory() as db:

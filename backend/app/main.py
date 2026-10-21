@@ -21,6 +21,7 @@ from .admin_management_routes import router as admin_management_router
 from .admin_usage_routes import router as admin_usage_router
 from .announcement_routes import router as announcement_router
 from .auth import ensure_development_identity
+from .brand_resume_routes import router as brand_resume_router
 from .config import Settings
 from .database import Base, build_database
 from .ecommerce_account_routes import router as ecommerce_account_router
@@ -493,6 +494,7 @@ def create_app(
         return {"status": "ok", "metrics": metrics}
 
     application.include_router(v1_router)
+    application.include_router(brand_resume_router)
     application.include_router(announcement_router)
     application.include_router(admin_dashboard_router)
     application.include_router(admin_account_router)

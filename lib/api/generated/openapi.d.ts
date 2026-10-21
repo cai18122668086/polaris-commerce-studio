@@ -1363,7 +1363,8 @@ export interface paths {
         /** Get Job */
         get: operations["get_job_api_v1_workspaces__workspace_id__jobs__job_id__get"];
         put?: never;
-        post?: never;
+        /** Continue Detail Brand Compatible Edge */
+        post: operations["continue_detail_brand_compatible_edge_api_v1_workspaces__workspace_id__jobs__job_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7141,6 +7142,44 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    continue_detail_brand_compatible_edge_api_v1_workspaces__workspace_id__jobs__job_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailAutomaticBrandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

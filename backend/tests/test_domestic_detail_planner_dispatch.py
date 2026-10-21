@@ -343,3 +343,60 @@ def test_serial_authoring_has_one_deadline_and_no_180_second_override(monkeypatc
     provider.timeout_seconds = 240
     asyncio.run(provider.plan(request("aurora_domestic_detail")))
     assert timeouts[-1] == 240
+
+
+@pytest.mark.parametrize("profile", ["xinghe_domestic_detail_4", *PROFILES])
+def test_long_planner_wait_is_configurable_and_still_honors_deadline(
+    profile, monkeypatch
+):
+    from app.config import Settings
+    from app.xinghe_agent import build_tengli_gateway
+
+    clock = [1000.0]
+    monkeypatch.setattr("app.xinghe_agent.time.monotonic", lambda: clock[0])
+
+    class Transport:
+        calls = []
+
+        async def post_json(self, **kwargs):
+            self.calls.append(kwargs)
+            return 200, response()
+
+    provider = build_tengli_gateway(Settings(
+        _env_file=None,
+        tengli_api_key="synthetic-key",
+        analysis_timeout_seconds=1200,
+    ))
+    transport = Transport()
+    provider.transport = transport
+    result = asyncio.run(provider.plan(request(profile)))
+    assert result.error_code is None
+    assert transport.calls[-1]["timeout_seconds"] == 1200
+    # Image transport retains its existing timeout, and the native campaign
+    # deadline can only shorten the longer planner socket timeout.
+    assert provider.timeout_seconds == 600
+    result = asyncio.run(provider.plan(request(profile, planning_deadline=1100.0)))
+    assert result.error_code is None
+    assert transport.calls[-1]["timeout_seconds"] == 100
+
+
+def test_long_planner_timeout_does_not_replay_an_uncertain_request():
+    class Transport:
+        calls = 0
+
+        async def post_json(self, **kwargs):
+            self.calls += 1
+            raise XingheAgentError(
+                "PROVIDER_TRANSPORT_FAILED", "Timeout", retryable=True
+            )
+
+    transport = Transport()
+    provider = gateway(transport)
+    provider.planner_timeout_seconds = 1200
+    result = asyncio.run(provider.plan(request("aurora_domestic_detail")))
+    assert transport.calls == 1
+    assert result.error_code == "PROVIDER_TRANSPORT_FAILED"
+    assert (
+        result.provider_envelope["native_planner_dispatch"]["outcome"]
+        == "outcome_unknown"
+    )

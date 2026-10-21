@@ -2208,6 +2208,7 @@ class TengliOpenAICompatibleGateway:
         high_price_micros: int = DEFAULT_HIGH_PRICE_MICROS,
         review_price_micros: int = 20_000,
         timeout_seconds: float = 600,
+        planner_timeout_seconds: float | None = None,
         diagnostic_content_sample: bool = False,
         failover_enabled: bool = False,
         failover_api_key: str | None = None,
@@ -2245,6 +2246,7 @@ class TengliOpenAICompatibleGateway:
         self.high_price_micros = high_price_micros
         self.review_price_micros = review_price_micros
         self.timeout_seconds = timeout_seconds
+        self.planner_timeout_seconds = planner_timeout_seconds
         self.diagnostic_content_sample = diagnostic_content_sample
         self.transport = transport or UrllibOpenAITransport()
         self.external_network_request_count = 0
@@ -2498,7 +2500,11 @@ class TengliOpenAICompatibleGateway:
             for route_index, route in enumerate(routes):
                 route_payload = {**payload, "model": route.planner_model}
                 try:
-                    timeout_seconds = self.timeout_seconds
+                    timeout_seconds = (
+                        self.timeout_seconds
+                        if self.planner_timeout_seconds is None
+                        else self.planner_timeout_seconds
+                    )
                     if request.planning_deadline is not None:
                         remaining = request.planning_deadline - time.monotonic()
                         if remaining <= 0:
@@ -3293,6 +3299,7 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         high_price_micros=settings.xinghe_high_price_micros,
         review_price_micros=settings.tengli_planner_reserve_micros,
         diagnostic_content_sample=settings.diagnostic_content_sample,
+        planner_timeout_seconds=settings.analysis_timeout_seconds,
         failover_enabled=settings.provider_failover_enabled,
         failover_api_key=settings.provider_failover_api_key.get_secret_value()
         or None,
@@ -3967,7 +3974,13 @@ class XinghePlanningCoordinator:
         still plan afresh; changed inputs, incomplete candidates and unrelated
         workspaces cannot enter this path.
         """
-        if self.skill_id != _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+        if (
+            self.skill_id != _AURORA_DOMESTIC_DETAIL_SKILL_ID
+            or request.authoring_stage == "direct"
+        ):
+            # Direct website retries recover original brief receipts through
+            # NativePlanningStore. A legacy compiled candidate would bypass
+            # that brief compiler and re-enter the old repair/preflight loop.
             return None
         with self.session_factory() as db:
             job = db.get(JobRecord, request.job_id)

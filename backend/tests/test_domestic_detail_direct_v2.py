@@ -78,6 +78,52 @@ def test_direct_brief_cannot_add_fact_ids_or_silently_drop_user_points(client):
     assert any("coverage" in message for message in direct.errors(value, request))
 
 
+def test_direct_retry_uses_original_brief_instead_of_invalid_legacy_candidate(client):
+    from sqlalchemy import select
+
+    from app.models import JobItemRecord, JobPlanRecord, JobRecord, utc_now
+    from app.services import canonical_hash
+    from tests.test_api import dispatch_pending
+
+    first = planned(client, profile=direct.VERSION)
+    gateway = _gateway(client)
+    with client.app.state.session_factory() as db:
+        record = db.get(JobRecord, first["id"])
+        record.status, record.stage = "failed", "planning_failed"
+        record.failed_item_count, record.finished_at = 8, utc_now()
+        plan = db.scalar(
+            select(JobPlanRecord).where(JobPlanRecord.job_id == first["id"])
+        )
+        candidate = deepcopy(resolve_native_plan(plan.payload))
+        candidate["modules"][0]["expression"]["evidence_subject_policy"] = (
+            "UNKNOWN_EVIDENCE_POLICY"
+        )
+        data = {**plan.payload, "state": "failed", "rejected_aurora_plan": candidate}
+        plan.payload, plan.payload_hash = data, canonical_hash(data)
+        plan.validation_status = "invalid"
+        for item in db.scalars(
+            select(JobItemRecord).where(JobItemRecord.job_id == record.id)
+        ):
+            item.status, item.stage = "failed", "planning_failed"
+        db.commit()
+    before = len(gateway.planner_calls)
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}/retry",
+        headers=idem(), json={"scope": "failed"},
+    )
+    assert response.status_code == 201, response.text
+    target_id = response.json()["id"]
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{target_id}").json()
+    assert result["status"] == "awaiting_confirmation", result
+    assert (
+        resolve_native_plan(result["plan"]["payload"])["plan_format"] == direct.VERSION
+    )
+    assert "planning_recovery" not in result["plan"]["payload"]
+    assert len(gateway.planner_calls) == before
+    assert not gateway.image_calls
+
+
 def test_confirmed_history_keeps_human_evidence_and_rejects_changed_truth():
     from app.domestic_detail.facts import DetailIntakeError
     from app.domestic_detail.intake import preserve_confirmed_history

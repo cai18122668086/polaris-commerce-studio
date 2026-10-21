@@ -110,6 +110,8 @@ def overlay(
                 "POLARIS_ECOMMERCE_LOGIN_ENABLED": "false",
                 "POLARIS_PROVIDER_FAILOVER_ENABLED": "false",
                 "POLARIS_PROVIDER_ROTATION_ORDER": "primary",
+                "POLARIS_AUTO_PROCESS_JOBS": "false",
+                "POLARIS_ANALYSIS_TIMEOUT_SECONDS": "1200",
             }
         )
         # This process has no browser role or original browser-profile authority.
@@ -143,6 +145,9 @@ def overlay(
     return {
         "name": base["name"],
         "services": {
+            # Keep the original API image, but stop its older outbox publisher.
+            # Otherwise a retry can enter the old worker despite its pipeline.
+            "api": {"environment": {"POLARIS_AUTO_PROCESS_JOBS": "false"}},
             "detail-api": api,
             "detail-worker": worker,
             "dispatcher": {"image": backend_image, "pull_policy": "never"},

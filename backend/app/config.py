@@ -174,6 +174,7 @@ class Settings(BaseSettings):
     # rotates models without notice: change POLARIS_ANALYSIS_MODEL to move the
     # model instead of editing this default.
     analysis_model: str = "gpt-5.6-sol"
+    analysis_timeout_seconds: float = Field(default=600, gt=0, le=1800)
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"

@@ -156,7 +156,10 @@ class ReleaseTest(unittest.TestCase):
         before = deepcopy(original)
         result = prepare(original)
         self.assertEqual(original, before)
-        self.assertNotIn("api", result["services"])
+        self.assertEqual(
+            result["services"]["api"],
+            {"environment": {"POLARIS_AUTO_PROCESS_JOBS": "false"}},
+        )
         self.assertNotIn("worker", result["services"])
         self.assertEqual(result["services"]["dispatcher"]["image"], BACKEND)
         for name in ("detail-api", "detail-worker"):
@@ -173,6 +176,8 @@ class ReleaseTest(unittest.TestCase):
                 environment["POLARIS_ECOMMERCE_STARTUP_RECOVERY_ENABLED"], "false"
             )
             self.assertEqual(environment["POLARIS_PROVIDER_FAILOVER_ENABLED"], "false")
+            self.assertEqual(environment["POLARIS_AUTO_PROCESS_JOBS"], "false")
+            self.assertEqual(environment["POLARIS_ANALYSIS_TIMEOUT_SECONDS"], "1200")
         command = result["services"]["detail-worker"]["command"]
         self.assertIn("--queues=domestic_detail_v431", command)
         self.assertNotIn("--queues=default", command)

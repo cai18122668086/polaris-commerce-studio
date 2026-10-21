@@ -730,6 +730,10 @@ class DetailIntakeResolutionRequest(BaseModel):
     additional_product_asset_ids: list[str] = Field(default_factory=list, max_length=2)
 
 
+class DetailAutomaticBrandRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
 class PlanConfirmRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     approval_text: str | None = Field(default=None, min_length=2, max_length=240)

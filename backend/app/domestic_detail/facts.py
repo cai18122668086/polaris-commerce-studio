@@ -133,7 +133,8 @@ def validate_intake(
     """Validate model observations before identity lock or storyboard authoring.
 
     This boundary never infers facts from style references, supplies a CLEAR
-    scan, substitutes generic geometry, or grants brandless authorization.
+    scan or substitutes generic geometry. Website rendering defaults can omit
+    independent logos without declaring that the product itself is brandless.
     The caller must preserve the raw response and its source-byte binding.
     """
     if not isinstance(payload, Mapping) or payload.get("version") != INTAKE_VERSION:
@@ -345,6 +346,9 @@ def validate_intake(
         )
     brand = identity["brand_logo_source"]
     if brand.get("mode", "BRANDED") == "BRANDLESS":
+        from .automatic_brand import fallback_basis
+
+        brandless_confirmation = brandless_confirmation or fallback_basis(settings)
         if (
             not isinstance(brandless_confirmation, str)
             or len(brandless_confirmation.strip()) < 2

@@ -6,6 +6,7 @@ export type IdempotentOperation =
   | "retry-job"
   | "clone-job"
   | "resolve-intake"
+  | "continue-detail-brand"
   | "confirm-plan"
   | "finalize-job"
   | "campaign-review"

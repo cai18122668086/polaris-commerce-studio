@@ -11,7 +11,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
 import { DetailSkillChoice } from "@/components/detail-skill-choice";
-import { BRANDLESS_CONFIRMATION, DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
+import { DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
 import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
 import { DomesticDetailCampaignReview } from "@/components/domestic-detail-campaign-review";
 import type { CampaignSelection } from "@/features/jobs/api/campaign-reviews";
@@ -121,7 +121,6 @@ export default function DetailPackPage() {
   const [draftCategory, setCategory] = useState("");
   const [draftTargetBuyer, setTargetBuyer] = useState("");
   const [draftSellingPoints, setSellingPoints] = useState("");
-  const [draftBrandlessConfirmed, setBrandlessConfirmed] = useState(false);
   const [reviewedApprovalKey, setReviewedApprovalKey] = useState("");
   const [automaticChoice, setAutomaticChoice] = useState<{ scope: string; requested: boolean; authorization?: AutomaticDeliveryAuthorization }>();
   const [reviewedFinalKey, setReviewedFinalKey] = useState("");
@@ -153,7 +152,6 @@ export default function DetailPackPage() {
   const category = savedString("category", draftCategory);
   const targetBuyer = savedString("target_buyer", draftTargetBuyer);
   const sellingPoints = jobId ? Array.isArray(saved?.selling_points) ? saved.selling_points.filter((point): point is string => typeof point === "string").join("\n") : "" : draftSellingPoints;
-  const brandlessConfirmed = jobId ? Boolean(saved?.brandless_confirmation) : draftBrandlessConfirmed;
   const savedInput = job.data?.id === jobId ? job.data.configuration.input as Record<string, unknown> | undefined : undefined;
   const savedAssetIds = Array.isArray(savedInput?.product_groups) ? savedInput.product_groups.flatMap(group => group && typeof group === "object" && Array.isArray(group.asset_ids) ? group.asset_ids.filter((id: unknown): id is string => typeof id === "string") : []) : [];
   const sourceCount = jobId ? savedAssetIds.length : sources.length;
@@ -238,7 +236,6 @@ export default function DetailPackPage() {
       const previewUrl = URL.createObjectURL(file);
       try {
         const asset = await upload.mutateAsync({ file, mediaKind: "image" });
-        setBrandlessConfirmed(false);
         setSources((items) => [...items, { asset, previewUrl, role: "product_reference" }]);
       } catch (error) {
         URL.revokeObjectURL(previewUrl);
@@ -252,7 +249,6 @@ export default function DetailPackPage() {
   };
 
   const removeSource = (assetId: string) => {
-    setBrandlessConfirmed(false);
     setSources((items) => {
       const removed = items.find((item) => item.asset.id === assetId);
       if (removed) URL.revokeObjectURL(removed.previewUrl);
@@ -274,7 +270,6 @@ export default function DetailPackPage() {
       auto_start_after_plan: marketRegion === "domestic",
       selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
       verified_facts: marketRegion === "domestic" ? [] : sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 24),
-      brandless_confirmation: marketRegion === "domestic" && brandlessConfirmed ? BRANDLESS_CONFIRMATION : undefined,
       conflict_scan: marketRegion === "domestic" ? {} : { status: "NO_MATERIAL_CONFLICTS_REPORTED" },
       source_conflicts: [],
       reference_materials: [],
@@ -341,7 +336,7 @@ export default function DetailPackPage() {
             <div className="form-section-head"><span className="number-chip">1</span><div><h2>商品素材</h2><p>每张图片都会先保存到当前工作区。</p></div>{sourceCount > 0 && <span className="validation-chip"><CheckCircle2 size={15} />已上传 {sourceCount} 张</span>}</div>
             <div className="multi-uploader">
               {jobId ? savedAssetIds.map((assetId, index) => <SavedSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={Boolean(jobId)} onChange={event => {
-                const role = event.target.value as UploadedSource["role"]; setBrandlessConfirmed(false); setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));
+                const role = event.target.value as UploadedSource["role"]; setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));
               }}><option value="product_reference">商品图</option><option value="style_reference">风格参考</option></select>}<button aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button><i><GripVertical size={14} /></i></div>)}
               {!jobId && sources.length < 8 && <button className="upload-more" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>{upload.isPending ? <LoaderCircle className="spin" size={23} /> : <ImagePlus size={23} />}<strong>{upload.isPending ? "上传中" : "添加素材"}</strong><small>最多 8 张</small></button>}
               <input ref={fileInput} className="visually-hidden" type="file" multiple accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
@@ -356,7 +351,6 @@ export default function DetailPackPage() {
               <label><span>商品类目</span><input disabled={Boolean(jobId)} value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
               <label><span>目标买家</span><input disabled={Boolean(jobId)} value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
               <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize}</strong></div></label>
-              {marketRegion === "domestic" && <label className="full"><span><input style={{ width: "auto", marginRight: 8 }} type="checkbox" disabled={Boolean(jobId)} checked={brandlessConfirmed} onChange={event => setBrandlessConfirmed(event.target.checked)} />{BRANDLESS_CONFIRMATION}</span><small>有品牌的商品请上传能清楚辨认标识的本商品图片。</small></label>}
               <label className="full"><span>核心卖点</span><textarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
             </div>
           </section>

@@ -158,6 +158,7 @@ def build(payload: dict[str, Any], request: Any) -> dict[str, Any]:
     facts, required = facts_for(request)
     width, height = map(int, request.size.split("x"))
     canonical = pair_brief(payload, request.page_count)
+    canonical = brand_rendering_brief(canonical, request.detail_intake or {})
     value: dict[str, Any] = contract().authored_plan(
         canonical, facts, required, request.page_count, width, height
     )
@@ -171,6 +172,25 @@ def build(payload: dict[str, Any], request: Any) -> dict[str, Any]:
             "source_transition_indices": list(range(0, request.page_count - 1, 2)),
         }
     value["product_intake"] = deepcopy(request.detail_intake)
+    return value
+
+
+def brand_rendering_brief(
+    brief: dict[str, Any], intake: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Keep the source compiler intact while preserving physical package marks."""
+    if (intake.get("automatic_brand_handling") or {}).get(
+        "decision"
+    ) != "omit_independent_logo":
+        return brief
+    value = deepcopy(brief)
+    instruction = (
+        "保留商品本体已有包装文字和标识，只禁止额外添加独立品牌标志；"
+        "不得擦除、替换商品上的真实标识，不宣称商品无品牌。"
+    )
+    rendering = value["style"]["product_rendering"]
+    if instruction not in rendering:
+        value["style"]["product_rendering"] = rendering + "；" + instruction
     return value
 
 
@@ -244,7 +264,7 @@ def validate_plan(value: Mapping[str, Any], page_count: int) -> None:
     ]
     strategy = value["output_strategy"]
     expected = contract().authored_plan(
-        value["website_brief"],
+        brand_rendering_brief(value["website_brief"], intake),
         facts,
         required,
         page_count,

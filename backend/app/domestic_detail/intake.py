@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import automatic_brand
 from .facts import (
     INTAKE_VERSION,
     DetailIntakeError,
@@ -33,9 +34,23 @@ def intake_response_schema(
     wire_settings: Mapping[str, Any] | None = None,
     style_asset_ids: Sequence[str] | None = None,
     source_conflicts_resolved: bool = False,
+    force_no_logo: bool = False,
 ) -> dict[str, Any]:
     native_input, identity = _native_schemas()
     identity = deepcopy(identity)
+    logo_schema = identity["properties"]["brand_logo_source"]
+    logo_schema["properties"].update(
+        observed_logo_text={"type": "string", "minLength": 1, "pattern": r"\S"},
+        observed_region={"type": "string", "minLength": 1, "pattern": r"\S"},
+    )
+    logo_schema["allOf"][0]["then"]["required"] = [
+        "observed_logo_text",
+        "observed_region",
+    ]
+    if automatic_brand.enabled(wire_settings or {}):
+        logo_schema["allOf"][0]["else"]["properties"]["brandless_evidence"] = {
+            "const": automatic_brand.fallback_basis(wire_settings or {})
+        }
     observed_fact = deepcopy(native_input["properties"]["verified_facts"]["items"])
     observed_fact["properties"]["source_class"] = {"const": "OBSERVED_PRODUCT_EVIDENCE"}
     source_ref: dict[str, Any] = {"type": "string"}
@@ -197,7 +212,9 @@ def intake_response_schema(
         ):
             if wire_settings.get(source):
                 identity["properties"][target] = {"const": wire_settings[source]}
-        confirmation = wire_settings.get("brandless_confirmation")
+        confirmation = wire_settings.get("brandless_confirmation") or (
+            automatic_brand.fallback_basis(wire_settings) if force_no_logo else None
+        )
         if confirmation:
             logo = identity["properties"]["brand_logo_source"]["properties"]
             for key, value in {
@@ -217,6 +234,8 @@ def intake_response_schema(
             item = deepcopy(common)
             item["properties"]["kind"] = {"const": kind}
             observations["prefixItems"].append(item)
+    if automatic_brand.enabled(wire_settings or {}):
+        result["properties"]["brand_confirmation_required"] = {"const": False}
     return result
 
 
@@ -357,6 +376,7 @@ def intake_prompt(
     settings: Mapping[str, Any],
     sources: Sequence[Mapping[str, Any]],
     resolution: Mapping[str, Any] | None = None,
+    brand_repair: Mapping[str, Any] | None = None,
 ) -> str:
     return (
         "Perform source intake BEFORE identity lock or any storyboard. "
@@ -372,8 +392,13 @@ def intake_prompt(
             "HUMAN_RESOLUTION already resolves the recorded conflict. Preserve "
             "its original UNRESOLVED rows as evidence and author identity plus "
             "all four identity_observations using the retained facts. Do not "
-            "stop at the old conflict again. Only a still-unconfirmed brand "
-            "may require brand clarification instead of identity. "
+            "stop at the old conflict again. "
+            + (
+                ""
+                if automatic_brand.enabled(settings)
+                else "Only a still-unconfirmed brand may require brand "
+                "clarification instead of identity. "
+            )
             if resolution is not None
             else "A material conflict MUST stop before identity/storyboard; "
             "omit identity and modules. "
@@ -397,18 +422,31 @@ def intake_prompt(
         "Set identity_features_source=ORDERED_SOURCE_OBSERVATIONS_V1. "
         "Proportions must describe visible ratio/shape and "
         "parts must state actual count and relation. Retain the user's "
-        "exact product_name/category when supplied. BRANDED requires a "
+        "exact product_name/category when supplied. "
+        + automatic_brand.prompt_policy(settings)
+        + "BRANDED requires a "
         "readable current-product logo, its exact observed_logo_text and "
-        "observed_region. BRANDLESS requires the user's explicit "
-        "brandless_confirmation, retained verbatim in "
-        "brandless_evidence. In BRANDLESS mode, "
+        "observed_region. "
+        + (
+            "BRANDLESS requires the exact server fallback basis in "
+            "brandless_evidence. Never set brand_confirmation_required=true. "
+            if automatic_brand.enabled(settings)
+            else "BRANDLESS requires the user's explicit brandless_confirmation, "
+            "retained verbatim in brandless_evidence. "
+        )
+        + "In BRANDLESS mode, "
         "identity.brand_logo_source.image_id must be the literal NONE, "
         "never a product asset ID: product references are not logo sources. "
         "Follow RESPONSE_CONTRACT_JSON, including its conditional "
-        "brand fields. If neither is available, set "
-        "brand_confirmation_required=true, describe actual "
-        "brand_observation, and omit identity; ask no other unnecessary "
-        "questions. Analyze every style asset as reference_materials "
+        "brand fields. "
+        + (
+            ""
+            if automatic_brand.enabled(settings)
+            else "If neither is available, set brand_confirmation_required=true, "
+            "describe actual brand_observation, and omit identity; ask no other "
+            "unnecessary questions. "
+        )
+        + "Analyze every style asset as reference_materials "
         "using its asset ID, path=asset:<id>, concrete analyzed_units "
         "and observed_expression_methods. Do not fabricate ANALYZED "
         "references. No full plan/modules/copy is permitted in this "
@@ -430,6 +468,10 @@ def intake_prompt(
             "SETTINGS": dict(settings),
             "SOURCES": list(sources),
             "HUMAN_RESOLUTION": resolution,
+            "AUTOMATIC_BRAND_REANALYSIS": brand_repair,
+            "AUTOMATIC_NO_INDEPENDENT_LOGO_BASIS": automatic_brand.fallback_basis(
+                settings
+            ),
             "RESPONSE_CONTRACT_JSON": intake_response_schema(
                 [
                     source["asset_id"]
@@ -444,6 +486,7 @@ def intake_prompt(
                     for source in sources
                     if source.get("role") == "style_reference"
                 ],
+                force_no_logo=brand_repair is not None,
             ),
         },
         ensure_ascii=False,
@@ -529,6 +572,7 @@ def intake_binding(
     model: str,
     resolution: Mapping[str, Any] | None,
     dispatch_route: Mapping[str, Any] | None = None,
+    brand_repair: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     source_root = Path(__file__).parent
     value = {
@@ -546,11 +590,18 @@ def intake_binding(
                 ).hexdigest(),
                 **{
                     name: hashlib.sha256((source_root / name).read_bytes()).hexdigest()
-                    for name in ("facts.py", "intake.py", "planner_dispatch.py")
+                    for name in (
+                        "facts.py",
+                        "intake.py",
+                        "planner_dispatch.py",
+                        "automatic_brand.py",
+                    )
                 },
             }
         ),
     }
+    if brand_repair is not None:
+        value["automatic_brand_repair"] = deepcopy(dict(brand_repair))
     return {**value, "sha256": canonical_hash(value)}
 
 

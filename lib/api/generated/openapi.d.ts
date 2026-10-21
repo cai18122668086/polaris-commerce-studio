@@ -1595,6 +1595,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/brand/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Continue Detail Brand */
+        post: operations["continue_detail_brand_api_v1_workspaces__workspace_id__jobs__job_id__intake_brand_continue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve": {
         parameters: {
             query?: never;
@@ -2281,6 +2298,11 @@ export interface components {
             /** Id */
             id: string;
             status: components["schemas"]["UserStatus"];
+        };
+        /** DetailAutomaticBrandRequest */
+        DetailAutomaticBrandRequest: {
+            /** Expected Revision */
+            expected_revision: number;
         };
         /** DetailIntakeResolutionRequest */
         DetailIntakeResolutionRequest: {
@@ -7612,6 +7634,44 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    continue_detail_brand_api_v1_workspaces__workspace_id__jobs__job_id__intake_brand_continue_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailAutomaticBrandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

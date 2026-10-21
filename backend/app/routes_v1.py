@@ -104,6 +104,7 @@ from .schemas_v1 import (
     CapabilityStatus,
     CreativeImageJobCreate,
     CurrentUserResponse,
+    DetailAutomaticBrandRequest,
     DetailIntakeResolutionRequest,
     DetailPackJobCreate,
     DevelopmentProviderSettingsResponse,
@@ -2478,6 +2479,139 @@ def update_plan(
         confirmed_at=plan.confirmed_at,
     )
 
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/intake/brand/continue",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def continue_detail_brand(
+    job_id: str,
+    payload: DetailAutomaticBrandRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail import automatic_brand
+    from .domestic_detail.generation import PIPELINE_VERSION
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/brand/continue",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job.id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(session, job)
+    settings = job.configuration.get("settings") or {}
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+        or not automatic_brand.enabled(settings)
+        or job.status != JobStatus.AWAITING_CONFIRMATION.value
+        or job.stage != "intake_confirmation_required"
+        or job.cancel_requested_at is not None
+    ):
+        raise ApiError(
+            409, "INTAKE_NOT_AWAITING_BRAND", "当前任务没有待后台处理的品牌信息。"
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if plan is None or plan.revision != payload.expected_revision:
+        raise ApiError(409, "PLAN_REVISION_CONFLICT", "商品信息已更新，请刷新后重试。")
+    intake = plan.payload.get("product_intake")
+    if (
+        not isinstance(intake, dict)
+        or canonical_hash(intake) != plan.payload.get("intake_question_sha256")
+        or canonical_hash(settings) != plan.payload.get("intake_settings_sha256")
+    ):
+        raise ApiError(
+            409, "INTAKE_BINDING_CHANGED", "商品信息来源已变化，请刷新后重试。"
+        )
+    facts = {str(row.get("id")): row for row in intake.get("observed_facts", [])}
+    if not intake.get("brand_confirmation_required") and not any(
+        automatic_brand.brand_conflict(row, facts)
+        for row in intake.get("source_conflicts", [])
+    ):
+        raise ApiError(
+            409, "INTAKE_NOT_AWAITING_BRAND", "当前需要处理的是商品规格信息。"
+        )
+    manifest = plan.payload.get("intake_source_manifest")
+    if not isinstance(manifest, list) or not manifest:
+        raise ApiError(409, "INTAKE_BINDING_CHANGED", "商品图片来源已变化。")
+    for source in manifest:
+        asset = session.get(AssetRecord, source["asset_id"])
+        role_exists = session.scalar(
+            select(JobAssetRecord.id)
+            .where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.asset_id == source["asset_id"],
+                JobAssetRecord.role == source["role"],
+                JobAssetRecord.direction == JobAssetDirection.INPUT.value,
+            )
+            .limit(1)
+        )
+        if (
+            asset is None
+            or asset.workspace_id != job.workspace_id
+            or asset.deleted_at is not None
+            or asset.sha256 != source["sha256"]
+            or role_exists is None
+        ):
+            raise ApiError(409, "INTAKE_BINDING_CHANGED", "商品图片或来源用途已变化。")
+    receipt = {
+        "version": automatic_brand.VERSION,
+        "decision_source": "website_default",
+        "source_intake_sha256": canonical_hash(intake),
+        "product_brandless_claim": False,
+        "requested_at": utc_now().isoformat(),
+    }
+    job.configuration = {**job.configuration, "automatic_brand_continuation": receipt}
+    plan.payload = {
+        **plan.payload,
+        "state": "automatic_brand_continuation",
+        "automatic_brand_continuation": receipt,
+        "planner_lease_expires_at": None,
+    }
+    plan.payload_hash = canonical_hash(plan.payload)
+    plan.revision += 1
+    transition_job(job, JobStatus.PLANNING, stage="analyzing_product", progress=10)
+    session.add(
+        AuditEventRecord(
+            workspace_id=job.workspace_id,
+            action="detail_brand.automatic_continuation",
+            resource_type="job",
+            resource_id=job.id,
+            request_id=job.id,
+            details=receipt,
+        )
+    )
+    add_outbox_event(
+        session,
+        workspace_id=job.workspace_id,
+        job_id=job.id,
+        event_type="job.dispatch_requested",
+        suffix=f"automatic-brand-{plan.revision}",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, job)
 
 @router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve",

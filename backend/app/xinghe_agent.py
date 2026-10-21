@@ -462,6 +462,7 @@ class PlannerRequest:
     intake_settings: Mapping[str, Any] | None = None
     detail_intake: Mapping[str, Any] | None = None
     intake_resolution: Mapping[str, Any] | None = None
+    intake_brand_repair: Mapping[str, Any] | None = None
     native_dispatch: Mapping[str, Any] | None = None
     authoring_stage: str = ""
     authoring_target_ids: tuple[str, ...] = ()
@@ -3666,6 +3667,7 @@ class XinghePlanningCoordinator:
     ) -> tuple[PlannerRequest, tuple[PlannerCallResult, ...]]:
         """Run/recover one role-bound intake before any full-plan call."""
         settings = dict(request.intake_settings or {})
+        from .domestic_detail import automatic_brand
         resolution = request.intake_resolution
         brandless = (resolution or {}).get("brandless_confirmation") or settings.get(
             "brandless_confirmation"
@@ -3703,6 +3705,7 @@ class XinghePlanningCoordinator:
             model=selected_route["model"],
             dispatch_route=selected_route,
             resolution=resolution,
+            brand_repair=request.intake_brand_repair,
         )
         store = IntakeStore(
             detail_workspace(request.job_id) / "intake", binding, request.job_id
@@ -3710,7 +3713,10 @@ class XinghePlanningCoordinator:
         result: PlannerCallResult | None = None
         calls: tuple[PlannerCallResult, ...] = ()
         try:
-            stored = store.completed()
+            stored = (
+                store.recover_for_revalidation()
+                if automatic_brand.enabled(settings) else store.completed()
+            )
             source_id = request.job_id
             if stored is None:
                 source_ids: list[str] = []
@@ -3828,6 +3834,35 @@ class XinghePlanningCoordinator:
                 _schema(result.payload, intake_response_schema(), "/intake")
             assert isinstance(result.payload, Mapping)
             canonical_wire = canonical_intake_wire(result.payload, has_style_sources=bool(style_ids))
+            canonical_wire, brand_receipt, needs_identity = automatic_brand.project(
+                canonical_wire, settings, sources,
+                force_no_logo=request.intake_brand_repair is not None,
+            )
+            if needs_identity and request.intake_brand_repair is None:
+                # A successful old response may lack identity because the old
+                # contract stopped for a brand choice. Reinspect pixels once;
+                # never fabricate geometry or overwrite its original receipt.
+                repair_context = {
+                    "version": automatic_brand.VERSION,
+                    "source_payload_sha256": canonical_hash(result.payload),
+                    "reason": "Continue pixel-based identity analysis without an independent logo or brand question.",
+                }
+                def merge_calls(extra: Sequence[PlannerCallResult]) -> tuple[PlannerCallResult, ...]:
+                    merged = {}
+                    for call in (*calls, *extra):
+                        receipt = (call.provider_envelope or {}).get("native_intake_receipt")
+                        key = canonical_hash(receipt) if receipt else canonical_hash(asdict(call))
+                        merged[key] = call
+                    return tuple(merged.values())
+                try:
+                    repaired_request, repaired_calls = await self._with_domestic_intake(
+                        replace(request, intake_brand_repair=repair_context)
+                    )
+                except DetailIntakeError as exc:
+                    exc.call_results = merge_calls(exc.call_results)
+                    calls = exc.call_results
+                    raise
+                return repaired_request, merge_calls(repaired_calls)
             from .domestic_detail.intake import preserve_confirmed_history
 
             canonical_wire, confirmed_history = preserve_confirmed_history(
@@ -3840,6 +3875,7 @@ class XinghePlanningCoordinator:
                 wire_settings=settings if wire else None,
                 source_conflicts_resolved=resolution is not None,
                 style_asset_ids=list(style_ids),
+                force_no_logo=request.intake_brand_repair is not None,
             ), "/intake")
             projected, identity_projection = project_identity_observations(canonical_wire)
             if identity_projection is not None:
@@ -3854,6 +3890,8 @@ class XinghePlanningCoordinator:
             )
             if identity_projection is not None:
                 contract["identity_projection_receipt"] = identity_projection
+            if brand_receipt is not None:
+                contract["automatic_brand_handling"] = brand_receipt
             if confirmed_history is not None:
                 contract["confirmed_history_receipt"] = confirmed_history
             prior_intake = (resolution or {}).get("source_intake")
@@ -4452,7 +4490,16 @@ class XinghePlanningCoordinator:
                 .with_for_update()
             )
             if existing is not None:
-                if existing.payload.get("state") == "intake_resolved":
+                automatic_continuation = job.configuration.get("automatic_brand_continuation")
+                automatic_resume = (
+                    existing.payload.get("state") == "automatic_brand_continuation"
+                    and isinstance(automatic_continuation, Mapping)
+                    and automatic_continuation.get("version") == "website-automatic-brand-v1"
+                    and automatic_continuation == existing.payload.get("automatic_brand_continuation")
+                    and automatic_continuation.get("source_intake_sha256")
+                    == canonical_hash(existing.payload.get("product_intake"))
+                )
+                if existing.payload.get("state") == "intake_resolved" or automatic_resume:
                     requests = self._planning_requests(session, job)
                     self._authorize_planning(session, job, requests)
                     existing.payload = {
@@ -4810,7 +4857,11 @@ class XinghePlanningCoordinator:
                     product_information=tuple(selling_points_value),
                     platform_code=platform_code,
                     size=size,
-                    idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
+                    idempotency_key=(
+                        f"{job.id}:planner:{group_index}:{signature}"
+                        + (":automatic-brand:" + canonical_hash(configuration["automatic_brand_continuation"])
+                           if configuration.get("automatic_brand_continuation") else "")
+                    ),
                     planning_directives=()
                     if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
                     else identity_directives,
@@ -10558,6 +10609,7 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
             wire_settings=request.intake_settings or {},
             source_conflicts_resolved=request.intake_resolution is not None,
+            force_no_logo=request.intake_brand_repair is not None,
             style_asset_ids=[source.asset_id for source in request.sources if source.source_role == "style_reference"],
         )
         # Compatible providers require a plain object at the response root.
@@ -10850,6 +10902,7 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
                 for source in request.sources
             ],
             request.intake_resolution,
+            request.intake_brand_repair,
         )
     if request.planning_profile == "creative_image":
         return (

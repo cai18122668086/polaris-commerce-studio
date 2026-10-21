@@ -369,13 +369,15 @@ test("public navigation uses registry route matching instead of local-edit fallb
   assert.match(directory, /searchableTools\.filter/);
 });
 
-test("detail workspace submits the selected market and requires explicit plan confirmation", async () => {
+test("detail workspace automatically starts domestic plans and retains historical confirmation", async () => {
   const detail = await utf8("app/workspace/detail-pack/page.tsx");
   assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920"/);
   assert.match(detail, /严格交付 \{imageSize\}/);
   assert.match(detail, /\{selectedMarketplace\.name\} · \{imageSize\}/);
   assert.match(detail, /market_region: marketRegion/);
-  assert.match(detail, /auto_start_after_plan: false/);
+  assert.match(detail, /auto_start_after_plan: marketRegion === "domestic"/);
+  assert.match(detail, /!automaticPlan && job\.data\?\.plan && workflowAvailable/);
+  assert.match(detail, /生成整套详情图/);
   assert.doesNotMatch(detail, /market_region: "international" as const/);
   assert.match(detail, /selectRegion\("domestic"\).*disabled=\{Boolean\(jobId\)\}/);
   assert.match(detail, /selectRegion\("international"\).*disabled=\{Boolean\(jobId\)\}/);

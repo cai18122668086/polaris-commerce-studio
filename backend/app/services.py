@@ -362,7 +362,10 @@ def allowed_actions(job: JobRecord) -> list[str]:
         ):
             actions.append("resolve_intake")
         else:
-            actions.extend(["edit_plan", "confirm_plan"])
+            from .domestic_detail.auto_start import eligible
+
+            if not eligible(job):
+                actions.extend(["edit_plan", "confirm_plan"])
     if current in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,

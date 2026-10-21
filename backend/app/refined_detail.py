@@ -7,6 +7,7 @@ import hashlib
 import json
 from collections import Counter
 from collections.abc import Mapping
+from contextlib import suppress
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
@@ -60,7 +61,7 @@ def prompt_configuration(settings: Mapping[str, Any]) -> dict[str, Any]:
         "screen_aspect_ratio": "3:4",
         "independent_page_generation": True,
         "output_format": "png",
-        "approval_gate": {"required": True, "auto_confirm_after_validation": False},
+        "approval_gate": {"required": True, "auto_confirm_after_validation": settings.get("auto_start_after_plan") is True},
         "delivery": {"qa_mode": "optional_manual_review", "qa_status_required": False},
     }
 
@@ -413,10 +414,10 @@ def approval_document(payload: Mapping[str, Any]) -> str:
             "design_strength_lock",
         ):
             lines.append("## " + labels[section])
-            for key, value in group.get(section, {}).items():
+            for key, value in sorted(group.get(section, {}).items()):
                 if key != "screens":
                     lines.append(
-                        f"{labels.get(key, key)}：{json.dumps(value, ensure_ascii=False)}"
+                        f"{labels.get(key, key)}：{json.dumps(value, ensure_ascii=False, sort_keys=True)}"
                     )
     for index, page in enumerate(payload.get("pages", []), 1):
         lines.append(f"## 第 {index} 屏 · {page.get('title', '')}")
@@ -426,16 +427,43 @@ def approval_document(payload: Mapping[str, Any]) -> str:
                 str(page.get("image_prompt", "")).encode("utf-8")
             ).hexdigest()
         )
-        for key, value in page.items():
+        for key, value in sorted(page.items()):
             if key not in {"item_key", "group_key", "page", "quality", "image_prompt"}:
                 lines.append(
-                    f"{labels.get(key, key)}：{json.dumps(value, ensure_ascii=False)}"
+                    f"{labels.get(key, key)}：{json.dumps(value, ensure_ascii=False, sort_keys=True)}"
                 )
     return "\n\n".join(lines)
 
 
 def approval_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(approval_document(payload).encode("utf-8")).hexdigest()
+
+
+def _document_sections(document: str) -> list[tuple[str, list[str]]]:
+    """Compare old documents without depending on PostgreSQL JSONB key order."""
+    sections: list[tuple[str, list[str]]] = []
+    for paragraph in document.split("\n\n"):
+        if paragraph.startswith("#") or not sections:
+            sections.append((paragraph, []))
+            continue
+        label, separator, value = paragraph.partition("：")
+        if separator:
+            with suppress(ValueError, TypeError):
+                value = json.dumps(json.loads(value), ensure_ascii=False, sort_keys=True)
+            paragraph = label + separator + value
+        sections[-1][1].append(paragraph)
+    return [(header, sorted(lines)) for header, lines in sections]
+
+
+def approval_matches(payload: Mapping[str, Any]) -> bool:
+    approval = payload.get("refined_approval") or {}
+    document = approval.get("document_markdown")
+    return (
+        isinstance(document, str)
+        and hashlib.sha256(document.encode("utf-8")).hexdigest()
+        == approval.get("document_sha256")
+        and _document_sections(document) == _document_sections(approval_document(payload))
+    )
 
 
 def validate_payload(payload: Mapping[str, Any], page_count: int) -> None:

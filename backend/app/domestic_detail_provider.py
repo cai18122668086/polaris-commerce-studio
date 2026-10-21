@@ -150,7 +150,9 @@ def domestic_detail_prompt_configuration(
         "approval_gate": {
             "required": True,
             "scope": "campaign_approval_group_to_screen_packet",
-            "auto_confirm_after_validation": False,
+            "auto_confirm_after_validation": configuration.get(
+                "auto_start_after_plan"
+            ) is True,
         },
     }
 

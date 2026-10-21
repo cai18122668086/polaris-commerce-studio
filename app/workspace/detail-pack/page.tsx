@@ -174,6 +174,7 @@ export default function DetailPackPage() {
   const workflowAvailable = workflow.mode === "mock" || workflow.mode === "provider";
   const selectedMarketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId) ?? marketplaceGroups[marketRegion][0];
   const planPages = readPlanPages(job.data?.plan?.payload);
+  const automaticPlan = marketRegion === "domestic" && saved?.auto_start_after_plan === true && job.data?.retry_scope !== "selected";
   const auroraApproval = job.data?.plan?.payload.aurora_v4_3 as Record<string, unknown> | undefined;
   const refinedApproval = job.data?.plan?.payload.refined_approval as Record<string, unknown> | undefined;
   const refinedDocument = typeof refinedApproval?.document_markdown === "string" ? refinedApproval.document_markdown : "";
@@ -270,9 +271,7 @@ export default function DetailPackPage() {
       ...detailSkillSettings(marketRegion, detailSkill),
       category: category.trim() || undefined,
       target_buyer: targetBuyer.trim() || undefined,
-      // Aurora v4.3 requires explicit approval of the complete campaign
-      // group→screen packet before any pair generation can start.
-      auto_start_after_plan: false,
+      auto_start_after_plan: marketRegion === "domestic",
       selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
       verified_facts: marketRegion === "domestic" ? [] : sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 24),
       brandless_confirmation: marketRegion === "domestic" && brandlessConfirmed ? BRANDLESS_CONFIRMATION : undefined,
@@ -377,7 +376,7 @@ export default function DetailPackPage() {
           {job.data?.stage === "intake_confirmation_required" && <DomesticDetailIntakeQuestion key={`${job.data.id}:${job.data.plan?.revision}`} workspaceId={workspace?.id} job={job.data} />}
 
           <section className="planning-card" aria-busy={job.isFetching}>
-            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划{marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精美" : "快速"}` : ""}</h2><p>{jobId ? "正在读取页面规划。" : "创建任务后将生成待确认的页面方案。"}</p><small>{isRefinedDetail ? "先规划买家需求、卖点表达和逐页构图，再分别生成每张 3:4 详情图。已生成图片可直接查看与下载。" : marketRegion === "domestic" ? "国内详情按相邻两屏生成一个 3:8 连续画布，固定切成两张 3:4 图片并审核。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
+            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划{marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精美" : "快速"}` : ""}</h2><p>{jobId ? automaticPlan ? "规划校验通过后自动生成整套图片，无需再次确认方案。" : "正在读取页面规划。" : marketRegion === "domestic" ? "提交后自动规划并生成整套图片。" : "创建任务后将生成待确认的页面方案。"}</p><small>{isRefinedDetail ? "先规划买家需求、卖点表达和逐页构图，再分别生成每张 3:4 详情图。已生成图片可直接查看与下载。" : marketRegion === "domestic" ? "国内详情按相邻两屏生成一个 3:8 连续画布，固定切成两张 3:4 图片并审核。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
             {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在准备页面规划，请稍候…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
@@ -390,10 +389,10 @@ export default function DetailPackPage() {
             </div>}
           </section>
 
-          {job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && (!isNativeDetail || nativeApproval) && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
-          {isRefinedDetail && job.data?.id === jobId && job.data.plan?.validation_status === "valid" && refinedDocument && <DomesticDetailApproval key={refinedKey} document={refinedDocument} fingerprint={refinedFingerprint} description="请审阅买家需求、卖点分工、逐页构图和统一视觉风格，再确认开始生成。" reviewed={refinedReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? refinedKey : "")} />}
+          {!automaticPlan && job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && (!isNativeDetail || nativeApproval) && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
+          {!automaticPlan && isRefinedDetail && job.data?.id === jobId && job.data.plan?.validation_status === "valid" && refinedDocument && <DomesticDetailApproval key={refinedKey} document={refinedDocument} fingerprint={refinedFingerprint} description="请审阅买家需求、卖点分工、逐页构图和统一视觉风格，再确认开始生成。" reviewed={refinedReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? refinedKey : "")} />}
 
-          {job.data?.id === jobId && isNativeDetail && !isDirectWebsiteDetail && job.data.status === "awaiting_confirmation" && job.data.plan?.validation_status === "valid" && <AutomaticDeliveryChoice requested={Boolean(automaticRequested)} quote={automaticQuote.data} selected={automaticConsent} busy={automaticQuote.isFetching} error={automaticQuote.error ?? undefined} onChange={(requested, authorization) => {
+          {!automaticPlan && job.data?.id === jobId && isNativeDetail && !isDirectWebsiteDetail && job.data.status === "awaiting_confirmation" && job.data.plan?.validation_status === "valid" && <AutomaticDeliveryChoice requested={Boolean(automaticRequested)} quote={automaticQuote.data} selected={automaticConsent} busy={automaticQuote.isFetching} error={automaticQuote.error ?? undefined} onChange={(requested, authorization) => {
             setReviewedApprovalKey("");
             setAutomaticChoice({ scope: automaticScope, requested, authorization });
           }} />}
@@ -424,16 +423,16 @@ export default function DetailPackPage() {
               <span><ShieldCheck size={18} /><div><p>图片产物</p><strong>{resultAssets.length > 0 ? `${resultAssets.length} 张已生成` : "暂无图片结果"}</strong></div></span>
             </div>
             <div className="generation-actions">
-              <p><Info size={14} />{workflow.mode === "provider" ? "确认后将开始整套图片生成。" : workflow.mode === "mock" ? "确认后将保存任务计划，当前暂不生成图片。" : "生成服务状态确认中，确认入口暂时关闭。"}</p>
+              <p><Info size={14} />{workflow.mode === "provider" ? marketRegion === "domestic" ? "提交后自动完成规划、生成和交付。" : "确认后将开始整套图片生成。" : workflow.mode === "mock" ? "确认后将保存任务计划，当前暂不生成图片。" : "生成服务状态确认中，确认入口暂时关闭。"}</p>
               {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
-                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? marketRegion === "domestic" ? "生成整套详情图" : "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
               ) : job.data?.status === "awaiting_final_review" && originalAutomaticAuthority ? (
                 <AutomaticDeliveryRecovery workspaceId={workspace?.id} job={job.data} authorization={originalAutomaticAuthority} />
               ) : job.data?.status === "awaiting_final_review" && allowsJobAction(job.data.allowed_actions, "finalize") ? (
                 <button className="primary-button" onClick={() => { if (isNativeDetail && !finalReviewed) return; finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: isNativeDetail ? NATIVE_DETAIL_FINAL_REVIEW_TEXT : "我已完成详情图逐 pair 最终审核并确认交付", finalReviewSha256: isNativeDetail ? currentFinalReview?.sha256 : undefined }); }} disabled={finalizeJob.isPending || (isNativeDetail && !finalReviewed)}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <CheckCircle2 size={17} />}确认最终审核并交付<ArrowRight size={17} /></button>
-              ) : job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
+              ) : !automaticPlan && job.data?.plan && workflowAvailable && allowsJobAction(job.data.allowed_actions, "confirm_plan") ? (
                 <button className="primary-button" onClick={() => {
                   const aurora = job.data!.plan!.payload.aurora_v4_3 as Record<string, unknown> | undefined;
                   if (aurora && (!nativeReviewed || !automaticReady)) return;

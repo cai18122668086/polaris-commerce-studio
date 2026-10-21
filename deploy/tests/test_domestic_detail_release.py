@@ -89,6 +89,16 @@ def prepare(source=None, **changes):
 
 
 class ReleaseTest(unittest.TestCase):
+    def test_detail_worker_defaults_to_six_tasks_and_is_configurable(self):
+        worker = prepare()["services"]["detail-worker"]
+        self.assertIn("--concurrency=6", worker["command"])
+        self.assertEqual(worker["mem_limit"], "2g")
+        self.assertIn("--prefetch-multiplier=1", worker["command"])
+        self.assertIn("--concurrency=12", prepare(worker_concurrency=12)["services"]["detail-worker"]["command"])
+        for value in (0, 33, True):
+            with self.assertRaises(ValueError):
+                prepare(worker_concurrency=value)
+
     def test_analysis_uses_one_existing_text_account_with_its_endpoint_and_model(self):
         result = prepare()
         for name in ("detail-api", "detail-worker"):

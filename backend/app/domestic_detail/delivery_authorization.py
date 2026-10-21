@@ -18,6 +18,11 @@ AUTO_DISCLOSURE = (
     "自动打包不新增模型或图片调用；正常生成与一次自动修复仍按已确认方案计费。"
     "自动交付不表示画面无残差，也不表示已完成整页审核。"
 )
+SUBMISSION_SOURCE = "task_submission_default"
+SUBMISSION_TEXT = (
+    "按创建任务时的自动生成设置，后台确认校验通过的方案并生成整套图片，"
+    "完成检查后自动交付。"
+)
 
 
 def authorization_quote(
@@ -94,6 +99,15 @@ def confirm_authorization(
     return quote
 
 
+def submission_authorization_quote(**kwargs: Any) -> dict[str, Any]:
+    """Bind submission-time automatic generation without claiming human review."""
+    quote = authorization_quote(**kwargs)
+    quote.pop("sha256")
+    quote["authorization_source"] = SUBMISSION_SOURCE
+    quote["authorization_text"] = SUBMISSION_TEXT
+    return {**quote, "sha256": canonical_hash(quote)}
+
+
 def receipt_authorization(
     payload: Mapping[str, Any],
     *,
@@ -109,7 +123,12 @@ def receipt_authorization(
     if not isinstance(authorization, dict):
         raise DetailPlanError("Original automatic-delivery authorization is invalid")
     try:
-        expected = authorization_quote(
+        quote_factory = (
+            submission_authorization_quote
+            if receipt.get("confirmation_source") == SUBMISSION_SOURCE
+            else authorization_quote
+        )
+        expected = quote_factory(
             job_id=payload["native_approval"]["source_job_id"],
             workspace_id=authorization["workspace_id"],
             actor_id=receipt["actor_user_id"],

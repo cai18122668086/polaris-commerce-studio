@@ -1325,8 +1325,20 @@ class ExecutionCoordinator:
                 or JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION
             ):
                 return JobStatus(job.status)
-            # Aurora v4.3 has one explicit campaign-approval checkpoint; never
-            # bypass it through the legacy domestic auto-start flag.
+            from .domestic_detail.auto_start import confirm_validated_plan, eligible
+
+            if not eligible(job) or job.stage == "intake_confirmation_required":
+                return JobStatus(job.status)
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job.id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if plan is not None:
+                confirm_validated_plan(session, job, plan)
+                session.commit()
             return JobStatus(job.status)
 
     def fail_missing_detail_planner(self, job_id: str) -> JobStatus | None:

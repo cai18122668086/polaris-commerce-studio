@@ -28,7 +28,7 @@ def explicit_synthetic_storage(client, monkeypatch):
     )
 
 
-def planned(client, profile=website_contract.PROFILE):
+def planned(client, profile=website_contract.PROFILE, auto_start=False):
     source = upload_asset(client, filename="website-v1-product.png")
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
@@ -50,6 +50,7 @@ def planned(client, profile=website_contract.PROFILE):
                 "selling_points": ["合成商品可见外观", "合成商品局部结构"],
                 "brandless_confirmation": "测试商品无品牌，不添加独立标志",
                 "website_contract_version": profile,
+                "auto_start_after_plan": auto_start,
             },
         },
     )
@@ -57,7 +58,8 @@ def planned(client, profile=website_contract.PROFILE):
     job = response.json()
     dispatch_pending(client)
     result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
-    assert result["status"] == "awaiting_confirmation", result
+    if not auto_start:
+        assert result["status"] == "awaiting_confirmation", result
     return result
 
 

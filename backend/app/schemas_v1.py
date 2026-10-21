@@ -415,8 +415,12 @@ class DetailPackConfiguration(BaseModel):
             raise ValueError(
                 "Domestic Aurora detail pages must contain 8, 10, or 12 screens."
             )
-        if self.market_region == "domestic":
-            # Both domestic skills require the user's explicit plan confirmation.
+        if (
+            self.market_region == "domestic"
+            and self.detail_skill == "quick"
+            and self.website_contract_version is None
+        ):
+            # Historical, unversioned clients retain their manual checkpoint.
             self.auto_start_after_plan = False
         allowed_sizes = {
             "750x1000",

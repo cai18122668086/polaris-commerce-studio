@@ -1447,6 +1447,9 @@ def create_job(
         ),
         detail_high_price_micros=(request.app.state.settings.xinghe_high_price_micros),
     )
+    from .domestic_detail.auto_start import bind_submission
+
+    bind_submission(job, workspace.principal.user_id)
     if inspiration_case is not None:
         job.configuration["inspiration_case_id"] = inspiration_case.id
         job.configuration["inspiration_workflow"] = inspiration_case.workflow_type
@@ -1952,6 +1955,9 @@ def submit_job(
             "当前任务状态不能提交。",
             {"status": job.status},
         )
+    from .domestic_detail.auto_start import bind_submission
+
+    bind_submission(job, workspace.principal.user_id)
     enforce_active_job_limit(session, workspace.workspace_id)
     _reserve_real_provider_job_if_enabled(
         session,
@@ -2882,8 +2888,7 @@ def confirm_plan(
     if refined_detail.is_refined(job.configuration):
         approval = plan.payload.get("refined_approval") or {}
         if (
-            payload.approval_document_sha256
-            != refined_detail.approval_hash(plan.payload)
+            not refined_detail.approval_matches(plan.payload)
             or payload.approval_document_sha256 != approval.get("document_sha256")
             or not payload.approval_text
             or len(payload.approval_text.strip()) < 2
@@ -5038,9 +5043,7 @@ def _validate_plan_payload(
 
             try:
                 refined_detail.validate_payload(payload, job.expected_item_count)
-                if refined_detail.approval_hash(payload) != (
-                    payload.get("refined_approval") or {}
-                ).get("document_sha256"):
+                if not refined_detail.approval_matches(payload):
                     errors.append(
                         {
                             "field": "refined_approval",

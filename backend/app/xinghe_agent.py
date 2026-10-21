@@ -5746,8 +5746,13 @@ class XinghePlanningCoordinator:
                     },
                 )
             )
+            from .domestic_detail.auto_start import confirm_validated_plan
+
+            # Confirm in the same transaction as the finished plan. A crash
+            # cannot strand an automatic task at a manual-only checkpoint.
+            confirm_validated_plan(session, job, plan)
             session.commit()
-            return JobStatus.AWAITING_CONFIRMATION
+            return JobStatus(job.status)
 
     def _complete_amazon_planning_locked(
         self,

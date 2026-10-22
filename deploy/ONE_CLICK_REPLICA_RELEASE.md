@@ -42,3 +42,12 @@ Switch frontend last. Verify the public navigation, custom dropdown, link fetch,
 - Paired backup restore: 860 objects, 851 live DB assets checksum verified; 0026 to 0027 rehearsal; isolated API and mock generation passed.
 
 Pinduoduo link collection is not included; users can upload its reference images manually. Current account prices are documented in `docs/one-click-replica-2026-10-22.md`.
+
+
+Production verification on 2026-10-22:
+- Product PRs #79, #80 and #81 were squash-merged into the independent release branch. The main and detail-work branches remain untouched.
+- Match all nested replica routes using `path_regexp one_click_replica ^/api/v1/workspaces/[^/]+/replica/`. A mixed-wildcard path matcher covers only one suffix segment in the installed Caddy and must not be used here. Preserve the maintained API/payment domain blocks in the active file.
+- Validate through `docker exec -i ... caddy validate --config - --adapter caddyfile`; the proxy root filesystem remains read-only.
+- Live external-auth upload, Tengli analysis, confirmation, dedicated Celery queue, generation and page refresh restoration passed. Production job: `job_daf851fa862e40268b3216cd96ca4c5c`.
+- Just One's account exhausted its trial allowance and returned code 601 in production. The user has been asked to recharge. Manual reference-image generation remains available; do not silently switch to the legacy crawler.
+- Desktop navigation uses single-line labels; below 1400px the existing complete navigation menu is used.

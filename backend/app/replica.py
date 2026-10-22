@@ -1,0 +1,787 @@
+"""Workspace-owned product imports and explicitly confirmed reference remixes."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+from datetime import UTC, datetime, timedelta
+from io import BytesIO
+from typing import Annotated, Any, Literal
+from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
+from urllib.request import Request as UrlRequest
+from uuid import uuid4
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, UploadFile
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import (
+    func,
+    select,
+)
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from .auth import WorkspaceContext, WorkspaceDependency, WorkspaceWriteDependency
+from .database import get_session
+from .domain import AssetMediaKind, AssetOriginKind
+from .errors import ApiError
+from .justone import fetch_product, image_url, parse_product_link
+from .models import JobRecord, ReplicaDocumentRecord, WorkspaceRecord, utc_now
+from .new_detail_skill_provider import BundledSkillManifestValidator
+from .new_image_skill_provider import TARGET_DIMENSIONS
+from .schemas_v1 import ReferenceRemixJobCreate
+from .services import get_ready_assets, lock_workspace_limits
+from .skill_protocol import load_skill_protocol
+
+router = APIRouter(
+    prefix="/api/v1/workspaces/{workspace_id}/replica", tags=["one-click-replica"]
+)
+SessionDependency = Annotated[Session, Depends(get_session)]
+SKILL = "reference-visual-reverse-remix"
+
+
+class ProductRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+    platform: Literal["auto", "taobao", "tmall", "1688", "jd"] = "auto"
+
+
+class ImportRequest(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=20)
+
+
+class ReferenceChoice(BaseModel):
+    asset_id: str = Field(min_length=1, max_length=40)
+    title: str = Field(default="参考图", max_length=80)
+    aspect_ratio: Literal[
+        "follow-reference", "1:1", "3:4", "4:3", "4:5", "9:16", "16:9"
+    ] = "follow-reference"
+
+
+class AnalysisRequest(BaseModel):
+    request_id: str = Field(min_length=8, max_length=80)
+    product_asset_ids: list[str] = Field(min_length=1, max_length=7)
+    references: list[ReferenceChoice] = Field(min_length=1, max_length=20)
+    platform_code: str = Field(default="tmall", min_length=1, max_length=32)
+    language: str = Field(default="zh-CN", min_length=2, max_length=16)
+    facts: str = Field(default="", max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_roles(self) -> AnalysisRequest:
+        if len(set(self.product_asset_ids)) != len(self.product_asset_ids) or set(
+            self.product_asset_ids
+        ) & {r.asset_id for r in self.references}:
+            raise ValueError("产品图和风格参考图需要分别上传，不能使用同一素材。")
+        return self
+
+
+class ConfirmRequest(BaseModel):
+    plan_hash: str = Field(min_length=64, max_length=64)
+    instructions: list[str] = Field(default_factory=list, max_length=20)
+
+
+def _hash(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
+
+
+def _wire(row: ReplicaDocumentRecord) -> dict:
+    return {
+        "id": row.id,
+        "kind": row.kind,
+        "status": row.status,
+        "payload": row.payload,
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+    }
+
+
+def _get(
+    session: Session, workspace_id: str, document_id: str, kind: str | None = None
+) -> ReplicaDocumentRecord:
+    row = session.scalar(
+        select(ReplicaDocumentRecord)
+        .where(
+            ReplicaDocumentRecord.id == document_id,
+            ReplicaDocumentRecord.workspace_id == workspace_id,
+        )
+        .with_for_update()
+    )
+    if row is None or (kind and row.kind != kind):
+        raise ApiError(404, "REPLICA_NOT_FOUND", "未找到该复刻任务。")
+    return row
+
+
+def _claim(
+    session: Session,
+    workspace: WorkspaceContext,
+    kind: str,
+    fingerprint: str,
+    payload: dict,
+    status: str,
+) -> tuple[ReplicaDocumentRecord, bool]:
+    # Serialize claims before counting calls or retrying a failed import.
+    session.get(WorkspaceRecord, workspace.workspace_id, with_for_update=True)
+    query = select(ReplicaDocumentRecord).where(
+        ReplicaDocumentRecord.workspace_id == workspace.workspace_id,
+        ReplicaDocumentRecord.kind == kind,
+        ReplicaDocumentRecord.fingerprint == fingerprint,
+    )
+    row = session.scalar(query)
+    if row:
+        return row, False
+    active = session.scalars(
+        select(ReplicaDocumentRecord.id).where(
+            ReplicaDocumentRecord.workspace_id == workspace.workspace_id,
+            ReplicaDocumentRecord.status.in_(["fetching", "analysing"]),
+        )
+    ).all()
+    if len(active) >= 3:
+        raise ApiError(429, "REPLICA_BUSY", "已有任务在处理中，请稍后再试。")
+    row = ReplicaDocumentRecord(
+        id="rep_" + uuid4().hex,
+        workspace_id=workspace.workspace_id,
+        created_by=workspace.principal.user_id,
+        kind=kind,
+        fingerprint=fingerprint,
+        payload=payload,
+        status=status,
+    )
+    session.add(row)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        row = session.scalar(query)
+        if not row:
+            raise
+        return row, False
+    return row, True
+
+
+def _save(app: Any, document_id: str, status: str, payload: dict) -> None:
+    with app.state.session_factory() as session:
+        row = session.get(ReplicaDocumentRecord, document_id)
+        if row is None:
+            return
+        if (
+            payload.get("analysis_attempt_id")
+            and row.payload.get("analysis_attempt_id") != payload["analysis_attempt_id"]
+        ):
+            return
+        row.status, row.payload, row.updated_at = status, payload, utc_now()
+        session.commit()
+
+
+async def _fetch(app: Any, document_id: str) -> None:
+    with app.state.session_factory() as session:
+        row = session.get(ReplicaDocumentRecord, document_id)
+        payload = dict(row.payload)
+    try:
+        token = app.state.settings.justone_api_token.get_secret_value()
+        product = await asyncio.to_thread(
+            fetch_product,
+            token,
+            payload["platform"],
+            payload["item_id"],
+            payload["canonical_url"],
+        )
+        _save(app, document_id, "ready", {**payload, "product": product})
+    except Exception as error:
+        _save(
+            app,
+            document_id,
+            "failed",
+            {
+                **payload,
+                "error_code": getattr(error, "code", "PRODUCT_FETCH_FAILED"),
+                "error": error.message
+                if isinstance(error, ApiError)
+                else "商品获取失败，请稍后重试或上传参考图。",
+            },
+        )
+
+
+@router.post("/products", status_code=202)
+async def create_product(
+    payload: ProductRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> dict:
+    platform, item_id, canonical = await asyncio.to_thread(
+        parse_product_link, payload.url, payload.platform
+    )
+    row, created = _claim(
+        session,
+        workspace,
+        "product",
+        _hash(
+            [
+                "justone-v1",
+                platform,
+                item_id,
+                (datetime.now(UTC) + timedelta(hours=8)).date().isoformat(),
+            ]
+        ),
+        {"platform": platform, "item_id": item_id, "canonical_url": canonical},
+        "fetching",
+    )
+    if created:
+        background_tasks.add_task(_fetch, request.app, row.id)
+    elif row.status == "failed":
+        # A new button press is an explicit retry; background polling never pays again.
+        row.status = "fetching"
+        row.payload = {
+            key: value
+            for key, value in row.payload.items()
+            if key not in {"error", "error_code"}
+        }
+        session.commit()
+        background_tasks.add_task(_fetch, request.app, row.id)
+    return _wire(row)
+
+
+@router.get("/documents/{document_id}")
+def get_document(
+    document_id: str, workspace: WorkspaceDependency, session: SessionDependency
+) -> dict:
+    row = _get(session, workspace.workspace_id, document_id)
+    job_ids = row.payload.get("job_ids", [])
+    if (
+        row.status == "generating"
+        and job_ids
+        and row.payload.get("submission_complete", True)
+    ):
+        states = session.scalars(
+            select(JobRecord.status).where(
+                JobRecord.workspace_id == workspace.workspace_id,
+                JobRecord.id.in_(job_ids),
+            )
+        ).all()
+        if len(states) == len(job_ids) and all(
+            state in {"completed", "partial", "failed", "cancelled"} for state in states
+        ):
+            row.status = "completed"
+            session.commit()
+    since = (
+        row.updated_at.replace(tzinfo=UTC)
+        if row.updated_at.tzinfo is None
+        else row.updated_at
+    )
+    if row.status in {"fetching", "analysing"} and utc_now() - since > timedelta(
+        minutes=20
+    ):
+        row.status = "failed"
+        row.payload = {
+            **row.payload,
+            "error": "任务处理已中断，请重新发起。已生成的图片可在生成记录查看。",
+        }
+        session.commit()
+    return _wire(row)
+
+
+@router.get("/sessions")
+def history(workspace: WorkspaceDependency, session: SessionDependency) -> list[dict]:
+    return [
+        _wire(row)
+        for row in session.scalars(
+            select(ReplicaDocumentRecord)
+            .where(
+                ReplicaDocumentRecord.workspace_id == workspace.workspace_id,
+                ReplicaDocumentRecord.kind == "session",
+            )
+            .order_by(ReplicaDocumentRecord.created_at.desc())
+            .limit(30)
+        )
+    ]
+
+
+class ImageRedirects(HTTPRedirectHandler):
+    def redirect_request(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> Any:
+        if not image_url(newurl):
+            raise ApiError(400, "IMAGE_REDIRECT_REJECTED", "图片重定向地址不受支持。")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _download(url: str, max_bytes: int) -> bytes:
+    if not image_url(url):
+        raise ApiError(400, "IMAGE_URL_REJECTED", "图片地址不受支持。")
+    try:
+        with build_opener(ProxyHandler({}), ImageRedirects()).open(
+            UrlRequest(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=30
+        ) as response:
+            payload = response.read(max_bytes + 1)
+    except Exception:
+        raise ApiError(
+            502, "IMAGE_DOWNLOAD_FAILED", "该图片暂时无法导入，请取消选择后重试。"
+        ) from None
+    if len(payload) > max_bytes:
+        raise ApiError(413, "IMAGE_TOO_LARGE", "图片过大，请选择其他参考图。")
+    return payload
+
+
+@router.post("/products/{document_id}/import")
+async def import_images(
+    document_id: str,
+    payload: ImportRequest,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> list[dict]:
+    row = _get(session, workspace.workspace_id, document_id, "product")
+    product = row.payload.get("product", {})
+    allowed = set(
+        product.get("imageUrls", [])
+        + product.get("descImageUrls", [])
+        + product.get("skuImageUrls", [])
+    )
+    if row.status != "ready" or not set(payload.urls) <= allowed:
+        raise ApiError(400, "REFERENCE_SELECTION_INVALID", "请选择本次商品返回的图片。")
+    session.rollback()
+    from .routes_v1 import upload_asset
+
+    results = []
+    for url in dict.fromkeys(payload.urls):
+        data = await asyncio.to_thread(
+            _download, url, request.app.state.settings.max_upload_bytes
+        )
+        asset = await upload_asset(
+            request=request,
+            workspace=workspace,
+            file=UploadFile(filename="reference.jpg", file=BytesIO(data)),
+            origin_kind=AssetOriginKind.IMPORTED,
+            media_kind=AssetMediaKind.IMAGE,
+            idempotency_header="replica-import-" + _hash([document_id, url]),
+        )
+        role = (
+            "主图"
+            if url in product.get("imageUrls", [])
+            else "详情图"
+            if url in product.get("descImageUrls", [])
+            else "SKU图"
+        )
+        results.append({"url": url, "asset_id": asset.id, "role": role})
+    return results
+
+
+def _analysis_current(app: Any, document_id: str, attempt_id: str) -> bool:
+    with app.state.session_factory() as session:
+        row = session.get(ReplicaDocumentRecord, document_id)
+        return (
+            row is not None
+            and row.status == "analysing"
+            and row.payload.get("analysis_attempt_id") == attempt_id
+        )
+
+
+async def _analyse(app: Any, document_id: str, attempt_id: str) -> None:
+    slots = getattr(app.state, "replica_analysis_slots", None)
+    if slots is None:
+        slots = app.state.replica_analysis_slots = asyncio.Semaphore(2)
+    async with slots:
+        if _analysis_current(app, document_id, attempt_id):
+            await _analyse_document(app, document_id, attempt_id)
+
+
+async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None:
+    from .xinghe_agent import PlannerRequest, SourceImage, build_tengli_gateway
+
+    with app.state.session_factory() as session:
+        row = session.get(ReplicaDocumentRecord, document_id)
+        workspace_id, payload = row.workspace_id, dict(row.payload)
+    plans = list(payload.get("plans", []))
+    try:
+        with app.state.session_factory() as session:
+            assets = get_ready_assets(
+                session,
+                workspace_id,
+                payload["product_asset_ids"]
+                + [r["asset_id"] for r in payload["references"]],
+            )
+            records = {
+                key: (
+                    value.original_filename,
+                    value.content_type,
+                    value.sha256,
+                    value.object_key,
+                    value.width,
+                    value.height,
+                )
+                for key, value in assets.items()
+            }
+        gateway = getattr(app.state, "replica_gateway", None) or build_tengli_gateway(
+            app.state.settings
+        )
+        protocol = load_skill_protocol(
+            SKILL, source_content_hash=BundledSkillManifestValidator().validate(SKILL)
+        )
+        product_bytes = {
+            key: await app.state.storage.read_bytes(records[key][3])
+            for key in payload["product_asset_ids"]
+        }
+        for index, choice in enumerate(payload["references"]):
+            if index < len(plans):
+                continue
+            if not _analysis_current(app, document_id, attempt_id):
+                return
+            reference_id = choice["asset_id"]
+            source_bytes = {
+                **product_bytes,
+                reference_id: await app.state.storage.read_bytes(
+                    records[reference_id][3]
+                ),
+            }
+            sources = tuple(
+                SourceImage(
+                    asset_id=key,
+                    group_key="replica",
+                    filename=records[key][0],
+                    content_type=records[key][1],
+                    sha256=records[key][2],
+                    payload=source_bytes[key],
+                    source_role=role,
+                )
+                for role, keys in (
+                    ("product_reference", payload["product_asset_ids"]),
+                    ("style_reference", [choice["asset_id"]]),
+                )
+                for key in keys
+            )
+            canvas = TARGET_DIMENSIONS.get(choice["aspect_ratio"]) or (
+                records[reference_id][4] or 1024,
+                records[reference_id][5] or 1024,
+            )
+            result = await gateway.plan(
+                PlannerRequest(
+                    workspace_id=workspace_id,
+                    job_id=document_id,
+                    group_key=f"replica-{index}",
+                    sources=sources,
+                    page_count=1,
+                    language=payload["language"],
+                    product_name="用户产品图中的商品",
+                    product_information=(
+                        payload["facts"],
+                        "需要生成的图片类型：" + choice["title"],
+                        "目标画幅比例：" + choice["aspect_ratio"],
+                        "方案说明使用简体中文；新画面文字使用目标语言。",
+                        "产品图是唯一身份依据；参考图仅用于构图、光影和排版。",
+                        "所有新创作的画面文案语言必须为："
+                        + payload["language"]
+                        + "；保留产品图中原本的品牌与标签文字。",
+                    ),
+                    platform_code=payload["platform_code"],
+                    size=f"{canvas[0]}x{canvas[1]}",
+                    idempotency_key=f"{document_id}:analysis:{index}",
+                    planning_profile="reference_visual_remix",
+                    system_prompt=(
+                        "Follow the verified Skill. The product_reference images "
+                        "identify the user's product. The final style_reference "
+                        "image supplies visual strategy only. "
+                        "Return original_remix_prompt "
+                        "in the target language, within 3000 characters.\n"
+                    )
+                    + json.dumps(protocol.prompt_payload(), ensure_ascii=False),
+                )
+            )
+            analysis = result.payload
+            if (
+                result.error_code
+                or not isinstance(analysis, dict)
+                or not isinstance(analysis.get("original_remix_prompt"), str)
+                or not analysis["original_remix_prompt"].strip()
+                or len(analysis["original_remix_prompt"]) > 4000
+                or not {
+                    "product_identity_lock",
+                    "reference_visual_analysis",
+                    "hard_composition_skeleton",
+                    "commercial_intent",
+                }
+                <= analysis.keys()
+            ):
+                raise ApiError(
+                    502,
+                    "REPLICA_ANALYSIS_FAILED",
+                    "图片分析暂时未完成，请稍后重新分析。",
+                )
+            plans.append(
+                {
+                    "reference": choice,
+                    "analysis": analysis,
+                    "prompt": analysis["original_remix_prompt"],
+                    "usage": result.normalized_usage,
+                    "actual_cost_micros": result.actual_cost_micros,
+                }
+            )
+            payload = {
+                **payload,
+                "plans": plans,
+                "progress": round(len(plans) / len(payload["references"]) * 100),
+            }
+            _save(app, document_id, "analysing", payload)
+        payload["plan_hash"] = _hash(plans)
+        _save(app, document_id, "awaiting_confirmation", payload)
+    except Exception as error:
+        _save(
+            app,
+            document_id,
+            "failed",
+            {
+                **payload,
+                "plans": plans,
+                "error_code": getattr(error, "code", "REPLICA_ANALYSIS_FAILED"),
+                "error": error.message
+                if isinstance(error, ApiError)
+                else "分析服务暂时不可用，请稍后再试。",
+            },
+        )
+
+
+@router.post("/sessions", status_code=202)
+def analyse(
+    payload: AnalysisRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> dict:
+    if not request.app.state.settings.reference_remix_provider_enabled:
+        raise ApiError(503, "REPLICA_DISABLED", "复刻生成服务暂未开放，请稍后再试。")
+    values = payload.model_dump(mode="json")
+    get_ready_assets(
+        session,
+        workspace.workspace_id,
+        payload.product_asset_ids + [r.asset_id for r in payload.references],
+    )
+    row, created = _claim(
+        session,
+        workspace,
+        "session",
+        _hash(values),
+        {**values, "plans": [], "job_ids": [], "analysis_attempt_id": uuid4().hex},
+        "analysing",
+    )
+    if created:
+        background_tasks.add_task(
+            _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
+        )
+    return _wire(row)
+
+
+@router.post("/sessions/{document_id}/retry", status_code=202)
+def retry_analysis(
+    document_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> dict:
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    if row.status == "analysing":
+        return _wire(row)
+    if row.status != "failed" or row.payload.get("job_ids"):
+        raise ApiError(409, "REPLICA_RETRY_UNAVAILABLE", "当前任务无需重新分析。")
+    row.status = "analysing"
+    row.updated_at = utc_now()
+    row.payload = {
+        key: value
+        for key, value in row.payload.items()
+        if key not in {"error", "error_code"}
+    }
+    row.payload = {**row.payload, "analysis_attempt_id": uuid4().hex}
+    session.commit()
+    background_tasks.add_task(
+        _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
+    )
+    return _wire(row)
+
+
+@router.post("/sessions/{document_id}/confirm", status_code=202)
+def confirm(
+    document_id: str,
+    payload: ConfirmRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> dict:
+    from .routes_v1 import create_job
+
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    values = dict(row.payload)
+    if values.get("plan_hash") != payload.plan_hash:
+        raise ApiError(409, "REPLICA_PLAN_CHANGED", "方案已变化，请重新确认。")
+    if row.status not in {"awaiting_confirmation", "generating", "completed"}:
+        raise ApiError(409, "REPLICA_PLAN_NOT_READY", "请等待图片方案分析完成。")
+    if any(len(text) > 4000 for text in payload.instructions):
+        raise ApiError(
+            422, "REPLICA_INSTRUCTION_TOO_LONG", "单张图片补充要求不能超过4000字。"
+        )
+    prompts = [
+        plan["prompt"]
+        + (
+            "\n用户补充要求：" + payload.instructions[index]
+            if index < len(payload.instructions) and payload.instructions[index]
+            else ""
+        )
+        for index, plan in enumerate(values["plans"])
+    ]
+    if len(payload.instructions) > len(prompts) or any(
+        len(prompt) > 4000 for prompt in prompts
+    ):
+        raise ApiError(
+            422,
+            "REPLICA_PROMPT_TOO_LONG",
+            "补充要求较长，请精简后再确认；方案不会被截断。",
+        )
+    confirmed_hash = _hash(payload.instructions)
+    if (
+        values.get("confirmed_instructions_hash")
+        and values["confirmed_instructions_hash"] != confirmed_hash
+    ):
+        raise ApiError(
+            409, "REPLICA_ALREADY_CONFIRMED", "该方案已开始生成，请新建复刻来修改要求。"
+        )
+    if values.get("submission_complete") and len(values.get("job_ids", [])) == len(
+        values["plans"]
+    ):
+        return _wire(row)
+    remaining = len(values["plans"]) - len(values.get("job_ids", []))
+    limits = lock_workspace_limits(session, workspace.workspace_id)
+    active = (
+        session.scalar(
+            select(func.count(JobRecord.id)).where(
+                JobRecord.workspace_id == workspace.workspace_id,
+                JobRecord.status.not_in(
+                    ["completed", "partial", "failed", "cancelled"]
+                ),
+            )
+        )
+        or 0
+    )
+    available = max(0, limits.max_active_jobs - active)
+    if remaining > available:
+        raise ApiError(
+            429,
+            "REPLICA_CAPACITY_WAIT",
+            f"当前仍有任务在处理，本次最多还能提交 {available} 张。"
+            "请稍后再确认，方案会保留。",
+        )
+    values["confirmed_instructions"] = payload.instructions
+    values["submission_complete"] = False
+    values["confirmed_instructions_hash"] = confirmed_hash
+    row.payload = values
+    session.commit()
+    jobs = list(values.get("job_ids", []))
+    request.state.replica_session_id = document_id
+    for index, plan in enumerate(values["plans"]):
+        if index < len(jobs):
+            continue
+        extra = payload.instructions[index] if index < len(payload.instructions) else ""
+        prompt = prompts[index]
+        body = ReferenceRemixJobCreate.model_validate(
+            {
+                "type": "reference_remix",
+                "intent": "submit",
+                "display_name": "一键复刻 · " + plan["reference"]["title"],
+                "input": {
+                    "product_asset_ids": values["product_asset_ids"],
+                    "reference_asset_ids": [plan["reference"]["asset_id"]],
+                },
+                "configuration": {
+                    "reference_skill": SKILL,
+                    "platform_code": values["platform_code"],
+                    "language": values["language"],
+                    "selling_points": [
+                        values["facts"][offset : offset + 500]
+                        for offset in range(0, len(values["facts"]), 500)
+                    ]
+                    if values["facts"]
+                    else [],
+                    "aspect_ratio": plan["reference"]["aspect_ratio"],
+                    "image_count": 1,
+                    "execution_mode": "direct_prompt",
+                    "inspiration_product_first": True,
+                    "quality": "high",
+                    "instruction": extra,
+                    "original_remix_prompt": prompt,
+                },
+            }
+        )
+        created = create_job(
+            payload=body,
+            request=request,
+            background_tasks=background_tasks,
+            workspace=workspace,
+            session=session,
+            idempotency_header=f"replica-generate-{document_id}-{index}",
+        )
+        if created.id not in jobs:
+            jobs.append(created.id)
+            row = _get(session, workspace.workspace_id, document_id, "session")
+            row.status = "generating"
+            row.payload = {**values, "job_ids": list(jobs)}
+            session.commit()
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    row.status, row.payload = (
+        "generating",
+        {**values, "job_ids": list(jobs), "submission_complete": True},
+    )
+    session.commit()
+    return _wire(row)
+
+
+class ImageRetryRequest(BaseModel):
+    request_id: str = Field(min_length=8, max_length=80)
+
+
+@router.post("/sessions/{document_id}/jobs/{job_id}/retry", status_code=202)
+def retry_image(
+    document_id: str,
+    job_id: str,
+    payload: ImageRetryRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> dict:
+    from .domain import RetryScope
+    from .routes_v1 import retry_job
+    from .schemas_v1 import RetryRequest
+
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    values = dict(row.payload)
+    attempts = list(values.get("retry_events", []))
+    if any(v["from"] == job_id for v in attempts):
+        return _wire(row)
+    jobs = list(values.get("job_ids", []))
+    if job_id not in jobs:
+        raise ApiError(404, "REPLICA_JOB_NOT_FOUND", "请从当前复刻结果选择图片。")
+    retried = retry_job(
+        job_id=job_id,
+        payload=RetryRequest(scope=RetryScope.FAILED),
+        request=request,
+        background_tasks=background_tasks,
+        workspace=workspace,
+        session=session,
+        idempotency_header="replica-retry-" + _hash([document_id, job_id]),
+    )
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    jobs[jobs.index(job_id)] = retried.id
+    row.status = "generating"
+    row.payload = {
+        **values,
+        "job_ids": list(jobs),
+        "retry_events": [
+            *attempts,
+            {"from": job_id, "to": retried.id, "request_id": payload.request_id},
+        ],
+    }
+    session.commit()
+    return _wire(row)

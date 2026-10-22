@@ -1481,3 +1481,28 @@ class InspirationCaseAssetRecord(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
+
+
+class ReplicaDocumentRecord(Base):
+    __tablename__ = "replica_documents"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "kind", "fingerprint", name="uq_replica_document_intent"
+        ),
+        Index("ix_replica_workspace_created", "workspace_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )

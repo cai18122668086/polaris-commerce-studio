@@ -21,6 +21,7 @@ const EXPECTED_FEATURE_CONTRACT = [
   ["model-image", "/workspace/product-image/model-image", "product_image", "product_image.model_image"],
   ["try-on", "/workspace/product-image/try-on", "product_image", "product_image.try_on"],
   ["reference-remix", "/workspace/reference-remix", "reference_remix", "reference_remix"],
+  ["one-click-replica", "/style-replica", "reference_remix", "reference_remix"],
   ["model-pose-transfer", "/workspace/model-pose-transfer", "model_pose_transfer", "model_pose_transfer"],
   ["creative-image", "/workspace/creative-image", "creative_image", "creative_image"],
   ["detail-pack", "/workspace/detail-pack", "detail_pack", "detail_pack"],
@@ -32,6 +33,7 @@ const AI_FEATURE_MENU_IDS = [
   "local-edit",
   "change-background",
   "reference-remix",
+  "one-click-replica",
   "domestic-main-image",
   "detail-pack",
   "amazon-visual-suite",
@@ -64,7 +66,7 @@ const HOME_TOOLBOX_IDS = [
 const FEATURED_TASK_IDS = [
   "local-edit",
   "change-background",
-  "reference-remix",
+  "one-click-replica",
   "detail-pack",
   "domestic-main-image",
   "amazon-visual-suite",
@@ -192,7 +194,7 @@ test("the two navigation dropdowns are disjoint and resolve every item through t
   for (const featureId of [...allFeatures, ...toolbox]) {
     const feature = registryById.get(featureId);
     assert.ok(feature, `${featureId} must exist in FEATURE_REGISTRY`);
-    assert.match(feature.route, /^\/workspace\//, `${featureId} must keep a known workspace route`);
+    assert.match(feature.route, /^(?:\/workspace\/|\/style-replica$)/, `${featureId} must keep a known workspace route`);
   }
   assert.equal(
     new Set([...allFeatures, ...toolbox]).size,

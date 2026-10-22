@@ -10944,20 +10944,17 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
         )
     if request.planning_profile == "reference_visual_remix":
         ordered_roles = tuple(source.source_role for source in request.sources)
-        if ordered_roles and ordered_roles[0] == "product_reference":
-            input_contract = (
-                "The attached images are ordered by semantic role: Image 1 is "
-                "product_identity_reference and Image 2 is "
-                "visual_strategy_reference. The product image is the only authority "
-                "for product identity; the visual-strategy image is composition-only."
+        input_contract = (
+            "The attached images are ordered by semantic role: "
+            + "; ".join(
+                f"Image {index + 1} is "
+                + ("product_identity_reference" if role == "product_reference"
+                   else "visual_strategy_reference")
+                for index, role in enumerate(ordered_roles)
             )
-        else:
-            input_contract = (
-                "The attached images are ordered by semantic role: Image 1 is "
-                "visual_strategy_reference and Image 2 is "
-                "product_identity_reference. The product image is the only authority "
-                "for product identity; the visual-strategy image is composition-only."
-            )
+            + ". Product images are the only authority for product identity; "
+            "visual-strategy images are composition-only."
+        )
         return (
             "You are the reference-visual-reverse-remix visual analysis stage. "
             + input_contract

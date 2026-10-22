@@ -18,6 +18,9 @@ import { useMemo, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
+import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
+import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
+import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
 import { SkillReviewChecklist } from "@/components/skill-review-checklist";
@@ -34,6 +37,7 @@ import {
   getProductImageFeatureByPresetSlug
 } from "@/lib/feature-registry";
 import { selectJobResultAssets } from "@/lib/jobs/results";
+import { jobNote } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import {
   presentWorkflow,
@@ -125,26 +129,34 @@ function UploadPanel({
 export function ProductImageWorkspace({ preset }: { preset: string }) {
   const router = useRouter();
   const feature = getProductImageFeatureByPresetSlug(preset);
+  const [jobId, setJobId] = useWorkspaceJobId(feature?.route ?? `/workspace/product-image/${preset}`);
   const { workspace, isPending: workspacePending, error: workspaceError } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
-  const [productAssetIds, setProductAssetIds] = useState<string[]>([]);
-  const [referenceAssetIds, setReferenceAssetIds] = useState<string[]>([]);
+  const [draftProductAssetIds, setProductAssetIds] = useState<string[]>([]);
+  const [draftReferenceAssetIds, setReferenceAssetIds] = useState<string[]>([]);
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [referenceLibraryOpen, setReferenceLibraryOpen] = useState(false);
-  const [platformCode, setPlatformCode] = useState("tmall");
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
-  const [imageCount, setImageCount] = useState(1);
-  const [instruction, setInstruction] = useState("");
-  const [targetColor, setTargetColor] = useState("");
-  const [jobId, setJobId] = useState<string>();
+  const [draftPlatformCode, setPlatformCode] = useState("tmall");
+  const [draftAspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
+  const [draftImageCount, setImageCount] = useState(1);
+  const [draftInstruction, setInstruction] = useState("");
+  const [draftTargetColor, setTargetColor] = useState("");
   const [uiError, setUiError] = useState<string>();
-  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
+  const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const runtime = useRuntimeStatus();
   const capability = resolveRuntimeCapability(runtime.data, feature?.runtimeCapability ?? "product_image");
   const workflow = presentWorkflow(capability);
   const createJob = useCreateJob(workspace?.id);
   const retryJob = useRetryJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
+  const saved = workspaceJobSnapshot(job.data);
+  const productAssetIds = jobId ? saved.ids("product_asset_ids") : draftProductAssetIds;
+  const referenceAssetIds = jobId ? saved.ids("reference_asset_ids") : draftReferenceAssetIds;
+  const platformCode = jobId ? saved.text("platform_code") : draftPlatformCode;
+  const aspectRatio = jobId ? saved.choice("aspect_ratio", aspectRatios.map((ratio) => ratio.value), "1:1") : draftAspectRatio;
+  const imageCount = jobId ? saved.number("image_count", job.data?.expected_item_count ?? 1) : draftImageCount;
+  const instruction = jobId ? saved.text("instruction") : draftInstruction;
+  const targetColor = jobId ? saved.text("target_color") : draftTargetColor;
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = workspaceError ?? upload.error ?? job.error ?? retryJob.error;
 
@@ -193,7 +205,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
 
   const targetColorMissing = feature.taskPreset === "change_color" && !targetColor.trim();
   const canSubmit = Boolean(
-    workspace &&
+    !jobId && workspace &&
     productAssetIds.length &&
     !targetColorMissing &&
     workflow.canSubmit &&
@@ -258,9 +270,11 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   };
 
   return (
+    <WorkspaceJobGate jobId={jobId} job={job.data} error={job.error} onRetry={() => void job.refetch()} expectedType="product_image" expectedPreset={feature.taskPreset}>
     <AppShell flush sidebar={false}>
       <div className={styles.workspacePage}>
         <WorkspaceHeader
+          jobId={jobId}
           eyebrow="万能生图 · 统一工作台"
           title={feature.title}
           description={feature.description}
@@ -321,7 +335,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   onOpenLibrary={() => setReferenceLibraryOpen(true)}
                 />
               </div>
-
+              {jobId && <WorkspaceJobInputs workspaceId={workspace?.id} job={job.data} />}
             </section>
 
             <section className={styles.card}>
@@ -445,7 +459,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                     <div className={styles.progressRow}>
                       <div>
                         <strong>{progressText}</strong>
-                        <span>正在生成，请稍候。</span>
+                        <span>{jobNote(job.data)}</span>
                       </div>
                       <em>{Math.round(job.data.progress)}%</em>
                     </div>
@@ -486,7 +500,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               title={`${feature.title}结果`}
             />
             {job.data && ["completed", "partial"].includes(job.data.status) && resultAssets.length > 0 ? (
-              <SkillReviewChecklist
+              <SkillReviewChecklist key={jobId}
                 items={[
                   { key: "fidelity", label: "商品仍是同一 SKU，轮廓、结构、颜色、材质、包装、Logo 和关键细节没有跑偏。" },
                   { key: "composition", label: "商品比例、透视和场景关系自然，背景或道具没有遮挡主体。" },
@@ -579,5 +593,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
         </footer>
       </div>
     </AppShell>
+    </WorkspaceJobGate>
   );
 }

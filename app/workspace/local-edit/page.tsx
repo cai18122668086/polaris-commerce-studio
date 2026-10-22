@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Check, CheckCircle2, ImagePlus, Images, Info, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { BeforeAfterResult } from "@/components/before-after-result";
@@ -16,7 +17,7 @@ import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
@@ -151,20 +152,23 @@ export default function LocalEditPage() {
             </section>
 
             <aside className="edit-controls">
-              <section className="control-card control-card--source">
-                <div className="control-card__heading"><span>1</span><div><strong>原始图片</strong><p>{sourceAsset ? `${sourceAsset.width} × ${sourceAsset.height} 标准化画布` : IMAGE_UPLOAD_FORMAT_HINT}</p></div></div>
-                <div className={`${workspaceStyles.uploadActions} local-edit-upload-actions`} data-has-library>
-                  <button type="button" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>
-                    {upload.isPending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
-                    {sourceAsset ? "重新上传" : "上传图片"}
-                  </button>
-                  <button type="button" data-library aria-haspopup="dialog" onClick={() => setLibraryOpen(true)} disabled={!workspace || upload.isPending}>
-                    <Images size={15} />
-                    从素材库选择
-                  </button>
-                </div>
-                <input ref={fileInput} className="visually-hidden" type="file" accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => void onSourceFile(event.target.files?.[0])} />
-              </section>
+              <ImageDropZone as="section" label="局部改图原始图片" className="control-card control-card--source"
+                inputRef={fileInput} disabled={!workspace || createJob.isPending} busy={upload.isPending}
+                onFiles={(files) => onSourceFile(files[0])}>
+                {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <>
+                  <div className="control-card__heading"><span>1</span><div><strong>原始图片</strong><p>{sourceAsset ? `${sourceAsset.width} × ${sourceAsset.height} 标准化画布` : IMAGE_UPLOAD_FORMAT_HINT}</p></div></div>
+                  <div className={`${workspaceStyles.uploadActions} local-edit-upload-actions`} data-has-library>
+                    <button type="button" onClick={openFileDialog} disabled={uploadDisabled}>
+                      {uploadingFile ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
+                      {sourceAsset ? "重新上传" : "上传图片"}
+                    </button>
+                    <button type="button" data-library aria-haspopup="dialog" onClick={() => setLibraryOpen(true)} disabled={!workspace || uploadingFile || createJob.isPending}>
+                      <Images size={15} />
+                      从素材库选择
+                    </button>
+                  </div>
+                </>}
+              </ImageDropZone>
               <section className="control-card">
                 <div className="control-card__heading"><span>2</span><div><strong>修改要求</strong><p>蒙版外像素会由服务端锁定</p></div></div>
                 <div className="textarea-wrap"><textarea value={prompt} placeholder="例如：将授权选区改为深灰色磨砂金属，保留商品结构与光影。" maxLength={500} onChange={(event) => setPrompt(event.target.value)} aria-label="修改要求" /><span>{prompt.length} / 500</span></div>

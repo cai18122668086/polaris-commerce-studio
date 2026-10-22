@@ -123,7 +123,9 @@ test("completed or failed tasks can replace the source image without refreshing 
   assert.equal(source.includes("const nextSource = assets.find((asset) => asset.id === assetIds[0]);"), true);
   assert.equal(source.includes("if (!nextSource) {"), true);
   assert.equal(source.includes("setModelSource(nextSource);"), true);
-  assert.equal(source.includes('event.currentTarget.value = "";'), true);
+  assert.equal(source.includes("<ImageDropZone"), true);
+  const dropZone = await utf8("components/image-drop-zone.tsx");
+  assert.equal(dropZone.includes('event.currentTarget.value = "";'), true);
   assert.equal(resetLogic.includes("setJobId(undefined);"), true);
   assert.equal(resetLogic.includes("setModelSource(undefined);"), true);
   assert.equal(resetLogic.includes("setSelectedPoseSlug(undefined);"), true);

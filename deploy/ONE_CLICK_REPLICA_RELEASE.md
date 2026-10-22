@@ -45,11 +45,11 @@ Pinduoduo link collection is not included; users can upload its reference images
 
 
 Production verification on 2026-10-22:
-- Product PRs #79, #80 and #81 were squash-merged into the independent release branch. The main and detail-work branches remain untouched.
+- Product PRs #79, #80, #81, #82 and #83 were squash-merged into the independent release branch. The main and detail-work branches remain untouched.
 - Match all nested replica routes using `path_regexp one_click_replica ^/api/v1/workspaces/[^/]+/replica/`. A mixed-wildcard path matcher covers only one suffix segment in the installed Caddy and must not be used here. Preserve the maintained API/payment domain blocks in the active file.
 - Validate through `docker exec -i ... caddy validate --config - --adapter caddyfile`; the proxy root filesystem remains read-only.
 - Live external-auth upload, Tengli analysis, confirmation, dedicated Celery queue, generation and page refresh restoration passed. Production job: `job_daf851fa862e40268b3216cd96ca4c5c`.
-- Just One's account exhausted its trial allowance and returned code 601 in production. The user has been asked to recharge. Manual reference-image generation remains available; do not silently switch to the legacy crawler.
+- Just One has been recharged. Production link retrieval now succeeds: the 1688 sample returns 5 main, 17 raw description and 32 SKU images. Blank or unreadable previews are filtered and checked before import. The legacy browser crawler is not used as an automatic fallback.
 - Desktop navigation uses single-line labels; below 1400px the existing complete navigation menu is used.
 
 Navigation sizing is applied at the end of app/focus-inspired.css, after the active theme rules; long account labels are bounded with ellipsis.

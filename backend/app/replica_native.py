@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -99,7 +100,101 @@ class ReplicaNativeError(RuntimeError):
     code = "REPLICA_SKILL_BLOCKED"
 
 
+class ReplicaSegmentationInvalid(ReplicaNativeError):
+    code = "REPLICA_SEGMENTATION_INVALID"
+    message = "参考图拆屏坐标未通过校验，请重试诊断；原始图片和选图已保留。"
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+def segmentation_errors(
+    value: dict[str, Any],
+    product_sizes: list[tuple[int, int]],
+    reference_sizes: list[tuple[int, int]],
+) -> list[str]:
+    """Validate model coordinates against decoded source pixels before any crop."""
+    errors: list[str] = []
+    geometry = value.get("product_geometry")
+    if not isinstance(geometry, list) or len(geometry) < 3 or any(
+        not isinstance(row, str) or len(row) < 8 for row in geometry
+    ):
+        errors.append("product_geometry requires at least three concrete observations")
+    for name, index_key, sizes in (
+        ("product_crops", "product_index", product_sizes),
+        ("units", "reference_index", reference_sizes),
+    ):
+        rows = value.get(name)
+        if not isinstance(rows, list) or not rows or (name == "units" and len(rows) > 60):
+            errors.append(f"{name} must be a nonempty list (at most 60 units)")
+            continue
+        covered: set[int] = set()
+        unit_keys: set[tuple[int, int, int]] = set()
+        for ordinal, row in enumerate(rows):
+            label = f"{name}[{ordinal}]"
+            if not isinstance(row, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            index = row.get(index_key)
+            if type(index) is not int or not 0 <= index < len(sizes):
+                errors.append(f"{label}.{index_key} must index the supplied sources")
+                continue
+            covered.add(index)
+            width, height = sizes[index]
+            bbox = row.get("bbox")
+            if (
+                not isinstance(bbox, list)
+                or len(bbox) != 4
+                or any(type(v) is not int for v in bbox)
+                or not (0 <= bbox[0] < bbox[2] <= width and 0 <= bbox[1] < bbox[3] <= height)
+            ):
+                errors.append(f"{label}.bbox={bbox!r} must use integer source pixels within {width}x{height}")
+            if name == "units":
+                column, screen = row.get("column_index"), row.get("screen_index")
+                if type(column) is not int or column < 0 or type(screen) is not int or screen < 0:
+                    errors.append(f"{label} column_index and screen_index must be nonnegative integers")
+                else:
+                    key = (index, column, screen)
+                    if key in unit_keys:
+                        errors.append(f"{label} duplicates a reference/column/screen index")
+                    unit_keys.add(key)
+                if not isinstance(row.get("screen_boundary_reason"), str) or not row["screen_boundary_reason"].strip():
+                    errors.append(f"{label} needs an observed screen_boundary_reason")
+        if covered != set(range(len(sizes))):
+            errors.append(f"{name} must cover every supplied source without dropping images")
+    route = value.get("route")
+    if not isinstance(route, str) or route not in {
+        "SEARCH_COVER", "PROMO_POSTER", "BANNER", "SOCIAL_COMMERCE_CARD",
+        "CAROUSEL_SET", "DETAIL_PAGE", "MARKETING_VISUAL_SET",
+    }:
+        errors.append("route must be one of the supplied commercial formats")
+    return errors
+
+
+# Leave room for base64 expansion and the full Skill/contract JSON under 50 MB.
+MAX_SOURCE_BYTES = 35_000_000
+
+
+class ReplicaInputTooLarge(ReplicaNativeError):
+    code = "REPLICA_INPUT_TOO_LARGE"
+    message = "参考图总量较大，请减少参考图或压缩单图后重试；原始素材和选图已保留。"
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class ReplicaAnalysisUnavailable(ReplicaNativeError):
+    code = "REPLICA_ANALYSIS_UNAVAILABLE"
+    message = "分析接口未完成本次请求，进度与选图已保留，请稍后重试。"
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
 class ReplicaPlanAuditRejected(ReplicaNativeError):
+    code = "REPLICA_PLAN_AUDIT_REJECTED"
+    message = "方案视觉审查尚未通过，请重试诊断或调整参考图；原始素材和选图已保留。"
+
     def __init__(self, judgment: dict[str, Any]) -> None:
         super().__init__("方案的实际视觉审计不通过，需要修正方案。")
         self.judgment = judgment
@@ -271,6 +366,17 @@ class NativeReplicaRun:
             data = path.read_bytes()
             with Image.open(path) as im:
                 content_type = Image.MIME.get(im.format or "", "image/png")
+                # Physical crops/snapshots stay byte-for-byte unchanged. Only
+                # transport lossless pixels in a smaller supported encoding.
+                if im.format == "PNG" and len(data) > 256 * 1024 and max(im.size) <= 16383:
+                    compact = BytesIO()
+                    try:
+                        im.save(compact, format="WEBP", lossless=True, method=4, exact=True)
+                    except (OSError, ValueError):
+                        pass
+                    else:
+                        if compact.tell() < len(data):
+                            data, content_type = compact.getvalue(), "image/webp"
             role = (
                 "product_reference"
                 if path.name.startswith("product-")
@@ -287,6 +393,8 @@ class NativeReplicaRun:
                     source_role=role,
                 )
             )
+        if sum(len(source.payload) for source in result) > MAX_SOURCE_BYTES:
+            raise ReplicaInputTooLarge()
         return tuple(result)
 
     async def ask(
@@ -302,6 +410,7 @@ class NativeReplicaRun:
 
         if self.on_progress is not None:
             phases = [
+                ("identity-segmentation-repair", 15, "校正参考图拆屏坐标"),
                 ("identity", 12, "识别商品外形与物理拆屏"),
                 ("exact-plan-audit", 82, "重新看图审查逐屏方案"),
                 ("exact-plan", 48, "逐屏规划构图与商品表达"),
@@ -396,9 +505,11 @@ class NativeReplicaRun:
         )
         self.record_usage(result, "analysis", requests)
         if result.error_code or not isinstance(result.payload, dict):
-            raise ReplicaNativeError(
-                result.error_message or "Skill 看图服务暂未返回有效结构。"
+            write_json(
+                self.root / "contracts" / f"provider-failure-{stage}-{uuid4().hex[:8]}.json",
+                {"stage": stage, "provider_error_code": result.error_code},
             )
+            raise ReplicaAnalysisUnavailable()
         self._validate_model_paths(result.payload)
         write_json(
             self.root / "contracts" / f"raw-{stage}-{uuid4().hex[:8]}.json",
@@ -533,7 +644,23 @@ class NativeReplicaRun:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
                 (products if role == "product" else references).append(path)
+        def sizes(paths: list[Path]) -> list[tuple[int, int]]:
+            result = []
+            for path in paths:
+                with Image.open(path) as image:
+                    result.append(image.size)
+            return result
+
+        product_sizes, reference_sizes = sizes(products), sizes(references)
         self.context = {
+            "product_dimensions": [
+                {"product_index": i, "width": w, "height": h}
+                for i, (w, h) in enumerate(product_sizes)
+            ],
+            "reference_dimensions": [
+                {"reference_index": i, "width": w, "height": h}
+                for i, (w, h) in enumerate(reference_sizes)
+            ],
             "user_facts": payload["facts"],
             "language": payload["language"],
             "platform": payload["platform_code"],
@@ -552,28 +679,40 @@ class NativeReplicaRun:
                 },
             )
             self.run = contained(self.root, result["run"])
-        observation = await self.ask(
-            "identity-segmentation",
-            (
-                "Return {product_geometry:[at least 3 detailed observations of cross-section, "
-                "width/height and structural segments], product_crops:[{product_index,bbox:[l,t,r,b]}], "
-                "units:[{reference_index,column_index,screen_index,bbox:[l,t,r,b],screen_boundary_reason}], "
-                "route:SEARCH_COVER|PROMO_POSTER|BANNER|SOCIAL_COMMERCE_CARD|CAROUSEL_SET|DETAIL_PAGE}. "
-                "Inspect all sources; physically count every screen and column, preserve column-major order. "
-                "Never silently drop references or assume one long column is one screen. "
-                "Coordinates are source pixels. Product crops isolate the actual product body. "
-                "A single self-contained image uses its observed commercial format; a long detail uses DETAIL_PAGE."
-            ),
-            self.context,
-        )
-        geometry = observation.get("product_geometry", [])
-        if len(geometry) < 3 or any(
-            not isinstance(x, str) or len(x) < 8 for x in geometry
-        ):
-            raise ReplicaNativeError("商品几何身份观察不足三项。")
-        product_crops = observation.get("product_crops", [])
-        if {x.get("product_index") for x in product_crops} != set(range(len(products))):
-            raise ReplicaNativeError("商品身份裁图没有覆盖全部商品图。")
+        observation: dict[str, Any] = {}
+        errors: list[str] = []
+        for attempt in range(3):
+            observation = await self.ask(
+                "identity-segmentation" if not attempt else f"identity-segmentation-repair-{attempt}",
+                (
+                    "Return {product_geometry:[at least 3 detailed observations of cross-section, "
+                    "width/height and structural segments], product_crops:[{product_index,bbox:[l,t,r,b]}], "
+                    "units:[{reference_index,column_index,screen_index,bbox:[l,t,r,b],screen_boundary_reason}], "
+                    "route:SEARCH_COVER|PROMO_POSTER|BANNER|SOCIAL_COMMERCE_CARD|CAROUSEL_SET|DETAIL_PAGE|MARKETING_VISUAL_SET}. "
+                    "Inspect all sources; physically count every screen and column, preserve column-major order. "
+                    "Never silently drop references or assume one long column is one screen. "
+                    "Use the exact supplied product_dimensions and reference_dimensions, with zero-based indices. "
+                    "Coordinates are integer ORIGINAL SOURCE pixels, not rounded or scaled preview dimensions. "
+                    "Every bbox must satisfy 0<=left<right<=width and 0<=top<bottom<=height. "
+                    "Product crops isolate the actual product body. Preserve each reference's full commercial layout. "
+                    "A single self-contained image uses its observed commercial format; a long detail uses DETAIL_PAGE. "
+                    "If validation_errors are supplied, inspect the same original pixels and correct the invalid contract; "
+                    "do not alter source dimensions, discard references, or fabricate observations."
+                ),
+                {
+                    **self.context,
+                    **({"invalid_observation": observation, "validation_errors": errors} if attempt else {}),
+                },
+                paths=products + references,
+            )
+            errors = segmentation_errors(observation, product_sizes, reference_sizes)
+            write_json(self.root / "contracts" / f"identity-validation-{attempt}.json", {"errors": errors})
+            if not errors:
+                break
+        else:
+            raise ReplicaSegmentationInvalid()
+        geometry = observation["product_geometry"]
+        product_crops = observation["product_crops"]
         for index, spec in enumerate(product_crops):
             self.crop(
                 products[spec["product_index"]],

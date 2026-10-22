@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
 import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
@@ -41,7 +42,6 @@ import type {
 } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
 import { IMAGE_UPLOAD_FORMAT_HINT, validateImageUpload } from "@/lib/image-upload";
-import { jobNote } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import amazonStyles from "./amazon-visual-suite-form.module.css";
@@ -797,6 +797,8 @@ export function CommerceSkillWorkspace({
           <span data-active={resultAssets.length > 0 || undefined}><i>4</i>结果交付</span>
         </div>
 
+        <JobProgressFeedback pending={createJob.isPending && !jobId} />
+
         <div className={styles.workspaceGrid} data-single-column>
           <main className={styles.mainColumn}>
             <section className={styles.card}>
@@ -1062,26 +1064,19 @@ export function CommerceSkillWorkspace({
                 <div className={styles.sectionHeading}>
                   <div>
                     <span>03</span>
-                    <div><h2>任务状态</h2><p>任务详情约每 1.5 秒自动轮询。</p></div>
+                    <div><h2>任务状态</h2><p>阶段与完成数量会自动更新。</p></div>
                   </div>
                   {job.data ? <StatusBadge status={job.data.status} /> : null}
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" size={18} />正在读取任务…</div>
-                ) : job.isError ? (
+                ) : job.isError && !job.data ? (
                   <div className={styles.jobError} role="alert">{errorMessage(job.error)}</div>
                 ) : job.data ? (
                   <div className={styles.jobPanel}>
-                    <div className={styles.progressRow}>
-                      <div>
-                        <strong>{progressText}</strong>
-                        <span>{jobNote(job.data)}</span>
-                      </div>
-                      <em>{Math.round(job.data.progress)}%</em>
-                    </div>
-                    <div className={styles.progressTrack} aria-label={`任务进度 ${Math.round(job.data.progress)}%`}>
-                      <i style={{ width: `${Math.max(0, Math.min(100, job.data.progress))}%` }} />
-                    </div>
+                    <JobProgressFeedback job={job.data} error={job.error} lastSyncedAt={job.dataUpdatedAt}
+                      refreshing={job.isFetching} onRefresh={() => void job.refetch()}
+                      summary={isAmazonReviewInfrastructureFailure ? progressText : undefined} suppressFailureDetails={isAmazonReviewInfrastructureFailure} />
                     <div className={styles.itemGrid}>
                       {job.data.items.map((item) => {
                         const isPreservedReviewBlocker =
@@ -1103,9 +1098,6 @@ export function CommerceSkillWorkspace({
                         );
                       })}
                     </div>
-                    {job.data.error_message && !isAmazonReviewInfrastructureFailure ? (
-                      <div className={styles.jobError} role="alert">{job.data.error_message}</div>
-                    ) : null}
                   </div>
                 ) : null}
               </section>

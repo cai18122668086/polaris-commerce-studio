@@ -287,3 +287,5 @@
 }
 
 .command:not(.commandWithAssets) .composerAddTile span { display: block; }
+
+.progressFeedback { width: min(760px, 100%); margin-top: 14px; }

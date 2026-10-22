@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Check, CheckCircle2, ImagePlus, Images, Info, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate } from "@/components/workspace-job-gate";
 import { useWorkspaceJobId } from "@/lib/jobs/use-workspace-job-id";
@@ -13,7 +14,6 @@ import { BeforeAfterResult } from "@/components/before-after-result";
 import { HelpPanel } from "@/components/help-panel";
 import { JobResultImage } from "@/components/job-result-image";
 import { MaskEditor, normalizeRasterImage, type MaskEditorHandle } from "@/components/mask-editor";
-import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useAsset, useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
@@ -23,7 +23,6 @@ import { errorMessage } from "@/lib/api/request";
 import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
-import { jobNote } from "@/lib/jobs/presentation";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import workspaceStyles from "@/components/product-image-workspace.module.css";
 
@@ -213,7 +212,8 @@ export default function LocalEditPage() {
               </section>
               <div className="cost-bar"><span>本次服务<Info size={14} /></span><strong>{jobId ? "已保存任务 · 输入参数已锁定" : workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "生成服务暂不可用"}</strong></div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}
-              {job.data && <div className={`generation-feedback ${["failed", "partial"].includes(job.data.status) ? "error" : job.data.status === "completed" ? "success" : "active"}`} aria-live="polite"><span>{job.data.status === "completed" ? <CheckCircle2 size={16} /> : <LoaderCircle size={16} className={["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} />}</span><div><strong><StatusBadge status={job.data.status} /></strong><p>{jobNote(job.data)} · {job.data.progress}%</p></div></div>}
+              <JobProgressFeedback job={job.data} pending={createJob.isPending} error={job.error}
+                lastSyncedAt={job.dataUpdatedAt} refreshing={job.isFetching} onRefresh={jobId ? () => void job.refetch() : undefined} />
               {rawCandidateAsset && (
                 <div className={`generation-feedback ${rawReviewSuccess === true ? "success" : rawReviewSuccess === false ? "error" : "active"}`}>
                   <span>{rawReviewSuccess === true ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}</span>

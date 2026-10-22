@@ -1,5 +1,6 @@
 "use client";
 
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { validateImageUpload } from "@/lib/image-upload";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
@@ -603,7 +604,11 @@ export function InspirationGalleryDb() {
           {activeCase && activeCase.workflow_type === "product_prompt" && !composerAssets.some((asset) => asset.role === "user_upload") && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例只需要商品图，不需要参考图。</p>}
         </div>
         {resultAsset && <div className={styles.resultShowcase}><div className={styles.resultShowcaseMeta}><strong>本次生成结果 · {resultAssets.length} 张</strong><span>点击图片查看大图</span></div><div className={styles.resultShowcaseGrid}>{resultAssets.map((asset) => <button type="button" key={asset.asset_id} aria-label={`查看第 ${asset.ordinal + 1} 张生成结果`} onClick={() => setPreviewAsset(asset)}><img src={asset.url} alt={`生成结果 ${asset.ordinal + 1}`} /></button>)}</div></div>}
-        {materializingCaseId ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>正在准备案例素材</span><b>上传中</b></div> : generating ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>{job.data?.status === "completed" ? "生成完成，正在加载结果" : job.data?.stage ? `正在${job.data.stage}` : "正在准备生成"}</span><b>{job.data ? `${Math.round(job.data.progress)}%` : "排队中"}</b></div> : null}
+        {materializingCaseId ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>正在准备案例素材</span></div> : (generating || jobId) ? <div className={styles.progressFeedback}>
+          <JobProgressFeedback job={job.data} pending={createJob.isPending || (generating && !job.data)} error={job.error}
+            lastSyncedAt={job.dataUpdatedAt} refreshing={job.isFetching} onRefresh={jobId ? () => void job.refetch() : undefined}
+            summary={generating && job.data?.status === "completed" ? "生成已完成，正在载入结果图片" : undefined} />
+        </div> : null}
         {composeError && !generating ? <div className={styles.composeError} role="alert">{composeError}</div> : null}
       </div>
     </section>

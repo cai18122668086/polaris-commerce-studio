@@ -88,11 +88,12 @@ def prepare(revision, backend, frontend):
         subprocess.run(["docker", "image", "inspect", image], check=True,
                        stdout=subprocess.DEVNULL)
     assert not ROOT.exists(), "Prepared release already exists; inspect it"
-    ROOT.mkdir(mode=0o700)
     live = {role: inspect(role) for role in ROLES}
     for role in ROLES:
         health(role)
     idle()
+    assert live["replica-api"]["Image"] == "sha256:bc2ea0f48b18fe25cb5fe4571d714b1a840e2a0f3c92d9448657a3380b93a918", "Replica base changed; rebase the overlay"
+    assert live["frontend"]["Image"] == "sha256:a3cafa0564c3c40a8b68190fa9f5e369e490446c3420e3ad235af660b6f16faf", "Frontend base changed; rebase the overlay"
     config = json.loads(subprocess.check_output([
         "docker", "compose", "-f", str(PREVIOUS), "config", "--format", "json"
     ]))
@@ -110,6 +111,7 @@ def prepare(revision, backend, frontend):
         service["image"] = frontend if role == "frontend" else backend
         service["pull_policy"] = "never"
         service.setdefault("labels", {})["com.polaris.replica.native_revision"] = revision
+    ROOT.mkdir(mode=0o700)
     private(ROOT / "rollback.compose.private.json", escaped(previous))
     private(ROOT / "active.compose.private.json", escaped(config))
     private(ROOT / "baseline.json", {

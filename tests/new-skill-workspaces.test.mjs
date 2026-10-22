@@ -333,7 +333,7 @@ test("Amazon review infrastructure failure preserves generated-image semantics",
   );
   assert.match(
     workspace,
-    /job\.data\.error_message && !isAmazonReviewInfrastructureFailure/,
+    /suppressFailureDetails=\{isAmazonReviewInfrastructureFailure\}/,
   );
   assert.match(
     workspace,

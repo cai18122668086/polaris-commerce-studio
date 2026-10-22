@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
 import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
@@ -37,7 +38,6 @@ import {
   getProductImageFeatureByPresetSlug
 } from "@/lib/feature-registry";
 import { selectJobResultAssets } from "@/lib/jobs/results";
-import { jobNote } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import {
   presentWorkflow,
@@ -301,6 +301,8 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
           ))}
         </nav>
 
+        <JobProgressFeedback pending={createJob.isPending && !jobId} />
+
         <div className={styles.workspaceGrid} data-single-column>
           <main className={styles.mainColumn}>
             <section className={styles.card}>
@@ -452,20 +454,12 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" />正在读取任务…</div>
-                ) : job.error ? (
+                ) : job.error && !job.data ? (
                   <div className={styles.jobError} role="alert">{errorMessage(job.error)}</div>
                 ) : job.data ? (
                   <div className={styles.jobPanel}>
-                    <div className={styles.progressRow}>
-                      <div>
-                        <strong>{progressText}</strong>
-                        <span>{jobNote(job.data)}</span>
-                      </div>
-                      <em>{Math.round(job.data.progress)}%</em>
-                    </div>
-                    <div className={styles.progressTrack} aria-label={`任务进度 ${Math.round(job.data.progress)}%`}>
-                      <i style={{ width: `${Math.max(0, Math.min(100, job.data.progress))}%` }} />
-                    </div>
+                    <JobProgressFeedback job={job.data} error={job.error} lastSyncedAt={job.dataUpdatedAt}
+                      refreshing={job.isFetching} onRefresh={() => void job.refetch()} />
                     <div className={styles.itemGrid}>
                       {job.data.items.map((item, index) => (
                         <span key={item.id} data-status={item.status}>
@@ -473,9 +467,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                         </span>
                       ))}
                     </div>
-                    {job.data.error_message ? (
-                      <div className={styles.jobError} role="alert">{job.data.error_message}</div>
-                    ) : null}
                     {allowsJobAction(job.data.allowed_actions, "retry") &&
                     ["failed", "partial", "completed"].includes(job.data.status) ? (
                       <button

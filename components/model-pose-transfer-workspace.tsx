@@ -20,11 +20,15 @@ import { useMemo, useRef, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
+import { WorkspaceJobGate } from "@/components/workspace-job-gate";
+import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
+import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
+import { StatusBadge } from "@/components/status-badge";
 import { ResultGrid } from "@/components/result-grid";
 import { SkillReviewChecklist } from "@/components/skill-review-checklist";
 import { WorkspaceHeader } from "@/components/workspace-header";
-import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
+import { useAsset, useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import {
   presentWorkflow,
@@ -279,20 +283,29 @@ export function ModelPoseTransferWorkspace() {
   );
   const workflow = presentWorkflow(capability);
 
-  const [modelSource, setModelSource] = useState<Asset>();
+  const [jobId, setJobId] = useWorkspaceJobId("/workspace/model-pose-transfer");
+  const job = useJob(workspace?.id, jobId);
+  const saved = workspaceJobSnapshot(job.data);
+  const restoredSource = useAsset(workspace?.id, jobId ? saved.id("model_source_asset_id") : undefined);
+  const restoredPose = useAsset(workspace?.id, jobId ? saved.id("pose_reference_asset_id") : undefined);
+  const [draftModelSource, setModelSource] = useState<Asset>();
   const [sourceLibraryOpen, setSourceLibraryOpen] = useState(false);
-  const [poseMode, setPoseMode] = useState<PoseMode>("catalog");
-  const [gender, setGender] = useState<PoseGender>("female");
-  const [selectedPoseSlug, setSelectedPoseSlug] = useState<string>();
-  const [customPose, setCustomPose] = useState<Asset>();
+  const [draftPoseMode, setPoseMode] = useState<PoseMode>("catalog");
+  const [draftGender, setGender] = useState<PoseGender>("female");
+  const [draftSelectedPoseSlug, setSelectedPoseSlug] = useState<string>();
+  const [draftCustomPose, setCustomPose] = useState<Asset>();
   const [materializedPose, setMaterializedPose] = useState<MaterializedPose>();
-  const [instruction, setInstruction] = useState("");
-  const [jobId, setJobId] = useState<string>();
+  const [draftInstruction, setInstruction] = useState("");
   const [uiError, setUiError] = useState<string>();
-  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
+  const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const submissionLock = useRef(false);
 
-  const job = useJob(workspace?.id, jobId);
+  const modelSource = jobId ? restoredSource.data : draftModelSource;
+  const customPose = jobId ? restoredPose.data : draftCustomPose;
+  const selectedPoseSlug = jobId ? saved.id("pose_slug") : draftSelectedPoseSlug;
+  const poseMode = jobId ? (selectedPoseSlug ? "catalog" : "custom") : draftPoseMode;
+  const gender = jobId ? POSE_CATALOG.find((pose) => pose.slug === selectedPoseSlug)?.genderGroup ?? "female" : draftGender;
+  const instruction = jobId ? saved.text("instruction") : draftInstruction;
   const resultAssets = selectJobResultAssets(job.data);
   const visiblePoses = useMemo(
     () => POSE_CATALOG.filter((pose) => pose.genderGroup === gender),
@@ -324,6 +337,7 @@ export function ModelPoseTransferWorkspace() {
 
   const requestError =
     workspaceError ??
+    restoredSource.error ?? restoredPose.error ??
     runtime.error ??
     sourceUpload.error ??
     customPoseUpload.error ??
@@ -470,9 +484,11 @@ export function ModelPoseTransferWorkspace() {
   }
 
   return (
+    <WorkspaceJobGate jobId={jobId} job={job.data} error={job.error} onRetry={() => void job.refetch()} expectedType="model_pose_transfer">
     <AppShell flush sidebar={false}>
       <div className={styles.workspacePage}>
         <WorkspaceHeader
+          jobId={jobId}
           eyebrow="AI 商品图 · 服装模特"
           title={feature.title}
           description={feature.description}
@@ -630,7 +646,7 @@ export function ModelPoseTransferWorkspace() {
               <section className={styles.panel}>
                 <div className={styles.sectionHeading}>
                   <div><span>04</span><div><h2>任务进度</h2><p>任务会自动刷新，完成后可直接查看和下载。</p></div></div>
-                  <strong>{job.data?.status ?? "queued"}</strong>
+                  {job.data && <StatusBadge status={job.data.status} />}
                 </div>
                 <div className={styles.progressPanel}>
                   <div><span>{progressText}</span><strong>{Math.round(job.data?.progress ?? 0)}%</strong></div>
@@ -652,7 +668,7 @@ export function ModelPoseTransferWorkspace() {
               }
             />
             {job.data?.status === "completed" && resultAssets.length > 0 ? (
-              <SkillReviewChecklist
+              <SkillReviewChecklist key={jobId}
                 items={[
                   { key: "roles", label: "没有发生人物身份、服装或场景串位，姿势参考图没有泄漏外观。" },
                   { key: "identity", label: "原图人物、自然比例、服装、鞋饰、背景和光线仍保持可识别。" },
@@ -744,5 +760,6 @@ export function ModelPoseTransferWorkspace() {
         </footer>
       </div>
     </AppShell>
+    </WorkspaceJobGate>
   );
 }

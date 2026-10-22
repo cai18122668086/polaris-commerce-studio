@@ -16,6 +16,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
+import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
+import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
 import { SkillReviewChecklist } from "@/components/skill-review-checklist";
@@ -37,6 +40,7 @@ import type {
 } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
 import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { jobNote } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import amazonStyles from "./amazon-visual-suite-form.module.css";
@@ -414,42 +418,61 @@ export function CommerceSkillWorkspace({
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
 
-  const [selections, setSelections] = useState(emptySelections);
-  const [platformCode, setPlatformCode] = useState(
+  const [jobId, setJobId] = useWorkspaceJobId(feature.route);
+  const job = useJob(workspace?.id, jobId);
+  const saved = workspaceJobSnapshot(job.data);
+
+  const [draftSelections, setSelections] = useState(emptySelections);
+  const [draftPlatformCode, setPlatformCode] = useState(
     featureId === "amazon-visual-suite" ? "amazon-us" : "tmall",
   );
-  const [language, setLanguage] = useState(
+  const [draftLanguage, setLanguage] = useState(
     featureId === "amazon-visual-suite" ? "en-US" : "zh-CN",
   );
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(
+  const [draftAspectRatio, setAspectRatio] = useState<AspectRatio>(
     featureId === "reference-remix" ? "follow-reference" : "1:1",
   );
-  const [imageCount, setImageCount] = useState(1);
-  const [creativeDirection, setCreativeDirection] =
+  const [draftImageCount, setImageCount] = useState(1);
+  const [draftCreativeDirection, setCreativeDirection] =
     useState<CreativeDirection>("selling_point");
-  const [instruction, setInstruction] = useState("");
-  const [sellingPoints, setSellingPoints] = useState("");
-  const [productName, setProductName] = useState("");
+  const [draftInstruction, setInstruction] = useState("");
+  const [draftSellingPoints, setSellingPoints] = useState("");
+  const [draftProductName, setProductName] = useState("");
   // Keep the full backend contract while the simplified Amazon form leaves legacy optional fields blank.
   const category = "";
   const targetBuyer = "";
   const listingTitle = "";
   const listingDescription = "";
   const aPlusCopy = "";
-  const [productFacts, setProductFacts] = useState("");
+  const [draftProductFacts, setProductFacts] = useState("");
   const parameters = "";
   const certificationsOrEvidence = "";
   const forbiddenClaims = "";
   const brandColors = "";
   const stylePreferences = "";
-  const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
-  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
+  const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const [libraryRole, setLibraryRole] = useState<RoleKey>();
   const [autoStart, setAutoStart] = useState(false);
 
+  const selections = jobId ? {
+    product: saved.ids("product_asset_ids"), reference: saved.ids("reference_asset_ids"),
+    competitor: saved.ids(featureId === "amazon-visual-suite" ? "competitor_reference_asset_ids" : "competitor_asset_ids"),
+    whiteBackground: saved.ids("white_background_product_asset_ids"), detail: saved.ids("detail_asset_ids"),
+    package: saved.ids("package_asset_ids"), scene: saved.ids("scene_asset_ids"), brand: saved.ids("brand_asset_ids"),
+  } : draftSelections;
+  const platformCode = jobId ? saved.text(featureId === "amazon-visual-suite" ? "marketplace" : "platform_code") : draftPlatformCode;
+  const language = jobId ? saved.text("language") : draftLanguage;
+  const aspectRatio = jobId ? saved.choice("aspect_ratio", referenceAspectRatios.map((ratio) => ratio.value), "1:1") : draftAspectRatio;
+  const imageCount = jobId ? saved.number("image_count", job.data?.expected_item_count ?? 1) : draftImageCount;
+  const creativeDirection = jobId ? saved.choice("creative_direction", creativeDirections.map((direction) => direction.value), "selling_point") : draftCreativeDirection;
+  const instruction = jobId ? saved.text("instruction") : draftInstruction;
+  const sellingPoints = jobId ? saved.lines(featureId === "amazon-visual-suite" ? "bullet_points" : "selling_points") : draftSellingPoints;
+  const productName = jobId ? saved.text("product_name") : draftProductName;
+  const productFacts = jobId ? [saved.lines("bullet_points"), saved.lines("product_facts")].filter(Boolean).join("\n") : draftProductFacts;
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (jobId || typeof window === "undefined") return;
     try {
       if (featureId !== "reference-remix") {
         const rawCompose = window.localStorage.getItem("polaris-inspiration-compose");
@@ -489,9 +512,8 @@ export function CommerceSkillWorkspace({
     } catch {
       // Ignore malformed handoff data and keep the normal workspace flow intact.
     }
-  }, [featureId]);
+  }, [featureId, jobId]);
 
-  const job = useJob(workspace?.id, jobId);
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = workspaceError ?? upload.error ?? confirmPlan.error ?? job.error;
   const isAmazon = featureId === "amazon-visual-suite";
@@ -554,10 +576,7 @@ export function CommerceSkillWorkspace({
       allowsJobAction(job.data.allowed_actions, "confirm_plan"),
   );
 
-  const selectedIds = useMemo(
-    () => Object.values(selections).flat(),
-    [selections],
-  );
+  const selectedIds = Object.values(selections).flat();
   const amazonRemainingSourceSlots = isAmazon
     ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selectedIds.length)
     : undefined;
@@ -570,7 +589,7 @@ export function CommerceSkillWorkspace({
     (role) => role.required && selections[role.key].length === 0,
   );
   const canSubmit = Boolean(
-    workspace &&
+    !jobId && workspace &&
       workflow.canSubmit &&
       !runtime.isPending &&
       !missingRequiredRole &&
@@ -786,9 +805,11 @@ export function CommerceSkillWorkspace({
   };
 
   return (
+    <WorkspaceJobGate jobId={jobId} job={job.data} error={job.error} onRetry={() => void job.refetch()} expectedType={feature.jobType}>
     <AppShell flush sidebar={false}>
       <div className={`${styles.workspacePage} ${isAmazon ? amazonStyles.amazonWorkspace : ""}`}>
         <WorkspaceHeader
+          jobId={jobId}
           eyebrow={`${feature.shortTitle} · 独立工作台`}
           title={feature.title}
           description={feature.description}
@@ -901,6 +922,7 @@ export function CommerceSkillWorkspace({
                   </details>
                 </div>
               ) : null}
+              {jobId && <WorkspaceJobInputs workspaceId={workspace?.id} job={job.data} />}
             </section>
             <section className={styles.card}>
               <div className={styles.sectionHeading}>
@@ -1086,7 +1108,7 @@ export function CommerceSkillWorkspace({
                     <div className={styles.progressRow}>
                       <div>
                         <strong>{progressText}</strong>
-                        <span>{job.data.stage ? `当前阶段：${job.data.stage}` : "等待执行器更新阶段"}</span>
+                        <span>{jobNote(job.data)}</span>
                       </div>
                       <em>{Math.round(job.data.progress)}%</em>
                     </div>
@@ -1202,7 +1224,7 @@ export function CommerceSkillWorkspace({
               archiveJobId={canDownloadAmazonArchive ? job.data?.id : undefined}
             />
             {!isAmazon && job.data?.status === "completed" && resultAssets.length > 0 ? (
-              <SkillReviewChecklist
+              <SkillReviewChecklist key={jobId}
                 items={isCreative
                   ? [
                       { key: "fidelity", label: "产品外观、颜色、包装、Logo、结构和 SKU 关键细节保持保真。" },
@@ -1294,5 +1316,6 @@ export function CommerceSkillWorkspace({
         </footer>
       </div>
     </AppShell>
+    </WorkspaceJobGate>
   );
 }

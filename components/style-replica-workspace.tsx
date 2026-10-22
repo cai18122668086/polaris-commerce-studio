@@ -7,6 +7,7 @@ import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { getAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useJob } from "@/features/jobs/api/jobs";
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
+import { probeReferenceImage } from "@/lib/replica/reference-images";
 import { ReplicaSelect } from "./replica-select";
 import styles from "./style-replica-workspace.module.css";
 
@@ -25,17 +26,6 @@ async function replicaRequest<T>(workspaceId: string, path: string, body?: unkno
   return result;
 }
 
-function usableReferenceImage(src: string): Promise<boolean> {
-  return new Promise(resolve => {
-    const image = new Image();
-    const finish = (valid: boolean) => { clearTimeout(timer); image.onload = null; image.onerror = null; resolve(valid); };
-    const timer = setTimeout(() => finish(false), 15000);
-    image.referrerPolicy = "no-referrer";
-    image.onload = () => finish(image.naturalWidth >= 32 && image.naturalHeight >= 32);
-    image.onerror = () => finish(false);
-    image.src = src;
-  });
-}
 
 function analysisText(value: unknown): string { if (typeof value === "string") return value; if (Array.isArray(value)) return value.map(analysisText).filter(Boolean).slice(0, 3).join(" · ").slice(0, 220); if (value && typeof value === "object") return analysisText(Object.values(value)); return ""; }
 
@@ -74,7 +64,9 @@ export function StyleReplicaWorkspace() {
   const [productDoc, setProductDoc] = useState<ReplicaDocument>();
   const [sessionDoc, setSessionDoc] = useState<ReplicaDocument>();
   const [selected, setSelected] = useState<string[]>([]);
-  const [unavailableSources, setUnavailableSources] = useState<string[]>([]);
+  const [blankSources, setBlankSources] = useState<string[]>([]);
+  const [failedPreviews, setFailedPreviews] = useState<string[]>([]);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const [imageTab, setImageTab] = useState<"imageUrls" | "descImageUrls" | "skuImageUrls">("imageUrls");
   const [platform, setPlatform] = useState("auto");
   const [language, setLanguage] = useState("zh-CN");
@@ -99,8 +91,8 @@ export function StyleReplicaWorkspace() {
   const status = sessionDoc?.status;
   const working = busy !== "" || ["analysing"].includes(status ?? "") || productDoc?.status === "fetching";
   const product = productDoc?.payload.product;
-  const sourceImages = (key: "imageUrls" | "descImageUrls" | "skuImageUrls") => (product?.[key] ?? []).filter(src => !unavailableSources.includes(src));
-  const hideSource = (src: string) => { setUnavailableSources(current => current.includes(src) ? current : [...current, src]); setSelected(current => current.filter(value => value !== src)); };
+  const sourceImages = (key: "imageUrls" | "descImageUrls" | "skuImageUrls") => (product?.[key] ?? []).filter(src => !blankSources.includes(src));
+  const hideSource = (src: string) => { setBlankSources(current => current.includes(src) ? current : [...current, src]); setSelected(current => current.filter(value => value !== src)); };
   const selectReplicationMethod = (value: "exact" | "style") => {
     if (working || actionLock.current || value === replicationMethod) return;
     window.history.replaceState(null, "", "/style-replica");
@@ -177,14 +169,14 @@ export function StyleReplicaWorkspace() {
       if (files.length > limit - current.length) throw new Error(`该区域最多支持${limit}张图片，已上传可用部分。`);
     });
   };
-  const fetchProduct = () => workspaceId && perform("拉取商品", async () => { setSelected([]); setUnavailableSources([]); setProductDoc(undefined); setProductDoc(await replicaRequest<ReplicaDocument>(workspaceId, "/products", { url, platform: sourcePlatform })); });
+  const fetchProduct = () => workspaceId && perform("拉取商品", async () => { setSelected([]); setBlankSources([]); setFailedPreviews([]); setProductDoc(undefined); setProductDoc(await replicaRequest<ReplicaDocument>(workspaceId, "/products", { url, platform: sourcePlatform })); });
   const analyse = () => workspaceId && perform("准备分析", async () => {
     let choices: Plan["reference"][] = [];
     if (mode === "link") {
       if (!productDoc || !selected.length) throw new Error("请先拉取商品并勾选参考图。");
-      const readable = await Promise.all(selected.map(usableReferenceImage));
-      const invalid = selected.filter((_, index) => !readable[index]);
-      if (invalid.length) { invalid.forEach(hideSource); throw new Error("已移除空白或无法读取的参考图，请重新选择后开始诊断。"); }
+      const readable = await Promise.all(selected.map(src => probeReferenceImage(src)));
+      const invalid = selected.filter((_, index) => readable[index] === "blank");
+      if (invalid.length) { invalid.forEach(hideSource); throw new Error("已移除尺寸过小的参考图，请重新选择后开始诊断。"); }
       const imported = await replicaRequest<{ asset_id: string; url: string; role: string }[]>(workspaceId, `/products/${productDoc.id}/import`, { urls: selected });
       choices = imported.map((item, index) => ({ asset_id: item.asset_id, title: `${item.role} ${index + 1}`, aspect_ratio: "follow-reference" }));
     } else {
@@ -235,7 +227,7 @@ export function StyleReplicaWorkspace() {
       <section className={styles.stage}>
         <header className={styles.stageHeader}><div><Sparkles size={18} /><h1>一键复刻</h1><span>让好灵感，成为你的商品图</span></div><nav><button onClick={() => void showHistory()}><History size={14} />历史记录</button><button onClick={() => setModal("help")}><CircleHelp size={14} />使用教程</button></nav></header>
         {sessionDoc && !native && <p className={styles.hint}>历史任务沿用此前的复刻方式；如需使用新方式，请重新诊断。</p>}
-        {mode === "link" && product && !sessionDoc && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><div><span className={styles.sourceBadge}>{product.platform}</span><strong>{product.title ?? "商品参考图"}</strong></div><span>已选 {selected.length}/20</span></div><div className={styles.selectionActions}><span>点击图片选择，长图会拆屏，最终数量以诊断方案为准</span><button onClick={() => setSelected([...new Set([...selected, ...sourceImages(imageTab)])].slice(0,20))}>全选本组</button><button onClick={() => setSelected([])}>清空选择</button></div><div className={styles.sourceTabs}>{[["imageUrls", "主图"], ["descImageUrls", "详情图"], ["skuImageUrls", "SKU 图"]].map(([key, label]) => <button className={imageTab === key ? styles.sourceTabActive : ""} key={key} onClick={() => setImageTab(key as typeof imageTab)}>{label}<b>{sourceImages(key as "imageUrls" | "descImageUrls" | "skuImageUrls").length}</b></button>)}</div><div className={styles.sourceGrid}>{sourceImages(imageTab).map((src, index) => <div key={src} className={`${styles.sourceTile} ${selected.includes(src) ? styles.sourceSelected : ""}`}><img src={src} alt={`参考图 ${index + 1}`} loading="lazy" referrerPolicy="no-referrer" onLoad={event => { if (event.currentTarget.naturalWidth < 32 || event.currentTarget.naturalHeight < 32) hideSource(src); }} onError={() => hideSource(src)} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)} /><button aria-label={`${selected.includes(src) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)}>{selected.includes(src) ? <Check size={13} /> : index + 1}</button><button className={styles.previewTile} onClick={() => setPreview(src)}>放大</button></div>)}</div>{unavailableSources.length > 0 && <p className={styles.hint}>已隐藏 {unavailableSources.length} 张空白或无法读取的图片。<button className={styles.textButton} onClick={() => setUnavailableSources([])}>重新检查</button></p>}{!sourceImages(imageTab).length && <p className={styles.hint}>当前分组暂无图片，可以选择其他分组或上传参考图。</p>}</div>}
+        {mode === "link" && product && !sessionDoc && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><div><span className={styles.sourceBadge}>{product.platform}</span><strong>{product.title ?? "商品参考图"}</strong></div><span>已选 {selected.length}/20</span></div><div className={styles.selectionActions}><span>点击图片选择，长图会拆屏，最终数量以诊断方案为准</span><button onClick={() => setSelected([...new Set([...selected, ...sourceImages(imageTab)])].slice(0,20))}>全选本组</button><button onClick={() => setSelected([])}>清空选择</button></div><div className={styles.sourceTabs}>{[["imageUrls", "主图"], ["descImageUrls", "详情图"], ["skuImageUrls", "SKU 图"]].map(([key, label]) => <button className={imageTab === key ? styles.sourceTabActive : ""} key={key} onClick={() => setImageTab(key as typeof imageTab)}>{label}<b>{sourceImages(key as "imageUrls" | "descImageUrls" | "skuImageUrls").length}</b></button>)}</div><div className={styles.sourceGrid}>{sourceImages(imageTab).map((src, index) => <div key={src} className={`${styles.sourceTile} ${selected.includes(src) ? styles.sourceSelected : ""}`}><img key={`${src}-${previewAttempt}`} src={src} alt={`参考图 ${index + 1}`} loading="lazy" referrerPolicy="no-referrer" onLoad={event => { setFailedPreviews(current => current.filter(value => value !== src)); if (event.currentTarget.naturalWidth < 32 || event.currentTarget.naturalHeight < 32) hideSource(src); }} onError={() => setFailedPreviews(current => current.includes(src) ? current : [...current, src])} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)} /><button aria-label={`${selected.includes(src) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)}>{selected.includes(src) ? <Check size={13} /> : index + 1}</button><button className={styles.previewTile} onClick={() => setPreview(src)}>放大</button></div>)}</div>{failedPreviews.length > 0 && <p className={styles.hint} role="status">{failedPreviews.length} 张图片预览暂时加载失败，仍可选择并导入。<button className={styles.textButton} onClick={() => { setFailedPreviews([]); setPreviewAttempt(current => current + 1); }}>重试预览</button></p>}{blankSources.length > 0 && <p className={styles.hint}>已隐藏 {blankSources.length} 张尺寸过小的图片。<button className={styles.textButton} onClick={() => { setBlankSources([]); setPreviewAttempt(current => current + 1); }}>重新检查</button></p>}{!sourceImages(imageTab).length && <p className={styles.hint}>当前分组暂无图片，可以选择其他分组或上传参考图。</p>}</div>}
         {mode === "image" && references.length > 0 && !sessionDoc && workspaceId && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><strong>选择想要复刻的参考图</strong><span>已选 {selectedReferenceCount}/{references.length}</span></div><div className={styles.selectionActions}><span>全部选中参考均纳入分析，长图会拆屏</span><button onClick={() => setSelectedReferences(references.map(item => item.id))}>全选</button><button onClick={() => setSelectedReferences([])}>清空选择</button></div><div className={styles.sourceGrid}>{references.map((item, index) => <div key={item.id} className={`${styles.sourceTile} ${selectedReferences.includes(item.id) ? styles.sourceSelected : ""}`}><AssetImage workspaceId={workspaceId} assetId={item.id} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])} /><button aria-label={`${selectedReferences.includes(item.id) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])}>{selectedReferences.includes(item.id) ? <Check size={13} /> : index + 1}</button></div>)}</div></div>}
         {status === "analysing" && <div className={styles.analysisState}><div className={styles.orbit}><Sparkles size={28} /></div><h2>正在读懂你的商品与参考风格</h2><p>分析构图、光影和信息层级，为每张图准备专属方案。</p><progress max={100} value={sessionDoc?.payload.progress ?? 5} /><small>{native ? sessionDoc?.payload.analysis_stage ?? "正在准备复刻方案" : `${plans.length} / ${sessionDoc?.payload.references?.length ?? 0} 张方案已完成`}</small></div>}
         {status === "failed" && <div className={styles.emptyState}><CircleHelp size={38} /><h2>这次诊断暂未完成</h2><p>{sessionDoc?.payload.error}</p><button disabled={!!busy} onClick={() => void retryAnalysis()}>重试未完成的分析</button><button onClick={reset}>返回修改选图</button></div>}

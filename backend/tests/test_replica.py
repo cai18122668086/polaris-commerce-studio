@@ -71,6 +71,14 @@ def test_provider_image_groups_and_1688_top_level_gallery():
     assert result["imageUrls"] == ["https://cbu01.alicdn.com/a.jpg"]
     assert result["descImageUrls"] == ["https://cbu01.alicdn.com/detail.jpg"]
     assert result["skuImageUrls"] == ["https://cbu01.alicdn.com/sku.jpg"]
+    data["images"].append({"fullPathImageURI": "https://cbu01.alicdn.com/sku.jpg"})
+    data["mainPic"] = {
+        "offerImgList": ["https://cbu01.alicdn.com/a.jpg"],
+        "skuImages": [{"image": "https://cbu01.alicdn.com/sku.jpg"}],
+    }
+    result = normalize_product(data, "1688", "123456789", "https://detail.1688.com")
+    assert result["imageUrls"] == ["https://cbu01.alicdn.com/a.jpg"]
+    assert result["skuImageUrls"] == ["https://cbu01.alicdn.com/sku.jpg"]
     assert image_url("https://alicdn.com:bad/a.jpg") is None
     assert image_url("https://alicdn.com/description.html") is None
     assert image_url("http://localhost/image.jpg") is None

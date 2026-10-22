@@ -248,8 +248,20 @@ def normalize_product(
                 walk(child, context, depth + 1)
 
     walk(root)
-    if platform == "1688" and root.get("images"):
-        gallery = _urls(root["images"])
+    if platform == "1688":
+        # V1's root images combines the five gallery shots with every SKU.
+        # mainPic identifies the actual gallery independently of that union.
+        main_pic = root.get("mainPic")
+        gallery = []
+        if isinstance(main_pic, Mapping):
+            gallery = _urls(main_pic.get("offerImgList")) or _urls(
+                main_pic.get("offerImages")
+            )
+        if not gallery and root.get("images"):
+            gallery = _urls(root["images"])
+            without_sku = [url for url in gallery if url not in groups["sku"]]
+            if without_sku:
+                gallery = without_sku
         if gallery:
             groups["main"] = gallery
     if item is not root:

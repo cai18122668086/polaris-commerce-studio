@@ -221,7 +221,7 @@ async def create_product(
         "product",
         _hash(
             [
-                "justone-v1",
+                "justone-v2",
                 platform,
                 item_id,
                 (datetime.now(UTC) + timedelta(hours=8)).date().isoformat(),

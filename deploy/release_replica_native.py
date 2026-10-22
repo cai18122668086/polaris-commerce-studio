@@ -47,6 +47,26 @@ def escaped(value):
     return value
 
 
+def preserve_runtime_fields(service, live):
+    """Escape observed Docker values once; canonical Compose is already escaped."""
+    source = live["Config"]
+    service["environment"] = escaped(dict(row.split("=", 1) for row in source["Env"]))
+    service["command"] = escaped(source.get("Cmd"))
+    service["entrypoint"] = escaped(source.get("Entrypoint"))
+    health = source.get("Healthcheck")
+    if health:
+        probe = {"test": escaped(health["Test"])}
+        for original, target in (("Interval", "interval"), ("Timeout", "timeout"),
+                                 ("StartPeriod", "start_period"), ("StartInterval", "start_interval")):
+            if health.get(original):
+                probe[target] = str(health[original]) + "ns"
+        if "Retries" in health:
+            probe["retries"] = health["Retries"]
+        service["healthcheck"] = probe
+    else:
+        service.pop("healthcheck", None)
+
+
 def idle():
     sql = """SELECT
       (SELECT count(*) FROM jobs WHERE configuration ? 'replica_session_id'
@@ -109,15 +129,15 @@ def prepare(revision, backend, frontend, api):
     for role, service in config["services"].items():
         assert not service.get("ports") and service.get("read_only")
         assert "ALL" in service.get("cap_drop", [])
-        service["environment"] = dict(row.split("=", 1) for row in live[role]["Config"]["Env"])
-        previous["services"][role]["environment"] = deepcopy(service["environment"])
+        preserve_runtime_fields(service, live[role])
+        preserve_runtime_fields(previous["services"][role], live[role])
         previous["services"][role]["image"] = live[role]["Image"]
         service["image"] = frontend if role == "frontend" else api if role == "api" else backend
         service["pull_policy"] = "never"
         service.setdefault("labels", {})["com.polaris.replica.native_revision"] = revision
     ROOT.mkdir(mode=0o700)
-    private(ROOT / "rollback.compose.private.json", escaped(previous))
-    private(ROOT / "active.compose.private.json", escaped(config))
+    private(ROOT / "rollback.compose.private.json", previous)
+    private(ROOT / "active.compose.private.json", config)
     private(ROOT / "baseline.json", {
         "revision": revision,
         "roles": {role: {"id": value["Id"], "image": value["Image"]} for role, value in live.items()},

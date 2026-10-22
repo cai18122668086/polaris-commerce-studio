@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -170,7 +171,30 @@ def segmentation_errors(
     return errors
 
 
+# Leave room for base64 expansion and the full Skill/contract JSON under 50 MB.
+MAX_SOURCE_BYTES = 35_000_000
+
+
+class ReplicaInputTooLarge(ReplicaNativeError):
+    code = "REPLICA_INPUT_TOO_LARGE"
+    message = "参考图总量较大，请减少参考图或压缩单图后重试；原始素材和选图已保留。"
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class ReplicaAnalysisUnavailable(ReplicaNativeError):
+    code = "REPLICA_ANALYSIS_UNAVAILABLE"
+    message = "分析接口未完成本次请求，进度与选图已保留，请稍后重试。"
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
 class ReplicaPlanAuditRejected(ReplicaNativeError):
+    code = "REPLICA_PLAN_AUDIT_REJECTED"
+    message = "方案视觉审查尚未通过，请重试诊断或调整参考图；原始素材和选图已保留。"
+
     def __init__(self, judgment: dict[str, Any]) -> None:
         super().__init__("方案的实际视觉审计不通过，需要修正方案。")
         self.judgment = judgment
@@ -342,6 +366,17 @@ class NativeReplicaRun:
             data = path.read_bytes()
             with Image.open(path) as im:
                 content_type = Image.MIME.get(im.format or "", "image/png")
+                # Physical crops/snapshots stay byte-for-byte unchanged. Only
+                # transport lossless pixels in a smaller supported encoding.
+                if im.format == "PNG" and len(data) > 256 * 1024 and max(im.size) <= 16383:
+                    compact = BytesIO()
+                    try:
+                        im.save(compact, format="WEBP", lossless=True, method=4, exact=True)
+                    except (OSError, ValueError):
+                        pass
+                    else:
+                        if compact.tell() < len(data):
+                            data, content_type = compact.getvalue(), "image/webp"
             role = (
                 "product_reference"
                 if path.name.startswith("product-")
@@ -358,6 +393,8 @@ class NativeReplicaRun:
                     source_role=role,
                 )
             )
+        if sum(len(source.payload) for source in result) > MAX_SOURCE_BYTES:
+            raise ReplicaInputTooLarge()
         return tuple(result)
 
     async def ask(
@@ -468,9 +505,11 @@ class NativeReplicaRun:
         )
         self.record_usage(result, "analysis", requests)
         if result.error_code or not isinstance(result.payload, dict):
-            raise ReplicaNativeError(
-                result.error_message or "Skill 看图服务暂未返回有效结构。"
+            write_json(
+                self.root / "contracts" / f"provider-failure-{stage}-{uuid4().hex[:8]}.json",
+                {"stage": stage, "provider_error_code": result.error_code},
             )
+            raise ReplicaAnalysisUnavailable()
         self._validate_model_paths(result.payload)
         write_json(
             self.root / "contracts" / f"raw-{stage}-{uuid4().hex[:8]}.json",

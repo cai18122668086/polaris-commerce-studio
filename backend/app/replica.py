@@ -32,6 +32,9 @@ from .new_image_skill_provider import TARGET_DIMENSIONS
 from .replica_native import (
     SKILLS,
     NativeReplicaRun,
+    ReplicaAnalysisUnavailable,
+    ReplicaInputTooLarge,
+    ReplicaPlanAuditRejected,
     ReplicaSegmentationInvalid,
     native_accounting,
 )
@@ -610,7 +613,16 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 "plans": plans,
                 "error_code": getattr(error, "code", "REPLICA_ANALYSIS_FAILED"),
                 "error": error.message
-                if isinstance(error, (ApiError, ReplicaSegmentationInvalid))
+                if isinstance(
+                    error,
+                    (
+                        ApiError,
+                        ReplicaSegmentationInvalid,
+                        ReplicaInputTooLarge,
+                        ReplicaAnalysisUnavailable,
+                        ReplicaPlanAuditRejected,
+                    ),
+                )
                 else "分析服务暂时不可用，请稍后再试。",
             },
         )

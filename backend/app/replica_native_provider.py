@@ -15,7 +15,10 @@ from .models import JobItemRecord, JobRecord, ReplicaDocumentRecord, utc_now
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
 from .replica_native import (
     NativeReplicaRun,
+    ReplicaAnalysisUnavailable,
+    ReplicaInputTooLarge,
     ReplicaNativeError,
+    ReplicaPlanAuditRejected,
     digest,
     native_accounting,
     read_json,
@@ -157,6 +160,8 @@ class NativeReplicaProvider:
                 error_message=(
                     "生图结果尚未核实，已停止自动重发。请稍后查看任务，避免重复提交。"
                     if isinstance(exc, ReplicaImageOutcomeUnknown)
+                    else exc.message
+                    if isinstance(exc, (ReplicaInputTooLarge, ReplicaAnalysisUnavailable, ReplicaPlanAuditRejected))
                     else "本次复刻暂未完成，进度已保留。可按原方案重新复刻整组。"
                 ),
                 retryable=False,
@@ -196,6 +201,7 @@ class NativeReplicaProvider:
             raise ReplicaImageOutcomeUnknown(
                 "此令牌的生图结果尚未核实，系统不会自动重复调用。请新建明确的重试任务。"
             )
+        render_sources = run.sources(paths)
         ledger[token] = {"state": "invoked", "job_id": request.job_id, "target": key}
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.
@@ -209,7 +215,7 @@ class NativeReplicaProvider:
                 attempt_id=request.attempt_id,
                 page_number=1,
                 group_key=key,
-                sources=run.sources(paths),
+                sources=render_sources,
                 prompt=prompt,
                 quality="high",
                 idempotency_key=f"replica-native:{request.job_id}:{token}",

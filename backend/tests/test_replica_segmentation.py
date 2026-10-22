@@ -11,6 +11,9 @@ from PIL import Image
 
 from app.replica_native import (
     NativeReplicaRun,
+    ReplicaAnalysisUnavailable,
+    ReplicaInputTooLarge,
+    ReplicaPlanAuditRejected,
     ReplicaSegmentationInvalid,
     digest,
     segmentation_errors,
@@ -173,14 +176,27 @@ def test_all_references_and_product_images_must_be_covered():
     assert segmentation_errors(result, [(64, 64)], [(1440, 1440), (2480, 2480)])
 
 
-def test_coordinate_failure_retains_stage_selection_and_can_retry(client, monkeypatch):
+@pytest.mark.parametrize(
+    "error_factory",
+    [
+        ReplicaSegmentationInvalid,
+        ReplicaInputTooLarge,
+        ReplicaAnalysisUnavailable,
+        lambda: ReplicaPlanAuditRejected({"pass": False}),
+    ],
+)
+def test_expected_failure_retains_stage_selection_and_can_retry(
+    client, monkeypatch, error_factory
+):
     client.app.state.settings.reference_remix_provider_enabled = True
     client.app.state.replica_gateway = SimpleNamespace()
     product, reference = upload(client, "red"), upload(client, "blue")
 
+    expected_error = error_factory()
+
     async def failed(self, payload, records):
         self.on_progress(15, "校正参考图拆屏坐标")
-        raise ReplicaSegmentationInvalid()
+        raise expected_error
 
     monkeypatch.setattr(NativeReplicaRun, "prepare", failed)
     route = "/api/v1/workspaces/ws_test/replica"
@@ -193,8 +209,8 @@ def test_coordinate_failure_retains_stage_selection_and_can_retry(client, monkey
     created = client.post(route + "/sessions", json=body).json()
     document = client.get(route + "/documents/" + created["id"]).json()
     assert document["status"] == "failed"
-    assert document["payload"]["error_code"] == "REPLICA_SEGMENTATION_INVALID"
-    assert document["payload"]["error"] == ReplicaSegmentationInvalid.message
+    assert document["payload"]["error_code"] == expected_error.code
+    assert document["payload"]["error"] == expected_error.message
     assert document["payload"]["analysis_stage"] == "校正参考图拆屏坐标"
     assert document["payload"]["progress"] == 15
     assert document["payload"]["product_asset_ids"] == [product]

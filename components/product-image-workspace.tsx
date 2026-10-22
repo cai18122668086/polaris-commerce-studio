@@ -14,8 +14,9 @@ import {
   Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
@@ -26,7 +27,7 @@ import { useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import type { ProductImageJobCreate } from "@/lib/api/types";
 import {
   PRODUCT_IMAGE_FEATURES,
@@ -78,56 +79,46 @@ function UploadPanel({
   uploading: boolean;
   disabled?: boolean;
   uploadLabel?: string;
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[]) => void | Promise<void>;
   onOpenLibrary?: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <div className={styles.uploadPanel}>
-      <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
-      <div className={styles.uploadCopy}>
-        <div>
-          <strong>{title}</strong>
-          {required ? <span>必填</span> : <span data-optional>可选</span>}
+    <ImageDropZone label={title} className={styles.uploadPanel} multiple maxFiles={Math.max(0, 8 - count)}
+      disabled={disabled} busy={uploading} onFiles={onFiles}>
+      {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <>
+        <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
+        <div className={styles.uploadCopy}>
+          <div>
+            <strong>{title}</strong>
+            {required ? <span>必填</span> : <span data-optional>可选</span>}
+          </div>
+          <p>{description}</p>
+          <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
         </div>
-        <p>{description}</p>
-        <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
-      </div>
-      <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading || disabled}
-        >
-          {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
-          {uploadLabel}
-        </button>
-        {onOpenLibrary ? (
+        <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
           <button
             type="button"
-            data-library
-            aria-haspopup="dialog"
-            onClick={onOpenLibrary}
-            disabled={disabled}
+            onClick={openFileDialog}
+            disabled={uploadDisabled}
           >
-            <Images size={16} />
-            从素材库选择
+            {uploadingFile ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
+            {uploadLabel}
           </button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        className={styles.hiddenInput}
-        type="file"
-        accept={IMAGE_UPLOAD_ACCEPT}
-        multiple
-        onChange={(event) => {
-          const files = Array.from(event.currentTarget.files ?? []);
-          event.currentTarget.value = "";
-          if (files.length) onFiles(files);
-        }}
-      />
-    </div>
+          {onOpenLibrary ? (
+            <button
+              type="button"
+              data-library
+              aria-haspopup="dialog"
+              onClick={onOpenLibrary}
+              disabled={disabled || uploadingFile}
+            >
+              <Images size={16} />
+              从素材库选择
+            </button>
+          ) : null}
+        </div>
+      </>}
+    </ImageDropZone>
   );
 }
 
@@ -314,9 +305,9 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   count={productAssetIds.length}
                   required
                   uploading={upload.isPending}
-                  disabled={Boolean(jobId)}
+                  disabled={!workspace || Boolean(jobId)}
                   uploadLabel="上传图片"
-                  onFiles={(files) => void addUploadedAssets(files, "product")}
+                  onFiles={(files) => addUploadedAssets(files, "product")}
                   onOpenLibrary={() => setProductLibraryOpen(true)}
                 />
                 <UploadPanel
@@ -324,9 +315,9 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   description="可选场景、背景、模特或颜色参考，不会替代商品主体。"
                   count={referenceAssetIds.length}
                   uploading={upload.isPending}
-                  disabled={Boolean(jobId)}
+                  disabled={!workspace || Boolean(jobId)}
                   uploadLabel="上传图片"
-                  onFiles={(files) => void addUploadedAssets(files, "reference")}
+                  onFiles={(files) => addUploadedAssets(files, "reference")}
                   onOpenLibrary={() => setReferenceLibraryOpen(true)}
                 />
               </div>

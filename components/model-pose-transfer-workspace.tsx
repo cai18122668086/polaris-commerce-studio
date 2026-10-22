@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
@@ -36,7 +37,7 @@ import { IdempotencyIntentRegistry } from "@/lib/api/idempotency";
 import { errorMessage, unwrapApiResponse } from "@/lib/api/request";
 import type { Asset, JobCreate } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import { jobNote } from "@/lib/jobs/presentation";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./model-pose-transfer-workspace.module.css";
@@ -230,48 +231,37 @@ function UploadControl({
   asset?: Asset;
   pending: boolean;
   disabled: boolean;
-  onFile: (file: File) => void;
+  onFile: (file: File) => void | Promise<void>;
   onOpenLibrary?: () => void;
   uploadLabel?: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
   return (
-    <div className={styles.uploadControl}>
-      <span className={styles.uploadIcon}><Upload size={21} /></span>
-      <div className={styles.uploadCopy}>
-        <strong>{title}</strong>
-        <p>{asset?.original_filename ?? description}</p>
-        <small>{IMAGE_UPLOAD_FORMAT_HINT}</small>
-      </div>
-      <div className={styles.uploadActions}>
-        <button
-          type="button"
-          disabled={disabled || pending}
-          onClick={() => inputRef.current?.click()}
-        >
-          {pending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
-          {uploadLabel ?? (asset ? "重新上传" : "本地上传")}
-        </button>
-        {onOpenLibrary ? (
-          <button type="button" disabled={disabled || pending} onClick={onOpenLibrary}>
-            <Images size={15} /> 从素材库选择
+    <ImageDropZone label={title} className={styles.uploadControl} disabled={disabled} busy={pending}
+      onFiles={(files) => onFile(files[0])}>
+      {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <>
+        <span className={styles.uploadIcon}><Upload size={21} /></span>
+        <div className={styles.uploadCopy}>
+          <strong>{title}</strong>
+          <p>{asset?.original_filename ?? description}</p>
+          <small>{IMAGE_UPLOAD_FORMAT_HINT}</small>
+        </div>
+        <div className={styles.uploadActions}>
+          <button
+            type="button"
+            disabled={uploadDisabled}
+            onClick={openFileDialog}
+          >
+            {uploadingFile ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
+            {uploadLabel ?? (asset ? "重新上传" : "本地上传")}
           </button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        className={styles.hiddenInput}
-        type="file"
-        accept={IMAGE_UPLOAD_ACCEPT}
-        disabled={disabled || pending}
-        onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          event.currentTarget.value = "";
-          if (file) onFile(file);
-        }}
-      />
-    </div>
+          {onOpenLibrary ? (
+            <button type="button" disabled={disabled || uploadingFile} onClick={onOpenLibrary}>
+              <Images size={15} /> 从素材库选择
+            </button>
+          ) : null}
+        </div>
+      </>}
+    </ImageDropZone>
   );
 }
 
@@ -317,7 +307,7 @@ export function ModelPoseTransferWorkspace() {
   const canRestartTask = Boolean(
     jobId && job.data && ["partial", "completed", "failed", "cancelled"].includes(job.data.status),
   );
-  const sourceSelectionLocked = isSubmitting || Boolean(jobId && !canRestartTask);
+  const sourceSelectionLocked = !workspace || isSubmitting || Boolean(jobId && !canRestartTask);
   const selectedPoseReady = poseMode === "catalog" ? Boolean(selectedPose) : Boolean(customPose);
   const runtimeAllowsGeneration = workflow.canSubmit && workflow.canDeliverImages;
   const canSubmit = Boolean(
@@ -326,6 +316,8 @@ export function ModelPoseTransferWorkspace() {
     selectedPoseReady &&
     runtimeAllowsGeneration &&
     !workspacePending &&
+    !sourceUpload.isPending &&
+    !customPoseUpload.isPending &&
     !isSubmitting &&
     !jobId,
   );
@@ -515,7 +507,7 @@ export function ModelPoseTransferWorkspace() {
                   uploadLabel={canRestartTask ? "重新上传并新建任务" : undefined}
                   onFile={(file) => {
                     if (canRestartTask) resetTask();
-                    void uploadModelSource(file);
+                    return uploadModelSource(file);
                   }}
                   onOpenLibrary={() => setSourceLibraryOpen(true)}
                 />
@@ -610,8 +602,8 @@ export function ModelPoseTransferWorkspace() {
                     description="上传一张动作清晰、全身完整的姿势图片"
                     asset={customPose}
                     pending={customPoseUpload.isPending}
-                    disabled={Boolean(jobId) || isSubmitting}
-                    onFile={(file) => void uploadCustomPose(file)}
+                    disabled={!workspace || Boolean(jobId) || isSubmitting}
+                    onFile={(file) => uploadCustomPose(file)}
                   />
                   <AssetPreview workspaceId={workspace?.id} asset={customPose} alt="自定义姿势参考图预览" />
                 </div>

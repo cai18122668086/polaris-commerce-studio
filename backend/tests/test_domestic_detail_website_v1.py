@@ -191,3 +191,37 @@ def test_website_explicit_conflicting_view_is_not_overwritten(client):
     projected = authoring.project_stage(value, story)
     assert projected == before
     assert authoring.stage_errors(projected, story)
+
+
+def test_native_negative_ocr_uses_bounded_repair_without_accepting_model_pass(
+    client, monkeypatch
+):
+    job = planned(client)
+    originals = []
+
+    async def review(self, request, native, sources, artifact):
+        raw = self._native_detail_judgment(native, artifact)
+        if native["pair_id"] == "P01":
+            report = raw["module_judgments"][0]
+            report["observations"]["ocr_text"].append("UNAPPROVED_SOURCE_MARK_9000")
+            report["artifact_binding"]["ocr_text"] = deepcopy(
+                report["observations"]["ocr_text"]
+            )
+            before = deepcopy(raw)
+            result = self._normalize_native_pair_judgment(raw, native, artifact)
+            assert raw == before and raw["status"] == "PASS"
+            assert result["status"] == "MATERIAL_FAIL"
+            assert result["module_judgments"][0]["checks"] == report["checks"]
+            originals.append(before)
+            return result
+        return self._normalize_native_pair_judgment(raw, native, artifact)
+
+    monkeypatch.setattr(
+        XingheImageProvider, "_native_detail_judgment_with_review", review
+    )
+    current = generate(client, job)
+    assert current["status"] == "awaiting_final_review", current
+    assert len(originals) == 2
+    assert len(_gateway(client).image_calls) == 5
+    state = json.loads((detail_workspace(job["id"]) / "session.json").read_bytes())
+    assert state["modules"][0]["status"] == "COMPLETE_WITH_RESIDUALS"

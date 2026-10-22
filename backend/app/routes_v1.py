@@ -3752,7 +3752,6 @@ def recover_automatic_detail_delivery(
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
-    from .domestic_detail.delivery_authorization import receipt_authorization
 
     key = require_idempotency_key(idempotency_header)
     job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
@@ -3771,13 +3770,9 @@ def recover_automatic_detail_delivery(
             raise ValueError(
                 "This is not an original automatic domestic detail delivery"
             )
-        authorization = receipt_authorization(
-            plan.payload,
-            job_id=job.id,
-            workspace_id=job.workspace_id,
-            plan_id=plan.id,
-            revision=plan.revision,
-        )
+        from .domestic_detail.delivery_authorization import job_receipt_authorization
+
+        authorization = job_receipt_authorization(session, job, plan)
         if (
             authorization is None
             or authorization["sha256"] != payload.authorization_sha256

@@ -325,6 +325,10 @@ def _pair_observation(
     from .atomic_review import atomic_context
 
     contracts, slices = atomic_context(request, image_sha256)
+    if website:
+        from .website_review import project_native_negative_decisions
+
+        value = project_native_negative_decisions(value, contracts)
     reports = value["module_judgments"]
     if [row["module_id"] for row in reports] != request["module_ids"]:
         _invalid("/module_judgments", "must preserve both actual slice IDs in order")

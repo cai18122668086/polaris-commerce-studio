@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -136,6 +137,17 @@ def receipt_authorization(
             revision=receipt["plan_revision"],
             payload=payload,
         )
+        if receipt.get("confirmation_source") == SUBMISSION_SOURCE:
+            # Submission consent survives a runtime repair; the exact original
+            # approval, actor, inputs and compiler contract remain hash-bound.
+            original_runtime = authorization.get("runtime_source_sha256")
+            if not isinstance(original_runtime, str) or not re.fullmatch(
+                r"[0-9a-f]{64}", original_runtime
+            ):
+                raise DetailPlanError("Original submission runtime is missing")
+            expected.pop("sha256")
+            expected["runtime_source_sha256"] = original_runtime
+            expected["sha256"] = canonical_hash(expected)
         if (
             canonical_hash(authorization) != canonical_hash(expected)
             or job_id is not None
@@ -156,6 +168,113 @@ def receipt_authorization(
             "The complete original automatic-delivery authority is missing"
         ) from exc
     return authorization
+
+
+def job_receipt_authorization(db: Any, job: Any, plan: Any) -> dict[str, Any] | None:
+    """A genuine failed-only retry can reuse its unchanged submission authority.
+
+    Copied plans, full clones, manual consent, edits and cross-workspace ancestry
+    remain subject to the original strict owner check.
+    """
+    from sqlalchemy import select
+
+    from ..models import IdempotencyRequestRecord, JobPlanRecord, JobRecord
+
+    payload = plan.payload
+    owner = (payload.get("native_approval") or {}).get("source_job_id")
+    if owner == job.id or receipt_authorization(payload) is None:
+        return receipt_authorization(
+            payload,
+            job_id=job.id,
+            workspace_id=job.workspace_id,
+            plan_id=plan.id,
+            revision=plan.revision,
+        )
+    receipt = payload.get("aurora_v4_3", {}).get("approval_receipt") or {}
+    if receipt.get("confirmation_source") != SUBMISSION_SOURCE:
+        raise DetailPlanError("Manual automatic-delivery consent cannot be copied")
+    authority = receipt_authorization(payload)
+    assert authority is not None
+    origin = db.get(JobPlanRecord, authority["plan_id"])
+    if (
+        origin is None
+        or origin.job_id != owner
+        or origin.workspace_id != job.workspace_id
+        or origin.revision != authority["plan_revision"]
+        or origin.confirmed_at is None
+        or plan.confirmed_at is None
+        or origin.validation_status != "valid"
+        or plan.validation_status != "valid"
+    ):
+        raise DetailPlanError("Original confirmed retry authority is missing")
+    # Usage and diagnostics accumulate independently; every authored/approved
+    # field must still equal the original plan, including cost and asset views.
+    mutable = {"usage", "planner_diagnostics", "metrics", "state"}
+
+    def scope(p: Mapping[str, Any]) -> str:
+        view = {k: v for k, v in p.items() if k not in mutable}
+        if isinstance(view.get("cost"), Mapping):
+            view["cost"] = {
+                k: v
+                for k, v in view["cost"].items()
+                if k
+                not in {
+                    "pending_medium_count",
+                    "pending_high_count",
+                    "estimated_pending_micros",
+                }
+            }
+        return canonical_hash(view)
+
+    if scope(origin.payload) != scope(payload):
+        raise DetailPlanError("A retry cannot change its original approved plan")
+    current = job
+    seen: set[str] = set()
+    while current.id != owner:
+        if (
+            current.id in seen
+            or len(seen) >= 32
+            or current.workspace_id != job.workspace_id
+            or current.retry_scope != "failed"
+            or not current.retry_of_job_id
+            or current.root_job_id != (job.root_job_id or owner)
+        ):
+            raise DetailPlanError("Failed retry ancestry is invalid")
+        seen.add(current.id)
+        request = db.scalar(
+            select(IdempotencyRequestRecord)
+            .where(
+                IdempotencyRequestRecord.workspace_id == job.workspace_id,
+                IdempotencyRequestRecord.method == "POST",
+                IdempotencyRequestRecord.status == "completed",
+                IdempotencyRequestRecord.route_template
+                == "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/retry",
+                IdempotencyRequestRecord.resource_id == current.id,
+                IdempotencyRequestRecord.resource_type == "job",
+                IdempotencyRequestRecord.response_status == 201,
+            )
+            .limit(1)
+        )
+        parent = db.get(JobRecord, current.retry_of_job_id)
+        if (
+            request is None
+            or parent is None
+            or parent.workspace_id != job.workspace_id
+            or current.type != parent.type
+            or current.type != "detail_pack"
+            or current.configuration != parent.configuration
+            or (getattr(parent, "root_job_id", None) or parent.id)
+            != (job.root_job_id or owner)
+        ):
+            raise DetailPlanError("Retry requires its original workspace request")
+        current = parent
+    return receipt_authorization(
+        payload,
+        job_id=owner,
+        workspace_id=job.workspace_id,
+        plan_id=origin.id,
+        revision=origin.revision,
+    )
 
 
 def native_authorization_text(payload: Mapping[str, Any]) -> str:

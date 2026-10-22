@@ -29,7 +29,7 @@ from .justone import fetch_product, image_url, parse_product_link
 from .models import JobRecord, ReplicaDocumentRecord, WorkspaceRecord, utc_now
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .new_image_skill_provider import TARGET_DIMENSIONS
-from .replica_native import SKILLS, NativeReplicaRun
+from .replica_native import SKILLS, NativeReplicaRun, native_accounting
 from .schemas_v1 import ReferenceRemixJobCreate
 from .services import get_ready_assets, lock_workspace_limits
 from .skill_protocol import load_skill_protocol
@@ -481,7 +481,9 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                     "plan_hash": _hash(binding),
                     "native_snapshot": snapshot,
                     "progress": 100,
-                    "analysis_cost_micros": run.cost,
+                    "analysis_cost_micros": native_accounting(run.usage)[
+                        "actual_cost_micros"
+                    ],
                 },
             )
             return

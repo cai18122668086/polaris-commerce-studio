@@ -109,6 +109,35 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def native_accounting(calls: list[dict[str, Any]]) -> dict[str, Any]:
+    """Unknown supplier costs stay unknown; cached delivery makes no API call."""
+
+    def total(key: str) -> int | None:
+        values = [row.get(key) for row in calls]
+        amount = 0
+        for value in values:
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                return None
+            amount += value
+        return amount
+
+    count = sum(int(row.get("network_requests", 1)) for row in calls)
+    estimated = total("estimated_cost_micros")
+    return {
+        "network_requests": count,
+        "reported": all(row.get("reported") is True for row in calls),
+        "input_tokens": total("input_tokens"),
+        "output_tokens": total("output_tokens"),
+        "cached_tokens": total("cached_tokens"),
+        "actual_cost_micros": total("actual_cost_micros"),
+        # The existing quota ledger multiplies this unit estimate by requests.
+        "estimated_cost_micros": (estimated + count - 1) // count
+        if count and estimated is not None
+        else (0 if not count else None),
+        "estimated_total_cost_micros": estimated,
+    }
+
+
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
@@ -156,6 +185,30 @@ class NativeReplicaRun:
         self.cost = 0
         self.snapshot_files: dict[str, Any] = {}
         self.on_progress: Any = None
+
+    def record_usage(self, result: Any, kind: str, requests: int = 1) -> None:
+        actual = getattr(result, "actual_cost_micros", None)
+        estimated = (
+            getattr(self.gateway, "review_price_micros", None)
+            if kind == "analysis"
+            else getattr(result, "estimated_cost_micros", None)
+        )
+        self.usage.append(
+            {
+                **dict(result.normalized_usage or {}),
+                "reported": bool(result.normalized_usage.get("reported"))
+                and requests == 1,
+                "kind": kind,
+                "network_requests": requests,
+                "actual_cost_micros": actual if requests == 1 else None,
+                "estimated_cost_micros": estimated * requests
+                if estimated is not None
+                else None,
+            }
+        )
+        self.cost += int(
+            actual or 0
+        )  # Known subtotal, never an unknown-as-zero invoice.
 
     def cli(self, command: str, **arguments: Any) -> dict[str, Any]:
         if self.method == "exact":
@@ -294,6 +347,7 @@ class NativeReplicaRun:
                 name: read_json(self.skill_root / "schemas" / name) for name in schemas
             },
         }
+        before = getattr(self.gateway, "external_network_request_count", None)
         result = await self.gateway.plan(
             PlannerRequest(
                 workspace_id=self.workspace_id,
@@ -336,8 +390,11 @@ class NativeReplicaRun:
                 ),
             )
         )
-        self.usage.append(dict(result.normalized_usage or {}))
-        self.cost += int(result.actual_cost_micros or 0)
+        after = getattr(self.gateway, "external_network_request_count", None)
+        requests = (
+            max(1, after - before) if type(before) is int and type(after) is int else 1
+        )
+        self.record_usage(result, "analysis", requests)
         if result.error_code or not isinstance(result.payload, dict):
             raise ReplicaNativeError(
                 result.error_message or "Skill 看图服务暂未返回有效结构。"

@@ -17,6 +17,7 @@ from .replica_native import (
     NativeReplicaRun,
     ReplicaNativeError,
     digest,
+    native_accounting,
     read_json,
     write_json,
 )
@@ -80,7 +81,7 @@ class NativeReplicaProvider:
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         run = None
-        initial_cost, initial_calls = 0, 0
+        initial_calls = 0
         try:
             values, document_id, ordinal = self._load(request)
             execution = values.get("native_executions", {}).get(request.job_id, {})
@@ -94,7 +95,7 @@ class NativeReplicaProvider:
                 root=Path(snapshot["root"]),
             )
             await run.restore(snapshot)
-            initial_cost, initial_calls = run.cost, len(run.usage)
+            initial_calls = len(run.usage)
             delivery = execution.get("delivery", [])
             if not delivery:
                 if ordinal != 0:
@@ -114,20 +115,22 @@ class NativeReplicaProvider:
                 suffix = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[
                     image.format or "PNG"
                 ]
+            accounting = native_accounting(run.usage[initial_calls:])
             return ProviderResult(
                 outcome=ProviderOutcome.SUCCEEDED,
                 provider_request_id=f"replica:{request.job_id}:{ordinal}",
-                usage_reported=True,
+                usage_reported=accounting["reported"],
                 raw_usage={
+                    **accounting,
                     "skill_id": run.skill_id,
                     "skill_content_hash": run.source_hash,
                     "replication_method": run.method,
                     "native_state": run.state()["state"],
                     "native_visual_audited": True,
                     "native_calls": run.usage[initial_calls:],
-                    "network_requests": len(run.usage) - initial_calls,
                 },
-                actual_cost_micros=run.cost - initial_cost,
+                actual_cost_micros=accounting["actual_cost_micros"],
+                estimated_cost_micros=accounting["estimated_cost_micros"],
                 artifact=ProviderArtifact(
                     payload=data,
                     filename=f"replica-{ordinal + 1:03}{suffix}",
@@ -145,6 +148,7 @@ class NativeReplicaProvider:
             if run is not None:
                 with suppress(Exception):
                     await self._save(run, request.job_id)
+            accounting = native_accounting(run.usage[initial_calls:] if run else [])
             return ProviderResult(
                 outcome=ProviderOutcome.OUTCOME_UNKNOWN
                 if isinstance(exc, ReplicaImageOutcomeUnknown)
@@ -156,12 +160,14 @@ class NativeReplicaProvider:
                     else "本次复刻暂未完成，进度已保留。可按原方案重新复刻整组。"
                 ),
                 retryable=False,
-                usage_reported=run is not None,
+                usage_reported=run is not None and accounting["reported"],
                 raw_usage={
+                    **accounting,
                     "native_calls": run.usage[initial_calls:] if run else [],
                     "metrics": {"native_error": str(exc)[:1200]},
                 },
-                actual_cost_micros=max(0, run.cost - initial_cost) if run else 0,
+                actual_cost_micros=accounting["actual_cost_micros"],
+                estimated_cost_micros=accounting["estimated_cost_micros"],
             )
 
     async def _render(
@@ -194,6 +200,7 @@ class NativeReplicaProvider:
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.
         await self._save(run, request.job_id)
+        before = getattr(self.gateway, "external_network_request_count", None)
         result = await self.gateway.edit(
             ImageEditRequest(
                 workspace_id=request.workspace_id,
@@ -211,15 +218,15 @@ class NativeReplicaProvider:
                 single_dispatch=False,
             )
         )
-        run.cost += int(result.actual_cost_micros or 0)
-        run.usage.append(
-            {
-                "kind": "image",
-                **dict(result.normalized_usage or {}),
-                "http_status": result.http_status,
-                "error_code": result.error_code,
-                "metrics": (result.raw_usage or {}).get("metrics", {}),
-            }
+        after = getattr(self.gateway, "external_network_request_count", None)
+        requests = (
+            max(1, after - before) if type(before) is int and type(after) is int else 1
+        )
+        run.record_usage(result, "image", requests)
+        run.usage[-1].update(
+            http_status=result.http_status,
+            error_code=result.error_code,
+            metrics=(result.raw_usage or {}).get("metrics", {}),
         )
         if result.outcome == ProviderOutcome.OUTCOME_UNKNOWN:
             raise ReplicaImageOutcomeUnknown(

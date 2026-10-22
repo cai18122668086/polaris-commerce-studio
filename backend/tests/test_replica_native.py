@@ -15,11 +15,60 @@ from app.replica_native import (
     ReplicaPlanAuditRejected,
     contained,
     digest,
+    native_accounting,
     write_json,
 )
 from app.replica_native_provider import NativeReplicaProvider
 
 from .test_replica import upload
+
+
+def test_unknown_native_cost_keeps_tokens_and_conservative_quota(tmp_path):
+    from app.models import JobRecord, UsageEventRecord
+    from app.provider_quota_ledger import _usage_charge
+
+    run = run_for(tmp_path)
+    run.record_usage(
+        SimpleNamespace(
+            normalized_usage={
+                "reported": True,
+                "input_tokens": 100,
+                "output_tokens": 200,
+            },
+            actual_cost_micros=None,
+            estimated_cost_micros=5,
+        ),
+        "image",
+        3,
+    )
+    accounting = native_accounting(run.usage)
+    assert accounting["actual_cost_micros"] is None
+    assert accounting["input_tokens"] == 100 and accounting["output_tokens"] == 200
+    assert accounting["network_requests"] == 3
+    usage = UsageEventRecord(
+        actual_cost_micros=None,
+        estimated_cost_micros=accounting["estimated_cost_micros"],
+        raw_usage=accounting,
+    )
+    charge, basis = _usage_charge(JobRecord(type="reference_remix"), usage, 3)
+    assert charge == 15 and basis == "estimated_fallback"
+
+
+def test_native_cost_aggregation_distinguishes_cache_and_incomplete_legacy_usage():
+    assert native_accounting([])["actual_cost_micros"] == 0
+    assert native_accounting([])["network_requests"] == 0
+    assert native_accounting([{"reported": True}])["actual_cost_micros"] is None
+    rows = [
+        {
+            "reported": True,
+            "actual_cost_micros": 4,
+            "estimated_cost_micros": 6,
+            "input_tokens": 2,
+            "output_tokens": 3,
+        }
+    ] * 2
+    assert native_accounting(rows)["actual_cost_micros"] == 8
+    assert native_accounting(rows)["input_tokens"] == 4
 
 
 def run_for(tmp_path, method="exact", gateway=None):

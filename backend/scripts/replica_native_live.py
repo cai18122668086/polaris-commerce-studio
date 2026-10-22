@@ -7,7 +7,13 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from app.config import Settings
-from app.replica_native import NativeReplicaRun, digest, read_json, write_json
+from app.replica_native import (
+    NativeReplicaRun,
+    digest,
+    native_accounting,
+    read_json,
+    write_json,
+)
 from app.replica_native_provider import NativeReplicaProvider
 from app.storage import ImageValidator, LocalImageStorage
 from app.xinghe_agent import build_tengli_gateway
@@ -183,7 +189,8 @@ async def main(method, run_tag=None, plan_only=False, fresh_campaign=False):
             "native_state": run.state()["state"],
             "state": run.state(),
             "usage": run.usage,
-            "cost_micros": run.cost,
+            "cost_micros": native_accounting(run.usage)["actual_cost_micros"],
+            "known_cost_subtotal_micros": run.cost,
         },
     )
     print("ACCEPTED " + method + "; count=" + str(len(delivery)), flush=True)

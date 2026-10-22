@@ -192,9 +192,12 @@ class ReferenceVisualReverseRemixProvider(ReferenceRemixProvider):
 class ReferenceRemixRouterProvider(ReferenceRemixProvider):
     """Keep legacy workspace jobs intact while routing inspiration jobs explicitly."""
 
-    def __init__(self, legacy: Provider, exact: Provider) -> None:
+    def __init__(
+        self, legacy: Provider, exact: Provider, native: Provider | None = None
+    ) -> None:
         self.legacy = legacy
         self.exact = exact
+        self.native = native
         self.delegate = getattr(legacy, "delegate", legacy)
         self.name = legacy.name
         self.model = legacy.model
@@ -207,4 +210,13 @@ class ReferenceRemixRouterProvider(ReferenceRemixProvider):
             return await self.legacy.execute(request)
         if settings.get("reference_skill") == "reference-visual-reverse-remix":
             return await self.exact.execute(request)
+        if (
+            settings.get("reference_skill")
+            in {
+                "aurora-ecommerce-reference-remix",
+                "all-category-style-benchmark-still",
+            }
+            and self.native is not None
+        ):
+            return await self.native.execute(request)
         return await self.legacy.execute(request)

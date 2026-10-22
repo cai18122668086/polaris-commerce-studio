@@ -84,6 +84,11 @@ export default function JobsPage() {
 
   const runRetry = (job: Job | JobDetail, itemId?: string) => {
     if (!allowsJobAction(job.allowed_actions, "retry")) return;
+    const workspaceHref = jobWorkspaceHref(job);
+    if (workspaceHref.startsWith("/style-replica?")) {
+      router.push(workspaceHref);
+      return;
+    }
     retry.mutate({
       jobId: job.id,
       allowedActions: job.allowed_actions,

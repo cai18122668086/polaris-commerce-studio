@@ -6,6 +6,7 @@ ENV VITE_LOCAL_DEV_AUTH=false
 COPY app /app/app
 COPY components /app/components
 COPY lib /app/lib
+COPY features /app/features
 RUN cp -a /app/dist/client/_polaris-static /tmp/polaris-previous-static \
     && npm run build \
     && cp -an /tmp/polaris-previous-static/. /app/dist/client/_polaris-static/ \

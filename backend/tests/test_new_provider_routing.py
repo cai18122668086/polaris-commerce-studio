@@ -39,7 +39,10 @@ from app.provider_registry import (
     RegisteredOperationRoutingProvider,
     UnavailableProvider,
 )
-from app.reference_remix_provider import ReferenceRemixProvider
+from app.reference_remix_provider import (
+    ReferenceRemixProvider,
+    ReferenceRemixRouterProvider,
+)
 from app.skill_runtime import SkillRuntimeProvider
 from app.task_runner import build_tengli_task_runner
 from app.xinghe_agent import (
@@ -147,11 +150,39 @@ def test_mock_new_image_routes_keep_the_structural_fake_provider(
     assert default.provider.external_network_request_count == 0
     for operation in (
         JobType.PRODUCT_IMAGE.value,
-        JobType.REFERENCE_REMIX.value,
         JobType.MODEL_POSE_TRANSFER.value,
         JobType.CREATIVE_IMAGE.value,
     ):
         assert router.routes[operation] is default
+    replica = router.routes[JobType.REFERENCE_REMIX.value]
+    assert isinstance(replica, ReferenceRemixRouterProvider)
+    assert replica.legacy is default and replica.exact is default
+    assert isinstance(replica.native, UnavailableProvider)
+    for skill in (
+        "aurora-ecommerce-reference-remix",
+        "all-category-style-benchmark-still",
+    ):
+        result = asyncio.run(
+            replica.execute(
+                _request(
+                    JobType.REFERENCE_REMIX.value,
+                    {
+                        "job": {
+                            "input": {
+                                "product_asset_ids": ["product"],
+                                "reference_asset_ids": ["reference"],
+                            },
+                            "settings": {"reference_skill": skill},
+                        },
+                        "item": {"item_key": "image-001"},
+                    },
+                )
+            )
+        )
+        assert result.outcome == ProviderOutcome.FAILED
+        assert result.error_code == "PROVIDER_NOT_CONFIGURED"
+        assert result.artifact is None and result.raw_usage["network_requests"] == 0
+    assert default.provider.external_network_request_count == 0
     amazon = router.routes[JobType.AMAZON_VISUAL_SUITE.value]
     assert isinstance(amazon, AmazonVisualSuiteProvider)
     assert amazon.delegate is default
@@ -451,7 +482,8 @@ def test_real_single_image_routes_receive_independent_delegates(
     delegates = [
         adapter.delegate
         for operation, adapter in router.routes.items()
-        if operation not in {
+        if operation
+        not in {
             JobType.DOMESTIC_MAIN_IMAGE.value,
             JobType.DOMESTIC_DETAIL_REVIEW.value,
         }
@@ -608,11 +640,15 @@ def test_mock_coordinator_ignores_real_provider_flags(
 
     for operation in (
         JobType.PRODUCT_IMAGE.value,
-        JobType.REFERENCE_REMIX.value,
         JobType.MODEL_POSE_TRANSFER.value,
         JobType.CREATIVE_IMAGE.value,
     ):
         assert router.routes[operation] is router.default_provider
+    replica = router.routes[JobType.REFERENCE_REMIX.value]
+    assert isinstance(replica, ReferenceRemixRouterProvider)
+    assert replica.legacy is router.default_provider
+    assert replica.exact is router.default_provider
+    assert isinstance(replica.native, UnavailableProvider)
     amazon = router.routes[JobType.AMAZON_VISUAL_SUITE.value]
     assert amazon.delegate is router.default_provider
     domestic_main_image = router.routes[JobType.DOMESTIC_MAIN_IMAGE.value]
@@ -665,7 +701,8 @@ def test_tengli_task_runner_propagates_all_provider_switches(
     assert all(
         isinstance(adapter.delegate, XingheSingleImageProvider)
         for operation, adapter in router.routes.items()
-        if operation not in {
+        if operation
+        not in {
             JobType.DOMESTIC_MAIN_IMAGE.value,
             JobType.DOMESTIC_DETAIL_REVIEW.value,
         }

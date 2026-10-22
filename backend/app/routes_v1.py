@@ -1417,6 +1417,15 @@ def create_job(
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
+    if (
+        isinstance(payload, ReferenceRemixJobCreate)
+        and payload.configuration.reference_skill
+        in {"aurora-ecommerce-reference-remix", "all-category-style-benchmark-still"}
+        and not getattr(request.state, "replica_session_id", None)
+    ):
+        raise ApiError(
+            409, "REPLICA_CONFIRM_REQUIRED", "请在一键复刻中分析并确认方案后生成。"
+        )
     key = require_idempotency_key(idempotency_header)
     inspiration_case = _validate_inspiration_case_job(session, payload)
     payload_data = payload.model_dump(mode="json")

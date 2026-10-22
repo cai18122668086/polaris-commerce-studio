@@ -1786,6 +1786,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/replica/jobs/{job_id}/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session For Job */
+        get: operations["session_for_job_api_v1_workspaces__workspace_id__replica_jobs__job_id__session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/replica/products": {
         parameters: {
             query?: never;
@@ -2116,6 +2133,8 @@ export interface components {
             product_asset_ids: string[];
             /** References */
             references: components["schemas"]["ReferenceChoice"][];
+            /** Replication Method */
+            replication_method?: ("exact" | "style") | null;
             /** Request Id */
             request_id: string;
         };
@@ -4074,12 +4093,16 @@ export interface components {
              */
             quality: "low" | "medium" | "high";
             /** Reference Skill */
-            reference_skill?: "reference-visual-reverse-remix" | null;
+            reference_skill?: ("reference-visual-reverse-remix" | "aurora-ecommerce-reference-remix" | "all-category-style-benchmark-still") | null;
             /**
              * Reference Visual Analysis
              * @default
              */
             reference_visual_analysis: string;
+            /** Replica Plan Hash */
+            replica_plan_hash?: string | null;
+            /** Replication Method */
+            replication_method?: ("exact" | "style") | null;
             /**
              * Reusable Visual Strategy
              * @default
@@ -8250,6 +8273,40 @@ export interface operations {
             header?: never;
             path: {
                 document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_for_job_api_v1_workspaces__workspace_id__replica_jobs__job_id__session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
                 workspace_id: string;
             };
             cookie?: never;

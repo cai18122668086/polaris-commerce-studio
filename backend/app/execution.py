@@ -644,6 +644,7 @@ class ExecutionCoordinator:
             if (
                 self._is_domestic_main_image_job(job_id)
                 or self._is_aurora_domestic_detail_job(job_id)
+                or self._is_native_replica_job(job_id)
             )
             and not is_parallel_aurora
             else self.max_concurrency
@@ -657,6 +658,7 @@ class ExecutionCoordinator:
                     break
                 leases.append(lease)
             if not leases:
+                self._close_failed_native_replica(job_id)
                 if self._domestic_detail_has_blocking_failure(job_id):
                     self._skip_domestic_detail_pages_after_execution_failure(job_id)
                     break
@@ -1517,7 +1519,19 @@ class ExecutionCoordinator:
                     if isinstance(policy, Mapping)
                     else None
                 )
-            if (
+            if self._native_replica_record(job):
+                succeeded_pages = session.scalar(
+                    select(func.count())
+                    .select_from(JobItemRecord)
+                    .where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status.in_(SUCCESS_ITEM_STATUSES),
+                    )
+                )
+                item_query = item_query.where(
+                    JobItemRecord.ordinal == int(succeeded_pages or 0)
+                )
+            elif (
                 job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                 and not self._job_uses_parallel_aurora(session, job.id)
             ):
@@ -1724,6 +1738,42 @@ class ExecutionCoordinator:
             and settings.get("market_region") == "domestic"
             and not refined_detail.is_refined(job.configuration)
         )
+
+    @staticmethod
+    def _native_replica_record(job: JobRecord) -> bool:
+        return bool(
+            job.type == JobType.REFERENCE_REMIX.value
+            and job.configuration.get("replica_session_id")
+            and job.configuration.get("settings", {}).get("reference_skill")
+            in {
+                "aurora-ecommerce-reference-remix",
+                "all-category-style-benchmark-still",
+            }
+        )
+
+    def _is_native_replica_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            return job is not None and self._native_replica_record(job)
+
+    def _close_failed_native_replica(self, job_id: str) -> None:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None or not self._native_replica_record(job):
+                return
+            items = session.scalars(
+                select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+            ).all()
+            if not any(item.status in {"failed", "outcome_unknown"} for item in items):
+                return
+            for item in items:
+                if item.status in {"pending", "queued", "retry_wait"}:
+                    item.status, item.stage = "skipped", "blocked_by_skill_audit"
+                    item.error_code = "REPLICA_NATIVE_DELIVERY_BLOCKED"
+                    item.error_message = "原生 Skill 尚未通过完整验收，未交付后续图片。"
+                    item.finished_at, item.next_attempt_at = utc_now(), None
+                    item.state_version += 1
+            session.commit()
 
     @staticmethod
     def _job_uses_v20_aurora(session: Session, job_id: str) -> bool:
@@ -2953,6 +3003,7 @@ def build_fake_coordinator(
         ReferenceRemixRouterProvider,
         ReferenceVisualReverseRemixProvider,
     )
+    from .replica_native_provider import NativeReplicaProvider
     from .xinghe_agent import (
         FakeXingheGateway,
         XingheGateway,
@@ -3118,7 +3169,9 @@ def build_fake_coordinator(
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
             JobType.PRODUCT_IMAGE.value: default_provider,
-            JobType.REFERENCE_REMIX.value: default_provider,
+            JobType.REFERENCE_REMIX.value: ReferenceRemixRouterProvider(
+                default_provider, default_provider, UnavailableProvider()
+            ),
             JobType.MODEL_POSE_TRANSFER.value: default_provider,
             JobType.CREATIVE_IMAGE.value: default_provider,
             JobType.AMAZON_VISUAL_SUITE.value: AmazonVisualSuiteProvider(
@@ -3180,6 +3233,7 @@ def build_fake_coordinator(
                     ),
                     manifest_validator=manifest_validator.validate,
                 ),
+                NativeReplicaProvider(session_factory, gateway, storage),
             ),
             JobType.MODEL_POSE_TRANSFER.value: ModelPoseTransferProvider(
                 single_image_delegate(

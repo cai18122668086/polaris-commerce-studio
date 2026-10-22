@@ -3,3 +3,11 @@
 .optionalFacts{margin-top:18px;color:#858b98;font-size:12px}.optionalFacts summary{cursor:pointer}.sidebarFooter{position:sticky;bottom:-18px;background:white;padding:8px 0 12px;margin-bottom:-18px}.sidebarFooter .startButton{margin-top:0}.selectionActions{display:flex;align-items:center;gap:12px;margin:16px 0;color:#949aa6;font-size:11px;flex-wrap:wrap}.selectionActions span{margin-right:auto}.selectionActions button{border:0;background:#f4f5f7;border-radius:5px;padding:5px 9px;color:#626b7d}.sourceTile>button.previewTile{left:auto;top:auto;bottom:6px;right:6px;width:auto;height:22px;padding:0 7px;border-radius:5px;background:#ffffffed;color:#596174;border:0;font-size:10px}
 
 .inputFields{border:0;margin:0;padding:0;min-width:0}.inputFields:disabled{opacity:.8}
+
+.methodChoice { display: grid; gap: 8px; margin-bottom: 18px; }
+.methodChoice label { display: flex; gap: 9px; align-items: center; padding: 12px; border: 1px solid #e8e4e2; border-radius: 12px; cursor: pointer; }
+.methodChoice .methodSelected { border-color: #f47765; background: #fff5f2; }
+.methodChoice input { accent-color: #ef735f; }
+.methodChoice span { display: grid; gap: 4px; }
+.methodChoice strong { font-size: 13px; }
+.methodChoice small { font-size: 11px; color: #817570; line-height: 1.5; }

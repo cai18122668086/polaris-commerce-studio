@@ -55,7 +55,6 @@ export default function JobsPage() {
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
-  const [selectedJobId, setSelectedJobId] = useState<string>();
   const { workspace, error: workspaceError } = useWorkspace();
   const jobsQuery = useJobs(workspace?.id, { statuses: tabFilters[tab], limit: 100 });
   const cancel = useCancelJob(workspace?.id);
@@ -70,7 +69,8 @@ export default function JobsPage() {
   );
   const allJobs = jobsQuery.data?.items ?? [];
   const actionError = cancel.error ?? retry.error ?? confirmPlan.error;
-  const activeJobId = selectedJobId ?? requestedJobId;
+  const activeJobId = requestedJobId;
+  const openJob = (id: string) => router.push(`/jobs?jobId=${encodeURIComponent(id)}`, { scroll: false });
 
   const runCancel = (job: Job | JobDetail) => {
     if (
@@ -158,11 +158,11 @@ export default function JobsPage() {
                   role="button"
                   tabIndex={0}
                   aria-label={`查看任务详情 ${jobTitle(job)}`}
-                  onClick={() => setSelectedJobId(job.id)}
+                  onClick={() => openJob(job.id)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      setSelectedJobId(job.id);
+                      openJob(job.id);
                     }
                   }}
                 >
@@ -189,8 +189,7 @@ export default function JobsPage() {
           workspaceId={workspace.id}
           jobId={activeJobId}
           onClose={() => {
-            setSelectedJobId(undefined);
-            if (requestedJobId) router.replace("/jobs");
+            router.replace("/jobs", { scroll: false });
           }}
           onCancel={runCancel}
           onRetry={(job) => runRetry(job)}

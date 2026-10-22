@@ -291,9 +291,10 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
   assert.match(globalStyles, /\.nav-tool-link__hot\s*\{/);
 
   assert.match(topNavigation, /const errorCount =/);
-  assert.match(topNavigation, /const taskStateClass = errorCount \? "has-error" : activeCount \? "is-active"/);
+  assert.match(topNavigation, /const taskStateClass = activeCount \? "is-active"/);
+  assert.doesNotMatch(topNavigation, /taskLabel = errorCount \? "异常"/);
   assert.match(topNavigation, /className=\{`task-trigger \$\{taskStateClass\}`\}/);
-  assert.match(topNavigation, /const taskAriaLabel = errorCount/);
+  assert.match(topNavigation, /const taskAriaLabel = activeCount/);
   assert.match(topNavigation, /aria-label=\{taskAriaLabel\}/);
   assert.match(styles, /\.task-trigger\.is-active\s*\{/);
   assert.match(styles, /\.task-trigger\.has-error\s*\{/);

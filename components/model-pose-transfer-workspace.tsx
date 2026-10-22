@@ -18,12 +18,17 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
+import { WorkspaceJobGate } from "@/components/workspace-job-gate";
+import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
+import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
+import { StatusBadge } from "@/components/status-badge";
 import { ResultGrid } from "@/components/result-grid";
 import { SkillReviewChecklist } from "@/components/skill-review-checklist";
 import { WorkspaceHeader } from "@/components/workspace-header";
-import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
+import { useAsset, useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import {
   presentWorkflow,
@@ -36,7 +41,7 @@ import { IdempotencyIntentRegistry } from "@/lib/api/idempotency";
 import { errorMessage, unwrapApiResponse } from "@/lib/api/request";
 import type { Asset, JobCreate } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import { jobNote } from "@/lib/jobs/presentation";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./model-pose-transfer-workspace.module.css";
@@ -230,48 +235,37 @@ function UploadControl({
   asset?: Asset;
   pending: boolean;
   disabled: boolean;
-  onFile: (file: File) => void;
+  onFile: (file: File) => void | Promise<void>;
   onOpenLibrary?: () => void;
   uploadLabel?: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
   return (
-    <div className={styles.uploadControl}>
-      <span className={styles.uploadIcon}><Upload size={21} /></span>
-      <div className={styles.uploadCopy}>
-        <strong>{title}</strong>
-        <p>{asset?.original_filename ?? description}</p>
-        <small>{IMAGE_UPLOAD_FORMAT_HINT}</small>
-      </div>
-      <div className={styles.uploadActions}>
-        <button
-          type="button"
-          disabled={disabled || pending}
-          onClick={() => inputRef.current?.click()}
-        >
-          {pending ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
-          {uploadLabel ?? (asset ? "重新上传" : "本地上传")}
-        </button>
-        {onOpenLibrary ? (
-          <button type="button" disabled={disabled || pending} onClick={onOpenLibrary}>
-            <Images size={15} /> 从素材库选择
+    <ImageDropZone label={title} className={styles.uploadControl} disabled={disabled} busy={pending}
+      onFiles={(files) => onFile(files[0])}>
+      {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <>
+        <span className={styles.uploadIcon}><Upload size={21} /></span>
+        <div className={styles.uploadCopy}>
+          <strong>{title}</strong>
+          <p>{asset?.original_filename ?? description}</p>
+          <small>{IMAGE_UPLOAD_FORMAT_HINT}</small>
+        </div>
+        <div className={styles.uploadActions}>
+          <button
+            type="button"
+            disabled={uploadDisabled}
+            onClick={openFileDialog}
+          >
+            {uploadingFile ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}
+            {uploadLabel ?? (asset ? "重新上传" : "本地上传")}
           </button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        className={styles.hiddenInput}
-        type="file"
-        accept={IMAGE_UPLOAD_ACCEPT}
-        disabled={disabled || pending}
-        onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          event.currentTarget.value = "";
-          if (file) onFile(file);
-        }}
-      />
-    </div>
+          {onOpenLibrary ? (
+            <button type="button" disabled={disabled || uploadingFile} onClick={onOpenLibrary}>
+              <Images size={15} /> 从素材库选择
+            </button>
+          ) : null}
+        </div>
+      </>}
+    </ImageDropZone>
   );
 }
 
@@ -289,20 +283,29 @@ export function ModelPoseTransferWorkspace() {
   );
   const workflow = presentWorkflow(capability);
 
-  const [modelSource, setModelSource] = useState<Asset>();
+  const [jobId, setJobId] = useWorkspaceJobId("/workspace/model-pose-transfer");
+  const job = useJob(workspace?.id, jobId);
+  const saved = workspaceJobSnapshot(job.data);
+  const restoredSource = useAsset(workspace?.id, jobId ? saved.id("model_source_asset_id") : undefined);
+  const restoredPose = useAsset(workspace?.id, jobId ? saved.id("pose_reference_asset_id") : undefined);
+  const [draftModelSource, setModelSource] = useState<Asset>();
   const [sourceLibraryOpen, setSourceLibraryOpen] = useState(false);
-  const [poseMode, setPoseMode] = useState<PoseMode>("catalog");
-  const [gender, setGender] = useState<PoseGender>("female");
-  const [selectedPoseSlug, setSelectedPoseSlug] = useState<string>();
-  const [customPose, setCustomPose] = useState<Asset>();
+  const [draftPoseMode, setPoseMode] = useState<PoseMode>("catalog");
+  const [draftGender, setGender] = useState<PoseGender>("female");
+  const [draftSelectedPoseSlug, setSelectedPoseSlug] = useState<string>();
+  const [draftCustomPose, setCustomPose] = useState<Asset>();
   const [materializedPose, setMaterializedPose] = useState<MaterializedPose>();
-  const [instruction, setInstruction] = useState("");
-  const [jobId, setJobId] = useState<string>();
+  const [draftInstruction, setInstruction] = useState("");
   const [uiError, setUiError] = useState<string>();
-  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
+  const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const submissionLock = useRef(false);
 
-  const job = useJob(workspace?.id, jobId);
+  const modelSource = jobId ? restoredSource.data : draftModelSource;
+  const customPose = jobId ? restoredPose.data : draftCustomPose;
+  const selectedPoseSlug = jobId ? saved.id("pose_slug") : draftSelectedPoseSlug;
+  const poseMode = jobId ? (selectedPoseSlug ? "catalog" : "custom") : draftPoseMode;
+  const gender = jobId ? POSE_CATALOG.find((pose) => pose.slug === selectedPoseSlug)?.genderGroup ?? "female" : draftGender;
+  const instruction = jobId ? saved.text("instruction") : draftInstruction;
   const resultAssets = selectJobResultAssets(job.data);
   const visiblePoses = useMemo(
     () => POSE_CATALOG.filter((pose) => pose.genderGroup === gender),
@@ -317,7 +320,7 @@ export function ModelPoseTransferWorkspace() {
   const canRestartTask = Boolean(
     jobId && job.data && ["partial", "completed", "failed", "cancelled"].includes(job.data.status),
   );
-  const sourceSelectionLocked = isSubmitting || Boolean(jobId && !canRestartTask);
+  const sourceSelectionLocked = !workspace || isSubmitting || Boolean(jobId && !canRestartTask);
   const selectedPoseReady = poseMode === "catalog" ? Boolean(selectedPose) : Boolean(customPose);
   const runtimeAllowsGeneration = workflow.canSubmit && workflow.canDeliverImages;
   const canSubmit = Boolean(
@@ -326,12 +329,15 @@ export function ModelPoseTransferWorkspace() {
     selectedPoseReady &&
     runtimeAllowsGeneration &&
     !workspacePending &&
+    !sourceUpload.isPending &&
+    !customPoseUpload.isPending &&
     !isSubmitting &&
     !jobId,
   );
 
   const requestError =
     workspaceError ??
+    restoredSource.error ?? restoredPose.error ??
     runtime.error ??
     sourceUpload.error ??
     customPoseUpload.error ??
@@ -478,9 +484,11 @@ export function ModelPoseTransferWorkspace() {
   }
 
   return (
+    <WorkspaceJobGate jobId={jobId} job={job.data} error={job.error} onRetry={() => void job.refetch()} expectedType="model_pose_transfer">
     <AppShell flush sidebar={false}>
       <div className={styles.workspacePage}>
         <WorkspaceHeader
+          jobId={jobId}
           eyebrow="AI 商品图 · 服装模特"
           title={feature.title}
           description={feature.description}
@@ -515,7 +523,7 @@ export function ModelPoseTransferWorkspace() {
                   uploadLabel={canRestartTask ? "重新上传并新建任务" : undefined}
                   onFile={(file) => {
                     if (canRestartTask) resetTask();
-                    void uploadModelSource(file);
+                    return uploadModelSource(file);
                   }}
                   onOpenLibrary={() => setSourceLibraryOpen(true)}
                 />
@@ -610,8 +618,8 @@ export function ModelPoseTransferWorkspace() {
                     description="上传一张动作清晰、全身完整的姿势图片"
                     asset={customPose}
                     pending={customPoseUpload.isPending}
-                    disabled={Boolean(jobId) || isSubmitting}
-                    onFile={(file) => void uploadCustomPose(file)}
+                    disabled={!workspace || Boolean(jobId) || isSubmitting}
+                    onFile={(file) => uploadCustomPose(file)}
                   />
                   <AssetPreview workspaceId={workspace?.id} asset={customPose} alt="自定义姿势参考图预览" />
                 </div>
@@ -638,7 +646,7 @@ export function ModelPoseTransferWorkspace() {
               <section className={styles.panel}>
                 <div className={styles.sectionHeading}>
                   <div><span>04</span><div><h2>任务进度</h2><p>任务会自动刷新，完成后可直接查看和下载。</p></div></div>
-                  <strong>{job.data?.status ?? "queued"}</strong>
+                  {job.data && <StatusBadge status={job.data.status} />}
                 </div>
                 <div className={styles.progressPanel}>
                   <div><span>{progressText}</span><strong>{Math.round(job.data?.progress ?? 0)}%</strong></div>
@@ -660,7 +668,7 @@ export function ModelPoseTransferWorkspace() {
               }
             />
             {job.data?.status === "completed" && resultAssets.length > 0 ? (
-              <SkillReviewChecklist
+              <SkillReviewChecklist key={jobId}
                 items={[
                   { key: "roles", label: "没有发生人物身份、服装或场景串位，姿势参考图没有泄漏外观。" },
                   { key: "identity", label: "原图人物、自然比例、服装、鞋饰、背景和光线仍保持可识别。" },
@@ -752,5 +760,6 @@ export function ModelPoseTransferWorkspace() {
         </footer>
       </div>
     </AppShell>
+    </WorkspaceJobGate>
   );
 }

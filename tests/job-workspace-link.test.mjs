@@ -44,6 +44,7 @@ test("the jobs page opens a fallback jobId in the detail panel", async () => {
   const jobsPage = await readFile("app/jobs/page.tsx", "utf8");
 
   assert.match(jobsPage, /searchParams\.get\("jobId"\)/);
-  assert.match(jobsPage, /selectedJobId \?\? requestedJobId/);
+  assert.match(jobsPage, /activeJobId = requestedJobId/);
+  assert.doesNotMatch(jobsPage, /selectedJobId/);
   assert.match(jobsPage, /jobId={activeJobId}/);
 });

@@ -166,10 +166,10 @@ test("Amazon simplified source roles share the backend eight-image limit", async
     workspace,
     /const availableSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selections\[role\]\.length/,
   );
-  assert.match(workspace, /const filesToUpload = files\.slice\(0, availableSlots\)/);
+  assert.match(workspace, /validateImageUpload\(files, \{ multiple: true, maxFiles: availableSlots \}\)/);
   assert.match(
     workspace,
-    /addDisabled=\{isAmazon && amazonRemainingSourceSlots === 0\}/,
+    /maxFiles=\{amazonRemainingSourceSlots \?\? Math\.max\(0, AMAZON_SOURCE_ASSET_LIMIT - selections\[role\.key\]\.length\)\}/,
   );
   assert.match(
     workspace,

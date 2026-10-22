@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
 import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
@@ -39,7 +40,7 @@ import type {
   ReferenceRemixJobCreate,
 } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT, validateImageUpload } from "@/lib/image-upload";
 import { jobNote } from "@/lib/jobs/presentation";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
@@ -327,16 +328,7 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
 }
 
 function UploadPanel({
-  title,
-  description,
-  count,
-  required,
-  uploading,
-  disabled,
-  addDisabled = false,
-  uploadLabel = "本地上传",
-  onFiles,
-  onOpenLibrary,
+  title, description, count, required, uploading, disabled, maxFiles, onFiles, onOpenLibrary,
 }: {
   title: string;
   description: string;
@@ -344,59 +336,35 @@ function UploadPanel({
   required: boolean;
   uploading: boolean;
   disabled: boolean;
-  addDisabled?: boolean;
-  uploadLabel?: string;
-  onFiles: (files: File[]) => void;
+  maxFiles: number;
+  onFiles: (files: File[]) => Promise<void>;
   onOpenLibrary?: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <div className={styles.uploadPanel}>
-      <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
-      <div className={styles.uploadCopy}>
-        <div>
-          <strong>{title}</strong>
-          {required ? <span>必填</span> : <span data-optional>可选</span>}
+    <ImageDropZone label={title} className={styles.uploadPanel} multiple maxFiles={maxFiles}
+      disabled={disabled} busy={uploading} onFiles={onFiles}>
+      {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <>
+        <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
+        <div className={styles.uploadCopy}>
+          <div>
+            <strong>{title}</strong>
+            {required ? <span>必填</span> : <span data-optional>可选</span>}
+          </div>
+          <p>{description}</p>
+          <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
         </div>
-        <p>{description}</p>
-        <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
-      </div>
-      <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading || disabled || addDisabled}
-        >
-          {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
-          {uploadLabel}
-        </button>
-        {onOpenLibrary ? (
-          <button
-            type="button"
-            data-library
-            aria-haspopup="dialog"
-            onClick={onOpenLibrary}
-            disabled={disabled}
-          >
-            <Images size={16} />
-            从素材库选择
+        <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
+          <button type="button" onClick={openFileDialog} disabled={uploadDisabled}>
+            {uploadingFile ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
+            上传图片
           </button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        className={styles.hiddenInput}
-        type="file"
-        accept={IMAGE_UPLOAD_ACCEPT}
-        multiple
-        disabled={disabled || addDisabled}
-        onChange={(event) => {
-          const files = Array.from(event.currentTarget.files ?? []);
-          event.currentTarget.value = "";
-          if (files.length) onFiles(files);
-        }}
-      />
-    </div>
+          {onOpenLibrary && <button type="button" data-library aria-haspopup="dialog"
+            onClick={onOpenLibrary} disabled={disabled || uploading}>
+            <Images size={16} />从素材库选择
+          </button>}
+        </div>
+      </>}
+    </ImageDropZone>
   );
 }
 
@@ -454,6 +422,9 @@ export function CommerceSkillWorkspace({
   const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const [libraryRole, setLibraryRole] = useState<RoleKey>();
   const [autoStart, setAutoStart] = useState(false);
+  const [uploadingSources, setUploadingSources] = useState(false);
+  const uploadBatchLock = useRef(false);
+  const uploadBusy = uploadingSources || upload.isPending;
 
   const selections = jobId ? {
     product: saved.ids("product_asset_ids"), reference: saved.ids("reference_asset_ids"),
@@ -593,7 +564,7 @@ export function CommerceSkillWorkspace({
       workflow.canSubmit &&
       !runtime.isPending &&
       !missingRequiredRole &&
-      !upload.isPending &&
+      !uploadBusy &&
       !createJob.isPending,
   );
 
@@ -633,42 +604,41 @@ export function CommerceSkillWorkspace({
   };
 
   const addUploadedAssets = async (files: File[], role: RoleKey) => {
+    if (!workspace?.id || jobId || createJob.isPending || uploadBatchLock.current) return;
     setUiError(undefined);
     const availableSlots = isAmazon
       ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selectedIds.length)
       : Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selections[role].length);
-    if (availableSlots === 0) {
-      setUiError(
-        isAmazon
-          ? `亚马逊套图素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张；请先取消已选素材。`
-          : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张素材；请先取消已选素材。`,
-      );
+    const selected = validateImageUpload(files, { multiple: true, maxFiles: availableSlots });
+    if (selected.error) {
+      setUiError(selected.error);
       return;
     }
-    const filesToUpload = files.slice(0, availableSlots);
-    const uploadedIds: string[] = [];
-    const failures: string[] = [];
-    for (const file of filesToUpload) {
-      try {
-        const asset = await upload.mutateAsync({ file, mediaKind: "image" });
-        uploadedIds.push(asset.id);
-      } catch (error) {
-        failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
+    if (!selected.files.length) return;
+    uploadBatchLock.current = true;
+    setUploadingSources(true);
+    try {
+      const uploadedIds: string[] = [];
+      const failures: string[] = [];
+      for (const file of selected.files) {
+        try {
+          const asset = await upload.mutateAsync({ file, mediaKind: "image" });
+          uploadedIds.push(asset.id);
+        } catch (error) {
+          failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
+        }
       }
-    }
-    if (uploadedIds.length) {
-      replaceRoleSelection(role, [...selections[role], ...uploadedIds]);
-    }
-    if (failures.length) {
-      const uploadedNote = uploadedIds.length ? `已成功上传 ${uploadedIds.length} 张；` : "";
-      const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
-      setUiError(`${uploadedNote}${failures[0]}${remaining}`);
-    } else if (files.length > filesToUpload.length) {
-      setUiError(
-        isAmazon
-          ? `亚马逊套图素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`
-          : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`,
-      );
+      if (uploadedIds.length) {
+        replaceRoleSelection(role, [...selections[role], ...uploadedIds]);
+      }
+      if (failures.length) {
+        const uploadedNote = uploadedIds.length ? `已成功上传 ${uploadedIds.length} 张；` : "";
+        const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
+        setUiError(`${uploadedNote}${failures[0]}${remaining}`);
+      }
+    } finally {
+      uploadBatchLock.current = false;
+      setUploadingSources(false);
     }
   };
 
@@ -774,7 +744,7 @@ export function CommerceSkillWorkspace({
   };
 
   const submit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || uploadBatchLock.current) return;
     setUiError(undefined);
     try {
       const created = await createJob.mutateAsync(buildJobBody());
@@ -837,7 +807,7 @@ export function CommerceSkillWorkspace({
                     <h2>{isAmazon ? "上传商品素材" : "选择角色素材"}</h2>
                     <p>
                       {isAmazon
-                        ? `至少上传 1 张清晰商品图，全部素材最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
+                        ? `至少上传 1 张清晰商品图，素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
                         : `同一素材不能跨角色重复选择，每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`}
                     </p>
                   </div>
@@ -857,11 +827,10 @@ export function CommerceSkillWorkspace({
                     description={role.description}
                     count={selections[role.key].length}
                     required={role.required}
-                    uploading={upload.isPending}
-                    disabled={Boolean(jobId)}
-                    addDisabled={isAmazon && amazonRemainingSourceSlots === 0}
-                    uploadLabel="上传图片"
-                    onFiles={(files) => void addUploadedAssets(files, role.key)}
+                    uploading={uploadBusy}
+                    disabled={Boolean(jobId) || !workspace?.id || createJob.isPending}
+                    maxFiles={amazonRemainingSourceSlots ?? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selections[role.key].length)}
+                    onFiles={(files) => addUploadedAssets(files, role.key)}
                     onOpenLibrary={() => setLibraryRole(role.key)}
                   />
                 ))}
@@ -883,11 +852,10 @@ export function CommerceSkillWorkspace({
                             description={role.description}
                             count={selections[role.key].length}
                             required={role.required}
-                            uploading={upload.isPending}
-                            disabled={Boolean(jobId)}
-                            addDisabled={amazonRemainingSourceSlots === 0}
-                            uploadLabel="上传图片"
-                            onFiles={(files) => void addUploadedAssets(files, role.key)}
+                            uploading={uploadBusy}
+                            disabled={Boolean(jobId) || !workspace?.id || createJob.isPending}
+                            maxFiles={amazonRemainingSourceSlots ?? 0}
+                            onFiles={(files) => addUploadedAssets(files, role.key)}
                             onOpenLibrary={() => setLibraryRole(role.key)}
                           />
                         ))}
@@ -909,11 +877,10 @@ export function CommerceSkillWorkspace({
                             description={role.description}
                             count={selections[role.key].length}
                             required={role.required}
-                            uploading={upload.isPending}
-                            disabled={Boolean(jobId)}
-                            addDisabled={amazonRemainingSourceSlots === 0}
-                            uploadLabel="上传图片"
-                            onFiles={(files) => void addUploadedAssets(files, role.key)}
+                            uploading={uploadBusy}
+                            disabled={Boolean(jobId) || !workspace?.id || createJob.isPending}
+                            maxFiles={amazonRemainingSourceSlots ?? 0}
+                            onFiles={(files) => addUploadedAssets(files, role.key)}
                             onOpenLibrary={() => setLibraryRole(role.key)}
                           />
                         ))}
@@ -1270,7 +1237,7 @@ export function CommerceSkillWorkspace({
                 ? selections[activeLibraryRole.key].length + (amazonRemainingSourceSlots ?? 0)
                 : AMAZON_SOURCE_ASSET_LIMIT
             }
-            disabled={Boolean(jobId)}
+            disabled={Boolean(jobId) || !workspace?.id || createJob.isPending || uploadBusy}
           />
         ) : null}
 

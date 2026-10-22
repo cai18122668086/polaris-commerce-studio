@@ -266,3 +266,24 @@
   .command:not(.commandWithAssets) .commandBar{margin-top:6px}
   .content{padding-top:24px}
 }
+
+/* Shared file-drop zones keep addition and role-preserving replacement distinct. */
+.command, .commandWithAssets, .command:not(.commandWithAssets) { height: auto; min-height: 222px; padding-bottom: 12px; }
+.composerDropZone { display: grid; gap: 7px; margin-bottom: 8px; }
+.command .uploadBox, .command:not(.commandWithAssets) .uploadBox { height: auto; min-height: 94px; flex-wrap: wrap; }
+.composerAssetTile > p[role="alert"] { position: absolute; z-index: 12; top: 100%; left: 0; width: 180px; padding: 8px; border: 1px solid #eee; border-radius: 6px; background: #fff; box-shadow: 0 4px 12px #0002; }
+.composerAssetTile:focus-within .assetReplaceButton { opacity: 1; }
+.command button:disabled { cursor: not-allowed; opacity: .5; }
+@media (hover: none) { .assetReplaceButton { opacity: 1; } }
+
+.composerDropZone > p { margin: 0; font-size: 11px; line-height: 1.6; }
+.command .composerAddTile { width: 74px; height: 94px; padding: 8px 4px; align-content: center; gap: 8px; color: #c65b31; background: #fff8f2; border-radius: 7px; }
+.command .composerAddTile span { display: block; font-size: 10px; white-space: nowrap; }
+.command .assetReplaceButton { width: auto; height: auto; border: 0; border-radius: 4px; color: #fff; background: #0009; }
+@media (max-width: 620px) {
+  .commandBar { height: auto; flex-wrap: wrap; gap: 8px 6px; }
+  .commandBar small { flex-basis: calc(100% - 50px); margin-left: 0; white-space: nowrap; }
+  .commandBar .commandSubmit { flex-shrink: 0; margin-left: auto; }
+}
+
+.command:not(.commandWithAssets) .composerAddTile span { display: block; }

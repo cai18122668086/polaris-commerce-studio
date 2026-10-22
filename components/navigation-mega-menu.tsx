@@ -1,5 +1,7 @@
 "use client";
 
+import { PrimaryNavigationLink } from "./primary-navigation-link";
+
 import Link from "next/link";
 import { ChevronDown, Flame, Grid2X2, Sparkles } from "lucide-react";
 import { useState } from "react";
@@ -199,11 +201,8 @@ export function MobileNavigationMenu({
                 ? pathname === "/"
                 : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                aria-current={active ? "page" : undefined}
+              <PrimaryNavigationLink key={item.href} href={item.href} label={item.label}
+                active={active} onClick={onClose} mobile
                 style={{
                   padding: "10px 7px",
                   border: `1px solid ${active ? "#cfc4ff" : "#eceef3"}`,
@@ -214,18 +213,7 @@ export function MobileNavigationMenu({
                   fontSize: 12,
                   fontWeight: 700,
                 }}
-              >
-                {item.href === "/inspiration" ? (
-                  <Flame
-                    size={14}
-                    fill="currentColor"
-                    color="#e94724"
-                    aria-hidden="true"
-                    style={{ verticalAlign: "-2px", marginRight: 4 }}
-                  />
-                ) : null}
-                {item.label}
-              </Link>
+              />
             );
           })}
         </nav>

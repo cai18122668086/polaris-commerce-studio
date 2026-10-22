@@ -1,5 +1,7 @@
 ﻿"use client";
 
+import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
+
 import { Check, FileWarning, Image as ImageIcon, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -20,13 +22,15 @@ function LibraryAssetCard({
   disabled: boolean;
   onToggle: () => void;
 }) {
-  const access = useAssetAccessUrl(workspaceId, asset.id);
+  const { ref: previewRef, visible: previewVisible } = usePreviewVisibility<HTMLButtonElement>();
+  const access = useAssetAccessUrl(workspaceId, previewVisible ? asset.id : undefined, "thumbnail");
   const dimensions = asset.width && asset.height
     ? `${asset.width} × ${asset.height}`
     : "尺寸待识别";
 
   return (
     <button
+      ref={previewRef}
       type="button"
       className={styles.libraryAsset}
       data-selected={selected || undefined}
@@ -37,7 +41,7 @@ function LibraryAssetCard({
     >
       <span className={styles.libraryAssetPreview}>
         {access.data?.url ? (
-          <img src={access.data.url} alt="" />
+          <img src={access.data.url} alt="" loading="lazy" decoding="async" />
         ) : access.isError ? (
           <FileWarning size={22} />
         ) : (

@@ -22,6 +22,7 @@ from .inspiration_schemas import (
 from .inspiration_workflows import CASES_REQUIRING_ASSET_REVIEW
 from .models import AssetRecord, InspirationCaseAssetRecord, InspirationCaseRecord
 from .services import new_id
+from .thumbnails import ThumbnailBusy
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
@@ -285,7 +286,11 @@ def get_case(
     include_in_schema=False,
 )
 async def get_case_asset(
-    case_id: str, asset_id: str, request: Request, session: SessionDependency
+    case_id: str,
+    asset_id: str,
+    request: Request,
+    session: SessionDependency,
+    variant: Literal["original", "thumbnail"] = "original",
 ) -> Response:
     item = session.scalar(
         select(InspirationCaseRecord).where(
@@ -310,10 +315,29 @@ async def get_case_asset(
         raise ApiError(
             404, "INSPIRATION_ASSET_NOT_FOUND", "The inspiration image was not found."
         )
+    # Check publication and asset access before either cache or conditional hits.
+    headers = {
+        "Cache-Control": "public, max-age=300",
+        "ETag": f'"inspiration-{variant}-v1-{asset.sha256}"',
+    }
+    if request.headers.get("If-None-Match") == headers["ETag"]:
+        return Response(status_code=304, headers=headers)
+    if variant == "thumbnail":
+        try:
+            body = await request.app.state.thumbnails.get(
+                f"{asset.object_key}:{asset.sha256}",
+                lambda: request.app.state.storage.read_bytes(asset.object_key),
+            )
+        except ThumbnailBusy:
+            return Response(
+                status_code=503,
+                headers={"Retry-After": "3", "Cache-Control": "no-store"},
+            )
+        return Response(body, media_type="image/webp", headers=headers)
     return Response(
         await request.app.state.storage.read_bytes(asset.object_key),
         media_type=asset.content_type,
-        headers={"Cache-Control": "public, max-age=300"},
+        headers=headers,
     )
 
 

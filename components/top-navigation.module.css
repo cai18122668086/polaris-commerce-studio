@@ -1,0 +1,5 @@
+.taskNotice:global(.task-trigger) > i { color: #ddd5d0; background: rgb(255 255 255 / 12%); }
+
+@media (min-width: 1200px) and (max-width: 1599px) {
+  .header :global(.user-menu) > :global(.desktop-only) { display: none; }
+}

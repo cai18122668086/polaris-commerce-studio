@@ -1,5 +1,7 @@
 "use client";
 
+import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
+
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -39,12 +41,13 @@ function AssetCard({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const accessUrl = useAssetAccessUrl(workspaceId, asset.id);
+  const { ref: previewRef, visible: previewVisible } = usePreviewVisibility<HTMLElement>();
+  const accessUrl = useAssetAccessUrl(workspaceId, previewVisible ? asset.id : undefined, "thumbnail");
   return (
-    <article className={`asset-card ${selected ? "selected" : ""}`}>
+    <article ref={previewRef} className={`asset-card ${selected ? "selected" : ""}`}>
       <div className="asset-image tone-violet">
         {accessUrl.data ? (
-          <img src={accessUrl.data.url} alt={asset.original_filename} />
+          <img src={accessUrl.data.url} alt={asset.original_filename} loading="lazy" decoding="async" />
         ) : (
           <div className="api-image-placeholder" aria-label="正在加载素材预览">
             {accessUrl.isError ? <FileWarning size={26} /> : <LoaderCircle className="spin" size={26} />}
@@ -59,7 +62,7 @@ function AssetCard({
         <div>
           <strong>{asset.original_filename}</strong>
           {accessUrl.data && (
-            <a href={accessUrl.data.url} target="_blank" rel="noreferrer" aria-label="打开素材">
+            <a href={accessUrl.data.original_url ?? accessUrl.data.url} target="_blank" rel="noreferrer" aria-label="打开素材">
               <ArrowUpRight size={15} />
             </a>
           )}

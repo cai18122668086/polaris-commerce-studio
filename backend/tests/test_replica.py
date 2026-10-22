@@ -478,3 +478,27 @@ def test_partial_submission_is_resumable_without_duplicate_jobs(client, monkeypa
     assert len(finished.json()["payload"]["job_ids"]) == 3
     with client.app.state.session_factory() as db:
         assert len(db.query(JobRecord).all()) == 3
+
+
+def test_visual_planner_receives_user_language_canvas_and_facts():
+    from app.xinghe_agent import PlannerRequest, _planner_prompt
+
+    prompt = _planner_prompt(
+        PlannerRequest(
+            workspace_id="ws_test",
+            job_id="rep_test",
+            group_key="test",
+            sources=(),
+            page_count=1,
+            language="zh-CN",
+            product_name="我的商品",
+            product_information=("保留银色蝴蝶结，不虚构功效",),
+            platform_code="tmall",
+            size="1024x1024",
+            idempotency_key="test",
+            planning_profile="reference_visual_remix",
+        )
+    )
+    assert '"target_language": "zh-CN"' in prompt
+    assert '"canvas_size": "1024x1024"' in prompt
+    assert "保留银色蝴蝶结，不虚构功效" in prompt

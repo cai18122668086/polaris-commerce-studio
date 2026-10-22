@@ -10980,6 +10980,16 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "Each string field must stay under 900 characters. Do not copy, quote, "
             "or summarize the verified Skill protocol, its file paths, or its "
             "schema text into any field. Return JSON only."
+            "\nThe following user brief is authoritative. Use the requested canvas "
+            "size even when the strategy image has a different aspect ratio; "
+            "adapt its spatial anchors to that canvas. All newly authored visible "
+            "copy and the original_remix_prompt must use target_language, while "
+            "existing product labels retain their original wording.\n"
+            + json.dumps({"target_language": request.language,
+                          "canvas_size": request.size,
+                          "target_platform": request.platform_code,
+                          "user_requirements": request.product_information},
+                         ensure_ascii=False)
         )
     if request.planning_profile == "aurora_v20_visual_audit":
         return (

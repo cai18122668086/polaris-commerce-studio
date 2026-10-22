@@ -105,15 +105,20 @@ def prepare(revision, backend_image, frontend_image, dispatcher_image, output):
         "POLARIS_ECOMMERCE_STARTUP_RECOVERY_ENABLED": "false",
         "POLARIS_ECOMMERCE_LOGIN_ENABLED": "false",
         "POLARIS_RETENTION_ENABLED": "false",
-        "POLARIS_PROVIDER_FAILOVER_ENABLED": "false",
-        "POLARIS_PROVIDER_ROTATION_ORDER": "primary",
+        "POLARIS_PROVIDER_FAILOVER_ENABLED": "true",
+        "POLARIS_PROVIDER_FAILOVER_API_KEY": existing["POLARIS_PROVIDER_FAILOVER_API_KEY"],
+        "POLARIS_PROVIDER_FAILOVER_BASE_URL": existing["POLARIS_PROVIDER_FAILOVER_BASE_URL"],
+        "POLARIS_PROVIDER_FAILOVER_MODEL": existing["POLARIS_PROVIDER_FAILOVER_MODEL"],
+        "POLARIS_REPLICA_IMAGE_FAILOVER_ENABLED": "true",
+        "POLARIS_PROVIDER_ROTATION_ORDER": existing["POLARIS_PROVIDER_ROTATION_ORDER"],
         "POLARIS_REFERENCE_REMIX_PROVIDER_ENABLED": "true",
         "POLARIS_ANALYSIS_BASE_URL": existing["POLARIS_ANALYSIS_BASE_URL"],
         "POLARIS_ANALYSIS_API_KEY": existing["POLARIS_ANALYSIS_API_KEY"],
         "POLARIS_ANALYSIS_MODEL": existing["POLARIS_ANALYSIS_MODEL"],
-        "POLARIS_IMAGE_BASE_URL": "https://api.tengliapi.xyz",
-        "POLARIS_IMAGE_API_KEY": existing["POLARIS_TENGLI_API_KEY"],
-        "POLARIS_IMAGE_MODEL": "gpt-image-2",
+        "POLARIS_IMAGE_BASE_URL": existing["POLARIS_IMAGE_BASE_URL"],
+        "POLARIS_IMAGE_API_KEY": existing["POLARIS_IMAGE_API_KEY"],
+        "POLARIS_IMAGE_MODEL": existing["POLARIS_IMAGE_MODEL"],
+        "POLARIS_TENGLI_IMAGE_MODEL": existing.get("POLARIS_TENGLI_IMAGE_MODEL", "gpt-image-2"),
         "POLARIS_TENGLI_BASE_URL": "https://api.tengliapi.xyz",
         "POLARIS_TENGLI_API_KEY": existing["POLARIS_TENGLI_API_KEY"],
         "POLARIS_TENGLI_VISION_MODEL": existing["POLARIS_ANALYSIS_MODEL"],
@@ -123,7 +128,6 @@ def prepare(revision, backend_image, frontend_image, dispatcher_image, output):
     for role, svc in (("replica-api", api), ("replica-worker", worker)):
         svc["image"] = backend_image
         svc["environment"].update(settings)
-        svc["environment"].pop("POLARIS_PROVIDER_FAILOVER_API_KEY", None)
         svc["environment"]["POLARIS_JUSTONE_API_TOKEN"] = (
             private["POLARIS_JUSTONE_API_TOKEN"] if role == "replica-api" else ""
         )
@@ -167,6 +171,10 @@ def prepare(revision, backend_image, frontend_image, dispatcher_image, output):
     }
     assert set(services) == {"replica-api", "replica-worker", "frontend", "dispatcher"}
     assert all(not s.get("ports") and s.get("read_only") for s in services.values())
+    assert settings["POLARIS_IMAGE_BASE_URL"] == "https://api.artflow.vip"
+    assert settings["POLARIS_PROVIDER_FAILOVER_BASE_URL"] == "https://api.ooapi.cc"
+    assert settings["POLARIS_PROVIDER_FAILOVER_API_KEY"]
+    assert settings["POLARIS_IMAGE_API_KEY"]
     private_json(output, escape(result))
     private_json(
         output.with_name("baseline.private.json"),

@@ -19,6 +19,7 @@ ENDPOINTS = {
     "1688": ("/api/1688/get-item-detail/v1", 10),
     "jd": ("/api/jd/get-item-detail/v3", 40),
 }
+TAOBAO_FALLBACK_ENDPOINT = "/api/taobao/get-item-detail/v3"
 MARKET_HOSTS = {
     "taobao": ("taobao.com", "tb.cn"),
     "tmall": ("tmall.com",),
@@ -172,7 +173,23 @@ def normalize_product(
     body: object, platform: str, item_id: str, canonical: str
 ) -> dict:
     if not isinstance(body, Mapping):
-        raise ApiError(502, "PRODUCT_DATA_INVALID", "供应商返回的商品格式无法识别。")
+        # V6 can return code=0 with a failure message in data instead of a product.
+        # Attribute that result to the collector; it does not prove the item is
+        # unavailable on the marketplace itself. Never echo arbitrary upstream text.
+        if isinstance(body, str) and any(
+            marker in body for marker in ("商品不存在", "商品已下架")
+        ):
+            raise ApiError(
+                502,
+                "PRODUCT_UNAVAILABLE",
+                "采集服务提示商品不存在或已下架；若原商品仍可打开，"
+                "可能是采集服务暂时无法获取，请稍后重试或上传参考图。",
+            )
+        raise ApiError(
+            502,
+            "PRODUCT_DATA_INVALID",
+            "采集服务未返回有效商品信息，请稍后重试或上传参考图。",
+        )
     root = dict(body)
     item = next(
         (
@@ -312,6 +329,26 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
         )
     endpoint = ENDPOINTS[platform][0]
     try:
+        return _fetch_endpoint(token, platform, item_id, canonical, endpoint)
+    except ApiError as error:
+        if platform not in {"taobao", "tmall"} or error.code != "PRODUCT_UNAVAILABLE":
+            raise
+    # V6 sometimes reports a live item as unavailable. Try the independently
+    # verified V3 once, never recursively or after transport/balance failures.
+    product = _fetch_endpoint(
+        token, platform, item_id, canonical, TAOBAO_FALLBACK_ENDPOINT
+    )
+    product["attemptedEndpoints"] = [endpoint, TAOBAO_FALLBACK_ENDPOINT]
+    # V3's account tariff and charges for unsuccessful calls are unverified.
+    # Do not reuse the V6 price or imply that the additional call was free.
+    product["costCents"] = None
+    return product
+
+
+def _fetch_endpoint(
+    token: str, platform: str, item_id: str, canonical: str, endpoint: str
+) -> dict:
+    try:
         request = Request(
             "https://api.justoneapi.com"
             + endpoint
@@ -327,7 +364,19 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
             "PRODUCT_PROVIDER_UNAVAILABLE",
             "商品服务暂时无法连接，请稍后重试或上传参考图。",
         ) from None
+    if not isinstance(wire, Mapping):
+        raise ApiError(
+            502,
+            "PRODUCT_DATA_INVALID",
+            "采集服务未返回有效商品信息，请稍后重试或上传参考图。",
+        )
     code = wire.get("code")
+    if not isinstance(code, int) or isinstance(code, bool):
+        raise ApiError(
+            502,
+            "PRODUCT_DATA_INVALID",
+            "采集服务未返回有效商品信息，请稍后重试或上传参考图。",
+        )
     if code != 0:
         messages = {
             100: "商品服务凭证失效，请联系管理员。",
@@ -345,6 +394,16 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
             messages.get(code, "商品服务返回异常，请稍后重试。"),
         )
     body = wire.get("data")
+    if (
+        endpoint == TAOBAO_FALLBACK_ENDPOINT
+        and isinstance(body, Mapping)
+        and str(body.get("num_iid", "")) != item_id
+    ):
+        raise ApiError(
+            502,
+            "PRODUCT_ID_MISMATCH",
+            "采集服务返回的商品与链接不一致，请稍后重试或上传参考图。",
+        )
     if isinstance(body, dict) and isinstance(body.get("description"), dict):
         detail_url = body["description"].get("detailUrl", "")
         parsed = urlparse(detail_url)
@@ -364,4 +423,6 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
                     )
             except Exception:
                 pass
-    return normalize_product(body, platform, item_id, canonical)
+    product = normalize_product(body, platform, item_id, canonical)
+    product["endpoint"] = endpoint
+    return product

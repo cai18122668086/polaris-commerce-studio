@@ -26,6 +26,18 @@ async function replicaRequest<T>(workspaceId: string, path: string, body?: unkno
   return result;
 }
 
+function usableReferenceImage(src: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const image = new Image();
+    const finish = (valid: boolean) => { clearTimeout(timer); image.onload = null; image.onerror = null; resolve(valid); };
+    const timer = setTimeout(() => finish(false), 15000);
+    image.referrerPolicy = "no-referrer";
+    image.onload = () => finish(image.naturalWidth >= 32 && image.naturalHeight >= 32);
+    image.onerror = () => finish(false);
+    image.src = src;
+  });
+}
+
 function analysisText(value: unknown): string { if (typeof value === "string") return value; if (Array.isArray(value)) return value.map(analysisText).filter(Boolean).slice(0, 3).join(" · ").slice(0, 220); if (value && typeof value === "object") return analysisText(Object.values(value)); return ""; }
 
 function AssetImage({ workspaceId, assetId, className, onClick }: { workspaceId: string; assetId: string; className?: string; onClick?: (url: string) => void }) {
@@ -62,6 +74,7 @@ export function StyleReplicaWorkspace() {
   const [productDoc, setProductDoc] = useState<ReplicaDocument>();
   const [sessionDoc, setSessionDoc] = useState<ReplicaDocument>();
   const [selected, setSelected] = useState<string[]>([]);
+  const [unavailableSources, setUnavailableSources] = useState<string[]>([]);
   const [imageTab, setImageTab] = useState<"imageUrls" | "descImageUrls" | "skuImageUrls">("imageUrls");
   const [platform, setPlatform] = useState("auto");
   const [language, setLanguage] = useState("zh-CN");
@@ -86,6 +99,9 @@ export function StyleReplicaWorkspace() {
   const status = sessionDoc?.status;
   const working = busy !== "" || ["analysing"].includes(status ?? "") || productDoc?.status === "fetching";
   const product = productDoc?.payload.product;
+  const sourceImages = (key: "imageUrls" | "descImageUrls" | "skuImageUrls") => (product?.[key] ?? []).filter(src => !unavailableSources.includes(src));
+  const hideSource = (src: string) => { setUnavailableSources(current => current.includes(src) ? current : [...current, src]); setSelected(current => current.filter(value => value !== src)); };
+
   const plans = sessionDoc?.payload.plans ?? [];
   const jobs = sessionDoc?.payload.job_ids ?? [];
   const complete = jobs.length > 0 && sessionDoc?.payload.submission_complete !== false && jobs.every(id => ["completed", "partial", "failed", "cancelled"].includes(jobStatuses[id]));
@@ -130,11 +146,14 @@ export function StyleReplicaWorkspace() {
       if (files.length > limit - current.length) throw new Error(`该区域最多支持${limit}张图片，已上传可用部分。`);
     });
   };
-  const fetchProduct = () => workspaceId && perform("拉取商品", async () => { setSelected([]); setProductDoc(undefined); setProductDoc(await replicaRequest<ReplicaDocument>(workspaceId, "/products", { url, platform: sourcePlatform })); });
+  const fetchProduct = () => workspaceId && perform("拉取商品", async () => { setSelected([]); setUnavailableSources([]); setProductDoc(undefined); setProductDoc(await replicaRequest<ReplicaDocument>(workspaceId, "/products", { url, platform: sourcePlatform })); });
   const analyse = () => workspaceId && perform("准备分析", async () => {
     let choices: Plan["reference"][] = [];
     if (mode === "link") {
       if (!productDoc || !selected.length) throw new Error("请先拉取商品并勾选参考图。");
+      const readable = await Promise.all(selected.map(usableReferenceImage));
+      const invalid = selected.filter((_, index) => !readable[index]);
+      if (invalid.length) { invalid.forEach(hideSource); throw new Error("已移除空白或无法读取的参考图，请重新选择后开始诊断。"); }
       const imported = await replicaRequest<{ asset_id: string; url: string; role: string }[]>(workspaceId, `/products/${productDoc.id}/import`, { urls: selected });
       choices = imported.map((item, index) => ({ asset_id: item.asset_id, title: `${item.role} ${index + 1}`, aspect_ratio: item.role === "主图" ? mainRatio : detailRatio }));
     } else {
@@ -187,7 +206,7 @@ export function StyleReplicaWorkspace() {
       </aside>
       <section className={styles.stage}>
         <header className={styles.stageHeader}><div><Sparkles size={18} /><h1>一键复刻</h1><span>让好灵感，成为你的商品图</span></div><nav><button onClick={() => void showHistory()}><History size={14} />历史记录</button><button onClick={() => setModal("help")}><CircleHelp size={14} />使用教程</button></nav></header>
-        {mode === "link" && product && !sessionDoc && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><div><span className={styles.sourceBadge}>{product.platform}</span><strong>{product.title ?? "商品参考图"}</strong></div><span>已选 {selected.length}/20</span></div><div className={styles.selectionActions}><span>点击图片选择，每张参考图生成一张商品图</span><button onClick={() => setSelected([...new Set([...selected, ...product[imageTab]])].slice(0,20))}>全选本组</button><button onClick={() => setSelected([])}>清空选择</button></div><div className={styles.sourceTabs}>{[["imageUrls", "主图"], ["descImageUrls", "详情图"], ["skuImageUrls", "SKU 图"]].map(([key, label]) => <button className={imageTab === key ? styles.sourceTabActive : ""} key={key} onClick={() => setImageTab(key as typeof imageTab)}>{label}<b>{product[key as keyof Pick<Product, "imageUrls" | "descImageUrls" | "skuImageUrls">].length}</b></button>)}</div><div className={styles.sourceGrid}>{product[imageTab].map((src, index) => <div key={src} className={`${styles.sourceTile} ${selected.includes(src) ? styles.sourceSelected : ""}`}><img src={src} alt={`参考图 ${index + 1}`} loading="lazy" onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)} /><button aria-label={`${selected.includes(src) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)}>{selected.includes(src) ? <Check size={13} /> : index + 1}</button><button className={styles.previewTile} onClick={() => setPreview(src)}>放大</button></div>)}</div>{!product[imageTab].length && <p className={styles.hint}>当前分组暂无图片，可以选择其他分组或上传参考图。</p>}</div>}
+        {mode === "link" && product && !sessionDoc && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><div><span className={styles.sourceBadge}>{product.platform}</span><strong>{product.title ?? "商品参考图"}</strong></div><span>已选 {selected.length}/20</span></div><div className={styles.selectionActions}><span>点击图片选择，每张参考图生成一张商品图</span><button onClick={() => setSelected([...new Set([...selected, ...sourceImages(imageTab)])].slice(0,20))}>全选本组</button><button onClick={() => setSelected([])}>清空选择</button></div><div className={styles.sourceTabs}>{[["imageUrls", "主图"], ["descImageUrls", "详情图"], ["skuImageUrls", "SKU 图"]].map(([key, label]) => <button className={imageTab === key ? styles.sourceTabActive : ""} key={key} onClick={() => setImageTab(key as typeof imageTab)}>{label}<b>{sourceImages(key as "imageUrls" | "descImageUrls" | "skuImageUrls").length}</b></button>)}</div><div className={styles.sourceGrid}>{sourceImages(imageTab).map((src, index) => <div key={src} className={`${styles.sourceTile} ${selected.includes(src) ? styles.sourceSelected : ""}`}><img src={src} alt={`参考图 ${index + 1}`} loading="lazy" referrerPolicy="no-referrer" onLoad={event => { if (event.currentTarget.naturalWidth < 32 || event.currentTarget.naturalHeight < 32) hideSource(src); }} onError={() => hideSource(src)} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)} /><button aria-label={`${selected.includes(src) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)}>{selected.includes(src) ? <Check size={13} /> : index + 1}</button><button className={styles.previewTile} onClick={() => setPreview(src)}>放大</button></div>)}</div>{unavailableSources.length > 0 && <p className={styles.hint}>已隐藏 {unavailableSources.length} 张空白或无法读取的图片。<button className={styles.textButton} onClick={() => setUnavailableSources([])}>重新检查</button></p>}{!sourceImages(imageTab).length && <p className={styles.hint}>当前分组暂无图片，可以选择其他分组或上传参考图。</p>}</div>}
         {mode === "image" && references.length > 0 && !sessionDoc && workspaceId && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><strong>选择想要复刻的参考图</strong><span>已选 {selectedReferenceCount}/{references.length}</span></div><div className={styles.selectionActions}><span>每张选中的参考图，生成一张你的商品图</span><button onClick={() => setSelectedReferences(references.map(item => item.id))}>全选</button><button onClick={() => setSelectedReferences([])}>清空选择</button></div><div className={styles.sourceGrid}>{references.map((item, index) => <div key={item.id} className={`${styles.sourceTile} ${selectedReferences.includes(item.id) ? styles.sourceSelected : ""}`}><AssetImage workspaceId={workspaceId} assetId={item.id} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])} /><button aria-label={`${selectedReferences.includes(item.id) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])}>{selectedReferences.includes(item.id) ? <Check size={13} /> : index + 1}</button></div>)}</div></div>}
         {status === "analysing" && <div className={styles.analysisState}><div className={styles.orbit}><Sparkles size={28} /></div><h2>正在读懂你的商品与参考风格</h2><p>分析构图、光影和信息层级，为每张图准备专属方案。</p><progress max={100} value={sessionDoc?.payload.progress ?? 5} /><small>{plans.length} / {sessionDoc?.payload.references?.length ?? 0} 张方案已完成</small></div>}
         {status === "failed" && <div className={styles.emptyState}><CircleHelp size={38} /><h2>这次诊断暂未完成</h2><p>{sessionDoc?.payload.error}</p><button disabled={!!busy} onClick={() => void retryAnalysis()}>重试未完成的分析</button><button onClick={reset}>返回修改选图</button></div>}
@@ -197,6 +216,6 @@ export function StyleReplicaWorkspace() {
       </section>
     </div>
     {modal && <div className={styles.overlay} onClick={() => setModal(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-label={modal === "history" ? "复刻历史" : modal === "fees" ? "用量说明" : "使用教程"} onClick={event => event.stopPropagation()}><button className={styles.closeModal} onClick={() => setModal(null)} aria-label="关闭"><X size={20} /></button>{modal === "history" ? <><h2>复刻历史</h2>{history.length ? history.map(item => <button className={styles.historyRow} key={item.id} onClick={() => restoreSession(item)}><span>{new Date(item.created_at).toLocaleString("zh-CN")}<small>{item.payload.plans?.length ?? item.payload.references?.length ?? 0} 张图片</small></span><b>{item.status === "awaiting_confirmation" ? "待确认" : item.status === "analysing" ? "诊断中" : item.status === "failed" ? "未完成" : "查看结果"}</b><ChevronRight size={16} /></button>) : <p>还没有复刻记录，完成首次诊断后会显示在这里。</p>}</> : modal === "fees" ? <><h2>用量说明</h2><p>商品拉取通过第三方数据服务完成；同一商品当天再次查询会复用已有结果。</p><p>图片诊断与生成分别记录使用量，生成按图片任务计入账户用量。失败图片可以单独查看和重试，已完成图片无需重复生成。</p><Link href="/dashboard">查看账户用量与余额 <ChevronRight size={14} /></Link></> : <><h2>把参考风格，变成你的商品图</h2><ol><li>上传自己的产品图，让外观、材质与品牌清晰可见。</li><li>粘贴商品链接选图，或直接上传风格参考图。</li><li>选择目标平台、语言与比例，可补充自己的真实卖点。</li><li>开始诊断，查看并补充每张图片的方案。</li><li>确认后生成，结果保存在素材库和生成记录中。</li></ol><p>参考图用于学习构图、光影和排版。商品参数、认证与售后承诺请以自己的真实信息为准。</p></>}</section></div>}
-    {preview && <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreview("")}><button onClick={() => setPreview("")} aria-label="关闭图片预览"><X size={24} /></button><img src={preview} alt="图片预览" /></div>}
+    {preview && <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreview("")}><button onClick={() => setPreview("")} aria-label="关闭图片预览"><X size={24} /></button><img src={preview} alt="图片预览" referrerPolicy="no-referrer" /></div>}
   </div>;
 }

@@ -131,28 +131,14 @@ def execute(phase):
             .strip()
         )
         assert count == "0", "Generation started; postpone proxy cutover"
-        run(
-            [
-                "docker",
-                "cp",
-                str(ROOT / "Caddyfile.candidate"),
-                "polaris-production-caddy-1:/tmp/one-click-replica.Caddyfile",
-            ]
-        )
-        run(
-            [
-                "docker",
-                "exec",
-                "polaris-production-caddy-1",
-                "caddy",
-                "validate",
-                "--config",
-                "/tmp/one-click-replica.Caddyfile",
-                "--adapter",
-                "caddyfile",
-            ]
-        )
         candidate = (ROOT / "Caddyfile.candidate").read_bytes()
+        run(
+            [
+                "docker", "exec", "-i", "polaris-production-caddy-1",
+                "caddy", "validate", "--config", "-", "--adapter", "caddyfile",
+            ],
+            input=candidate,
+        )
         with p.open("r+b") as f:
             f.write(candidate)
             f.truncate()

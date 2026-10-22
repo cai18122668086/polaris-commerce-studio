@@ -2216,6 +2216,9 @@ class TengliOpenAICompatibleGateway:
         failover_base_url: str | None = None,
         failover_model: str | None = None,
         failover_image_model: str | None = None,
+        image_failover_api_key: str | None = None,
+        image_failover_base_url: str | None = None,
+        image_failover_model: str | None = None,
         rotation_order: str = "primary,failover",
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
@@ -2292,6 +2295,19 @@ class TengliOpenAICompatibleGateway:
                     image_base_url=self._image_base_url,
                     image_model=self.image_model,
                 )
+        self._image_failover_route: _ProviderRoute | None = None
+        if image_failover_api_key:
+            image_url = image_failover_base_url or base_url
+            parsed_image = urlparse(image_url)
+            if parsed_image.scheme not in {"http", "https"} or not parsed_image.netloc:
+                raise ValueError("Image failover base URL must be absolute HTTP(S).")
+            self._image_failover_route = replace(
+                primary_route,
+                name="image-failover",
+                image_api_key=image_failover_api_key.strip(),
+                image_base_url=image_url.rstrip("/") + "/",
+                image_model=image_failover_model or self.image_model,
+            )
         self._provider_routes = routes
         self._rotation_order = tuple(
             name.strip().lower()
@@ -2313,14 +2329,14 @@ class TengliOpenAICompatibleGateway:
         return tuple(ordered)
 
     def _image_routes(self) -> tuple[_ProviderRoute, ...]:
-        """Keep image generation on the primary image account.
-
-        Failover keys are planner accounts. Image calls must not walk them.
-        """
+        """Use only image accounts; planner fallback credentials never enter here."""
 
         ordered = self._ordered_routes()
         primary = tuple(route for route in ordered if route.name == "primary")
-        return primary or ordered[:1]
+        image_routes = primary or ordered[:1]
+        if self._image_failover_route is not None:
+            return (*image_routes, self._image_failover_route)
+        return image_routes
 
     def _visual_review_route(self, attempt: int = 0) -> _ProviderRoute:
         routes = self._ordered_routes()
@@ -2756,9 +2772,7 @@ class TengliOpenAICompatibleGateway:
                         files=files,
                         timeout_seconds=self.timeout_seconds,
                     )
-                except XingheAgentError as exc:
-                    if exc.retryable and route_index < last_route_index:
-                        continue
+                except XingheAgentError:
                     raise
                 if (
                     self._should_failover_status(status)
@@ -2918,9 +2932,7 @@ class TengliOpenAICompatibleGateway:
                         files=files,
                         timeout_seconds=self.timeout_seconds,
                     )
-                except XingheAgentError as exc:
-                    if exc.retryable and route_index < last_route_index:
-                        continue
+                except XingheAgentError:
                     raise
                 if (
                     self._should_failover_status(status)
@@ -3307,6 +3319,12 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         failover_base_url=settings.provider_failover_base_url,
         failover_model=settings.provider_failover_model,
         failover_image_model=settings.provider_failover_image_model,
+        image_failover_api_key=(
+            settings.tengli_api_key.get_secret_value()
+            if settings.replica_image_failover_enabled else None
+        ),
+        image_failover_base_url=settings.tengli_base_url,
+        image_failover_model=settings.tengli_image_model,
         rotation_order=settings.provider_rotation_order,
     )
 

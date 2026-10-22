@@ -7,6 +7,7 @@ import { emitAuthUnauthorised } from "./session-events";
 import { isLocalDevelopmentAuthEnabled } from "./local-dev";
 import { getAuthRuntimeConfig } from "./config";
 import { boundedAuthRequest } from "./request-timeout";
+import { observeAuthResponse } from "./diagnostics";
 
 let authClientInitialized = false;
 
@@ -22,10 +23,10 @@ export function initializeAuthClient(): void {
   SuperTokens.init({
     appInfo: { appName: config.appName, apiDomain: config.apiDomain, apiBasePath: config.apiBasePath },
     recipeList: [
-      EmailPassword.init({ preAPIHook: boundedAuthRequest }),
-      EmailVerification.init({ preAPIHook: boundedAuthRequest }),
+      EmailPassword.init({ preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse }),
+      EmailVerification.init({ preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse }),
       Session.init({
-        preAPIHook: boundedAuthRequest,
+        preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse,
         onHandleEvent(event) {
           if (event.action === "UNAUTHORISED") emitAuthUnauthorised("session");
           else if (event.action === "SIGN_OUT") emitAuthUnauthorised("sign-out");

@@ -172,7 +172,23 @@ def normalize_product(
     body: object, platform: str, item_id: str, canonical: str
 ) -> dict:
     if not isinstance(body, Mapping):
-        raise ApiError(502, "PRODUCT_DATA_INVALID", "供应商返回的商品格式无法识别。")
+        # V6 can return code=0 with a failure message in data instead of a product.
+        # Attribute that result to the collector; it does not prove the item is
+        # unavailable on the marketplace itself. Never echo arbitrary upstream text.
+        if isinstance(body, str) and any(
+            marker in body for marker in ("商品不存在", "商品已下架")
+        ):
+            raise ApiError(
+                502,
+                "PRODUCT_UNAVAILABLE",
+                "采集服务提示商品不存在或已下架；若原商品仍可打开，"
+                "可能是采集服务暂时无法获取，请稍后重试或上传参考图。",
+            )
+        raise ApiError(
+            502,
+            "PRODUCT_DATA_INVALID",
+            "采集服务未返回有效商品信息，请稍后重试或上传参考图。",
+        )
     root = dict(body)
     item = next(
         (
@@ -327,7 +343,19 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
             "PRODUCT_PROVIDER_UNAVAILABLE",
             "商品服务暂时无法连接，请稍后重试或上传参考图。",
         ) from None
+    if not isinstance(wire, Mapping):
+        raise ApiError(
+            502,
+            "PRODUCT_DATA_INVALID",
+            "采集服务未返回有效商品信息，请稍后重试或上传参考图。",
+        )
     code = wire.get("code")
+    if not isinstance(code, int) or isinstance(code, bool):
+        raise ApiError(
+            502,
+            "PRODUCT_DATA_INVALID",
+            "采集服务未返回有效商品信息，请稍后重试或上传参考图。",
+        )
     if code != 0:
         messages = {
             100: "商品服务凭证失效，请联系管理员。",

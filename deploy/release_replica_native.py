@@ -1,7 +1,8 @@
 """Scoped native-Skill release; credentials and Compose stay on the user's server.
 
 Prepare captures a fresh baseline and database backup. Backend/frontend phases
-replace only the three named roles; no proxy, dispatcher, detail or schema edits.
+replace the two replica roles, frontend and inspiration-preview API overlay;
+no proxy, dispatcher, detail, main-worker or schema edits.
 """
 
 import argparse
@@ -18,7 +19,8 @@ ROOT = Path("/etc/polaris/replica-native-20261022")
 PREVIOUS = Path("/etc/polaris/one-click-replica-20261022/active.compose.private.json")
 ROLES = ("api", "worker", "detail-api", "detail-worker", "dispatcher", "caddy",
          "replica-api", "replica-worker", "frontend")
-PRESERVE = ROLES[:6]
+PRESERVE = ("worker", "detail-api", "detail-worker", "dispatcher", "caddy")
+SELECTED = ("api", "replica-api", "replica-worker", "frontend")
 CADDY = Path("/opt/polaris/releases/888409d869a8459f0c4fe5086ff45eceae6efcc9/deploy/Caddyfile.domestic-detail-native")
 ENV = {**os.environ, "COMPOSE_IGNORE_ORPHANS": "true"}
 
@@ -81,9 +83,9 @@ def compose(path, *arguments):
                    check=True, env=ENV)
 
 
-def prepare(revision, backend, frontend):
+def prepare(revision, backend, frontend, api):
     assert re.fullmatch(r"[0-9a-f]{40}", revision)
-    for image in (backend, frontend):
+    for image in (backend, frontend, api):
         assert re.fullmatch(r"sha256:[0-9a-f]{64}", image)
         subprocess.run(["docker", "image", "inspect", image], check=True,
                        stdout=subprocess.DEVNULL)
@@ -94,6 +96,7 @@ def prepare(revision, backend, frontend):
     idle()
     assert live["replica-api"]["Image"] == "sha256:bc2ea0f48b18fe25cb5fe4571d714b1a840e2a0f3c92d9448657a3380b93a918", "Replica base changed; rebase the overlay"
     assert live["frontend"]["Image"] == "sha256:a3cafa0564c3c40a8b68190fa9f5e369e490446c3420e3ad235af660b6f16faf", "Frontend base changed; rebase the overlay"
+    assert live["api"]["Image"] == "sha256:985a8d0349919155da7017923a4795b08b1014ec08729fffae8412f0f79c68b1", "Main API base changed; rebase the overlay"
     config = json.loads(subprocess.check_output([
         "docker", "compose", "-f", str(PREVIOUS), "config", "--format", "json"
     ]))
@@ -101,6 +104,7 @@ def prepare(revision, backend, frontend):
         role: deepcopy(config["services"][role])
         for role in ("replica-api", "replica-worker", "frontend")
     }
+    add_main_api(config, live["api"])
     previous = deepcopy(config)
     for role, service in config["services"].items():
         assert not service.get("ports") and service.get("read_only")
@@ -108,7 +112,7 @@ def prepare(revision, backend, frontend):
         service["environment"] = dict(row.split("=", 1) for row in live[role]["Config"]["Env"])
         previous["services"][role]["environment"] = deepcopy(service["environment"])
         previous["services"][role]["image"] = live[role]["Image"]
-        service["image"] = frontend if role == "frontend" else backend
+        service["image"] = frontend if role == "frontend" else api if role == "api" else backend
         service["pull_policy"] = "never"
         service.setdefault("labels", {})["com.polaris.replica.native_revision"] = revision
     ROOT.mkdir(mode=0o700)
@@ -131,26 +135,42 @@ def prepare(revision, backend, frontend):
     print(json.dumps({"prepared": True, "revision": revision, "roles": list(config["services"]), "credentials_exported": False}), flush=True)
 
 
+def add_main_api(config, live):
+    """Read the live API's canonical Compose on-server; never export credentials."""
+    source = live["Config"]["Labels"]["com.docker.compose.project.config_files"]
+    assert "," not in source and source.startswith("/etc/polaris/")
+    original = json.loads(subprocess.check_output([
+        "docker", "compose", "-f", source, "config", "--format", "json"
+    ]))
+    config["services"]["api"] = deepcopy(original["services"]["api"])
+    for section in ("networks", "volumes", "secrets", "configs"):
+        for key, value in original.get(section, {}).items():
+            current = config.setdefault(section, {})
+            assert key not in current or current[key] == value, section + " definition differs"
+            current[key] = value
+
+
 def phase(name):
     unchanged(*PRESERVE)
     if name in {"backend", "rollback"}:
         idle()
     if name == "backend":
-        unchanged("replica-api", "replica-worker", "frontend")
-        selected = ("replica-api", "replica-worker")
+        unchanged(*SELECTED)
+        selected = ("api", "replica-api", "replica-worker")
     elif name == "frontend":
         unchanged("frontend")
         health("replica-api")
         health("replica-worker")
+        health("api")
         selected = ("frontend",)
     elif name == "rollback":
-        selected = ("replica-api", "replica-worker", "frontend")
+        selected = SELECTED
     else:
         selected = ()
     if selected:
         compose(ROOT / ("rollback.compose.private.json" if name == "rollback" else "active.compose.private.json"),
                 "up", "-d", "--no-deps", "--no-build", "--pull", "never", *selected)
-    for role in ("replica-api", "replica-worker", "frontend"):
+    for role in SELECTED:
         health(role)
     unchanged(*PRESERVE)
     evidence = {"phase": name, "preserved_roles": list(PRESERVE),
@@ -165,8 +185,9 @@ if __name__ == "__main__":
     parser.add_argument("--revision")
     parser.add_argument("--backend-image")
     parser.add_argument("--frontend-image")
+    parser.add_argument("--api-image")
     args = parser.parse_args()
     if args.phase == "prepare":
-        prepare(args.revision, args.backend_image, args.frontend_image)
+        prepare(args.revision, args.backend_image, args.frontend_image, args.api_image)
     else:
         phase(args.phase)

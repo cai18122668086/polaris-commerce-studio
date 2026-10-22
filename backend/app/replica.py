@@ -29,6 +29,7 @@ from .justone import fetch_product, image_url, parse_product_link
 from .models import JobRecord, ReplicaDocumentRecord, WorkspaceRecord, utc_now
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .new_image_skill_provider import TARGET_DIMENSIONS
+from .replica_native import SKILLS, NativeReplicaRun
 from .schemas_v1 import ReferenceRemixJobCreate
 from .services import get_ready_assets, lock_workspace_limits
 from .skill_protocol import load_skill_protocol
@@ -64,12 +65,18 @@ class AnalysisRequest(BaseModel):
     platform_code: str = Field(default="tmall", min_length=1, max_length=32)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     facts: str = Field(default="", max_length=4000)
+    replication_method: Literal["exact", "style"] | None = None
 
     @model_validator(mode="after")
     def validate_roles(self) -> AnalysisRequest:
-        if len(set(self.product_asset_ids)) != len(self.product_asset_ids) or set(
-            self.product_asset_ids
-        ) & {r.asset_id for r in self.references}:
+        if (
+            (
+                self.replication_method is not None
+                and len({r.asset_id for r in self.references}) != len(self.references)
+            )
+            or len(set(self.product_asset_ids)) != len(self.product_asset_ids)
+            or set(self.product_asset_ids) & {r.asset_id for r in self.references}
+        ):
             raise ValueError("产品图和风格参考图需要分别上传，不能使用同一素材。")
         return self
 
@@ -92,7 +99,11 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
         "id": row.id,
         "kind": row.kind,
         "status": row.status,
-        "payload": row.payload,
+        "payload": {
+            key: value
+            for key, value in row.payload.items()
+            if key not in {"native_snapshot", "native_executions"}
+        },
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
     }
@@ -300,6 +311,22 @@ def history(workspace: WorkspaceDependency, session: SessionDependency) -> list[
     ]
 
 
+@router.get("/jobs/{job_id}/session")
+def session_for_job(
+    job_id: str, workspace: WorkspaceDependency, session: SessionDependency
+) -> dict:
+    job = session.scalar(
+        select(JobRecord).where(
+            JobRecord.id == job_id, JobRecord.workspace_id == workspace.workspace_id
+        )
+    )
+    document_id = job.configuration.get("replica_session_id") if job else None
+    if not isinstance(document_id, str):
+        raise ApiError(404, "REPLICA_JOB_NOT_FOUND", "未找到当前工作区的复刻任务。")
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    return _wire(row)
+
+
 class ImageRedirects(HTTPRedirectHandler):
     def redirect_request(
         self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
@@ -418,6 +445,46 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
         gateway = getattr(app.state, "replica_gateway", None) or build_tengli_gateway(
             app.state.settings
         )
+        if payload.get("replication_method") in SKILLS:
+            run = NativeReplicaRun(
+                payload["replication_method"],
+                document_id,
+                workspace_id,
+                gateway,
+                app.state.storage,
+            )
+            run.root = run.root / payload["analysis_attempt_id"]
+            run.root.mkdir(parents=True, exist_ok=True)
+            run.run = run.root
+            run.on_progress = lambda progress, label: _save(
+                app,
+                document_id,
+                "analysing",
+                {**payload, "progress": progress, "analysis_stage": label},
+            )
+            plans = await run.prepare(payload, records)
+            snapshot = await run.snapshot()
+            binding = {
+                "replication_method": run.method,
+                "skill_id": run.skill_id,
+                "skill_content_hash": run.source_hash,
+                "plans": plans,
+                "native_snapshot_hash": _hash(snapshot),
+            }
+            _save(
+                app,
+                document_id,
+                "awaiting_confirmation",
+                {
+                    **payload,
+                    **binding,
+                    "plan_hash": _hash(binding),
+                    "native_snapshot": snapshot,
+                    "progress": 100,
+                    "analysis_cost_micros": run.cost,
+                },
+            )
+            return
         protocol = load_skill_protocol(
             SKILL, source_content_hash=BundledSkillManifestValidator().validate(SKILL)
         )
@@ -623,6 +690,10 @@ def confirm(
         raise ApiError(
             422, "REPLICA_INSTRUCTION_TOO_LONG", "单张图片补充要求不能超过4000字。"
         )
+    if values.get("replication_method") in SKILLS:
+        return _confirm_native(
+            document_id, payload, request, background_tasks, workspace, session, row
+        )
     prompts = [
         plan["prompt"]
         + (
@@ -737,6 +808,108 @@ def confirm(
     return _wire(row)
 
 
+def _confirm_native(
+    document_id: str,
+    payload: ConfirmRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceContext,
+    session: Session,
+    row: ReplicaDocumentRecord,
+) -> dict:
+    from .routes_v1 import create_job
+
+    values = dict(row.payload)
+    method = values["replication_method"]
+    skill_id = SKILLS[method]
+    content_hash = BundledSkillManifestValidator().validate(skill_id)
+    if (
+        values.get("skill_id") != skill_id
+        or values.get("skill_content_hash") != content_hash
+    ):
+        raise ApiError(409, "REPLICA_SKILL_CHANGED", "Skill 版本已变化，请重新分析。")
+    binding = {
+        key: values[key]
+        for key in (
+            "replication_method",
+            "skill_id",
+            "skill_content_hash",
+            "plans",
+            "native_snapshot_hash",
+        )
+    }
+    if (
+        _hash(binding) != payload.plan_hash
+        or _hash(values["native_snapshot"]) != values["native_snapshot_hash"]
+    ):
+        raise ApiError(409, "REPLICA_PLAN_CHANGED", "原生方案绑定已变化，请重新分析。")
+    confirmed_hash = _hash(
+        [method, content_hash, payload.plan_hash, payload.instructions]
+    )
+    if values.get("confirmed_instructions_hash"):
+        if values["confirmed_instructions_hash"] != confirmed_hash:
+            raise ApiError(
+                409, "REPLICA_ALREADY_CONFIRMED", "该方案已确认，请新建复刻修改要求。"
+            )
+        if values.get("job_ids"):
+            return _wire(row)
+    # Supplemental changes alter the native composition/fact contract. They
+    # must enter a fresh analysis instead of being appended after its audit.
+    if any(text.strip() for text in payload.instructions):
+        raise ApiError(
+            409,
+            "REPLICA_REANALYSIS_REQUIRED",
+            "补充要求会影响原生方案，请返回选图填写要求并重新诊断。",
+        )
+    values.update(
+        confirmed_instructions=payload.instructions,
+        confirmed_instructions_hash=confirmed_hash,
+        submission_complete=False,
+    )
+    row.payload = values
+    session.commit()
+    request.state.replica_session_id = document_id
+    body = ReferenceRemixJobCreate.model_validate(
+        {
+            "type": "reference_remix",
+            "intent": "submit",
+            "display_name": "一键复刻 · "
+            + ("一比一模仿" if method == "exact" else "风格复刻"),
+            "input": {
+                "product_asset_ids": values["product_asset_ids"],
+                "reference_asset_ids": list(
+                    dict.fromkeys(r["asset_id"] for r in values["references"])
+                ),
+            },
+            "configuration": {
+                "reference_skill": skill_id,
+                "replication_method": method,
+                "replica_plan_hash": payload.plan_hash,
+                "image_count": len(values["plans"]),
+                "platform_code": values["platform_code"],
+                "language": values["language"],
+                "quality": "high",
+                "aspect_ratio": "follow-reference",
+            },
+        }
+    )
+    created = create_job(
+        payload=body,
+        request=request,
+        background_tasks=background_tasks,
+        workspace=workspace,
+        session=session,
+        idempotency_header="replica-native-" + document_id + "-" + payload.plan_hash,
+    )
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    row.status, row.payload = (
+        "generating",
+        {**values, "job_ids": [created.id], "submission_complete": True},
+    )
+    session.commit()
+    return _wire(row)
+
+
 class ImageRetryRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=80)
 
@@ -765,7 +938,11 @@ def retry_image(
         raise ApiError(404, "REPLICA_JOB_NOT_FOUND", "请从当前复刻结果选择图片。")
     retried = retry_job(
         job_id=job_id,
-        payload=RetryRequest(scope=RetryScope.FAILED),
+        payload=RetryRequest(
+            scope=RetryScope.FULL
+            if values.get("replication_method") in SKILLS
+            else RetryScope.FAILED
+        ),
         request=request,
         background_tasks=background_tasks,
         workspace=workspace,

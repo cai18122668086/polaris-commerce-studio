@@ -2473,7 +2473,9 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
-        if request.planning_profile == refined_detail.PROFILE:
+        if request.planning_profile == "replica_native_contract":
+            payload.update({"max_completion_tokens": 16000})
+        elif request.planning_profile == refined_detail.PROFILE:
             payload.update({"max_completion_tokens": 24000})
         elif request.planning_profile == "amazon_visual_suite":
             payload.update(
@@ -10899,6 +10901,8 @@ def _planner_prompt(request: PlannerRequest) -> str:
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile == "replica_native_contract":
+        return "Author the requested native Skill contract from actual attached pixels. JSON only.\n" + "\n".join(request.product_information)
     if request.planning_profile == refined_detail.PROFILE:
         return refined_detail.planner_prompt(request)
     if request.planning_profile == "aurora_detail_revision_scope":

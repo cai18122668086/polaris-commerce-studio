@@ -249,7 +249,7 @@ class ProductImageConfiguration(BaseModel):
 
 class ReferenceRemixInput(BaseModel):
     product_asset_ids: list[str] = Field(min_length=1, max_length=8)
-    reference_asset_ids: list[str] = Field(min_length=1, max_length=8)
+    reference_asset_ids: list[str] = Field(min_length=1, max_length=20)
 
     @model_validator(mode="after")
     def unique_assets(self) -> "ReferenceRemixInput":
@@ -260,14 +260,23 @@ class ReferenceRemixInput(BaseModel):
 
 
 class ReferenceRemixConfiguration(BaseModel):
-    reference_skill: Literal["reference-visual-reverse-remix"] | None = None
+    reference_skill: (
+        Literal[
+            "reference-visual-reverse-remix",
+            "aurora-ecommerce-reference-remix",
+            "all-category-style-benchmark-still",
+        ]
+        | None
+    ) = None
+    replication_method: Literal["exact", "style"] | None = None
+    replica_plan_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     platform_code: str = Field(default="tmall", min_length=1, max_length=32)
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     selling_points: list[str] = Field(default_factory=list, max_length=12)
     aspect_ratio: Literal[
         "follow-reference", "1:1", "3:4", "4:3", "4:5", "9:16", "16:9"
     ] = "follow-reference"
-    image_count: int = Field(default=1, ge=1, le=12)
+    image_count: int = Field(default=1, ge=1, le=60)
     execution_mode: Literal["planner", "direct_prompt"] = "planner"
     inspiration_product_first: bool = False
     quality: Literal["low", "medium", "high"] = "high"
@@ -280,6 +289,19 @@ class ReferenceRemixConfiguration(BaseModel):
     original_remix_prompt: str = Field(default="", max_length=4000)
     forbidden_transfer: str = Field(default="", max_length=2000)
     post_generation_review: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def preserve_legacy_count_limit(self) -> "ReferenceRemixConfiguration":
+        if (
+            self.reference_skill
+            not in {
+                "aurora-ecommerce-reference-remix",
+                "all-category-style-benchmark-still",
+            }
+            and self.image_count > 12
+        ):
+            raise ValueError("legacy reference remix supports at most 12 images")
+        return self
 
 
 class ModelPoseAssetRequest(BaseModel):
@@ -364,9 +386,9 @@ class DetailPackInput(BaseModel):
 
 class DetailPackConfiguration(BaseModel):
     detail_skill: Literal["quick", "refined"] = Field(default_factory=lambda: "quick")
-    website_contract_version: (
-        Literal["WEBSITE_LEAN_V1", "WEBSITE_DIRECT_V2"] | None
-    ) = None
+    website_contract_version: Literal["WEBSITE_LEAN_V1", "WEBSITE_DIRECT_V2"] | None = (
+        None
+    )
     brandless_confirmation: str | None = Field(
         default=None, min_length=2, max_length=240
     )

@@ -19,6 +19,7 @@ ENDPOINTS = {
     "1688": ("/api/1688/get-item-detail/v1", 10),
     "jd": ("/api/jd/get-item-detail/v3", 40),
 }
+TAOBAO_FALLBACK_ENDPOINT = "/api/taobao/get-item-detail/v3"
 MARKET_HOSTS = {
     "taobao": ("taobao.com", "tb.cn"),
     "tmall": ("tmall.com",),
@@ -328,6 +329,26 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
         )
     endpoint = ENDPOINTS[platform][0]
     try:
+        return _fetch_endpoint(token, platform, item_id, canonical, endpoint)
+    except ApiError as error:
+        if platform not in {"taobao", "tmall"} or error.code != "PRODUCT_UNAVAILABLE":
+            raise
+    # V6 sometimes reports a live item as unavailable. Try the independently
+    # verified V3 once, never recursively or after transport/balance failures.
+    product = _fetch_endpoint(
+        token, platform, item_id, canonical, TAOBAO_FALLBACK_ENDPOINT
+    )
+    product["attemptedEndpoints"] = [endpoint, TAOBAO_FALLBACK_ENDPOINT]
+    # V3's account tariff and charges for unsuccessful calls are unverified.
+    # Do not reuse the V6 price or imply that the additional call was free.
+    product["costCents"] = None
+    return product
+
+
+def _fetch_endpoint(
+    token: str, platform: str, item_id: str, canonical: str, endpoint: str
+) -> dict:
+    try:
         request = Request(
             "https://api.justoneapi.com"
             + endpoint
@@ -373,6 +394,16 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
             messages.get(code, "商品服务返回异常，请稍后重试。"),
         )
     body = wire.get("data")
+    if (
+        endpoint == TAOBAO_FALLBACK_ENDPOINT
+        and isinstance(body, Mapping)
+        and str(body.get("num_iid", "")) != item_id
+    ):
+        raise ApiError(
+            502,
+            "PRODUCT_ID_MISMATCH",
+            "采集服务返回的商品与链接不一致，请稍后重试或上传参考图。",
+        )
     if isinstance(body, dict) and isinstance(body.get("description"), dict):
         detail_url = body["description"].get("detailUrl", "")
         parsed = urlparse(detail_url)
@@ -392,4 +423,6 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
                     )
             except Exception:
                 pass
-    return normalize_product(body, platform, item_id, canonical)
+    product = normalize_product(body, platform, item_id, canonical)
+    product["endpoint"] = endpoint
+    return product

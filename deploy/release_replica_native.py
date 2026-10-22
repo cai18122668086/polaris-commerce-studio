@@ -142,11 +142,27 @@ def add_main_api(config, live):
     original = json.loads(subprocess.check_output([
         "docker", "compose", "-f", source, "config", "--format", "json"
     ]))
-    config["services"]["api"] = deepcopy(original["services"]["api"])
-    for section in ("networks", "volumes", "secrets", "configs"):
-        for key, value in original.get(section, {}).items():
+    service = deepcopy(original["services"]["api"])
+    config["services"]["api"] = service
+    references = {
+        "networks": list(service.get("networks", {})),
+        "volumes": [row["source"] for row in service.get("volumes", []) if row["type"] == "volume"],
+        "secrets": [row["source"] for row in service.get("secrets", [])],
+        "configs": [row["source"] for row in service.get("configs", [])],
+    }
+    for section, keys in references.items():
+        for key in keys:
+            value = deepcopy(original[section][key])
             current = config.setdefault(section, {})
-            assert key not in current or current[key] == value, section + " definition differs"
+            if section in {"networks", "volumes"}:
+                name = value["name"]
+                subprocess.run(["docker", "network" if section == "networks" else "volume", "inspect", name],
+                               check=True, stdout=subprocess.DEVNULL)
+                assert key not in current or current[key]["name"] == name, section + " target differs"
+                # Reuse existing resources without reconciling their definitions.
+                value = {"name": name, "external": True}
+            else:
+                assert key not in current or current[key] == value, section + " definition differs"
             current[key] = value
 
 

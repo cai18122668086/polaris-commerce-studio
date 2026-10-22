@@ -10947,7 +10947,7 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
         ordered_roles = tuple(source.source_role for source in request.sources)
         input_contract = (
             "The attached images are ordered by semantic role: "
-            + "; ".join(
+            + " and ".join(
                 f"Image {index + 1} is "
                 + ("product_identity_reference" if role == "product_reference"
                    else "visual_strategy_reference")
@@ -10976,7 +10976,7 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "unsupported "
             "claims out of the result. The original_remix_prompt must put the hard "
             "composition skeleton before style adjectives and must be executable by "
-            "an image model using the same two attached images. "
+            "an image model using the same attached images in their stated roles. "
             "Each string field must stay under 900 characters. Do not copy, quote, "
             "or summarize the verified Skill protocol, its file paths, or its "
             "schema text into any field. Return JSON only."

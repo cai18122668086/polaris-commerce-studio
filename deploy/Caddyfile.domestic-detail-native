@@ -42,6 +42,10 @@ www.tengliapi.xyz {
 	}
 
 	handle @api {
+		@one_click_replica path_regexp one_click_replica ^/api/v1/workspaces/[^/]+/replica/
+		handle @one_click_replica {
+			reverse_proxy replica-api:8000
+		}
 		@native_detail_jobs path /api/v1/runtime /api/v1/workspaces/*/jobs /api/v1/workspaces/*/jobs/*
 		handle @native_detail_jobs {
 			reverse_proxy detail-api:8000

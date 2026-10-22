@@ -19,6 +19,7 @@ import {
 import { useMemo, useRef, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate } from "@/components/workspace-job-gate";
 import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
@@ -506,6 +507,8 @@ export function ModelPoseTransferWorkspace() {
           <span data-active={Boolean(resultAssets.length) || undefined}><i>04</i>下载结果</span>
         </div>
 
+        <JobProgressFeedback pending={createJob.isPending && !jobId} />
+
         <div className={styles.workspaceGrid}>
           <main className={styles.mainColumn}>
             <section className={styles.panel}>
@@ -648,11 +651,8 @@ export function ModelPoseTransferWorkspace() {
                   <div><span>04</span><div><h2>任务进度</h2><p>任务会自动刷新，完成后可直接查看和下载。</p></div></div>
                   {job.data && <StatusBadge status={job.data.status} />}
                 </div>
-                <div className={styles.progressPanel}>
-                  <div><span>{progressText}</span><strong>{Math.round(job.data?.progress ?? 0)}%</strong></div>
-                  <div className={styles.progressTrack}><i style={{ width: `${Math.max(0, Math.min(100, job.data?.progress ?? 0))}%` }} /></div>
-                  {job.data?.error_message ? <p role="alert">{job.data.error_message}</p> : null}
-                </div>
+                <JobProgressFeedback job={job.data} error={job.error} lastSyncedAt={job.dataUpdatedAt}
+                  refreshing={job.isFetching} onRefresh={() => void job.refetch()} />
               </section>
             ) : null}
 

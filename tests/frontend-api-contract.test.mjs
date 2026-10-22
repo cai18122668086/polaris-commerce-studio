@@ -175,13 +175,12 @@ test("upload inputs match the backend image contract and recover from file-level
   assert.match(uploadContract, /IMAGE_UPLOAD_EXTENSIONS = \["\.jpg", "\.jpeg", "\.png", "\.webp"\]/);
   assert.match(uploadContract, /"image\/jpeg",\s*"image\/png",\s*"image\/webp"/);
   const dropZone = await utf8("components/image-drop-zone.tsx");
-  for (const source of [detail, commerce, dropZone]) assert.match(source, /accept=\{IMAGE_UPLOAD_ACCEPT\}/);
-  for (const source of [assets, localEdit, product]) assert.match(source, /<ImageDropZone/);
+  assert.match(dropZone, /accept=\{IMAGE_UPLOAD_ACCEPT\}/);
+  for (const source of [assets, detail, commerce, localEdit, product]) assert.match(source, /<ImageDropZone/);
   for (const source of [assets, detail, localEdit, commerce, product, dropZone]) assert.doesNotMatch(source, /accept="image\/\*"/);
   assert.match(dropZone, /event\.currentTarget\.value = ""/);
   assert.match(assets, /await upload\.mutateAsync\(\{ file \}\)/);
   assert.match(detail, /const failures: string\[\] = \[\]/);
-  assert.match(detail, /event\.currentTarget\.value = ""/);
   assert.match(detail, /setUploadError\(/);
   for (const source of [commerce, product]) {
     assert.match(source, /const failures: string\[\] = \[\]/);

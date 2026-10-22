@@ -8,6 +8,7 @@ import {
   MapPin, RotateCcw, ShieldCheck, Sparkles, Store, Upload, X,
 } from "lucide-react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
 import { DetailSkillChoice } from "@/components/detail-skill-choice";
@@ -28,7 +29,7 @@ import { useConfirmPlan, useCreateJob, useDomesticDetailFinalReview, useFinalize
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
-import { IMAGE_UPLOAD_ACCEPT } from "@/lib/image-upload";
+import { validateImageUpload } from "@/lib/image-upload";
 import { detailSkillSettings, savedDetailSkill, type DetailSkill } from "@/lib/detail-skills";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
@@ -108,7 +109,8 @@ function SavedSource({ workspaceId, assetId, index }: { workspaceId?: string; as
 }
 
 export default function DetailPackPage() {
-  const fileInput = useRef<HTMLInputElement>(null);
+  const uploadBatchLock = useRef(false);
+  const [uploadingSources, setUploadingSources] = useState(false);
   const searchParams = useSearchParams();
   const router = useRouter();
   const [draftPageCount, setPageCount] = useState(8);
@@ -229,26 +231,36 @@ export default function DetailPackPage() {
   };
 
   const addFiles = async (files: File[]) => {
-    if (!files.length) return;
-    setUploadError(undefined);
-    const failures: string[] = [];
-    for (const file of files.slice(0, 8 - sources.length)) {
-      const previewUrl = URL.createObjectURL(file);
-      try {
-        const asset = await upload.mutateAsync({ file, mediaKind: "image" });
-        setSources((items) => [...items, { asset, previewUrl, role: "product_reference" }]);
-      } catch (error) {
-        URL.revokeObjectURL(previewUrl);
-        failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
+    if (!workspace?.id || jobId || createJob.isPending || uploadBatchLock.current) return;
+    const selected = validateImageUpload(files, { multiple: true, maxFiles: Math.max(0, 8 - sources.length) });
+    setUploadError(selected.error);
+    if (selected.error || !selected.files.length) return;
+    uploadBatchLock.current = true;
+    setUploadingSources(true);
+    try {
+      const failures: string[] = [];
+      for (const file of selected.files) {
+        const previewUrl = URL.createObjectURL(file);
+        try {
+          const asset = await upload.mutateAsync({ file, mediaKind: "image" });
+          setSources((items) => [...items, { asset, previewUrl, role: "product_reference" }]);
+        } catch (error) {
+          URL.revokeObjectURL(previewUrl);
+          failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
+        }
       }
-    }
-    if (failures.length) {
-      const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
-      setUploadError(`${failures[0]}${remaining}`);
+      if (failures.length) {
+        const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
+        setUploadError(`${failures[0]}${remaining}`);
+      }
+    } finally {
+      uploadBatchLock.current = false;
+      setUploadingSources(false);
     }
   };
 
   const removeSource = (assetId: string) => {
+    if (uploadBatchLock.current || jobId || createJob.isPending) return;
     setSources((items) => {
       const removed = items.find((item) => item.asset.id === assetId);
       if (removed) URL.revokeObjectURL(removed.previewUrl);
@@ -257,7 +269,7 @@ export default function DetailPackPage() {
   };
 
   const createPlanningJob = async () => {
-    if (!workflowAvailable || !productSources.length || !productName.trim() || !workspace) return;
+    if (!workflowAvailable || !productSources.length || !productName.trim() || !workspace || uploadBatchLock.current || createJob.isPending || jobId) return;
     const configuration = {
       product_name: productName.trim(),
       platform_code: marketplaceId,
@@ -334,13 +346,15 @@ export default function DetailPackPage() {
 
           <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip">1</span><div><h2>商品素材</h2><p>每张图片都会先保存到当前工作区。</p></div>{sourceCount > 0 && <span className="validation-chip"><CheckCircle2 size={15} />已上传 {sourceCount} 张</span>}</div>
-            <div className="multi-uploader">
-              {jobId ? savedAssetIds.map((assetId, index) => <SavedSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={Boolean(jobId)} onChange={event => {
-                const role = event.target.value as UploadedSource["role"]; setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));
-              }}><option value="product_reference">商品图</option><option value="style_reference">风格参考</option></select>}<button aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button><i><GripVertical size={14} /></i></div>)}
-              {!jobId && sources.length < 8 && <button className="upload-more" onClick={() => fileInput.current?.click()} disabled={!workspace || upload.isPending}>{upload.isPending ? <LoaderCircle className="spin" size={23} /> : <ImagePlus size={23} />}<strong>{upload.isPending ? "上传中" : "添加素材"}</strong><small>最多 8 张</small></button>}
-              <input ref={fileInput} className="visually-hidden" type="file" multiple accept={IMAGE_UPLOAD_ACCEPT} onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addFiles(files); }} />
-            </div>
+            <ImageDropZone label="详情商品素材" multiple maxFiles={Math.max(0, 8 - sources.length)}
+              disabled={Boolean(jobId) || !workspace?.id || createJob.isPending} busy={uploadingSources} onFiles={addFiles}>
+              {({ openFileDialog, disabled: uploadDisabled, busy }) => <div className="multi-uploader">
+                {jobId ? savedAssetIds.map((assetId, index) => <SavedSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={uploadingSources || createJob.isPending} onChange={event => {
+                  const role = event.target.value as UploadedSource["role"]; setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));
+                }}><option value="product_reference">商品图</option><option value="style_reference">风格参考</option></select>}<button type="button" disabled={uploadingSources || createJob.isPending} aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button></div>)}
+                {!jobId && sources.length < 8 && <button type="button" className="upload-more" onClick={openFileDialog} disabled={uploadDisabled}>{busy ? <LoaderCircle className="spin" size={23} /> : <ImagePlus size={23} />}<strong>{busy ? "上传中" : "添加素材"}</strong><small>最多 8 张</small></button>}
+              </div>}
+            </ImageDropZone>
             {uploadError && <div className="api-state api-state--error" role="alert"><AlertCircle size={20} /><div><strong>部分素材未能上传</strong><p>{uploadError}</p></div></div>}
           </section>
 
@@ -421,7 +435,7 @@ export default function DetailPackPage() {
               {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
-                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? marketRegion === "domestic" ? "生成整套详情图" : "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending || uploadingSources}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? marketRegion === "domestic" ? "生成整套详情图" : "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
               ) : job.data?.status === "awaiting_final_review" && originalAutomaticAuthority ? (
                 <AutomaticDeliveryRecovery workspaceId={workspace?.id} job={job.data} authorization={originalAutomaticAuthority} />
               ) : job.data?.status === "awaiting_final_review" && allowsJobAction(job.data.allowed_actions, "finalize") ? (

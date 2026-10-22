@@ -3222,3 +3222,74 @@ def test_planner_walks_failover_keys_from_top_to_bottom() -> None:
         ("https://fallback.example/v1/chat/completions", "Bearer key-one"),
         ("https://fallback.example/v1/chat/completions", "Bearer key-two"),
     ]
+
+
+@pytest.mark.parametrize("primary_status,enabled,expected_calls", [
+    (200, True, 1), (403, True, 2), (503, True, 2), (403, False, 1),
+])
+def test_replica_image_fallback_is_independent_of_planner_accounts(
+    primary_status: int, enabled: bool, expected_calls: int,
+) -> None:
+    from app.config import Settings
+    from app.xinghe_agent import build_tengli_gateway
+
+    class Transport(_RecordingTransport):
+        async def post_multipart(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+            if not self.multipart_calls and primary_status != 200:
+                self.multipart_calls.append(kwargs)
+                return primary_status, {"error": {"code": "account_unavailable"}}
+            return await super().post_multipart(**kwargs)
+
+    transport = Transport()
+    gateway = build_tengli_gateway(Settings(
+        _env_file=None,
+        analysis_api_key="text-primary-key", analysis_base_url="https://text.example",
+        tengli_api_key="image-backup-key", tengli_base_url="https://image-backup.example",
+        tengli_image_model="gpt-image-2",
+        image_api_key="image-primary-key", image_base_url="https://image-primary.example",
+        image_model="gpt-image-2.5-flare",
+        provider_failover_enabled=True, provider_failover_api_key="text-backup-key",
+        provider_failover_base_url="https://text-backup.example",
+        replica_image_failover_enabled=enabled,
+    ))
+    gateway.transport = transport
+    result = asyncio.run(gateway.edit(ImageEditRequest(
+        workspace_id="ws", job_id="job", job_item_id="item", attempt_id="attempt",
+        page_number=1, group_key="replica", sources=(), prompt="Original cup poster",
+        quality="high", idempotency_key="replica-route-test", size="1024x1024",
+    )))
+    assert len(transport.multipart_calls) == expected_calls
+    first = transport.multipart_calls[0]
+    assert first["url"] == "https://image-primary.example/v1/images/edits"
+    assert first["headers"]["Authorization"] == "Bearer image-primary-key"
+    assert dict(first["fields"])["model"] == "gpt-image-2.5-flare"
+    assert all("text-backup.example" not in c["url"] for c in transport.multipart_calls)
+    assert all("image-backup.example" not in r.planner_base_url for r in gateway._ordered_routes())
+    if expected_calls == 2:
+        second = transport.multipart_calls[1]
+        assert second["url"] == "https://image-backup.example/v1/images/edits"
+        assert second["headers"]["Authorization"] == "Bearer image-backup-key"
+        assert dict(second["fields"])["model"] == "gpt-image-2"
+        assert result.artifact is not None
+
+
+def test_replica_image_unknown_outcome_does_not_dispatch_to_backup() -> None:
+    class Transport(_RecordingTransport):
+        async def post_multipart(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+            self.multipart_calls.append(kwargs)
+            raise XingheAgentError("PROVIDER_TRANSPORT_FAILED", "Timeout", retryable=True)
+
+    transport = Transport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="primary-key", base_url="https://primary.example",
+        planner_model="gpt-5.6-sol", image_model="gpt-image-2.5-flare",
+        image_failover_api_key="backup-key", image_failover_base_url="https://backup.example",
+        transport=transport,
+    )
+    result = asyncio.run(gateway.edit(ImageEditRequest(
+        workspace_id="ws", job_id="job", job_item_id="item", attempt_id="attempt",
+        page_number=1, group_key="replica", sources=(), prompt="Original cup poster",
+        quality="high", idempotency_key="replica-unknown-test", size="1024x1024",
+    )))
+    assert len(transport.multipart_calls) == 1
+    assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN

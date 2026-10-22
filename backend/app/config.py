@@ -187,6 +187,8 @@ class Settings(BaseSettings):
     provider_failover_model: str = "gpt-5.6-sol"
     provider_failover_image_model: str = "gpt-image-2"
     provider_rotation_order: str = "primary,failover"
+    # Opt in only on the isolated one-click replica API/worker.
+    replica_image_failover_enabled: bool = False
     tengli_smoke_budget_usd: float = Field(
         default=200,
         gt=0,

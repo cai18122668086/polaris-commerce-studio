@@ -164,3 +164,18 @@ def test_oversized_generation_does_not_consume_an_invocation_token(
         )
     assert calls == []
     assert not (run.root / "invocations.json").exists()
+
+
+@pytest.mark.parametrize("mode", ["L", "P", "I;16"])
+def test_non_rgb_png_depth_and_mode_keep_original_transport_bytes(tmp_path, mode):
+    run = run_at(tmp_path, "exact")
+    path = tmp_path / "reference.png"
+    Image.new(mode, (512, 512), 1024 if mode == "I;16" else 27).save(
+        path, compress_level=0, bits=8
+    )
+    original = path.read_bytes()
+    assert len(original) > 256 * 1024
+    source = run.sources([path])[0]
+    assert source.content_type == "image/png"
+    assert source.payload == original
+    assert path.read_bytes() == original

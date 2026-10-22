@@ -29,7 +29,12 @@ from .justone import fetch_product, image_url, parse_product_link
 from .models import JobRecord, ReplicaDocumentRecord, WorkspaceRecord, utc_now
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .new_image_skill_provider import TARGET_DIMENSIONS
-from .replica_native import SKILLS, NativeReplicaRun, native_accounting
+from .replica_native import (
+    SKILLS,
+    NativeReplicaRun,
+    ReplicaSegmentationInvalid,
+    native_accounting,
+)
 from .schemas_v1 import ReferenceRemixJobCreate
 from .services import get_ready_assets, lock_workspace_limits
 from .skill_protocol import load_skill_protocol
@@ -456,12 +461,11 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
             run.root = run.root / payload["analysis_attempt_id"]
             run.root.mkdir(parents=True, exist_ok=True)
             run.run = run.root
-            run.on_progress = lambda progress, label: _save(
-                app,
-                document_id,
-                "analysing",
-                {**payload, "progress": progress, "analysis_stage": label},
-            )
+            def progress_updated(progress: int, label: str) -> None:
+                payload.update(progress=progress, analysis_stage=label)
+                _save(app, document_id, "analysing", dict(payload))
+
+            run.on_progress = progress_updated
             plans = await run.prepare(payload, records)
             snapshot = await run.snapshot()
             binding = {
@@ -606,7 +610,7 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 "plans": plans,
                 "error_code": getattr(error, "code", "REPLICA_ANALYSIS_FAILED"),
                 "error": error.message
-                if isinstance(error, ApiError)
+                if isinstance(error, (ApiError, ReplicaSegmentationInvalid))
                 else "分析服务暂时不可用，请稍后再试。",
             },
         )

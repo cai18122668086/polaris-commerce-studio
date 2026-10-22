@@ -143,6 +143,8 @@ def add_main_api(config, live):
         "docker", "compose", "-f", source, "config", "--format", "json"
     ]))
     service = deepcopy(original["services"]["api"])
+    # Dependencies already run; this overlay must not manage or redeclare them.
+    service.pop("depends_on", None)
     config["services"]["api"] = service
     references = {
         "networks": list(service.get("networks", {})),

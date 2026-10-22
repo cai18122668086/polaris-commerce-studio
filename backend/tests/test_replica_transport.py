@@ -164,3 +164,59 @@ def test_oversized_generation_does_not_consume_an_invocation_token(
         )
     assert calls == []
     assert not (run.root / "invocations.json").exists()
+
+
+@pytest.mark.parametrize("mode", ["L", "P", "I;16"])
+def test_non_rgb_png_depth_and_mode_keep_original_transport_bytes(tmp_path, mode):
+    run = run_at(tmp_path, "exact")
+    path = tmp_path / "reference.png"
+    Image.new(mode, (512, 512), 1024 if mode == "I;16" else 27).save(
+        path, compress_level=0, bits=8
+    )
+    original = path.read_bytes()
+    assert len(original) > 256 * 1024
+    source = run.sources([path])[0]
+    assert source.content_type == "image/png"
+    assert source.payload == original
+    assert path.read_bytes() == original
+
+
+def test_lossless_transport_preserves_color_profile_and_orientation_metadata(tmp_path):
+    run = run_at(tmp_path, "exact")
+    path = tmp_path / "reference.png"
+    profile = b"synthetic ICC byte-preservation fixture" * 20
+    exif = Image.Exif()
+    exif[274] = 6
+    Image.new("RGB", (512, 512), "blue").save(
+        path, compress_level=0, icc_profile=profile, exif=exif
+    )
+    original = path.read_bytes()
+    source = run.sources([path])[0]
+    assert source.content_type == "image/webp"
+    with Image.open(BytesIO(source.payload)) as image:
+        assert image.info["icc_profile"] == profile
+        assert image.getexif()[274] == 6
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("metadata", ["gamma", "transparency"])
+def test_png_metadata_without_exact_webp_representation_keeps_original_bytes(
+    tmp_path, metadata
+):
+    import struct
+
+    from PIL.PngImagePlugin import PngInfo
+
+    run = run_at(tmp_path, "exact")
+    path = tmp_path / "reference.png"
+    options = {"compress_level": 0}
+    if metadata == "gamma":
+        info = PngInfo()
+        info.add(b"gAMA", struct.pack(">I", 70000))
+        options["pnginfo"] = info
+    else:
+        options["transparency"] = (0, 0, 255)
+    Image.new("RGB", (512, 512), "blue").save(path, **options)
+    source = run.sources([path])[0]
+    assert source.content_type == "image/png"
+    assert source.payload == path.read_bytes()

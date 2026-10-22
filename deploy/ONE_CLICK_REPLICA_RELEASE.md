@@ -51,3 +51,5 @@ Production verification on 2026-10-22:
 - Live external-auth upload, Tengli analysis, confirmation, dedicated Celery queue, generation and page refresh restoration passed. Production job: `job_daf851fa862e40268b3216cd96ca4c5c`.
 - Just One's account exhausted its trial allowance and returned code 601 in production. The user has been asked to recharge. Manual reference-image generation remains available; do not silently switch to the legacy crawler.
 - Desktop navigation uses single-line labels; below 1400px the existing complete navigation menu is used.
+
+Navigation sizing is applied at the end of app/focus-inspired.css, after the active theme rules; long account labels are bounded with ellipsis.

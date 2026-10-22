@@ -368,10 +368,10 @@ class NativeReplicaRun:
                 content_type = Image.MIME.get(im.format or "", "image/png")
                 # Physical crops/snapshots stay byte-for-byte unchanged. Only
                 # transport lossless pixels in a smaller supported encoding.
-                if im.format == "PNG" and im.mode in {"RGB", "RGBA"} and len(data) > 256 * 1024 and max(im.size) <= 16383:
+                if im.format == "PNG" and im.mode in {"RGB", "RGBA"} and len(data) > 256 * 1024 and max(im.size) <= 16383 and not {"gamma", "transparency"}.intersection(im.info):
                     compact = BytesIO()
                     try:
-                        im.save(compact, format="WEBP", lossless=True, method=4, exact=True)
+                        im.save(compact, format="WEBP", lossless=True, method=4, exact=True, icc_profile=im.info.get("icc_profile", b""), exif=im.info.get("exif", b""))
                     except (OSError, ValueError):
                         pass
                     else:

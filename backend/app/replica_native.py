@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -405,6 +406,7 @@ class NativeReplicaRun:
         *,
         schemas: tuple[str, ...] = (),
         paths: list[Path] | None = None,
+        bind_evidence: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         from .xinghe_agent import PlannerRequest
 
@@ -510,12 +512,18 @@ class NativeReplicaRun:
                 {"stage": stage, "provider_error_code": result.error_code},
             )
             raise ReplicaAnalysisUnavailable()
-        self._validate_model_paths(result.payload)
+        value = dict(result.payload)
+        # Audit file identity comes from the server, never model placeholders.
+        # Bind only those authoritative fields before validating every path;
+        # observations, decisions and any other model paths stay untrusted.
+        if bind_evidence is not None:
+            bind_evidence(value)
+        self._validate_model_paths(value)
         write_json(
             self.root / "contracts" / f"raw-{stage}-{uuid4().hex[:8]}.json",
-            result.payload,
+            value,
         )
-        return dict(result.payload)
+        return value
 
     def _validate_model_paths(self, value: Any, key: str = "") -> None:
         if isinstance(value, dict):
@@ -548,15 +556,7 @@ class NativeReplicaRun:
         paths: list[Path] | None = None,
         **arguments: Any,
     ) -> dict[str, Any]:
-        error = ""
-        for attempt in range(3):
-            value = await self.ask(
-                f"{stage}-{attempt}",
-                instruction,
-                {"data": context, "validation_error": error},
-                schemas=schemas,
-                paths=paths,
-            )
+        def bind_evidence(value: dict[str, Any]) -> None:
             # A vision model observes pixels; it cannot compute cryptographic
             # hashes. Bind its independent observations to the server-read files.
             if self.method == "exact" and command == "audit-current":
@@ -587,6 +587,17 @@ class NativeReplicaRun:
                 value["artwork_sha256"] = pool[context["current_target"]]["artwork"][
                     "sha256"
                 ]
+
+        error = ""
+        for attempt in range(3):
+            value = await self.ask(
+                f"{stage}-{attempt}",
+                instruction,
+                {"data": context, "validation_error": error},
+                schemas=schemas,
+                paths=paths,
+                bind_evidence=bind_evidence,
+            )
             path = self.root / "contracts" / f"{stage}-{attempt}-{uuid4().hex[:8]}.json"
             write_json(path, value)
             try:

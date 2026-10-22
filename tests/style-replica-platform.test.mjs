@@ -7,17 +7,7 @@ const source = await readFile(
   "utf8",
 );
 
-test("style replica recognizes JD Global Purchase product links", () => {
-  assert.match(
-    source,
-    /matches\("jd\.com"\)\s*\|\|\s*matches\("3\.cn"\)\s*\|\|\s*matches\("npcitem\.jd\.hk"\)/,
-  );
-});
-
-test("style replica recognizes Pinduoduo product links", () => {
-  assert.match(
-    source,
-    /matches\("pinduoduo\.com"\) \|\| matches\("yangkeduo\.com"\)/,
-  );
-  assert.match(source, /platform: "pinduoduo"/);
+test("source selection advertises only supported data providers", () => {
+  assert.match(source, /label="来源平台"[^\n]+options=\{\[\["auto", "从链接自动识别"\], \["taobao", "淘宝"\], \["tmall", "天猫"\], \["1688", "1688"\], \["jd", "京东"\]\]\}/);
+  assert.match(source, /风格参考图/);
 });

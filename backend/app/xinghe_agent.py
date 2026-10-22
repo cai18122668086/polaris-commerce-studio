@@ -10945,20 +10945,17 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
         )
     if request.planning_profile == "reference_visual_remix":
         ordered_roles = tuple(source.source_role for source in request.sources)
-        if ordered_roles and ordered_roles[0] == "product_reference":
-            input_contract = (
-                "The attached images are ordered by semantic role: Image 1 is "
-                "product_identity_reference and Image 2 is "
-                "visual_strategy_reference. The product image is the only authority "
-                "for product identity; the visual-strategy image is composition-only."
+        input_contract = (
+            "The attached images are ordered by semantic role: "
+            + " and ".join(
+                f"Image {index + 1} is "
+                + ("product_identity_reference" if role == "product_reference"
+                   else "visual_strategy_reference")
+                for index, role in enumerate(ordered_roles)
             )
-        else:
-            input_contract = (
-                "The attached images are ordered by semantic role: Image 1 is "
-                "visual_strategy_reference and Image 2 is "
-                "product_identity_reference. The product image is the only authority "
-                "for product identity; the visual-strategy image is composition-only."
-            )
+            + ". Product images are the only authority for product identity; "
+            "visual-strategy images are composition-only."
+        )
         return (
             "You are the reference-visual-reverse-remix visual analysis stage. "
             + input_contract
@@ -10979,10 +10976,20 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "unsupported "
             "claims out of the result. The original_remix_prompt must put the hard "
             "composition skeleton before style adjectives and must be executable by "
-            "an image model using the same two attached images. "
+            "an image model using the same attached images in their stated roles. "
             "Each string field must stay under 900 characters. Do not copy, quote, "
             "or summarize the verified Skill protocol, its file paths, or its "
             "schema text into any field. Return JSON only."
+            "\nThe following user brief is authoritative. Use the requested canvas "
+            "size even when the strategy image has a different aspect ratio; "
+            "adapt its spatial anchors to that canvas. All newly authored visible "
+            "copy and the original_remix_prompt must use target_language, while "
+            "existing product labels retain their original wording.\n"
+            + json.dumps({"target_language": request.language,
+                          "canvas_size": request.size,
+                          "target_platform": request.platform_code,
+                          "user_requirements": request.product_information},
+                         ensure_ascii=False)
         )
     if request.planning_profile == "aurora_v20_visual_audit":
         return (

@@ -15,7 +15,7 @@ const utf8 = (file) => readFile(path.join(root, file), "utf8");
 const EXPECTED_FEATURE_IDS = [
   "local-edit",
   "change-background",
-  "reference-remix",
+  "one-click-replica",
   "detail-pack",
   "domestic-main-image",
   "amazon-visual-suite",
@@ -84,7 +84,7 @@ function mappedImages() {
   ]);
 }
 
-test("the homepage grid covers all six one-click tasks without changing navigation", () => {
+test("the homepage grid covers all one-click tasks and their registered routes", () => {
   const featured = FEATURE_REGISTRY.filter((feature) => feature.featured);
   assert.deepEqual(
     featured.map((feature) => feature.id),
@@ -96,7 +96,7 @@ test("the homepage grid covers all six one-click tasks without changing navigati
     [
       "/workspace/local-edit",
       "/workspace/product-image/change-background",
-      "/workspace/reference-remix",
+      "/style-replica",
       "/workspace/detail-pack",
       "/workspace/domestic-main-image",
       "/workspace/amazon-visual-suite",

@@ -119,7 +119,8 @@ export function TopNavigation({
       active={
         pathname === menu.href ||
         (menu.href === "/tools" && pathname.startsWith("/tools/")) ||
-        menuContainsFeature(menu, currentFeature?.id)
+        (menuContainsFeature(menu, currentFeature?.id) &&
+          !PRIMARY_NAVIGATION_LINKS.some(item => item.href === pathname))
       }
       open={openMenu === menu.key}
       onClose={() => setOpenMenu(null)}

@@ -44,6 +44,7 @@ from .errors import ApiError
 from .inspiration_routes import router as inspiration_router
 from .legacy_detail_proxy import LegacyDetailProxy
 from .models import WorkspaceLimitRecord
+from .replica import router as replica_router
 from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse
 from .services import set_credit_enforcement_enabled, set_quota_enabled
@@ -503,6 +504,7 @@ def create_app(
     application.include_router(admin_management_router)
     application.include_router(inspiration_router)
     application.include_router(ecommerce_router)
+    application.include_router(replica_router)
     application.include_router(ecommerce_account_router)
     application.include_router(ecommerce_crawl_tasks_router)
     application.include_router(ecommerce_worker_router)

@@ -43,6 +43,7 @@ export type NavigationMenuDefinition = {
 export const PRIMARY_NAVIGATION_LINKS = [
   { label: "首页", href: "/" },
   { label: "灵感专区", href: "/inspiration" },
+  { label: "一键复刻", href: "/style-replica" },
   { label: "素材中心", href: "/assets" },
   { label: "生成记录", href: "/jobs" },
 ] as const;
@@ -68,6 +69,9 @@ export const AI_FEATURES_MENU = {
         }),
         navigationFeature("reference-remix", {
           description: "快速复刻参考图的构图与氛围",
+        }),
+        navigationFeature("one-click-replica", {
+          description: "从商品链接或参考图规划并生成商品图",
         }),
       ],
     },

@@ -227,6 +227,9 @@ def _dispatch(
             # Keep historical tasks and other products on their frozen workers.
             # A dedicated current-runtime consumer owns only this new queue.
             options["queue"] = "domestic_detail_v431"
+        elif (job is not None and job.type == "reference_remix"
+              and job.configuration.get("replica_session_id")):
+            options["queue"] = "one_click_replica"
     task.apply_async(
         args=[job_id], headers={"outbox_dedupe_key": dedupe_key}, **options
     )

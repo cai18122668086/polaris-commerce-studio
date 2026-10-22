@@ -1448,6 +1448,15 @@ def create_job(
         ),
         detail_high_price_micros=(request.app.state.settings.xinghe_high_price_micros),
     )
+    replica_session_id = getattr(request.state, "replica_session_id", None)
+    if (
+        job.type == JobType.REFERENCE_REMIX.value
+        and isinstance(replica_session_id, str)
+    ):
+        job.configuration = {
+            **job.configuration,
+            "replica_session_id": replica_session_id,
+        }
     from .amazon_auto_start import bind_submission as bind_amazon_submission
     from .domestic_detail.auto_start import bind_submission
 

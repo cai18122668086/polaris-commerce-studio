@@ -1,685 +1,202 @@
 "use client";
 
-import {
-  Check,
-  CheckCircle2,
-  ImagePlus,
-  Link2,
-  LoaderCircle,
-  Maximize2,
-  RotateCcw,
-  Save,
-  Sparkles,
-  ShieldAlert,
-  Store,
-  X,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronRight, CircleHelp, Download, History, ImagePlus, LoaderCircle, Plus, RotateCcw, Sparkles, Upload, X } from "lucide-react";
+import { useWorkspace } from "@/features/workspaces/api/workspaces";
+import { getAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
+import { useJob } from "@/features/jobs/api/jobs";
+import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
+import { ReplicaSelect } from "./replica-select";
 import styles from "./style-replica-workspace.module.css";
-import { uniqueProductImages } from "../lib/product-image-utils";
 
-type Product = {
-  platform: string;
-  numIid: string | null;
-  tmall: boolean;
-  title: string | null;
-  price: string | null;
-  shopName: string | null;
-  sales: string | null;
-  imageUrls: string[];
-  descImageUrls: string[];
-  skuImageUrls?: string[];
-  skuPropGroups?: { name: string; values: string[] }[];
-  skus?: { sku_id: string; price?: string | null; stock?: string | null }[];
-  platformData?: { minimumOrderQuantity?: string | null };
-  services: string[];
-  warnings?: string[];
-};
-const demo: Product = {
-  platform: "taobao",
-  numIid: "981818232043",
-  tmall: false,
-  title: "JIKOO【小狗】韩系灰色厚棉T外套女秋冬季宽松毛毛领连帽加绒上衣",
-  price: "458.00",
-  shopName: "JIKOO",
-  sales: "已售 38",
-  imageUrls: [],
-  descImageUrls: [],
-  services: ["48 小时内发货", "免运费", "7 天无理由退货"],
-};
-const demoUrl = "https://" + "item.taobao.com/item.htm?id=981818232043";
-type EcommercePlatform = "taobao" | "1688" | "jd" | "pinduoduo";
-type SitePreview = {
-  label: string;
-  network: string;
-  platform: EcommercePlatform;
-} | null;
-const classifyUrlPreview = (raw: string): SitePreview => {
-  try {
-    const host = new URL(raw.trim()).hostname.toLowerCase().replace(/\.$/, "");
-    const matches = (domain: string) =>
-      host === domain || host.endsWith(`.${domain}`);
-    if (matches("tmall.com"))
-      return { label: "天猫", network: "国内直连", platform: "taobao" };
-    if (matches("taobao.com") || matches("tb.cn"))
-      return { label: "淘宝", network: "国内直连", platform: "taobao" };
-    if (matches("1688.com"))
-      return { label: "1688", network: "国内直连", platform: "1688" };
-    if (matches("jd.com") || matches("3.cn") || matches("npcitem.jd.hk"))
-      return { label: "京东", network: "国内直连", platform: "jd" };
-    if (matches("pinduoduo.com") || matches("yangkeduo.com"))
-      return { label: "拼多多", network: "国内直连", platform: "pinduoduo" };
-    if (
-      [
-        "amazon.com",
-        "amazon.co.uk",
-        "amazon.de",
-        "amazon.co.jp",
-        "amazon.ca",
-        "amazon.in",
-      ].some(matches)
-    )
-      return { label: "亚马逊", network: "独立代理", platform: "taobao" };
-    return null;
-  } catch {
-    return null;
-  }
-};
-export function StyleReplicaWorkspace() {
+type AssetChoice = { id: string; name: string };
+type Product = { title: string | null; platform: string; imageUrls: string[]; descImageUrls: string[]; skuImageUrls: string[] };
+type Plan = { reference: { asset_id: string; title: string; aspect_ratio: string }; analysis: Record<string, unknown>; prompt: string };
+type ReplicaDocument = { id: string; kind: string; status: string; created_at: string; payload: { product?: Product; product_asset_ids?: string[]; references?: Plan["reference"][]; plans?: Plan[]; plan_hash?: string; job_ids?: string[]; progress?: number; error?: string; facts?: string; confirmed_instructions?: string[]; submission_complete?: boolean; platform_code?: string; language?: string } };
+const STEPS = ["选图", "诊断中", "补信息", "确认方案", "生成中", "完成"];
+const RATIOS = ["follow-reference", "1:1", "3:4", "4:3", "4:5", "9:16", "16:9"];
+
+async function replicaRequest<T>(workspaceId: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (isLocalDevelopmentAuthEnabled()) headers["X-User-Id"] = LOCAL_DEV_AUTH_USER_ID;
+  const response = await fetch(`/api/v1/workspaces/${workspaceId}/replica${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: "include", signal });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error?.message ?? result.detail?.message ?? result.message ?? "服务暂时不可用，请稍后再试。");
+  return result;
+}
+
+function analysisText(value: unknown): string { if (typeof value === "string") return value; if (Array.isArray(value)) return value.map(analysisText).filter(Boolean).slice(0, 3).join(" · ").slice(0, 220); if (value && typeof value === "object") return analysisText(Object.values(value)); return ""; }
+
+function AssetImage({ workspaceId, assetId, className, onClick }: { workspaceId: string; assetId: string; className?: string; onClick?: (url: string) => void }) {
   const [url, setUrl] = useState("");
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [tab, setTab] = useState<"main" | "detail" | "sku">("main");
-  const [selected, setSelected] = useState<string[]>([]);
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const [saved, setSaved] = useState("");
-  const [riskUrl, setRiskUrl] = useState("");
-  const [riskPlatform, setRiskPlatform] = useState<EcommercePlatform | null>(null);
-  const [openingRiskPage, setOpeningRiskPage] = useState(false);
-  const [session, setSession] = useState<{
-    state: string;
-    message: string;
-    platform?: string;
-    profileReady?: boolean;
-  }>({ state: "signed_out", message: "尚未登录商品平台。" });
-  const urlPreview = classifyUrlPreview(url);
-  const sessionPlatform = urlPreview?.platform ?? "taobao";
-  const sessionLabel =
-    sessionPlatform === "1688"
-      ? "1688"
-      : sessionPlatform === "jd"
-        ? "京东"
-        : sessionPlatform === "pinduoduo"
-          ? "拼多多"
-          : "淘宝";
-  useEffect(() => {
-    let active = true;
-    const read = async () => {
-      try {
-        const response = await fetch(
-          `/api/ecommerce/session/status?platform=${sessionPlatform}`,
-        );
-        const body = await response.json();
-        if (response.status === 403) {
-          if (active) {
-            setSession({
-              state: "permission_required",
-              message: "当前账号无电商会话权限，请使用管理员账号或联系管理员。",
-            });
-          }
-          return;
-        }
-        if (!response.ok) {
-          throw new Error(body.detail?.message ?? "电商会话状态暂时不可用。");
-        }
-        if (active && body.data) setSession(body.data);
-      } catch (caught) {
-        if (active) {
-          setSession({
-            state: "unavailable",
-            message: caught instanceof Error ? caught.message : "电商会话状态暂时不可用。",
-          });
-        }
-      }
-    };
-    void read();
-    const timer = window.setInterval(() => void read(), 3000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [sessionPlatform]);
-  const images =
-    tab === "main"
-      ? (product?.imageUrls ?? [])
-      : tab === "detail"
-        ? (product?.descImageUrls ?? [])
-        : (product?.skuImageUrls ?? []);
-  const all =
-    images.length > 0 && images.every((image) => selected.includes(image));
-  const sessionReady = session.state === "ready";
-  const sessionNeedsRelogin =
-    session.state === "needs_relogin" || session.state === "login_required";
-  const sessionProfileDetected =
-    Boolean(session.profileReady) && !sessionReady && !sessionNeedsRelogin;
-  const sessionRiskControlled = session.state === "risk_controlled";
-  const sessionPermissionRequired = session.state === "permission_required";
-  useEffect(() => {
-    if (!previewSrc) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPreviewSrc(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [previewSrc]);
-  const toggleSelected = (src: string) =>
-    setSelected((current) =>
-      current.includes(src)
-        ? current.filter((item) => item !== src)
-        : current.length < 20
-          ? [...current, src]
-          : current,
-    );
-  const fetchProduct = async () => {
-    if (!url.trim()) return;
-    setLoading(true);
-    setError("");
-    setRiskUrl("");
-    setRiskPlatform(null);
-    try {
-      const response = await fetch("/api/ecommerce/fetch-item", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: url.trim(),
-          platform:
-            urlPreview?.platform === "1688"
-              ? "alibaba1688"
-              : urlPreview?.platform === "jd"
-                ? "jd"
-                : urlPreview?.platform === "pinduoduo"
-                  ? "pinduoduo"
-                  : "auto",
-          includeDescImages: true,
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        const detail = body.detail;
-        if (detail?.code === "RISK_CONTROL_PAGE" && (urlPreview?.platform === "1688" || urlPreview?.platform === "pinduoduo")) {
-          setRiskUrl(url.trim());
-          setRiskPlatform(urlPreview.platform);
-        }
-        throw new Error(detail?.message ?? "商品解析失败");
-      }
-      const data = {
-        ...body.data,
-        imageUrls: uniqueProductImages(body.data.imageUrls ?? [], { preserveClassifiedNames: true }),
-        descImageUrls: uniqueProductImages(body.data.descImageUrls ?? [], { preserveClassifiedNames: true }),
-        skuImageUrls: uniqueProductImages(body.data.skuImageUrls ?? [], { preserveClassifiedNames: true }),
-      } as Product;
-      setProduct(data);
-      setPreviewSrc(
-        data.imageUrls[0] ??
-          data.descImageUrls[0] ??
-          data.skuImageUrls?.[0] ??
-          null,
-      );
-      setSelected([]);
-      setTab("main");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "商品解析失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-  const openRiskVerificationPage = async () => {
-    if (!riskUrl) return;
-    setOpeningRiskPage(true);
-    setError("");
-    try {
-      const response = await fetch("/api/ecommerce/session/open-page", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: riskPlatform === "pinduoduo" ? "pinduoduo" : "1688", url: riskUrl }),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.detail?.message ?? `无法打开${riskPlatform === "pinduoduo" ? "拼多多" : "1688"}官方验证页面`);
-      }
-      setSaved(
-        `已打开${riskPlatform === "pinduoduo" ? "拼多多" : "1688"}官方验证页面。请在弹出的窗口中手动完成验证，完成后回到这里重新拉取。`,
-      );
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : `无法打开${riskPlatform === "pinduoduo" ? "拼多多" : "1688"}官方验证页面`,
-      );
-    } finally {
-      setOpeningRiskPage(false);
-    }
-  };
+  useEffect(() => { let active = true; void getAssetAccessUrl(workspaceId, assetId, "inline").then(value => { if (active) setUrl(value.url); }).catch(() => {}); return () => { active = false; }; }, [workspaceId, assetId]);
+  return url ? <img className={className} src={url} alt="商品图片" onClick={() => onClick?.(url)} /> : <span className={styles.imagePlaceholder}><ImagePlus size={22} /></span>;
+}
 
-  const startLogin = async () => {
-    setError("");
-    const label = sessionLabel;
-    try {
-      const response = await fetch("/api/ecommerce/session/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: url.trim() || null,
-          platform: sessionPlatform,
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.detail ?? `无法启动${label}登录`);
-      if (body.data) setSession(body.data);
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : `无法启动${label}登录`,
-      );
-    }
+function ResultCard({ workspaceId, jobId, title, onPreview, onStatus, onRetry, retrying }: { workspaceId: string; jobId: string; title: string; onPreview: (url: string) => void; onStatus: (id: string, status: string) => void; onRetry: (id: string) => void; retrying: boolean }) {
+  const job = useJob(workspaceId, jobId);
+  const [error, setError] = useState("");
+  const data = job.data;
+  const asset = data?.assets.find(item => item.direction === "output" && item.is_deliverable);
+  const terminal = ["completed", "partial", "failed", "cancelled"].includes(data?.status ?? "");
+  useEffect(() => { if (data) onStatus(jobId, data.status); }, [data, jobId, onStatus]);
+  const download = async () => { try { if (!asset) return; const access = await getAssetAccessUrl(workspaceId, asset.asset_id, "attachment"); const response = await fetch(access.url, { credentials: "include" }); if (!response.ok) throw new Error("图片下载失败，请稍后重试。"); const url = URL.createObjectURL(await response.blob()); const a = document.createElement("a"); a.href = url; a.download = `${title}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (caught) { setError(caught instanceof Error ? caught.message : "下载失败"); } };
+  return <article className={styles.resultCard}>
+    <div className={styles.resultMedia}>{asset ? <AssetImage workspaceId={workspaceId} assetId={asset.asset_id} onClick={onPreview} /> : <div className={styles.generating}>{terminal ? <CircleHelp size={26} /> : <LoaderCircle className="spin" size={28} />}<span>{terminal ? "本张暂未完成" : "正在绘制你的商品"}</span><small>{terminal ? data?.error_message ?? data?.items.find(item => item.error_message)?.error_message : `${data?.progress ?? 0}% · 可离开页面，稍后在记录中查看`}</small></div>}</div>
+    <div className={styles.resultMeta}><strong>{title}</strong><span>{data?.status === "completed" ? "已完成" : terminal ? "需重试" : "生成中"}</span></div>
+    <div className={styles.resultActions}>{asset && <button onClick={() => void download()}><Download size={14} />下载</button>}{terminal && !asset && <button disabled={retrying} onClick={() => onRetry(jobId)}><RotateCcw size={13} />{retrying ? "正在提交" : "重新生成"}</button>}<Link href={`/workspace/reference-remix?jobId=${jobId}`}>查看任务<ChevronRight size={13} /></Link></div>
+    {error && <p className={styles.error}>{error}</p>}
+  </article>;
+}
+
+export function StyleReplicaWorkspace() {
+  const { workspace } = useWorkspace();
+  const workspaceId = workspace?.id;
+  const upload = useUploadAsset(workspaceId);
+  const [mode, setMode] = useState<"link" | "image">("link");
+  const [products, setProducts] = useState<AssetChoice[]>([]);
+  const [references, setReferences] = useState<AssetChoice[]>([]);
+  const [sourcePlatform, setSourcePlatform] = useState("auto");
+  const [url, setUrl] = useState("");
+  const [productDoc, setProductDoc] = useState<ReplicaDocument>();
+  const [sessionDoc, setSessionDoc] = useState<ReplicaDocument>();
+  const [selected, setSelected] = useState<string[]>([]);
+  const [imageTab, setImageTab] = useState<"imageUrls" | "descImageUrls" | "skuImageUrls">("imageUrls");
+  const [platform, setPlatform] = useState("auto");
+  const [language, setLanguage] = useState("zh-CN");
+  const [mainRatio, setMainRatio] = useState("1:1");
+  const [detailRatio, setDetailRatio] = useState("3:4");
+  const [ratio, setRatio] = useState("follow-reference");
+  const [selectedReferences, setSelectedReferences] = useState<string[]>([]);
+  const actionLock = useRef(false);
+  const retryIntents = useRef<Record<string, string>>({});
+  const [facts, setFacts] = useState("");
+  const [analysisRequestId, setAnalysisRequestId] = useState("");
+  const [instructions, setInstructions] = useState<string[]>([]);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [modal, setModal] = useState<"history" | "help" | "fees" | null>(null);
+  const [history, setHistory] = useState<ReplicaDocument[]>([]);
+  const [preview, setPreview] = useState("");
+  const [jobStatuses, setJobStatuses] = useState<Record<string, string>>({});
+  const [hydratedWorkspace, setHydratedWorkspace] = useState("");
+  const draftWorkspace = useRef("");
+  const selectedReferenceCount = references.filter(item => selectedReferences.includes(item.id)).length;
+  const status = sessionDoc?.status;
+  const working = busy !== "" || ["analysing"].includes(status ?? "") || productDoc?.status === "fetching";
+  const product = productDoc?.payload.product;
+  const plans = sessionDoc?.payload.plans ?? [];
+  const jobs = sessionDoc?.payload.job_ids ?? [];
+  const complete = jobs.length > 0 && sessionDoc?.payload.submission_complete !== false && jobs.every(id => ["completed", "partial", "failed", "cancelled"].includes(jobStatuses[id]));
+  const step = jobs.length ? complete ? 5 : 4 : status === "awaiting_confirmation" ? 3 : status === "analysing" ? 1 : 0;
+  const reportStatus = useState(() => (id: string, value: string) => setJobStatuses(current => current[id] === value ? current : { ...current, [id]: value }))[0];
+
+  useEffect(() => {
+    if (!workspaceId || draftWorkspace.current === workspaceId) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      draftWorkspace.current = workspaceId;
+      setSessionDoc(undefined); setProductDoc(undefined); setSelected([]); setInstructions([]); setJobStatuses({});
+      try { const saved = JSON.parse(localStorage.getItem(`polaris-replica:${workspaceId}`) ?? "{}"); setProducts(saved.products ?? []); setReferences(saved.references ?? []); setAnalysisRequestId(saved.analysisRequestId ?? crypto.randomUUID()); setUrl(saved.url ?? ""); setSourcePlatform(saved.sourcePlatform ?? "auto"); setImageTab(saved.imageTab ?? "imageUrls"); if (saved.productDocId) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.productDocId}`).then(value => { if (active) { setProductDoc(value); setSelected(saved.selected ?? []); } }).catch(() => {}); setMode(saved.mode ?? "link"); setFacts(saved.facts ?? ""); setPlatform(saved.platform ?? "auto"); setLanguage(saved.language ?? "zh-CN"); setMainRatio(saved.mainRatio ?? "1:1"); setDetailRatio(saved.detailRatio ?? "3:4"); setRatio(saved.ratio ?? "follow-reference"); setSelectedReferences(saved.selectedReferences ?? (saved.references ?? []).map((item: AssetChoice) => item.id)); if (saved.sessionId) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.sessionId}`).then(value => { if (active) setSessionDoc(value); }).catch(() => {}); } catch { /* A stale draft must not block the workspace. */ }
+      setHydratedWorkspace(workspaceId);
+    });
+    return () => { active = false; };
+  }, [workspaceId]);
+  useEffect(() => { if (workspaceId && hydratedWorkspace === workspaceId) localStorage.setItem(`polaris-replica:${workspaceId}`, JSON.stringify({ products, references, mode, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDocId: productDoc?.id, sessionId: sessionDoc?.id })); }, [workspaceId, hydratedWorkspace, products, references, mode, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDoc?.id, sessionDoc?.id]);
+  useEffect(() => {
+    if (!workspaceId) return;
+    const pending = productDoc?.status === "fetching" ? productDoc : sessionDoc?.status === "analysing" ? sessionDoc : null;
+    if (!pending) return;
+    const controller = new AbortController();
+    const timer = setInterval(() => { void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${pending.id}`, undefined, controller.signal).then(value => { if (value.kind === "product") setProductDoc(value); else setSessionDoc(value); if (value.status === "failed") setError(value.payload.error ?? "任务暂未完成。"); }).catch(caught => { if (!controller.signal.aborted) setError(caught.message); }); }, 2000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [workspaceId, productDoc, sessionDoc]);
+  useEffect(() => { if (!preview) return; const close = (event: KeyboardEvent) => { if (event.key === "Escape") setPreview(""); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [preview]);
+
+  const perform = async (label: string, action: () => Promise<void>) => { if (actionLock.current) return; actionLock.current = true; setBusy(label); setError(""); try { await action(); } catch (caught) { setError(caught instanceof Error ? caught.message : "处理失败，请稍后再试。"); } finally { actionLock.current = false; setBusy(""); } };
+  const uploadFiles = async (files: FileList | null, role: "product" | "reference") => {
+    if (!files || !workspaceId) return;
+    const current = role === "product" ? products : references;
+    const limit = role === "product" ? 6 : 20;
+    await perform("上传图片", async () => {
+      const added: AssetChoice[] = [];
+      for (const file of Array.from(files).slice(0, limit - current.length)) {
+        if (file.size > 20 * 1024 * 1024) throw new Error("单张图片不能超过20MB。");
+        const result = await upload.mutateAsync({ file }); added.push({ id: result.id, name: file.name });
+        if (role === "product") setProducts([...current, ...added]); else { setReferences([...current, ...added]); setSelectedReferences(currentIds => [...new Set([...currentIds, result.id])]); }
+      }
+      if (files.length > limit - current.length) throw new Error(`该区域最多支持${limit}张图片，已上传可用部分。`);
+    });
   };
-  return (
-    <div className={styles.page}>
-      <div className={styles.main}>
-        <header className={styles.header}>
-          <div>
-            <span className={styles.eyebrow}>电商工作流 · 多平台商品抓取</span>
-            <h1>商品复刻</h1>
-            <p>输入商品链接，提取商品图片与规格，选择需要复刻的素材。</p>
-          </div>
-          <div className={styles.session}>
-            <span
-              className={
-                sessionReady
-                  ? styles.status
-                  : sessionRiskControlled
-                    ? styles.statusRisk
-                    : styles.statusMuted
-              }
-            >
-              {sessionRiskControlled || sessionPermissionRequired ? <ShieldAlert size={15} /> : <CheckCircle2 size={15} />}
-              {sessionReady
-                ? `${sessionLabel}会话已连接`
-                : sessionRiskControlled
-                  ? `${sessionLabel}安全验证拦截`
-                  : sessionPermissionRequired
-                    ? "当前账号无电商会话权限"
-                  : sessionNeedsRelogin
-                    ? `需要重新登录${sessionLabel}`
-                  : sessionProfileDetected
-                    ? `已检测到${sessionLabel}浏览器会话`
-                    : `需要${sessionLabel}授权会话`}
-            </span>
-            <button
-              className={styles.loginButton}
-              onClick={() => void startLogin()}
-              disabled={session.state === "login_pending" || sessionReady || sessionPermissionRequired}
-            >
-              {sessionReady
-                ? "已连接"
-                : sessionNeedsRelogin
-                  ? `重新登录${sessionLabel}`
-                : sessionProfileDetected
-                  ? "验证会话"
-                  : session.state === "login_pending"
-                  ? "等待登录…"
-                  : sessionRiskControlled
-                    ? "稍后重试"
-                    : sessionPermissionRequired
-                      ? "需要管理员权限"
-                    : `登录${sessionLabel}`}
-            </button>
-            {(sessionRiskControlled || sessionPermissionRequired) && (
-              <div className={styles.sessionNotice}>
-                {session.message || "请停止连续重试，稍后使用稳定网络通过官方页面完成验证。"}
-              </div>
-            )}
-          </div>
-        </header>
-        <section className={styles.card}>
-          <div className={styles.cardTitle}>
-            <span className={styles.step}>1</span>
-            <div>
-              <h2>粘贴商品链接</h2>
-              <p>粘贴商品链接后，系统会自动识别平台并选择固定网络策略。</p>
-            </div>
-          </div>
-          <div className={styles.urlRow}>
-            <div className={styles.input}>
-              <Link2 size={18} />
-              <input
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder="粘贴淘宝、天猫、1688、京东或拼多多商品详情页链接"
-              />
-            </div>
-            {url.trim() && (
-              <div className={urlPreview ? styles.status : styles.statusMuted}>
-                {urlPreview
-                  ? `已识别为：${urlPreview.label} · ${urlPreview.network}`
-                  : "暂未识别的平台链接"}
-              </div>
-            )}
-            <button
-              className={styles.primary}
-              onClick={() => void fetchProduct()}
-              disabled={loading || !url.trim()}
-            >
-              {loading ? (
-                <LoaderCircle className="spin" size={17} />
-              ) : (
-                <Sparkles size={17} />
-              )}{" "}
-              {loading ? "解析中" : "拉取商品"}
-            </button>
-          </div>
-          {error && (
-            <div className={styles.error}>
-              <X size={16} /> {error}
-            </div>
-          )}
-          {riskUrl && (
-            <div className={styles.riskActions}>
-              <div>
-                <strong>需要完成官方安全验证</strong>
-                <span>
-                  本次 {riskPlatform === "pinduoduo" ? "拼多多" : "1688"} 商品页返回了官方安全验证页面。
-                  请先在官方窗口手动完成验证；如果打开后显示登录页，则按登录失效处理并重新登录。
-                </span>
-              </div>
-              <div className={styles.riskActionButtons}>
-                <button
-                  className={styles.secondary}
-                  onClick={() => void openRiskVerificationPage()}
-                  disabled={openingRiskPage}
-                >
-                  {openingRiskPage ? "正在打开…" : "打开官方验证页"}
-                </button>
-                <button
-                  className={styles.primary}
-                  onClick={() => void fetchProduct()}
-                  disabled={loading}
-                >
-                  {loading ? "解析中" : "验证完成后重新拉取"}
-                </button>
-              </div>
-            </div>
-          )}
-          {!product && (
-            <button
-              className={styles.demo}
-              onClick={() => {
-                setProduct(demo);
-                setUrl(demoUrl);
-              }}
-            >
-              先用测试商品预览
-            </button>
-          )}
-        </section>
-        {product && (
-          <>
-            <section className={styles.product}>
-              <button
-                className={styles.visual}
-                onClick={() =>
-                  setPreviewSrc(
-                    product.imageUrls[0] ?? product.descImageUrls[0] ?? null,
-                  )
-                }
-                disabled={
-                  !product.imageUrls.length && !product.descImageUrls.length
-                }
-              >
-                {product.imageUrls[0] ? (
-                  <img src={product.imageUrls[0]} alt="商品主图预览" />
-                ) : (
-                  <div className={styles.placeholder}>
-                    <ImagePlus size={30} />
-                    <span>等待图片预览</span>
-                  </div>
-                )}
-                {(product.imageUrls.length > 0 ||
-                  product.descImageUrls.length > 0) && (
-                  <span className={styles.visualHint}>
-                    <Maximize2 size={13} /> 点击查看大图
-                  </span>
-                )}
-              </button>
-              <div>
-                <div className={styles.platform}>
-                  <Store size={15} />
-                  {product.platform === "alibaba1688"
-                    ? "1688"
-                    : product.platform === "jd"
-                      ? "京东"
-                      : product.platform === "pinduoduo"
-                        ? "拼多多"
-                        : product.tmall
-                        ? "天猫"
-                        : "淘宝"}
-                  <span>商品 ID：{product.numIid ?? "未读取"}</span>
-                </div>
-                <h2>{product.title ?? "未读取商品标题"}</h2>
-                <div className={styles.price}>¥ {product.price ?? "—"}</div>
-                <div className={styles.meta}>
-                  店铺 <b>{product.shopName ?? "未读取"}</b>　销量{" "}
-                  <b>{product.sales ?? "未读取"}</b>
-                </div>
-                {product.platform === "alibaba1688" &&
-                  product.platformData?.minimumOrderQuantity && (
-                    <div className={styles.meta}>
-                      起批量 <b>{product.platformData.minimumOrderQuantity}</b>
-                    </div>
-                  )}
-                {!!product.skuPropGroups?.length && (
-                  <div className={styles.meta}>
-                    规格{" "}
-                    <b>
-                      {product.skuPropGroups
-                        .map(
-                          (group) =>
-                            `${group.name}（${group.values.join(" / ")}）`,
-                        )
-                        .join(" · ")}
-                    </b>
-                    　SKU <b>{product.skus?.length ?? 0}</b>
-                  </div>
-                )}
-                <div className={styles.tags}>
-                  {product.services.map((service) => (
-                    <span key={service}>{service}</span>
-                  ))}
-                </div>
-                {!!product.warnings?.length && (
-                  <div className={styles.warningList}>
-                    {product.warnings.map((warning) => (
-                      <span key={warning}>{warning}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-            <section className={styles.card}>
-              <div className={styles.cardTitle}>
-                <span className={styles.step}>2</span>
-                <div>
-                  <h2>选择复刻图片</h2>
-                  <p>
-                    点击图片查看大图，使用左上角勾选；最多选择 20 张，已选择{" "}
-                    <b>{selected.length}</b> 张。
-                  </p>
-                </div>
-                <button
-                  className={styles.selectAll}
-                  onClick={() =>
-                    setSelected(
-                      all ? [] : [...new Set([...selected, ...images])],
-                    )
-                  }
-                >
-                  {all ? "取消全选" : "全选当前"}
-                </button>
-              </div>
-              <div className={styles.tabs}>
-                <button
-                  className={tab === "main" ? styles.active : ""}
-                  onClick={() => setTab("main")}
-                >
-                  主图 <b>{product.imageUrls.length}</b>
-                </button>
-                <button
-                  className={tab === "detail" ? styles.active : ""}
-                  onClick={() => setTab("detail")}
-                >
-                  详情图 <b>{product.descImageUrls.length}</b>
-                </button>
-                <button
-                  className={tab === "sku" ? styles.active : ""}
-                  onClick={() => setTab("sku")}
-                >
-                  SKU图 <b>{product.skuImageUrls?.length ?? 0}</b>
-                </button>
-              </div>
-              {images.length ? (
-                <div className={styles.grid}>
-                  {images.map((src, index) => (
-                    <div
-                      key={src}
-                      className={`${styles.tile} ${selected.includes(src) ? styles.selected : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setPreviewSrc(src)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ")
-                          setPreviewSrc(src);
-                      }}
-                    >
-                      <img
-                        src={src}
-                        alt={`商品图 ${index + 1}`}
-                        loading="lazy"
-                      />
-                      <button
-                        className={styles.tileCheck}
-                        aria-label={
-                          selected.includes(src)
-                            ? `取消选择商品图 ${index + 1}`
-                            : `选择商品图 ${index + 1}`
-                        }
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toggleSelected(src);
-                        }}
-                      >
-                        {selected.includes(src) ? (
-                          <Check size={14} />
-                        ) : (
-                          index + 1
-                        )}
-                      </button>
-                      <button
-                        className={styles.tileZoom}
-                        aria-label={`放大查看商品图 ${index + 1}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setPreviewSrc(src);
-                        }}
-                      >
-                        <Maximize2 size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className={styles.empty}>
-                  <ImagePlus size={25} />
-                  <p>当前页面没有读取到图片，可稍后重试。</p>
-                </div>
-              )}
-            </section>
-            <footer className={styles.footer}>
-              <div>
-                <strong>{selected.length} 张图片待处理</strong>
-                <span>原始链接、商品 ID 和来源平台会一并记录</span>
-              </div>
-              <div className={styles.footerActions}>
-                <button
-                  onClick={() => {
-                    setProduct(null);
-                    setSelected([]);
-                    setPreviewSrc(null);
-                  }}
-                >
-                  <RotateCcw size={15} />
-                  清空
-                </button>
-                <button
-                  className={styles.secondary}
-                  type="button"
-                  disabled
-                  title="保存到素材库尚未接入"
-                >
-                  <Save size={15} />
-                  保存到素材库（待接入）
-                </button>
-                <button
-                  className={styles.primary}
-                  type="button"
-                  disabled
-                  title="商品复刻 Skill 尚未接入"
-                >
-                  <Sparkles size={15} />
-                  开始复刻（待接入）
-                </button>
-              </div>
-              <p className={styles.saved} role="status">
-                当前页面仅支持商品抓取预览；素材保存与复刻任务尚未接入对应 Skill。
-                {sessionPermissionRequired ? ` ${session.message}` : ""}
-              </p>
-              {saved && <div className={styles.saved}>{saved}</div>}
-            </footer>
-          </>
-        )}
-      </div>
-      <aside className={styles.help}>
-        <Sparkles size={20} />
-        <h3>商品复刻怎么用？</h3>
-        <p>
-          粘贴国内电商商品详情页，系统会自动识别平台并使用固定网络策略；当前已接入淘宝
-          / 天猫 / 1688 / 京东 / 拼多多。
-        </p>
-        <div>✓ 图片按主图 / 详情图分组</div>
-        <div>✓ 点击图片查看高清大图</div>
-        <div>✓ 最多选择 20 张进入复刻</div>
+  const fetchProduct = () => workspaceId && perform("拉取商品", async () => { setSelected([]); setProductDoc(undefined); setProductDoc(await replicaRequest<ReplicaDocument>(workspaceId, "/products", { url, platform: sourcePlatform })); });
+  const analyse = () => workspaceId && perform("准备分析", async () => {
+    let choices: Plan["reference"][] = [];
+    if (mode === "link") {
+      if (!productDoc || !selected.length) throw new Error("请先拉取商品并勾选参考图。");
+      const imported = await replicaRequest<{ asset_id: string; url: string; role: string }[]>(workspaceId, `/products/${productDoc.id}/import`, { urls: selected });
+      choices = imported.map((item, index) => ({ asset_id: item.asset_id, title: `${item.role} ${index + 1}`, aspect_ratio: item.role === "主图" ? mainRatio : detailRatio }));
+    } else {
+      if (!selectedReferenceCount) throw new Error("请勾选要复刻的参考图。");
+      choices = references.filter(item => selectedReferences.includes(item.id)).map((item, index) => ({ asset_id: item.id, title: `参考图 ${index + 1}`, aspect_ratio: ratio }));
+    }
+    if (!products.length) throw new Error("请上传自己的产品图。");
+    setInstructions([]); setJobStatuses({});
+    const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, platform_code: platform === "auto" ? product?.platform ?? "tmall" : platform, language, facts });
+    setSessionDoc(result);
+  });
+  const confirm = () => workspaceId && sessionDoc && perform("提交生成", async () => { try { setSessionDoc(await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/confirm`, { plan_hash: sessionDoc.payload.plan_hash, instructions: sessionDoc.payload.confirmed_instructions ?? instructions })); } catch (caught) { setSessionDoc(await replicaRequest<ReplicaDocument>(workspaceId, `/documents/${sessionDoc.id}`)); throw caught; } });
+  const retryImage = (jobId: string) => workspaceId && sessionDoc && perform("重新生成", async () => { const requestId = retryIntents.current[jobId] ?? crypto.randomUUID(); retryIntents.current[jobId] = requestId; setSessionDoc(await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/jobs/${jobId}/retry`, { request_id: requestId })); });
+  const restoreSession = (item: ReplicaDocument) => { setSessionDoc(item); setInstructions(item.payload.confirmed_instructions ?? []); setProducts((item.payload.product_asset_ids ?? []).map((id, index) => ({ id, name: `产品图 ${index + 1}` }))); const referenceIds = [...new Set((item.payload.references ?? []).map(value => value.asset_id))]; setReferences(referenceIds.map((id, index) => ({ id, name: `参考图 ${index + 1}` }))); setSelectedReferences(referenceIds); setMode("image"); setFacts(item.payload.facts ?? ""); setPlatform(item.payload.platform_code ?? "auto"); setLanguage(item.payload.language ?? "zh-CN"); setProductDoc(undefined); setSelected([]); setError(""); setModal(null); };
+  const showHistory = () => workspaceId && perform("读取历史", async () => { setHistory(await replicaRequest<ReplicaDocument[]>(workspaceId, "/sessions")); setModal("history"); });
+  const retryAnalysis = () => workspaceId && sessionDoc && perform("重试分析", async () => { setSessionDoc(await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/retry`, {})); });
+  const reset = () => { setAnalysisRequestId(crypto.randomUUID()); setSessionDoc(undefined); setInstructions([]); setError(""); setJobStatuses({}); };
+  const uploadBox = (role: "product" | "reference", items: AssetChoice[], limit: number) => <div className={styles.uploadArea}>
+    {items.length > 0 && <div className={styles.uploadGrid}>{items.map(item => <div key={item.id} className={styles.uploadThumb}>{workspaceId && <AssetImage workspaceId={workspaceId} assetId={item.id} onClick={setPreview} />}<button type="button" disabled={working} onClick={() => role === "product" ? setProducts(products.filter(p => p.id !== item.id)) : (setReferences(references.filter(p => p.id !== item.id)), setSelectedReferences(selectedReferences.filter(id => id !== item.id)))} aria-label={`移除${item.name}`}><X size={12} /></button></div>)}</div>}
+    {items.length < limit && <label className={items.length ? styles.addUpload : styles.uploadTarget}><input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={working} onChange={event => { void uploadFiles(event.target.files, role); event.target.value = ""; }} /><Upload size={25} /><span>{items.length ? "添加图片" : role === "product" ? "点击或选择图片上传" : "上传构图、光影与色调参考"}</span>{!items.length && <small>JPG / PNG / WebP · 单张不超过20MB</small>}</label>}
+  </div>;
+  const ratioSelect = (value: string, change: (value: string) => void, label: string) => <ReplicaSelect label={label} value={value} onChange={change} options={RATIOS.map(item => [item, item === "follow-reference" ? "跟随参考图" : item] as const)} />;
+
+  return <div className={styles.page}>
+    <div className={styles.stepper} aria-label="复刻进度">{STEPS.map((label, index) => <div key={label} className={`${styles.stepItem} ${index === step ? styles.stepCurrent : ""} ${index < step ? styles.stepDone : ""}`}><span>{index < step ? <Check size={13} /> : index + 1}</span><b>{label}</b>{index < STEPS.length - 1 && <i />}</div>)}</div>
+    <div className={styles.layout}>
+      <aside className={styles.sidebar}>
+        <button className={styles.feeLink} onClick={() => setModal("fees")}>用量说明 <ChevronRight size={12} /></button>
+        <fieldset className={styles.inputFields} disabled={working || !!sessionDoc}><div className={styles.fieldHeading}><strong><ImagePlus size={15} /><em>*</em>上传你的产品图</strong><small>{products.length}/6</small></div>
+        <p className={styles.hint}>上传必要角度，清晰展示商品外观；产品图决定最终商品身份。</p>
+        {uploadBox("product", products, 6)}
+        <div className={styles.modeTabs} role="tablist" aria-label="参考来源"><button role="tab" aria-selected={mode === "link"} className={mode === "link" ? styles.activeTab : ""} onClick={() => setMode("link")}>商品链接</button><button role="tab" aria-selected={mode === "image"} className={mode === "image" ? styles.activeTab : ""} onClick={() => setMode("image")}>风格参考图</button></div>
+        {mode === "link" ? <>
+          <div className={styles.guide}><strong>复刻流程</strong><p>粘贴想要参考的商品链接，勾选喜欢的图片。AI 分析构图、补充商品信息、确认方案，再生成你的商品图。</p></div>
+          <label className={styles.field}><span><em>*</em>商品链接 / 商品 ID</span><div className={styles.linkInput}><input value={url} onChange={event => setUrl(event.target.value)} placeholder="淘宝 / 天猫 / 京东 / 1688 链接" aria-label="商品链接" /><button disabled={working || !url.trim() || !workspaceId} onClick={() => void fetchProduct()}>{productDoc?.status === "fetching" ? <LoaderCircle className="spin" size={16} /> : "拉取商品"}</button></div></label>
+          {/^\d+$/.test(url.trim()) && <label className={styles.field}><span>来源平台</span><ReplicaSelect label="来源平台" value={sourcePlatform} onChange={setSourcePlatform} options={[["auto", "从链接自动识别"], ["taobao", "淘宝"], ["tmall", "天猫"], ["1688", "1688"], ["jd", "京东"]]} /></label>}
+        </> : <>
+          <div className={styles.fieldHeading}><strong><em>*</em>风格参考图</strong><small>{references.length}/20</small></div>{uploadBox("reference", references, 20)}
+        </>}
+        <label className={styles.field}><span><em>*</em>目标平台</span><ReplicaSelect label="目标平台" value={platform} onChange={setPlatform} options={[["auto", "智能匹配"], ["tmall", "天猫"], ["taobao", "淘宝"], ["jd", "京东"], ["pinduoduo", "拼多多"], ["douyin", "抖音"], ["1688", "1688"], ["amazon-us", "亚马逊"], ["temu", "TEMU"], ["shopee", "Shopee"], ["tiktok", "TikTok"]]} /></label>
+        <label className={styles.field}><span><em>*</em>目标语言</span><ReplicaSelect label="目标语言" value={language} onChange={setLanguage} options={[["zh-CN", "中文（简体）"], ["zh-TW", "中文（繁体）"], ["en-US", "英语"], ["ja-JP", "日语"], ["ko-KR", "韩语"], ["de-DE", "德语"], ["fr-FR", "法语"], ["es-ES", "西班牙语"], ["ar-SA", "阿拉伯语"], ["ru-RU", "俄语"]]} /></label>
+        {mode === "link" ? <div className={styles.dualFields}><label className={styles.field}><span>主图尺寸</span>{ratioSelect(mainRatio, setMainRatio, "主图尺寸")}</label><label className={styles.field}><span>详情图尺寸</span>{ratioSelect(detailRatio, setDetailRatio, "详情图尺寸")}</label></div> : <>
+          <label className={styles.field}><span>尺寸比例</span>{ratioSelect(ratio, setRatio, "尺寸比例")}</label>
+
+        </>}
+        <details className={styles.optionalFacts}><summary>补充商品信息与要求（选填）</summary><label className={styles.field}><span>商品卖点与复刻要求</span><textarea value={facts} onChange={event => setFacts(event.target.value)} placeholder="写下自己的品牌、卖点、参数，或希望保留的构图。留空也可以开始。" maxLength={4000} rows={3} /></label></details></fieldset>
+        {error && <p className={styles.error} role="alert">{error}</p>}
+        <div className={styles.sidebarFooter}><button className={styles.startButton} disabled={!!sessionDoc || working || !workspaceId || !products.length || (mode === "image" ? !selectedReferenceCount : !selected.length)} onClick={() => void analyse()}>{working ? <><LoaderCircle className="spin" size={16} />{busy || (status === "analysing" ? "正在诊断" : "正在拉取商品")}</> : <><Sparkles size={16} />开始诊断</>}</button>
+        <p className={styles.footerNote}>{mode === "image" ? `已选择 ${selectedReferenceCount} 张参考图` : `已选择 ${selected.length} 张参考图`} · 选哪张，复刻哪张</p></div>
       </aside>
-      {previewSrc && (
-        <div
-          className={styles.lightbox}
-          role="dialog"
-          aria-modal="true"
-          aria-label="商品图片预览"
-          onClick={() => setPreviewSrc(null)}
-        >
-          <button
-            className={styles.closePreview}
-            aria-label="关闭大图"
-            onClick={() => setPreviewSrc(null)}
-          >
-            <X size={22} />
-          </button>
-          <img
-            src={previewSrc}
-            alt="商品大图"
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
-      )}
+      <section className={styles.stage}>
+        <header className={styles.stageHeader}><div><Sparkles size={18} /><h1>一键复刻</h1><span>让好灵感，成为你的商品图</span></div><nav><button onClick={() => void showHistory()}><History size={14} />历史记录</button><button onClick={() => setModal("help")}><CircleHelp size={14} />使用教程</button></nav></header>
+        {mode === "link" && product && !sessionDoc && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><div><span className={styles.sourceBadge}>{product.platform}</span><strong>{product.title ?? "商品参考图"}</strong></div><span>已选 {selected.length}/20</span></div><div className={styles.selectionActions}><span>点击图片选择，每张参考图生成一张商品图</span><button onClick={() => setSelected([...new Set([...selected, ...product[imageTab]])].slice(0,20))}>全选本组</button><button onClick={() => setSelected([])}>清空选择</button></div><div className={styles.sourceTabs}>{[["imageUrls", "主图"], ["descImageUrls", "详情图"], ["skuImageUrls", "SKU 图"]].map(([key, label]) => <button className={imageTab === key ? styles.sourceTabActive : ""} key={key} onClick={() => setImageTab(key as typeof imageTab)}>{label}<b>{product[key as keyof Pick<Product, "imageUrls" | "descImageUrls" | "skuImageUrls">].length}</b></button>)}</div><div className={styles.sourceGrid}>{product[imageTab].map((src, index) => <div key={src} className={`${styles.sourceTile} ${selected.includes(src) ? styles.sourceSelected : ""}`}><img src={src} alt={`参考图 ${index + 1}`} loading="lazy" onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)} /><button aria-label={`${selected.includes(src) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelected(selected.includes(src) ? selected.filter(item => item !== src) : selected.length < 20 ? [...selected, src] : selected)}>{selected.includes(src) ? <Check size={13} /> : index + 1}</button><button className={styles.previewTile} onClick={() => setPreview(src)}>放大</button></div>)}</div>{!product[imageTab].length && <p className={styles.hint}>当前分组暂无图片，可以选择其他分组或上传参考图。</p>}</div>}
+        {mode === "image" && references.length > 0 && !sessionDoc && workspaceId && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><strong>选择想要复刻的参考图</strong><span>已选 {selectedReferenceCount}/{references.length}</span></div><div className={styles.selectionActions}><span>每张选中的参考图，生成一张你的商品图</span><button onClick={() => setSelectedReferences(references.map(item => item.id))}>全选</button><button onClick={() => setSelectedReferences([])}>清空选择</button></div><div className={styles.sourceGrid}>{references.map((item, index) => <div key={item.id} className={`${styles.sourceTile} ${selectedReferences.includes(item.id) ? styles.sourceSelected : ""}`}><AssetImage workspaceId={workspaceId} assetId={item.id} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])} /><button aria-label={`${selectedReferences.includes(item.id) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])}>{selectedReferences.includes(item.id) ? <Check size={13} /> : index + 1}</button></div>)}</div></div>}
+        {status === "analysing" && <div className={styles.analysisState}><div className={styles.orbit}><Sparkles size={28} /></div><h2>正在读懂你的商品与参考风格</h2><p>分析构图、光影和信息层级，为每张图准备专属方案。</p><progress max={100} value={sessionDoc?.payload.progress ?? 5} /><small>{plans.length} / {sessionDoc?.payload.references?.length ?? 0} 张方案已完成</small></div>}
+        {status === "failed" && <div className={styles.emptyState}><CircleHelp size={38} /><h2>这次诊断暂未完成</h2><p>{sessionDoc?.payload.error}</p><button disabled={!!busy} onClick={() => void retryAnalysis()}>重试未完成的分析</button><button onClick={reset}>返回修改选图</button></div>}
+        {status === "awaiting_confirmation" && <div className={styles.planPanel}><div className={styles.planIntro}><div><span className={styles.eyebrow}>你的专属复刻方案</span><h2>灵感已就位，确认后开始绘制</h2><p>参考图负责构图与氛围，你的产品图负责真实外观。可在每张图下补充要求。</p></div><button className={styles.textButton} onClick={reset}><RotateCcw size={14} />返回修改</button></div><div className={styles.plans}>{plans.map((plan, index) => <article className={styles.planCard} key={index}><div className={styles.planReference}>{workspaceId && <AssetImage workspaceId={workspaceId} assetId={plan.reference.asset_id} onClick={setPreview} />}</div><div><span className={styles.eyebrow}>方案 {String(index + 1).padStart(2, "0")}</span><h3>{plan.reference.title}</h3><p>{analysisText(plan.analysis.commercial_intent) || "保留参考构图、光影与色调，用你的商品重新演绎。"}</p><details><summary>查看画面方案</summary><p>{plan.prompt}</p></details><textarea rows={2} disabled={sessionDoc?.payload.confirmed_instructions !== undefined} value={sessionDoc?.payload.confirmed_instructions?.[index] ?? instructions[index] ?? ""} maxLength={4000} onChange={event => setInstructions(current => plans.map((_, position) => position === index ? event.target.value : current[position] ?? ""))} placeholder="补充本张图的要求（选填）" aria-label={`方案${index + 1}补充要求`} /></div></article>)}</div><div className={styles.confirmBar}><div><strong>共 {plans.length} 张独立图片</strong><small>生成结果自动进入个人素材库与生成记录</small></div><button disabled={!!busy} className={styles.startButton} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}确认方案并生成</button></div></div>}
+        {jobs.length > 0 && workspaceId && <div className={styles.results}><div className={styles.planIntro}><div><span className={styles.eyebrow}>生成结果</span><h2>{sessionDoc?.payload.submission_complete === false ? `还有 ${plans.length - jobs.length} 张待生成` : complete ? (jobs.every(id => jobStatuses[id] === "completed") ? "你的商品图已完成" : "部分图片暂未完成，可单张重试") : "灵感正在成为新画面"}</h2><p>点击图片放大，下载保存，或进入任务继续编辑。</p></div><div>{sessionDoc?.payload.submission_complete === false && <button disabled={!!busy} className={styles.textButton} onClick={() => void confirm()}>继续提交剩余图片</button>}<button className={styles.textButton} onClick={reset}><Plus size={14} />新建复刻</button></div></div><div className={styles.resultGrid}>{jobs.map((id, index) => <ResultCard key={id} workspaceId={workspaceId} jobId={id} title={plans[index]?.reference.title ?? `商品图 ${index + 1}`} onPreview={setPreview} onStatus={reportStatus} onRetry={id => void retryImage(id)} retrying={busy === "重新生成"} />)}</div></div>}
+        {!sessionDoc && (mode === "link" ? !product : !references.length) && <div className={styles.emptyState}><div className={styles.emptyIcon}><Sparkles size={34} /></div><h2>好构图，换成你的好商品</h2><p>上传产品图，添加商品链接或风格参考图<br />点击「开始诊断」，让 AI 为你规划与创作</p><div className={styles.emptySteps}><span>01 上传产品</span><ChevronRight size={13} /><span>02 选择参考</span><ChevronRight size={13} /><span>03 确认生成</span></div></div>}
+      </section>
     </div>
-  );
+    {modal && <div className={styles.overlay} onClick={() => setModal(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-label={modal === "history" ? "复刻历史" : modal === "fees" ? "用量说明" : "使用教程"} onClick={event => event.stopPropagation()}><button className={styles.closeModal} onClick={() => setModal(null)} aria-label="关闭"><X size={20} /></button>{modal === "history" ? <><h2>复刻历史</h2>{history.length ? history.map(item => <button className={styles.historyRow} key={item.id} onClick={() => restoreSession(item)}><span>{new Date(item.created_at).toLocaleString("zh-CN")}<small>{item.payload.plans?.length ?? item.payload.references?.length ?? 0} 张图片</small></span><b>{item.status === "awaiting_confirmation" ? "待确认" : item.status === "analysing" ? "诊断中" : item.status === "failed" ? "未完成" : "查看结果"}</b><ChevronRight size={16} /></button>) : <p>还没有复刻记录，完成首次诊断后会显示在这里。</p>}</> : modal === "fees" ? <><h2>用量说明</h2><p>商品拉取通过第三方数据服务完成；同一商品当天再次查询会复用已有结果。</p><p>图片诊断与生成分别记录使用量，生成按图片任务计入账户用量。失败图片可以单独查看和重试，已完成图片无需重复生成。</p><Link href="/dashboard">查看账户用量与余额 <ChevronRight size={14} /></Link></> : <><h2>把参考风格，变成你的商品图</h2><ol><li>上传自己的产品图，让外观、材质与品牌清晰可见。</li><li>粘贴商品链接选图，或直接上传风格参考图。</li><li>选择目标平台、语言与比例，可补充自己的真实卖点。</li><li>开始诊断，查看并补充每张图片的方案。</li><li>确认后生成，结果保存在素材库和生成记录中。</li></ol><p>参考图用于学习构图、光影和排版。商品参数、认证与售后承诺请以自己的真实信息为准。</p></>}</section></div>}
+    {preview && <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreview("")}><button onClick={() => setPreview("")} aria-label="关闭图片预览"><X size={24} /></button><img src={preview} alt="图片预览" /></div>}
+  </div>;
 }

@@ -33,6 +33,26 @@ SKILLS = {
     "style": "all-category-style-benchmark-still",
 }
 NATIVE_SKILLS = frozenset(SKILLS.values())
+VISUAL_EVIDENCE_POLICY_VERSION = "commercial-evidence-aware-v1"
+VISUAL_EVIDENCE_POLICY = (
+    "COMMERCIAL VISUAL ACCEPTANCE: Preserve the recognizable product, its clearly evidenced "
+    "construction, main silhouette, color/material family, readable physical marks and user facts. "
+    "Separate this supported identity from pose, perspective, occlusion, lighting and folds caused "
+    "by contact with a body, footwear, floor or support. Source-photo pixel measurements and "
+    "contact-fold silhouettes are view-specific observations, not intrinsic product dimensions. "
+    "For an unobserved angle or nonessential detail, use a plausible, visually coherent completion "
+    "consistent with the supplied product; do not require the user to supply another photograph. "
+    "If an uncertain detail cannot be shown convincingly, use natural pose, overlap, drape or "
+    "framing to keep it out of view while preserving the module's commercial purpose, output "
+    "count and canvas. Do not fabricate specifications, claims, brands or conspicuous functional "
+    "features. In planning and pixel review, judge commercial similarity and supported product "
+    "identity; a plausible unverified detail, minor texture/button variation, a pose-induced "
+    "proportion change, or an occluded feature is not by itself a material mismatch. Never demand "
+    "a hidden back view or unobserved construction merely to verify it. Still fail clear changes "
+    "to supported product identity, conspicuous artifacts, materially wrong composition/scale, "
+    "missing outputs or reference contamination. Describe actual visible evidence and uncertainty "
+    "honestly; do not manufacture a PASS or convert an existing FAIL in code."
+)
 EXACT_COMMANDS = {
     "start": {"input", "session"},
     "compile-plan": {"session", "plan"},
@@ -454,6 +474,10 @@ class NativeReplicaRun:
             "stage": stage,
             "instruction": instruction,
             "context": context,
+            "visual_evidence_policy": {
+                "version": VISUAL_EVIDENCE_POLICY_VERSION,
+                "instruction": VISUAL_EVIDENCE_POLICY,
+            },
             "schemas": {
                 name: read_json(self.skill_root / "schemas" / name) for name in schemas
             },
@@ -487,6 +511,8 @@ class NativeReplicaRun:
                     "the provider transport, single-use tokens and private files. "
                     "The integrated identity hard lock requires >=3 concrete geometry observations, "
                     "real product-only physical crops, and a six-part fresh product pixel comparison.\n"
+                    + VISUAL_EVIDENCE_POLICY
+                    + "\n"
                     "Typography-form bans apply to NEW authored poster copy. The user's explicit "
                     "instruction to preserve original physical product marks outranks those style bans: "
                     "never erase or retype a real handwritten product wordmark. "
@@ -678,6 +704,7 @@ class NativeReplicaRun:
             "references": payload["references"],
             "product_paths": list(map(str, products)),
             "reference_paths": list(map(str, references)),
+            "visual_evidence_policy_version": VISUAL_EVIDENCE_POLICY_VERSION,
         }
         write_json(self.root / "context.json", self.context)
         if self.method == "style":
@@ -696,8 +723,10 @@ class NativeReplicaRun:
             observation = await self.ask(
                 "identity-segmentation" if not attempt else f"identity-segmentation-repair-{attempt}",
                 (
-                    "Return {product_geometry:[at least 3 detailed observations of cross-section, "
-                    "width/height and structural segments], product_crops:[{product_index,bbox:[l,t,r,b]}], "
+                    "Return {product_geometry:[at least 3 supported, view-independent observations of "
+                    "the main shape, construction and structural segments; omit pose-specific pixel "
+                    "ratios, contact folds and speculative hidden details], "
+                    "product_crops:[{product_index,bbox:[l,t,r,b]}], "
                     "units:[{reference_index,column_index,screen_index,bbox:[l,t,r,b],screen_boundary_reason}], "
                     "route:SEARCH_COVER|PROMO_POSTER|BANNER|SOCIAL_COMMERCE_CARD|CAROUSEL_SET|DETAIL_PAGE|MARKETING_VISUAL_SET}. "
                     "Inspect all sources; physically count every screen and column, preserve column-major order. "

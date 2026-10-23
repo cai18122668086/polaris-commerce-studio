@@ -37,7 +37,6 @@ from app.models import (
 )
 from app.outbox import publish_pending_events
 from app.provider import FakeProvider, ProviderOutcome, ProviderResult
-from app.provider_quota_ledger import ProviderQuotaLedgerError
 
 WORKSPACE_ID = "ws_test"
 
@@ -1599,7 +1598,7 @@ def test_finalize_amazon_review_merges_mixed_evidence_into_quota_settlement(
     ("reserved_cost_micros", "reserved_request_count"),
     [(4_530_000, 1), (1, 45)],
 )
-def test_finalize_amazon_review_true_quota_overflow_fails_closed(
+def test_finalize_amazon_usage_above_estimates_is_recorded(
     client: TestClient,
     reserved_cost_micros: int,
     reserved_request_count: int,
@@ -1629,11 +1628,7 @@ def test_finalize_amazon_review_true_quota_overflow_fails_closed(
         reserved_request_count=reserved_request_count,
     )
 
-    with pytest.raises(
-        ProviderQuotaLedgerError,
-        match="Observed provider attempts exceed the durable job reservation",
-    ):
-        coordinator.finalize_job(job_id)
+    assert coordinator.finalize_job(job_id) == JobStatus.COMPLETED
 
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)
@@ -1644,5 +1639,6 @@ def test_finalize_amazon_review_true_quota_overflow_fails_closed(
             )
         )
         assert job is not None
-        assert job.status == JobStatus.PROCESSING.value
-        assert settlement is None
+        assert job.status == JobStatus.COMPLETED.value
+        assert settlement is not None
+        assert settlement.details["enforcement_mode"] == "observe_only"

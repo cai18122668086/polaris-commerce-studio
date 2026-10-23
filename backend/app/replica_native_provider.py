@@ -201,7 +201,12 @@ class NativeReplicaProvider:
             raise ReplicaImageOutcomeUnknown(
                 "此令牌的生图结果尚未核实，系统不会自动重复调用。请新建明确的重试任务。"
             )
-        render_sources = run.sources(paths)
+        # Crops isolate detail; the original views retain fit, scale and drape.
+        # Generation and the later pixel audit must share that identity evidence.
+        # Keep the native blueprint/repair ordering and append only this run's
+        # original product inputs, with the same byte budget and path guards.
+        originals = sorted((run.root / "inputs").glob("product-*"))
+        render_sources = run.sources(list(dict.fromkeys([*paths, *originals])))
         ledger[token] = {"state": "invoked", "job_id": request.job_id, "target": key}
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.

@@ -161,7 +161,14 @@ class NativeReplicaProvider:
                     "生图结果尚未核实，已停止自动重发。请稍后查看任务，避免重复提交。"
                     if isinstance(exc, ReplicaImageOutcomeUnknown)
                     else exc.message
-                    if isinstance(exc, (ReplicaInputTooLarge, ReplicaAnalysisUnavailable, ReplicaPlanAuditRejected))
+                    if isinstance(
+                        exc,
+                        (
+                            ReplicaInputTooLarge,
+                            ReplicaAnalysisUnavailable,
+                            ReplicaPlanAuditRejected,
+                        ),
+                    )
                     else "本次复刻暂未完成，进度已保留。可按原方案重新复刻整组。"
                 ),
                 retryable=False,
@@ -206,6 +213,11 @@ class NativeReplicaProvider:
         # Keep the native blueprint/repair ordering and add only this run's
         # original product inputs, with the same byte budget and path guards.
         originals = sorted((run.root / "inputs").glob("product-*"))
+        draft = None
+        if run.method == "exact" and native.get("mode") == "REPAIR":
+            if not paths:
+                raise ReplicaNativeError("修复缺少当前商品初稿。")
+            draft = paths[0]
         if run.method == "style" and native.get("revision_index", 0):
             if not paths:
                 raise ReplicaNativeError("修复缺少当前商品初稿。")
@@ -216,7 +228,56 @@ class NativeReplicaProvider:
         else:
             paths = [*paths, *originals]
         render_sources = run.sources(list(dict.fromkeys(paths)))
-        ledger[token] = {"state": "invoked", "job_id": request.job_id, "target": key}
+        bindings = []
+        evidence = []
+        for index, source in enumerate(render_sources, start=1):
+            path = Path(source.asset_id)
+            if draft is not None and path == draft.resolve():
+                role = "current_artwork"
+            elif source.source_role == "product_reference":
+                role = (
+                    "product_original"
+                    if path.parent == run.root / "inputs"
+                    else "product_detail"
+                )
+            else:
+                role = "composition_reference"
+            binding = {"image": index, "role": role}
+            bindings.append(binding)
+            evidence.append({**binding, "sha256": source.sha256})
+        bound_prompt = (
+            prompt
+            + "\n\nIMAGE_BINDINGS="
+            + json.dumps(bindings)
+            + "\nThese server-bound image numbers identify the native input roles above. "
+            "Only product_original and product_detail define the real product identity, "
+            "geometry, fabric and surface pattern. composition_reference supplies layout, "
+            "camera, lighting and styling, never product facts or another person's identity. "
+            "current_artwork is the repair canvas; preserve its passed regions and correct "
+            "only the audited mismatches using the original product evidence."
+        )
+        if run.method == "exact" and draft is not None:
+            blueprint = next(
+                (
+                    row["image"]
+                    for row in bindings
+                    if row["role"] == "composition_reference"
+                ),
+                None,
+            )
+            if blueprint is None:
+                raise ReplicaNativeError("修复缺少原始版式参考。")
+            bound_prompt += (
+                f'\nFor this repair transport, the native instruction "Reference image 1" '
+                f"refers to the composition blueprint at attached image {blueprint}. "
+                "Attached image 1 is the failed artwork prepended as the edit canvas."
+            )
+        ledger[token] = {
+            "state": "invoked",
+            "job_id": request.job_id,
+            "target": key,
+            "source_bindings": evidence,
+        }
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.
         await self._save(run, request.job_id)
@@ -230,7 +291,7 @@ class NativeReplicaProvider:
                 page_number=1,
                 group_key=key,
                 sources=render_sources,
-                prompt=prompt,
+                prompt=bound_prompt,
                 quality="high",
                 idempotency_key=f"replica-native:{request.job_id}:{token}",
                 size=f"{canvas[0]}x{canvas[1]}",

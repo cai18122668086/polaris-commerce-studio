@@ -1,6 +1,7 @@
 """Original product context must reach initial and repair image calls."""
 
 import asyncio
+import json
 from io import BytesIO
 from types import SimpleNamespace
 
@@ -71,6 +72,7 @@ def setup(tmp_path, method, repair):
             {
                 "token": "fixture",
                 "revision_index": int(repair) if method == "style" else 0,
+                "mode": "REPAIR" if method == "exact" and repair else "INITIAL",
             },
             "Native prompt remains unchanged",
             paths + list(extra),
@@ -104,7 +106,25 @@ def test_original_context_reaches_both_modes_without_changing_native_source_orde
     )
     assert product.payload == before == original.read_bytes()
     assert product.source_role == "product_reference"
-    assert request.prompt == "Native prompt remains unchanged"
+    assert request.prompt.startswith(
+        "Native prompt remains unchanged\n\nIMAGE_BINDINGS="
+    )
+    bindings = json.loads(request.prompt.split("IMAGE_BINDINGS=", 1)[1].splitlines()[0])
+    expected_roles = ["composition_reference", "product_detail", "product_original"]
+    if repair:
+        if method == "style":
+            expected_roles.append("current_artwork")
+        else:
+            expected_roles.insert(0, "current_artwork")
+            assert "composition blueprint at attached image 2" in request.prompt
+    assert [binding["role"] for binding in bindings] == expected_roles
+    assert [binding["image"] for binding in bindings] == list(
+        range(1, len(expected_roles) + 1)
+    )
+    ledger = json.loads((tmp_path / "invocations.json").read_text())
+    saved = ledger["fixture"]["source_bindings"]
+    assert [row["role"] for row in saved] == expected_roles
+    assert [row["sha256"] for row in saved] == [item.sha256 for item in request.sources]
     assert asyncio.run(render()) == result
     assert len(events) == 1  # Cached artwork never dispatches again.
 

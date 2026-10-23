@@ -6066,8 +6066,8 @@ class XingheImageProvider:
         skill_id: str = "xinghe-ecommerce-detail",
         revision_settings: Settings | None = None,
     ) -> None:
-        if max_concurrency not in {1, 2, 6}:
-            raise ValueError("Xinghe concurrency must be one of 1, 2, or 6.")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
+            raise ValueError("Xinghe concurrency must be from 1 through 32.")
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage

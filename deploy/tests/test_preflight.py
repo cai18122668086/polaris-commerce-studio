@@ -631,15 +631,15 @@ class SourcePreflightTests(unittest.TestCase):
         )
         self.assertEqual(errors, [])
 
-    def test_tengli_runner_rejects_non_six_concurrency(self) -> None:
-        for concurrency in ("1", "2"):
+    def test_tengli_runner_rejects_out_of_range_concurrency(self) -> None:
+        for concurrency in ("0", "33", "true", "6.5"):
             with self.subTest(concurrency=concurrency):
                 errors = self.validate_synthetic_deployment(
                     POLARIS_XINGHE_CONCURRENCY=concurrency,
                 )
                 self.assertTrue(
                     any(
-                        "POLARIS_XINGHE_CONCURRENCY must be exactly 6" in item
+                        "POLARIS_XINGHE_CONCURRENCY must be from 1 through 32" in item
                         for item in errors
                     )
                 )

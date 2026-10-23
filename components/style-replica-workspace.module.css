@@ -11,3 +11,27 @@
 .methodChoice span { display: grid; gap: 4px; }
 .methodChoice strong { font-size: 13px; }
 .methodChoice small { font-size: 11px; color: #817570; line-height: 1.5; }
+
+.stageHeader .newReplicaButton {
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.stageHeader .newReplicaButton svg { color: currentColor; }
+.stageHeader .newReplicaButton:hover { filter: brightness(.94); }
+.stageHeader .newReplicaButton:focus-visible { outline: 3px solid #9db8ff; outline-offset: 3px; }
+.stageHeader .newReplicaButton:disabled { opacity: .5; cursor: wait; }
+@media (max-width: 1100px) {
+  .stageHeader { flex-wrap: wrap; }
+  .stageHeader nav { flex-wrap: wrap; align-items: center; }
+}
+@media (max-width: 760px) {
+  .stageHeader nav { width: 100%; gap: 8px; }
+  .stageHeader .newReplicaButton { padding: 10px 14px; }
+}

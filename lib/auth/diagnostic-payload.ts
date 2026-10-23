@@ -1,3 +1,5 @@
+import { parseAuthEvidence, type AuthEvidence } from "./diagnostic-evidence";
+
 export type AuthPhase = "session" | "email_verification";
 export type AuthFailureReason = "timeout" | "offline" | "network" | "server" | "unexpected";
 export type AuthDiagnostic = {
@@ -9,6 +11,7 @@ export type AuthDiagnostic = {
   elapsed_ms: number;
   http_status: number | null;
   request_ids: string[];
+  evidence?: AuthEvidence;
 };
 
 export function authFailureReason(error: unknown, online: boolean, status?: number): AuthFailureReason {
@@ -38,6 +41,8 @@ export function parseAuthDiagnostic(value: unknown): AuthDiagnostic | null {
   if (!Number.isInteger(data.elapsed_ms) || Number(data.elapsed_ms) < 0 || Number(data.elapsed_ms) > 120_000) return null;
   if (data.http_status !== null && (!Number.isInteger(data.http_status) || Number(data.http_status) < 400 || Number(data.http_status) > 599)) return null;
   if (!Array.isArray(data.request_ids) || data.request_ids.length > 6 || !data.request_ids.every((id) => typeof id === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(id))) return null;
+  const evidence = data.evidence === undefined ? undefined : parseAuthEvidence(data.evidence);
+  if (evidence === null) return null;
   return {
     id: data.id,
     occurred_at: new Date(data.occurred_at).toISOString(),
@@ -47,5 +52,6 @@ export function parseAuthDiagnostic(value: unknown): AuthDiagnostic | null {
     elapsed_ms: Number(data.elapsed_ms),
     http_status: data.http_status === null ? null : Number(data.http_status),
     request_ids: [...data.request_ids],
+    ...(evidence ? { evidence } : {}),
   };
 }

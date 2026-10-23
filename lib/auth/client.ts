@@ -7,7 +7,8 @@ import { emitAuthUnauthorised } from "./session-events";
 import { isLocalDevelopmentAuthEnabled } from "./local-dev";
 import { getAuthRuntimeConfig } from "./config";
 import { boundedAuthRequest } from "./request-timeout";
-import { observeAuthResponse } from "./diagnostics";
+import { configureAuthDiagnosticTransport, observeAuthResponse } from "./diagnostics";
+import { observeAuthFetch } from "./fetch-observer";
 
 let authClientInitialized = false;
 
@@ -27,6 +28,18 @@ export function initializeAuthClient(): void {
       EmailVerification.init({ preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse }),
       Session.init({
         preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse,
+        override: {
+          functions: (original) => ({
+            ...original,
+            addFetchInterceptorsAndReturnModifiedFetch: (input) => {
+              configureAuthDiagnosticTransport(input.originalFetch);
+              return observeAuthFetch(
+                original.addFetchInterceptorsAndReturnModifiedFetch({ ...input, originalFetch: observeAuthFetch(input.originalFetch, "transport") }),
+                "interceptor",
+              );
+            },
+          }),
+        },
         onHandleEvent(event) {
           if (event.action === "UNAUTHORISED") emitAuthUnauthorised("session");
           else if (event.action === "SIGN_OUT") emitAuthUnauthorised("sign-out");

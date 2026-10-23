@@ -4,6 +4,7 @@ import Session from "supertokens-web-js/recipe/session";
 
 import { initializeAuthClient } from "@/lib/auth/client";
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
+import type { AuthTraceContext } from "@/lib/auth/diagnostics";
 
 export type AuthFieldError = { id: string; error: string };
 const PASSWORD_ERROR_MESSAGES: Record<string, string> = {
@@ -14,10 +15,10 @@ const PASSWORD_ERROR_MESSAGES: Record<string, string> = {
 };
 const initialise = () => initializeAuthClient();
 
-export async function sessionExists() {
+export async function sessionExists(trace?: AuthTraceContext) {
   if (isLocalDevelopmentAuthEnabled()) return true;
   initialise();
-  return Session.doesSessionExist();
+  return Session.doesSessionExist(trace ? { userContext: { polarisAuthTrace: trace } } : undefined);
 }
 export async function getSessionUserId() {
   if (isLocalDevelopmentAuthEnabled()) return LOCAL_DEV_AUTH_USER_ID;
@@ -46,10 +47,10 @@ export async function submitNewPassword(password: string) {
   initialise();
   return EmailPassword.submitNewPassword({ formFields: [{ id: "password", value: password }] });
 }
-export async function isEmailVerified() {
+export async function isEmailVerified(trace?: AuthTraceContext) {
   if (isLocalDevelopmentAuthEnabled()) return true;
   initialise();
-  return (await EmailVerification.isEmailVerified()).isVerified;
+  return (await EmailVerification.isEmailVerified(trace ? { userContext: { polarisAuthTrace: trace } } : undefined)).isVerified;
 }
 export async function verifyEmail() {
   initialise();

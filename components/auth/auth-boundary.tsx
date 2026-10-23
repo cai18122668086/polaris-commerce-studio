@@ -14,7 +14,7 @@ import { onAuthUnauthorised } from "@/lib/auth/session-events";
 import { withAuthTimeout } from "@/lib/auth/request-timeout";
 import { AuthStatus } from "./auth-status";
 import { AuthDiagnosticDetails } from "./auth-diagnostic-details";
-import { beginAuthDiagnostics, createAuthDiagnostic, reportAuthDiagnostic } from "@/lib/auth/diagnostics";
+import { beginAuthDiagnostics, createAuthDiagnostic, finishAuthDiagnostics, observeAuthCheck, reportAuthDiagnostic } from "@/lib/auth/diagnostics";
 import { authFailureCanRetry, type AuthDiagnostic, type AuthPhase } from "@/lib/auth/diagnostic-payload";
 
 type BoundaryResult = { state: "authenticated" } | { state: "error"; diagnostic: AuthDiagnostic };
@@ -52,20 +52,20 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (publicRoute || developmentAuth) return;
     let cancelled = false;
+    const diagnostics = beginAuthDiagnostics();
     async function checkAuthentication() {
-      beginAuthDiagnostics();
       setRecovering(false);
       const started = performance.now();
       for (let attempt = 0; attempt < 2; attempt += 1) {
         let phase: AuthPhase = "session";
         try {
-          if (!(await withAuthTimeout(sessionExists()))) {
+          if (!(await withAuthTimeout(observeAuthCheck(diagnostics, attempt + 1, "session", sessionExists)))) {
             if (!cancelled) redirectToLogin();
             return;
           }
           if (cancelled) return;
           phase = "email_verification";
-          if (!(await withAuthTimeout(isEmailVerified()))) {
+          if (!(await withAuthTimeout(observeAuthCheck(diagnostics, attempt + 1, "email_verification", isEmailVerified)))) {
             if (!cancelled) { queryClient.clear(); router.replace(verifyEmailHref(currentReturnTo())); }
             return;
           }
@@ -73,7 +73,7 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
           return;
         } catch (error) {
           if (cancelled) return;
-          const diagnostic = createAuthDiagnostic(error, phase, started);
+          const diagnostic = createAuthDiagnostic(error, phase, started, diagnostics);
           if (attempt === 0 && authFailureCanRetry(diagnostic.reason, diagnostic.http_status ?? undefined)) {
             setRecovering(true);
             await new Promise((resolve) => setTimeout(resolve, 750));
@@ -86,8 +86,8 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
         }
       }
     }
-    void checkAuthentication();
-    return () => { cancelled = true; };
+    void checkAuthentication().finally(() => finishAuthDiagnostics(diagnostics));
+    return () => { cancelled = true; finishAuthDiagnostics(diagnostics); };
   }, [developmentAuth, publicRoute, queryClient, redirectToLogin, retryKey, router]);
 
   if (publicRoute) return <>{children}</>;

@@ -6,7 +6,9 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
 
+from app.models import UsageEventRecord
 from app.new_detail_skill_provider import BundledSkillManifestValidator
 from app.provider import ProviderOutcome
 from app.remix_fast_provider import (
@@ -19,6 +21,7 @@ from app.remix_fast_provider import (
 )
 from app.remix_fast_runtime import SKILL_ID, RemixFastRuntime
 from app.xinghe_agent import PlannerCallResult, normalize_usage
+from tests.test_api import WORKSPACE_ID, dispatch_pending, idem, upload_asset
 from tests.test_xinghe_single_image_provider import (
     _image_bytes,  # noqa: F401
     _reference_follow_request,
@@ -191,17 +194,12 @@ def test_native_prompt_is_filled_from_original_source_template():
     assert not any(mark in prompt for mark in ("<>", "<W>", "<H>"))
 
 
-def test_fast_website_submission_routes_to_new_skill_and_accounts_once(
-    client, tmp_path
-):
-    from sqlalchemy import select
-
-    from app.models import UsageEventRecord
+def _website_fast(client, tmp_path):
     from app.task_runner import MockTaskRunner
-    from tests.test_api import WORKSPACE_ID, dispatch_pending, idem, upload_asset
     from tests.test_p0_amazon_fail_closed import _CountingGateway
 
     gateway = _CountingGateway()
+    gateway.review_fails = False
     original = gateway.plan
 
     async def plan(request):
@@ -217,7 +215,11 @@ def test_fast_website_submission_routes_to_new_skill_and_accounts_once(
             else {
                 "pixel_inspected": True,
                 "checks": [
-                    {"name": name, "passed": True, "evidence": "逐处对照真实像素"}
+                    {
+                        "name": name,
+                        "passed": not gateway.review_fails,
+                        "evidence": "逐处对照真实像素",
+                    }
                     for name in CHECKS
                 ],
                 "differences": ["替换为本品"],
@@ -262,6 +264,13 @@ def test_fast_website_submission_routes_to_new_skill_and_accounts_once(
             "selling_points": ["真实商品结构保持不变"],
         },
     }
+    return gateway, payload
+
+
+def test_fast_website_submission_routes_to_new_skill_and_accounts_once(
+    client, tmp_path
+):
+    gateway, payload = _website_fast(client, tmp_path)
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs", headers=idem(), json=payload
     )
@@ -287,3 +296,67 @@ def test_fast_website_submission_routes_to_new_skill_and_accounts_once(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs", headers=idem(), json=payload
     )
     assert rejected.status_code == 422
+
+
+def test_fast_explicit_retry_of_known_bad_image_starts_one_new_candidate(
+    client, tmp_path
+):
+    gateway, payload = _website_fast(client, tmp_path)
+    gateway.review_fails = True
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs", headers=idem(), json=payload
+    )
+    assert response.status_code == 202, response.text
+    job_id = response.json()["id"]
+    dispatch_pending(client)
+    result = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
+    assert result["status"] == "failed"
+    assert result["items"][0]["error_code"] == "REMIX_FAST_QUICK_CHECK_FAILED"
+    assert len(gateway.image_calls) == 1
+    gateway.review_fails = False
+    retry = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "failed", "item_ids": []},
+    )
+    assert retry.status_code == 201, retry.text
+    dispatch_pending(client)
+    retried = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{retry.json()['id']}"
+    ).json()
+    assert retried["status"] == "completed", json.dumps(retried, ensure_ascii=False)
+    assert len(gateway.image_calls) == 2
+    assert len(gateway.planner_calls) == 4
+
+
+def test_fast_explicit_retry_cannot_resubmit_unknown_paid_outcome(client, tmp_path):
+    gateway, payload = _website_fast(client, tmp_path)
+    original = gateway.edit
+
+    async def unknown(request):
+        result = await original(request)
+        return replace(
+            result,
+            outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+            artifact=None,
+            error_code="OFFLINE_UNKNOWN",
+            retryable=False,
+        )
+
+    gateway.edit = unknown
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs", headers=idem(), json=payload
+    )
+    assert response.status_code == 202, response.text
+    job_id = response.json()["id"]
+    dispatch_pending(client)
+    assert len(gateway.image_calls) == 1
+    retry = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "failed", "item_ids": []},
+    )
+    assert retry.status_code in {201, 409}, retry.text
+    if retry.status_code == 201:
+        dispatch_pending(client)
+    assert len(gateway.image_calls) == 1

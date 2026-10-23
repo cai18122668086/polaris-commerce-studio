@@ -392,10 +392,11 @@ class RemixFastProvider(XingheSingleImageProvider):
             ):
                 raise ValueError("Fast remix scope changed")
             previous = (item.configuration or {}).get(STATE_KEY) or {}
-            if state.get("phase") == "preparing" and previous.get("phase") not in {
-                None,
-                "preparing",
-            }:
+            if (
+                previous.get("owner_job_id") == request.job_id
+                and state.get("phase") == "preparing"
+                and previous.get("phase") not in {None, "preparing"}
+            ):
                 raise ValueError("Image submission already claimed")
             item.configuration = {**(item.configuration or {}), STATE_KEY: state}
             session.commit()

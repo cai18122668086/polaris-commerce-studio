@@ -107,8 +107,12 @@ def test_real_exact_repair_handoff_binds_second_image_as_blueprint(tmp_path):
         )
     )
     sent = calls[0]
-    assert sent.prompt.startswith(native["prompt"] + "\n\nIMAGE_BINDINGS=")
-    assert "composition blueprint at attached image 2" in sent.prompt
+    assert sent.prompt.startswith(
+        native["prompt"].replace("Reference image 1", "Reference image 2", 1)
+        + "\n\nIMAGE_BINDINGS="
+    )
+    assert "Reference image 1 is the binding composition blueprint;" not in sent.prompt
+    assert read_json(tmp_path / "request.json")["prompt"] == native["prompt"]
     assert [s.filename for s in sent.sources] == [
         draft.name,
         reference.name,
@@ -145,6 +149,75 @@ def test_exact_repair_without_canvas_or_blueprint_does_not_consume_token(
                 {"token": "unspent", "mode": "REPAIR"},
                 "Fixture native prompt",
                 [draft for _ in paths],
+                [64, 80],
+                "M01",
+            )
+        )
+    assert not (tmp_path / "invocations.json").exists()
+
+
+def test_resumed_exact_repair_planning_receives_current_pixels(tmp_path):
+    original = png(tmp_path / "inputs/product-00.img", "blue")
+    reference = png(tmp_path / "current-reference.png", "red")
+    draft = png(tmp_path / "current-draft.png", "pink")
+    stale = png(tmp_path / "prior-reference.png", "green")
+    run = run_at(tmp_path, "exact")
+    state = {
+        "state": "REPAIR_READY",
+        "module_index": 1,
+        "plan": {
+            "modules": [
+                {"reference_path": str(stale)},
+                {"reference_path": str(reference)},
+            ]
+        },
+        "modules": [
+            {"attempts": [{"artwork": str(stale)}]},
+            {"attempts": [{"artwork": str(draft)}]},
+        ],
+    }
+    run.state = lambda: state
+    write_json(tmp_path / "request.json", {"token": "fixture"})
+    calls = []
+
+    async def contract(*args, **kwargs):
+        calls.append(kwargs["paths"])
+        state["state"] = "SET_COMPLETE"
+
+    def finalize(command, **kwargs):
+        assert command == "finalize"
+        write_json(tmp_path / "delivery.json", {"outputs": [{"artwork": str(draft)}]})
+        state["state"] = "FINALIZED"
+
+    run.contract, run.cli = contract, finalize
+    provider = NativeReplicaProvider(None, None, None)
+    assert asyncio.run(provider._exact(run, None)) == [str(draft)]
+    assert calls == [[original, reference, draft]]
+
+
+@pytest.mark.parametrize(
+    "native_prompt",
+    ["Missing binding", "Reference image 1 is the binding composition blueprint; " * 2],
+)
+def test_ambiguous_repair_blueprint_stops_before_dispatch(tmp_path, native_prompt):
+    draft = png(tmp_path / "artwork/draft.png", "pink")
+    reference = png(tmp_path / "reference.png", "blue")
+    run = run_at(tmp_path, "exact")
+    provider = NativeReplicaProvider(None, None, None)
+    request = SimpleNamespace(
+        workspace_id="fixture",
+        job_id="fixture",
+        job_item_id="fixture",
+        attempt_id="fixture",
+    )
+    with pytest.raises(ReplicaNativeError, match="唯一"):
+        asyncio.run(
+            provider._render(
+                run,
+                request,
+                {"token": "unspent", "mode": "REPAIR"},
+                native_prompt,
+                [draft, reference],
                 [64, 80],
                 "M01",
             )

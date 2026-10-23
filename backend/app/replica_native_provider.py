@@ -245,17 +245,7 @@ class NativeReplicaProvider:
             binding = {"image": index, "role": role}
             bindings.append(binding)
             evidence.append({**binding, "sha256": source.sha256})
-        bound_prompt = (
-            prompt
-            + "\n\nIMAGE_BINDINGS="
-            + json.dumps(bindings)
-            + "\nThese server-bound image numbers identify the native input roles above. "
-            "Only product_original and product_detail define the real product identity, "
-            "geometry, fabric and surface pattern. composition_reference supplies layout, "
-            "camera, lighting and styling, never product facts or another person's identity. "
-            "current_artwork is the repair canvas; preserve its passed regions and correct "
-            "only the audited mismatches using the original product evidence."
-        )
+        dispatch_prompt = prompt
         if run.method == "exact" and draft is not None:
             blueprint = next(
                 (
@@ -267,16 +257,38 @@ class NativeReplicaProvider:
             )
             if blueprint is None:
                 raise ReplicaNativeError("修复缺少原始版式参考。")
-            bound_prompt += (
-                f'\nFor this repair transport, the native instruction "Reference image 1" '
-                f"refers to the composition blueprint at attached image {blueprint}. "
-                "Attached image 1 is the failed artwork prepended as the edit canvas."
+            marker = "Reference image 1 is the binding composition blueprint;"
+            if prompt.count(marker) != 1:
+                raise ReplicaNativeError("修复提示缺少唯一的原生版式绑定。")
+            # The native request prepends the draft. Translate its one logical
+            # blueprint ordinal to the actual multipart ordinal; retain the
+            # original request unchanged in the run snapshot.
+            dispatch_prompt = prompt.replace(
+                marker,
+                f"Reference image {blueprint} is the binding composition blueprint;",
+                1,
             )
+        bound_prompt = (
+            dispatch_prompt
+            + "\n\nIMAGE_BINDINGS="
+            + json.dumps(bindings)
+            + "\nThese server-bound image numbers identify the native input roles above. "
+            "Only product_original and product_detail define the real product identity, "
+            "geometry, fabric and surface pattern. composition_reference supplies layout, "
+            "camera, lighting and styling, never product facts or another person's identity. "
+            "Read composition left/right in viewer image coordinates, never anatomical "
+            "hand labels. Actual visible positions in composition_reference outrank "
+            "inferred handedness words. current_artwork is the repair canvas; preserve "
+            "its passed regions and correct only the audited mismatches using the "
+            "original product evidence."
+        )
         ledger[token] = {
             "state": "invoked",
             "job_id": request.job_id,
             "target": key,
             "source_bindings": evidence,
+            "native_prompt_sha256": digest(prompt.encode("utf-8")),
+            "dispatch_prompt_sha256": digest(bound_prompt.encode("utf-8")),
         }
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.
@@ -396,12 +408,27 @@ class NativeReplicaProvider:
                 await self._save(run, request.job_id)
             state = run.state()
             if state["state"] == "REPAIR_READY":
+                module = state["plan"]["modules"][state["module_index"]]
+                artwork = state["modules"][state["module_index"]]["attempts"][-1][
+                    "artwork"
+                ]
                 await run.contract(
                     "exact-repair-" + native["token"],
-                    "Return {material_failures:[every observed major_mismatches in exact order],single_edit_instruction:one integrated targeted repair}. Preserve correct regions and product identity.",
+                    "Return {material_failures:[every observed major_mismatches in exact order],"
+                    "single_edit_instruction:one integrated targeted repair}. Inspect attached pixels: "
+                    "last image is the failed canvas, preceding image is the composition blueprint, "
+                    "earlier images are product originals. Specify spatial deltas in viewer/image "
+                    "coordinates; do not conflate subject-anatomical left/right with image left/right. "
+                    "Use the hand or edge nearest the target image position rather than an ambiguous "
+                    "handedness label. Preserve correct regions and product identity.",
                     state,
                     "prepare-repair",
                     "repair-plan",
+                    paths=[
+                        *sorted((run.root / "inputs").glob("product-*")),
+                        Path(module["reference_path"]),
+                        Path(artwork),
+                    ],
                 )
             elif state["state"] not in {"READY", "REPAIR_PREPARED", "SET_COMPLETE"}:
                 raise ReplicaNativeError("一比一原生状态无法继续：" + state["state"])

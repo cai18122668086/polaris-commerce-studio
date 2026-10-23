@@ -52,6 +52,7 @@ const AI_TOOLBOX_MENU_IDS = [
 ];
 
 const HOME_TOOLBOX_IDS = [
+  "change-background",
   "change-color",
   "change-scene",
   "change-model",
@@ -65,7 +66,7 @@ const HOME_TOOLBOX_IDS = [
 
 const FEATURED_TASK_IDS = [
   "local-edit",
-  "change-background",
+  "reference-remix",
   "one-click-replica",
   "detail-pack",
   "domestic-main-image",
@@ -232,7 +233,7 @@ test("the homepage AI toolbox excludes all one-click featured tasks", async () =
     [],
     "homepage toolbox must not duplicate any 一键直达任务 item",
   );
-  assert.equal(toolboxIds.includes("change-background"), false);
+  assert.equal(toolboxIds.includes("change-background"), true);
   assert.equal(toolboxIds.includes("model-pose-transfer"), true);
 
   assert.match(source, /getFeatureById\(item\.id\)/);
@@ -268,10 +269,10 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
   const styles = await utf8("app/focus-inspired.css");
   const globalStyles = await utf8("app/globals.css");
 
-  assert.match(featurePriorities, /HOT_FEATURE_IDS = new Set\(\[\s*"local-edit",\s*"detail-pack",\s*"domestic-main-image",\s*\]\)/s);
+  assert.match(featurePriorities, /HOT_FEATURE_IDS = new Set\(\[\s*"local-edit",\s*"one-click-replica",\s*"detail-pack",\s*"domestic-main-image",\s*\]\)/s);
   assert.match(toolDirectory, /import \{ HOT_FEATURE_IDS \} from "@\/lib\/feature-priorities"/);
-  assert.match(toolDirectory, /tool\.featured && HOT_FEATURE_IDS\.has\(tool\.id\)/);
-  assert.match(toolDirectory, /tool\.featured && !HOT_FEATURE_IDS\.has\(tool\.id\)/);
+  assert.match(toolDirectory, /"local-edit", "one-click-replica", "reference-remix"/);
+  assert.match(toolDirectory, /HOT_FEATURE_IDS\.has\(tool\.id\)/);
   assert.match(toolDirectory, /pattern: \/亚马逊\|amazon\|跨境\|a\\\+\/iu[\s\S]*?featureIds: \["amazon-visual-suite", "detail-pack", "white-background"\]/);
   assert.match(toolDirectory, /pattern: \/主图\|淘宝\|天猫\|京东\|轮播\/iu[\s\S]*?featureIds: \["domestic-main-image", "scene-main", "white-background"\]/);
   assert.match(toolDirectory, /role=\{searchResults\.length \? "listbox" : "region"\}/);

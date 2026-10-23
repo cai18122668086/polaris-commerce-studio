@@ -9,6 +9,7 @@ import {
 import { getFeatureById, type FeatureDefinition } from "@/lib/feature-registry";
 
 const TOOLBOX_DEFINITIONS = [
+  { id: "change-background", description: "保留商品主体，替换背景与环境" },
   { id: "change-color", description: "保留纹理，快速生成目标配色" },
   { id: "change-scene", description: "重建商品场景与光影氛围" },
   { id: "change-model", description: "快速替换符合目标人群的模特" },

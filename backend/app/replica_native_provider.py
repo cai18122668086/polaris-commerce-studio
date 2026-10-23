@@ -42,9 +42,17 @@ class ReplicaCanvasMismatch(ReplicaNativeError):
     def __init__(self, expected: list[int], actual: tuple[int, int]) -> None:
         self.message = (
             f"当前屏要求 {expected[0]}×{expected[1]}，供应商返回 {actual[0]}×{actual[1]}，"
-            "比例未通过校验；原始产物已保留。"
+            "分辨率或比例未通过校验；原始产物已保留。"
         )
         super().__init__(self.message)
+
+
+def _canvas_matches(
+    expected: list[int], actual: tuple[int, int], minimum_edge: int = 0
+) -> bool:
+    return min(actual) >= minimum_edge and abs(
+        (actual[0] / actual[1]) / (expected[0] / expected[1]) - 1
+    ) <= 0.01
 
 
 class NativeReplicaProvider:
@@ -293,6 +301,9 @@ class NativeReplicaProvider:
         ledger_path = run.root / "invocations.json"
         ledger = read_json(ledger_path) if ledger_path.exists() else {}
         token = native["token"]
+        minimum_edge = min(canvas) if run.method == "exact" else 0
+        resolution_input: Path | None = None
+        resolution_recovery: dict[str, Any] | None = None
         prior = ledger.get(token)
         if prior:
             if (
@@ -306,10 +317,7 @@ class NativeReplicaProvider:
                     )
                 path = run.path(prior["path"])
                 with Image.open(path) as image:
-                    if (
-                        abs((image.width / image.height) / (canvas[0] / canvas[1]) - 1)
-                        > 0.01
-                    ):
+                    if not _canvas_matches(canvas, image.size, minimum_edge):
                         raise ReplicaCanvasMismatch(canvas, image.size)
                 return path
             if prior.get("state") == "canvas_rejected":
@@ -327,10 +335,8 @@ class NativeReplicaProvider:
             if digest(data) != retry_candidate.sha256:
                 raise ReplicaNativeError("重试画布原始字节哈希发生变化，已停止恢复。")
             with Image.open(BytesIO(data)) as image:
-                if (
-                    abs((image.width / image.height) / (canvas[0] / canvas[1]) - 1)
-                    > 0.01
-                ):
+                actual = image.size
+                if not _canvas_matches(canvas, actual):
                     raise ReplicaCanvasMismatch(canvas, image.size)
                 suffix = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[
                     image.format or "PNG"
@@ -338,43 +344,56 @@ class NativeReplicaProvider:
             path = run.root / "artwork" / ("reused-" + retry_candidate.sha256 + suffix)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-            ledger[token] = {
-                "state": "returned",
-                "path": str(path),
-                "sha256": retry_candidate.sha256,
-                "job_id": request.job_id,
-                "target": key,
-                "kind": "native_retry_candidate",
-                "source_job_id": retry_candidate.source_job_id,
-                "source_plan_sha256": retry_candidate.plan_sha256,
-                "network_requests": 0,
-            }
-            write_json(ledger_path, ledger)
-            run.usage.append(
-                {
-                    "kind": "image_reuse",
-                    "reported": True,
-                    "network_requests": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_tokens": 0,
-                    "actual_cost_micros": 0,
-                    "estimated_cost_micros": 0,
+            if _canvas_matches(canvas, actual, minimum_edge):
+                ledger[token] = {
+                    "state": "returned",
+                    "path": str(path),
+                    "sha256": retry_candidate.sha256,
+                    "job_id": request.job_id,
+                    "target": key,
+                    "kind": "native_retry_candidate",
                     "source_job_id": retry_candidate.source_job_id,
+                    "source_plan_sha256": retry_candidate.plan_sha256,
+                    "network_requests": 0,
                 }
-            )
-            await self._save(run, request.job_id)
-            return path
+                write_json(ledger_path, ledger)
+                run.usage.append(
+                    {
+                        "kind": "image_reuse",
+                        "reported": True,
+                        "network_requests": 0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cached_tokens": 0,
+                        "actual_cost_micros": 0,
+                        "estimated_cost_micros": 0,
+                        "source_job_id": retry_candidate.source_job_id,
+                    }
+                )
+                await self._save(run, request.job_id)
+                return path
+            # A verified old canvas below the requested resolution remains an
+            # editing input. Only a fresh, full-resolution native result can
+            # become artwork; never enlarge the stored pixels locally.
+            resolution_input = path
+            resolution_recovery = {
+                "source_job_id": retry_candidate.source_job_id,
+                "sha256": retry_candidate.sha256,
+                "actual_size": list(actual),
+                "required_short_edge": minimum_edge,
+            }
         # Crops isolate detail; the original views retain fit, scale and drape.
         # Generation and the later pixel audit must share that identity evidence.
         # Keep the native blueprint/repair ordering and add only this run's
         # original product inputs, with the same byte budget and path guards.
         originals = sorted((run.root / "inputs").glob("product-*"))
-        draft = None
+        draft = resolution_input
         if run.method == "exact" and native.get("mode") == "REPAIR":
             if not paths:
                 raise ReplicaNativeError("修复缺少当前商品初稿。")
             draft = paths[0]
+        elif resolution_input is not None:
+            paths = [resolution_input, *paths]
         if run.method == "style" and native.get("revision_index", 0):
             if not paths:
                 raise ReplicaNativeError("修复缺少当前商品初稿。")
@@ -449,6 +468,16 @@ class NativeReplicaProvider:
                 f"Reference image {blueprint} is the binding composition blueprint;",
                 1,
             )
+            if resolution_input is not None:
+                dispatch_prompt = (
+                    "NATIVE RESOLUTION RECOVERY: current_artwork is the real prior "
+                    "canvas, but its resolution is too small. Preserve its correct "
+                    "composition, product identity and approved copy. Recreate the "
+                    f"complete visual natively at {canvas[0]}x{canvas[1]}, with a "
+                    f"short edge of at least {minimum_edge} pixels. Do not return "
+                    "preview dimensions or a locally enlarged copy.\n"
+                    + dispatch_prompt
+                )
         bound_prompt = (
             dispatch_prompt
             + "\n\nIMAGE_BINDINGS="
@@ -502,6 +531,8 @@ class NativeReplicaProvider:
             "dispatch_prompt_sha256": digest(bound_prompt.encode("utf-8")),
             "visual_evidence_policy_version": VISUAL_EVIDENCE_POLICY_VERSION,
         }
+        if resolution_recovery is not None:
+            ledger[token]["resolution_recovery"] = resolution_recovery
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.
         await self._save(run, request.job_id)
@@ -509,8 +540,10 @@ class NativeReplicaProvider:
             attempt_prompt = bound_prompt
             if format_attempt:
                 attempt_prompt += (
-                    "\nFORMAT CORRECTION: The previous known response used the wrong aspect "
-                    f"ratio. Re-render this same approved module at EXACT {canvas[0]}x{canvas[1]}. "
+                    "\nFORMAT CORRECTION: The previous known response failed the canvas "
+                    "resolution or aspect ratio. Re-render this same approved module "
+                    f"natively at EXACT {canvas[0]}x{canvas[1]}, with a short edge "
+                    f"of at least {min(canvas)} pixels. "
                     "Use the bound format_canvas boundary; preserve the blueprint and product."
                 )
                 ledger[token]["state"] = "invoked"
@@ -573,7 +606,7 @@ class NativeReplicaProvider:
             path.write_bytes(result.artifact.payload)
             with Image.open(path) as image:
                 actual = image.size
-            matches = abs((actual[0] / actual[1]) / (canvas[0] / canvas[1]) - 1) <= 0.01
+            matches = _canvas_matches(canvas, actual, minimum_edge)
             candidates = ledger[token].get("canvas_attempts", [])
             candidates.append(
                 {
@@ -636,6 +669,11 @@ class NativeReplicaProvider:
                 artwork = state["modules"][state["module_index"]]["attempts"][-1][
                     "artwork"
                 ]
+                expected = module["output_canvas"]
+                canvas = [expected["width"], expected["height"]]
+                with Image.open(artwork) as audited_image:
+                    if not _canvas_matches(canvas, audited_image.size, min(canvas)):
+                        raise ReplicaCanvasMismatch(canvas, audited_image.size)
                 await run.contract(
                     "exact-pixel-audit-" + native["token"],
                     "Fresh side-by-side PIXEL audit. Return judgment schema, unique observations/evidence per dimension. "

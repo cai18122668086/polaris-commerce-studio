@@ -277,7 +277,12 @@ def test_reused_canvas_still_enters_the_fresh_pixel_audit_before_any_acceptance(
     run, provider, request, native, candidate, _, events = render_fixture(tmp_path)
     reference = tmp_path / "reference.png"
     Image.new("RGB", (64, 80), "blue").save(reference)
-    module = {"id": "M001", "reference_path": str(reference), "copy_units": []}
+    module = {
+        "id": "M001",
+        "reference_path": str(reference),
+        "copy_units": [],
+        "output_canvas": {"width": 64, "height": 80},
+    }
     state = {
         "state": "AWAITING_ARTWORK",
         "module_index": 0,

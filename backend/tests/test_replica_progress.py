@@ -88,7 +88,12 @@ def test_document_history_uses_actual_job_terminal_state(client, job_status):
             kind="session",
             fingerprint=uuid4().hex,
             status="generating",
-            payload={"job_ids": [job_id], "submission_complete": True},
+            payload={
+                "job_ids": [job_id],
+                "submission_complete": True,
+                "error": "Previous attempt failed",
+                "error_code": "REPLICA_SKILL_BLOCKED",
+            },
         )
         session.add_all([job, row])
         session.flush()
@@ -116,3 +121,5 @@ def test_document_history_uses_actual_job_terminal_state(client, job_status):
     )
     if job_status == "failed":
         assert history[0]["payload"]["error_code"] == "REPLICA_CANVAS_MISMATCH"
+    if job_status == "completed":
+        assert not {"error", "error_code"}.intersection(history[0]["payload"])

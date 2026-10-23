@@ -73,6 +73,7 @@ def reconcile_document(session: Session, row: ReplicaDocumentRecord) -> bool:
     if target == "completed":
         payload["progress"] = 100
         payload.pop("error", None)
+        payload.pop("error_code", None)
     else:
         item = session.scalar(
             select(JobItemRecord)

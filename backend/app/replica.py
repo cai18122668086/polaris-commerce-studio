@@ -1010,7 +1010,11 @@ def retry_image(
     jobs[jobs.index(job_id)] = retried.id
     row.status = "generating"
     row.payload = {
-        **values,
+        **{
+            key: value
+            for key, value in values.items()
+            if key not in {"execution_progress", "error", "error_code"}
+        },
         "job_ids": list(jobs),
         "retry_events": [
             *attempts,

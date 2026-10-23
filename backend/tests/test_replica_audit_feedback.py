@@ -214,3 +214,42 @@ def test_unavailable_independent_review_never_applies_the_primary_pass(tmp_path)
     assert len(calls) == 2 and received == []
     saved = list((tmp_path / "contracts").glob("exact-pixel-audit-test-*.json"))
     assert len(saved) == 1
+
+
+@pytest.mark.parametrize("malformed", [None, "ten chars!", [None] * 10])
+def test_malformed_pass_is_corrected_by_native_validation_before_independent_review(
+    tmp_path, malformed
+):
+    bad = {**verdict(True), "comparisons": malformed}
+    run, calls, received, context, reference, artwork = fixture(tmp_path, bad)
+    context["prior_pixel_reviews"] = [{"observations": ["Evidence too low"]}]
+    original_cli = run.cli
+
+    def cli(command, **kwargs):
+        value = read_json(kwargs["judgment"])
+        if value["comparisons"] == malformed:
+            raise ReplicaNativeError("Synthetic native schema rejection")
+        original_cli(command, **kwargs)
+
+    async def plan(request):
+        calls.append(request)
+        return SimpleNamespace(
+            payload=bad if len(calls) == 1 else verdict(True),
+            error_code=None,
+            normalized_usage={"reported": False},
+            actual_cost_micros=None,
+        )
+
+    run.cli, run.gateway.plan = cli, plan
+    value = asyncio.run(
+        run.contract(
+            "exact-pixel-audit-test",
+            "Observe pixels",
+            context,
+            "audit-current",
+            "judgment",
+            paths=[reference, artwork],
+        )
+    )
+    assert len(calls) == 3 and len(received) == 1
+    assert value["decision"] == "PASS" and len(value["comparisons"]) == 10

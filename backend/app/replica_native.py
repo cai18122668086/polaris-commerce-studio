@@ -757,8 +757,12 @@ class NativeReplicaRun:
                 and context.get("prior_pixel_reviews")
                 and value.get("decision") == "PASS"
                 and value.get("major_mismatches") == []
-                and len(value.get("comparisons", [])) == 10
-                and all(row.get("match") is True for row in value["comparisons"])
+                and isinstance(value.get("comparisons"), list)
+                and len(value["comparisons"]) == 10
+                and all(
+                    isinstance(row, dict) and row.get("match") is True
+                    for row in value["comparisons"]
+                )
                 and value.get("product_geometry_match") is not False
             ):
                 # Preserve the first model response. A separate fresh pixel

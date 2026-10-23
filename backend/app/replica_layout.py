@@ -5,14 +5,53 @@ from __future__ import annotations
 from typing import Any
 
 
-def _box(value: Any) -> bool:
+def _box(value: Any, width: int = 1000, height: int = 1000) -> bool:
     return (
         isinstance(value, list)
         and len(value) == 4
         and all(type(v) is int for v in value)
-        and 0 <= value[0] < value[2] <= 1000
-        and 0 <= value[1] < value[3] <= 1000
+        and 0 <= value[0] < value[2] <= width
+        and 0 <= value[1] < value[3] <= height
     )
+
+
+def validate_product_evidence(
+    value: dict[str, Any], sources: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    rows = value.get("products")
+    if not isinstance(rows, list) or len(rows) != len(sources):
+        raise ValueError("商品文字观察未覆盖全部原始产品照片。")
+    result: dict[int, Any] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("商品文字观察必须是对象。")
+        index = row.get("product_index")
+        if type(index) is not int or not 0 <= index < len(sources) or index in result:
+            raise ValueError("商品文字观察的原照编号无效或重复。")
+        source = sources[index]
+        if row.get("source_sha256") != source["sha256"]:
+            raise ValueError(f"商品原照 {index} 的文字观察哈希不一致。")
+        marks = row.get("readable_marks")
+        if not isinstance(marks, list) or len(marks) > 48:
+            raise ValueError(f"商品原照 {index} 的可读文字区域无效。")
+        for mark in marks:
+            if (
+                not isinstance(mark, dict)
+                or not isinstance(mark.get("text"), str)
+                or not 1 <= len(mark["text"].strip()) <= 2000
+                or not _box(mark.get("bbox"), source["width"], source["height"])
+            ):
+                raise ValueError(f"商品原照 {index} 的文字或原始像素坐标无效。")
+        notes = row.get("uncertainty_notes")
+        if not isinstance(notes, str) or not 8 <= len(notes) <= 4000:
+            raise ValueError(f"商品原照 {index} 缺少可读性和未知事实说明。")
+        result[index] = {
+            "product_index": index,
+            "source_sha256": source["sha256"],
+            "readable_marks": [{"text": m["text"], "bbox": m["bbox"]} for m in marks],
+            "uncertainty_notes": notes,
+        }
+    return [result[index] for index in range(len(sources))]
 
 
 def validate_reference_layouts(

@@ -26,7 +26,11 @@ from PIL import Image
 
 from .config import default_skill_root
 from .new_detail_skill_provider import BundledSkillManifestValidator
-from .replica_layout import bind_module_text, validate_reference_layouts
+from .replica_layout import (
+    bind_module_text,
+    validate_product_evidence,
+    validate_reference_layouts,
+)
 from .storage import ValidatedImage
 
 SKILLS = {
@@ -547,6 +551,7 @@ class NativeReplicaRun:
             phases = [
                 ("identity-segmentation-repair", 15, "校正参考图拆屏坐标"),
                 ("identity", 12, "识别商品外形与物理拆屏"),
+                ("exact-product-evidence", 24, "独立核对真实商品文字与事实边界"),
                 ("exact-reference-layout", 30, "独立识别参考图主体占比与文字层级"),
                 ("exact-plan-audit", 82, "重新看图审查逐屏方案"),
                 ("exact-module-constraints", 92, "锁定逐屏构图与商品核验范围"),
@@ -995,6 +1000,56 @@ class NativeReplicaRun:
                     },
                 }
             )
+        product_sources = []
+        for index, path in enumerate(products):
+            with Image.open(path) as image:
+                width, height = image.size
+            product_sources.append(
+                {
+                    "product_index": index,
+                    "sha256": digest(path.read_bytes()),
+                    "width": width,
+                    "height": height,
+                }
+            )
+        fact_error = ""
+        product_observation: dict[str, Any] = {}
+        for fact_attempt in range(3):
+            product_observation = await self.ask(
+                f"exact-product-evidence-{fact_attempt}",
+                "Inspect ONLY these actual product originals, independently of any benchmark. "
+                "Return {products:[{product_index,source_sha256,readable_marks:[{text,bbox:[l,t,r,b]}],"
+                "uncertainty_notes}]}. Cover each supplied product_index exactly once and copy "
+                "its supplied sha256 unchanged. Coordinates are integer ORIGINAL source pixels. "
+                "Transcribe legible physical words and complete numerals verbatim, including "
+                "product name, ingredients, named variants, weight, percentages and manufacturer "
+                "when readable. Read the actual ingredient names; never substitute familiar "
+                "ingredients or infer a supplier, additive-free claim, effectiveness percentage "
+                "or health outcome. For unbranded products, readable_marks may be empty. "
+                "Do not guess unreadable microprint; describe uncertainty explicitly. Keep "
+                "user_facts separate: they are provided assertions, not product-photo OCR. "
+                "The purpose is a source-bound factual boundary for new copy, not new marketing claims.",
+                {
+                    "products": product_sources,
+                    "user_facts": self.context.get("user_facts", ""),
+                    "validation_error": fact_error,
+                    **(
+                        {"invalid_observation": product_observation}
+                        if fact_attempt
+                        else {}
+                    ),
+                },
+                paths=products,
+            )
+            try:
+                self.context["product_evidence"] = validate_product_evidence(
+                    product_observation, product_sources
+                )
+                break
+            except ValueError as exc:
+                fact_error = str(exc)
+        else:
+            raise ReplicaNativeError(fact_error)
         layout_error = ""
         observed: dict[str, Any] = {}
         for layout_attempt in range(3):
@@ -1053,7 +1108,15 @@ class NativeReplicaRun:
                 "EVERY authored text slot, including small capsules; source slogans are not "
                 "authorized copy. Do not add new text carriers or extra lines to fit surplus copy. "
                 "For context-only scenes, explicitly exclude physical product contents and packaging "
-                "from the scene; food must not appear in litter-cleanup or other unrelated props.",
+                "from the scene; food must not appear in litter-cleanup or other unrelated props. "
+                "Use product_evidence as fallible, source-bound transcriptions and verify them "
+                "against the original product pixels. Keep ingredient names, variants and marks "
+                "consistent across ALL modules. New copy may state readable product facts and "
+                "explicit user_facts; do not infer an efficacy, supplier, percentage, zero-additive "
+                "claim or clinical result from an ingredient's presence or a benchmark slogan. "
+                "Preserve evidence-carrier shape with truthful supplied facts rather than "
+                "inventing a test result. Report any material conflict between supplied facts "
+                "and visible physical labels instead of silently rewriting either source.",
                 {
                     **self.context,
                     "physical_units": evidence,
@@ -1070,8 +1133,16 @@ class NativeReplicaRun:
                     "schema. Never copy planning observations. Count actual font-size tiers and line "
                     "groups, distinguish small connectors from dominant rows, check subject bounds "
                     "and all authored text carriers. Reference pixels outrank both the plan and "
-                    "reference_layouts if either description is wrong. Fail honestly and explain concrete plan fixes.",
-                    plan,
+                    "reference_layouts if either description is wrong. Independently compare "
+                    "copy against the actual user_facts AND product pixels; do not claim that "
+                    "user authorization is absent without reading the supplied user_facts. "
+                    "product_evidence is an observation to verify, not permission to invent "
+                    "effects from ingredients. Fail honestly and explain concrete plan fixes.",
+                    {
+                        **plan,
+                        "user_facts": self.context.get("user_facts", ""),
+                        "product_evidence": self.context["product_evidence"],
+                    },
                     "audit-plan",
                     "judgment",
                     schemas=("plan-audit.schema.json",),

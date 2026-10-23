@@ -5,8 +5,80 @@ import pytest
 from app.replica_layout import (
     bind_module_text,
     exact_review_context,
+    validate_product_evidence,
     validate_reference_layouts,
 )
+
+
+def test_product_transcription_keeps_original_pixels_and_explicit_uncertainty():
+    source = [{"sha256": "a" * 64, "width": 1320, "height": 1760}]
+    observed = {
+        "products": [
+            {
+                "product_index": 0,
+                "source_sha256": "a" * 64,
+                "readable_marks": [
+                    {
+                        "text": "Chicken · liver · egg yolk",
+                        "bbox": [100, 1200, 1100, 1600],
+                    }
+                ],
+                "uncertainty_notes": (
+                    "Only the large printed ingredient names are legible."
+                ),
+            }
+        ]
+    }
+    result = validate_product_evidence(observed, source)
+    assert result[0]["readable_marks"][0]["bbox"][3] == 1600
+    assert result[0]["readable_marks"][0]["text"] == "Chicken · liver · egg yolk"
+    observed["products"][0]["readable_marks"] = []
+    assert validate_product_evidence(observed, source)[0]["readable_marks"] == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "hash",
+        "missing",
+        "duplicate",
+        "pixel_bounds",
+        "empty_mark",
+        "missing_uncertainty",
+    ],
+)
+def test_product_evidence_cannot_substitute_another_source_or_invent_readable_regions(
+    bad,
+):
+    observed = {
+        "products": [
+            {
+                "product_index": 0,
+                "source_sha256": "a" * 64,
+                "readable_marks": [
+                    {"text": "Real printed words", "bbox": [0, 0, 100, 200]}
+                ],
+                "uncertainty_notes": "Unobserved effects and suppliers remain unknown.",
+            }
+        ]
+    }
+    row = observed["products"][0]
+    if bad == "hash":
+        row["source_sha256"] = "b" * 64
+    elif bad == "missing":
+        observed["products"] = []
+    elif bad == "duplicate":
+        observed["products"] *= 2
+    elif bad == "pixel_bounds":
+        row["readable_marks"][0]["bbox"][3] = 201
+    elif bad == "empty_mark":
+        row["readable_marks"][0]["text"] = " "
+    else:
+        row.pop("uncertainty_notes")
+    with pytest.raises(ValueError):
+        validate_product_evidence(
+            observed, [{"sha256": "a" * 64, "width": 100, "height": 200}]
+        )
 
 
 def source_layout():

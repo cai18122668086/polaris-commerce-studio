@@ -84,7 +84,10 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
     tmp_path,
 ):
     run = run_at(tmp_path, "exact", SimpleNamespace())
-    run.context = {"user_facts": "", "references": [{"asset_id": "original-reference"}]}
+    run.context = {
+        "user_facts": "Explicitly provided product facts",
+        "references": [{"asset_id": "original-reference"}],
+    }
     product, reference = tmp_path / "product.png", tmp_path / "reference.png"
     Image.new("RGB", (100, 120), "red").save(product)
     Image.new("RGB", (100, 200), "blue").save(reference)
@@ -97,6 +100,8 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
     async def contract(stage, instruction, context, *args, **kwargs):
         events.append(stage)
         if stage.startswith("exact-plan-audit"):
+            assert context["user_facts"] == "Explicitly provided product facts"
+            assert context["product_evidence"][0]["product_index"] == 0
             return {"pass": True}
         evidence = context["physical_units"][0]
         return {
@@ -114,6 +119,19 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
 
     async def ask(stage, instruction, context, **kwargs):
         asks.append((stage, context, kwargs))
+        if stage.startswith("exact-product-evidence"):
+            return {
+                "products": [
+                    {
+                        "product_index": 0,
+                        "source_sha256": context["products"][0]["sha256"],
+                        "readable_marks": [],
+                        "uncertainty_notes": (
+                            "No readable physical marks in this test image."
+                        ),
+                    }
+                ]
+            }
         source_hash = hashlib.sha256(
             (tmp_path / "crops/screen-000.png").read_bytes()
         ).hexdigest()
@@ -136,7 +154,7 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
         value = constraint()
         value["modules"][0].update(product_visibility="context_only", text_bindings=[])
         value["modules"][0]["reference_sha256"] = (
-            "0" * 64 if len(asks) == 2 else source_hash
+            "0" * 64 if len(asks) == 3 else source_hash
         )
         return value
 
@@ -159,10 +177,11 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
         )
     )
     assert events == ["start", "exact-plan-r0", "exact-plan-audit-r0"]
-    assert len(asks) == 3 and asks[2][1]["validation_error"]
-    assert asks[0][2]["paths"] == [tmp_path / "crops/screen-000.png"]
-    assert "plan" not in asks[0][1]
-    assert asks[2][2]["paths"] == [product, tmp_path / "crops/screen-000.png"]
+    assert len(asks) == 4 and asks[3][1]["validation_error"]
+    assert asks[0][2]["paths"] == [product]
+    assert asks[1][2]["paths"] == [tmp_path / "crops/screen-000.png"]
+    assert "plan" not in asks[0][1] and "plan" not in asks[1][1]
+    assert asks[3][2]["paths"] == [product, tmp_path / "crops/screen-000.png"]
     assert result[0]["canvas"] == {"width": 1024, "height": 2048}
     saved = json.loads((tmp_path / "context.json").read_text(encoding="utf-8"))
     assert (

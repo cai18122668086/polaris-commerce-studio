@@ -1368,7 +1368,7 @@ def _install_budget_runner(
     return gateway
 
 
-def test_tengli_planner_fails_closed_without_durable_provider_quota(
+def test_tengli_planner_records_missing_estimate_without_blocking(
     client: TestClient,
 ) -> None:
     transport = _Budget429Transport(page_count=1)
@@ -1394,9 +1394,9 @@ def test_tengli_planner_fails_closed_without_durable_provider_quota(
     assert dispatch_pending(client) == 1
     failed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
 
-    assert failed["status"] == JobStatus.FAILED.value
-    assert failed["error_code"] == "PROVIDER_QUOTA_RESERVATION_MISSING"
-    assert transport.planner_calls == 0
+    assert failed["status"] == JobStatus.AWAITING_CONFIRMATION.value
+    assert failed["error_code"] != "PROVIDER_QUOTA_RESERVATION_MISSING"
+    assert transport.planner_calls == 1
     assert transport.image_calls == 0
 
 

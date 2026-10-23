@@ -4490,23 +4490,16 @@ def _reserve_real_provider_job_if_enabled(
         )
         group_count = _AURORA_PLANNER_REQUEST_ENVELOPE
     elif job.type == JobType.REFERENCE_REMIX.value and settings.task_runner == "tengli":
-        from .replica_quota import native_replica_budget
-
-        native_budget = native_replica_budget(
-            configuration, job.expected_item_count, image_cost,
-            settings.tengli_planner_reserve_micros,
-        )
-        if native_budget is not None:
-            estimated_cost, provider_requests, group_count = native_budget
-        else:
-            # The legacy single-image workflow has its own two-call bound.
-            estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 2
-            provider_requests = (
-                runnable_item_count
-                if runnable_item_count is not None
-                else job.expected_item_count
-            ) * 2 + 2
-            group_count = 1
+        # Reference remix now performs one bounded vision-analysis call before
+        # the image edit so the Skill's composition skeleton reaches the image
+        # model. Reserve both calls before dispatching the job.
+        estimated_cost = image_cost * 2 + settings.tengli_planner_reserve_micros * 2
+        provider_requests = (
+            runnable_item_count
+            if runnable_item_count is not None
+            else job.expected_item_count
+        ) * 2 + 2
+        group_count = 1
     elif enable_flag is not None:
         estimated_cost = image_cost * 2
         provider_requests = (

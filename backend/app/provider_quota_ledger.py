@@ -21,7 +21,6 @@ from .models import (
     JobRecord,
     UsageEventRecord,
 )
-from .replica_quota import native_replica_budget
 
 RESERVATION_ACTION = "provider.beta_job_reserved"
 ATTEMPTS_ACTION = "provider.beta_job_attempts_recorded"
@@ -162,12 +161,6 @@ def _append_settlement(
     conservative_unknown_count = sum(
         source["cost_basis"] == "conservative_unknown" for source in sources
     )
-    if requests > _settlement_request_ceiling(
-        reservation, job
-    ) or charge > _settlement_cost_ceiling(reservation, job):
-        raise ProviderQuotaLedgerError(
-            "Observed provider attempts exceed the durable job reservation."
-        )
     basis = (
         "mixed_conservative_unknown"
         if conservative_unknown_count and actual_cost_count
@@ -180,6 +173,7 @@ def _append_settlement(
         else "estimated_fallback"
     )
     common = {
+        "enforcement_mode": "observe_only",
         "ledger_version": LEDGER_VERSION,
         "reservation_event_id": reservation.id,
         "reserved_cost_micros": reserved_cost,
@@ -192,16 +186,9 @@ def _append_settlement(
         "conservative_unknown_count": conservative_unknown_count,
     }
     if charge > reserved_cost:
-        correction_key = (
-            "legacy_native_replica_reserve_correction_micros"
-            if _legacy_native_replica_limits(reservation, job) is not None
-            else "legacy_visual_review_reserve_correction_micros"
-        )
-        common[correction_key] = charge - reserved_cost
+        common["observed_cost_over_estimate_micros"] = charge - reserved_cost
     if requests > reserved_requests:
-        common["legacy_native_replica_request_correction"] = (
-            requests - reserved_requests
-        )
+        common["observed_requests_over_estimate"] = requests - reserved_requests
     _add_event(session, job, ATTEMPTS_ACTION, {**common, "attempts": sources})
     _add_event(session, job, SETTLEMENT_ACTION, common)
     _add_event(
@@ -541,85 +528,13 @@ def _settlement_for_reservation(
     if not settlements:
         return None
     settlement = settlements[0]
-    _validate_settlement(
-        reservation, settlement, session.get(JobRecord, reservation.resource_id)
-    )
+    _validate_settlement(reservation, settlement)
     return settlement
-
-
-def _legacy_native_replica_limits(
-    reservation: AuditEventRecord,
-    job: JobRecord | None,
-) -> tuple[int, int, int] | None:
-    """Recognize only the old native adapter's under-reserved envelope.
-
-    Keep its immutable reservation and usage intact. Bounded correction is
-    restricted to server-confirmed native replica jobs and the exact legacy
-    reservation formula; unrelated workflows and genuine overruns still fail.
-    """
-    if job is None or job.type != JobType.REFERENCE_REMIX.value:
-        return None
-    details = _details(reservation)
-    image, review = (
-        details.get("image_budget_micros"),
-        details.get("planner_reserve_micros"),
-    )
-    cost, requests = _reservation_values(reservation)
-    if (
-        details.get("job_type") != JobType.REFERENCE_REMIX.value
-        or details.get("group_count") != 1
-        or not _is_positive_int(image)
-        or not _is_positive_int(review)
-        or cost != image * 2 + review * 2
-        or requests != job.expected_item_count * 2 + 2
-    ):
-        return None
-    return native_replica_budget(
-        job.configuration, job.expected_item_count, image, review
-    )
-
-
-def _settlement_request_ceiling(
-    reservation: AuditEventRecord,
-    job: JobRecord | None,
-) -> int:
-    native = _legacy_native_replica_limits(reservation, job)
-    return native[1] if native is not None else _reservation_values(reservation)[1]
-
-
-def _settlement_cost_ceiling(
-    reservation: AuditEventRecord,
-    job: JobRecord | None = None,
-) -> int:
-    """Honor the four-call bound of older masked-edit reservations.
-
-    Those records reserved two edits and only one visual review, although the
-    workflow allowed two reviews. Preserve the original immutable reservation
-    and account for observed usage within that missing review's bounded cost.
-    """
-
-    native = _legacy_native_replica_limits(reservation, job)
-    if native is not None:
-        return native[0]
-    cost, requests = _reservation_values(reservation)
-    details = _details(reservation)
-    image = details.get("image_budget_micros")
-    review = details.get("planner_reserve_micros")
-    if (
-        details.get("job_type") == JobType.LOCAL_EDIT.value
-        and requests == 4
-        and _is_positive_int(image)
-        and _is_positive_int(review)
-        and cost == image * 2 + review
-    ):
-        return cost + review
-    return cost
 
 
 def _validate_settlement(
     reservation: AuditEventRecord,
     settlement: AuditEventRecord,
-    job: JobRecord | None = None,
 ) -> None:
     reserved_cost, reserved_requests = _reservation_values(reservation)
     details = _details(settlement)
@@ -641,35 +556,9 @@ def _validate_settlement(
         raise ProviderQuotaLedgerError(
             "A quota settlement changed the reserved request count."
         )
-    charged = _required_int(details, "charged_cost_micros")
-    if charged > _settlement_cost_ceiling(reservation, job):
-        raise ProviderQuotaLedgerError("A quota settlement exceeds the reserved cost.")
-    native = _legacy_native_replica_limits(reservation, job)
-    correction_key = (
-        "legacy_native_replica_reserve_correction_micros"
-        if native is not None
-        else "legacy_visual_review_reserve_correction_micros"
-    )
-    if (
-        charged > reserved_cost
-        and _required_int(details, correction_key) != charged - reserved_cost
-    ):
-        raise ProviderQuotaLedgerError(
-            "A legacy visual-review correction is inconsistent."
-        )
-    requests = _required_int(details, "actual_provider_request_count")
-    if requests > _settlement_request_ceiling(reservation, job):
-        raise ProviderQuotaLedgerError(
-            "A quota settlement exceeds the reserved request count."
-        )
-    if (
-        requests > reserved_requests
-        and _required_int(details, "legacy_native_replica_request_correction")
-        != requests - reserved_requests
-    ):
-        raise ProviderQuotaLedgerError(
-            "A legacy native-replica request correction is inconsistent."
-        )
+    # Validate recorded values, without treating estimates as spending authority.
+    _required_int(details, "charged_cost_micros")
+    _required_int(details, "actual_provider_request_count")
 
 
 def _add_event(

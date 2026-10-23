@@ -423,10 +423,6 @@ def _settle_amazon_provider_quota(
             }
         )
 
-    if requests > reserved_requests or charge > reserved_cost:
-        raise ProviderQuotaLedgerError(
-            "Observed provider attempts exceed the durable job reservation."
-        )
     conservative_unknown_count = sum(
         source["cost_basis"] == "conservative_unknown" for source in sources
     )
@@ -442,6 +438,7 @@ def _settle_amazon_provider_quota(
         else "estimated_fallback"
     )
     common = {
+        "enforcement_mode": "observe_only",
         "ledger_version": quota_ledger.LEDGER_VERSION,
         "reservation_event_id": reservation.id,
         "reserved_cost_micros": reserved_cost,
@@ -466,8 +463,8 @@ def _settle_amazon_provider_quota(
         quota_ledger.RELEASE_ACTION,
         {
             **common,
-            "released_cost_micros": reserved_cost - charge,
-            "released_request_count": reserved_requests - requests,
+            "released_cost_micros": max(0, reserved_cost - charge),
+            "released_request_count": max(0, reserved_requests - requests),
             "release_reason": f"terminal_{job.status}",
         },
     )

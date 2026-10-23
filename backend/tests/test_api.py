@@ -715,7 +715,7 @@ def test_amazon_real_provider_reserves_complete_automation_envelope(
     assert reservation.details["planner_reserve_micros"] == 250_000
 
 
-def test_real_provider_job_reservation_is_idempotent_and_daily_bounded(
+def test_real_provider_estimates_are_idempotent_without_daily_limits(
     client: TestClient,
 ) -> None:
     settings = client.app.state.settings
@@ -748,20 +748,19 @@ def test_real_provider_job_reservation_is_idempotent_and_daily_bounded(
     assert first.status_code == 202
     assert replay.status_code == 202
     assert replay.json()["id"] == first.json()["id"]
-    assert blocked.status_code == 409
-    assert blocked.json()["error"]["code"] == "PROVIDER_DAILY_BUDGET_EXCEEDED"
+    assert blocked.status_code == 202
     with client.app.state.session_factory() as session:
         reservations = session.scalars(
             select(AuditEventRecord).where(
                 AuditEventRecord.action == "provider.beta_job_reserved"
             )
         ).all()
-    assert len(reservations) == 1
+    assert len(reservations) == 2
     assert reservations[0].details["estimated_cost_micros"] == 430_000
     assert reservations[0].details["provider_request_count"] == 3
 
 
-def test_real_provider_daily_request_limit_blocks_before_dispatch(
+def test_real_provider_daily_request_estimate_does_not_block_dispatch(
     client: TestClient,
 ) -> None:
     settings = client.app.state.settings
@@ -786,8 +785,7 @@ def test_real_provider_daily_request_limit_blocks_before_dispatch(
     )
 
     assert first.status_code == 202
-    assert blocked.status_code == 409
-    assert blocked.json()["error"]["code"] == "PROVIDER_DAILY_REQUEST_LIMIT_EXCEEDED"
+    assert blocked.status_code == 202
 
 
 def test_unknown_planner_outcome_is_charged_conservatively_and_releases_images(
@@ -869,7 +867,7 @@ def test_unknown_planner_outcome_is_charged_conservatively_and_releases_images(
         assert release.details["released_request_count"] == 2
 
 
-def test_terminal_detail_without_attempt_evidence_fails_quota_closed(
+def test_missing_historical_attempt_evidence_does_not_block_new_submissions(
     client: TestClient,
 ) -> None:
     settings = client.app.state.settings
@@ -902,8 +900,7 @@ def test_terminal_detail_without_attempt_evidence_fails_quota_closed(
         headers=idem(),
         json=payload,
     )
-    assert blocked.status_code == 503
-    assert blocked.json()["error"]["code"] == "PROVIDER_QUOTA_LEDGER_INVALID"
+    assert blocked.status_code == 202
 
 
 @pytest.mark.parametrize(
@@ -919,7 +916,7 @@ def test_terminal_detail_without_attempt_evidence_fails_quota_closed(
         "requests_over_reservation",
     ],
 )
-def test_provider_quota_ledger_rejects_duplicate_or_inconsistent_events(
+def test_corrupt_provider_ledger_does_not_block_new_submissions(
     client: TestClient,
     tamper: str,
 ) -> None:
@@ -1007,11 +1004,10 @@ def test_provider_quota_ledger_rejects_duplicate_or_inconsistent_events(
         headers=idem(),
         json=payload,
     )
-    assert blocked.status_code == 503
-    assert blocked.json()["error"]["code"] == "PROVIDER_QUOTA_LEDGER_INVALID"
+    assert blocked.status_code == 202
 
 
-def test_nonterminal_job_with_valid_zero_settlement_fails_quota_closed(
+def test_nonterminal_job_accounting_conflict_does_not_block_new_submissions(
     client: TestClient,
 ) -> None:
     settings = client.app.state.settings
@@ -1069,8 +1065,7 @@ def test_nonterminal_job_with_valid_zero_settlement_fails_quota_closed(
         headers=idem(),
         json=payload,
     )
-    assert blocked.status_code == 503
-    assert blocked.json()["error"]["code"] == "PROVIDER_QUOTA_LEDGER_INVALID"
+    assert blocked.status_code == 202
 
 
 def test_upload_rejects_missing_idempotency_and_invalid_images(

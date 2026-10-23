@@ -26,6 +26,7 @@ from PIL import Image
 
 from .config import default_skill_root
 from .new_detail_skill_provider import BundledSkillManifestValidator
+from .replica_layout import bind_module_text, validate_reference_layouts
 from .storage import ValidatedImage
 
 SKILLS = {
@@ -33,7 +34,7 @@ SKILLS = {
     "style": "all-category-style-benchmark-still",
 }
 NATIVE_SKILLS = frozenset(SKILLS.values())
-VISUAL_EVIDENCE_POLICY_VERSION = "commercial-evidence-aware-v2"
+VISUAL_EVIDENCE_POLICY_VERSION = "source-layout-and-copy-bound-v3"
 VISUAL_EVIDENCE_POLICY = (
     "COMMERCIAL VISUAL ACCEPTANCE: Preserve the recognizable product, its clearly evidenced "
     "construction, main silhouette, color/material family, readable physical marks and user facts. "
@@ -546,6 +547,7 @@ class NativeReplicaRun:
             phases = [
                 ("identity-segmentation-repair", 15, "校正参考图拆屏坐标"),
                 ("identity", 12, "识别商品外形与物理拆屏"),
+                ("exact-reference-layout", 30, "独立识别参考图主体占比与文字层级"),
                 ("exact-plan-audit", 82, "重新看图审查逐屏方案"),
                 ("exact-module-constraints", 92, "锁定逐屏构图与商品核验范围"),
                 ("exact-plan", 48, "逐屏规划构图与商品表达"),
@@ -993,6 +995,41 @@ class NativeReplicaRun:
                     },
                 }
             )
+        layout_error = ""
+        for layout_attempt in range(3):
+            observed = await self.ask(
+                f"exact-reference-layout-{layout_attempt}",
+                "Observe ONLY the attached reference crops BEFORE a replacement plan exists. "
+                "Return {units:[{reference_unit_id,reference_sha256,reference_product_present:boolean,"
+                "layout_anchors:[{label,bbox:[l,t,r,b]}],has_poster_text:boolean,"
+                "text_regions:[{id,role:brand|headline|connector|subtitle|badge|body|footnote,"
+                "font_tier:dominant|secondary|small,line_group,observed_text,bbox:[l,t,r,b]}],"
+                "typography_notes}]}. Use normalized integer coordinates 0..1000. Cover every "
+                "source exactly once, preserving the supplied id and hash. Record subject, props "
+                "and supporting evidence bounds and negative space accurately, including small "
+                "corner objects; do not enlarge them into heroes. A text region is a single "
+                "typographic run with one size tier; split small connecting words from large "
+                "headlines even when they share a reading line. Count actual dominant line groups, "
+                "not semantic phrases: a small connector is NOT an additional giant headline. "
+                "Include small top-right pills, labels, brand slots, subtitles and footnotes. "
+                "Exclude text printed on physical products; that belongs to product identity. "
+                "Use empty observed_text when pixels are unreadable, never invent OCR. Source "
+                "words are analysis evidence only, never approved replacement copy. Describe "
+                "the actual hierarchy in typography_notes, or explicitly explain absence of text.",
+                {"physical_units": evidence, "validation_error": layout_error},
+                paths=[Path(row["crop_path"]) for row in evidence],
+            )
+            try:
+                layouts = validate_reference_layouts(
+                    observed, {row["id"]: row["crop_sha256"] for row in evidence}
+                )
+                break
+            except ValueError as exc:
+                layout_error = str(exc)
+        else:
+            raise ReplicaNativeError(layout_error)
+        self.context["reference_layouts"] = layouts
+        write_json(self.root / "context.json", self.context)
         previous_audit = self.context.get("prior_visual_audit")
         for revision in range(3):
             plan = await self.contract(
@@ -1004,7 +1041,14 @@ class NativeReplicaRun:
                 "product wordmarks exactly. Reference brand identity may be replaced only by the user's "
                 "observed own product identity, while retaining the reference's actual visual/commercial "
                 "role. Never substitute generic cards. Correct every prior independent audit mismatch "
-                "in the plan instead of changing its observed evidence or asking the audit to pass.",
+                "in the plan instead of changing its observed evidence or asking the audit to pass. "
+                "Use the independent reference_layouts to distinguish dominant headline lines "
+                "from smaller connecting words, pills and subtitles. Preserve their hierarchy "
+                "and the actual subject bounds. Provide enough fact-grounded copy_units to bind "
+                "EVERY authored text slot, including small capsules; source slogans are not "
+                "authorized copy. Do not add new text carriers or extra lines to fit surplus copy. "
+                "For context-only scenes, explicitly exclude physical product contents and packaging "
+                "from the scene; food must not appear in litter-cleanup or other unrelated props.",
                 {
                     **self.context,
                     "physical_units": evidence,
@@ -1018,7 +1062,10 @@ class NativeReplicaRun:
                 await self.contract(
                     f"exact-plan-audit-r{revision}",
                     "Reopen every actual physical crop and audit the plan independently; return plan-audit "
-                    "schema. Never copy planning observations. Fail honestly and explain concrete plan fixes.",
+                    "schema. Never copy planning observations. Count actual font-size tiers and line "
+                    "groups, distinguish small connectors from dominant rows, check subject bounds "
+                    "and all authored text carriers. Reference pixels outrank both the plan and "
+                    "reference_layouts if either description is wrong. Fail honestly and explain concrete plan fixes.",
                     plan,
                     "audit-plan",
                     "judgment",
@@ -1040,7 +1087,10 @@ class NativeReplicaRun:
                 "Before any generation, observe each physical reference crop and the approved plan. "
                 "Return {modules:[{module_id,reference_sha256,required_identity_checks:[observed checks],"
                 "not_applicable_checks:[specific deliberately absent features and why],"
-                "layout_anchors:[{label,bbox:[left,top,right,bottom]}],composition_notes:string}]}. "
+                "product_visibility:visible_product|context_only,"
+                "layout_anchors:[{label,bbox:[left,top,right,bottom]}],composition_notes:string,"
+                "text_bindings:[{region_id,action:render,copy_unit_index:zero_based_integer,fragment} "
+                "OR {region_id,action:omit_unsupported_copy,reason,retain_carrier:true}]}]}. "
                 "Use normalized integer coordinates 0..1000 for the actual reference's headline, "
                 "subject/product, supporting evidence and labels. Preserve their relative sizes, "
                 "negative space and reading order; do not redesign them as oversized generic heroes. "
@@ -1048,7 +1098,15 @@ class NativeReplicaRun:
                 "packaging and its marks are required only when this module calls for packaging. "
                 "Do not introduce an absent package to satisfy a global lock. These observations "
                 "must be grounded in the attached source pixels, not a promise to pass future images. "
-                "Cover each supplied module exactly once with at least one layout anchor.",
+                "Cover each supplied module exactly once with at least one layout anchor. "
+                "For each reference_layouts text_region, bind EXACTLY one approved copy_units "
+                "substring (including each pill and small connector). Preserve its observed font_tier, "
+                "line_group, bounds and carrier; splitting one approved phrase between dominant "
+                "runs and a small connector is allowed. Never promote a connector into a giant row. "
+                "No source slogan or invented text is allowed. Only unsupported non-dominant copy "
+                "may be omitted with a specific factual reason and its carrier retained. Do not "
+                "add text regions to accommodate copy. A context_only page must explicitly exclude "
+                "all product forms, including loose contents, from unrelated scene objects.",
                 {
                     "plan": plan,
                     "product_context": self.context,
@@ -1058,8 +1116,9 @@ class NativeReplicaRun:
             )
             try:
                 scoped = validate_module_constraints(constraints, expected)
+                scoped = bind_module_text(scoped, plan["modules"], layouts)
                 break
-            except ReplicaNativeError as exc:
+            except (ReplicaNativeError, ValueError) as exc:
                 scope_error = str(exc)
         else:
             raise ReplicaNativeError(scope_error)

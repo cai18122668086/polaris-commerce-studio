@@ -103,22 +103,40 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
             "modules": [
                 {
                     "id": "M003",
+                    "reference_unit_id": "R001",
                     "page_duty": "Product contents evidence",
                     "generation_brief": "Preserve layout and visible real contents",
                     "output_canvas": evidence["recommended_canvas"],
+                    "copy_units": [],
                 }
             ]
         }
 
     async def ask(stage, instruction, context, **kwargs):
         asks.append((stage, context, kwargs))
+        source_hash = hashlib.sha256(
+            (tmp_path / "crops/screen-000.png").read_bytes()
+        ).hexdigest()
+        if stage.startswith("exact-reference-layout"):
+            return {
+                "units": [
+                    {
+                        "reference_unit_id": "R001",
+                        "reference_sha256": source_hash,
+                        "reference_product_present": False,
+                        "has_poster_text": False,
+                        "layout_anchors": [
+                            {"label": "background", "bbox": [0, 0, 1000, 1000]}
+                        ],
+                        "text_regions": [],
+                        "typography_notes": "No authored text in this source.",
+                    }
+                ]
+            }
         value = constraint()
+        value["modules"][0].update(product_visibility="context_only", text_bindings=[])
         value["modules"][0]["reference_sha256"] = (
-            "0" * 64
-            if len(asks) == 1
-            else hashlib.sha256(
-                (tmp_path / "crops/screen-000.png").read_bytes()
-            ).hexdigest()
+            "0" * 64 if len(asks) == 2 else source_hash
         )
         return value
 
@@ -141,8 +159,10 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
         )
     )
     assert events == ["start", "exact-plan-r0", "exact-plan-audit-r0"]
-    assert len(asks) == 2 and asks[1][1]["validation_error"]
-    assert asks[1][2]["paths"] == [product, tmp_path / "crops/screen-000.png"]
+    assert len(asks) == 3 and asks[2][1]["validation_error"]
+    assert asks[0][2]["paths"] == [tmp_path / "crops/screen-000.png"]
+    assert "plan" not in asks[0][1]
+    assert asks[2][2]["paths"] == [product, tmp_path / "crops/screen-000.png"]
     assert result[0]["canvas"] == {"width": 1024, "height": 2048}
     saved = json.loads((tmp_path / "context.json").read_text(encoding="utf-8"))
     assert (
@@ -251,6 +271,10 @@ def test_unusual_canvas_has_a_separately_bound_format_guide_and_original_bytes(
 
     run = run_at(tmp_path, "exact", SimpleNamespace(edit=edit))
     run.context = {"module_constraints": {"M003": constraint()["modules"][0]}}
+    run.context["module_constraints"]["M003"].update(
+        product_visibility="context_only",
+        text_bindings=[{"region_id": "T1", "render_text": "Approved scene copy"}],
+    )
     provider = NativeReplicaProvider(None, run.gateway, None)
 
     async def save(*args, **kwargs):
@@ -281,4 +305,7 @@ def test_unusual_canvas_has_a_separately_bound_format_guide_and_original_bytes(
     with Image.open(BytesIO(calls[0].sources[-1].payload)) as guide:
         assert guide.size == (1024, 1866)
     assert "not_applicable_checks" in calls[0].prompt
+    assert "TEXT SLOT EXECUTION" in calls[0].prompt
+    assert "CONTEXT-ONLY SCENE" in calls[0].prompt
+    assert "Approved scene copy" in calls[0].prompt
     assert len(calls) == 1

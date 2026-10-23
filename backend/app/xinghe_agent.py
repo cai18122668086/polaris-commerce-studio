@@ -10605,7 +10605,9 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
     if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
-        return {"type": "json_object"}
+        from .remix_fast_contract import response_format as remix_fast_response_format
+
+        return remix_fast_response_format(request.planning_profile)
     if request.planning_profile == refined_detail.PROFILE:
         return {"type": "json_schema", "json_schema": {
             "name": "xinghe_detail_4_plan", "strict": False,

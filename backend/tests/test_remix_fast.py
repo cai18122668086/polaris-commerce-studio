@@ -360,3 +360,80 @@ def test_fast_explicit_retry_cannot_resubmit_unknown_paid_outcome(client, tmp_pa
     if retry.status_code == 201:
         dispatch_pending(client)
     assert len(gateway.image_calls) == 1
+
+
+def test_fast_live_observed_array_is_excluded_by_the_wire_contract():
+    from jsonschema import Draft202012Validator
+
+    from app.remix_fast_contract import response_format
+    from app.remix_fast_provider import _validate_brief
+
+    schema = response_format(PREPARE_PROFILE)["json_schema"]["schema"]
+    validator = Draft202012Validator(schema)
+    observed = {
+        **brief(),
+        "identity_constraints": ["保留透明方形瓶盖", "保留横向蝴蝶结"],
+    }
+    errors = list(validator.iter_errors(observed))
+    assert any(list(error.path) == ["identity_constraints"] for error in errors)
+    with pytest.raises(ValueError):
+        _validate_brief(observed)
+    observed["identity_constraints"] = "；".join(observed["identity_constraints"])
+    validator.validate(observed)
+    assert _validate_brief(observed) == observed
+
+
+def test_fast_planner_wire_contract_has_typed_stages_and_computed_canvas(
+    harness, tmp_path
+):
+    from jsonschema import Draft202012Validator
+
+    from app.xinghe_agent import _planner_response_format
+
+    provider, request = install(harness, tmp_path)
+    result = asyncio.run(provider.execute(request))
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    prepare, review = harness.gateway.plan_requests
+    canvas = json.loads(prepare.product_information[0])["target_canvas"]
+    image_request = harness.gateway.requests[0]
+    assert image_request.size == f"{canvas['width']}x{canvas['height']}"
+    assert f"Target canvas {canvas['width']}×{canvas['height']}" in image_request.prompt
+    for stage in (prepare, review):
+        response = _planner_response_format(stage)
+        assert response["type"] == "json_schema"
+        schema = response["json_schema"]["schema"]
+        Draft202012Validator.check_schema(schema)
+        if stage is prepare:
+            Draft202012Validator(schema).validate(brief())
+        else:
+            Draft202012Validator(schema).validate(
+                result.raw_usage["metrics"]["quick_check"]
+            )
+
+
+def test_fast_analysis_failure_retains_upstream_diagnostics_without_an_image(
+    harness, tmp_path
+):
+    provider, request = install(harness, tmp_path)
+
+    async def unavailable(_):
+        return PlannerCallResult(
+            payload=None,
+            provider_request_id="analysis_down",
+            raw_usage=None,
+            normalized_usage=normalize_usage(None),
+            api_latency_seconds=0,
+            actual_cost_micros=None,
+            error_code="PLANNER_RATE_LIMITED",
+            http_status=429,
+        )
+
+    harness.gateway.plan = unavailable
+    result = asyncio.run(provider.execute(request))
+    assert result.error_code == "REMIX_FAST_PREPARATION_FAILED"
+    assert "尚未开始生图" in result.error_message
+    assert harness.gateway.requests == []
+    call = result.raw_usage["calls"][0]
+    assert call["error_code"] == "PLANNER_RATE_LIMITED"
+    assert call["http_status"] == 429
+    assert call["provider_request_id"] == "analysis_down"

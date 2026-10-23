@@ -21,6 +21,13 @@ from PIL import Image
 from .config import default_aurora_work_root
 from .models import JobItemRecord, JobRecord
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
+from .remix_fast_contract import (
+    CHECKS,
+    GEOMETRY_FIELDS,
+    PREPARE_PROFILE,
+    REFERENCE_FIELDS,
+    REVIEW_PROFILE,
+)
 from .remix_fast_runtime import SKILL_ID, RemixFastRuntime
 from .services import canonical_hash
 from .storage import ValidatedImage
@@ -31,21 +38,6 @@ from .xinghe_single_image_provider import (
 )
 
 STATE_KEY = "aurora_remix_fast_v1"
-PREPARE_PROFILE = "aurora_remix_fast_prepare"
-REVIEW_PROFILE = "aurora_remix_fast_review"
-CHECKS = ("aspect_ratio", "watermark", "source_leakage", "product_identity")
-REFERENCE_FIELDS = (
-    "subject_and_scale",
-    "layout_and_reading_path",
-    "carrier_morphology",
-    "commercial_function",
-    "camera_light_depth",
-    "typography_structure",
-    "brand_and_human_presence",
-    "meaningful_absences",
-    "cross_screen_role",
-)
-GEOMETRY_FIELDS = ("silhouette", "proportions", "structure", "component_relationships")
 
 
 class RemixFastProvider(XingheSingleImageProvider):
@@ -108,6 +100,12 @@ class RemixFastProvider(XingheSingleImageProvider):
                 self._save_state(request, state)
             if "brief" not in state:
                 context = {
+                    "target_canvas": {"width": width, "height": height},
+                    "canvas_authority": (
+                        "Use this computed target canvas. Source pixel dimensions "
+                        "are not output dimensions. Do not include another Target "
+                        "canvas directive inside generation_brief."
+                    ),
                     "user_facts": envelope.prompt_input.get("product_information", []),
                     "user_instruction": envelope.prompt_input.get(
                         "reference_guidance", ""
@@ -475,6 +473,12 @@ class RemixFastProvider(XingheSingleImageProvider):
             else ProviderOutcome.SUCCEEDED,
             error_code=error,
             error_message={
+                "REMIX_FAST_PREPARATION_FAILED": (
+                    "商品与对标图分析服务暂时不可用，尚未开始生图；请查看任务详情。"
+                ),
+                "REMIX_FAST_REVIEW_UNAVAILABLE": (
+                    "生成图的像素快检服务暂时不可用，已保留候选图；请查看任务详情。"
+                ),
                 "REMIX_FAST_ASPECT_RATIO_FAILED": (
                     "生成图画幅比例不符合对标图，未交付；请查看任务详情。"
                 ),
@@ -655,6 +659,9 @@ def _call(phase: str, result: Any) -> dict[str, Any]:
     raw = result.raw_usage if isinstance(result.raw_usage, dict) else None
     return {
         "phase": phase,
+        "provider_request_id": result.provider_request_id,
+        "error_code": result.error_code,
+        "http_status": result.http_status,
         **normalize_usage(raw),
         "actual_cost_micros": result.actual_cost_micros,
         "estimated_cost_micros": getattr(result, "estimated_cost_micros", None),

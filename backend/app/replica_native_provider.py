@@ -203,10 +203,19 @@ class NativeReplicaProvider:
             )
         # Crops isolate detail; the original views retain fit, scale and drape.
         # Generation and the later pixel audit must share that identity evidence.
-        # Keep the native blueprint/repair ordering and append only this run's
+        # Keep the native blueprint/repair ordering and add only this run's
         # original product inputs, with the same byte budget and path guards.
         originals = sorted((run.root / "inputs").glob("product-*"))
-        render_sources = run.sources(list(dict.fromkeys([*paths, *originals])))
+        if run.method == "style" and native.get("revision_index", 0):
+            if not paths:
+                raise ReplicaNativeError("修复缺少当前商品初稿。")
+            # The native style handoff explicitly binds the LAST image as the
+            # failed artwork. Supplement product evidence before that image.
+            draft = paths[-1]
+            paths = [p for p in [*paths[:-1], *originals] if p != draft] + [draft]
+        else:
+            paths = [*paths, *originals]
+        render_sources = run.sources(list(dict.fromkeys(paths)))
         ledger[token] = {"state": "invoked", "job_id": request.job_id, "target": key}
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.

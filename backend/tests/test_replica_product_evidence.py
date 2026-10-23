@@ -26,7 +26,11 @@ def setup(tmp_path, method, repair):
     anchor = png(tmp_path / "crops/product-anchor-00.png", "green")
     paths = [reference, anchor]
     if repair:
-        paths.insert(0, png(tmp_path / "artwork/failed.png", "pink"))
+        failed = png(tmp_path / "artwork/failed.png", "pink")
+        if method == "style":
+            paths.append(failed)
+        else:
+            paths.insert(0, failed)
     events = []
 
     async def edit(request):
@@ -64,7 +68,10 @@ def setup(tmp_path, method, repair):
         return await provider._render(
             run,
             request,
-            {"token": "fixture"},
+            {
+                "token": "fixture",
+                "revision_index": int(repair) if method == "style" else 0,
+            },
             "Native prompt remains unchanged",
             paths + list(extra),
             [64, 80],
@@ -84,11 +91,19 @@ def test_original_context_reaches_both_modes_without_changing_native_source_orde
     result = asyncio.run(render())
     assert result.exists() and len(events) == 1
     request = events[0]
-    assert [s.filename for s in request.sources] == [p.name for p in paths] + [
-        original.name
-    ]
-    assert request.sources[-1].payload == before == original.read_bytes()
-    assert request.sources[-1].source_role == "product_reference"
+    expected = [p.name for p in paths]
+    if method == "style" and repair:
+        expected.insert(len(expected) - 1, original.name)
+        assert request.sources[-1].filename == "failed.png"
+        assert request.sources[-1].payload == paths[-1].read_bytes()
+    else:
+        expected.append(original.name)
+    assert [source.filename for source in request.sources] == expected
+    product = next(
+        source for source in request.sources if source.filename == original.name
+    )
+    assert product.payload == before == original.read_bytes()
+    assert product.source_role == "product_reference"
     assert request.prompt == "Native prompt remains unchanged"
     assert asyncio.run(render()) == result
     assert len(events) == 1  # Cached artwork never dispatches again.
@@ -112,3 +127,110 @@ def test_original_context_over_budget_does_not_consume_generation_token(
         asyncio.run(render())
     assert events == []
     assert not (root / "invocations.json").exists()
+
+
+def test_style_native_handoff_last_draft_survives_original_evidence_supplement(
+    tmp_path,
+):
+    from app.replica_native import digest
+
+    calls = []
+    original = png(tmp_path / "inputs/product-00.img", "blue")
+    draft = png(tmp_path / "artwork/draft.png", "pink")
+    reference = png(tmp_path / "reference.png", "red")
+
+    async def edit(request):
+        calls.append(request)
+        return SimpleNamespace(
+            outcome=ProviderOutcome.SUCCEEDED,
+            artifact=SimpleNamespace(
+                payload=draft.read_bytes(), locally_resampled=False
+            ),
+            normalized_usage={"reported": False},
+            actual_cost_micros=None,
+            estimated_cost_micros=None,
+            http_status=200,
+            error_code=None,
+            raw_usage={},
+        )
+
+    run = run_at(tmp_path, "style", SimpleNamespace(edit=edit))
+    run.state = lambda: {
+        "audits": [
+            {
+                "target_id": "U01",
+                "pass": False,
+                "artwork_sha256": digest(draft.read_bytes()),
+                "evidence": {"failure_reasons": ["Synthetic geometry mismatch"]},
+            }
+        ],
+        "artwork": [{"target_id": "U01", "path": str(draft)}],
+    }
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text("Native style prompt", encoding="utf-8")
+    native = {"token": "fixture", "revision_index": 1}
+    prompt, paths = NativeReplicaProvider._style_render_inputs(
+        run,
+        native,
+        {"prompt_path": str(prompt_path), "referenced_image_paths": [str(reference)]},
+        "U01",
+    )
+    provider = NativeReplicaProvider(None, run.gateway, None)
+
+    async def save(*args, **kwargs):
+        pass
+
+    provider._save = save
+    request = SimpleNamespace(
+        workspace_id="ws_test",
+        job_id="job_fixture",
+        job_item_id="item_fixture",
+        attempt_id="attempt_fixture",
+    )
+    asyncio.run(provider._render(run, request, native, prompt, paths, [64, 80], "U01"))
+    assert len(calls) == 1
+    assert "最后一张参考图是当前商品初稿" in calls[0].prompt
+    assert [source.filename for source in calls[0].sources] == [
+        reference.name,
+        original.name,
+        draft.name,
+    ]
+    assert calls[0].sources[-1].payload == draft.read_bytes()
+
+
+def test_style_repair_missing_draft_stops_before_invocation(tmp_path):
+    from app.replica_native import ReplicaNativeError
+
+    original = png(tmp_path / "inputs/product-00.img", "blue")
+    assert original.is_file()
+    run = run_at(tmp_path, "style")
+    provider = NativeReplicaProvider(None, None, None)
+    request = SimpleNamespace(
+        workspace_id="ws_test",
+        job_id="job_fixture",
+        job_item_id="item_fixture",
+        attempt_id="attempt_fixture",
+    )
+    with pytest.raises(ReplicaNativeError, match="初稿"):
+        asyncio.run(
+            provider._render(
+                run,
+                request,
+                {"token": "unspent", "revision_index": 1},
+                "fixture",
+                [],
+                [64, 80],
+                "U01",
+            )
+        )
+    assert not (tmp_path / "invocations.json").exists()
+
+
+def test_style_repair_keeps_draft_last_even_when_already_in_handoff(tmp_path):
+    render, events, original, paths, _ = setup(tmp_path, "style", True)
+    draft = paths[-1]
+    asyncio.run(render([draft]))
+    sources = events[0].sources
+    assert sources[-1].filename == draft.name
+    assert sum(source.filename == draft.name for source in sources) == 1
+    assert any(source.filename == original.name for source in sources)

@@ -23,7 +23,11 @@ def native_progress(state: dict[str, Any]) -> dict[str, Any]:
         rows.append(
             {
                 "id": module.get("id"),
-                "status": module.get("status", "PENDING"),
+                "status": (
+                    module["status"]
+                    if module.get("status") in {"COMPLETE", "REJECTED_BEST_EFFORT"}
+                    else attempt.get("status", module.get("status", "PENDING"))
+                ),
                 "attempts": len(attempts),
                 "reasons": [str(value)[:600] for value in failures[:4]],
             }

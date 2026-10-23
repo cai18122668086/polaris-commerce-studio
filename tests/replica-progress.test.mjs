@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeReplicaProgress, replicaOverallProgress } from "../lib/replica/progress.ts";
+import { mergeReplicaProgress, replicaOverallProgress, replicaWorkflowStep } from "../lib/replica/progress.ts";
 
 const doc = (progress, extra = {}) => ({ id: "rep_test", status: "analysing", payload: { analysis_attempt_id: "attempt-1", progress }, ...extra });
 
@@ -39,4 +39,15 @@ test("analysis completion and generation share one scale, failure is not success
   assert.equal(replicaOverallProgress(generated), 25);
   assert.equal(replicaOverallProgress({...generated,status:"failed"}), 25);
   assert.equal(replicaOverallProgress({...generated,status:"completed"}), 100);
+});
+
+test("failed, partial and cancelled suites never mark successful delivery in the stepper", () => {
+  for (const status of ["failed", "partial", "cancelled", "processing"]) {
+    const current = doc(95, {status}); current.payload.job_ids = ["job_suite"];
+    assert.equal(replicaWorkflowStep(current, {job_suite:status}), 4);
+  }
+  const success = doc(100, {status:"completed"}); success.payload.job_ids = ["job_suite"];
+  assert.equal(replicaWorkflowStep(success, {job_suite:"completed"}), 5);
+  success.payload.submission_complete = false;
+  assert.equal(replicaWorkflowStep(success, {job_suite:"completed"}), 4);
 });

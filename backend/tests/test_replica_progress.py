@@ -62,6 +62,34 @@ def test_backend_persists_analysis_high_water_during_replanning(client, monkeypa
     assert observed == [12, 82, 82, 82]
 
 
+def test_active_attempt_exposes_repair_without_counting_it_as_passed():
+    progress = native_progress(
+        {
+            "state": "REPAIR_READY",
+            "module_index": 0,
+            "modules": [
+                {
+                    "id": "M001",
+                    "status": "PENDING",
+                    "attempts": [
+                        {
+                            "status": "REPAIR_REQUIRED",
+                            "judgment": {
+                                "major_mismatches": [
+                                    "Visible product shape differs from the source"
+                                ]
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    assert progress["modules"][0]["status"] == "REPAIR_REQUIRED"
+    assert progress["accepted"] == progress["reviewed"] == 0
+    assert progress["modules"][0]["reasons"]
+
+
 @pytest.mark.parametrize("job_status", ["failed", "cancelled", "completed", "partial"])
 def test_document_history_uses_actual_job_terminal_state(client, job_status):
     client.get("/api/v1/workspaces")

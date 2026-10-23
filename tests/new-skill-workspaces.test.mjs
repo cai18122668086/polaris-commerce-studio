@@ -370,7 +370,7 @@ test("public navigation uses registry route matching instead of local-edit fallb
   assert.match(navigationRegistry, /href: "\/tools"/);
   assert.doesNotMatch(navigation, /\/\#tools/);
   assert.match(directory, /FEATURE_REGISTRY\.map/);
-  assert.match(directory, /searchableTools\.filter/);
+  assert.match(directory, /searchableTools\.find/);
 });
 
 test("detail workspace automatically starts submitted suite plans and retains historical confirmation", async () => {

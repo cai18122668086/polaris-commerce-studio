@@ -29,6 +29,7 @@ from .replica_native import (
     write_json,
 )
 from .replica_progress import native_progress
+from .replica_retry import RetryArtwork, retry_artwork_candidates
 
 
 class ReplicaImageOutcomeUnknown(ReplicaNativeError):
@@ -78,6 +79,49 @@ class NativeReplicaProvider:
             ):
                 raise ReplicaNativeError("未找到当前工作区已确认的原生复刻方案。")
             return dict(row.payload), row.id, item.ordinal
+
+    def _retry_candidates(
+        self, values: dict[str, Any], request: ProviderRequest, snapshot: dict[str, Any]
+    ) -> dict[str, RetryArtwork]:
+        events = {
+            event.get("to"): event.get("from")
+            for event in values.get("retry_events", [])
+        }
+        if not values.get("native_executions") or request.job_id not in events:
+            return {}
+        with self.session_factory() as session:
+            job = session.get(JobRecord, request.job_id)
+            if (
+                job is None
+                or job.workspace_id != request.workspace_id
+                or not job.retry_of_job_id
+                or job.retry_of_job_id != events[request.job_id]
+            ):
+                return {}
+            document_id = job.configuration.get("replica_session_id")
+            if not isinstance(document_id, str):
+                return {}
+            parent = session.get(JobRecord, job.retry_of_job_id)
+            if (
+                parent is None
+                or parent.workspace_id != request.workspace_id
+                or parent.status not in {"failed", "partial"}
+                or parent.configuration.get("replica_session_id")
+                != job.configuration.get("replica_session_id")
+                or parent.configuration.get("settings", {}).get("replica_plan_hash")
+                != values.get("plan_hash")
+            ):
+                return {}
+            source_job_id = parent.id
+        previous = values["native_executions"].get(source_job_id, {})
+        if previous.get("state") not in {"SET_COMPLETE", "FINALIZED"}:
+            return {}
+        return retry_artwork_candidates(
+            previous["snapshot"],
+            snapshot,
+            source_job_id,
+            f"{request.workspace_id}/replica/{document_id}/",
+        )
 
     async def _save(
         self, run: NativeReplicaRun, job_id: str, *, delivery: list[str] | None = None
@@ -140,7 +184,12 @@ class NativeReplicaProvider:
                 if ordinal != 0:
                     raise ReplicaNativeError("前序复刻尚未通过完整验收。")
                 if run.method == "exact":
-                    delivery = await self._exact(run, request)
+                    candidates = self._retry_candidates(values, request, snapshot)
+                    delivery = (
+                        await self._exact(run, request, candidates)
+                        if candidates
+                        else await self._exact(run, request)
+                    )
                 else:
                     delivery = await self._style(run, request)
                 if len(delivery) != len(values["plans"]):
@@ -237,6 +286,7 @@ class NativeReplicaProvider:
         paths: list[Path],
         canvas: list[int],
         key: str,
+        retry_candidate: RetryArtwork | None = None,
     ) -> Path:
         from .xinghe_agent import ImageEditRequest, SourceImage
 
@@ -267,6 +317,54 @@ class NativeReplicaProvider:
             raise ReplicaImageOutcomeUnknown(
                 "此令牌的生图结果尚未核实，系统不会自动重复调用。请新建明确的重试任务。"
             )
+        if retry_candidate and run.method == "exact" and native.get("mode") != "REPAIR":
+            if (
+                retry_candidate.module_id != key
+                or retry_candidate.plan_sha256 != run.state().get("plan_sha256")
+            ):
+                raise ReplicaNativeError("重试画布与当前原生方案不一致。")
+            data = await self.storage.read_bytes(retry_candidate.object_key)
+            if digest(data) != retry_candidate.sha256:
+                raise ReplicaNativeError("重试画布原始字节哈希发生变化，已停止恢复。")
+            with Image.open(BytesIO(data)) as image:
+                if (
+                    abs((image.width / image.height) / (canvas[0] / canvas[1]) - 1)
+                    > 0.01
+                ):
+                    raise ReplicaCanvasMismatch(canvas, image.size)
+                suffix = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[
+                    image.format or "PNG"
+                ]
+            path = run.root / "artwork" / ("reused-" + retry_candidate.sha256 + suffix)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            ledger[token] = {
+                "state": "returned",
+                "path": str(path),
+                "sha256": retry_candidate.sha256,
+                "job_id": request.job_id,
+                "target": key,
+                "kind": "native_retry_candidate",
+                "source_job_id": retry_candidate.source_job_id,
+                "source_plan_sha256": retry_candidate.plan_sha256,
+                "network_requests": 0,
+            }
+            write_json(ledger_path, ledger)
+            run.usage.append(
+                {
+                    "kind": "image_reuse",
+                    "reported": True,
+                    "network_requests": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cached_tokens": 0,
+                    "actual_cost_micros": 0,
+                    "estimated_cost_micros": 0,
+                    "source_job_id": retry_candidate.source_job_id,
+                }
+            )
+            await self._save(run, request.job_id)
+            return path
         # Crops isolate detail; the original views retain fit, scale and drape.
         # Generation and the later pixel audit must share that identity evidence.
         # Keep the native blueprint/repair ordering and add only this run's
@@ -501,7 +599,10 @@ class NativeReplicaProvider:
         raise ReplicaCanvasMismatch(canvas, actual)
 
     async def _exact(
-        self, run: NativeReplicaRun, request: ProviderRequest
+        self,
+        run: NativeReplicaRun,
+        request: ProviderRequest,
+        retry_candidates: dict[str, RetryArtwork] | None = None,
     ) -> list[str]:
         while run.state()["state"] not in {"SET_COMPLETE", "FINALIZED"}:
             state = run.state()
@@ -520,6 +621,7 @@ class NativeReplicaProvider:
                     [Path(p) for p in native["reference_images"]],
                     [canvas["width"], canvas["height"]],
                     native["module_id"],
+                    retry_candidate=(retry_candidates or {}).get(native["module_id"]),
                 )
                 run.cli(
                     "record-artwork",

@@ -1026,7 +1026,8 @@ class NativeReplicaRun:
                 "when readable. Read the actual ingredient names; never substitute familiar "
                 "ingredients or infer a supplier, additive-free claim, effectiveness percentage "
                 "or health outcome. For unbranded products, readable_marks may be empty. "
-                "Do not guess unreadable microprint; describe uncertainty explicitly. Keep "
+                "Do not guess unreadable microprint; describe uncertainty explicitly in at "
+                "least eight characters, including what remains unknown. Keep "
                 "user_facts separate: they are provided assertions, not product-photo OCR. "
                 "The purpose is a source-bound factual boundary for new copy, not new marketing claims.",
                 {
@@ -1063,7 +1064,11 @@ class NativeReplicaRun:
                 "typography_notes}]}. Use normalized integer coordinates 0..1000. Cover every "
                 "source exactly once, preserving the supplied id and hash. Record subject, props "
                 "and supporting evidence bounds and negative space accurately, including small "
-                "corner objects; do not enlarge them into heroes. A text region is a single "
+                "corner objects; do not enlarge them into heroes. "
+                "For comparisons and operating instructions, record each distinct visual "
+                "stage as its own anchor, including state changes, relative quantities and "
+                "arrows; do not collapse a progression into one unchanged object. "
+                "A text region is a single "
                 "typographic run with one size tier; split small connecting words from large "
                 "headlines even when they share a reading line. Count actual dominant line groups, "
                 "not semantic phrases: a small connector is NOT an additional giant headline. "
@@ -1116,7 +1121,10 @@ class NativeReplicaRun:
                 "claim or clinical result from an ingredient's presence or a benchmark slogan. "
                 "Preserve evidence-carrier shape with truthful supplied facts rather than "
                 "inventing a test result. Report any material conflict between supplied facts "
-                "and visible physical labels instead of silently rewriting either source.",
+                "and visible physical labels instead of silently rewriting either source. "
+                "A staged instruction or comparison needs distinct VISIBLE object states "
+                "and transitions, not merely stage labels next to one static bowl or object. "
+                "Use only product-supported or explicitly user-provided numerical instructions.",
                 {
                     **self.context,
                     "physical_units": evidence,

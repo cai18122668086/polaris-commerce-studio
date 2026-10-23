@@ -375,6 +375,11 @@
       },
       "AnalysisRequest": {
         "properties": {
+          "auto_start_after_plan": {
+            "default": false,
+            "title": "Auto Start After Plan",
+            "type": "boolean"
+          },
           "facts": {
             "default": "",
             "maxLength": 4000,
@@ -2952,6 +2957,11 @@
             ],
             "title": "Aurora Shadow Mode",
             "type": "string"
+          },
+          "auto_start_after_plan": {
+            "default": true,
+            "title": "Auto Start After Plan",
+            "type": "boolean"
           },
           "category": {
             "maxLength": 120,
@@ -5664,6 +5674,7 @@
             "anyOf": [
               {
                 "enum": [
+                  "aurora-remix-fast",
                   "reference-visual-reverse-remix",
                   "aurora-ecommerce-reference-remix",
                   "all-category-style-benchmark-still"

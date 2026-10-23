@@ -2115,6 +2115,11 @@ export interface components {
         /** AnalysisRequest */
         AnalysisRequest: {
             /**
+             * Auto Start After Plan
+             * @default false
+             */
+            auto_start_after_plan: boolean;
+            /**
              * Facts
              * @default
              */
@@ -3085,6 +3090,11 @@ export interface components {
              * @enum {string}
              */
             aurora_shadow_mode: "off" | "contract_first_rebuild_v1" | "execution_semantics_v1";
+            /**
+             * Auto Start After Plan
+             * @default true
+             */
+            auto_start_after_plan: boolean;
             /** Category */
             category: string;
             /**
@@ -4093,7 +4103,7 @@ export interface components {
              */
             quality: "low" | "medium" | "high";
             /** Reference Skill */
-            reference_skill?: ("reference-visual-reverse-remix" | "aurora-ecommerce-reference-remix" | "all-category-style-benchmark-still") | null;
+            reference_skill?: ("aurora-remix-fast" | "reference-visual-reverse-remix" | "aurora-ecommerce-reference-remix" | "all-category-style-benchmark-still") | null;
             /**
              * Reference Visual Analysis
              * @default

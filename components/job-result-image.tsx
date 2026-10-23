@@ -1,6 +1,7 @@
 "use client";
 
 import { Download, ExternalLink, LoaderCircle } from "lucide-react";
+import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 import { useState } from "react";
 import {
   getAssetAccessUrl,
@@ -15,7 +16,8 @@ export function JobResultImage({ workspaceId, assetId, alt, label }: {
   alt: string;
   label?: string;
 }) {
-  const access = useAssetAccessUrl(workspaceId, assetId);
+  const { ref, visible } = usePreviewVisibility<HTMLElement>();
+  const access = useAssetAccessUrl(workspaceId, visible ? assetId : undefined, "thumbnail");
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string>();
   const [failedUrl, setFailedUrl] = useState<string>();
@@ -42,19 +44,19 @@ export function JobResultImage({ workspaceId, assetId, alt, label }: {
       setIsDownloading(false);
     }
   };
-  if (access.isPending) return <div className={styles.resultState}><LoaderCircle className="spin" />正在获取结果…</div>;
-  if (access.error || !access.data?.url) return <div className={`${styles.resultState} ${styles.resultStateError}`} role="alert">{errorMessage(access.error ?? new Error("结果访问地址不可用。"))}</div>;
+  if (access.isPending) return <article ref={ref} className={styles.resultState}><LoaderCircle className="spin" />正在获取结果…</article>;
+  if (access.error || !access.data?.url) return <article ref={ref} className={`${styles.resultState} ${styles.resultStateError}`} role="alert">{errorMessage(access.error ?? new Error("结果访问地址不可用。"))}</article>;
   if (failedUrl === access.data.url) {
     return (
-      <div className={`${styles.resultState} ${styles.resultStateError}`} role="alert">
+      <article ref={ref} className={`${styles.resultState} ${styles.resultStateError}`} role="alert">
         <span>结果图片加载失败。</span>
         <button type="button" onClick={() => { setFailedUrl(undefined); void access.refetch(); }}>重新加载</button>
-      </div>
+      </article>
     );
   }
   return (
-    <article className={styles.resultCard}>
-      <a href={access.data.url} target="_blank" rel="noreferrer" aria-label={`${alt}，单张查看`}><img src={access.data.url} alt={alt} onError={() => setFailedUrl(access.data?.url)} /><ExternalLink size={15} /></a>
+    <article ref={ref} className={styles.resultCard}>
+      <a href={access.data.original_url ?? access.data.url} target="_blank" rel="noreferrer" aria-label={`${alt}，单张查看`}><img loading="lazy" decoding="async" src={access.data.url} alt={alt} onError={() => setFailedUrl(access.data?.url)} /><ExternalLink size={15} /></a>
       <div><strong>{label ?? alt}</strong><button type="button" onClick={download} disabled={isDownloading || !workspaceId} aria-label={`下载${alt}`}>{isDownloading ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />}{isDownloading ? "准备中…" : "下载"}</button></div>
       {downloadError ? <p className={styles.downloadError} role="alert">{downloadError}</p> : null}
     </article>

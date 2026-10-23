@@ -48,7 +48,7 @@ export function HelpPanel({
     : [
         "上传同一商品多角度图",
         "完善卖点与渠道信息",
-        "确认页面规划",
+        "后台规划并校验页面",
         providerEnabled
           ? "逐页生成并检查图片结果"
           : mockEnabled
@@ -158,7 +158,7 @@ export function HelpPanel({
             {providerEnabled
               ? "页面规划确认完成前，不会开始图片生成。"
               : mockEnabled
-                ? "确认规划后可继续预览流程，当前暂不生成图片。"
+                ? "可继续预览操作流程，当前暂不生成图片。"
                 : "生成服务暂不可用，规划确认入口暂时关闭。"}
           </p>
         </div>

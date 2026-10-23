@@ -1471,6 +1471,18 @@ def create_job(
 
     bind_submission(job, workspace.principal.user_id)
     bind_amazon_submission(job, workspace.principal.user_id)
+    from .main_image_auto_start import bind_submission as bind_main_submission
+
+    bind_main_submission(job, workspace.principal.user_id)
+    from .crossborder_auto_start import bind_submission as bind_crossborder_submission
+
+    bind_crossborder_submission(
+        job, workspace.principal.user_id,
+        requested=(
+            isinstance(payload, DetailPackJobCreate)
+            and "auto_start_after_plan" in payload.configuration.model_fields_set
+        ),
+    )
     if inspiration_case is not None:
         job.configuration["inspiration_case_id"] = inspiration_case.id
         job.configuration["inspiration_workflow"] = inspiration_case.workflow_type
@@ -1981,6 +1993,12 @@ def submit_job(
 
     bind_submission(job, workspace.principal.user_id)
     bind_amazon_submission(job, workspace.principal.user_id)
+    from .main_image_auto_start import bind_submission as bind_main_submission
+
+    bind_main_submission(job, workspace.principal.user_id)
+    from .crossborder_auto_start import bind_submission as bind_crossborder_submission
+
+    bind_crossborder_submission(job, workspace.principal.user_id)
     enforce_active_job_limit(session, workspace.workspace_id)
     _reserve_real_provider_job_if_enabled(
         session,
@@ -4489,6 +4507,21 @@ def _reserve_real_provider_job_if_enabled(
             + _AURORA_INITIAL_IMAGE_REQUESTS * transient_retry_count
         )
         group_count = _AURORA_PLANNER_REQUEST_ENVELOPE
+    elif (
+        job.type == JobType.REFERENCE_REMIX.value
+        and (job.configuration.get("settings") or {}).get("reference_skill")
+        == "aurora-remix-fast"
+        and settings.task_runner == "tengli"
+    ):
+        fast_count = (
+            runnable_item_count if runnable_item_count is not None
+            else job.expected_item_count
+        )
+        estimated_cost = (
+            image_cost * 2 + settings.tengli_planner_reserve_micros * 4 * fast_count
+        )
+        provider_requests = 6 * fast_count
+        group_count = 2 * fast_count
     elif job.type == JobType.REFERENCE_REMIX.value and settings.task_runner == "tengli":
         # Reference remix now performs one bounded vision-analysis call before
         # the image edit so the Skill's composition skeleton reaches the image

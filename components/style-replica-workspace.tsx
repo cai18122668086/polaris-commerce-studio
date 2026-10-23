@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Check, ChevronRight, CircleHelp, Download, History, ImagePlus, LoaderCircle, Plus, RotateCcw, Sparkles, Upload, X } from "lucide-react";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
-import { getAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
+import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
+import { ImageDropZone } from "@/components/image-drop-zone";
+import { validateImageUpload } from "@/lib/image-upload";
+import { getAssetAccessUrl, useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useJob } from "@/features/jobs/api/jobs";
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
 import { probeReferenceImage } from "@/lib/replica/reference-images";
@@ -14,8 +17,8 @@ import styles from "./style-replica-workspace.module.css";
 type AssetChoice = { id: string; name: string };
 type Product = { title: string | null; platform: string; imageUrls: string[]; descImageUrls: string[]; skuImageUrls: string[] };
 type Plan = { reference: { asset_id: string; title: string; aspect_ratio: string }; analysis: Record<string, unknown>; prompt: string };
-type ReplicaDocument = { id: string; kind: string; status: string; created_at: string; payload: { replication_method?: "exact" | "style"; analysis_stage?: string; skill_id?: string; product?: Product; product_asset_ids?: string[]; references?: Plan["reference"][]; plans?: Plan[]; plan_hash?: string; job_ids?: string[]; progress?: number; error?: string; facts?: string; confirmed_instructions?: string[]; submission_complete?: boolean; platform_code?: string; language?: string } };
-const STEPS = ["选图", "诊断中", "补信息", "确认方案", "生成中", "完成"];
+type ReplicaDocument = { id: string; kind: string; status: string; created_at: string; payload: { auto_start_after_plan?: boolean; automatic_submission_error?: string; replication_method?: "exact" | "style"; analysis_stage?: string; skill_id?: string; product?: Product; product_asset_ids?: string[]; references?: Plan["reference"][]; plans?: Plan[]; plan_hash?: string; job_ids?: string[]; progress?: number; error?: string; facts?: string; confirmed_instructions?: string[]; submission_complete?: boolean; platform_code?: string; language?: string } };
+const STEPS = ["选图", "分析中", "商品信息", "后台规划", "生成中", "完成"];
 
 async function replicaRequest<T>(workspaceId: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -30,9 +33,11 @@ async function replicaRequest<T>(workspaceId: string, path: string, body?: unkno
 function analysisText(value: unknown): string { if (typeof value === "string") return value; if (Array.isArray(value)) return value.map(analysisText).filter(Boolean).slice(0, 3).join(" · ").slice(0, 220); if (value && typeof value === "object") return analysisText(Object.values(value)); return ""; }
 
 function AssetImage({ workspaceId, assetId, className, onClick }: { workspaceId: string; assetId: string; className?: string; onClick?: (url: string) => void }) {
-  const [url, setUrl] = useState("");
-  useEffect(() => { let active = true; void getAssetAccessUrl(workspaceId, assetId, "inline").then(value => { if (active) setUrl(value.url); }).catch(() => {}); return () => { active = false; }; }, [workspaceId, assetId]);
-  return url ? <img className={className} src={url} alt="商品图片" onClick={() => onClick?.(url)} /> : <span className={styles.imagePlaceholder}><ImagePlus size={22} /></span>;
+  const { ref, visible } = usePreviewVisibility<HTMLElement>();
+  const access = useAssetAccessUrl(workspaceId, visible ? assetId : undefined, "thumbnail");
+  const url = access.data?.url;
+  return url ? <img ref={ref as RefObject<HTMLImageElement | null>} className={className} src={url} loading="lazy" decoding="async" alt="商品图片" onClick={() => onClick?.(access.data?.original_url ?? url)} /> : <span ref={ref as RefObject<HTMLSpanElement | null>} className={styles.imagePlaceholder}><ImagePlus size={22} /></span>;
+
 }
 
 function ResultCard({ workspaceId, jobId, sessionId, outputIndex = 0, title, onPreview, onStatus, onRetry, retrying, retryWhole = false }: { workspaceId: string; jobId: string; sessionId: string; outputIndex?: number; title: string; onPreview: (url: string) => void; onStatus: (id: string, status: string) => void; onRetry: (id: string) => void; retrying: boolean; retryWhole?: boolean }) {
@@ -55,6 +60,7 @@ export function StyleReplicaWorkspace() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.id;
   const upload = useUploadAsset(workspaceId);
+  const uploadBatchLock = useRef(false);
   const [mode, setMode] = useState<"link" | "image">("link");
   const [replicationMethod, setReplicationMethod] = useState<"exact" | "style">("exact");
   const [products, setProducts] = useState<AssetChoice[]>([]);
@@ -123,7 +129,7 @@ export function StyleReplicaWorkspace() {
   useEffect(() => { if (workspaceId && hydratedWorkspace === workspaceId) localStorage.setItem(`polaris-replica:${workspaceId}`, JSON.stringify({ products, references, mode, replicationMethod, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDocId: productDoc?.id, sessionId: sessionDoc?.id })); }, [workspaceId, hydratedWorkspace, products, references, mode, replicationMethod, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDoc?.id, sessionDoc?.id]);
   useEffect(() => {
     if (!workspaceId) return;
-    const pending = productDoc?.status === "fetching" ? productDoc : sessionDoc?.status === "analysing" ? sessionDoc : null;
+    const pending = productDoc?.status === "fetching" ? productDoc : sessionDoc?.status === "analysing" || (sessionDoc?.status === "awaiting_confirmation" && sessionDoc.payload.auto_start_after_plan && !sessionDoc.payload.automatic_submission_error) ? sessionDoc : null;
     if (!pending) return;
     const controller = new AbortController();
     const timer = setInterval(() => { void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${pending.id}`, undefined, controller.signal).then(value => { if (value.kind === "product") setProductDoc(value); else setSessionDoc(value); if (value.status === "failed") setError(value.payload.error ?? "任务暂未完成。"); }).catch(caught => { if (!controller.signal.aborted) setError(caught.message); }); }, 2000);
@@ -155,19 +161,30 @@ export function StyleReplicaWorkspace() {
   useEffect(() => { if (currentSessionId) window.history.replaceState(null, "", `/style-replica?sessionId=${encodeURIComponent(currentSessionId)}`); }, [currentSessionId]);
 
   const perform = async (label: string, action: () => Promise<void>) => { if (actionLock.current) return; actionLock.current = true; setBusy(label); setError(""); try { await action(); } catch (caught) { setError(caught instanceof Error ? caught.message : "处理失败，请稍后再试。"); } finally { actionLock.current = false; setBusy(""); } };
-  const uploadFiles = async (files: FileList | null, role: "product" | "reference") => {
-    if (!files || !workspaceId) return;
+  const uploadFiles = async (files: FileList | File[] | null, role: "product" | "reference") => {
+    if (!files?.length || !workspaceId || working || sessionDoc || uploadBatchLock.current) return;
     const current = role === "product" ? products : references;
     const limit = role === "product" ? 6 : 20;
-    await perform("上传图片", async () => {
-      const added: AssetChoice[] = [];
-      for (const file of Array.from(files).slice(0, limit - current.length)) {
-        if (file.size > 20 * 1024 * 1024) throw new Error("单张图片不能超过20MB。");
-        const result = await upload.mutateAsync({ file }); added.push({ id: result.id, name: file.name });
-        if (role === "product") setProducts([...current, ...added]); else { setReferences([...current, ...added]); setSelectedReferences(currentIds => [...new Set([...currentIds, result.id])]); }
-      }
-      if (files.length > limit - current.length) throw new Error(`该区域最多支持${limit}张图片，已上传可用部分。`);
-    });
+    const selected = validateImageUpload(Array.from(files), { multiple: true, maxFiles: Math.max(0, limit - current.length) });
+    if (selected.error) { setError(selected.error); return; }
+    if (!selected.files.length) return;
+    uploadBatchLock.current = true;
+    try {
+      await perform("上传图片", async () => {
+        const added: AssetChoice[] = [];
+        const failures: string[] = [];
+        for (const file of selected.files) {
+          try {
+            if (file.size > 20 * 1024 * 1024) throw new Error("单张图片不能超过20MB。");
+            const result = await upload.mutateAsync({ file });
+            added.push({ id: result.id, name: file.name });
+            if (role === "product") setProducts([...current, ...added]);
+            else { setReferences([...current, ...added]); setSelectedReferences(ids => [...new Set([...ids, result.id])]); }
+          } catch (caught) { failures.push(caught instanceof Error ? caught.message : "上传失败"); }
+        }
+        if (failures.length) throw new Error(failures[0] + (added.length ? "，已上传的图片已保留。" : ""));
+      });
+    } finally { uploadBatchLock.current = false; }
   };
   const fetchProduct = () => workspaceId && perform("拉取商品", async () => { setSelected([]); setBlankSources([]); setFailedPreviews([]); setProductDoc(undefined); setProductDoc(await replicaRequest<ReplicaDocument>(workspaceId, "/products", { url, platform: sourcePlatform })); });
   const analyse = () => workspaceId && perform("准备分析", async () => {
@@ -176,7 +193,7 @@ export function StyleReplicaWorkspace() {
       if (!productDoc || !selected.length) throw new Error("请先拉取商品并勾选参考图。");
       const readable = await Promise.all(selected.map(src => probeReferenceImage(src)));
       const invalid = selected.filter((_, index) => readable[index] === "blank");
-      if (invalid.length) { invalid.forEach(hideSource); throw new Error("已移除尺寸过小的参考图，请重新选择后开始诊断。"); }
+      if (invalid.length) { invalid.forEach(hideSource); throw new Error("已移除尺寸过小的参考图，请重新选择后开始生成。"); }
       const imported = await replicaRequest<{ asset_id: string; url: string; role: string }[]>(workspaceId, `/products/${productDoc.id}/import`, { urls: selected });
       choices = imported.map((item, index) => ({ asset_id: item.asset_id, title: `${item.role} ${index + 1}`, aspect_ratio: "follow-reference" }));
     } else {
@@ -185,7 +202,7 @@ export function StyleReplicaWorkspace() {
     }
     if (!products.length) throw new Error("请上传自己的产品图。");
     setInstructions([]); setJobStatuses({});
-    const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, replication_method: replicationMethod, platform_code: platform === "auto" ? product?.platform ?? "tmall" : platform, language, facts });
+    const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, replication_method: replicationMethod, auto_start_after_plan: true, platform_code: platform === "auto" ? product?.platform ?? "tmall" : platform, language, facts });
     setSessionDoc(result);
   });
   const confirm = () => workspaceId && sessionDoc && perform("提交生成", async () => { try { setSessionDoc(await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/confirm`, { plan_hash: sessionDoc.payload.plan_hash, instructions: sessionDoc.payload.confirmed_instructions ?? instructions })); } catch (caught) { setSessionDoc(await replicaRequest<ReplicaDocument>(workspaceId, `/documents/${sessionDoc.id}`)); throw caught; } });
@@ -195,8 +212,11 @@ export function StyleReplicaWorkspace() {
   const retryAnalysis = () => workspaceId && sessionDoc && perform("重试分析", async () => { setSessionDoc(await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/retry`, {})); });
   const reset = () => { window.history.replaceState(null, "", "/style-replica"); setAnalysisRequestId(crypto.randomUUID()); setSessionDoc(undefined); setInstructions([]); setError(""); setJobStatuses({}); };
   const uploadBox = (role: "product" | "reference", items: AssetChoice[], limit: number) => <div className={styles.uploadArea}>
-    {items.length > 0 && <div className={styles.uploadGrid}>{items.map(item => <div key={item.id} className={styles.uploadThumb}>{workspaceId && <AssetImage workspaceId={workspaceId} assetId={item.id} onClick={setPreview} />}<button type="button" disabled={working} onClick={() => role === "product" ? setProducts(products.filter(p => p.id !== item.id)) : (setReferences(references.filter(p => p.id !== item.id)), setSelectedReferences(selectedReferences.filter(id => id !== item.id)))} aria-label={`移除${item.name}`}><X size={12} /></button></div>)}</div>}
-    {items.length < limit && <label className={items.length ? styles.addUpload : styles.uploadTarget}><input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={working} onChange={event => { void uploadFiles(event.target.files, role); event.target.value = ""; }} /><Upload size={25} /><span>{items.length ? "添加图片" : role === "product" ? "点击或选择图片上传" : "上传构图、光影与色调参考"}</span>{!items.length && <small>JPG / PNG / WebP · 单张不超过20MB</small>}</label>}
+    {items.length > 0 && <div className={styles.uploadGrid}>{items.map(item => <div key={item.id} className={styles.uploadThumb}>{workspaceId && <AssetImage workspaceId={workspaceId} assetId={item.id} onClick={setPreview} />}<button type="button" disabled={working || !!sessionDoc} onClick={() => role === "product" ? setProducts(products.filter(p => p.id !== item.id)) : (setReferences(references.filter(p => p.id !== item.id)), setSelectedReferences(selectedReferences.filter(id => id !== item.id)))} aria-label={`移除${item.name}`}><X size={12} /></button></div>)}</div>}
+    {items.length < limit && <ImageDropZone label={role === "product" ? "产品图" : "参考图"} multiple maxFiles={limit - items.length} disabled={working || !!sessionDoc} busy={upload.isPending} onFiles={files => uploadFiles(files, role)} showHint={false}>
+      {({ openFileDialog, disabled }) => <button type="button" className={items.length ? styles.addUpload : styles.uploadTarget} onClick={openFileDialog} disabled={disabled}><Upload size={25} /><span>{items.length ? "添加图片" : role === "product" ? "拖入产品图，或点击上传" : "拖入参考图，或点击上传"}</span>{!items.length && <small>JPG / PNG / WebP · 单张不超过20MB</small>}</button>}
+    </ImageDropZone>}
+
   </div>;
 
   return <div className={styles.page}>
@@ -210,7 +230,7 @@ export function StyleReplicaWorkspace() {
         {uploadBox("product", products, 6)}
         <div className={styles.modeTabs} role="tablist" aria-label="参考来源"><button role="tab" aria-selected={mode === "link"} className={mode === "link" ? styles.activeTab : ""} onClick={() => setMode("link")}>商品链接</button><button role="tab" aria-selected={mode === "image"} className={mode === "image" ? styles.activeTab : ""} onClick={() => setMode("image")}>风格参考图</button></div>
         {mode === "link" ? <>
-          <div className={styles.guide}><strong>复刻流程</strong><p>粘贴想要参考的商品链接，勾选喜欢的图片。AI 分析构图、补充商品信息、确认方案，再生成你的商品图。</p></div>
+          <div className={styles.guide}><strong>复刻流程</strong><p>粘贴想要参考的商品链接，勾选喜欢的图片。AI 自动分析构图与商品信息，完成方案校验后生成你的商品图。</p></div>
           <label className={styles.field}><span><em>*</em>商品链接 / 商品 ID</span><div className={styles.linkInput}><input value={url} onChange={event => setUrl(event.target.value)} placeholder="淘宝 / 天猫 / 京东 / 1688 链接" aria-label="商品链接" /><button disabled={working || !url.trim() || !workspaceId} onClick={() => void fetchProduct()}>{productDoc?.status === "fetching" ? <LoaderCircle className="spin" size={16} /> : "拉取商品"}</button></div></label>
           {/^\d+$/.test(url.trim()) && <label className={styles.field}><span>来源平台</span><ReplicaSelect label="来源平台" value={sourcePlatform} onChange={setSourcePlatform} options={[["auto", "从链接自动识别"], ["taobao", "淘宝"], ["tmall", "天猫"], ["1688", "1688"], ["jd", "京东"]]} /></label>}
         </> : <>
@@ -218,10 +238,10 @@ export function StyleReplicaWorkspace() {
         </>}
         <label className={styles.field}><span><em>*</em>目标平台</span><ReplicaSelect label="目标平台" value={platform} onChange={setPlatform} options={[["auto", "智能匹配"], ["tmall", "天猫"], ["taobao", "淘宝"], ["jd", "京东"], ["pinduoduo", "拼多多"], ["douyin", "抖音"], ["1688", "1688"], ["amazon-us", "亚马逊"], ["temu", "TEMU"], ["shopee", "Shopee"], ["tiktok", "TikTok"]]} /></label>
         <label className={styles.field}><span><em>*</em>目标语言</span><ReplicaSelect label="目标语言" value={language} onChange={setLanguage} options={[["zh-CN", "中文（简体）"], ["zh-TW", "中文（繁体）"], ["en-US", "英语"], ["ja-JP", "日语"], ["ko-KR", "韩语"], ["de-DE", "德语"], ["fr-FR", "法语"], ["es-ES", "西班牙语"], ["ar-SA", "阿拉伯语"], ["ru-RU", "俄语"]]} /></label>
-        <p className={styles.hint}>{replicationMethod === "exact" ? "按参考图逐屏保留构图和比例，长图会先拆屏。" : "根据参考内容选择画幅；连续详情按相邻双屏生成。"}最终数量与画幅会在方案中展示。</p>
+        <p className={styles.hint}>{replicationMethod === "exact" ? "按参考图逐屏保留构图和比例，长图会先拆屏。" : "根据参考内容选择画幅；连续详情按相邻双屏生成。"}后台按所选参考图完成拆屏和画幅校验。</p>
         <details className={styles.optionalFacts}><summary>补充商品信息与要求（选填）</summary><label className={styles.field}><span>商品卖点与复刻要求</span><textarea value={facts} onChange={event => setFacts(event.target.value)} placeholder="写下自己的品牌、卖点、参数，或希望保留的构图。留空也可以开始。" maxLength={4000} rows={3} /></label></details></fieldset>
         {error && <p className={styles.error} role="alert">{error}</p>}
-        <div className={styles.sidebarFooter}><button className={styles.startButton} disabled={!!sessionDoc || working || !workspaceId || !products.length || (mode === "image" ? !selectedReferenceCount : !selected.length)} onClick={() => void analyse()}>{working ? <><LoaderCircle className="spin" size={16} />{busy || (status === "analysing" ? "正在诊断" : "正在拉取商品")}</> : <><Sparkles size={16} />开始诊断</>}</button>
+        <div className={styles.sidebarFooter}><button className={styles.startButton} disabled={!!sessionDoc || working || !workspaceId || !products.length || (mode === "image" ? !selectedReferenceCount : !selected.length)} onClick={() => void analyse()}>{working ? <><LoaderCircle className="spin" size={16} />{busy || (status === "analysing" ? "正在诊断" : "正在拉取商品")}</> : <><Sparkles size={16} />生成同行套图</>}</button>
         <p className={styles.footerNote}>{mode === "image" ? `已选择 ${selectedReferenceCount} 张参考图` : `已选择 ${selected.length} 张参考图`} · 选哪张，复刻哪张</p></div>
       </aside>
       <section className={styles.stage}>
@@ -231,12 +251,13 @@ export function StyleReplicaWorkspace() {
         {mode === "image" && references.length > 0 && !sessionDoc && workspaceId && <div className={styles.sourcePanel}><div className={styles.sourceHeading}><strong>选择想要复刻的参考图</strong><span>已选 {selectedReferenceCount}/{references.length}</span></div><div className={styles.selectionActions}><span>全部选中参考均纳入分析，长图会拆屏</span><button onClick={() => setSelectedReferences(references.map(item => item.id))}>全选</button><button onClick={() => setSelectedReferences([])}>清空选择</button></div><div className={styles.sourceGrid}>{references.map((item, index) => <div key={item.id} className={`${styles.sourceTile} ${selectedReferences.includes(item.id) ? styles.sourceSelected : ""}`}><AssetImage workspaceId={workspaceId} assetId={item.id} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])} /><button aria-label={`${selectedReferences.includes(item.id) ? "取消选择" : "选择"}参考图 ${index + 1}`} onClick={() => setSelectedReferences(selectedReferences.includes(item.id) ? selectedReferences.filter(id => id !== item.id) : [...selectedReferences, item.id])}>{selectedReferences.includes(item.id) ? <Check size={13} /> : index + 1}</button></div>)}</div></div>}
         {status === "analysing" && <div className={styles.analysisState}><div className={styles.orbit}><Sparkles size={28} /></div><h2>正在读懂你的商品与参考风格</h2><p>分析构图、光影和信息层级，为每张图准备专属方案。</p><progress max={100} value={sessionDoc?.payload.progress ?? 5} /><small>{native ? sessionDoc?.payload.analysis_stage ?? "正在准备复刻方案" : `${plans.length} / ${sessionDoc?.payload.references?.length ?? 0} 张方案已完成`}</small></div>}
         {status === "failed" && <div className={styles.emptyState}><CircleHelp size={38} /><h2>这次诊断暂未完成</h2><p>{sessionDoc?.payload.error}</p><button disabled={!!busy} onClick={() => void retryAnalysis()}>重试未完成的分析</button><button onClick={reset}>返回修改选图</button></div>}
-        {status === "awaiting_confirmation" && <div className={styles.planPanel}><div className={styles.planIntro}><div><span className={styles.eyebrow}>你的专属复刻方案</span><h2>灵感已就位，确认后开始绘制</h2><p>你的产品图决定真实外观。确认拆屏与方案后开始生成；补充要求请返回修改并重新诊断。</p></div><button className={styles.textButton} onClick={reset}><RotateCcw size={14} />返回修改</button></div><div className={styles.plans}>{plans.map((plan, index) => <article className={styles.planCard} key={index}><div className={styles.planReference}>{workspaceId && <AssetImage workspaceId={workspaceId} assetId={plan.reference.asset_id} onClick={setPreview} />}</div><div><span className={styles.eyebrow}>方案 {String(index + 1).padStart(2, "0")}</span><h3>{plan.reference.title}</h3><p>{analysisText(plan.analysis.commercial_intent) || "保留参考构图、光影与色调，用你的商品重新演绎。"}</p><details><summary>查看画面方案</summary><p>{plan.prompt}</p></details>{!native && <textarea rows={2} disabled={sessionDoc?.payload.confirmed_instructions !== undefined} value={sessionDoc?.payload.confirmed_instructions?.[index] ?? instructions[index] ?? ""} maxLength={4000} onChange={event => setInstructions(current => plans.map((_, position) => position === index ? event.target.value : current[position] ?? ""))} placeholder="补充本张图的要求（选填）" aria-label={`方案${index + 1}补充要求`} />}</div></article>)}</div><div className={styles.confirmBar}><div><strong>共 {plans.length} 张独立图片</strong><small>生成结果自动进入个人素材库与生成记录</small></div><button disabled={!!busy} className={styles.startButton} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}确认方案并生成</button></div></div>}
+        {status === "awaiting_confirmation" && !sessionDoc?.payload.auto_start_after_plan && <div className={styles.planPanel}><div className={styles.planIntro}><div><span className={styles.eyebrow}>你的专属复刻方案</span><h2>灵感已就位，确认后开始绘制</h2><p>你的产品图决定真实外观。确认拆屏与方案后开始生成；补充要求请返回修改并重新诊断。</p></div><button className={styles.textButton} onClick={reset}><RotateCcw size={14} />返回修改</button></div><div className={styles.plans}>{plans.map((plan, index) => <article className={styles.planCard} key={index}><div className={styles.planReference}>{workspaceId && <AssetImage workspaceId={workspaceId} assetId={plan.reference.asset_id} onClick={setPreview} />}</div><div><span className={styles.eyebrow}>方案 {String(index + 1).padStart(2, "0")}</span><h3>{plan.reference.title}</h3><p>{analysisText(plan.analysis.commercial_intent) || "保留参考构图、光影与色调，用你的商品重新演绎。"}</p><details><summary>查看画面方案</summary><p>{plan.prompt}</p></details>{!native && <textarea rows={2} disabled={sessionDoc?.payload.confirmed_instructions !== undefined} value={sessionDoc?.payload.confirmed_instructions?.[index] ?? instructions[index] ?? ""} maxLength={4000} onChange={event => setInstructions(current => plans.map((_, position) => position === index ? event.target.value : current[position] ?? ""))} placeholder="补充本张图的要求（选填）" aria-label={`方案${index + 1}补充要求`} />}</div></article>)}</div><div className={styles.confirmBar}><div><strong>共 {plans.length} 张独立图片</strong><small>生成结果自动进入个人素材库与生成记录</small></div><button disabled={!!busy} className={styles.startButton} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}确认方案并生成</button></div></div>}
+        {status === "awaiting_confirmation" && sessionDoc?.payload.auto_start_after_plan && <div className={styles.emptyState}><LoaderCircle className={sessionDoc.payload.automatic_submission_error ? "" : "spin"} size={28} /><h2>{sessionDoc.payload.automatic_submission_error ? "生成任务暂未提交成功" : "正在准备生成套图"}</h2><p>{sessionDoc.payload.automatic_submission_error || "图片方案校验完成后，将自动开始绘制。"}</p>{sessionDoc.payload.automatic_submission_error && <button disabled={!!busy} onClick={() => void confirm()}>重试提交生成</button>}</div>}
         {jobs.length > 0 && workspaceId && <div className={styles.results}><div className={styles.planIntro}><div><span className={styles.eyebrow}>生成结果</span><h2>{sessionDoc?.payload.submission_complete === false ? `还有 ${plans.length - jobs.length} 张待生成` : complete ? (jobs.every(id => jobStatuses[id] === "completed") ? "你的商品图已完成" : "部分图片暂未通过验收，可重试") : "灵感正在成为新画面"}</h2><p>点击图片放大，下载保存，或进入任务继续编辑。</p></div><div>{sessionDoc?.payload.submission_complete === false && <button disabled={!!busy} className={styles.textButton} onClick={() => void confirm()}>继续提交剩余图片</button>}<button className={styles.textButton} onClick={reset}><Plus size={14} />新建复刻</button></div></div><div className={styles.resultGrid}>{(native ? plans.map((_, index) => ({ id: jobs[0], index })) : jobs.map((id, index) => ({ id, index }))).map(({id, index}) => <ResultCard key={`${id}-${index}`} workspaceId={workspaceId} jobId={id} sessionId={sessionDoc!.id} outputIndex={native ? index : 0} retryWhole={native} title={plans[index]?.reference.title ?? `商品图 ${index + 1}`} onPreview={setPreview} onStatus={reportStatus} onRetry={id => void retryImage(id)} retrying={busy === "重新生成"} />)}</div></div>}
-        {!sessionDoc && (mode === "link" ? !product : !references.length) && <div className={styles.emptyState}><div className={styles.emptyIcon}><Sparkles size={34} /></div><h2>好构图，换成你的好商品</h2><p>上传产品图，添加商品链接或风格参考图<br />点击「开始诊断」，让 AI 为你规划与创作</p><div className={styles.emptySteps}><span>01 上传产品</span><ChevronRight size={13} /><span>02 选择参考</span><ChevronRight size={13} /><span>03 确认生成</span></div></div>}
+        {!sessionDoc && (mode === "link" ? !product : !references.length) && <div className={styles.emptyState}><div className={styles.emptyIcon}><Sparkles size={34} /></div><h2>好构图，换成你的好商品</h2><p>上传产品图，添加商品链接或风格参考图<br />点击「生成同行套图」，自动完成规划与创作</p><div className={styles.emptySteps}><span>01 上传产品</span><ChevronRight size={13} /><span>02 选择参考</span><ChevronRight size={13} /><span>03 查看成图</span></div></div>}
       </section>
     </div>
-    {modal && <div className={styles.overlay} onClick={() => setModal(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-label={modal === "history" ? "复刻历史" : modal === "fees" ? "用量说明" : "使用教程"} onClick={event => event.stopPropagation()}><button className={styles.closeModal} onClick={() => setModal(null)} aria-label="关闭"><X size={20} /></button>{modal === "history" ? <><h2>复刻历史</h2>{history.length ? history.map(item => <button className={styles.historyRow} key={item.id} onClick={() => restoreSession(item)}><span>{new Date(item.created_at).toLocaleString("zh-CN")}<small>{item.payload.plans?.length ?? item.payload.references?.length ?? 0} 张图片</small></span><b>{item.status === "awaiting_confirmation" ? "待确认" : item.status === "analysing" ? "诊断中" : item.status === "failed" ? "未完成" : "查看结果"}</b><ChevronRight size={16} /></button>) : <p>还没有复刻记录，完成首次诊断后会显示在这里。</p>}</> : modal === "fees" ? <><h2>用量说明</h2><p>商品拉取通过第三方数据服务完成；同一商品当天再次查询会复用已有结果。</p><p>图片诊断与生成分别记录使用量，生成按图片任务计入账户用量。新复刻按整组方案验收；未通过时可重新复刻整组，重试会产生新的用量。</p><Link href="/dashboard">查看账户用量与余额 <ChevronRight size={14} /></Link></> : <><h2>把参考风格，变成你的商品图</h2><ol><li>上传自己的产品图，让外观、材质与品牌清晰可见。</li><li>粘贴商品链接选图，或直接上传风格参考图。</li><li>选择目标平台、语言与比例，可补充自己的真实卖点。</li><li>开始诊断，查看并补充每张图片的方案。</li><li>确认后生成，结果保存在素材库和生成记录中。</li></ol><p>参考图用于学习构图、光影和排版。商品参数、认证与售后承诺请以自己的真实信息为准。</p></>}</section></div>}
+    {modal && <div className={styles.overlay} onClick={() => setModal(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-label={modal === "history" ? "复刻历史" : modal === "fees" ? "用量说明" : "使用教程"} onClick={event => event.stopPropagation()}><button className={styles.closeModal} onClick={() => setModal(null)} aria-label="关闭"><X size={20} /></button>{modal === "history" ? <><h2>复刻历史</h2>{history.length ? history.map(item => <button className={styles.historyRow} key={item.id} onClick={() => restoreSession(item)}><span>{new Date(item.created_at).toLocaleString("zh-CN")}<small>{item.payload.plans?.length ?? item.payload.references?.length ?? 0} 张图片</small></span><b>{item.status === "awaiting_confirmation" ? "待确认" : item.status === "analysing" ? "诊断中" : item.status === "failed" ? "未完成" : "查看结果"}</b><ChevronRight size={16} /></button>) : <p>还没有复刻记录，完成首次诊断后会显示在这里。</p>}</> : modal === "fees" ? <><h2>用量说明</h2><p>商品拉取通过第三方数据服务完成；同一商品当天再次查询会复用已有结果。</p><p>图片诊断与生成分别记录使用量，生成按图片任务计入账户用量。新复刻按整组方案验收；未通过时可重新复刻整组，重试会产生新的用量。</p><Link href="/dashboard">查看账户用量与余额 <ChevronRight size={14} /></Link></> : <><h2>把参考风格，变成你的商品图</h2><ol><li>上传自己的产品图，让外观、材质与品牌清晰可见。</li><li>粘贴商品链接选图，或直接上传风格参考图。</li><li>选择目标平台、语言与比例，可补充自己的真实卖点。</li><li>提交素材后自动分析、规划与生成。</li><li>查看成图，结果保存在素材库和生成记录中。</li></ol><p>参考图用于学习构图、光影和排版。商品参数、认证与售后承诺请以自己的真实信息为准。</p></>}</section></div>}
     {preview && <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreview("")}><button onClick={() => setPreview("")} aria-label="关闭图片预览"><X size={24} /></button><img src={preview} alt="图片预览" referrerPolicy="no-referrer" /></div>}
   </div>;
 }

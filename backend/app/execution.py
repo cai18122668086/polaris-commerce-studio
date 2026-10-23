@@ -743,11 +743,23 @@ class ExecutionCoordinator:
             )
             if set_audit is False and set_audit_error is not None:
                 self._mark_parallel_aurora_set_audit_failed(job_id, set_audit_error)
-            elif set_audit in (True, False) and set_audit_error is None:
-                # A native v2 audit can complete with a BLOCKED verdict.  The
-                # skill still moves to user final review so the residual issue
-                # is disclosed and the user can explicitly approve the set.
+            elif set_audit is False and set_audit_error is None:
+                from .main_image_auto_start import eligible as automatic_main_image
+
+                with self.session_factory() as session:
+                    job = session.get(JobRecord, job_id)
+                    automatic = job is not None and automatic_main_image(job)
+                if automatic:
+                    self._mark_parallel_aurora_set_audit_failed(
+                        job_id,
+                        ValueError("Automatic delivery needs a passing set audit"),
+                    )
+                    return self.finalize_job(job_id)
                 return self._mark_aurora_final_review_pending(job_id)
+            elif set_audit is True and set_audit_error is None:
+                return await self._maybe_finalize_domestic_automatic_delivery(
+                    job_id, self._mark_aurora_final_review_pending(job_id)
+                )
         return await self._maybe_finalize_domestic_automatic_delivery(
             job_id, self.finalize_job(job_id)
         )
@@ -755,6 +767,47 @@ class ExecutionCoordinator:
     async def _maybe_finalize_domestic_automatic_delivery(
         self, job_id: str, current: JobStatus | None
     ) -> JobStatus | None:
+        if (
+            current == JobStatus.AWAITING_FINAL_REVIEW
+            and self._is_domestic_main_image_job(job_id)
+        ):
+            from .main_image_auto_start import finalize_validated_set
+
+            with self.session_factory() as session:
+                job = session.get(JobRecord, job_id, with_for_update=True)
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(
+                        JobPlanRecord.job_id == job_id,
+                    )
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                if job is None or plan is None:
+                    return current
+                planner_root = getattr(self.campaign_planner, "work_root", None)
+                if planner_root is None or not finalize_validated_set(
+                    session,
+                    job,
+                    plan,
+                    work_root=planner_root,
+                ):
+                    return current
+                session.commit()
+            return self.finalize_job(job_id)
+        if current == JobStatus.AWAITING_FINAL_REVIEW:
+            from .crossborder_auto_start import complete_delivery, eligible
+
+            with self.session_factory() as session:
+                job = session.get(JobRecord, job_id, with_for_update=True)
+                if job is not None and eligible(job):
+                    plan = session.scalar(select(JobPlanRecord).where(
+                        JobPlanRecord.job_id == job.id,
+                    ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                    if plan is not None and complete_delivery(session, job, plan):
+                        session.commit()
+                        return JobStatus.COMPLETED
         if current != JobStatus.AWAITING_FINAL_REVIEW or not (
             self._is_aurora_domestic_detail_job(job_id)
         ):
@@ -1318,6 +1371,29 @@ class ExecutionCoordinator:
             job = session.get(JobRecord, job_id, with_for_update=True)
             if job is None:
                 return None
+            if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+                from .main_image_auto_start import (
+                    confirm_validated_plan as confirm_main,
+                )
+
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(
+                        JobPlanRecord.job_id == job.id,
+                    )
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                if plan is not None:
+                    confirm_main(
+                        session,
+                        job,
+                        plan,
+                        work_root=getattr(self.campaign_planner, "work_root", None),
+                    )
+                    session.commit()
+                return JobStatus(job.status)
             if job.type == JobType.AMAZON_VISUAL_SUITE.value:
                 from .amazon_auto_start import confirm_validated_plan
 
@@ -1330,6 +1406,21 @@ class ExecutionCoordinator:
                 )
                 if plan is not None:
                     confirm_validated_plan(session, job, plan)
+                    session.commit()
+                return JobStatus(job.status)
+            from .crossborder_auto_start import (
+                confirm_validated_plan as confirm_crossborder,
+            )
+            from .crossborder_auto_start import (
+                eligible as crossborder_eligible,
+            )
+
+            if crossborder_eligible(job):
+                plan = session.scalar(select(JobPlanRecord).where(
+                    JobPlanRecord.job_id == job.id,
+                ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                if plan is not None:
+                    confirm_crossborder(session, job, plan)
                     session.commit()
                 return JobStatus(job.status)
             settings = job.configuration.get("settings")
@@ -2999,6 +3090,7 @@ def build_fake_coordinator(
         UnavailableProvider,
     )
     from .reference_remix_provider import (
+        AuroraRemixFastAdapter,
         ReferenceRemixProvider,
         ReferenceRemixRouterProvider,
         ReferenceVisualReverseRemixProvider,
@@ -3156,6 +3248,8 @@ def build_fake_coordinator(
             budget_limit_micros=budget_limit_micros,
             skill_root=default_masked_skill_root(),
         )
+    from .remix_fast_provider import RemixFastProvider
+
     manifest_validator = BundledSkillManifestValidator()
     if storage is None:
         raise ValueError("Aurora main-image workflow requires image storage.")
@@ -3234,6 +3328,17 @@ def build_fake_coordinator(
                     manifest_validator=manifest_validator.validate,
                 ),
                 NativeReplicaProvider(session_factory, gateway, storage),
+                fast=AuroraRemixFastAdapter(
+                    RemixFastProvider(
+                        session_factory, gateway, storage=storage,
+                        operation=JobType.REFERENCE_REMIX.value,
+                        skill_id="aurora-remix-fast",
+                        manifest_validator=manifest_validator.validate,
+                        work_root=(aurora_work_root / "remix-fast"
+                                   if aurora_work_root else None),
+                    ) if reference_remix_provider_enabled else UnavailableProvider(),
+                    manifest_validator=manifest_validator.validate,
+                ),
             ),
             JobType.MODEL_POSE_TRANSFER.value: ModelPoseTransferProvider(
                 single_image_delegate(

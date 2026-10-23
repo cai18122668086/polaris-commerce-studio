@@ -74,6 +74,7 @@ class AnalysisRequest(BaseModel):
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     facts: str = Field(default="", max_length=4000)
     replication_method: Literal["exact", "style"] | None = None
+    auto_start_after_plan: bool = False
 
     @model_validator(mode="after")
     def validate_roles(self) -> AnalysisRequest:
@@ -103,18 +104,26 @@ def _hash(value: Any) -> str:
 
 
 def _wire(row: ReplicaDocumentRecord) -> dict:
-    return {
+    value: dict[str, Any] = {
         "id": row.id,
         "kind": row.kind,
         "status": row.status,
         "payload": {
             key: value
             for key, value in row.payload.items()
-            if key not in {"native_snapshot", "native_executions"}
+            if key not in {
+                "native_snapshot", "native_executions", "_automatic_submission"
+            }
         },
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
     }
+    if row.payload.get("auto_start_after_plan") is True:
+        value["payload"]["plans"] = [
+            {"reference": plan["reference"], "analysis": {}, "prompt": ""}
+            for plan in row.payload.get("plans", [])
+        ]
+    return value
 
 
 def _get(
@@ -266,7 +275,8 @@ async def create_product(
 
 @router.get("/documents/{document_id}")
 def get_document(
-    document_id: str, workspace: WorkspaceDependency, session: SessionDependency
+    document_id: str, request: Request, background_tasks: BackgroundTasks,
+    workspace: WorkspaceDependency, session: SessionDependency,
 ) -> dict:
     row = _get(session, workspace.workspace_id, document_id)
     job_ids = row.payload.get("job_ids", [])
@@ -300,6 +310,20 @@ def get_document(
             "error": "任务处理已中断，请重新发起。已生成的图片可在生成记录查看。",
         }
         session.commit()
+    if (
+        row.status == "awaiting_confirmation"
+        and row.payload.get("auto_start_after_plan") is True
+        and not row.payload.get("automatic_submission_error")
+    ):
+        from .replica_auto_start import submit_automatic
+
+        attempt_id = row.payload.get("analysis_attempt_id")
+        document_id = row.id
+        session.commit()
+        if isinstance(attempt_id, str):
+            background_tasks.add_task(
+                submit_automatic, request.app, document_id, attempt_id
+            )
     return _wire(row)
 
 
@@ -418,10 +442,15 @@ def _analysis_current(app: Any, document_id: str, attempt_id: str) -> bool:
 async def _analyse(app: Any, document_id: str, attempt_id: str) -> None:
     slots = getattr(app.state, "replica_analysis_slots", None)
     if slots is None:
-        slots = app.state.replica_analysis_slots = asyncio.Semaphore(2)
+        slots = app.state.replica_analysis_slots = asyncio.Semaphore(
+            app.state.settings.replica_analysis_concurrency
+        )
     async with slots:
         if _analysis_current(app, document_id, attempt_id):
             await _analyse_document(app, document_id, attempt_id)
+            from .replica_auto_start import submit_automatic
+
+            await submit_automatic(app, document_id, attempt_id)
 
 
 async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None:
@@ -639,6 +668,12 @@ def analyse(
     if not request.app.state.settings.reference_remix_provider_enabled:
         raise ApiError(503, "REPLICA_DISABLED", "复刻生成服务暂未开放，请稍后再试。")
     values = payload.model_dump(mode="json")
+    if payload.auto_start_after_plan:
+        values["_automatic_submission"] = {
+            "version": "replica-submission-v1",
+            "actor_user_id": workspace.principal.user_id,
+            "email_verified": workspace.principal.email_verified,
+        }
     get_ready_assets(
         session,
         workspace.workspace_id,
@@ -700,6 +735,15 @@ def confirm(
 
     row = _get(session, workspace.workspace_id, document_id, "session")
     values = dict(row.payload)
+    if values.get("auto_start_after_plan") is True:
+        values.pop("automatic_submission_error", None)
+        values.pop("automatic_submission_error_code", None)
+        values["automatic_plan_confirmation"] = {
+            "confirmation_source": "task_submission_default",
+            "actor_user_id": workspace.principal.user_id,
+            "plan_hash": payload.plan_hash, "confirmed_at": utc_now().isoformat(),
+        }
+        row.payload = values
     if values.get("plan_hash") != payload.plan_hash:
         raise ApiError(409, "REPLICA_PLAN_CHANGED", "方案已变化，请重新确认。")
     if row.status not in {"awaiting_confirmation", "generating", "completed"}:

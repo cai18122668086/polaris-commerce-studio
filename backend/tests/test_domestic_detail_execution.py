@@ -1077,7 +1077,7 @@ def test_international_plan_requires_confirmation_then_waits_for_manual_qa(
         client,
         source["id"],
         market_region="international",
-        auto_start_after_plan=True,
+        auto_start_after_plan=False,
     )
     gateway = _gateway(client)
 

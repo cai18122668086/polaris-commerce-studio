@@ -42,7 +42,7 @@ test("standalone workspaces submit the exact backend job families", async () => 
       workspace.indexOf('type: "reference_remix"'),
     ),
   );
-  assert.match(remixBody, /reference_skill: "reference-visual-reverse-remix"/);
+  assert.match(remixBody, /reference_skill: "aurora-remix-fast"/);
   assert.match(remixBody, /inspiration_product_first: true/);
 
   const amazonBody = workspace.slice(
@@ -164,20 +164,20 @@ test("Amazon simplified source roles share the backend eight-image limit", async
   );
   assert.match(
     workspace,
-    /const availableSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selections\[role\]\.length/,
+    /const availableSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT\) - selections\[role\]\.length/,
   );
   assert.match(workspace, /validateImageUpload\(files, \{ multiple: true, maxFiles: availableSlots \}\)/);
   assert.match(
     workspace,
-    /maxFiles=\{amazonRemainingSourceSlots \?\? Math\.max\(0, AMAZON_SOURCE_ASSET_LIMIT - selections\[role\.key\]\.length\)\}/,
+    /maxFiles=\{amazonRemainingSourceSlots \?\? Math\.max\(0, \(featureId === "reference-remix" \? 1 : AMAZON_SOURCE_ASSET_LIMIT\) - selections\[role\.key\]\.length\)\}/,
   );
   assert.match(
     workspace,
-    /maxItems=\{[\s\S]*isAmazon[\s\S]*selections\[activeLibraryRole\.key\]\.length \+ \(amazonRemainingSourceSlots \?\? 0\)[\s\S]*: AMAZON_SOURCE_ASSET_LIMIT/,
+    /maxItems=\{[\s\S]*isAmazon[\s\S]*selections\[activeLibraryRole\.key\]\.length \+ \(amazonRemainingSourceSlots \?\? 0\)[\s\S]*: featureId === "reference-remix" \? 1 : AMAZON_SOURCE_ASSET_LIMIT/,
   );
   assert.match(
     workspace,
-    /const roleLimit = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount[\s\S]*: AMAZON_SOURCE_ASSET_LIMIT/,
+    /const roleLimit = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount[\s\S]*: featureId === "reference-remix" \? 1 : AMAZON_SOURCE_ASSET_LIMIT/,
   );
 });
 
@@ -373,13 +373,13 @@ test("public navigation uses registry route matching instead of local-edit fallb
   assert.match(directory, /searchableTools\.filter/);
 });
 
-test("detail workspace automatically starts domestic plans and retains historical confirmation", async () => {
+test("detail workspace automatically starts submitted suite plans and retains historical confirmation", async () => {
   const detail = await utf8("app/workspace/detail-pack/page.tsx");
   assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920"/);
   assert.match(detail, /严格交付 \{imageSize\}/);
   assert.match(detail, /\{selectedMarketplace\.name\} · \{imageSize\}/);
   assert.match(detail, /market_region: marketRegion/);
-  assert.match(detail, /auto_start_after_plan: marketRegion === "domestic"/);
+  assert.match(detail, /auto_start_after_plan: true/);
   assert.match(detail, /!automaticPlan && job\.data\?\.plan && workflowAvailable/);
   assert.match(detail, /生成整套详情图/);
   assert.doesNotMatch(detail, /market_region: "international" as const/);

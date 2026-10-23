@@ -5825,6 +5825,11 @@ class XinghePlanningCoordinator:
             # Confirm in the same transaction as the finished plan. A crash
             # cannot strand an automatic task at a manual-only checkpoint.
             confirm_validated_plan(session, job, plan)
+            from .crossborder_auto_start import (
+                confirm_validated_plan as confirm_crossborder,
+            )
+
+            confirm_crossborder(session, job, plan)
             session.commit()
             return JobStatus(job.status)
 
@@ -10599,6 +10604,8 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
+        return {"type": "json_object"}
     if request.planning_profile == refined_detail.PROFILE:
         return {"type": "json_schema", "json_schema": {
             "name": "xinghe_detail_4_plan", "strict": False,
@@ -10904,6 +10911,10 @@ def _planner_prompt(request: PlannerRequest) -> str:
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
+        return ("Execute only the current fast Skill stage from attached image pixels. "
+                "Return the exact requested JSON contract.\n"
+                + "\n".join(request.product_information))
     if request.planning_profile == "replica_native_contract":
         return "Author the requested native Skill contract from actual attached pixels. JSON only.\n" + "\n".join(request.product_information)
     if request.planning_profile == refined_detail.PROFILE:

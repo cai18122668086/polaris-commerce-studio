@@ -185,7 +185,7 @@ services:
       - app.celery_app:celery_app
       - worker
       - --loglevel=INFO
-      - --concurrency=6
+      - --concurrency=${POLARIS_WORKER_CONCURRENCY:-6}
       - --queues=default
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image

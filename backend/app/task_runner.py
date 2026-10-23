@@ -125,8 +125,11 @@ def validate_task_runner_settings(settings: Settings) -> None:
             "tengli task runner budget must be greater than 0 and at most "
             f"USD {MAX_PROVIDER_ALLOWANCE}"
         )
-    if settings.xinghe_concurrency != 6:
-        raise RuntimeError("tengli task runner concurrency must be exactly 6")
+    if (
+        type(settings.xinghe_concurrency) is not int
+        or not 1 <= settings.xinghe_concurrency <= 32
+    ):
+        raise RuntimeError("tengli task runner concurrency must be from 1 through 32")
     if (
         settings.provider_quota_enabled
         and settings.tengli_daily_budget_usd > 0

@@ -556,8 +556,8 @@ class ExecutionCoordinator:
             raise ValueError("lease_seconds must be positive")
         if heartbeat_seconds <= 0 or heartbeat_seconds >= lease_seconds:
             raise ValueError("heartbeat_seconds must be positive and less than lease")
-        if max_concurrency < 1 or max_concurrency > 6:
-            raise ValueError("max_concurrency must be from 1 through 6")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
+            raise ValueError("max_concurrency must be from 1 through 32")
         if max_detail_retries < 0 or max_detail_retries > 2:
             raise ValueError("max_detail_retries must be from 0 through 2")
         if max_amazon_retries < 0 or max_amazon_retries > 2:

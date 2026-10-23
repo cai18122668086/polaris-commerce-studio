@@ -37,7 +37,12 @@ def escape(value):
     return value
 
 
-def prepare(revision, backend_image, frontend_image, dispatcher_image, output):
+def prepare(
+    revision, backend_image, frontend_image, dispatcher_image, output,
+    *, worker_concurrency: int = 4,
+):
+    if type(worker_concurrency) is not int or not 1 <= worker_concurrency <= 16:
+        raise ValueError("Replica worker concurrency must be from 1 through 16")
     assert re.fullmatch("[0-9a-f]{40}", revision)
     for image in (backend_image, frontend_image, dispatcher_image):
         assert re.fullmatch("sha256:[0-9a-f]{64}", image)
@@ -144,6 +149,7 @@ def prepare(revision, backend_image, frontend_image, dispatcher_image, output):
         svc["mem_limit"] = "1g"
         svc["cpus"] = "1.0"
         services[role] = svc
+    worker["mem_limit"] = "2g"
     worker["command"] = [
         "python",
         "-m",
@@ -152,7 +158,7 @@ def prepare(revision, backend_image, frontend_image, dispatcher_image, output):
         "app.celery_app:celery_app",
         "worker",
         "--loglevel=INFO",
-        "--concurrency=2",
+        f"--concurrency={worker_concurrency}",
         "--prefetch-multiplier=1",
         "--queues=one_click_replica",
         "--hostname=one-click-replica@%h",
@@ -197,5 +203,7 @@ if __name__ == "__main__":
     for name in ("revision", "backend-image", "frontend-image", "dispatcher-image"):
         p.add_argument("--" + name, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--worker-concurrency", type=int, default=4)
     a = p.parse_args()
-    prepare(a.revision, a.backend_image, a.frontend_image, a.dispatcher_image, a.output)
+    prepare(a.revision, a.backend_image, a.frontend_image, a.dispatcher_image, a.output,
+            worker_concurrency=a.worker_concurrency)

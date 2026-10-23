@@ -374,7 +374,7 @@ services:
       <<: [*backend-common-environment, *provider-environment]
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
-    command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=6", "--prefetch-multiplier=1", "--queues=default"]
+    command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${POLARIS_WORKER_CONCURRENCY:-6}", "--prefetch-multiplier=1", "--queues=default"]
     depends_on:
       migrate:
         condition: service_completed_successfully

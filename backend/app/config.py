@@ -216,7 +216,8 @@ class Settings(BaseSettings):
         ge=1,
         le=2_000_000,
     )
-    xinghe_concurrency: Literal[1, 2, 6] = 6
+    xinghe_concurrency: int = Field(default=6, ge=1, le=32)
+    replica_analysis_concurrency: int = Field(default=4, ge=1, le=16)
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)
     xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)
@@ -278,6 +279,8 @@ class Settings(BaseSettings):
     @field_validator("xinghe_concurrency", mode="before")
     @classmethod
     def parse_xinghe_concurrency(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Image concurrency must be an integer from 1 through 32")
         if isinstance(value, int):
             return value
         if isinstance(value, str):

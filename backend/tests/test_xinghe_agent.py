@@ -347,7 +347,7 @@ def test_all_ordered_angles_reach_planner_and_every_page(
         assert "source marks, never as product branding" in call.prompt
 
 
-@pytest.mark.parametrize("concurrency", [1, 2, 6])
+@pytest.mark.parametrize("concurrency", [1, 2, 6, 12])
 def test_bounded_configurable_image_concurrency(
     settings: Settings,
     concurrency: int,
@@ -382,7 +382,7 @@ def test_bounded_configurable_image_concurrency(
         assert 1 <= gateway.max_active_images <= concurrency
 
 
-def test_postgres_agent_concurrency_retry_and_usage_are_durable(
+def test_postgres_agent_concurrency_explicit_retry_and_usage_are_durable(
     postgres_xinghe_client: TestClient,
 ) -> None:
     client = postgres_xinghe_client
@@ -409,16 +409,29 @@ def test_postgres_agent_concurrency_retry_and_usage_are_durable(
     )
     assert dispatch_pending(client) == 1
     completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert completed["status"] == JobStatus.PARTIAL.value
+    assert len(gateway.image_calls) == 6
+    assert completed["succeeded_item_count"] == 5
+    assert completed["failed_item_count"] == 1
+    retried = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/retry",
+        headers=idem(), json={"scope": "failed", "item_ids": []},
+    )
+    assert retried.status_code == 201, retried.text
+    assert dispatch_pending(client) == 1
+    retry_id = retried.json()["id"]
+    completed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{retry_id}").json()
+    assert sum(item["result_source"] == "reused" for item in completed["items"]) == 5
     with client.app.state.session_factory() as session:
         attempts = session.scalar(
             select(func.count())
             .select_from(JobAttemptRecord)
-            .where(JobAttemptRecord.job_id == job["id"])
+            .where(JobAttemptRecord.job_id.in_([job["id"], retry_id]))
         )
         usages = session.scalar(
             select(func.count())
             .select_from(UsageEventRecord)
-            .where(UsageEventRecord.job_id == job["id"])
+            .where(UsageEventRecord.job_id.in_([job["id"], retry_id]))
         )
 
     assert completed["status"] == JobStatus.AWAITING_FINAL_REVIEW.value

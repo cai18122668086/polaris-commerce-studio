@@ -162,7 +162,7 @@ class ProductionPreflightTests(unittest.TestCase):
             with self.subTest(compose_file=compose_file.name):
                 compose = compose_file.read_text(encoding="utf-8")
                 self.assertIn("POLARIS_XINGHE_CONCURRENCY:-6", compose)
-                self.assertIn("--concurrency=6", compose)
+                self.assertIn("--concurrency=${POLARIS_WORKER_CONCURRENCY:-6}", compose)
                 self.assertNotIn("POLARIS_XINGHE_CONCURRENCY:-2", compose)
                 self.assertNotIn("--concurrency=2", compose)
 

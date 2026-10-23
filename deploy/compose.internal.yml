@@ -242,7 +242,7 @@ services:
       - app.celery_app:celery_app
       - worker
       - --loglevel=INFO
-      - --concurrency=6
+      - --concurrency=${POLARIS_WORKER_CONCURRENCY:-6}
       - --prefetch-multiplier=1
       - --queues=default
     depends_on:

@@ -2777,7 +2777,10 @@ class TengliOpenAICompatibleGateway:
                 except XingheAgentError:
                     raise
                 if (
-                    self._should_failover_status(status)
+                    (
+                        self._should_failover_status(status)
+                        or _explicit_image_text_reply(status, response)
+                    )
                     and route_index < last_route_index
                 ):
                     continue
@@ -12983,6 +12986,22 @@ def _safe_request_id(payload: Mapping[str, Any]) -> str | None:
         if isinstance(value, str) and value:
             return value[:255]
     return None
+
+
+def _explicit_image_text_reply(status: int, payload: Mapping[str, Any]) -> bool:
+    """A relay explicitly rejected text-only output; no image outcome is pending."""
+
+    error = payload.get("error")
+    return (
+        status == 400
+        and isinstance(error, Mapping)
+        and error.get("code") == "upstream_text_reply"
+        and error.get("type") == "invalid_request_error"
+        and not any(
+            payload.get(key)
+            for key in ("data", "images", "output", "url", "b64_json")
+        )
+    )
 
 
 def _provider_error_summary(payload: Mapping[str, Any]) -> dict[str, str]:

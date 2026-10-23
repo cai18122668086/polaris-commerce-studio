@@ -11,7 +11,6 @@ import {
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { AppShell } from "@/components/app-shell";
 import { HelpPanel } from "@/components/help-panel";
-import { DetailSkillChoice } from "@/components/detail-skill-choice";
 import { DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
 import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
 import { DomesticDetailCampaignReview } from "@/components/domestic-detail-campaign-review";
@@ -24,13 +23,14 @@ import { JobDeliverablesDownload } from "@/components/job-deliverables-download"
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
+import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useConfirmPlan, useCreateJob, useDomesticDetailFinalReview, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import { validateImageUpload } from "@/lib/image-upload";
-import { detailSkillSettings, savedDetailSkill, type DetailSkill } from "@/lib/detail-skills";
+import { detailSkillSettings, savedDetailSkill } from "@/lib/detail-skills";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
@@ -104,8 +104,9 @@ function planItemPresentation(
 }
 
 function SavedSource({ workspaceId, assetId, index }: { workspaceId?: string; assetId: string; index: number }) {
-  const access = useAssetAccessUrl(workspaceId, assetId);
-  return <div className="upload-thumb">{access.data?.url ? <img src={access.data.url} alt={`已保存商品图 ${index + 1}`} /> : <span>{access.error ? "素材加载失败" : "素材加载中"}</span>}<span>商品图 {index + 1}</span></div>;
+  const { ref, visible } = usePreviewVisibility<HTMLDivElement>();
+  const access = useAssetAccessUrl(workspaceId, visible ? assetId : undefined, "thumbnail");
+  return <div ref={ref} className="upload-thumb">{access.data?.url ? <img loading="lazy" decoding="async" src={access.data.url} alt={`已保存商品图 ${index + 1}`} /> : <span>{access.error ? "素材加载失败" : "素材加载中"}</span>}<span>商品图 {index + 1}</span></div>;
 }
 
 export default function DetailPackPage() {
@@ -114,7 +115,6 @@ export default function DetailPackPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [draftPageCount, setPageCount] = useState(8);
-  const [draftDetailSkill, setDetailSkill] = useState<DetailSkill>("quick");
   const [draftMarketRegion, setMarketRegion] = useState<MarketRegion>("domestic");
   const [draftMarketplaceId, setMarketplaceId] = useState("tmall");
   const [draftImageSize, setImageSize] = useState<MarketplaceImageSize>(DOMESTIC_DETAIL_SIZE);
@@ -144,7 +144,7 @@ export default function DetailPackPage() {
   const saved = job.data?.id === jobId ? job.data.configuration.settings as Record<string, unknown> | undefined : undefined;
   const savedString = (key: string, fallback: string) => jobId ? typeof saved?.[key] === "string" ? saved[key] as string : "" : fallback;
   const marketRegion: MarketRegion = jobId ? saved?.market_region === "international" ? "international" : "domestic" : draftMarketRegion;
-  const detailSkill = jobId ? savedDetailSkill(job.data?.configuration) : draftDetailSkill;
+  const detailSkill = jobId ? savedDetailSkill(job.data?.configuration) : "refined";
   const isRefinedDetail = marketRegion === "domestic" && detailSkill === "refined";
   const marketplaceId = savedString("platform_code", draftMarketplaceId);
   const imageSize = (savedString("size", draftImageSize ?? "1440x1920") || DOMESTIC_DETAIL_SIZE) as MarketplaceImageSize;
@@ -174,7 +174,7 @@ export default function DetailPackPage() {
   const workflowAvailable = workflow.mode === "mock" || workflow.mode === "provider";
   const selectedMarketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId) ?? marketplaceGroups[marketRegion][0];
   const planPages = readPlanPages(job.data?.plan?.payload);
-  const automaticPlan = marketRegion === "domestic" && saved?.auto_start_after_plan === true && job.data?.retry_scope !== "selected";
+  const automaticPlan = saved?.auto_start_after_plan === true && Boolean(job.data?.configuration.automatic_detail_submission || job.data?.configuration.automatic_crossborder_submission) && job.data?.retry_scope !== "selected";
   const auroraApproval = job.data?.plan?.payload.aurora_v4_3 as Record<string, unknown> | undefined;
   const refinedApproval = job.data?.plan?.payload.refined_approval as Record<string, unknown> | undefined;
   const refinedDocument = typeof refinedApproval?.document_markdown === "string" ? refinedApproval.document_markdown : "";
@@ -223,11 +223,6 @@ export default function DetailPackPage() {
         ? marketplace?.sizePresets?.[0]?.value ?? INTERNATIONAL_FALLBACK_SIZE
         : DOMESTIC_DETAIL_SIZE,
     );
-  };
-
-  const selectDetailSkill = (value: DetailSkill) => {
-    setDetailSkill(value);
-    if (value === "quick" && ![8, 10, 12].includes(draftPageCount)) setPageCount(8);
   };
 
   const addFiles = async (files: File[]) => {
@@ -279,7 +274,7 @@ export default function DetailPackPage() {
       ...detailSkillSettings(marketRegion, detailSkill),
       category: category.trim() || undefined,
       target_buyer: targetBuyer.trim() || undefined,
-      auto_start_after_plan: marketRegion === "domestic",
+      auto_start_after_plan: true,
       selling_points: sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12),
       verified_facts: marketRegion === "domestic" ? [] : sellingPoints.split(/[；;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 24),
       conflict_scan: marketRegion === "domestic" ? {} : { status: "NO_MATERIAL_CONFLICTS_REPORTED" },
@@ -325,7 +320,7 @@ export default function DetailPackPage() {
           <WorkspaceHeader
             eyebrow={workflow.mode === "provider" ? "电商套图 · 在线生成" : workflow.mode === "mock" ? "电商套图 · 基础流程" : "电商套图 · 服务状态确认中"}
             title="商品详情图"
-            description={workflow.mode === "provider" ? "当前生成服务可用；确认方案后将开始生成整套图片。" : workflow.mode === "mock" ? "当前支持素材上传、方案规划和任务保存，图片生成服务暂不可用。" : "当前无法确认生成服务状态，方案规划与图片生成入口暂时关闭。"}
+            description={workflow.mode === "provider" ? "提交后由后台规划并自动生成整套图片。" : workflow.mode === "mock" ? "当前支持素材上传、方案规划和任务保存，图片生成服务暂不可用。" : "当前无法确认生成服务状态，方案规划与图片生成入口暂时关闭。"}
             meta={<span className="autosave-state"><ShieldCheck size={15} />{workflow.mode === "provider" ? "生成服务可用" : "生成服务暂不可用"}</span>}
           />
 
@@ -341,7 +336,7 @@ export default function DetailPackPage() {
           </section>
 
           <div className="workflow-steps detail-steps">
-            {["商品素材", "商品信息", "输出设置", "确认规划", workflow.mode === "provider" ? "图片生成" : workflow.mode === "mock" ? "保存任务" : "服务确认中"].map((label, index) => <div key={label} className={index < step ? "done" : index === step ? "active" : ""}><i>{index < step ? <Check size={14} /> : index + 1}</i><span>{label}</span>{index < 4 && <em />}</div>)}
+            {["商品素材", "商品信息", "输出设置", "后台规划", workflow.mode === "provider" ? "图片生成" : workflow.mode === "mock" ? "保存任务" : "服务确认中"].map((label, index) => <div key={label} className={index < step ? "done" : index === step ? "active" : ""}><i>{index < step ? <Check size={14} /> : index + 1}</i><span>{label}</span>{index < 4 && <em />}</div>)}
           </div>
 
           <section className="detail-form-card">
@@ -371,7 +366,6 @@ export default function DetailPackPage() {
 
           <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip">3</span><div><h2>输出设置</h2><p>{workflow.mode === "provider" ? "确认后将开始生成，请先核对输出设置。" : "当前仅保存规划和任务状态，暂不生成图片。"}</p></div></div>
-            {marketRegion === "domestic" && <DetailSkillChoice value={detailSkill} disabled={Boolean(jobId)} onChange={selectDetailSkill} />}
             <div className="output-options">
               <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button className={language === "zh-CN" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("zh-CN")}>简体中文</button><button className={language === "en-US" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("en-US")}>English</button></div></div>
               <div className="option-field"><span><FileCheck2 size={16} />详情页数</span>{isRefinedDetail ? <select aria-label="详情页数" disabled={Boolean(jobId)} value={pageCount} onChange={event => setPageCount(Number(event.target.value))}>{Array.from({ length: 12 }, (_, index) => index + 1).map(count => <option key={count} value={count}>{count} 页</option>)}</select> : <div className="page-count-control">{[8, 10, 12].map((count) => <button key={count} className={pageCount === count ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setPageCount(count)}>{count} 页</button>)}</div>}</div>
@@ -383,8 +377,8 @@ export default function DetailPackPage() {
 
           {job.data?.stage === "intake_confirmation_required" && <DomesticDetailIntakeQuestion key={`${job.data.id}:${job.data.plan?.revision}`} workspaceId={workspace?.id} job={job.data} />}
 
-          <section className="planning-card" aria-busy={job.isFetching}>
-            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划{marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精美" : "快速"}` : ""}</h2><p>{jobId ? automaticPlan ? "规划校验通过后自动生成整套图片，无需再次确认方案。" : "正在读取页面规划。" : marketRegion === "domestic" ? "提交后自动规划并生成整套图片。" : "创建任务后将生成待确认的页面方案。"}</p><small>{isRefinedDetail ? "先规划买家需求、卖点表达和逐页构图，再分别生成每张 3:4 详情图。已生成图片可直接查看与下载。" : marketRegion === "domestic" ? "国内详情按相邻两屏生成一个 3:8 连续画布，固定切成两张 3:4 图片并审核。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
+          {!automaticPlan && jobId && <section className="planning-card" aria-busy={job.isFetching}>
+            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划{marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精致" : "历史快速"}` : ""}</h2><p>{jobId ? automaticPlan ? "规划校验通过后自动生成整套图片，无需再次确认方案。" : "正在读取页面规划。" : marketRegion === "domestic" ? "提交后自动规划并生成整套图片。" : "创建任务后将生成待确认的页面方案。"}</p><small>{isRefinedDetail ? "先规划买家需求、卖点表达和逐页构图，再分别生成每张 3:4 详情图。已生成图片可直接查看与下载。" : marketRegion === "domestic" ? "国内详情按相邻两屏生成一个 3:8 连续画布，固定切成两张 3:4 图片并审核。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
             {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在准备页面规划，请稍候…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
@@ -395,7 +389,7 @@ export default function DetailPackPage() {
                 return <article key={`${page.title}-${index}`}><span className="plan-drag"><GripVertical size={15} /></span><i>{String(index + 1).padStart(2, "0")}</i><div><strong>{page.title}</strong><p>{page.description ?? "页面规划内容已生成。"}</p></div><span className="quality-chip">{page.quality ?? "默认"}</span><span className={`page-status ${presentation.className}`}>{presentation.icon === "done" ? <CheckCircle2 size={14} /> : presentation.icon === "failed" ? <AlertCircle size={14} /> : <Clock3 size={14} />}{presentation.label}</span></article>;
               })}
             </div>}
-          </section>
+          </section>}
 
           {!automaticPlan && job.data?.id === jobId && job.data.plan?.validation_status === "valid" && auroraApproval && (!isNativeDetail || nativeApproval) && approvalDocument && <DomesticDetailApproval key={approvalKey} document={approvalDocument} fingerprint={approvalFingerprint} reviewed={nativeReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? approvalKey : "")} />}
           {!automaticPlan && isRefinedDetail && job.data?.id === jobId && job.data.plan?.validation_status === "valid" && refinedDocument && <DomesticDetailApproval key={refinedKey} document={refinedDocument} fingerprint={refinedFingerprint} description="请审阅买家需求、卖点分工、逐页构图和统一视觉风格，再确认开始生成。" reviewed={refinedReviewed} onReviewed={checked => setReviewedApprovalKey(checked ? refinedKey : "")} />}
@@ -435,7 +429,7 @@ export default function DetailPackPage() {
               {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
-                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending || uploadingSources}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? marketRegion === "domestic" ? "生成整套详情图" : "创建套图规划" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending || uploadingSources}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? marketRegion === "domestic" ? "生成整套详情图" : "生成整套详情图" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>
               ) : job.data?.status === "awaiting_final_review" && originalAutomaticAuthority ? (
                 <AutomaticDeliveryRecovery workspaceId={workspace?.id} job={job.data} authorization={originalAutomaticAuthority} />
               ) : job.data?.status === "awaiting_final_review" && allowsJobAction(job.data.allowed_actions, "finalize") ? (
@@ -468,7 +462,7 @@ export default function DetailPackPage() {
           mode="detail-pack"
           taskTitle={productName.trim() ? `${productName.trim()}详情套图` : "等待填写商品名称"}
           assetSummary={sourceCount ? `${sourceCount} 张 · 同一分组` : "尚未上传"}
-          outputSummary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "中文" : "English"} · ${pageCount} 页${marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精美" : "快速"}` : ""}`}
+          outputSummary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "中文" : "English"} · ${pageCount} 页${marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精致" : "历史快速"}` : ""}`}
         />
       </div>
     </AppShell>

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DETAIL_SKILLS, detailSkillSettings, savedDetailSkill } from "../lib/detail-skills.ts";
 
-test("public choices use only the two neutral names", () => {
-  assert.deepEqual(DETAIL_SKILLS.map(option => option.title), ["快速", "精美"]);
+test("new website offers only refined detail", () => {
+  assert.deepEqual(DETAIL_SKILLS.map(option => option.title), ["精致"]);
   assert.doesNotMatch(JSON.stringify(DETAIL_SKILLS), /星河|Aurora|Xinghe|4\.0|skill/i);
 });
 

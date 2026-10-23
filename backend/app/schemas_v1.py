@@ -262,6 +262,7 @@ class ReferenceRemixInput(BaseModel):
 class ReferenceRemixConfiguration(BaseModel):
     reference_skill: (
         Literal[
+            "aurora-remix-fast",
             "reference-visual-reverse-remix",
             "aurora-ecommerce-reference-remix",
             "all-category-style-benchmark-still",
@@ -532,6 +533,7 @@ class DomesticMainImageInput(BaseModel):
 
 
 class DomesticMainImageConfiguration(BaseModel):
+    auto_start_after_plan: bool = True
     product_name: str = Field(min_length=1, max_length=160)
     category: str = Field(min_length=1, max_length=120)
     selling_points: list[str] = Field(min_length=1, max_length=24)
@@ -576,6 +578,21 @@ class ReferenceRemixJobCreate(JobCreateBase):
     type: Literal[JobType.REFERENCE_REMIX]
     input: ReferenceRemixInput
     configuration: ReferenceRemixConfiguration
+
+    @model_validator(mode="after")
+    def fast_remix_input(self) -> "ReferenceRemixJobCreate":
+        if self.configuration.reference_skill == "aurora-remix-fast" and (
+            len(self.input.product_asset_ids) != 1
+            or len(self.input.reference_asset_ids) != 1
+            or self.configuration.aspect_ratio != "follow-reference"
+            or self.configuration.language != "zh-CN"
+            or self.configuration.execution_mode != "planner"
+            or not any(value.strip() for value in self.configuration.selling_points)
+        ):
+            raise ValueError(
+                "单图模仿需要一张商品图、一张对标图及真实商品事实，画幅比例跟随对标图。"
+            )
+        return self
 
 
 class ModelPoseTransferJobCreate(JobCreateBase):

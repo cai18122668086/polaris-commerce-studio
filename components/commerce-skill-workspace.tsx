@@ -99,7 +99,7 @@ const aspectRatios: { value: AspectRatio; label: string; note: string }[] = [
 ];
 
 const referenceAspectRatios: { value: AspectRatio; label: string; note: string }[] = [
-  { value: "follow-reference", label: "跟随参考图", note: "首张参考图实际尺寸" },
+  { value: "follow-reference", label: "跟随参考图", note: "首张参考图画幅比例" },
   ...aspectRatios,
 ];
 
@@ -254,13 +254,13 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
       {
         key: "product",
         title: "我的商品图",
-        description: "至少 1 张，作为二创后必须保留的商品主体。",
+        description: "1 张清晰产品原图，用于锁定外形、材质和关键细节。",
         required: true,
       },
       {
         key: "reference",
         title: "参考图",
-        description: "至少 1 张，用于提供构图、景别、光影和视觉节奏。",
+        description: "1 张单屏对标图，画幅与构图跟随这张图片。",
         required: true,
       },
     ];
@@ -475,9 +475,7 @@ export function CommerceSkillWorkspace({
         ].filter(Boolean).join("\n\n");
         setInstruction((current) => current || handoffInstruction);
       }
-      if (strategy.ratio && referenceAspectRatios.some((item) => item.value === strategy.ratio)) {
-        setAspectRatio(strategy.ratio);
-      }
+
       if (strategy.autoStart) setAutoStart(true);
       window.localStorage.removeItem("polaris-inspiration-strategy");
     } catch {
@@ -507,7 +505,7 @@ export function CommerceSkillWorkspace({
   const selectedSizeLabel = isAmazon
     ? "主图 2000 × 2000；副图 1200 × 1600；桌面 A+ 1464 × 600；移动 A+ 1600 × 1200"
     : aspectRatio === "follow-reference"
-      ? "跟随首张参考图实际尺寸"
+      ? "跟随首张参考图画幅比例"
       : aspectRatios.find((ratio) => ratio.value === aspectRatio)?.note ?? "未选择";
   const expectedCount = isAmazon
     ? 21
@@ -564,6 +562,7 @@ export function CommerceSkillWorkspace({
       workflow.canSubmit &&
       !runtime.isPending &&
       !missingRequiredRole &&
+      (featureId !== "reference-remix" || splitList(sellingPoints).length > 0) &&
       !uploadBusy &&
       !createJob.isPending,
   );
@@ -597,7 +596,7 @@ export function CommerceSkillWorkspace({
       );
       const roleLimit = isAmazon
         ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount)
-        : AMAZON_SOURCE_ASSET_LIMIT;
+        : featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT;
       next[role] = requested.slice(0, roleLimit);
       return next;
     });
@@ -608,7 +607,7 @@ export function CommerceSkillWorkspace({
     setUiError(undefined);
     const availableSlots = isAmazon
       ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selectedIds.length)
-      : Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selections[role].length);
+      : Math.max(0, (featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT) - selections[role].length);
     const selected = validateImageUpload(files, { multiple: true, maxFiles: availableSlots });
     if (selected.error) {
       setUiError(selected.error);
@@ -656,11 +655,11 @@ export function CommerceSkillWorkspace({
           reference_asset_ids: selections.reference,
         },
         configuration: {
-          reference_skill: "reference-visual-reverse-remix" as const,
+          reference_skill: "aurora-remix-fast" as const,
           platform_code: platformCode,
-          language,
+          language: "zh-CN",
           selling_points: splitList(sellingPoints),
-          aspect_ratio: aspectRatio,
+          aspect_ratio: "follow-reference",
           image_count: imageCount,
           execution_mode: "planner",
           inspiration_product_first: true,
@@ -810,6 +809,7 @@ export function CommerceSkillWorkspace({
                     <p>
                       {isAmazon
                         ? `至少上传 1 张清晰商品图，素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
+                        : featureId === "reference-remix" ? "每个角色各 1 张，同一素材不能跨角色重复使用。"
                         : `同一素材不能跨角色重复选择，每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`}
                     </p>
                   </div>
@@ -831,7 +831,7 @@ export function CommerceSkillWorkspace({
                     required={role.required}
                     uploading={uploadBusy}
                     disabled={Boolean(jobId) || !workspace?.id || createJob.isPending}
-                    maxFiles={amazonRemainingSourceSlots ?? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selections[role.key].length)}
+                    maxFiles={amazonRemainingSourceSlots ?? Math.max(0, (featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT) - selections[role.key].length)}
                     onFiles={(files) => addUploadedAssets(files, role.key)}
                     onOpenLibrary={() => setLibraryRole(role.key)}
                   />
@@ -968,7 +968,7 @@ export function CommerceSkillWorkspace({
                         onChange={(event) => setLanguage(event.target.value)}
                         disabled={Boolean(jobId)}
                       >
-                        {languageOptions.map((option) => (
+                        {(featureId === "reference-remix" && !jobId ? languageOptions.filter(option => option.value === "zh-CN") : languageOptions).map((option) => (
                           <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
                       </select>
@@ -998,7 +998,7 @@ export function CommerceSkillWorkspace({
                   <fieldset className={styles.optionGroup} disabled={Boolean(jobId)}>
                     <legend>画面比例</legend>
                     <div className={styles.ratioGrid}>
-                      {(featureId === "reference-remix" ? referenceAspectRatios : aspectRatios).map((ratio) => (
+                      {(featureId === "reference-remix" && !jobId ? referenceAspectRatios.filter(ratio => ratio.value === "follow-reference") : featureId === "reference-remix" ? referenceAspectRatios : aspectRatios).map((ratio) => (
                         <label key={ratio.value} data-selected={aspectRatio === ratio.value || undefined}>
                           <input
                             type="radio"
@@ -1032,12 +1032,12 @@ export function CommerceSkillWorkspace({
                   </fieldset>
 
                   <label className={styles.instructionField}>
-                    <span>商品卖点</span>
+                    <span>{featureId === "reference-remix" ? "商品事实与不可变特征 *" : "商品卖点"}</span>
                     <textarea
                       value={sellingPoints}
                       onChange={(event) => setSellingPoints(event.target.value)}
                       rows={4}
-                      placeholder="每行一项，最多 12 项"
+                      placeholder={featureId === "reference-remix" ? "请填写真实商品事实、结构特征或纹样方向，每行一项" : "每行一项，最多 12 项"}
                       disabled={Boolean(jobId)}
                     />
                     <small>按换行或逗号拆分，最多提交 12 项。</small>
@@ -1227,7 +1227,7 @@ export function CommerceSkillWorkspace({
             maxItems={
               isAmazon
                 ? selections[activeLibraryRole.key].length + (amazonRemainingSourceSlots ?? 0)
-                : AMAZON_SOURCE_ASSET_LIMIT
+                : featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT
             }
             disabled={Boolean(jobId) || !workspace?.id || createJob.isPending || uploadBusy}
           />
@@ -1246,6 +1246,8 @@ export function CommerceSkillWorkspace({
               <p role="alert"><Info size={15} />{uiError ?? errorMessage(requestError ?? createJob.error)}</p>
             ) : !workflow.canSubmit ? (
               <p role="alert"><Info size={15} />{workflow.message}</p>
+            ) : featureId === "reference-remix" && !jobId && splitList(sellingPoints).length === 0 ? (
+              <p><Info size={15} />请填写真实商品事实与不可变特征。</p>
             ) : missingRequiredRole ? (
               <p><Info size={15} />请先选择：{missingRequiredRole.title}。</p>
             ) : (

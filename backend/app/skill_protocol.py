@@ -15,6 +15,7 @@ from pathlib import Path
 
 SUPPORTED_SINGLE_IMAGE_SKILLS = frozenset(
     {
+        "aurora-remix-fast",
         "aurora-ecommerce-reference-remix",
         "all-category-style-benchmark-still",
         "xinghe-amazon-visual-suite",

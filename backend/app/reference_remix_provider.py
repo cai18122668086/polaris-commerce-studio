@@ -189,15 +189,44 @@ class ReferenceVisualReverseRemixProvider(ReferenceRemixProvider):
         return values
 
 
+class AuroraRemixFastAdapter(ReferenceRemixProvider):
+    """Exact user-supplied single-screen Skill, separate from native suites."""
+
+    skill_id = "aurora-remix-fast"
+
+    def validate_configuration(
+        self,
+        input_config: Mapping[str, Any],
+        settings: Mapping[str, Any],
+        item_config: Mapping[str, Any],
+    ) -> None:
+        super().validate_configuration(input_config, settings, item_config)
+        if (
+            len(require_asset_ids(input_config, "product_asset_ids")) != 1
+            or len(require_asset_ids(input_config, "reference_asset_ids")) != 1
+            or settings.get("aspect_ratio", "follow-reference") != "follow-reference"
+            or settings.get("execution_mode", "planner") != "planner"
+        ):
+            raise NewImageSkillContractError(
+                "REMIX_FAST_INPUT_INVALID",
+                "单图模仿需要一张商品图与一张对标图，画幅跟随对标图。",
+            )
+
+
 class ReferenceRemixRouterProvider(ReferenceRemixProvider):
     """Keep legacy workspace jobs intact while routing inspiration jobs explicitly."""
 
     def __init__(
-        self, legacy: Provider, exact: Provider, native: Provider | None = None
+        self,
+        legacy: Provider,
+        exact: Provider,
+        native: Provider | None = None,
+        fast: Provider | None = None,
     ) -> None:
         self.legacy = legacy
         self.exact = exact
         self.native = native
+        self.fast = fast
         self.delegate = getattr(legacy, "delegate", legacy)
         self.name = legacy.name
         self.model = legacy.model
@@ -208,6 +237,12 @@ class ReferenceRemixRouterProvider(ReferenceRemixProvider):
             _, settings, _ = configuration_sections(request.configuration)
         except Exception:
             return await self.legacy.execute(request)
+        if settings.get("reference_skill") == "aurora-remix-fast":
+            if self.fast is None:
+                from .provider_registry import UnavailableProvider
+
+                return await UnavailableProvider().execute(request)
+            return await self.fast.execute(request)
         if settings.get("reference_skill") == "reference-visual-reverse-remix":
             return await self.exact.execute(request)
         if (

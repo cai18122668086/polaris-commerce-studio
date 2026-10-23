@@ -375,7 +375,7 @@ export const FEATURE_REGISTRY = [
     icon: Images,
     tone: "rose",
     badge: "双图输入",
-    skillId: "xinghe-reference-image-remix-3",
+    skillId: "aurora-remix-fast",
     jobType: "reference_remix",
     runtimeCapability: "reference_remix",
     workspaceTemplate: "product_image",
@@ -393,7 +393,7 @@ export const FEATURE_REGISTRY = [
     featured: false,
     inputHint: "我的商品图 + 参考图",
     outputHint: "1–4 张独立结果",
-    guidance: "锁定参考图的构图、景别与光影，替换商品、品牌和活动信息。",
+    guidance: "适合单张快速试版式；保留商品身份并进行四项快检，严格保真套图请使用一键复刻。",
   },
   {
     id: "one-click-replica",
@@ -541,7 +541,7 @@ export const FEATURE_REGISTRY = [
     featured: true,
     inputHint: "1–8 张真实商品图 + 已核实卖点",
     outputHint: "1 张搜索主图 + 5 张轮播图",
-    guidance: "必须先确认整组六图计划；生成期间保持商品身份与视觉连续性。",
+    guidance: "提交素材后由后台规划并自动生成六图；生成期间保持商品身份与视觉连续性。",
   },
   {
     id: "amazon-visual-suite",

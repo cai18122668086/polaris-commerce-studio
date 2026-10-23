@@ -29,7 +29,7 @@ from .replica_native import (
     write_json,
 )
 from .replica_progress import native_progress
-from .replica_retry import RetryArtwork, retry_artwork_candidates
+from .replica_retry import RetryArtwork, prior_pixel_reviews, retry_artwork_candidates
 
 
 class ReplicaImageOutcomeUnknown(ReplicaNativeError):
@@ -124,11 +124,21 @@ class NativeReplicaProvider:
         previous = values["native_executions"].get(source_job_id, {})
         if previous.get("state") not in {"SET_COMPLETE", "FINALIZED"}:
             return {}
+        history = {}
+        ancestor = events.get(source_job_id)
+        seen = {request.job_id, source_job_id}
+        while ancestor and ancestor not in seen:
+            seen.add(ancestor)
+            execution = values["native_executions"].get(ancestor, {})
+            if execution.get("state") in {"SET_COMPLETE", "FINALIZED"}:
+                history[ancestor] = execution["snapshot"]
+            ancestor = events.get(ancestor)
         return retry_artwork_candidates(
             previous["snapshot"],
             snapshot,
             source_job_id,
             f"{request.workspace_id}/replica/{document_id}/",
+            history=history,
         )
 
     async def _save(
@@ -685,12 +695,19 @@ class NativeReplicaProvider:
                     "check label spelling and complete numerals only when packaging or those marks belong in this module. "
                     "Independently verify module_constraints against the attached reference pixels: never demand an absent "
                     "package in a contents, ingredient or scene module, and never waive visible product mismatches. "
-                    "product_geometry_match must truthfully reflect actual pixels; list all material deltas. No all-pass template.",
+                    "product_geometry_match must truthfully reflect actual pixels; list all material deltas. No all-pass template. "
+                    "Reassess prior_pixel_reviews observations against current pixels: these are fallible questions, "
+                    "not inherited verdicts. Explain unresolved and resolved concerns in the relevant comparison evidence.",
                     {
                         **exact_review_context(module, run.context),
                         "artwork": artwork,
                         "artwork_sha256": digest(Path(artwork).read_bytes()),
                         "geometry": state["input"]["product_geometry"],
+                        "prior_pixel_reviews": prior_pixel_reviews(
+                            (retry_candidates or {}).get(module["id"]),
+                            state["modules"][state["module_index"]],
+                            request.job_id,
+                        ),
                     },
                     "audit-current",
                     "judgment",
@@ -724,6 +741,11 @@ class NativeReplicaProvider:
                         ][-1]["judgment"],
                         "artwork": artwork,
                         "geometry": state["input"]["product_geometry"],
+                        "prior_pixel_reviews": prior_pixel_reviews(
+                            (retry_candidates or {}).get(module["id"]),
+                            state["modules"][state["module_index"]],
+                            request.job_id,
+                        ),
                     },
                     "prepare-repair",
                     "repair-plan",

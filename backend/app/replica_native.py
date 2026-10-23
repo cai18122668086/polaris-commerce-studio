@@ -751,6 +751,41 @@ class NativeReplicaRun:
             )
             path = self.root / "contracts" / f"{stage}-{attempt}-{uuid4().hex[:8]}.json"
             write_json(path, value)
+            if (
+                self.method == "exact"
+                and command == "audit-current"
+                and context.get("prior_pixel_reviews")
+                and value.get("decision") == "PASS"
+                and value.get("major_mismatches") == []
+                and isinstance(value.get("comparisons"), list)
+                and len(value["comparisons"]) == 10
+                and all(
+                    isinstance(row, dict) and row.get("match") is True
+                    for row in value["comparisons"]
+                )
+                and value.get("product_geometry_match") is not False
+            ):
+                # Preserve the first model response. A separate fresh pixel
+                # review resolves known concerns without seeing that verdict.
+                value = await self.ask(
+                    f"{stage}-independent-{attempt}",
+                    instruction
+                    + " Independently reassess every prior_pixel_reviews observation "
+                    "against the attached reference and current artwork. Prior observations "
+                    "are fallible questions, never verdicts to inherit. Explain which remain "
+                    "visible and which are resolved in the relevant comparison evidence. "
+                    "Inspect every dimension afresh; do not manufacture either PASS or FAIL.",
+                    {"data": context, "validation_error": ""},
+                    schemas=schemas,
+                    paths=paths,
+                    bind_evidence=bind_evidence,
+                )
+                path = (
+                    self.root
+                    / "contracts"
+                    / f"{stage}-independent-{attempt}-{uuid4().hex[:8]}.json"
+                )
+                write_json(path, value)
             try:
                 base = (
                     {"session": self.run / "session.json"}

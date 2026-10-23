@@ -36,6 +36,32 @@ def test_product_transcription_keeps_original_pixels_and_explicit_uncertainty():
     assert validate_product_evidence(observed, source)[0]["readable_marks"] == []
 
 
+def test_dense_package_label_observations_are_preserved_without_count_gate():
+    marks = [
+        {
+            "text": f"Printed label row {index}",
+            "bbox": [0, index * 10, 100, index * 10 + 8],
+        }
+        for index in range(75)
+    ]
+    result = validate_product_evidence(
+        {
+            "products": [
+                {
+                    "product_index": 0,
+                    "source_sha256": "a" * 64,
+                    "readable_marks": marks,
+                    "uncertainty_notes": (
+                        "Small unreadable text is omitted rather than inferred."
+                    ),
+                }
+            ]
+        },
+        [{"sha256": "a" * 64, "width": 100, "height": 1000}],
+    )
+    assert result[0]["readable_marks"] == marks
+
+
 @pytest.mark.parametrize(
     "bad",
     [

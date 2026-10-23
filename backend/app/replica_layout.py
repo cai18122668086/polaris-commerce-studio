@@ -32,7 +32,7 @@ def validate_product_evidence(
         if row.get("source_sha256") != source["sha256"]:
             raise ValueError(f"商品原照 {index} 的文字观察哈希不一致。")
         marks = row.get("readable_marks")
-        if not isinstance(marks, list) or len(marks) > 48:
+        if not isinstance(marks, list):
             raise ValueError(f"商品原照 {index} 的可读文字区域无效。")
         for mark in marks:
             if (

@@ -114,6 +114,25 @@ def test_two_dominant_lines_keep_small_connector_and_replace_source_capsule():
     assert all("observed_text" not in row for row in text)
 
 
+@pytest.mark.parametrize("group", [2, "line2"])
+def test_observed_line_group_accepts_numeric_or_named_identifiers(group):
+    value = source_layout()
+    for region in value["units"][0]["text_regions"][1:3]:
+        region["line_group"] = group
+    layouts = validate_reference_layouts(value, {"R001": "a" * 64})
+    result = bind_module_text(bindings(), [MODULE], layouts)["M001"]
+    assert result["text_bindings"][1]["line_group"] == group
+    assert result["text_bindings"][2]["line_group"] == group
+
+
+@pytest.mark.parametrize("group", [True, -1, " ", None])
+def test_observed_line_group_rejects_ambiguous_or_empty_identifiers(group):
+    value = source_layout()
+    value["units"][0]["text_regions"][1]["line_group"] = group
+    with pytest.raises(ValueError, match="R001.*T2"):
+        validate_reference_layouts(value, {"R001": "a" * 64})
+
+
 @pytest.mark.parametrize(
     "bad",
     [

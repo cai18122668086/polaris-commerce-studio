@@ -996,6 +996,7 @@ class NativeReplicaRun:
                 }
             )
         layout_error = ""
+        observed: dict[str, Any] = {}
         for layout_attempt in range(3):
             observed = await self.ask(
                 f"exact-reference-layout-{layout_attempt}",
@@ -1003,7 +1004,7 @@ class NativeReplicaRun:
                 "Return {units:[{reference_unit_id,reference_sha256,reference_product_present:boolean,"
                 "layout_anchors:[{label,bbox:[l,t,r,b]}],has_poster_text:boolean,"
                 "text_regions:[{id,role:brand|headline|connector|subtitle|badge|body|footnote,"
-                "font_tier:dominant|secondary|small,line_group,observed_text,bbox:[l,t,r,b]}],"
+                "font_tier:dominant|secondary|small,line_group:string,observed_text,bbox:[l,t,r,b]}],"
                 "typography_notes}]}. Use normalized integer coordinates 0..1000. Cover every "
                 "source exactly once, preserving the supplied id and hash. Record subject, props "
                 "and supporting evidence bounds and negative space accurately, including small "
@@ -1016,7 +1017,11 @@ class NativeReplicaRun:
                 "Use empty observed_text when pixels are unreadable, never invent OCR. Source "
                 "words are analysis evidence only, never approved replacement copy. Describe "
                 "the actual hierarchy in typography_notes, or explicitly explain absence of text.",
-                {"physical_units": evidence, "validation_error": layout_error},
+                {
+                    "physical_units": evidence,
+                    "validation_error": layout_error,
+                    **({"invalid_observation": observed} if layout_attempt else {}),
+                },
                 paths=[Path(row["crop_path"]) for row in evidence],
             )
             try:

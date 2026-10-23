@@ -69,13 +69,25 @@ def validate_reference_layouts(
                     "footnote",
                 }
                 or region.get("font_tier") not in {"dominant", "secondary", "small"}
-                or not isinstance(region.get("line_group"), str)
-                or not 1 <= len(region["line_group"]) <= 80
+                or not (
+                    (
+                        isinstance(region.get("line_group"), str)
+                        and 1 <= len(region["line_group"].strip()) <= 80
+                    )
+                    or (
+                        type(region.get("line_group")) is int
+                        and 0 <= region["line_group"] <= 1000
+                    )
+                )
                 or not isinstance(region.get("observed_text"), str)
                 or len(region["observed_text"]) > 2000
                 or not _box(region.get("bbox"))
             ):
-                raise ValueError("参考文字层级、行组或坐标无效。")
+                region_id = region.get("id") if isinstance(region, dict) else "unknown"
+                raise ValueError(
+                    f"参考 {row['reference_unit_id']} 文字区域 {region_id} 无效；"
+                    "line_group 须为非空字符串或非负整数，bbox 须为有效归一化坐标。"
+                )
             ids.add(region["id"])
         if (
             not isinstance(row.get("typography_notes"), str)

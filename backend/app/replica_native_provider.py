@@ -14,6 +14,8 @@ from PIL import Image
 from .models import JobItemRecord, JobRecord, ReplicaDocumentRecord, utc_now
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
 from .replica_native import (
+    VISUAL_EVIDENCE_POLICY,
+    VISUAL_EVIDENCE_POLICY_VERSION,
     NativeReplicaRun,
     ReplicaAnalysisUnavailable,
     ReplicaInputTooLarge,
@@ -281,6 +283,8 @@ class NativeReplicaProvider:
             "inferred handedness words. current_artwork is the repair canvas; preserve "
             "its passed regions and correct only the audited mismatches using the "
             "original product evidence."
+            + "\n\n"
+            + VISUAL_EVIDENCE_POLICY
         )
         ledger[token] = {
             "state": "invoked",
@@ -289,6 +293,7 @@ class NativeReplicaProvider:
             "source_bindings": evidence,
             "native_prompt_sha256": digest(prompt.encode("utf-8")),
             "dispatch_prompt_sha256": digest(bound_prompt.encode("utf-8")),
+            "visual_evidence_policy_version": VISUAL_EVIDENCE_POLICY_VERSION,
         }
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.

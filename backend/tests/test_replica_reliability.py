@@ -84,7 +84,10 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
     tmp_path,
 ):
     run = run_at(tmp_path, "exact", SimpleNamespace())
-    run.context = {"user_facts": "", "references": [{"asset_id": "original-reference"}]}
+    run.context = {
+        "user_facts": "Explicitly provided product facts",
+        "references": [{"asset_id": "original-reference"}],
+    }
     product, reference = tmp_path / "product.png", tmp_path / "reference.png"
     Image.new("RGB", (100, 120), "red").save(product)
     Image.new("RGB", (100, 200), "blue").save(reference)
@@ -97,28 +100,61 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
     async def contract(stage, instruction, context, *args, **kwargs):
         events.append(stage)
         if stage.startswith("exact-plan-audit"):
+            assert context["user_facts"] == "Explicitly provided product facts"
+            assert context["product_evidence"][0]["product_index"] == 0
             return {"pass": True}
         evidence = context["physical_units"][0]
         return {
             "modules": [
                 {
                     "id": "M003",
+                    "reference_unit_id": "R001",
                     "page_duty": "Product contents evidence",
                     "generation_brief": "Preserve layout and visible real contents",
                     "output_canvas": evidence["recommended_canvas"],
+                    "copy_units": [],
                 }
             ]
         }
 
     async def ask(stage, instruction, context, **kwargs):
         asks.append((stage, context, kwargs))
+        if stage.startswith("exact-product-evidence"):
+            return {
+                "products": [
+                    {
+                        "product_index": 0,
+                        "source_sha256": context["products"][0]["sha256"],
+                        "readable_marks": [],
+                        "uncertainty_notes": (
+                            "No readable physical marks in this test image."
+                        ),
+                    }
+                ]
+            }
+        source_hash = hashlib.sha256(
+            (tmp_path / "crops/screen-000.png").read_bytes()
+        ).hexdigest()
+        if stage.startswith("exact-reference-layout"):
+            return {
+                "units": [
+                    {
+                        "reference_unit_id": "R001",
+                        "reference_sha256": source_hash,
+                        "reference_product_present": False,
+                        "has_poster_text": False,
+                        "layout_anchors": [
+                            {"label": "background", "bbox": [0, 0, 1000, 1000]}
+                        ],
+                        "text_regions": [],
+                        "typography_notes": "No authored text in this source.",
+                    }
+                ]
+            }
         value = constraint()
+        value["modules"][0].update(product_visibility="context_only", text_bindings=[])
         value["modules"][0]["reference_sha256"] = (
-            "0" * 64
-            if len(asks) == 1
-            else hashlib.sha256(
-                (tmp_path / "crops/screen-000.png").read_bytes()
-            ).hexdigest()
+            "0" * 64 if len(asks) == 3 else source_hash
         )
         return value
 
@@ -141,8 +177,11 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
         )
     )
     assert events == ["start", "exact-plan-r0", "exact-plan-audit-r0"]
-    assert len(asks) == 2 and asks[1][1]["validation_error"]
-    assert asks[1][2]["paths"] == [product, tmp_path / "crops/screen-000.png"]
+    assert len(asks) == 4 and asks[3][1]["validation_error"]
+    assert asks[0][2]["paths"] == [product]
+    assert asks[1][2]["paths"] == [tmp_path / "crops/screen-000.png"]
+    assert "plan" not in asks[0][1] and "plan" not in asks[1][1]
+    assert asks[3][2]["paths"] == [product, tmp_path / "crops/screen-000.png"]
     assert result[0]["canvas"] == {"width": 1024, "height": 2048}
     saved = json.loads((tmp_path / "context.json").read_text(encoding="utf-8"))
     assert (
@@ -251,6 +290,10 @@ def test_unusual_canvas_has_a_separately_bound_format_guide_and_original_bytes(
 
     run = run_at(tmp_path, "exact", SimpleNamespace(edit=edit))
     run.context = {"module_constraints": {"M003": constraint()["modules"][0]}}
+    run.context["module_constraints"]["M003"].update(
+        product_visibility="context_only",
+        text_bindings=[{"region_id": "T1", "render_text": "Approved scene copy"}],
+    )
     provider = NativeReplicaProvider(None, run.gateway, None)
 
     async def save(*args, **kwargs):
@@ -281,4 +324,7 @@ def test_unusual_canvas_has_a_separately_bound_format_guide_and_original_bytes(
     with Image.open(BytesIO(calls[0].sources[-1].payload)) as guide:
         assert guide.size == (1024, 1866)
     assert "not_applicable_checks" in calls[0].prompt
+    assert "TEXT SLOT EXECUTION" in calls[0].prompt
+    assert "CONTEXT-ONLY SCENE" in calls[0].prompt
+    assert "Approved scene copy" in calls[0].prompt
     assert len(calls) == 1

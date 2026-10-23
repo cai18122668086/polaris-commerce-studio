@@ -14,6 +14,7 @@ from PIL import Image
 
 from .models import JobItemRecord, JobRecord, ReplicaDocumentRecord, utc_now
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
+from .replica_layout import exact_review_context
 from .replica_native import (
     VISUAL_EVIDENCE_POLICY,
     VISUAL_EVIDENCE_POLICY_VERSION,
@@ -377,6 +378,23 @@ class NativeReplicaProvider:
             bound_prompt += "\nAPPROVED_MODULE_EVIDENCE=" + json.dumps(
                 module_constraints, ensure_ascii=False
             )
+            if module_constraints.get("text_bindings") is not None:
+                bound_prompt += (
+                    "\nTEXT SLOT EXECUTION: Render ONLY each binding's render_text in its "
+                    "source bbox and font_tier. line_group records the reference's true line "
+                    "structure; small connecting words remain small, not another giant row. "
+                    "Every pill uses its bound approved text, never the source slogan. "
+                    "Do not add an extra ribbon, row or caption for surplus approved copy. "
+                    "Retain all subject bounds and negative space in source_layout_anchors."
+                )
+            if module_constraints.get("product_visibility") == "context_only":
+                bound_prompt += (
+                    "\nCONTEXT-ONLY SCENE: Product photos identify what is being marketed; "
+                    "the physical product, packaging and loose contents are absent from this "
+                    "page. Global product geometry locks apply only when visible. Do not "
+                    "insert food, product fragments or packaging into scene props. Reproduce "
+                    "the scene's own natural objects at the reference's actual scale."
+                )
         ledger[token] = {
             "state": "invoked",
             "job_id": request.job_id,
@@ -519,20 +537,20 @@ class NativeReplicaProvider:
                 await run.contract(
                     "exact-pixel-audit-" + native["token"],
                     "Fresh side-by-side PIXEL audit. Return judgment schema, unique observations/evidence per dimension. "
+                    "First observe the attached reference itself, then the artwork. Determine "
+                    "actual font-size tiers, dominant line groups, subject bounds and text "
+                    "carriers from pixels; a small connector is not a giant headline. Prior "
+                    "metadata may be wrong and never overrules reference pixels. "
                     "For product forms actually visible in this module, compare cross-section, ratios, segments and layers; "
                     "check label spelling and complete numerals only when packaging or those marks belong in this module. "
                     "Independently verify module_constraints against the attached reference pixels: never demand an absent "
                     "package in a contents, ingredient or scene module, and never waive visible product mismatches. "
                     "product_geometry_match must truthfully reflect actual pixels; list all material deltas. No all-pass template.",
                     {
-                        "module": module,
+                        **exact_review_context(module, run.context),
                         "artwork": artwork,
                         "artwork_sha256": digest(Path(artwork).read_bytes()),
                         "geometry": state["input"]["product_geometry"],
-                        "module_constraints": run.context.get(
-                            "module_constraints", {}
-                        ).get(module["id"]),
-                        "user_context": run.context,
                     },
                     "audit-current",
                     "judgment",
@@ -559,7 +577,14 @@ class NativeReplicaProvider:
                     "coordinates; do not conflate subject-anatomical left/right with image left/right. "
                     "Use the hand or edge nearest the target image position rather than an ambiguous "
                     "handedness label. Preserve correct regions and product identity.",
-                    state,
+                    {
+                        **exact_review_context(module, run.context),
+                        "failed_judgment": state["modules"][state["module_index"]][
+                            "attempts"
+                        ][-1]["judgment"],
+                        "artwork": artwork,
+                        "geometry": state["input"]["product_geometry"],
+                    },
                     "prepare-repair",
                     "repair-plan",
                     paths=[

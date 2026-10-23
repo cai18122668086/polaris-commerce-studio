@@ -162,18 +162,34 @@ def test_resumed_exact_repair_planning_receives_current_pixels(tmp_path):
     draft = png(tmp_path / "current-draft.png", "pink")
     stale = png(tmp_path / "prior-reference.png", "green")
     run = run_at(tmp_path, "exact")
+    run.context = {"user_facts": "Real product facts"}
     state = {
         "state": "REPAIR_READY",
         "module_index": 1,
+        "input": {"product_geometry": ["Original supported geometry"]},
         "plan": {
             "modules": [
                 {"reference_path": str(stale)},
-                {"reference_path": str(reference)},
+                {
+                    "id": "M002",
+                    "reference_path": str(reference),
+                    "copy_units": ["Approved copy"],
+                    "visual_contract": {
+                        "typography_structure": "wrong prior observation"
+                    },
+                },
             ]
         },
         "modules": [
             {"attempts": [{"artwork": str(stale)}]},
-            {"attempts": [{"artwork": str(draft)}]},
+            {
+                "attempts": [
+                    {
+                        "artwork": str(draft),
+                        "judgment": {"major_mismatches": ["Actual pixel mismatch"]},
+                    }
+                ]
+            },
         ],
     }
     run.state = lambda: state
@@ -182,6 +198,10 @@ def test_resumed_exact_repair_planning_receives_current_pixels(tmp_path):
 
     async def contract(*args, **kwargs):
         calls.append(kwargs["paths"])
+        assert "visual_contract" not in args[2]["module"]
+        assert args[2]["failed_judgment"]["major_mismatches"] == [
+            "Actual pixel mismatch"
+        ]
         state["state"] = "SET_COMPLETE"
 
     def finalize(command, **kwargs):

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.provider import ProviderOutcome
-from app.replica_native import ReplicaNativeError, read_json, write_json
+from app.replica_native import ReplicaNativeError, digest, read_json, write_json
 from app.replica_native_provider import NativeReplicaProvider
 
 from .test_replica_product_evidence import png
@@ -186,7 +186,11 @@ def test_resumed_exact_repair_planning_receives_current_pixels(tmp_path):
                 "attempts": [
                     {
                         "artwork": str(draft),
-                        "judgment": {"major_mismatches": ["Actual pixel mismatch"]},
+                        "judgment": {
+                            "derived_decision": "FAIL",
+                            "artwork_sha256": digest(draft.read_bytes()),
+                            "major_mismatches": ["Actual pixel mismatch"],
+                        },
                     }
                 ]
             },
@@ -202,6 +206,13 @@ def test_resumed_exact_repair_planning_receives_current_pixels(tmp_path):
         assert args[2]["failed_judgment"]["major_mismatches"] == [
             "Actual pixel mismatch"
         ]
+        assert args[2]["prior_pixel_reviews"] == [
+            {
+                "source_job_id": "job_current",
+                "artwork_sha256": digest(draft.read_bytes()),
+                "observations": ["Actual pixel mismatch"],
+            }
+        ]
         state["state"] = "SET_COMPLETE"
 
     def finalize(command, **kwargs):
@@ -211,7 +222,8 @@ def test_resumed_exact_repair_planning_receives_current_pixels(tmp_path):
 
     run.contract, run.cli = contract, finalize
     provider = NativeReplicaProvider(None, None, None)
-    assert asyncio.run(provider._exact(run, None)) == [str(draft)]
+    request = SimpleNamespace(job_id="job_current")
+    assert asyncio.run(provider._exact(run, request)) == [str(draft)]
     assert calls == [[original, reference, draft]]
 
 

@@ -316,6 +316,13 @@ def test_reused_canvas_still_enters_the_fresh_pixel_audit_before_any_acceptance(
         assert stage.startswith("exact-pixel-audit-")
         assert context["artwork_sha256"] == candidate.sha256
         assert "previous_decision" not in context
+        assert context["prior_pixel_reviews"] == [
+            {
+                "source_job_id": "job_old",
+                "artwork_sha256": candidate.sha256,
+                "observations": ["Real eye defect"],
+            }
+        ]
         events.append("fresh-audit")
         raise FreshAuditObserved()
 
@@ -354,6 +361,17 @@ def test_reuse_requires_an_explicit_same_workspace_failed_parent_job(tmp_path, b
             "job_old": {"state": "SET_COMPLETE", "snapshot": previous}
         },
     }
+    if bad is None:
+        values["native_executions"]["job_ancestor"] = {
+            "state": "SET_COMPLETE", "snapshot": deepcopy(previous)
+        }
+        state = json.loads(previous["files"]["session.json"]["text"])
+        state["modules"][0]["status"] = "COMPLETE"
+        state["modules"][0]["attempts"][0]["judgment"].update(
+            decision="PASS", derived_decision="PASS", major_mismatches=[]
+        )
+        previous["files"]["session.json"] = json_record(state)
+        values["retry_events"].append({"from": "job_ancestor", "to": "job_old"})
     if bad == "completed":
         parent.status = "completed"
     elif bad == "active":
@@ -380,3 +398,5 @@ def test_reuse_requires_an_explicit_same_workspace_failed_parent_job(tmp_path, b
         values, SimpleNamespace(job_id="job_new", workspace_id="ws_test"), current
     )
     assert bool(result) is (bad is None)
+    if bad is None:
+        assert result["M001"].prior_reviews[0].source_job_id == "job_ancestor"

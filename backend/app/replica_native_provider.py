@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import suppress
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +27,22 @@ from .replica_native import (
     read_json,
     write_json,
 )
+from .replica_progress import native_progress
 
 
 class ReplicaImageOutcomeUnknown(ReplicaNativeError):
     code = "PROVIDER_OUTCOME_UNKNOWN"
+
+
+class ReplicaCanvasMismatch(ReplicaNativeError):
+    code = "REPLICA_CANVAS_MISMATCH"
+
+    def __init__(self, expected: list[int], actual: tuple[int, int]) -> None:
+        self.message = (
+            f"当前屏要求 {expected[0]}×{expected[1]}，供应商返回 {actual[0]}×{actual[1]}，"
+            "比例未通过校验；原始产物已保留。"
+        )
+        super().__init__(self.message)
 
 
 class NativeReplicaProvider:
@@ -70,6 +83,8 @@ class NativeReplicaProvider:
     ) -> None:
         snapshot = await run.snapshot()
         with self.session_factory() as session:
+            # Match execution's job -> document lock order.
+            job = session.get(JobRecord, job_id, with_for_update=True)
             row = session.get(
                 ReplicaDocumentRecord, run.document_id, with_for_update=True
             )
@@ -80,6 +95,24 @@ class NativeReplicaProvider:
                 "delivery": delivery or [],
                 "state": run.state()["state"],
             }
+            progress = native_progress(run.state()) if run.method == "exact" else None
+            if progress:
+                previous = values.get("execution_progress", {})
+                if previous.get("job_id") != job_id:
+                    previous = {}
+                progress["job_id"] = job_id
+                progress["percentage"] = max(
+                    int(previous.get("percentage", 0)), progress["percentage"]
+                )
+                values["execution_progress"] = progress
+                if job is not None and job.status not in {
+                    "completed",
+                    "failed",
+                    "partial",
+                    "cancelled",
+                }:
+                    job.progress = max(job.progress, progress["percentage"])
+                    job.state_version += 1
             row.payload = {**values, "native_executions": executions}
             row.updated_at = utc_now()
             session.commit()
@@ -154,6 +187,15 @@ class NativeReplicaProvider:
                 with suppress(Exception):
                     await self._save(run, request.job_id)
             accounting = native_accounting(run.usage[initial_calls:] if run else [])
+            progress: dict[str, Any] = {}
+            if run is not None and run.method == "exact":
+                with suppress(Exception):
+                    progress = native_progress(run.state())
+            safe_message = (
+                f"{progress['total']} 屏中 {progress['rejected']} 屏未通过审图，整组暂未交付。请查看逐屏原因后重试。"
+                if progress.get("rejected")
+                else "本次复刻暂未完成，进度已保留。可按原方案重新复刻整组。"
+            )
             return ProviderResult(
                 outcome=ProviderOutcome.OUTCOME_UNKNOWN
                 if isinstance(exc, ReplicaImageOutcomeUnknown)
@@ -169,9 +211,10 @@ class NativeReplicaProvider:
                             ReplicaInputTooLarge,
                             ReplicaAnalysisUnavailable,
                             ReplicaPlanAuditRejected,
+                            ReplicaCanvasMismatch,
                         ),
                     )
-                    else "本次复刻暂未完成，进度已保留。可按原方案重新复刻整组。"
+                    else safe_message
                 ),
                 retryable=False,
                 usage_reported=run is not None and accounting["reported"],
@@ -194,19 +237,32 @@ class NativeReplicaProvider:
         canvas: list[int],
         key: str,
     ) -> Path:
-        from .xinghe_agent import ImageEditRequest
+        from .xinghe_agent import ImageEditRequest, SourceImage
 
         ledger_path = run.root / "invocations.json"
         ledger = read_json(ledger_path) if ledger_path.exists() else {}
         token = native["token"]
         prior = ledger.get(token)
         if prior:
-            if prior.get("path") and run.path(prior["path"]).is_file():
+            if (
+                prior.get("state") == "returned"
+                and prior.get("path")
+                and run.path(prior["path"]).is_file()
+            ):
                 if digest(run.path(prior["path"]).read_bytes()) != prior.get("sha256"):
                     raise ReplicaNativeError(
                         "已记录的生图产物哈希发生变化，已停止恢复。"
                     )
-                return run.path(prior["path"])
+                path = run.path(prior["path"])
+                with Image.open(path) as image:
+                    if (
+                        abs((image.width / image.height) / (canvas[0] / canvas[1]) - 1)
+                        > 0.01
+                    ):
+                        raise ReplicaCanvasMismatch(canvas, image.size)
+                return path
+            if prior.get("state") == "canvas_rejected":
+                raise ReplicaCanvasMismatch(canvas, tuple(prior["actual_size"]))
             raise ReplicaImageOutcomeUnknown(
                 "此令牌的生图结果尚未核实，系统不会自动重复调用。请新建明确的重试任务。"
             )
@@ -247,6 +303,30 @@ class NativeReplicaProvider:
             binding = {"image": index, "role": role}
             bindings.append(binding)
             evidence.append({**binding, "sha256": source.sha256})
+        # An empty geometry guide is a generation input, never a resized result.
+        # Keep the native blueprint/current-artwork order and bind it separately.
+        if min(canvas) >= 1024 and all(
+            abs((canvas[0] / canvas[1]) / ratio - 1) > 0.01
+            for ratio in (1, 2 / 3, 3 / 2)
+        ):
+            if canvas[0] * canvas[1] > 20_000_000:
+                raise ReplicaNativeError("单屏画幅过大，需要重新核对物理拆屏。")
+            output = BytesIO()
+            Image.new("RGB", (canvas[0], canvas[1]), "white").save(output, "PNG")
+            raw = output.getvalue()
+            guide = SourceImage(
+                asset_id="format-canvas",
+                group_key=key,
+                filename="format-canvas.png",
+                content_type="image/png",
+                sha256=digest(raw),
+                payload=raw,
+                source_role="format_canvas",
+            )
+            render_sources = (*render_sources, guide)
+            binding = {"image": len(render_sources), "role": "format_canvas"}
+            bindings.append(binding)
+            evidence.append({**binding, "sha256": guide.sha256})
         dispatch_prompt = prompt
         if run.method == "exact" and draft is not None:
             blueprint = next(
@@ -285,7 +365,18 @@ class NativeReplicaProvider:
             "original product evidence."
             + "\n\n"
             + VISUAL_EVIDENCE_POLICY
+            + "\nThe separately bound format_canvas, when present, defines only the exact "
+            f"{canvas[0]}x{canvas[1]} output boundary. Its white pixels are not a background "
+            "reference. Paint the full requested canvas using the composition reference's "
+            "background and visual anchors; never default to a generic 2:3 poster."
         )
+        module_constraints = (
+            getattr(run, "context", {}).get("module_constraints", {}).get(key)
+        )
+        if module_constraints:
+            bound_prompt += "\nAPPROVED_MODULE_EVIDENCE=" + json.dumps(
+                module_constraints, ensure_ascii=False
+            )
         ledger[token] = {
             "state": "invoked",
             "job_id": request.job_id,
@@ -298,62 +389,98 @@ class NativeReplicaProvider:
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.
         await self._save(run, request.job_id)
-        before = getattr(self.gateway, "external_network_request_count", None)
-        result = await self.gateway.edit(
-            ImageEditRequest(
-                workspace_id=request.workspace_id,
-                job_id=request.job_id,
-                job_item_id=request.job_item_id,
-                attempt_id=request.attempt_id,
-                page_number=1,
-                group_key=key,
-                sources=render_sources,
-                prompt=bound_prompt,
-                quality="high",
-                idempotency_key=f"replica-native:{request.job_id}:{token}",
-                size=f"{canvas[0]}x{canvas[1]}",
-                preserve_provider_artifact=True,
-                single_dispatch=False,
+        for format_attempt in range(2):
+            attempt_prompt = bound_prompt
+            if format_attempt:
+                attempt_prompt += (
+                    "\nFORMAT CORRECTION: The previous known response used the wrong aspect "
+                    f"ratio. Re-render this same approved module at EXACT {canvas[0]}x{canvas[1]}. "
+                    "Use the bound format_canvas boundary; preserve the blueprint and product."
+                )
+                ledger[token]["state"] = "invoked"
+                write_json(ledger_path, ledger)
+                await self._save(run, request.job_id)
+            before = getattr(self.gateway, "external_network_request_count", None)
+            result = await self.gateway.edit(
+                ImageEditRequest(
+                    workspace_id=request.workspace_id,
+                    job_id=request.job_id,
+                    job_item_id=request.job_item_id,
+                    attempt_id=request.attempt_id,
+                    page_number=1,
+                    group_key=key,
+                    sources=render_sources,
+                    prompt=attempt_prompt,
+                    quality="high",
+                    idempotency_key=f"replica-native:{request.job_id}:{token}"
+                    + (f":format-{format_attempt + 1}" if format_attempt else ""),
+                    size=f"{canvas[0]}x{canvas[1]}",
+                    preserve_provider_artifact=True,
+                    single_dispatch=False,
+                )
             )
-        )
-        after = getattr(self.gateway, "external_network_request_count", None)
-        requests = (
-            max(1, after - before) if type(before) is int and type(after) is int else 1
-        )
-        run.record_usage(result, "image", requests)
-        run.usage[-1].update(
-            http_status=result.http_status,
-            error_code=result.error_code,
-            metrics=(result.raw_usage or {}).get("metrics", {}),
-        )
-        if result.outcome == ProviderOutcome.OUTCOME_UNKNOWN:
-            raise ReplicaImageOutcomeUnknown(
-                result.error_message or "生图结果尚未核实。"
+            after = getattr(self.gateway, "external_network_request_count", None)
+            requests = (
+                max(1, after - before)
+                if type(before) is int and type(after) is int
+                else 1
             )
-        if result.outcome != ProviderOutcome.SUCCEEDED or result.artifact is None:
+            run.record_usage(result, "image", requests)
+            run.usage[-1].update(
+                http_status=result.http_status,
+                error_code=result.error_code,
+                metrics=(result.raw_usage or {}).get("metrics", {}),
+            )
+            if result.outcome == ProviderOutcome.OUTCOME_UNKNOWN:
+                raise ReplicaImageOutcomeUnknown(
+                    result.error_message or "生图结果尚未核实。"
+                )
+            if result.outcome != ProviderOutcome.SUCCEEDED or result.artifact is None:
+                ledger[token] = {
+                    **ledger[token],
+                    "state": "rejected",
+                    "http_status": result.http_status,
+                    "error_code": result.error_code,
+                }
+                write_json(ledger_path, ledger)
+                await self._save(run, request.job_id)
+                raise ReplicaNativeError(
+                    result.error_message or "生图未返回可核实产物。"
+                )
+            if result.artifact.locally_resampled:
+                raise ReplicaNativeError(
+                    "供应商返回了本地缩放产物，原生画幅验收未通过。"
+                )
+            suffix = f"-format-{format_attempt + 1}" if format_attempt else ""
+            path = run.root / "artwork" / f"{request.job_id}-{key}-{token}{suffix}.png"
+            path.parent.mkdir(exist_ok=True)
+            path.write_bytes(result.artifact.payload)
+            with Image.open(path) as image:
+                actual = image.size
+            matches = abs((actual[0] / actual[1]) / (canvas[0] / canvas[1]) - 1) <= 0.01
+            candidates = ledger[token].get("canvas_attempts", [])
+            candidates.append(
+                {
+                    "path": str(path),
+                    "sha256": digest(path.read_bytes()),
+                    "size": list(actual),
+                    "accepted_canvas": matches,
+                    "dispatch_prompt_sha256": digest(attempt_prompt.encode("utf-8")),
+                }
+            )
             ledger[token] = {
                 **ledger[token],
-                "state": "rejected",
-                "http_status": result.http_status,
-                "error_code": result.error_code,
+                "state": "returned" if matches else "canvas_rejected",
+                "path": str(path),
+                "sha256": digest(path.read_bytes()),
+                "actual_size": list(actual),
+                "canvas_attempts": candidates,
             }
             write_json(ledger_path, ledger)
             await self._save(run, request.job_id)
-            raise ReplicaNativeError(result.error_message or "生图未返回可核实产物。")
-        if result.artifact.locally_resampled:
-            raise ReplicaNativeError("供应商返回了本地缩放产物，原生画幅验收未通过。")
-        path = run.root / "artwork" / f"{request.job_id}-{key}-{token}.png"
-        path.parent.mkdir(exist_ok=True)
-        path.write_bytes(result.artifact.payload)
-        ledger[token] = {
-            **ledger[token],
-            "state": "returned",
-            "path": str(path),
-            "sha256": digest(path.read_bytes()),
-        }
-        write_json(ledger_path, ledger)
-        await self._save(run, request.job_id)
-        return path
+            if matches:
+                return path
+        raise ReplicaCanvasMismatch(canvas, actual)
 
     async def _exact(
         self, run: NativeReplicaRun, request: ProviderRequest
@@ -392,13 +519,19 @@ class NativeReplicaProvider:
                 await run.contract(
                     "exact-pixel-audit-" + native["token"],
                     "Fresh side-by-side PIXEL audit. Return judgment schema, unique observations/evidence per dimension. "
-                    "Also compare actual product cross-section, ratios, segments, layers, exact label spelling and complete numerals. "
+                    "For product forms actually visible in this module, compare cross-section, ratios, segments and layers; "
+                    "check label spelling and complete numerals only when packaging or those marks belong in this module. "
+                    "Independently verify module_constraints against the attached reference pixels: never demand an absent "
+                    "package in a contents, ingredient or scene module, and never waive visible product mismatches. "
                     "product_geometry_match must truthfully reflect actual pixels; list all material deltas. No all-pass template.",
                     {
                         "module": module,
                         "artwork": artwork,
                         "artwork_sha256": digest(Path(artwork).read_bytes()),
                         "geometry": state["input"]["product_geometry"],
+                        "module_constraints": run.context.get(
+                            "module_constraints", {}
+                        ).get(module["id"]),
                         "user_context": run.context,
                     },
                     "audit-current",

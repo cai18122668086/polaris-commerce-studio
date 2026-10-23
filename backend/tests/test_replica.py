@@ -247,6 +247,13 @@ def test_analyse_confirm_generates_once_and_preserves_source_roles(client, monke
         job_record.failed_item_count = job_record.expected_item_count
         for item in db.query(JobItemRecord).filter_by(job_id=job_id).all():
             item.status = "failed"
+        document_record = db.get(ReplicaDocumentRecord, document["id"])
+        document_record.payload = {
+            **document_record.payload,
+            "execution_progress": {"job_id": job_id, "percentage": 95},
+            "error": "Previous run did not pass review",
+            "error_code": "REPLICA_SKILL_BLOCKED",
+        }
         db.commit()
     image_retry = route + "/sessions/" + document["id"] + "/jobs/" + job_id + "/retry"
     one = client.post(image_retry, json={"request_id": str(uuid4())})
@@ -256,6 +263,9 @@ def test_analyse_confirm_generates_once_and_preserves_source_roles(client, monke
     replacement = one.json()["payload"]["job_ids"][0]
     assert replacement != job_id
     assert len(one.json()["payload"]["retry_events"]) == 1
+    assert not {"execution_progress", "error", "error_code"}.intersection(
+        one.json()["payload"]
+    )
     assert (
         client.get(f"/api/v1/workspaces/ws_test/jobs/{replacement}").json()[
             "configuration"

@@ -2933,6 +2933,9 @@ class ExecutionCoordinator:
                 else target.value
             )
             transition_job(job, target, stage=terminal_stage, progress=100)
+            from .replica_progress import reconcile_job_document
+
+            reconcile_job_document(session, job)
             if job.type in {
                 JobType.DETAIL_PACK.value,
                 JobType.AMAZON_VISUAL_SUITE.value,

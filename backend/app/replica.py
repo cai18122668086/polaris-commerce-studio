@@ -38,6 +38,7 @@ from .replica_native import (
     ReplicaSegmentationInvalid,
     native_accounting,
 )
+from .replica_progress import reconcile_document
 from .schemas_v1 import ReferenceRemixJobCreate
 from .services import get_ready_assets, lock_workspace_limits
 from .skill_protocol import load_skill_protocol
@@ -111,9 +112,8 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
         "payload": {
             key: value
             for key, value in row.payload.items()
-            if key not in {
-                "native_snapshot", "native_executions", "_automatic_submission"
-            }
+            if key
+            not in {"native_snapshot", "native_executions", "_automatic_submission"}
         },
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
@@ -275,27 +275,15 @@ async def create_product(
 
 @router.get("/documents/{document_id}")
 def get_document(
-    document_id: str, request: Request, background_tasks: BackgroundTasks,
-    workspace: WorkspaceDependency, session: SessionDependency,
+    document_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
 ) -> dict:
     row = _get(session, workspace.workspace_id, document_id)
-    job_ids = row.payload.get("job_ids", [])
-    if (
-        row.status == "generating"
-        and job_ids
-        and row.payload.get("submission_complete", True)
-    ):
-        states = session.scalars(
-            select(JobRecord.status).where(
-                JobRecord.workspace_id == workspace.workspace_id,
-                JobRecord.id.in_(job_ids),
-            )
-        ).all()
-        if len(states) == len(job_ids) and all(
-            state in {"completed", "partial", "failed", "cancelled"} for state in states
-        ):
-            row.status = "completed"
-            session.commit()
+    if reconcile_document(session, row):
+        session.commit()
     since = (
         row.updated_at.replace(tzinfo=UTC)
         if row.updated_at.tzinfo is None
@@ -329,18 +317,19 @@ def get_document(
 
 @router.get("/sessions")
 def history(workspace: WorkspaceDependency, session: SessionDependency) -> list[dict]:
-    return [
-        _wire(row)
-        for row in session.scalars(
-            select(ReplicaDocumentRecord)
-            .where(
-                ReplicaDocumentRecord.workspace_id == workspace.workspace_id,
-                ReplicaDocumentRecord.kind == "session",
-            )
-            .order_by(ReplicaDocumentRecord.created_at.desc())
-            .limit(30)
+    rows = session.scalars(
+        select(ReplicaDocumentRecord)
+        .where(
+            ReplicaDocumentRecord.workspace_id == workspace.workspace_id,
+            ReplicaDocumentRecord.kind == "session",
         )
-    ]
+        .order_by(ReplicaDocumentRecord.created_at.desc())
+        .limit(30)
+    ).all()
+    changed = [reconcile_document(session, row) for row in rows]
+    if any(changed):
+        session.commit()
+    return [_wire(row) for row in rows]
 
 
 @router.get("/jobs/{job_id}/session")
@@ -493,8 +482,13 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
             run.root = run.root / payload["analysis_attempt_id"]
             run.root.mkdir(parents=True, exist_ok=True)
             run.run = run.root
+
             def progress_updated(progress: int, label: str) -> None:
-                payload.update(progress=progress, analysis_stage=label)
+                # Replanning is additional work in the same attempt, not a reset.
+                payload.update(
+                    progress=max(int(payload.get("progress", 0)), progress),
+                    analysis_stage=label,
+                )
                 _save(app, document_id, "analysing", dict(payload))
 
             run.on_progress = progress_updated
@@ -714,7 +708,7 @@ def retry_analysis(
         for key, value in row.payload.items()
         if key not in {"error", "error_code"}
     }
-    row.payload = {**row.payload, "analysis_attempt_id": uuid4().hex}
+    row.payload = {**row.payload, "analysis_attempt_id": uuid4().hex, "progress": 0}
     session.commit()
     background_tasks.add_task(
         _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
@@ -741,7 +735,8 @@ def confirm(
         values["automatic_plan_confirmation"] = {
             "confirmation_source": "task_submission_default",
             "actor_user_id": workspace.principal.user_id,
-            "plan_hash": payload.plan_hash, "confirmed_at": utc_now().isoformat(),
+            "plan_hash": payload.plan_hash,
+            "confirmed_at": utc_now().isoformat(),
         }
         row.payload = values
     if values.get("plan_hash") != payload.plan_hash:
@@ -1015,7 +1010,11 @@ def retry_image(
     jobs[jobs.index(job_id)] = retried.id
     row.status = "generating"
     row.payload = {
-        **values,
+        **{
+            key: value
+            for key, value in values.items()
+            if key not in {"execution_progress", "error", "error_code"}
+        },
         "job_ids": list(jobs),
         "retry_events": [
             *attempts,

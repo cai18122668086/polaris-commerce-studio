@@ -33,7 +33,7 @@ SKILLS = {
     "style": "all-category-style-benchmark-still",
 }
 NATIVE_SKILLS = frozenset(SKILLS.values())
-VISUAL_EVIDENCE_POLICY_VERSION = "commercial-evidence-aware-v1"
+VISUAL_EVIDENCE_POLICY_VERSION = "commercial-evidence-aware-v2"
 VISUAL_EVIDENCE_POLICY = (
     "COMMERCIAL VISUAL ACCEPTANCE: Preserve the recognizable product, its clearly evidenced "
     "construction, main silhouette, color/material family, readable physical marks and user facts. "
@@ -51,7 +51,21 @@ VISUAL_EVIDENCE_POLICY = (
     "a hidden back view or unobserved construction merely to verify it. Still fail clear changes "
     "to supported product identity, conspicuous artifacts, materially wrong composition/scale, "
     "missing outputs or reference contamination. Describe actual visible evidence and uncertainty "
-    "honestly; do not manufacture a PASS or convert an existing FAIL in code."
+    "honestly; do not manufacture a PASS or convert an existing FAIL in code. "
+    "MODULE APPLICABILITY: The global product lock describes identity when that part is "
+    "visible; it does not order every page to display the complete package. First establish "
+    "what the approved module and actual reference require to be present or absent. A contents, "
+    "ingredient, mechanism or scene-only module must not acquire an unrelated package merely "
+    "to show its label. Do not fail such a module because a deliberately absent bag, back "
+    "panel, zipper, logo or net-weight numeral cannot be inspected. Explain these checks as "
+    "not applicable to this view; inspect the actual visible contents/product instead. "
+    "If a package or physical label IS required or shown, check its supported visible identity "
+    "and readable marks strictly. Never excuse a distorted visible product. Keep reference "
+    "subject sizes, negative space, typography silhouette and reading path within the approved "
+    "commercial similarity target, rather than enlarging every headline and hero."
+    " Prior module constraints cannot overrule the actual source pixels. Independently "
+    "verify their scope; still fail an omitted product or mark that the reference and "
+    "approved module actually require to be visible."
 )
 EXACT_COMMANDS = {
     "start": {"input", "session"},
@@ -137,8 +151,10 @@ def segmentation_errors(
     """Validate model coordinates against decoded source pixels before any crop."""
     errors: list[str] = []
     geometry = value.get("product_geometry")
-    if not isinstance(geometry, list) or len(geometry) < 3 or any(
-        not isinstance(row, str) or len(row) < 8 for row in geometry
+    if (
+        not isinstance(geometry, list)
+        or len(geometry) < 3
+        or any(not isinstance(row, str) or len(row) < 8 for row in geometry)
     ):
         errors.append("product_geometry requires at least three concrete observations")
     for name, index_key, sizes in (
@@ -146,7 +162,11 @@ def segmentation_errors(
         ("units", "reference_index", reference_sizes),
     ):
         rows = value.get(name)
-        if not isinstance(rows, list) or not rows or (name == "units" and len(rows) > 60):
+        if (
+            not isinstance(rows, list)
+            or not rows
+            or (name == "units" and len(rows) > 60)
+        ):
             errors.append(f"{name} must be a nonempty list (at most 60 units)")
             continue
         covered: set[int] = set()
@@ -167,26 +187,49 @@ def segmentation_errors(
                 not isinstance(bbox, list)
                 or len(bbox) != 4
                 or any(type(v) is not int for v in bbox)
-                or not (0 <= bbox[0] < bbox[2] <= width and 0 <= bbox[1] < bbox[3] <= height)
+                or not (
+                    0 <= bbox[0] < bbox[2] <= width and 0 <= bbox[1] < bbox[3] <= height
+                )
             ):
-                errors.append(f"{label}.bbox={bbox!r} must use integer source pixels within {width}x{height}")
+                errors.append(
+                    f"{label}.bbox={bbox!r} must use integer source pixels within {width}x{height}"
+                )
             if name == "units":
                 column, screen = row.get("column_index"), row.get("screen_index")
-                if type(column) is not int or column < 0 or type(screen) is not int or screen < 0:
-                    errors.append(f"{label} column_index and screen_index must be nonnegative integers")
+                if (
+                    type(column) is not int
+                    or column < 0
+                    or type(screen) is not int
+                    or screen < 0
+                ):
+                    errors.append(
+                        f"{label} column_index and screen_index must be nonnegative integers"
+                    )
                 else:
                     key = (index, column, screen)
                     if key in unit_keys:
-                        errors.append(f"{label} duplicates a reference/column/screen index")
+                        errors.append(
+                            f"{label} duplicates a reference/column/screen index"
+                        )
                     unit_keys.add(key)
-                if not isinstance(row.get("screen_boundary_reason"), str) or not row["screen_boundary_reason"].strip():
+                if (
+                    not isinstance(row.get("screen_boundary_reason"), str)
+                    or not row["screen_boundary_reason"].strip()
+                ):
                     errors.append(f"{label} needs an observed screen_boundary_reason")
         if covered != set(range(len(sizes))):
-            errors.append(f"{name} must cover every supplied source without dropping images")
+            errors.append(
+                f"{name} must cover every supplied source without dropping images"
+            )
     route = value.get("route")
     if not isinstance(route, str) or route not in {
-        "SEARCH_COVER", "PROMO_POSTER", "BANNER", "SOCIAL_COMMERCE_CARD",
-        "CAROUSEL_SET", "DETAIL_PAGE", "MARKETING_VISUAL_SET",
+        "SEARCH_COVER",
+        "PROMO_POSTER",
+        "BANNER",
+        "SOCIAL_COMMERCE_CARD",
+        "CAROUSEL_SET",
+        "DETAIL_PAGE",
+        "MARKETING_VISUAL_SET",
     }:
         errors.append("route must be one of the supplied commercial formats")
     return errors
@@ -269,6 +312,61 @@ def contained(root: Path, value: str | Path) -> Path:
     if not path.is_relative_to(root.resolve()):
         raise ReplicaNativeError("Skill 文件超出当前任务目录。")
     return path
+
+
+def validate_module_constraints(
+    value: dict[str, Any], expected: dict[str, str]
+) -> dict[str, Any]:
+    rows = value.get("modules", [])
+    if not isinstance(rows, list) or len(rows) != len(expected):
+        raise ReplicaNativeError("逐屏构图与核验范围不完整，请重新规划。")
+    scoped = {}
+    for row in rows:
+        if (
+            not isinstance(row, dict)
+            or row.get("module_id") not in expected
+            or row["module_id"] in scoped
+            or row.get("reference_sha256") != expected[row["module_id"]]
+        ):
+            raise ReplicaNativeError("逐屏范围未绑定当前参考图。")
+        for field in ("required_identity_checks", "not_applicable_checks"):
+            if (
+                not isinstance(row.get(field), list)
+                or len(row[field]) > 24
+                or any(
+                    not isinstance(v, str) or not 8 <= len(v) <= 2000
+                    for v in row[field]
+                )
+            ):
+                raise ReplicaNativeError("逐屏商品核验范围缺少可核实说明。")
+        if not row["required_identity_checks"] and not row["not_applicable_checks"]:
+            raise ReplicaNativeError("逐屏商品核验范围缺少可核实说明。")
+        if (
+            not isinstance(row.get("composition_notes"), str)
+            or not 8 <= len(row["composition_notes"]) <= 4000
+        ):
+            raise ReplicaNativeError("逐屏构图缺少具体说明。")
+        anchors = row.get("layout_anchors")
+        if not isinstance(anchors, list) or not 1 <= len(anchors) <= 24:
+            raise ReplicaNativeError("逐屏参考构图缺少坐标锚点。")
+        for anchor in anchors:
+            if (
+                not isinstance(anchor, dict)
+                or not isinstance(anchor.get("label"), str)
+                or not 2 <= len(anchor["label"]) <= 200
+            ):
+                raise ReplicaNativeError("逐屏构图锚点缺少可核实标签。")
+            box = anchor.get("bbox")
+            if (
+                not isinstance(box, list)
+                or len(box) != 4
+                or any(type(v) is not int for v in box)
+                or not 0 <= box[0] < box[2] <= 1000
+                or not 0 <= box[1] < box[3] <= 1000
+            ):
+                raise ReplicaNativeError("逐屏构图锚点不在参考图范围内。")
+        scoped[row["module_id"]] = row
+    return scoped
 
 
 class NativeReplicaRun:
@@ -389,10 +487,24 @@ class NativeReplicaRun:
                 content_type = Image.MIME.get(im.format or "", "image/png")
                 # Physical crops/snapshots stay byte-for-byte unchanged. Only
                 # transport lossless pixels in a smaller supported encoding.
-                if im.format == "PNG" and im.mode in {"RGB", "RGBA"} and len(data) > 256 * 1024 and max(im.size) <= 16383 and not {"gamma", "transparency"}.intersection(im.info):
+                if (
+                    im.format == "PNG"
+                    and im.mode in {"RGB", "RGBA"}
+                    and len(data) > 256 * 1024
+                    and max(im.size) <= 16383
+                    and not {"gamma", "transparency"}.intersection(im.info)
+                ):
                     compact = BytesIO()
                     try:
-                        im.save(compact, format="WEBP", lossless=True, method=4, exact=True, icc_profile=im.info.get("icc_profile", b""), exif=im.info.get("exif", b""))
+                        im.save(
+                            compact,
+                            format="WEBP",
+                            lossless=True,
+                            method=4,
+                            exact=True,
+                            icc_profile=im.info.get("icc_profile", b""),
+                            exif=im.info.get("exif", b""),
+                        )
                     except (OSError, ValueError):
                         pass
                     else:
@@ -435,6 +547,7 @@ class NativeReplicaRun:
                 ("identity-segmentation-repair", 15, "校正参考图拆屏坐标"),
                 ("identity", 12, "识别商品外形与物理拆屏"),
                 ("exact-plan-audit", 82, "重新看图审查逐屏方案"),
+                ("exact-module-constraints", 92, "锁定逐屏构图与商品核验范围"),
                 ("exact-plan", 48, "逐屏规划构图与商品表达"),
                 ("style-reference", 30, "拆解参考图的风格与叙事"),
                 ("style-crop", 46, "检查参考裁图是否含原商品"),
@@ -444,6 +557,9 @@ class NativeReplicaRun:
             ]
             for prefix, progress, label in phases:
                 if stage.startswith(prefix):
+                    revision = re.search(r"-r(\d+)", stage)
+                    if revision:
+                        label += f"（第 {int(revision.group(1)) + 1} 轮）"
                     self.on_progress(progress, label)
                     break
 
@@ -534,7 +650,9 @@ class NativeReplicaRun:
         self.record_usage(result, "analysis", requests)
         if result.error_code or not isinstance(result.payload, dict):
             write_json(
-                self.root / "contracts" / f"provider-failure-{stage}-{uuid4().hex[:8]}.json",
+                self.root
+                / "contracts"
+                / f"provider-failure-{stage}-{uuid4().hex[:8]}.json",
                 {"stage": stage, "provider_error_code": result.error_code},
             )
             raise ReplicaAnalysisUnavailable()
@@ -681,6 +799,7 @@ class NativeReplicaRun:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
                 (products if role == "product" else references).append(path)
+
         def sizes(paths: list[Path]) -> list[tuple[int, int]]:
             result = []
             for path in paths:
@@ -721,7 +840,9 @@ class NativeReplicaRun:
         errors: list[str] = []
         for attempt in range(3):
             observation = await self.ask(
-                "identity-segmentation" if not attempt else f"identity-segmentation-repair-{attempt}",
+                "identity-segmentation"
+                if not attempt
+                else f"identity-segmentation-repair-{attempt}",
                 (
                     "Return {product_geometry:[at least 3 supported, view-independent observations of "
                     "the main shape, construction and structural segments; omit pose-specific pixel "
@@ -741,12 +862,22 @@ class NativeReplicaRun:
                 ),
                 {
                     **self.context,
-                    **({"invalid_observation": observation, "validation_errors": errors} if attempt else {}),
+                    **(
+                        {
+                            "invalid_observation": observation,
+                            "validation_errors": errors,
+                        }
+                        if attempt
+                        else {}
+                    ),
                 },
                 paths=products + references,
             )
             errors = segmentation_errors(observation, product_sizes, reference_sizes)
-            write_json(self.root / "contracts" / f"identity-validation-{attempt}.json", {"errors": errors})
+            write_json(
+                self.root / "contracts" / f"identity-validation-{attempt}.json",
+                {"errors": errors},
+            )
             if not errors:
                 break
         else:
@@ -898,6 +1029,42 @@ class NativeReplicaRun:
                 previous_audit = error.judgment
         else:
             raise ReplicaPlanAuditRejected(previous_audit or {})
+        expected = {
+            m["id"]: e["crop_sha256"]
+            for m, e in zip(plan["modules"], evidence, strict=True)
+        }
+        scope_error = ""
+        for scope_attempt in range(3):
+            constraints = await self.ask(
+                f"exact-module-constraints-{scope_attempt}",
+                "Before any generation, observe each physical reference crop and the approved plan. "
+                "Return {modules:[{module_id,reference_sha256,required_identity_checks:[observed checks],"
+                "not_applicable_checks:[specific deliberately absent features and why],"
+                "layout_anchors:[{label,bbox:[left,top,right,bottom]}],composition_notes:string}]}. "
+                "Use normalized integer coordinates 0..1000 for the actual reference's headline, "
+                "subject/product, supporting evidence and labels. Preserve their relative sizes, "
+                "negative space and reading order; do not redesign them as oversized generic heroes. "
+                "Identity checks apply to visible product forms: contents must match real contents; "
+                "packaging and its marks are required only when this module calls for packaging. "
+                "Do not introduce an absent package to satisfy a global lock. These observations "
+                "must be grounded in the attached source pixels, not a promise to pass future images. "
+                "Cover each supplied module exactly once with at least one layout anchor.",
+                {
+                    "plan": plan,
+                    "product_context": self.context,
+                    "validation_error": scope_error,
+                },
+                paths=[*products, *[Path(row["crop_path"]) for row in evidence]],
+            )
+            try:
+                scoped = validate_module_constraints(constraints, expected)
+                break
+            except ReplicaNativeError as exc:
+                scope_error = str(exc)
+        else:
+            raise ReplicaNativeError(scope_error)
+        self.context["module_constraints"] = scoped
+        write_json(self.root / "context.json", self.context)
         return [
             {
                 "reference": self.context["references"][e["source_reference_index"]],

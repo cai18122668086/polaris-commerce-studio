@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from jsonschema import Draft202012Validator
 
+from .replica_exact_adaptation import validate_render_adaptation
 from .replica_exact_contracts import (
     adaptation_schema,
     canonical_hash,
@@ -37,7 +38,7 @@ from .replica_native import (
     write_json,
 )
 
-VERSION = "exact-compact-v2"
+VERSION = "exact-compact-v3"
 PROMPTS = Path(__file__).with_name("replica_exact_prompts")
 OBSERVATIONS = (
     "subject_and_scale",
@@ -114,6 +115,8 @@ def protocol_binding() -> dict[str, str]:
     dependencies = [
         Path(__file__),
         Path(__file__).with_name("replica_exact_contracts.py"),
+        Path(__file__).with_name("replica_exact_adaptation.py"),
+        Path(__file__).with_name("replica_exact_revision.py"),
         Path(__file__).with_name("replica_layout.py"),
         Path(__file__).with_name("replica_native.py"),
         Path(__file__).with_name("replica_native_provider.py"),
@@ -430,6 +433,51 @@ def response_schema(phase: str) -> dict[str, Any]:
                             "not_applicable_checks": arr(text()),
                             "text_bindings": arr(binding),
                             "fact_adaptations": adaptation_schema(),
+                            "render_anchors": arr(
+                                obj(
+                                    {
+                                        "source_anchor_index": index,
+                                        "label": text(2, 200),
+                                        "rect": rectangle(),
+                                        "basis": {
+                                            "enum": [
+                                                "retain_visual",
+                                                "product_identity",
+                                                "approved_facts",
+                                                "source_pixel_correction",
+                                            ]
+                                        },
+                                        "fact_ids": arr(text(1, 40), maxItems=40),
+                                        "reason": text(8, 400),
+                                    }
+                                ),
+                                minItems=1,
+                                maxItems=24,
+                            ),
+                            "commercial_adaptation": obj(
+                                {
+                                    "mode": {
+                                        "enum": ["preserve", "truthful_substitution"]
+                                    },
+                                    "source_role": text(8, 500),
+                                    "supported_role": text(8, 500),
+                                    "fact_ids": arr(text(1, 40), maxItems=40),
+                                    "reason": text(8, 500),
+                                    "preserved_mechanism": text(8, 500),
+                                }
+                            ),
+                            "content_groups": arr(
+                                obj(
+                                    {
+                                        "region_ids": arr(
+                                            text(1, 40), minItems=1, maxItems=48
+                                        ),
+                                        "critical": {"type": "boolean"},
+                                        "purpose": text(8, 400),
+                                    }
+                                ),
+                                maxItems=48,
+                            ),
                         }
                     ),
                     minItems=1,
@@ -509,8 +557,17 @@ def plan_proposal(plan: dict[str, Any], unit_id: str) -> dict[str, Any]:
             "not_applicable_checks",
             "text_bindings",
             "fact_adaptations",
+            "render_anchors",
+            "commercial_adaptation",
+            "content_groups",
         }
     }
+
+
+def model_plan_proposal(plan: dict[str, Any], unit_id: str) -> dict[str, Any]:
+    value = model_geometry(plan_proposal(plan, unit_id), "normalized_0_1000")
+    value.pop("coordinate_space")
+    return value
 
 
 def validate_copy_coverage(proposed: dict[str, Any]) -> None:
@@ -592,6 +649,9 @@ def materialize_plan(value: dict[str, Any], data: dict[str, Any]) -> dict[str, A
                         "generation_brief",
                         "copy_units",
                         "fact_adaptations",
+                        "commercial_adaptation",
+                        "render_anchors",
+                        "content_groups",
                     )
                 },
             }
@@ -608,7 +668,10 @@ def materialize_plan(value: dict[str, Any], data: dict[str, Any]) -> dict[str, A
                     "text_bindings",
                 )
             },
-            "layout_anchors": deepcopy(layout["layout_anchors"]),
+            "layout_anchors": [
+                {"label": a["label"], "bbox": deepcopy(a["bbox"])}
+                for a in proposed["render_anchors"]
+            ],
             "composition_notes": proposed["visual_contract"]["layout_and_reading_path"],
         }
     plan: dict[str, Any] = {
@@ -646,6 +709,7 @@ class CompactExactReplicaRun(NativeReplicaRun):
     planning_revisions = 3
     requires_independent_pixel_review = False
     analysis_timeout_seconds = 1800.0
+    render_binding_version = 3
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -663,6 +727,10 @@ class CompactExactReplicaRun(NativeReplicaRun):
     async def prepare(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         self._deadline = time.monotonic() + self.analysis_timeout_seconds
         self._call_start = sum(u.get("network_requests", 1) for u in self.usage)
+        if self.checkpoints.get("plan_cursor"):
+            from .replica_exact_revision import resume_planning
+
+            return await resume_planning(self)
         session = self.root / "session.json"
         if getattr(self, "_restored", False) and session.exists():
             # An explicit analysis retry starts a new native planning session,
@@ -681,6 +749,11 @@ class CompactExactReplicaRun(NativeReplicaRun):
             saved.parent.mkdir(parents=True, exist_ok=True)
             session.rename(saved)
         return await super().prepare(*args, **kwargs)
+
+    async def restore_for_revision(self, snapshot: dict[str, Any]) -> None:
+        from .replica_exact_revision import import_revision
+
+        await import_revision(self, snapshot)
 
     async def checkpoint(self) -> None:
         write_json(self.root / "compact-checkpoints.json", self.checkpoints)
@@ -711,7 +784,8 @@ class CompactExactReplicaRun(NativeReplicaRun):
             "accepted": sum(v == "PASS" for v in reviews.values()),
             "pending_corrections": sum(v == "FAIL" for v in reviews.values()),
             "current_unit": uid,
-            "reused_reviews": len(self.checkpoints.get("reused_reviews", [])),
+            "reused_reviews": len(self.checkpoints.get("reused_reviews", []))
+            + len(self.checkpoints.get("inherited_reviews_used", [])),
             "external_calls": sum(u.get("network_requests", 1) for u in self.usage),
         }
 
@@ -759,13 +833,18 @@ class CompactExactReplicaRun(NativeReplicaRun):
             + json.dumps(self.context["resolved_facts"], ensure_ascii=False)
             + "\nFACT_ADAPTATIONS="
             + json.dumps(module["fact_adaptations"], ensure_ascii=False)
+            + "\nCOMMERCIAL_ADAPTATION="
+            + json.dumps(module.get("commercial_adaptation"), ensure_ascii=False)
         )
 
     def generation_policy(self) -> str:
         return (PROMPTS / "visual_policy.md").read_text(encoding="utf-8")
 
     def model_module_evidence(self, value: dict[str, Any]) -> dict[str, Any]:
-        return model_geometry(value, "normalized_0_1000")
+        return model_geometry(
+            {k: v for k, v in value.items() if k != "source_layout_anchors"},
+            "normalized_0_1000",
+        )
 
     async def snapshot(self) -> dict[str, Any]:
         return {**await super().snapshot(), "model_protocol": self.binding}
@@ -871,7 +950,9 @@ class CompactExactReplicaRun(NativeReplicaRun):
                         }
                         for u in data["physical_units"]
                     ],
-                    "previous_targets": [plan_proposal(prior, u["id"]) for u in units]
+                    "previous_targets": [
+                        model_plan_proposal(prior, u["id"]) for u in units
+                    ]
                     if prior
                     else [],
                     "prior_audit": {
@@ -911,11 +992,14 @@ class CompactExactReplicaRun(NativeReplicaRun):
                             "reference_screen": model_unit(
                                 {k: v for k, v in u.items() if k != "id"}
                             ),
-                            "proposed_screen": {
-                                k: v
-                                for k, v in modules[u["id"]].items()
-                                if k not in {"id", "reference_unit_id"}
-                            },
+                            "proposed_screen": model_geometry(
+                                {
+                                    k: v
+                                    for k, v in modules[u["id"]].items()
+                                    if k not in {"id", "reference_unit_id"}
+                                },
+                                "normalized_0_1000",
+                            ),
                             "identity_scope": model_geometry(
                                 {
                                     k: v
@@ -953,6 +1037,10 @@ class CompactExactReplicaRun(NativeReplicaRun):
                     if m["id"] == module["id"]
                 )
                 value["fact_adaptations"] = planned["fact_adaptations"]
+                value["commercial_adaptation"] = planned.get("commercial_adaptation")
+                value["render_anchors"] = model_geometry(
+                    {"anchors": planned.get("render_anchors", [])}, "normalized_0_1000"
+                )
         if phase in {"review_artwork", "repair"} and value.get("module_constraints"):
             value["module_constraints"] = self.model_module_evidence(
                 value["module_constraints"]
@@ -1107,10 +1195,18 @@ class CompactExactReplicaRun(NativeReplicaRun):
             validate_reference_layouts(value, hashes)
         elif phase == "plan":
             for proposed in value["modules"]:
+                layout = data["reference_layouts"][proposed["reference_unit_id"]]
+                for i, anchor in enumerate(proposed["render_anchors"]):
+                    anchor["bbox"] = rectangle_edges(
+                        anchor.pop("rect"), 1000, 1000, f"Render anchor {i}"
+                    )
                 validate_adaptations(
                     proposed,
-                    data["reference_layouts"][proposed["reference_unit_id"]],
+                    layout,
                     self.context["resolved_facts"],
+                )
+                validate_render_adaptation(
+                    proposed, layout, self.context["resolved_facts"]
                 )
             if data.get("_proposal_units"):
                 units = data["_proposal_units"]
@@ -1207,6 +1303,28 @@ class CompactExactReplicaRun(NativeReplicaRun):
             and phase_for(stage) == "plan"
         ):
             data = context.get("data", context)
+            cursor = self.checkpoints.setdefault(
+                "plan_cursor",
+                {
+                    "rounds": 0,
+                    "phase": "proposal",
+                    "plan": None,
+                    "audit": None,
+                    "physical_units": deepcopy(data["physical_units"]),
+                },
+            )
+            if cursor["phase"] in {"review", "accepted"}:
+                return deepcopy(cursor["plan"])
+            if cursor["rounds"] >= self.planning_revisions:
+                from .replica_native import ReplicaPlanAuditRejected
+
+                raise ReplicaPlanAuditRejected(cursor["audit"])
+            if cursor["plan"]:
+                data = {
+                    **data,
+                    "previous_plan": cursor["plan"],
+                    "prior_visual_audit": cursor["audit"],
+                }
             proposals = []
             summaries = {
                 m["reference_unit_id"]: m
@@ -1231,7 +1349,10 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 )
                 proposals.extend(result["modules"])
                 summaries[unit["id"]] = result["modules"][0]
-            return materialize_plan({"modules": proposals}, data)
+            plan = materialize_plan({"modules": proposals}, data)
+            cursor.update(plan=deepcopy(plan), phase="review")
+            await self.checkpoint()
+            return plan
         if (
             not stage.startswith("exact-module-constraints")
             and phase_for(stage) == "review_plan"
@@ -1257,16 +1378,42 @@ class CompactExactReplicaRun(NativeReplicaRun):
                     },
                 }
                 options = {k: v for k, v in kwargs.items() if k != "paths"}
-                result = await self._visual_stage(
-                    f"{stage}-{unit['id']}",
-                    {
-                        "data": scoped,
-                        "validation_error": context.get("validation_error", ""),
-                    },
-                    **options,
-                )
+                from .replica_exact_revision import inherited_review
+
+                inherited = inherited_review(self, scoped)
+                if inherited is not None:
+                    result = inherited
+                    if options.get("bind_evidence"):
+                        options["bind_evidence"](result)
+                    self._progress("review_plan", scoped, result)
+                    await self.checkpoint()
+                else:
+                    result = await self._visual_stage(
+                        f"{stage}-{unit['id']}",
+                        {
+                            "data": scoped,
+                            "validation_error": context.get("validation_error", ""),
+                        },
+                        **options,
+                    )
                 audits.extend(result["unit_audits"])
-            return {"method": "AI_FRESH_REFERENCE_AUDIT", "unit_audits": audits}
+            value = {"method": "AI_FRESH_REFERENCE_AUDIT", "unit_audits": audits}
+            cursor = self.checkpoints.get("plan_cursor")
+            if (
+                cursor
+                and cursor.get("plan")
+                and all(data.get(k) == v for k, v in cursor["plan"].items())
+            ):
+                if cursor["phase"] == "review":
+                    cursor["rounds"] += 1
+                cursor.update(
+                    audit=deepcopy(value),
+                    phase="accepted"
+                    if all(r["decision"] == "PASS" for r in audits)
+                    else "revise",
+                )
+                await self.checkpoint()
+            return value
         if stage.startswith("exact-module-constraints") or phase_for(stage) != "intake":
             return await self._visual_stage(stage, context, **kwargs)
         columns_observation = await self._visual_stage(stage, context, **kwargs)
@@ -1529,12 +1676,22 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 {
                     "stage": stage,
                     "phase": phase,
+                    "protocol": self.binding["version"],
+                    "request_sha256": identity,
                     "format_attempt": attempt + 1,
                     "system_characters": len(system),
                     "request_characters": len(serialized),
                     "images": len(sources),
                     "network_requests": requests,
                     "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "http_status": getattr(result, "http_status", None),
+                    "error_category": (
+                        "upstream_http_failure"
+                        if getattr(result, "http_status", 0) in range(400, 600)
+                        else "transport_or_response_failure"
+                        if result.error_code
+                        else None
+                    ),
                 }
             )
             write_json(metrics_path, metrics)
@@ -1593,12 +1750,13 @@ def run_class(method: str, protocol: Any = None) -> type[NativeReplicaRun]:
     if protocol is None:
         return NativeReplicaRun
     version = protocol.get("version") if isinstance(protocol, dict) else protocol
-    if method == "exact" and version == "exact-compact-v1":
-        name = "app._replica_exact_compact_v1"
+    if method == "exact" and version in {"exact-compact-v1", "exact-compact-v2"}:
+        archive = version.rsplit("-", 1)[-1]
+        name = f"app._replica_exact_compact_{archive}"
         if name not in sys.modules:
             path = (
                 Path(__file__).parent
-                / "replica_exact_versions/v1/replica_exact_compact.py"
+                / f"replica_exact_versions/{archive}/replica_exact_compact.py"
             )
             spec = importlib.util.spec_from_file_location(name, path)
             if spec is None or spec.loader is None:

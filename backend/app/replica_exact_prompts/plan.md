@@ -1,25 +1,32 @@
-# Design only the current screen
+# Design the current screen
 
-Return one module for this crop: nine concrete mechanisms, page duty, buyer
-conclusion and generation brief. Pixels outrank fallible layout descriptions.
-Layout rects use normalized 0..1000 on BOTH axes; product-mark rects use original
-product-image pixels. New poster text uses the target language.
+Return one module: nine concrete mechanisms, page duty, buyer conclusion, brief.
+Layout rects normalize both axes to 0..1000; product-mark rects use original pixels.
+Actual pixels outrank fallible source descriptions.
 
-Bind every text region to approved copy substrings. Render every copy unit fully;
-remove surplus copy instead of adding regions/lines or promoting small connectors.
-Preserve bounds, font tiers, line groups and carriers. Only unsupported
-non-dominant copy may be omitted with its carrier retained and a factual reason.
+Bind every text region to approved copy substrings; render each copy unit fully.
+Keep bounds, font tiers, line groups and carriers; remove surplus copy, not add
+lines. Only isolated unsupported small labels may omit with a factual reason.
+Never blank a co-primary instruction/comparison column: use grounded replacement
+content and the closest supported role, without invented dosage or efficacy.
 
-For EVERY region return fact_adaptations: region_id, mode, approved fact_ids,
-reason, preserved_mechanism. Modes: supported_copy, truthful_substitution,
-non_factual_copy, omit_unsupported (consistent with the text binding). Factual
-copy/substitutions require approved facts. Non-factual headings may use none;
-never relabel an unsupported claim as non-factual. Explain the retained carrier,
-hierarchy, action and buyer question, applying the shared factual decision.
+For each region return fact_adaptations: mode, approved fact_ids, reason,
+preserved_mechanism, consistent with text_bindings. Factual copy/substitutions
+need supporting facts; non-factual headings may use none, never disguised claims.
+
+Return render_anchors for EVERY source anchor in order: source_anchor_index
+(zero-based), final label, rect, basis, fact_ids, reason. Replace old product forms,
+colors and props HERE, not just by negating them in the brief. Keep composition;
+justify geometry changes from actual product shape or corrected pixel observation.
+Keep expression, gaze, interaction, decorative edges, tabs and connections.
+
+Return commercial_adaptation: mode preserve/truthful_substitution, source_role,
+supported_role, fact_ids, reason, preserved_mechanism. Unsupported efficacy proof
+may become supported composition proof using the same percent/bar/data carrier.
+Assign every text region once to content_groups: region_ids, critical, purpose.
+Co-primary branches are critical and require rendered content.
 
 Declare visible_product/context_only and applicable identity checks. Context-only
-excludes packaging and loose product contents. sequence_roles and sequence_summary
-give other-screen duties/decisions, not extra objects to insert here.
-
-For repair edit previous_targets, including bindings and brief, from the actual
-crop and failure evidence. Only requested failed units change. Never request PASS.
+excludes packaging and loose product. Sequence context guides other-screen duties,
+not extra objects. Repair only requested previous_targets from actual pixels and
+prior failures, including bindings. Never request a verdict.

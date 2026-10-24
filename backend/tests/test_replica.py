@@ -399,6 +399,89 @@ def test_exhausted_plan_reviews_preserve_work_and_refuse_unchanged_retries(
     assert restored["payload"]["analysis_progress"]["accepted"] == 9
 
 
+@pytest.mark.parametrize("input_changed", [False, True])
+def test_explicit_protocol_revision_is_scoped_idempotent_and_keeps_checkpoint(
+    client, monkeypatch, input_changed
+):
+    from copy import deepcopy
+
+    from app import replica
+    from app.replica_exact_revision import V2_BINDING
+
+    client.app.state.settings.replica_exact_compact_workspaces = ("ws_test",)
+    calls = []
+
+    async def analyse(app, document_id, attempt_id):
+        calls.append((document_id, attempt_id))
+
+    monkeypatch.setattr(replica, "_analyse", analyse)
+    document_id = "rep_" + uuid4().hex
+    checkpoint = {"model_protocol": V2_BINDING, "files": {"kept": "synthetic"}}
+    payload = {
+        "product_asset_ids": ["synthetic-product"],
+        "references": [{"asset_id": "synthetic-reference"}],
+        "facts": "Synthetic authorized product facts",
+        "language": "zh-CN",
+        "platform_code": "taobao",
+        "replication_method": "exact",
+        "_exact_model_protocol": "exact-compact-v2",
+        "_analysis_checkpoint": checkpoint,
+        "analysis_attempt_id": "old",
+        "error_code": "REPLICA_PLAN_AUDIT_REJECTED",
+        "job_ids": [],
+        "progress": 82,
+        "analysis_progress": {
+            "total": 12,
+            "planned": 12,
+            "reviewed": 12,
+            "accepted": 9,
+            "pending_corrections": 3,
+            "stage": "review_plan",
+        },
+    }
+    payload["_analysis_input_hash"] = replica._analysis_input_hash(payload)
+    if input_changed:
+        payload["facts"] += " Changed after checkpoint."
+    original = deepcopy(payload)
+    with client.app.state.session_factory() as session:
+        session.add(
+            ReplicaDocumentRecord(
+                id=document_id,
+                workspace_id="ws_test",
+                created_by="usr_test",
+                kind="session",
+                fingerprint=uuid4().hex * 2,
+                status="failed",
+                payload=payload,
+            )
+        )
+        session.commit()
+    route = "/api/v1/workspaces/ws_test/replica"
+    wire = client.get(route + "/documents/" + document_id).json()
+    assert wire["payload"]["analysis_revision_available"] is (not input_changed)
+    response = client.post(route + "/sessions/" + document_id + "/revise", json={})
+    if input_changed:
+        assert response.status_code == 409 and not calls
+        with client.app.state.session_factory() as session:
+            assert session.get(ReplicaDocumentRecord, document_id).payload == original
+        return
+    assert response.status_code == 202, response.text
+    value = response.json()
+    assert value["payload"]["analysis_progress"]["accepted"] == 9
+    assert "_analysis_revision" not in value["payload"]
+    assert "_analysis_checkpoint" not in value["payload"]
+    again = client.post(route + "/sessions/" + document_id + "/revise", json={})
+    assert again.status_code == 202 and len(calls) == 1
+    with client.app.state.session_factory() as session:
+        saved = session.get(ReplicaDocumentRecord, document_id)
+        assert saved.payload["_analysis_checkpoint"] == checkpoint
+        assert saved.payload["_exact_model_protocol"] == "exact-compact-v3"
+        assert saved.payload["_analysis_input_hash"] == original["_analysis_input_hash"]
+        assert saved.payload["_analysis_revision"][
+            "parent_snapshot_sha256"
+        ] == replica._hash(checkpoint)
+
+
 def test_1688_main_gallery_does_not_absorb_sku_specification_images():
     main, sku = "https://cbu01.alicdn.com/main.jpg", "https://cbu01.alicdn.com/sku.jpg"
     data = {

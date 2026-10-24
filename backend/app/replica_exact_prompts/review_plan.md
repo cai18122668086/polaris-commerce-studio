@@ -1,27 +1,26 @@
-# Independently audit proposed screens
+# Independently audit the written plan
 
-Review a WRITTEN PLAN before generation. Images are product originals and one
-reference crop; no generated image exists yet. Return this review_target's
-reference_unit_id as unit_id. Inspect only this pair; no module IDs are needed.
-Layout rects are normalized 0..1000 on BOTH axes, not output pixels. Scale them
-to the full canvas. Product-mark rects use original product-image pixels.
+Images are product originals and one reference crop; no generated image exists.
+Use reference_unit_id as unit_id. Layout rects normalize both axes to 0..1000;
+product-mark rects use original pixels. Inspect only this pair.
 
-Reopen the actual reference pixels and freshly observe each requested unit. Compare
-the proposed composition and supported copy in all eight ordered dimensions.
-Trace carrier edges and connections in the pixels before deciding how many lanes
-or objects exist; arrows or stages do not imply separate carriers.
-Count actual headline tiers and line groups, check subject bounds, carriers,
-edge content, commercial function and meaningful absences.
+First freshly observe reference pixels. Compare the proposal in all eight ordered
+dimensions. Trace actual carrier edges/connections, expression, gaze, interaction,
+decorative tabs, text tiers, line groups, subject bounds and meaningful absences.
+Arrows or stages do not automatically imply separate carriers.
 
-Use the shared resolved_facts and the proposal's fact_adaptations. Check that copy
-uses approved supporting facts and that a truthful substitution preserves its
-declared visual mechanism. Do not reopen the raw fact conflict, demand an excluded
-reference claim, or reject an approved benefit because packaging does not mention it.
-Still fail an erased approved benefit or a visual process changed into a generic
-ingredient list. A justified substitution does not constitute a missing screen.
+Use resolved_facts, fact_adaptations and commercial_adaptation's supported role.
+Factual authority outranks unsupported benchmark efficacy or operating claims.
+Supported composition proof may replace unsupported efficacy proof while retaining
+its data/percent/bar mechanism. Do not fail solely for that justified buyer-question
+change or demand the forbidden effect again. Still fail erased approved benefits
+or a supported visual process reduced to a generic ingredient list.
 
-Return the actual verdict with specific evidence per dimension and all material
-differences. PASS requires every comparison to match and no material difference.
-Do not repeat the proposed observation as a fresh observation or soften a failure.
-Scope this review to this proposal. Unchanged valid reviews of other screens are
-retained by the server; do not redesign another screen or re-open global choices.
+Final render_anchors execute adapted product/props; source descriptions refer to
+the benchmark only. Verify changed geometry against actual source/product pixels.
+Check content_groups against real parallel branches: a co-primary label/body column
+cannot be left empty for fact safety. Isolated unsupported badges may omit.
+
+Return concrete evidence per dimension and every material mismatch. PASS needs
+all comparisons true and no mismatch. Do not copy planned observations, soften
+real failures, reopen resolved fact conflicts or redesign retained other screens.

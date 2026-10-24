@@ -127,6 +127,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_exact_model_protocol",
                 "_analysis_checkpoint",
                 "_analysis_input_hash",
+                "_analysis_revision",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -138,6 +139,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
         and not row.payload.get("job_ids")
         and row.payload.get("error_code") != ReplicaPlanAuditRejected.code
     )
+    value["payload"]["analysis_revision_available"] = _revision_available(row)
     if (
         row.status == "failed"
         and row.payload.get("error_code") == ReplicaPlanAuditRejected.code
@@ -152,6 +154,38 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
             for plan in row.payload.get("plans", [])
         ]
     return value
+
+
+def _revision_available(row: ReplicaDocumentRecord) -> bool:
+    from .replica_exact_revision import V2_BINDING
+
+    return (
+        row.status == "failed"
+        and not row.payload.get("job_ids")
+        and row.payload.get("error_code") == ReplicaPlanAuditRejected.code
+        and row.payload.get("_exact_model_protocol") == V2_BINDING["version"]
+        and row.payload.get("_analysis_checkpoint", {}).get("model_protocol")
+        == V2_BINDING
+        and row.payload.get("_analysis_input_hash") == _analysis_input_hash(row.payload)
+    )
+
+
+def _analysis_input_hash(payload: dict[str, Any], protocol: str | None = None) -> str:
+    values = {
+        key: payload.get(key)
+        for key in (
+            "product_asset_ids",
+            "references",
+            "facts",
+            "language",
+            "platform_code",
+            "replication_method",
+            "_exact_model_protocol",
+        )
+    }
+    if protocol is not None:
+        values["_exact_model_protocol"] = protocol
+    return _hash(values)
 
 
 def _get(
@@ -557,23 +591,27 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 run_type = run_class(
                     payload["replication_method"], payload["_exact_model_protocol"]
                 )
-            input_hash = _hash(
-                {
-                    key: payload.get(key)
-                    for key in (
-                        "product_asset_ids",
-                        "references",
-                        "facts",
-                        "language",
-                        "platform_code",
-                        "replication_method",
-                        "_exact_model_protocol",
-                    )
-                }
+            input_hash = _analysis_input_hash(payload)
+            revision = payload.get("_analysis_revision") or {}
+            parent = payload.get("_analysis_checkpoint") or {}
+            revise = (
+                revision.get("parent_snapshot_sha256") == _hash(parent)
+                and revision.get("parent_protocol") == parent.get("model_protocol")
+                and payload.get("_analysis_input_hash")
+                == _analysis_input_hash(payload, "exact-compact-v2")
+                and payload.get("_exact_model_protocol") == "exact-compact-v3"
             )
+            if (
+                revision
+                and not revise
+                and payload.get("_analysis_input_hash") != input_hash
+            ):
+                raise ReplicaNativeError(
+                    "方案修正的原始输入或检查点已变化，已停止以保留原进度。"
+                )
             checkpoint = (
                 payload.get("_analysis_checkpoint")
-                if payload.get("_analysis_input_hash") == input_hash
+                if revise or payload.get("_analysis_input_hash") == input_hash
                 else None
             )
             run = run_type(
@@ -585,7 +623,11 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 **({"root": Path(checkpoint["root"])} if checkpoint else {}),
             )
             if checkpoint:
-                await run.restore(checkpoint)
+                if revise:
+                    revision_run: Any = run
+                    await revision_run.restore_for_revision(checkpoint)
+                else:
+                    await run.restore(checkpoint)
             else:
                 run.root = run.root / payload["analysis_attempt_id"]
                 run.root.mkdir(parents=True, exist_ok=True)
@@ -856,6 +898,51 @@ def retry_analysis(
         if row.payload.get("_analysis_checkpoint")
         else 0,
     }
+    session.commit()
+    background_tasks.add_task(
+        _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
+    )
+    return _wire(row)
+
+
+@router.post("/sessions/{document_id}/revise", status_code=202)
+def revise_analysis(
+    document_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> dict:
+    """Explicitly adopt corrected rules while retaining verifiable earlier work."""
+    from .replica_exact_compact import VERSION
+
+    row = _get(session, workspace.workspace_id, document_id, "session")
+    if row.status == "analysing" and row.payload.get("_analysis_revision"):
+        return _wire(row)
+    if (
+        not _revision_available(row)
+        or workspace.workspace_id
+        not in request.app.state.settings.replica_exact_compact_workspaces
+        or row.payload.get("_analysis_input_hash") != _analysis_input_hash(row.payload)
+    ):
+        raise ApiError(
+            409, "REPLICA_REVISION_UNAVAILABLE", "当前任务没有可保留并继续修正的方案。"
+        )
+    checkpoint = row.payload["_analysis_checkpoint"]
+    row.payload = {
+        **{
+            key: value
+            for key, value in row.payload.items()
+            if key not in {"error", "error_code"}
+        },
+        "_exact_model_protocol": VERSION,
+        "_analysis_revision": {
+            "parent_protocol": checkpoint["model_protocol"],
+            "parent_snapshot_sha256": _hash(checkpoint),
+        },
+        "analysis_attempt_id": uuid4().hex,
+    }
+    row.status, row.updated_at = "analysing", utc_now()
     session.commit()
     background_tasks.add_task(
         _analyse, request.app, row.id, row.payload["analysis_attempt_id"]

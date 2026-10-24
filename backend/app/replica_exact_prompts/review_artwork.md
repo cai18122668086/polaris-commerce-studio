@@ -21,3 +21,7 @@ review must make its own observation without seeing an earlier PASS verdict.
 Judge copy against resolved_facts and fact_adaptations, using the same factual
 decision as planning. A fact-safe replacement is allowed; still inspect its actual
 carrier, action, hierarchy and composition. Do not restart the fact/planning debate.
+Use commercial_adaptation's supported buyer question. Do not demand unsupported
+benchmark efficacy after an approved factual substitution. Final render anchors
+adapt product identity; immutable source labels are not replacement commands.
+Still fail real lost interaction, edge decorations, typography or blank core lanes.

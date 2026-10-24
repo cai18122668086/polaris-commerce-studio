@@ -49,9 +49,10 @@ class ReplicaCanvasMismatch(ReplicaNativeError):
 def _canvas_matches(
     expected: list[int], actual: tuple[int, int], minimum_edge: int = 0
 ) -> bool:
-    return min(actual) >= minimum_edge and abs(
-        (actual[0] / actual[1]) / (expected[0] / expected[1]) - 1
-    ) <= 0.01
+    return (
+        min(actual) >= minimum_edge
+        and abs((actual[0] / actual[1]) / (expected[0] / expected[1]) - 1) <= 0.01
+    )
 
 
 class NativeReplicaProvider:
@@ -190,7 +191,9 @@ class NativeReplicaProvider:
             if snapshot.get("model_protocol"):
                 from .replica_exact_compact import run_class
 
-                run_type = run_class(values["replication_method"], snapshot["model_protocol"])
+                run_type = run_class(
+                    values["replication_method"], snapshot["model_protocol"]
+                )
             run = run_type(
                 values["replication_method"],
                 document_id,
@@ -489,8 +492,7 @@ class NativeReplicaProvider:
                     "composition, product identity and approved copy. Recreate the "
                     f"complete visual natively at {canvas[0]}x{canvas[1]}, with a "
                     f"short edge of at least {minimum_edge} pixels. Do not return "
-                    "preview dimensions or a locally enlarged copy.\n"
-                    + dispatch_prompt
+                    "preview dimensions or a locally enlarged copy.\n" + dispatch_prompt
                 )
         dispatch_prompt = run.image_prompt(dispatch_prompt)
         bound_prompt = (
@@ -531,7 +533,12 @@ class NativeReplicaProvider:
                     "structure; small connecting words remain small, not another giant row. "
                     "Every pill uses its bound approved text, never the source slogan. "
                     "Do not add an extra ribbon, row or caption for surplus approved copy. "
-                    "Retain all subject bounds and negative space in source_layout_anchors."
+                    + (
+                        "Follow final layout_anchors for adapted objects and geometry; "
+                        "reference pixels preserve composition, not old product attributes."
+                        if getattr(run, "render_binding_version", None) == 3
+                        else "Retain all subject bounds and negative space in source_layout_anchors."
+                    )
                 )
             if module_constraints.get("product_visibility") == "context_only":
                 bound_prompt += (

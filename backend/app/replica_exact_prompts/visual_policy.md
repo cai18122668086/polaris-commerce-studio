@@ -1,26 +1,24 @@
 # Shared visual and fact policy
 
-The reference controls composition, carrier shape, actions, camera, hierarchy and
-reading path. Product originals control physical identity and printed marks.
-Keep the reference's commercial question and visual mechanism after truthful
-product adaptation; never substitute generic cards, a static ingredient list for
-a process, or a package in a scene which does not call for one.
+Product originals and approved resolved_facts outrank benchmark product details
+and claims. Reference pixels control composition, carriers, actions, hierarchy,
+camera and reading path, not factual permission. Never invent efficacy, operating
+instructions, numbers, tests or certification to imitate a benchmark's purpose.
 
-resolved_facts is the shared, source-bound decision for claims and physical facts.
-Only approved entries authorize new factual copy. Excluded/uncertain entries do
-not. Do not re-decide a resolved ingredient conflict or deny an approved explicit
-user benefit merely because the photo does not mention it. Do not infer efficacy,
-numbers, test results or certification from an ingredient or benchmark claim.
-The facts stage alone resolves raw user statements against product evidence.
+resolved_facts is the shared source-bound factual decision. Approved entries
+authorize factual copy; excluded/uncertain entries do not. Do not reopen resolved
+conflicts or deny approved user benefits because packaging does not mention them.
 
-fact_adaptations records each text region's supporting fact IDs, substitution
-reason and preserved visual mechanism. Apply this same record during planning,
-review, generation and repair. A justified substitution is not itself a visual
-failure. Still reject actual identity changes, invented claims, lost actions,
-wrong carriers or materially changed composition. Preserve the >=0.8 relevant
-visual-mechanism target; copy correctness cannot compensate for wrong visuals.
+Use the same fact_adaptations and commercial_adaptation in every phase. When the
+source buyer question requires unsupported claims, choose the closest supported
+buyer question and preserve its visual mechanism, data-carrier shape, hierarchy
+and density. A truthful composition-data proof may replace unsupported efficacy
+proof; do not demand the forbidden effect again. This is not permission to turn a
+supported process into a static list or erase an approved benefit.
 
-Allow reference-appropriate poses, perspective, folds, food and ingredients when
-supported. Apply identity checks to forms actually visible; do not demand absent
-packaging. Preserve real physical wordmarks and complete numerals. Do not copy
-reference branding, watermarks, reports, exact slogans or celebrity identities.
+Source observations describe the old product. Only final render_anchors execute
+replacement objects/geometry; never treat source labels as commands to reproduce
+the old product. Still reject lost poses, interaction, edge decorations, carriers,
+typography, empty core branches or identity errors. Keep >=0.8 relevant visual
+mechanisms. Apply identity checks to visible forms; do not demand absent packaging.
+Keep real printed marks/numerals; exclude source branding, slogans and celebrities.

@@ -271,6 +271,45 @@ class SyntheticGateway:
             }
         else:
             raise AssertionError("Unexpected synthetic stage: " + phase)
+        if (
+            phase == "plan"
+            and "render_anchors"
+            in envelope["response_schema"]["properties"]["modules"]["items"][
+                "properties"
+            ]
+        ):
+            for proposed in value["modules"]:
+                layout = data["reference_layouts"][proposed["reference_unit_id"]]
+                proposed.update(
+                    render_anchors=[
+                        {
+                            "source_anchor_index": i,
+                            "label": "Actual blue synthetic product",
+                            "rect": deepcopy(anchor["rect"]),
+                            "basis": "product_identity",
+                            "fact_ids": [],
+                            "reason": "Actual product pixels define its shape",
+                        }
+                        for i, anchor in enumerate(layout["layout_anchors"])
+                    ],
+                    commercial_adaptation={
+                        "mode": "preserve",
+                        "source_role": "Recognize the product",
+                        "supported_role": "Recognize the actual product",
+                        "fact_ids": ["F001"],
+                        "reason": "Preserve the supported product recognition question",
+                        "preserved_mechanism": "Same subject and text hierarchy",
+                    },
+                    content_groups=[
+                        {
+                            "region_ids": [r["id"] for r in layout["text_regions"]],
+                            "critical": True,
+                            "purpose": "Main synthetic product headline",
+                        }
+                    ]
+                    if layout["text_regions"]
+                    else [],
+                )
         return SimpleNamespace(
             payload=value,
             error_code=None,

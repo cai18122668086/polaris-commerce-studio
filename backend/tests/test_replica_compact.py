@@ -164,6 +164,12 @@ class SyntheticGateway:
                         "generation_brief": (
                             "Preserve the independent headline and rectangular "
                             "subject bounds"
+                        )
+                        + (
+                            " Correct the failed synthetic subject bounds: "
+                            + request.group_key
+                            if data["previous_targets"]
+                            else ""
                         ),
                         "copy_units": ["Supported synthetic product"],
                         "product_visibility": "visible_product",
@@ -294,8 +300,8 @@ def test_compact_preparation_uses_real_guard_and_server_owned_metadata(tmp_path)
     run.on_progress = lambda value, label: progress.append(value)
     result = asyncio.run(run.prepare(payload, records))
     assert len(result) == 2 and run.state()["state"] == "READY"
-    assert len(gateway.requests) == 7  # Includes independent column split/count.
-    assert progress == [12, 12, 12, 24, 30, 48, 82, 92]
+    assert len(gateway.requests) == 8  # Independent count and two focused audits.
+    assert progress == [12, 12, 12, 24, 30, 48, 82, 82, 92]
     for request in gateway.requests:
         assert request.planning_profile == "replica_exact_compact"
         assert len(request.system_prompt) < 4000
@@ -350,7 +356,19 @@ def test_plan_revision_replaces_only_failed_unit_and_keeps_full_native_audit(tmp
         for r in gateway.requests
         if json.loads(r.product_information[0])["stage"] == "review_plan"
     ]
-    assert len(reviews) == 2 and all(len(r.sources) == 3 for r in reviews)
+    assert len(reviews) == 4 and all(len(r.sources) == 2 for r in reviews)
+    assert [
+        json.loads(r.product_information[0])["context"]["review_targets"][0][
+            "reference_unit_id"
+        ]
+        for r in reviews
+    ] == ["R001", "R002", "R001", "R002"]
+    previous = plans[1]["context"]["previous_targets"]
+    assert len(previous) == 1 and previous[0]["reference_unit_id"] == "R002"
+    assert previous[0]["generation_brief"] and previous[0]["visual_contract"]
+    assert set(previous[0]["visual_contract"]) == set(OBSERVATIONS)
+    assert previous[0]["text_bindings"] and previous[0]["required_identity_checks"]
+    assert "M002" not in json.dumps(previous)
     original = read_json(next((tmp_path / "contracts").glob("exact-plan-r0-0-*.json")))
     revised = read_json(next((tmp_path / "contracts").glob("exact-plan-r1-0-*.json")))
     assert original["modules"][0] == revised["modules"][0]
@@ -374,8 +392,9 @@ def test_written_plan_review_joins_source_and_proposal_without_module_aliases(tm
     assert data["audit_subject"] == "written_plan_before_rendering"
     assert data["user_facts"] == payload["facts"]
     assert "M001" not in json.dumps(data) and "M002" not in json.dumps(data)
-    assert [t["reference_unit_id"] for t in data["review_targets"]] == ["R001", "R002"]
+    assert [t["reference_unit_id"] for t in data["review_targets"]] == ["R001"]
     for target in data["review_targets"]:
+        assert set(target["proposed_screen"]["visual_contract"]) == set(OBSERVATIONS)
         assert target["proposed_screen"]["copy_units"] == [
             "Supported synthetic product"
         ]
@@ -385,8 +404,8 @@ def test_written_plan_review_joins_source_and_proposal_without_module_aliases(tm
             "planned_pixels": [1024, 1280],
         }
     schema = review["response_schema"]["properties"]["unit_audits"]
-    assert schema["minItems"] == schema["maxItems"] == 2
-    assert schema["items"]["properties"]["unit_id"]["enum"] == ["R001", "R002"]
+    assert schema["minItems"] == schema["maxItems"] == 1
+    assert schema["items"]["properties"]["unit_id"]["enum"] == ["R001"]
 
 
 def test_named_xywh_observations_become_native_edge_bounds_without_guessing(tmp_path):
@@ -522,7 +541,7 @@ def test_wrong_module_alias_can_be_corrected_without_resampling_valid_fail(tmp_p
     run, _, payload, records = setup_run(tmp_path, gateway)
     asyncio.run(run.prepare(payload, records))
     assert (
-        len(seen) == 3
+        len(seen) == 5
     )  # Invalid field correction, real FAIL, fresh revised-plan audit.
     assert "reference_unit_id" in seen[1]["validation_error"]
     plans = [
@@ -895,7 +914,7 @@ def test_normal_http_submission_worker_history_and_original_download(
     assert document["status"] == "generating", document
     assert len(document["payload"]["job_ids"]) == 1
     assert "_exact_model_protocol" not in document["payload"]
-    assert len(gateway.requests) == 7
+    assert len(gateway.requests) == 8
     for _ in range(2):
         client.get(route + "/documents/" + document["id"])
     with client.app.state.session_factory() as session:
@@ -944,7 +963,7 @@ def test_normal_http_submission_worker_history_and_original_download(
     assert len(gateway.image_requests) == 2
 
 
-def test_repeated_plan_failure_stops_after_one_directed_repair(tmp_path):
+def test_repeated_plan_failure_stops_after_two_directed_repairs(tmp_path):
     from app.replica_native import ReplicaPlanAuditRejected
 
     run, gateway, payload, records = setup_run(tmp_path)
@@ -952,9 +971,90 @@ def test_repeated_plan_failure_stops_after_one_directed_repair(tmp_path):
     with pytest.raises(ReplicaPlanAuditRejected):
         asyncio.run(run.prepare(payload, records))
     phases = [json.loads(r.product_information[0])["stage"] for r in gateway.requests]
-    assert phases.count("plan") == phases.count("review_plan") == 2
+    assert phases.count("plan") == 3 and phases.count("review_plan") == 6
     assert not gateway.image_requests
     assert run.state()["state"] == "PLAN_REJECTED"
+
+
+def test_unchanged_failed_proposal_stops_before_another_verdict(tmp_path):
+    gateway = SyntheticGateway(reject_first=True)
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        data = json.loads(request.product_information[0])
+        if data["stage"] == "plan" and data["context"]["previous_targets"]:
+            result.payload["modules"] = deepcopy(data["context"]["previous_targets"])
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    with pytest.raises(CompactResponseInvalid, match="must actually change"):
+        asyncio.run(run.prepare(payload, records))
+    reviews = [r for r in gateway.requests if "exact-plan-audit" in r.group_key]
+    assert len(reviews) == 2  # One first-round audit per physical screen only.
+    assert not gateway.image_requests
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_unbound_copy_is_rejected_before_plan_review(tmp_path, partial):
+    gateway = SyntheticGateway()
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        if json.loads(request.product_information[0])["stage"] == "plan":
+            module = result.payload["modules"][0]
+            if partial:
+                module["copy_units"][0] += " and an unbound extra title"
+            else:
+                module["copy_units"].append("An unbound extra title")
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    with pytest.raises(CompactResponseInvalid, match="unbound text"):
+        asyncio.run(run.prepare(payload, records))
+    assert not any("exact-plan-audit" in r.group_key for r in gateway.requests)
+    assert not gateway.image_requests
+
+
+def test_later_fresh_finding_repairs_current_failed_target_only(tmp_path):
+    gateway = SyntheticGateway(reject_first=True)
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        if "exact-plan-audit-r1-" in request.group_key:
+            row = result.payload["unit_audits"][0]
+            if row["unit_id"] == "R001":
+                row["comparisons"] = compared(
+                    PLAN_DIMENSIONS, "new actual finding", True
+                )
+                row["material_mismatches"] = [
+                    "Fresh review finds a different synthetic subject placement error"
+                ]
+                row["decision"] = "FAIL"
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    asyncio.run(run.prepare(payload, records))
+    plans = [
+        json.loads(r.product_information[0])["context"]
+        for r in gateway.requests
+        if json.loads(r.product_information[0])["stage"] == "plan"
+    ]
+    assert [[u["id"] for u in p["requested_units"]] for p in plans] == [
+        ["R001", "R002"],
+        ["R002"],
+        ["R001"],
+    ]
+    assert plans[2]["previous_targets"][0]["reference_unit_id"] == "R001"
+    revised = read_json(next(tmp_path.glob("contracts/exact-plan-r1-0-*.json")))
+    final = read_json(next(tmp_path.glob("contracts/exact-plan-r2-0-*.json")))
+    assert revised["modules"][1] == final["modules"][1]
+    assert run.state()["state"] == "READY" and not gateway.image_requests
 
 
 def test_repeated_pixel_failure_keeps_real_images_and_refuses_delivery(tmp_path):

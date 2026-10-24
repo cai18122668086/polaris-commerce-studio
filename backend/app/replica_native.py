@@ -944,7 +944,11 @@ class NativeReplicaRun:
             raise ReplicaNativeError("物理拆屏未覆盖全部参考图，或超过60屏。")
         write_json(self.root / "identity-segmentation.json", observation)
         if self.method == "exact":
-            return await self._prepare_exact(anchors, references, units, geometry)
+            # Native intake and factual transcription use the immutable user
+            # originals. Physical crops remain auxiliary analysis evidence;
+            # substituting them here changes source hashes and duplicates each
+            # product view when generation later binds the originals as well.
+            return await self._prepare_exact(products, references, units, geometry)
         # The first native run records raw intake. A second, still pre-plan
         # run binds exact physical product crops, excluding photo headers and
         # capture noise. Keep both runs and the crop/source hashes as evidence.

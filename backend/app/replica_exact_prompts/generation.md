@@ -8,6 +8,9 @@ reference's actual subject bounds, negative space, text tiers, carriers and came
 Current product originals define physical identity, real contents and printed marks.
 Use the shared RESOLVED_FACTS and FACT_ADAPTATIONS for new copy and substitutions;
 do not reconsider the already resolved ingredient conflict.
+Follow COMMERCIAL_ADAPTATION's supported role and the final render layout_anchors.
+Source labels describe the benchmark only; do not restore its old product/props.
+Preserve expression, interaction, decorative edges and each populated core branch.
 
 Render only the approved poster copy in the target language; preserve original
 physical wordmarks and complete printed numbers. Do not invent claims, reports,

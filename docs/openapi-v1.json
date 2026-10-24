@@ -14864,6 +14864,65 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/replica/sessions/{document_id}/revise": {
+      "post": {
+        "description": "Explicitly adopt corrected rules while retaining verifiable earlier work.",
+        "operationId": "revise_analysis_api_v1_workspaces__workspace_id__replica_sessions__document_id__revise_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revise Analysis Api V1 Workspaces  Workspace Id  Replica Sessions  Document Id  Revise Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Revise Analysis",
+        "tags": [
+          "one-click-replica"
+        ]
+      }
+    },
     "/health/ecommerce": {
       "get": {
         "operationId": "ecommerce_health_health_ecommerce_get",

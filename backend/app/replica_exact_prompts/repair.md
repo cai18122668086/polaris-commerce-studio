@@ -1,5 +1,8 @@
 # Prepare the one permitted image repair
 
+Layout rects use normalized 0..1000 on both axes, scaled to the full image.
+Product-mark rects use original product-image pixels.
+
 Inspect the failed complete artwork, its reference crop and product originals.
 Write one integrated edit instruction addressing every recorded material failure.
 The server supplies the original failure list; do not rewrite or omit it.

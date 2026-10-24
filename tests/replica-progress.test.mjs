@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeReplicaProgress, replicaOverallProgress, replicaWorkflowStep } from "../lib/replica/progress.ts";
+import { mergeReplicaProgress, replicaAnalysisMessage, replicaOverallProgress, replicaWorkflowStep } from "../lib/replica/progress.ts";
 
 const doc = (progress, extra = {}) => ({ id: "rep_test", status: "analysing", payload: { analysis_attempt_id: "attempt-1", progress }, ...extra });
+
+test("planning progress explains retained work without presenting a failed screen as a restart", () => {
+  const current = doc(82);
+  current.payload.analysis_progress = { stage: "review_plan", total: 12, planned: 12, reviewed: 12, accepted: 8, pending_corrections: 4 };
+  assert.equal(replicaAnalysisMessage(current), "已确认 8 / 12 屏方案，正在处理剩余部分");
+  current.payload.analysis_progress.accepted = 12;
+  assert.equal(replicaAnalysisMessage(current), "12 屏方案已确认，正在准备生成");
+});
 
 test("replanning and delayed poll responses do not move progress backwards", () => {
   let current;

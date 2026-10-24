@@ -378,6 +378,7 @@ class NativeReplicaRun:
     observation_attempts = 3
     contract_attempts = 3
     planning_revisions = 3
+    analysis_timeout_seconds = 1800.0
 
     def __init__(
         self,
@@ -478,6 +479,9 @@ class NativeReplicaRun:
 
     def image_prompt(self, prompt: str) -> str:
         return prompt
+
+    def generation_policy(self) -> str:
+        return VISUAL_EVIDENCE_POLICY
 
     def path(self, relative: str) -> Path:
         return contained(self.root, relative)
@@ -763,6 +767,7 @@ class NativeReplicaRun:
             if (
                 self.method == "exact"
                 and command == "audit-current"
+                and getattr(self, "requires_independent_pixel_review", True)
                 and context.get("prior_pixel_reviews")
                 and value.get("decision") == "PASS"
                 and value.get("major_mismatches") == []

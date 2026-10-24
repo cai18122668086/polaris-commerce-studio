@@ -4,6 +4,7 @@ export type ReplicaProgressDocument = {
   updated_at?: string;
   payload: {
     analysis_attempt_id?: string;
+    error_code?: string;
     progress?: number;
     job_ids?: string[];
     submission_complete?: boolean;
@@ -13,6 +14,20 @@ export type ReplicaProgressDocument = {
 };
 
 const terminal = new Set(["completed", "partial", "failed", "cancelled"]);
+
+export function replicaPlanFailure(document: ReplicaProgressDocument): { title: string; message: string } | undefined {
+  if (document.status !== "failed" || document.payload.error_code !== "REPLICA_PLAN_AUDIT_REJECTED") return undefined;
+  const progress = document.payload.analysis_progress;
+  if (progress && Number.isInteger(progress.total) && Number.isInteger(progress.accepted) && progress.total > 0 && progress.accepted >= 0 && progress.accepted < progress.total) {
+    return {
+      title: `还有 ${progress.total - progress.accepted} 屏方案待调整`,
+      message: progress.accepted > 0
+        ? `已通过的 ${progress.accepted} 屏方案和原始素材已保留。请先调整未通过的方案，再继续处理。`
+        : "已完成的规划和原始素材已保留。请先调整未通过的方案，再继续处理。",
+    };
+  }
+  return { title: "部分方案需要调整", message: "部分方案仍未通过校验，已完成的规划和素材已保留。请先调整未通过的方案，再继续处理。" };
+}
 
 export function replicaAnalysisMessage(document: ReplicaProgressDocument): string | undefined {
   const progress = document.payload.analysis_progress;

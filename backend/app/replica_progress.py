@@ -14,6 +14,29 @@ TERMINAL = frozenset({"completed", "partial", "failed", "cancelled"})
 
 def native_progress(state: dict[str, Any]) -> dict[str, Any]:
     modules = state.get("modules", [])
+    if state.get("review_status") == "NOT_REVIEWED":
+        generated = sum(m.get("status") == "GENERATED" for m in modules)
+        total = len(modules)
+        return {
+            "phase": state["state"],
+            "post_generation_review": "disabled",
+            "total": total,
+            "generated": generated,
+            "reviewed": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "current_module": min(total, int(state.get("module_index", 0)) + 1),
+            "percentage": min(99, 25 + round(70 * generated / max(1, total))),
+            "modules": [
+                {
+                    "id": m["id"],
+                    "status": m["status"],
+                    "attempts": len(m.get("attempts", [])),
+                    "reasons": [],
+                }
+                for m in modules
+            ],
+        }
     rows = []
     for module in modules:
         attempts = module.get("attempts", [])

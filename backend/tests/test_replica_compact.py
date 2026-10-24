@@ -21,6 +21,7 @@ from app.replica_exact_compact import (
     CompactExactReplicaRun,
     CompactResponseInvalid,
     protocol_binding,
+    rectangle_edges,
     run_class,
 )
 from app.replica_native import NativeReplicaRun, ReplicaNativeError, digest, read_json
@@ -66,12 +67,17 @@ class SyntheticGateway:
                 "product_geometry": [
                     f"Supported synthetic geometry {i}" for i in range(3)
                 ],
-                "product_crops": [{"product_index": 0, "bbox": [0, 0, 64, 96]}],
+                "product_crops": [
+                    {
+                        "product_index": 0,
+                        "rect": {"x": 0, "y": 0, "width": 64, "height": 96},
+                    }
+                ],
                 "columns": [
                     {
                         "reference_index": 0,
                         "column_index": 0,
-                        "bbox": [0, 0, 256, 640],
+                        "rect": {"x": 0, "y": 0, "width": 256, "height": 640},
                         "column_boundary_reason": "Complete synthetic reference column",
                     }
                 ],
@@ -121,7 +127,12 @@ class SyntheticGateway:
                         "layout_anchors": [
                             {
                                 "label": "Synthetic rectangular product",
-                                "bbox": [100, 300, 600, 900],
+                                "rect": {
+                                    "x": 100,
+                                    "y": 300,
+                                    "width": 500,
+                                    "height": 600,
+                                },
                             }
                         ],
                         "has_poster_text": True,
@@ -132,7 +143,7 @@ class SyntheticGateway:
                                 "font_tier": "dominant",
                                 "line_group": "main",
                                 "observed_text": "Reference slogan",
-                                "bbox": [80, 40, 920, 180],
+                                "rect": {"x": 80, "y": 40, "width": 840, "height": 140},
                             }
                         ],
                         "typography_notes": (
@@ -378,6 +389,121 @@ def test_written_plan_review_joins_source_and_proposal_without_module_aliases(tm
     assert schema["items"]["properties"]["unit_id"]["enum"] == ["R001", "R002"]
 
 
+def test_named_xywh_observations_become_native_edge_bounds_without_guessing(tmp_path):
+    gateway = SyntheticGateway()
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        if json.loads(request.product_information[0])["stage"] == "layout":
+            for unit in result.payload["units"]:
+                unit["layout_anchors"][0]["rect"] = {
+                    "x": 467,
+                    "y": 522,
+                    "width": 449,
+                    "height": 296,
+                }
+                unit["text_regions"][0]["rect"] = {
+                    "x": 632,
+                    "y": 25,
+                    "width": 313,
+                    "height": 42,
+                }
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    asyncio.run(run.prepare(payload, records))
+    layout = run.context["reference_layouts"]["R001"]
+    assert layout["layout_anchors"][0]["bbox"] == [467, 522, 916, 818]
+    assert layout["text_regions"][0]["bbox"] == [632, 25, 945, 67]
+    assert "rect" not in layout["layout_anchors"][0]
+    raw = read_json(
+        next(tmp_path.glob("contracts/model-raw-exact-reference-layout-*.json"))
+    )
+    assert raw["units"][0]["layout_anchors"][0]["rect"]["width"] == 449
+    assert run.state()["state"] == "READY"
+
+
+def test_product_text_rectangles_keep_original_pixel_coordinates_and_raw_response(
+    tmp_path,
+):
+    run, _, _, _ = setup_run(tmp_path)
+    raw = {
+        "products": [
+            {
+                "product_index": 0,
+                "readable_marks": [
+                    {
+                        "text": "10kg",
+                        "rect": {"x": 355, "y": 1504, "width": 206, "height": 142},
+                    }
+                ],
+                "uncertainty_notes": (
+                    "Other microprint remains unreadable in the original"
+                ),
+            }
+        ]
+    }
+    value = run._bind(
+        "product",
+        raw,
+        {
+            "products": [
+                {"product_index": 0, "sha256": "a" * 64, "width": 1320, "height": 1760}
+            ]
+        },
+    )
+    mark = value["products"][0]["readable_marks"][0]
+    assert mark == {"text": "10kg", "bbox": [355, 1504, 561, 1646]}
+    assert raw["products"][0]["readable_marks"][0]["rect"]["height"] == 142
+
+
+@pytest.mark.parametrize(
+    "rect",
+    [
+        {"x": -1, "y": 0, "width": 20, "height": 20},
+        {"x": 800, "y": 0, "width": 300, "height": 20},
+        {"x": 0, "y": 990, "width": 20, "height": 20},
+        {"x": 0, "y": 0, "width": 0, "height": 20},
+        {"x": 0, "y": 0, "width": 20, "height": -1},
+        {"x": True, "y": 0, "width": 20, "height": 20},
+    ],
+)
+def test_invalid_rectangle_extents_are_never_swapped_or_clipped(rect):
+    with pytest.raises(ValueError, match="rect"):
+        rectangle_edges(rect, 1000, 1000, "Observed subject")
+
+
+@pytest.mark.parametrize("malformation", ["array", "overflow"])
+def test_bad_model_rectangle_stops_after_two_responses_before_any_image(
+    tmp_path, malformation
+):
+    gateway = SyntheticGateway()
+    original = gateway.plan
+    calls = []
+
+    async def plan(request):
+        result = await original(request)
+        envelope = json.loads(request.product_information[0])
+        if envelope["stage"] == "layout":
+            calls.append(envelope)
+            result.payload["units"][0]["layout_anchors"][0]["rect"] = (
+                [467, 522, 449, 296]
+                if malformation == "array"
+                else {"x": 800, "y": 700, "width": 400, "height": 300}
+            )
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    with pytest.raises(CompactResponseInvalid):
+        asyncio.run(run.prepare(payload, records))
+    assert len(calls) == 2 and not gateway.image_requests
+    assert calls[1]["validation_error"]
+    assert run.state()["state"] == "STARTED"
+
+
 def test_wrong_module_alias_can_be_corrected_without_resampling_valid_fail(tmp_path):
     gateway = SyntheticGateway(reject_first=True)
     original = gateway.plan
@@ -450,7 +576,12 @@ def test_column_pixels_determine_all_screen_counts_without_fixed_grid(tmp_path, 
                 {
                     "reference_index": 0,
                     "column_index": i,
-                    "bbox": [edges[i], 0, edges[i + 1], 640],
+                    "rect": {
+                        "x": edges[i],
+                        "y": 0,
+                        "width": edges[i + 1] - edges[i],
+                        "height": 640,
+                    },
                     "column_boundary_reason": f"Visible synthetic column gutter {i}",
                 }
                 for i in range(3)

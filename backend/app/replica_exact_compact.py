@@ -38,7 +38,7 @@ from .replica_native import (
     write_json,
 )
 
-VERSION = "exact-compact-v3"
+VERSION = "exact-compact-v4"
 PROMPTS = Path(__file__).with_name("replica_exact_prompts")
 OBSERVATIONS = (
     "subject_and_scale",
@@ -105,11 +105,6 @@ class CompactScreenBoundaryMismatch(ReplicaSegmentationInvalid):
         ReplicaNativeError.__init__(self, detail)
 
 
-class CompactAnalysisBudgetExceeded(ReplicaAnalysisUnavailable):
-    code = "REPLICA_ANALYSIS_BUDGET_REACHED"
-    message = "本次规划用时或调用次数已达上限，已完成的步骤已保留，可继续处理剩余部分。"
-
-
 def protocol_binding() -> dict[str, str]:
     digest = hashlib.sha256()
     dependencies = [
@@ -117,6 +112,7 @@ def protocol_binding() -> dict[str, str]:
         Path(__file__).with_name("replica_exact_contracts.py"),
         Path(__file__).with_name("replica_exact_adaptation.py"),
         Path(__file__).with_name("replica_exact_revision.py"),
+        Path(__file__).with_name("replica_execution_resume.py"),
         Path(__file__).with_name("replica_layout.py"),
         Path(__file__).with_name("replica_native.py"),
         Path(__file__).with_name("replica_native_provider.py"),
@@ -708,7 +704,6 @@ class CompactExactReplicaRun(NativeReplicaRun):
     contract_attempts = 1
     planning_revisions = 3
     requires_independent_pixel_review = False
-    analysis_timeout_seconds = 1800.0
     render_binding_version = 3
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -721,12 +716,8 @@ class CompactExactReplicaRun(NativeReplicaRun):
         self.context: dict[str, Any] = {}
         self.checkpoints: dict[str, Any] = {"results": {}, "planned": [], "reviews": {}}
         self.on_checkpoint: Any = None
-        self._deadline = time.monotonic() + self.analysis_timeout_seconds
-        self._call_start = 0
 
     async def prepare(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        self._deadline = time.monotonic() + self.analysis_timeout_seconds
-        self._call_start = sum(u.get("network_requests", 1) for u in self.usage)
         if self.checkpoints.get("plan_cursor"):
             from .replica_exact_revision import resume_planning
 
@@ -1622,13 +1613,6 @@ class CompactExactReplicaRun(NativeReplicaRun):
             return value
         error = context.get("validation_error", "")
         for attempt in range(2):
-            calls = (
-                sum(u.get("network_requests", 1) for u in self.usage) - self._call_start
-            )
-            if time.monotonic() >= self._deadline or calls >= 12 + 6 * max(
-                1, self.checkpoints.get("total", 1)
-            ):
-                raise CompactAnalysisBudgetExceeded()
             self._progress(phase, data)
             await self.checkpoint()
             started = time.monotonic()
@@ -1656,7 +1640,6 @@ class CompactExactReplicaRun(NativeReplicaRun):
                     idempotency_key=f"{self.document_id}:{identity}:format-{attempt}",
                     planning_profile="replica_exact_compact",
                     system_prompt=system,
-                    planning_deadline=self._deadline,
                 )
             )
             after = getattr(self.gateway, "external_network_request_count", None)
@@ -1750,7 +1733,11 @@ def run_class(method: str, protocol: Any = None) -> type[NativeReplicaRun]:
     if protocol is None:
         return NativeReplicaRun
     version = protocol.get("version") if isinstance(protocol, dict) else protocol
-    if method == "exact" and version in {"exact-compact-v1", "exact-compact-v2"}:
+    if method == "exact" and version in {
+        "exact-compact-v1",
+        "exact-compact-v2",
+        "exact-compact-v3",
+    }:
         archive = version.rsplit("-", 1)[-1]
         name = f"app._replica_exact_compact_{archive}"
         if name not in sys.modules:

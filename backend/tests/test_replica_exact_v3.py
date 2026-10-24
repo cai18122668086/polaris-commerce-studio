@@ -324,7 +324,7 @@ def test_http_revision_restores_durable_v2_evidence_and_auto_submits_only_once(
     assert root.is_relative_to(tmp_path.parent.resolve())
     rmtree(root)
     before = len(gateway.requests)
-    monkeypatch.setattr(replica_exact_compact, "VERSION", "exact-compact-v3")
+    monkeypatch.setattr(replica_exact_compact, "VERSION", "exact-compact-v4")
     gateway.reject_always = False
     revised = client.post(route + "/sessions/" + document_id + "/revise", json={})
     assert revised.status_code == 202, revised.text
@@ -339,7 +339,7 @@ def test_http_revision_restores_durable_v2_evidence_and_auto_submits_only_once(
     with client.app.state.session_factory() as session:
         saved = session.get(ReplicaDocumentRecord, document_id).payload
         assert (
-            saved["native_snapshot"]["model_protocol"]["version"] == "exact-compact-v3"
+            saved["native_snapshot"]["model_protocol"]["version"] == "exact-compact-v4"
         )
         assert (
             json.loads(saved["native_snapshot"]["files"]["context.json"]["text"])[

@@ -21,6 +21,7 @@ from .replica_native import (
     NativeReplicaRun,
     ReplicaAnalysisUnavailable,
     ReplicaNativeError,
+    ReplicaSegmentationInvalid,
     segmentation_errors,
     validate_module_constraints,
     write_json,
@@ -81,6 +82,13 @@ class CompactResponseInvalid(ReplicaNativeError):
     message = "图片分析结果未通过校验，本次已停止；原始素材和原因已保留。"
 
 
+class CompactScreenBoundaryMismatch(ReplicaSegmentationInvalid):
+    message = "参考图屏数与逐屏边界未能一致核对，本次已停止；原始素材已保留。"
+
+    def __init__(self, detail: str) -> None:
+        ReplicaNativeError.__init__(self, detail)
+
+
 def protocol_binding() -> dict[str, str]:
     digest = hashlib.sha256()
     for path in [Path(__file__), *sorted(PROMPTS.glob("*.md"))]:
@@ -93,6 +101,8 @@ def protocol_binding() -> dict[str, str]:
 
 def phase_for(stage: str) -> str:
     for prefix, phase in (
+        ("identity-screen-split", "screen_split"),
+        ("identity-screen-inventory", "screen_inventory"),
         ("identity", "intake"),
         ("exact-product-evidence", "product"),
         ("exact-reference-layout", "layout"),
@@ -187,14 +197,13 @@ def response_schema(phase: str) -> dict[str, Any]:
                 "product_crops": arr(
                     obj({"product_index": index, "bbox": box(False)}), minItems=1
                 ),
-                "units": arr(
+                "columns": arr(
                     obj(
                         {
                             "reference_index": index,
                             "column_index": index,
-                            "screen_index": index,
                             "bbox": box(False),
-                            "screen_boundary_reason": text(12),
+                            "column_boundary_reason": text(12),
                         }
                     ),
                     minItems=1,
@@ -213,6 +222,23 @@ def response_schema(phase: str) -> dict[str, Any]:
                 },
             }
         )
+    if phase in {"screen_split", "screen_inventory"}:
+        column: dict[str, Any] = {
+            "column_id": text(1, 40),
+            "screens": arr(
+                obj({"headline": text(1, 400), "buyer_question": text(8, 800)}),
+                minItems=1,
+                maxItems=60,
+            ),
+        }
+        if phase == "screen_split":
+            column["boundary_ys"] = arr({"type": "integer", "minimum": 1}, maxItems=59)
+        properties: dict[str, Any] = {
+            "columns": arr(obj(column), minItems=1, maxItems=60)
+        }
+        if phase == "screen_inventory":
+            properties["all_columns_covered"] = {"type": "boolean"}
+        return obj(properties)
     if phase == "product":
         return obj(
             {
@@ -523,6 +549,18 @@ class CompactExactReplicaRun(NativeReplicaRun):
     def _data(self, phase: str, data: dict[str, Any]) -> dict[str, Any]:
         if phase == "intake":
             return {k: data[k] for k in ("product_dimensions", "reference_dimensions")}
+        if phase in {"screen_split", "screen_inventory"}:
+            return clean(
+                {
+                    "columns": data["columns"],
+                    "reference_dimensions": data.get("reference_dimensions", []),
+                    **(
+                        {"boundary_mismatch": data["boundary_mismatch"]}
+                        if phase == "screen_split" and "boundary_mismatch" in data
+                        else {}
+                    ),
+                }
+            )
         if phase == "product":
             return {"products": clean(data["products"])}
         if phase == "layout":
@@ -583,6 +621,10 @@ class CompactExactReplicaRun(NativeReplicaRun):
     ) -> list[dict[str, Any]]:
         products = self.context.get("product_paths", [])
         references = self.context.get("reference_paths", [])
+        column_paths = {
+            column["crop_path"]: column
+            for column in self.context.get("reference_columns", [])
+        }
         units = data.get("physical_units", data.get("reference_units", []))
         unit_paths = {u["crop_path"]: u["id"] for u in units}
         module = data.get("module", {})
@@ -600,6 +642,9 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 row.update(
                     role="reference_original", reference_index=references.index(name)
                 )
+            elif name in column_paths:
+                column = column_paths[name]
+                row.update(role="reference_column", column_id=column["column_id"])
             elif name == data.get("artwork"):
                 row.update(role="current_artwork")
             else:
@@ -614,13 +659,58 @@ class CompactExactReplicaRun(NativeReplicaRun):
     ) -> dict[str, Any]:
         value = deepcopy(value)
         if phase == "intake":
+            # Validate column bounds with the existing source-coordinate guard.
+            # These provisional rows are never written as physical screen units.
+            columns = value["columns"]
+            provisional = {
+                **value,
+                "units": [
+                    {
+                        **column,
+                        "screen_index": 0,
+                        "screen_boundary_reason": column["column_boundary_reason"],
+                    }
+                    for column in columns
+                ],
+            }
             errors = segmentation_errors(
-                value,
+                provisional,
                 [(r["width"], r["height"]) for r in data["product_dimensions"]],
                 [(r["width"], r["height"]) for r in data["reference_dimensions"]],
             )
             if errors:
                 raise ValueError("; ".join(errors))
+            order = [(c["reference_index"], c["column_index"]) for c in columns]
+            if order != sorted(order):
+                raise ValueError("List columns in reference-major, left-to-right order")
+            for reference in range(len(data["reference_dimensions"])):
+                group = [c for c in columns if c["reference_index"] == reference]
+                if [c["column_index"] for c in group] != list(range(len(group))):
+                    raise ValueError("Column indices must start at zero without gaps")
+                if any(
+                    left["bbox"][2] > right["bbox"][0]
+                    for left, right in zip(group, group[1:], strict=False)
+                ):
+                    raise ValueError("Reference columns must not overlap horizontally")
+        elif phase in {"screen_split", "screen_inventory"}:
+            expected = data["columns"]
+            if [c["column_id"] for c in value["columns"]] != [
+                c["column_id"] for c in expected
+            ]:
+                raise ValueError("Observe every declared column once in source order")
+            if phase == "screen_split":
+                for column, source in zip(value["columns"], expected, strict=True):
+                    cuts = column["boundary_ys"]
+                    if cuts != sorted(set(cuts)) or any(
+                        not 0 < y < source["height"] for y in cuts
+                    ):
+                        raise ValueError(
+                            "Screen boundaries must increase inside column pixels"
+                        )
+                    if len(column["screens"]) != len(cuts) + 1:
+                        raise ValueError(
+                            "Describe one screen per resulting physical interval"
+                        )
         elif phase == "product":
             sources = {p["product_index"]: p for p in data["products"]}
             for row in value["products"]:
@@ -679,6 +769,142 @@ class CompactExactReplicaRun(NativeReplicaRun):
         return value
 
     async def ask(
+        self,
+        stage: str,
+        instruction: str,
+        context: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        if stage.startswith("exact-module-constraints") or phase_for(stage) != "intake":
+            return await self._ask_stage(stage, instruction, context, **kwargs)
+        columns_observation = await self._ask_stage(
+            stage, instruction, context, **kwargs
+        )
+        data = context.get("data", context)
+        columns = []
+        for index, column in enumerate(columns_observation["columns"]):
+            path = self.root / "crops" / f"reference-column-{index:03}.png"
+            source = Path(self.context["reference_paths"][column["reference_index"]])
+            self.crop(source, column["bbox"], path)
+            left, top, right, bottom = column["bbox"]
+            columns.append(
+                {
+                    **column,
+                    "column_id": f"C{index + 1:03}",
+                    "width": right - left,
+                    "height": bottom - top,
+                    "crop_path": str(path),
+                }
+            )
+        self.context["reference_columns"] = columns
+        write_json(self.root / "context.json", self.context)
+        inputs = {
+            "columns": columns,
+            "reference_dimensions": data["reference_dimensions"],
+        }
+        column_paths = [Path(c["crop_path"]) for c in columns]
+        split = await self._ask_stage(
+            "identity-screen-split-0", "", inputs, paths=column_paths
+        )
+        # The counter sees actual pixels, never the proposed cuts, titles or counts.
+        inventory_paths = [
+            *map(Path, self.context["reference_paths"]),
+            *column_paths,
+        ]
+        inventory = await self._ask_stage(
+            "identity-screen-inventory-0", "", inputs, paths=inventory_paths
+        )
+
+        def mismatches() -> list[str]:
+            return [
+                a["column_id"]
+                for a, b in zip(split["columns"], inventory["columns"], strict=True)
+                if len(a["screens"]) != len(b["screens"])
+            ]
+
+        if not inventory["all_columns_covered"]:
+            raise CompactScreenBoundaryMismatch(
+                "Reference columns omit or overlap visible content"
+            )
+        failed = mismatches()
+        if failed:
+            targeted = {
+                **inputs,
+                "columns": [c for c in columns if c["column_id"] in failed],
+                "boundary_mismatch": {
+                    "previous_split": [
+                        c for c in split["columns"] if c["column_id"] in failed
+                    ],
+                    "independent_inventory": [
+                        c for c in inventory["columns"] if c["column_id"] in failed
+                    ],
+                },
+            }
+            repaired = await self._ask_stage(
+                "identity-screen-split-repair",
+                "",
+                targeted,
+                paths=[Path(c["crop_path"]) for c in targeted["columns"]],
+            )
+            replacements = {c["column_id"]: c for c in repaired["columns"]}
+            split = {
+                "columns": [
+                    replacements.get(c["column_id"], c) for c in split["columns"]
+                ]
+            }
+            inventory = await self._ask_stage(
+                "identity-screen-inventory-1", "", inputs, paths=inventory_paths
+            )
+        write_json(
+            self.root / "screen-inventory.json",
+            {
+                "split": split,
+                "independent_inventory": inventory,
+                "directed_repair_columns": failed,
+                "mismatched_columns": mismatches(),
+            },
+        )
+        if not inventory["all_columns_covered"] or mismatches():
+            raise CompactScreenBoundaryMismatch(
+                "Physical screen count remains inconsistent after one correction"
+            )
+        units = []
+        for column, observed in zip(columns, split["columns"], strict=True):
+            left, top, right, _ = column["bbox"]
+            edges = [0, *observed["boundary_ys"], column["height"]]
+            for index, screen in enumerate(observed["screens"]):
+                units.append(
+                    {
+                        "reference_index": column["reference_index"],
+                        "column_index": column["column_index"],
+                        "screen_index": index,
+                        "bbox": [
+                            left,
+                            top + edges[index],
+                            right,
+                            top + edges[index + 1],
+                        ],
+                        "screen_boundary_reason": (
+                            f"Distinct screen: {screen['headline']}; "
+                            f"buyer question: {screen['buyer_question']}"
+                        ),
+                    }
+                )
+        result = {
+            k: columns_observation[k]
+            for k in ("product_geometry", "product_crops", "route")
+        }
+        result["units"] = units
+        errors = segmentation_errors(
+            result,
+            [(p["width"], p["height"]) for p in data["product_dimensions"]],
+            [(r["width"], r["height"]) for r in data["reference_dimensions"]],
+        )
+        if errors:
+            raise CompactScreenBoundaryMismatch("; ".join(errors))
+        return result
+
+    async def _ask_stage(
         self,
         stage: str,
         instruction: str,

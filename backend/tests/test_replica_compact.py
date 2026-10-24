@@ -67,17 +67,35 @@ class SyntheticGateway:
                     f"Supported synthetic geometry {i}" for i in range(3)
                 ],
                 "product_crops": [{"product_index": 0, "bbox": [0, 0, 64, 96]}],
-                "units": [
+                "columns": [
                     {
                         "reference_index": 0,
                         "column_index": 0,
-                        "screen_index": i,
-                        "bbox": [0, i * 320, 256, (i + 1) * 320],
-                        "screen_boundary_reason": f"Complete synthetic screen {i}",
+                        "bbox": [0, 0, 256, 640],
+                        "column_boundary_reason": "Complete synthetic reference column",
                     }
-                    for i in range(2)
                 ],
                 "route": "DETAIL_PAGE",
+            }
+        elif phase in {"screen_split", "screen_inventory"}:
+            value = {
+                "columns": [
+                    {
+                        "column_id": c["column_id"],
+                        "screens": [
+                            {
+                                "headline": f"Synthetic headline {i}",
+                                "buyer_question": f"Synthetic buyer question {i}",
+                            }
+                            for i in range(2)
+                        ],
+                        **({"boundary_ys": [320]} if phase == "screen_split" else {}),
+                    }
+                    for c in data["columns"]
+                ],
+                **(
+                    {"all_columns_covered": True} if phase == "screen_inventory" else {}
+                ),
             }
         elif phase == "product":
             value = {
@@ -264,8 +282,8 @@ def test_compact_preparation_uses_real_guard_and_server_owned_metadata(tmp_path)
     run.on_progress = lambda value, label: progress.append(value)
     result = asyncio.run(run.prepare(payload, records))
     assert len(result) == 2 and run.state()["state"] == "READY"
-    assert len(gateway.requests) == 5  # No separate constraints or metadata model call.
-    assert progress == [12, 24, 30, 48, 82, 92]
+    assert len(gateway.requests) == 7  # Includes independent column split/count.
+    assert progress == [12, 12, 12, 24, 30, 48, 82, 92]
     for request in gateway.requests:
         assert request.planning_profile == "replica_exact_compact"
         assert len(request.system_prompt) < 4000
@@ -329,6 +347,157 @@ def test_plan_revision_replaces_only_failed_unit_and_keeps_full_native_audit(tmp
         == revised["_compact_scopes"]["modules"][0]
     )
     assert run.state()["state"] == "READY"
+
+
+@pytest.mark.parametrize("counts", [(4, 4, 4), (1, 3, 2)])
+def test_column_pixels_determine_all_screen_counts_without_fixed_grid(tmp_path, counts):
+    gateway = SyntheticGateway()
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        envelope = json.loads(request.product_information[0])
+        phase, data = envelope["stage"], envelope["context"]
+        if phase == "intake":
+            edges = [0, 80, 160, 256]
+            result.payload["columns"] = [
+                {
+                    "reference_index": 0,
+                    "column_index": i,
+                    "bbox": [edges[i], 0, edges[i + 1], 640],
+                    "column_boundary_reason": f"Visible synthetic column gutter {i}",
+                }
+                for i in range(3)
+            ]
+        elif phase in {"screen_split", "screen_inventory"}:
+            for column, source in zip(
+                result.payload["columns"], data["columns"], strict=True
+            ):
+                count = counts[source["column_index"]]
+                column["screens"] = [
+                    {
+                        "headline": f"Distinct screen {i}",
+                        "buyer_question": f"A different buyer question {i}",
+                    }
+                    for i in range(count)
+                ]
+                if phase == "screen_split":
+                    column["boundary_ys"] = [640 * i // count for i in range(1, count)]
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    result = asyncio.run(run.prepare(payload, records))
+    assert len(result) == sum(counts)
+    segmentation = read_json(tmp_path / "identity-segmentation.json")
+    for i, count in enumerate(counts):
+        units = [u for u in segmentation["units"] if u["column_index"] == i]
+        assert len(units) == count
+        assert [u["screen_index"] for u in units] == list(range(count))
+        assert units[0]["bbox"][1] == 0 and units[-1]["bbox"][3] == 640
+        assert all(
+            a["bbox"][3] == b["bbox"][1] for a, b in zip(units, units[1:], strict=False)
+        )
+    counter = next(
+        r
+        for r in gateway.requests
+        if json.loads(r.product_information[0])["stage"] == "screen_inventory"
+    )
+    evidence = json.loads(counter.product_information[0])
+    assert "boundary_ys" not in json.dumps(evidence["context"])
+    assert "screens" not in json.dumps(evidence["context"])
+    assert {r["role"] for r in evidence["image_order"]} == {
+        "reference_original",
+        "reference_column",
+    }
+    assert len(counter.sources) == 4
+
+
+def test_screen_count_disagreement_gets_one_directed_repair_and_blind_recount(tmp_path):
+    gateway = SyntheticGateway()
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        envelope = json.loads(request.product_information[0])
+        phase = envelope["stage"]
+        if phase == "screen_inventory" or (
+            phase == "screen_split" and envelope["context"].get("boundary_mismatch")
+        ):
+            for column in result.payload["columns"]:
+                column["screens"] = [
+                    {
+                        "headline": f"Actual physical screen {i}",
+                        "buyer_question": f"Actual distinct buyer question {i}",
+                    }
+                    for i in range(3)
+                ]
+                if phase == "screen_split":
+                    column["boundary_ys"] = [200, 400]
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    assert len(asyncio.run(run.prepare(payload, records))) == 3
+    proof = read_json(tmp_path / "screen-inventory.json")
+    assert proof["directed_repair_columns"] == ["C001"]
+    assert not proof["mismatched_columns"]
+    phases = [json.loads(r.product_information[0])["stage"] for r in gateway.requests]
+    assert phases.count("screen_split") == phases.count("screen_inventory") == 2
+
+
+def test_unresolved_screen_count_stops_before_planning_or_images(tmp_path):
+    from app.replica_native import ReplicaSegmentationInvalid
+
+    gateway = SyntheticGateway()
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        if json.loads(request.product_information[0])["stage"] == "screen_inventory":
+            result.payload["columns"][0]["screens"].append(
+                {
+                    "headline": "A missed independent headline",
+                    "buyer_question": "An additional question requiring its own screen",
+                }
+            )
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    with pytest.raises(ReplicaSegmentationInvalid):
+        asyncio.run(run.prepare(payload, records))
+    phases = [json.loads(r.product_information[0])["stage"] for r in gateway.requests]
+    assert phases == [
+        "intake",
+        "screen_split",
+        "screen_inventory",
+        "screen_split",
+        "screen_inventory",
+    ]
+    assert read_json(tmp_path / "screen-inventory.json")["mismatched_columns"] == [
+        "C001"
+    ]
+    assert not gateway.image_requests and not (tmp_path / "session.json").exists()
+
+
+def test_missing_column_is_a_visual_failure_without_verdict_resampling(tmp_path):
+    from app.replica_native import ReplicaSegmentationInvalid
+
+    gateway = SyntheticGateway()
+    original = gateway.plan
+
+    async def plan(request):
+        result = await original(request)
+        if json.loads(request.product_information[0])["stage"] == "screen_inventory":
+            result.payload["all_columns_covered"] = False
+        return result
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    with pytest.raises(ReplicaSegmentationInvalid):
+        asyncio.run(run.prepare(payload, records))
+    assert len(gateway.requests) == 3 and not gateway.image_requests
 
 
 def test_protocol_snapshot_is_frozen_and_cannot_silently_restore_as_legacy(tmp_path):
@@ -509,7 +678,7 @@ def test_normal_http_submission_worker_history_and_original_download(
     assert document["status"] == "generating", document
     assert len(document["payload"]["job_ids"]) == 1
     assert "_exact_model_protocol" not in document["payload"]
-    assert len(gateway.requests) == 5
+    assert len(gateway.requests) == 7
     for _ in range(2):
         client.get(route + "/documents/" + document["id"])
     with client.app.state.session_factory() as session:

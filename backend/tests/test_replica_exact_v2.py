@@ -6,7 +6,6 @@ from copy import deepcopy
 import pytest
 
 from app.replica_exact_compact import (
-    CompactAnalysisBudgetExceeded,
     CompactResponseInvalid,
     run_class,
 )
@@ -73,26 +72,23 @@ def test_original_pixels_are_part_of_review_dependency(tmp_path):
     assert len(gateway.requests) == before + 2
 
 
-def test_budget_stops_new_work_without_discarding_completed_reviews(tmp_path):
+def test_historical_usage_does_not_impose_a_new_work_budget(tmp_path):
     run, gateway, payload, records = setup_run(tmp_path)
     asyncio.run(run.prepare(payload, records))
     before = len(gateway.requests)
-    run._deadline = 0
-    review(run)
+    run.usage.append({"network_requests": 10000, "kind": "analysis"})
     changed = deepcopy(run.state()["plan"])
     changed["modules"][0]["generation_brief"] += " A newly requested composition."
-    with pytest.raises(CompactAnalysisBudgetExceeded):
-        asyncio.run(
-            run.ask(
-                "exact-plan-audit-budget",
-                "",
-                {
-                    **changed,
-                    "product_evidence": run.context["product_evidence"],
-                },
-            )
+    value = asyncio.run(
+        run.ask(
+            "exact-plan-audit-after-historical-usage",
+            "",
+            {**changed, "product_evidence": run.context["product_evidence"]},
         )
-    assert len(gateway.requests) == before
+    )
+    assert value["unit_audits"][0]["decision"] == "PASS"
+    assert len(gateway.requests) == before + 1
+    assert gateway.requests[-1].planning_deadline is None
     assert run.checkpoints["reviews"] == {"R001": "PASS", "R002": "PASS"}
 
 

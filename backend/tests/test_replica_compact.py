@@ -174,18 +174,19 @@ class SyntheticGateway:
             }
         elif phase == "review_plan":
             value = {"unit_audits": []}
-            for unit in data["reference_units"]:
-                fail = unit["id"] == "R002" and (
+            for unit in data["review_targets"]:
+                uid = unit["reference_unit_id"]
+                fail = uid == "R002" and (
                     self.reject_always
                     or (self.reject_first and "-r0-" in request.group_key)
                 )
                 value["unit_audits"].append(
                     {
-                        "unit_id": unit["id"],
+                        "unit_id": uid,
                         "fresh_pixel_observation": observed(
-                            "Fresh reinspection " + request.group_key + unit["id"]
+                            "Fresh reinspection " + request.group_key + uid
                         ),
-                        "comparisons": compared(PLAN_DIMENSIONS, unit["id"], fail),
+                        "comparisons": compared(PLAN_DIMENSIONS, uid, fail),
                         "material_mismatches": [
                             "Synthetic second-screen subject bounds require correction"
                         ]
@@ -347,6 +348,91 @@ def test_plan_revision_replaces_only_failed_unit_and_keeps_full_native_audit(tmp
         == revised["_compact_scopes"]["modules"][0]
     )
     assert run.state()["state"] == "READY"
+
+
+def test_written_plan_review_joins_source_and_proposal_without_module_aliases(tmp_path):
+    run, gateway, payload, records = setup_run(tmp_path)
+    payload["facts"] = "The user explicitly authorizes a supported synthetic benefit"
+    asyncio.run(run.prepare(payload, records))
+    review = next(
+        json.loads(r.product_information[0])
+        for r in gateway.requests
+        if json.loads(r.product_information[0])["stage"] == "review_plan"
+    )
+    data = review["context"]
+    assert data["audit_subject"] == "written_plan_before_rendering"
+    assert data["user_facts"] == payload["facts"]
+    assert "M001" not in json.dumps(data) and "M002" not in json.dumps(data)
+    assert [t["reference_unit_id"] for t in data["review_targets"]] == ["R001", "R002"]
+    for target in data["review_targets"]:
+        assert target["proposed_screen"]["copy_units"] == [
+            "Supported synthetic product"
+        ]
+        assert target["identity_scope"]["product_visibility"] == "visible_product"
+        assert target["canvas_binding"] == {
+            "reference_pixels": [256, 320],
+            "planned_pixels": [1024, 1280],
+        }
+    schema = review["response_schema"]["properties"]["unit_audits"]
+    assert schema["minItems"] == schema["maxItems"] == 2
+    assert schema["items"]["properties"]["unit_id"]["enum"] == ["R001", "R002"]
+
+
+def test_wrong_module_alias_can_be_corrected_without_resampling_valid_fail(tmp_path):
+    gateway = SyntheticGateway(reject_first=True)
+    original = gateway.plan
+    seen = []
+
+    async def plan(request):
+        response = await original(request)
+        envelope = json.loads(request.product_information[0])
+        if envelope["stage"] == "review_plan":
+            seen.append(envelope)
+            if len(seen) == 1:
+                response.payload["unit_audits"][0]["unit_id"] = "M001"
+        return response
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    asyncio.run(run.prepare(payload, records))
+    assert (
+        len(seen) == 3
+    )  # Invalid field correction, real FAIL, fresh revised-plan audit.
+    assert "reference_unit_id" in seen[1]["validation_error"]
+    plans = [
+        r
+        for r in gateway.requests
+        if json.loads(r.product_information[0])["stage"] == "plan"
+    ]
+    assert len(plans) == 2
+    assert run.state()["state"] == "READY" and not gateway.image_requests
+    original_plan = read_json(next(tmp_path.glob("contracts/exact-plan-r0-0-*.json")))
+    repaired_plan = read_json(next(tmp_path.glob("contracts/exact-plan-r1-0-*.json")))
+    assert original_plan["modules"][0] == repaired_plan["modules"][0]
+
+
+def test_persistent_wrong_reference_ids_stop_before_images_with_safe_error(tmp_path):
+    from app.replica_native import ReplicaAnalysisUnavailable
+
+    gateway = SyntheticGateway()
+    original = gateway.plan
+    reviews = []
+
+    async def plan(request):
+        response = await original(request)
+        if json.loads(request.product_information[0])["stage"] == "review_plan":
+            reviews.append(request)
+            response.payload["unit_audits"][0]["unit_id"] = "M001"
+        return response
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    with pytest.raises(CompactResponseInvalid) as error:
+        asyncio.run(run.prepare(payload, records))
+    assert len(reviews) == 2 and not gateway.image_requests
+    assert isinstance(error.value, ReplicaAnalysisUnavailable)
+    assert error.value.message == CompactResponseInvalid.message
+    assert "M001" not in error.value.message
 
 
 @pytest.mark.parametrize("counts", [(4, 4, 4), (1, 3, 2)])

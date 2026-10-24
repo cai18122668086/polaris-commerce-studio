@@ -10,6 +10,9 @@ additional claims and desired copy. For a direct contradiction about physical
 identity or ingredients, use legible current-product labeling; keep the conflicting
 assertion out of new copy. Never infer efficacy from an ingredient alone. If the
 evidence is unreadable, use a truthful broader description and record uncertainty.
+Absence from a photo is not a contradiction of an explicit user fact or claim.
+Apply package priority to the conflicting physical detail, not unrelated supported
+benefits. Do not discard authorized functions merely to use only packaging text.
 Do not require an operator to resolve the request while it is running.
 
 Preserve recognizable geometry, materials, meaningful marks and product forms.

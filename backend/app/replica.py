@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -19,8 +20,10 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import (
     func,
     select,
+    text,
+    update,
 )
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .auth import WorkspaceContext, WorkspaceDependency, WorkspaceWriteDependency
@@ -51,6 +54,7 @@ router = APIRouter(
 )
 SessionDependency = Annotated[Session, Depends(get_session)]
 SKILL = "reference-visual-reverse-remix"
+logger = logging.getLogger(__name__)
 
 
 class ProductRequest(BaseModel):
@@ -327,7 +331,11 @@ def get_document(
             background_tasks.add_task(
                 submit_automatic, request.app, document_id, attempt_id
             )
-    return _wire(row)
+    result = _wire(row)
+    # A poll must release its row lock before response/dependency cleanup awaits
+    # the event loop. Background checkpoints may need to update the same row.
+    session.commit()
+    return result
 
 
 @router.get("/sessions")
@@ -443,6 +451,43 @@ def _analysis_current(app: Any, document_id: str, attempt_id: str) -> bool:
         )
 
 
+def _touch_analysis_heartbeat(app: Any, document_id: str, attempt_id: str) -> bool:
+    with app.state.session_factory() as session:
+        if session.get_bind().dialect.name == "postgresql":
+            # Monitoring must yield to real work and release its connection.
+            session.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            session.execute(text("SET LOCAL statement_timeout = '1000ms'"))
+        touched = session.scalar(
+            update(ReplicaDocumentRecord)
+            .where(
+                ReplicaDocumentRecord.id == document_id,
+                ReplicaDocumentRecord.status == "analysing",
+                ReplicaDocumentRecord.payload["analysis_attempt_id"].as_string()
+                == attempt_id,
+            )
+            .values(updated_at=utc_now())
+            .returning(ReplicaDocumentRecord.id)
+        )
+        session.commit()
+        return touched is not None
+
+
+async def _analysis_heartbeat(
+    app: Any, document_id: str, attempt_id: str, *, interval: float = 30
+) -> None:
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            current = await asyncio.to_thread(
+                _touch_analysis_heartbeat, app, document_id, attempt_id
+            )
+        except SQLAlchemyError:
+            logger.warning("Replica analysis heartbeat deferred: %s", document_id)
+            continue
+        if not current:
+            return
+
+
 async def _analyse(app: Any, document_id: str, attempt_id: str) -> None:
     slots = getattr(app.state, "replica_analysis_slots", None)
     if slots is None:
@@ -451,22 +496,9 @@ async def _analyse(app: Any, document_id: str, attempt_id: str) -> None:
         )
     async with slots:
         if _analysis_current(app, document_id, attempt_id):
-
-            async def heartbeat() -> None:
-                while True:
-                    await asyncio.sleep(30)
-                    with app.state.session_factory() as session:
-                        row = session.get(ReplicaDocumentRecord, document_id)
-                        if (
-                            row is None
-                            or row.status != "analysing"
-                            or row.payload.get("analysis_attempt_id") != attempt_id
-                        ):
-                            return
-                        row.updated_at = utc_now()
-                        session.commit()
-
-            pulse = asyncio.create_task(heartbeat())
+            pulse = asyncio.create_task(
+                _analysis_heartbeat(app, document_id, attempt_id)
+            )
             try:
                 await _analyse_document(app, document_id, attempt_id)
             finally:

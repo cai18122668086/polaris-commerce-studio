@@ -140,6 +140,16 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
         and row.payload.get("error_code") != ReplicaPlanAuditRejected.code
     )
     value["payload"]["analysis_revision_available"] = _revision_available(row)
+    value["payload"]["execution_resume_available"] = (
+        row.status == "failed"
+        and row.payload.get("replication_method") == "exact"
+        and row.payload.get("native_snapshot", {})
+        .get("model_protocol", {})
+        .get("version")
+        in {"exact-compact-v3", "exact-compact-v4", "exact-compact-v5"}
+        and bool(row.payload.get("native_executions"))
+        and row.payload.get("error_code") != "PROVIDER_OUTCOME_UNKNOWN"
+    )
     if (
         row.status == "failed"
         and row.payload.get("error_code") == ReplicaPlanAuditRejected.code

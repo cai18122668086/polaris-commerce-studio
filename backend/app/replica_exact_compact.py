@@ -38,7 +38,7 @@ from .replica_native import (
     write_json,
 )
 
-VERSION = "exact-compact-v4"
+VERSION = "exact-compact-v5"
 PROMPTS = Path(__file__).with_name("replica_exact_prompts")
 OBSERVATIONS = (
     "subject_and_scale",
@@ -113,6 +113,7 @@ def protocol_binding() -> dict[str, str]:
         Path(__file__).with_name("replica_exact_adaptation.py"),
         Path(__file__).with_name("replica_exact_revision.py"),
         Path(__file__).with_name("replica_execution_resume.py"),
+        Path(__file__).with_name("replica_direct_delivery.py"),
         Path(__file__).with_name("replica_layout.py"),
         Path(__file__).with_name("replica_native.py"),
         Path(__file__).with_name("replica_native_provider.py"),
@@ -828,6 +829,13 @@ class CompactExactReplicaRun(NativeReplicaRun):
             + json.dumps(module.get("commercial_adaptation"), ensure_ascii=False)
         )
 
+    def state(self) -> dict[str, Any]:
+        if getattr(self, "direct_execution", False):
+            from .replica_native import read_json
+
+            return read_json(self.root / "direct-session.json")
+        return super().state()
+
     def generation_policy(self) -> str:
         return (PROMPTS / "visual_policy.md").read_text(encoding="utf-8")
 
@@ -855,6 +863,11 @@ class CompactExactReplicaRun(NativeReplicaRun):
             raise CompactResponseInvalid(
                 "Visual protocol context does not match its snapshot"
             )
+        self.direct_execution = self.context.get("post_generation_review") == "disabled"
+        if self.direct_execution:
+            from .replica_direct_delivery import validate_direct_state
+
+            validate_direct_state(self)
 
     def _inputs(
         self, phase: str, data: dict[str, Any], explicit: list[Path] | None
@@ -1737,6 +1750,7 @@ def run_class(method: str, protocol: Any = None) -> type[NativeReplicaRun]:
         "exact-compact-v1",
         "exact-compact-v2",
         "exact-compact-v3",
+        "exact-compact-v4",
     }:
         archive = version.rsplit("-", 1)[-1]
         name = f"app._replica_exact_compact_{archive}"

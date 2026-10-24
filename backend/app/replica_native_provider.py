@@ -187,25 +187,36 @@ class NativeReplicaProvider:
             values, document_id, ordinal = self._load(request)
             execution = values.get("native_executions", {}).get(request.job_id, {})
             snapshot = execution.get("snapshot") or values["native_snapshot"]
+            from . import replica_direct_delivery
             from .replica_execution_resume import (
                 budget_resume_source,
                 restore_execution,
             )
 
-            resumed = (
+            direct_source = (
                 None
                 if execution
+                else replica_direct_delivery.retry_source(
+                    values, request, self.session_factory
+                )
+            )
+
+            resumed = (
+                None
+                if execution or direct_source
                 else budget_resume_source(values, request, self.session_factory)
             )
             if resumed:
                 snapshot = resumed[0]
+            if direct_source:
+                snapshot = direct_source[0]
             run_type = NativeReplicaRun
             if snapshot.get("model_protocol"):
                 from .replica_exact_compact import CompactExactReplicaRun, run_class
 
                 run_type = (
                     CompactExactReplicaRun
-                    if resumed
+                    if resumed or direct_source
                     else run_class(
                         values["replication_method"], snapshot["model_protocol"]
                     )
@@ -218,7 +229,15 @@ class NativeReplicaProvider:
                 self.storage,
                 root=Path(snapshot["root"]),
             )
-            if resumed:
+            if (
+                direct_source
+                and snapshot.get("model_protocol", {}).get("version")
+                != "exact-compact-v5"
+            ):
+                await replica_direct_delivery.restore_source(
+                    run, snapshot, direct_source[1]
+                )
+            elif resumed:
                 await restore_execution(run, snapshot, resumed[1])
             else:
                 await run.restore(snapshot)
@@ -228,12 +247,17 @@ class NativeReplicaProvider:
                 if ordinal != 0:
                     raise ReplicaNativeError("前序复刻尚未通过完整验收。")
                 if run.method == "exact":
-                    candidates = self._retry_candidates(values, request, snapshot)
-                    delivery = (
-                        await self._exact(run, request, candidates)
-                        if candidates
-                        else await self._exact(run, request)
-                    )
+                    if getattr(run, "binding", {}).get("version") == "exact-compact-v5":
+                        delivery = await replica_direct_delivery.execute(
+                            self, run, request
+                        )
+                    else:
+                        candidates = self._retry_candidates(values, request, snapshot)
+                        delivery = (
+                            await self._exact(run, request, candidates)
+                            if candidates
+                            else await self._exact(run, request)
+                        )
                 else:
                     delivery = await self._style(run, request)
                 if len(delivery) != len(values["plans"]):
@@ -258,7 +282,12 @@ class NativeReplicaProvider:
                     "skill_content_hash": run.source_hash,
                     "replication_method": run.method,
                     "native_state": run.state()["state"],
-                    "native_visual_audited": True,
+                    "native_visual_audited": not getattr(
+                        run, "direct_execution", False
+                    ),
+                    "post_generation_review": "disabled"
+                    if getattr(run, "direct_execution", False)
+                    else "enabled",
                     "native_calls": run.usage[initial_calls:],
                 },
                 actual_cost_micros=accounting["actual_cost_micros"],
@@ -581,7 +610,9 @@ class NativeReplicaProvider:
         write_json(ledger_path, ledger)
         # The invocation fence is durable BEFORE the network call.
         await self._save(run, request.job_id)
-        for format_attempt in range(2):
+        for format_attempt in range(
+            1 if getattr(run, "direct_execution", False) else 2
+        ):
             attempt_prompt = bound_prompt
             if format_attempt:
                 attempt_prompt += (

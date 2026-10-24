@@ -136,7 +136,16 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
         bool(row.payload.get("_analysis_checkpoint"))
         and row.status == "failed"
         and not row.payload.get("job_ids")
+        and row.payload.get("error_code") != ReplicaPlanAuditRejected.code
     )
+    if (
+        row.status == "failed"
+        and row.payload.get("error_code") == ReplicaPlanAuditRejected.code
+    ):
+        value["payload"]["error"] = (
+            "部分方案仍未通过校验，已完成的规划和素材已保留。"
+            "请先调整未通过的方案，再继续处理。"
+        )
     if row.payload.get("auto_start_after_plan") is True:
         value["payload"]["plans"] = [
             {"reference": plan["reference"], "analysis": {}, "prompt": ""}
@@ -827,6 +836,12 @@ def retry_analysis(
         return _wire(row)
     if row.status != "failed" or row.payload.get("job_ids"):
         raise ApiError(409, "REPLICA_RETRY_UNAVAILABLE", "当前任务无需重新分析。")
+    if row.payload.get("error_code") == ReplicaPlanAuditRejected.code:
+        raise ApiError(
+            409,
+            "REPLICA_PLAN_REVISION_REQUIRED",
+            "部分方案仍未通过校验，已完成的规划和素材已保留。请先调整未通过的方案。",
+        )
     row.status = "analysing"
     row.updated_at = utc_now()
     row.payload = {

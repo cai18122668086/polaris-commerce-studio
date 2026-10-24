@@ -185,7 +185,7 @@ def test_all_references_and_product_images_must_be_covered():
         lambda: ReplicaPlanAuditRejected({"pass": False}),
     ],
 )
-def test_expected_failure_retains_stage_selection_and_can_retry(
+def test_expected_failure_retains_stage_selection_and_retry_policy(
     client, monkeypatch, error_factory
 ):
     client.app.state.settings.reference_remix_provider_enabled = True
@@ -210,11 +210,20 @@ def test_expected_failure_retains_stage_selection_and_can_retry(
     document = client.get(route + "/documents/" + created["id"]).json()
     assert document["status"] == "failed"
     assert document["payload"]["error_code"] == expected_error.code
-    assert document["payload"]["error"] == expected_error.message
+    if isinstance(expected_error, ReplicaPlanAuditRejected):
+        assert "请先调整" in document["payload"]["error"]
+    else:
+        assert document["payload"]["error"] == expected_error.message
     assert document["payload"]["analysis_stage"] == "校正参考图拆屏坐标"
     assert document["payload"]["progress"] == 15
     assert document["payload"]["product_asset_ids"] == [product]
     assert document["payload"]["references"][0]["asset_id"] == reference
+    if isinstance(expected_error, ReplicaPlanAuditRejected):
+        # Retaining input is not authority to replay an exhausted quality gate.
+        retried = client.post(route + "/sessions/" + created["id"] + "/retry")
+        assert retried.status_code == 409
+        assert retried.json()["error"]["code"] == "REPLICA_PLAN_REVISION_REQUIRED"
+        return
 
     async def prepared(self, payload, records):
         return [

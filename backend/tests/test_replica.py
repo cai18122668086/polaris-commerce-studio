@@ -335,6 +335,70 @@ def test_analysis_retry_preserves_completed_plans(client):
     assert client.post(route + "/sessions/" + document_id + "/retry").status_code == 409
 
 
+@pytest.mark.parametrize("has_checkpoint", [False, True])
+def test_exhausted_plan_reviews_preserve_work_and_refuse_unchanged_retries(
+    client, monkeypatch, has_checkpoint
+):
+    from copy import deepcopy
+
+    from app import replica
+
+    async def unexpected_analysis(*args):
+        pytest.fail("A rejected plan needs revision before another analysis attempt")
+
+    monkeypatch.setattr(replica, "_analyse", unexpected_analysis)
+    document_id = "rep_" + uuid4().hex
+    payload = {
+        "analysis_attempt_id": "exhausted-attempt",
+        "error_code": "REPLICA_PLAN_AUDIT_REJECTED",
+        "error": "Legacy response suggested retrying the same plan",
+        "job_ids": [],
+        "progress": 82,
+        "analysis_progress": {
+            "stage": "review_plan",
+            "total": 12,
+            "planned": 12,
+            "reviewed": 12,
+            "accepted": 9,
+            "pending_corrections": 3,
+        },
+    }
+    if has_checkpoint:
+        payload["_analysis_checkpoint"] = {"preserved": "source-bound-evidence"}
+    original = deepcopy(payload)
+    with client.app.state.session_factory() as session:
+        session.add(
+            ReplicaDocumentRecord(
+                id=document_id,
+                workspace_id="ws_test",
+                created_by="usr_test",
+                kind="session",
+                fingerprint=uuid4().hex * 2,
+                status="failed",
+                payload=payload,
+            )
+        )
+        session.commit()
+    route = "/api/v1/workspaces/ws_test/replica"
+    document = client.get(route + "/documents/" + document_id).json()
+    assert document["payload"]["analysis_resume_available"] is False
+    assert "请先调整" in document["payload"]["error"]
+    assert document["payload"]["analysis_progress"]["accepted"] == 9
+    assert "_analysis_checkpoint" not in document["payload"]
+    for _ in range(2):
+        retry = client.post(route + "/sessions/" + document_id + "/retry", json={})
+        assert retry.status_code == 409, retry.text
+        assert retry.json()["error"]["code"] == "REPLICA_PLAN_REVISION_REQUIRED"
+    with client.app.state.session_factory() as session:
+        saved = session.get(ReplicaDocumentRecord, document_id)
+        assert saved.status == "failed" and saved.payload == original
+    restored = next(
+        d for d in client.get(route + "/sessions").json() if d["id"] == document_id
+    )
+    assert restored["payload"]["analysis_resume_available"] is False
+    assert restored["payload"]["analysis_progress"]["accepted"] == 9
+
+
 def test_1688_main_gallery_does_not_absorb_sku_specification_images():
     main, sku = "https://cbu01.alicdn.com/main.jpg", "https://cbu01.alicdn.com/sku.jpg"
     data = {

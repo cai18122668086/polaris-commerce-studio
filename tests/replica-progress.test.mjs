@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeReplicaProgress, replicaAnalysisMessage, replicaOverallProgress, replicaWorkflowStep } from "../lib/replica/progress.ts";
+import { mergeReplicaProgress, replicaAnalysisMessage, replicaOverallProgress, replicaPlanFailure, replicaWorkflowStep } from "../lib/replica/progress.ts";
 
 const doc = (progress, extra = {}) => ({ id: "rep_test", status: "analysing", payload: { analysis_attempt_id: "attempt-1", progress }, ...extra });
+
+test("exhausted quality reviews explain retained plans instead of suggesting another transport retry", () => {
+  const failed = doc(82, {status:"failed"});
+  failed.payload.error_code = "REPLICA_PLAN_AUDIT_REJECTED";
+  failed.payload.analysis_progress = {stage:"review_plan",total:12,planned:12,reviewed:12,accepted:9,pending_corrections:3};
+  const failure = replicaPlanFailure(failed);
+  assert.equal(failure.title, "还有 3 屏方案待调整");
+  assert.match(failure.message, /已通过的 9 屏方案/);
+  assert.match(failure.message, /请先调整/);
+  delete failed.payload.analysis_progress;
+  assert.equal(replicaPlanFailure(failed).title, "部分方案需要调整");
+  failed.payload.error_code = "REPLICA_ANALYSIS_UNAVAILABLE";
+  assert.equal(replicaPlanFailure(failed), undefined);
+});
 
 test("planning progress explains retained work without presenting a failed screen as a restart", () => {
   const current = doc(82);

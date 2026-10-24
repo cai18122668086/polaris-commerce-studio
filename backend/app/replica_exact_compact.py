@@ -77,9 +77,12 @@ SERVER_FIELDS = {
 }
 
 
-class CompactResponseInvalid(ReplicaNativeError):
+class CompactResponseInvalid(ReplicaAnalysisUnavailable):
     code = "REPLICA_MODEL_RESPONSE_INVALID"
     message = "图片分析结果未通过校验，本次已停止；原始素材和原因已保留。"
+
+    def __init__(self, detail: str) -> None:
+        ReplicaNativeError.__init__(self, detail)
 
 
 class CompactScreenBoundaryMismatch(ReplicaSegmentationInvalid):
@@ -345,7 +348,7 @@ def response_schema(phase: str) -> dict[str, Any]:
                 "unit_audits": arr(
                     obj(
                         {
-                            "unit_id": text(1, 40),
+                            "unit_id": {**text(4, 40), "pattern": r"^R[0-9]{3,}$"},
                             "fresh_pixel_observation": observation(),
                             "comparisons": comparisons(PLAN_DIMENSIONS),
                             "material_mismatches": arr(text()),
@@ -599,19 +602,47 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 }
             )
         if phase == "review_plan":
+            modules = {m["reference_unit_id"]: m for m in data["modules"]}
+            scopes = {
+                s["module_id"]: s
+                for s in data.get("_compact_scopes", {}).get("modules", [])
+            }
             return clean(
                 {
-                    **{
-                        k: data[k]
-                        for k in (
-                            "reference_units",
-                            "modules",
-                            "user_facts",
-                            "product_evidence",
-                        )
-                        if k in data
-                    },
-                    "module_scopes": data.get("_compact_scopes", {}),
+                    "audit_subject": "written_plan_before_rendering",
+                    "user_facts": data.get("user_facts", ""),
+                    "product_evidence": data.get("product_evidence", []),
+                    "review_targets": [
+                        {
+                            "reference_unit_id": u["id"],
+                            "reference_screen": {
+                                k: v for k, v in u.items() if k != "id"
+                            },
+                            "proposed_screen": {
+                                k: v
+                                for k, v in modules[u["id"]].items()
+                                if k not in {"id", "reference_unit_id"}
+                            },
+                            "identity_scope": {
+                                k: v
+                                for k, v in scopes.get(
+                                    modules[u["id"]]["id"], {}
+                                ).items()
+                                if k != "module_id"
+                            },
+                            "canvas_binding": {
+                                "reference_pixels": [
+                                    u["pixel_width"],
+                                    u["pixel_height"],
+                                ],
+                                "planned_pixels": [
+                                    modules[u["id"]]["output_canvas"]["width"],
+                                    modules[u["id"]]["output_canvas"]["height"],
+                                ],
+                            },
+                        }
+                        for u in data["reference_units"]
+                    ],
                 }
             )
         return clean(data)
@@ -924,6 +955,11 @@ class CompactExactReplicaRun(NativeReplicaRun):
         selected = self._inputs(phase, data, paths)
         sources = self.sources(selected)
         schema = response_schema(phase)
+        if phase == "review_plan":
+            audits = schema["properties"]["unit_audits"]
+            expected_ids = [u["id"] for u in data["reference_units"]]
+            audits["items"]["properties"]["unit_id"]["enum"] = expected_ids
+            audits.update(minItems=len(expected_ids), maxItems=len(expected_ids))
         if self.context.get("model_protocol", self.binding) != self.binding:
             raise CompactResponseInvalid("Frozen visual protocol context changed")
         self.context["model_protocol"] = self.binding
@@ -1001,6 +1037,14 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 errors = list(Draft202012Validator(schema).iter_errors(raw))
                 if errors:
                     first = errors[0]
+                    if phase == "review_plan" and list(first.absolute_path)[-1:] == [
+                        "unit_id"
+                    ]:
+                        raise ValueError(
+                            "unit_id must use a supplied reference_unit_id, "
+                            f"in this order: {expected_ids}; module IDs are not "
+                            "reference unit IDs"
+                        )
                     raise ValueError(
                         f"Response field {list(first.absolute_path)} "
                         f"violates {first.validator}"

@@ -13,6 +13,11 @@ Preserve its bounds, size tier, line group and carrier. Omit only unsupported
 non-dominant text, with a factual reason and the carrier retained. Do not add lines
 or carriers to fit surplus copy. Preserve functions explicitly supported by user
 facts; correcting one unsupported claim does not erase unrelated supported roles.
+Use explicit supported benefit claims to retain the relevant buyer education and
+benefit roles; do not reduce every screen to package numbers or neutral ingredient
+names. Adapt unsupported reference claims using this product's supplied facts and
+briefly explain the substitution in generation_brief. Keep the same visual
+mechanism and carrier; never invent the reference's enzyme, test result or number.
 
 Declare visible-product or context-only. Give identity checks for product forms
 actually present and explain inapplicable checks. A context-only scene excludes

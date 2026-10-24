@@ -61,6 +61,10 @@ export function TaskDrawer({
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
   const visibleJobs = jobs.data?.items.slice(0, 4) ?? [];
+  const { refetch: refetchJobs } = jobs;
+  useEffect(() => {
+    if (open) void refetchJobs();
+  }, [open, refetchJobs]);
   const runCancel = (job: (typeof visibleJobs)[number]) => {
     if (!allowsJobAction(job.allowed_actions, "cancel")) return;
     cancel.mutate({ jobId: job.id, allowedActions: job.allowed_actions });

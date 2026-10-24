@@ -150,12 +150,35 @@ def text(minimum: int = 8, maximum: int = 1200) -> dict[str, Any]:
     return {"type": "string", "minLength": minimum, "maxLength": maximum}
 
 
-def box(normalized: bool = True) -> dict[str, Any]:
-    return arr(
-        {"type": "integer", "minimum": 0, **({"maximum": 1000} if normalized else {})},
-        minItems=4,
-        maxItems=4,
+def rectangle(normalized: bool = True) -> dict[str, Any]:
+    limit = {"maximum": 1000} if normalized else {}
+    return obj(
+        {
+            "x": {"type": "integer", "minimum": 0, **limit},
+            "y": {"type": "integer", "minimum": 0, **limit},
+            "width": {"type": "integer", "minimum": 1, **limit},
+            "height": {"type": "integer", "minimum": 1, **limit},
+        }
     )
+
+
+def rectangle_edges(
+    rect: dict[str, int], width: int, height: int, field: str
+) -> list[int]:
+    """Translate an explicitly declared XYWH rectangle; never infer or clip it."""
+    if (
+        not isinstance(rect, dict)
+        or set(rect) != {"x", "y", "width", "height"}
+        or any(type(v) is not int for v in rect.values())
+    ):
+        raise ValueError(f"{field}: rect requires integer x, y, width and height")
+    x, y, w, h = (rect[k] for k in ("x", "y", "width", "height"))
+    if not (0 <= x < x + w <= width and 0 <= y < y + h <= height):
+        raise ValueError(
+            f"{field}: rect width/height must be positive and x+width/y+height "
+            f"must fit {width}x{height}; received {rect}"
+        )
+    return [x, y, x + w, y + h]
 
 
 def observation() -> dict[str, Any]:
@@ -192,20 +215,22 @@ def targets(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 def response_schema(phase: str) -> dict[str, Any]:
     index = {"type": "integer", "minimum": 0}
-    anchors = arr(obj({"label": text(2, 200), "bbox": box()}), minItems=1, maxItems=24)
+    anchors = arr(
+        obj({"label": text(2, 200), "rect": rectangle()}), minItems=1, maxItems=24
+    )
     if phase == "intake":
         return obj(
             {
                 "product_geometry": arr(text(), minItems=3),
                 "product_crops": arr(
-                    obj({"product_index": index, "bbox": box(False)}), minItems=1
+                    obj({"product_index": index, "rect": rectangle(False)}), minItems=1
                 ),
                 "columns": arr(
                     obj(
                         {
                             "reference_index": index,
                             "column_index": index,
-                            "bbox": box(False),
+                            "rect": rectangle(False),
                             "column_boundary_reason": text(12),
                         }
                     ),
@@ -250,7 +275,7 @@ def response_schema(phase: str) -> dict[str, Any]:
                         {
                             "product_index": index,
                             "readable_marks": arr(
-                                obj({"text": text(1, 2000), "bbox": box(False)})
+                                obj({"text": text(1, 2000), "rect": rectangle(False)})
                             ),
                             "uncertainty_notes": text(8, 4000),
                         }
@@ -277,7 +302,7 @@ def response_schema(phase: str) -> dict[str, Any]:
                 "font_tier": {"enum": ["dominant", "secondary", "small"]},
                 "line_group": text(1, 100),
                 "observed_text": text(0, 2000),
-                "bbox": box(),
+                "rect": rectangle(),
             }
         )
         return obj(
@@ -690,6 +715,23 @@ class CompactExactReplicaRun(NativeReplicaRun):
     ) -> dict[str, Any]:
         value = deepcopy(value)
         if phase == "intake":
+            for key, index_key, dimensions in (
+                ("product_crops", "product_index", data["product_dimensions"]),
+                ("columns", "reference_index", data["reference_dimensions"]),
+            ):
+                for i, row in enumerate(value[key]):
+                    index = row[index_key]
+                    if not 0 <= index < len(dimensions):
+                        raise ValueError(
+                            f"{key}[{i}] must name a supplied source index"
+                        )
+                    source = dimensions[index]
+                    row["bbox"] = rectangle_edges(
+                        row.pop("rect"),
+                        source["width"],
+                        source["height"],
+                        f"{key}[{i}]",
+                    )
             # Validate column bounds with the existing source-coordinate guard.
             # These provisional rows are never written as physical screen units.
             columns = value["columns"]
@@ -745,14 +787,32 @@ class CompactExactReplicaRun(NativeReplicaRun):
         elif phase == "product":
             sources = {p["product_index"]: p for p in data["products"]}
             for row in value["products"]:
-                row["source_sha256"] = sources.get(row["product_index"], {}).get(
-                    "sha256"
-                )
+                source = sources.get(row["product_index"])
+                if source is None:
+                    raise ValueError(
+                        "Product evidence must name a supplied source index"
+                    )
+                row["source_sha256"] = source["sha256"]
+                for i, mark in enumerate(row["readable_marks"]):
+                    mark["bbox"] = rectangle_edges(
+                        mark.pop("rect"),
+                        source["width"],
+                        source["height"],
+                        f"Product {row['product_index']} mark {i}",
+                    )
             validate_product_evidence(value, data["products"])
         elif phase == "layout":
             hashes = {u["id"]: u["crop_sha256"] for u in data["physical_units"]}
             for row in value["units"]:
                 row["reference_sha256"] = hashes.get(row["reference_unit_id"])
+                for key in ("layout_anchors", "text_regions"):
+                    for i, region in enumerate(row[key]):
+                        region["bbox"] = rectangle_edges(
+                            region.pop("rect"),
+                            1000,
+                            1000,
+                            f"Reference {row['reference_unit_id']} {key}[{i}]",
+                        )
             validate_reference_layouts(value, hashes)
         elif phase == "plan":
             value = materialize_plan(value, data)

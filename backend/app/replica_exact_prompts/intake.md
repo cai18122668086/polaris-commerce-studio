@@ -13,3 +13,8 @@ will split its internal screens; do not merge or choose those screens here.
 A self-contained poster remains one column even if it contains a card grid or
 several text columns. Separate parallel independent page strips, not the internal
 layout of one commercial screen.
+
+Every rect is an object with integer x, y, width, height in ORIGINAL image pixels.
+x/y locate its top-left corner; width/height are positive extents, not right/bottom
+edges. x+width and y+height must stay inside the supplied source dimensions. Return
+named rect objects; the server converts them to its internal edge coordinates.

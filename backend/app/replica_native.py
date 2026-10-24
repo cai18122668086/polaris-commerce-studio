@@ -375,6 +375,10 @@ def validate_module_constraints(
 
 
 class NativeReplicaRun:
+    observation_attempts = 3
+    contract_attempts = 3
+    planning_revisions = 3
+
     def __init__(
         self,
         method: str,
@@ -472,6 +476,9 @@ class NativeReplicaRun:
             / ("session.json" if self.method == "exact" else "artifacts/workflow.json")
         )
 
+    def image_prompt(self, prompt: str) -> str:
+        return prompt
+
     def path(self, relative: str) -> Path:
         return contained(self.root, relative)
 
@@ -535,18 +542,7 @@ class NativeReplicaRun:
             raise ReplicaInputTooLarge()
         return tuple(result)
 
-    async def ask(
-        self,
-        stage: str,
-        instruction: str,
-        context: Any,
-        *,
-        schemas: tuple[str, ...] = (),
-        paths: list[Path] | None = None,
-        bind_evidence: Callable[[dict[str, Any]], None] | None = None,
-    ) -> dict[str, Any]:
-        from .xinghe_agent import PlannerRequest
-
+    def report_stage_progress(self, stage: str) -> None:
         if self.on_progress is not None:
             phases = [
                 ("identity-segmentation-repair", 15, "校正参考图拆屏坐标"),
@@ -570,6 +566,19 @@ class NativeReplicaRun:
                     self.on_progress(progress, label)
                     break
 
+    async def ask(
+        self,
+        stage: str,
+        instruction: str,
+        context: Any,
+        *,
+        schemas: tuple[str, ...] = (),
+        paths: list[Path] | None = None,
+        bind_evidence: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        from .xinghe_agent import PlannerRequest
+
+        self.report_stage_progress(stage)
         documents = {
             "SKILL.md": (self.skill_root / "SKILL.md").read_text(encoding="utf-8-sig")
         }
@@ -740,7 +749,7 @@ class NativeReplicaRun:
                 ]
 
         error = ""
-        for attempt in range(3):
+        for attempt in range(self.contract_attempts):
             value = await self.ask(
                 f"{stage}-{attempt}",
                 instruction,
@@ -880,7 +889,7 @@ class NativeReplicaRun:
             self.run = contained(self.root, result["run"])
         observation: dict[str, Any] = {}
         errors: list[str] = []
-        for attempt in range(3):
+        for attempt in range(self.observation_attempts):
             observation = await self.ask(
                 "identity-segmentation"
                 if not attempt
@@ -1053,7 +1062,7 @@ class NativeReplicaRun:
             )
         fact_error = ""
         product_observation: dict[str, Any] = {}
-        for fact_attempt in range(3):
+        for fact_attempt in range(self.observation_attempts):
             product_observation = await self.ask(
                 f"exact-product-evidence-{fact_attempt}",
                 "Inspect ONLY these actual product originals, independently of any benchmark. "
@@ -1092,7 +1101,7 @@ class NativeReplicaRun:
             raise ReplicaNativeError(fact_error)
         layout_error = ""
         observed: dict[str, Any] = {}
-        for layout_attempt in range(3):
+        for layout_attempt in range(self.observation_attempts):
             observed = await self.ask(
                 f"exact-reference-layout-{layout_attempt}",
                 "Observe ONLY the attached reference crops BEFORE a replacement plan exists. "
@@ -1136,7 +1145,7 @@ class NativeReplicaRun:
         write_json(self.root / "context.json", self.context)
         previous_audit = self.context.get("prior_visual_audit")
         previous_plan: dict[str, Any] | None = None
-        for revision in range(3):
+        for revision in range(self.planning_revisions):
             plan = await self.contract(
                 f"exact-plan-r{revision}",
                 "Return the complete remix-plan.schema.json contract v6. Exactly one module per supplied "
@@ -1212,7 +1221,7 @@ class NativeReplicaRun:
             for m, e in zip(plan["modules"], evidence, strict=True)
         }
         scope_error = ""
-        for scope_attempt in range(3):
+        for scope_attempt in range(self.observation_attempts):
             constraints = await self.ask(
                 f"exact-module-constraints-{scope_attempt}",
                 "Before any generation, observe each physical reference crop and the approved plan. "
@@ -1491,6 +1500,8 @@ class NativeReplicaRun:
         }
 
     async def restore(self, snapshot: dict[str, Any]) -> None:
+        if snapshot.get("model_protocol") is not None and snapshot["model_protocol"] != getattr(self, "binding", None):
+            raise ReplicaNativeError("图片接入协议不匹配，请使用原协议恢复或重新诊断。")
         if (
             snapshot.get("source_hash") != self.source_hash
             or snapshot.get("skill_id") != self.skill_id

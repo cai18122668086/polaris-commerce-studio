@@ -2473,7 +2473,7 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
-        if request.planning_profile == "replica_native_contract":
+        if request.planning_profile in {"replica_native_contract", "replica_exact_compact"}:
             payload.update({"max_completion_tokens": 16000})
         elif request.planning_profile == refined_detail.PROFILE:
             payload.update({"max_completion_tokens": 24000})
@@ -10604,6 +10604,12 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "replica_exact_compact":
+        contract = json.loads(request.product_information[0])
+        return {"type": "json_schema", "json_schema": {
+            "name": "replica_exact_compact", "strict": False,
+            "schema": contract["response_schema"],
+        }}
     if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
         from .remix_fast_contract import response_format as remix_fast_response_format
 
@@ -10913,6 +10919,8 @@ def _planner_prompt(request: PlannerRequest) -> str:
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile == "replica_exact_compact":
+        return "Perform only this visual task. Server metadata is managed separately. Return the requested JSON.\n" + "\n".join(request.product_information)
     if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
         return ("Execute only the current fast Skill stage from attached image pixels. "
                 "Return the exact requested JSON contract.\n"

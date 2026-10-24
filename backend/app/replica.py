@@ -113,7 +113,10 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
             key: value
             for key, value in row.payload.items()
             if key
-            not in {"native_snapshot", "native_executions", "_automatic_submission"}
+            not in {
+                "native_snapshot", "native_executions", "_automatic_submission",
+                "_exact_model_protocol",
+            }
         },
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
@@ -472,7 +475,14 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
             app.state.settings
         )
         if payload.get("replication_method") in SKILLS:
-            run = NativeReplicaRun(
+            run_type = NativeReplicaRun
+            if payload.get("_exact_model_protocol"):
+                from .replica_exact_compact import run_class
+
+                run_type = run_class(
+                    payload["replication_method"], payload["_exact_model_protocol"]
+                )
+            run = run_type(
                 payload["replication_method"],
                 document_id,
                 workspace_id,
@@ -662,6 +672,12 @@ def analyse(
     if not request.app.state.settings.reference_remix_provider_enabled:
         raise ApiError(503, "REPLICA_DISABLED", "复刻生成服务暂未开放，请稍后再试。")
     values = payload.model_dump(mode="json")
+    if payload.replication_method == "exact" and workspace.workspace_id in getattr(
+        request.app.state.settings, "replica_exact_compact_workspaces", ()
+    ):
+        from .replica_exact_compact import VERSION
+
+        values["_exact_model_protocol"] = VERSION
     if payload.auto_start_after_plan:
         values["_automatic_submission"] = {
             "version": "replica-submission-v1",

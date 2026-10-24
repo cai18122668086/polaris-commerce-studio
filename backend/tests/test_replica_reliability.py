@@ -12,6 +12,7 @@ from app.provider import ProviderOutcome
 from app.replica_native import (
     NativeReplicaRun,
     ReplicaNativeError,
+    ReplicaPlanAuditRejected,
     validate_module_constraints,
 )
 from app.replica_native_provider import (
@@ -80,8 +81,10 @@ def test_untrusted_module_scope_must_cover_current_sources_and_valid_pixel_regio
         validate_module_constraints(invalid, {"M003": "a" * 64})
 
 
+@pytest.mark.parametrize("rejections", [0, 1, 2, 3])
 def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
     tmp_path,
+    rejections,
 ):
     run = run_at(tmp_path, "exact", SimpleNamespace())
     run.context = {
@@ -92,30 +95,55 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
     Image.new("RGB", (100, 120), "red").save(product)
     Image.new("RGB", (100, 200), "blue").save(reference)
     events, asks = [], []
+    plans = []
+    audit_calls = 0
+    failed_audit = {
+        "unit_audits": [
+            {
+                "unit_id": "R001",
+                "decision": "FAIL",
+                "material_mismatches": [
+                    "Correct only the observed synthetic text tier"
+                ],
+            }
+        ]
+    }
 
     def cli(command, **kwargs):
         events.append(command)
         return {}
 
     async def contract(stage, instruction, context, *args, **kwargs):
+        nonlocal audit_calls
         events.append(stage)
         if stage.startswith("exact-plan-audit"):
             assert context["user_facts"] == "Explicitly provided product facts"
             assert context["product_evidence"][0]["product_index"] == 0
+            audit_calls += 1
+            if audit_calls <= rejections:
+                raise ReplicaPlanAuditRejected(deepcopy(failed_audit))
             return {"pass": True}
+        assert context["previous_plan"] == (plans[-1] if plans else None)
+        if plans:
+            assert context["prior_visual_audit"] == failed_audit
+            assert "use that compiled plan as the repair base" in instruction
         evidence = context["physical_units"][0]
-        return {
+        plan = {
             "modules": [
                 {
                     "id": "M003",
                     "reference_unit_id": "R001",
                     "page_duty": "Product contents evidence",
-                    "generation_brief": "Preserve layout and visible real contents",
+                    "generation_brief": (
+                        f"Preserve layout and real contents, revision {len(plans)}"
+                    ),
                     "output_canvas": evidence["recommended_canvas"],
                     "copy_units": [],
                 }
             ]
         }
+        plans.append(deepcopy(plan))
+        return plan
 
     async def ask(stage, instruction, context, **kwargs):
         asks.append((stage, context, kwargs))
@@ -159,6 +187,31 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
         return value
 
     run.cli, run.contract, run.ask = cli, contract, ask
+    if rejections == 3:
+        with pytest.raises(ReplicaPlanAuditRejected) as failure:
+            asyncio.run(
+                NativeReplicaRun._prepare_exact(
+                    run,
+                    [product],
+                    [reference],
+                    [
+                        {
+                            "reference_index": 0,
+                            "column_index": 0,
+                            "screen_index": 0,
+                            "bbox": [0, 0, 100, 200],
+                            "screen_boundary_reason": (
+                                "One complete physical reference screen"
+                            ),
+                        }
+                    ],
+                    ["Observed visible food identity"],
+                )
+            )
+        assert failure.value.judgment == failed_audit
+        assert len(plans) == audit_calls == 3
+        assert "generate-next" not in events
+        return
     result = asyncio.run(
         NativeReplicaRun._prepare_exact(
             run,
@@ -176,7 +229,14 @@ def test_prepare_binds_scope_to_approved_crop_and_repairs_invalid_metadata(
             ["Observed visible food identity"],
         )
     )
-    assert events == ["start", "exact-plan-r0", "exact-plan-audit-r0"]
+    assert events == [
+        "start",
+        *[
+            stage
+            for revision in range(rejections + 1)
+            for stage in (f"exact-plan-r{revision}", f"exact-plan-audit-r{revision}")
+        ],
+    ]
     assert len(asks) == 4 and asks[3][1]["validation_error"]
     assert asks[0][2]["paths"] == [product]
     assert asks[1][2]["paths"] == [tmp_path / "crops/screen-000.png"]

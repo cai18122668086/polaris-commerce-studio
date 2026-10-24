@@ -1135,6 +1135,7 @@ class NativeReplicaRun:
         self.context["reference_layouts"] = layouts
         write_json(self.root / "context.json", self.context)
         previous_audit = self.context.get("prior_visual_audit")
+        previous_plan: dict[str, Any] | None = None
         for revision in range(3):
             plan = await self.contract(
                 f"exact-plan-r{revision}",
@@ -1163,11 +1164,17 @@ class NativeReplicaRun:
                 "and visible physical labels instead of silently rewriting either source. "
                 "A staged instruction or comparison needs distinct VISIBLE object states "
                 "and transitions, not merely stage labels next to one static bowl or object. "
-                "Use only product-supported or explicitly user-provided numerical instructions.",
+                "Use only product-supported or explicitly user-provided numerical instructions. "
+                "When previous_plan is supplied, use that compiled plan as the repair base. "
+                "Apply the prior audit's material corrections while retaining the already "
+                "correct geometry and supported copy. Preserve commercial functions that "
+                "the explicit user facts authorize; removing an unsupported claim must not "
+                "turn unrelated approved mechanisms into generic label lists.",
                 {
                     **self.context,
                     "physical_units": evidence,
                     "prior_visual_audit": previous_audit,
+                    "previous_plan": previous_plan,
                 },
                 "compile-plan",
                 "plan",
@@ -1197,6 +1204,7 @@ class NativeReplicaRun:
                 break
             except ReplicaPlanAuditRejected as error:
                 previous_audit = error.judgment
+                previous_plan = plan
         else:
             raise ReplicaPlanAuditRejected(previous_audit or {})
         expected = {

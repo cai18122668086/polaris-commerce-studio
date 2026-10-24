@@ -3,11 +3,13 @@
 This is a WRITTEN PLAN review BEFORE image generation. The attached images are
 product originals and reference crops. Compare the proposed directions and copy
 against those pixels; do not demand a generated image that does not exist yet.
-Each review_target already joins one reference to its proposed screen. Return its
-reference_unit_id as unit_id, in the supplied order. No module IDs are needed.
+Exactly one review_target joins the current crop to its proposal. Return its
+reference_unit_id as unit_id. Inspect only this pair; no module IDs are needed.
 
 Reopen the actual reference pixels and freshly observe each requested unit. Compare
 the proposed composition and supported copy in all eight ordered dimensions.
+Trace carrier edges and connections in the pixels before deciding how many lanes
+or objects exist; arrows or stages do not imply separate carriers.
 Count actual headline tiers and line groups, check subject bounds, carriers,
 edge content, commercial function and meaningful absences.
 

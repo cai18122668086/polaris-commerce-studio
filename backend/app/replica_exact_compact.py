@@ -126,7 +126,7 @@ def clean(value: Any) -> Any:
             for k, v in value.items()
             if k not in SERVER_FIELDS
             and not k.startswith("_")
-            and not k.endswith(("_path", "_paths", "_sha256"))
+            and (k in OBSERVATIONS or not k.endswith(("_path", "_paths", "_sha256")))
         }
     if isinstance(value, list):
         return [clean(v) for v in value]
@@ -418,6 +418,55 @@ def validate_review(
         )
 
 
+def plan_proposal(plan: dict[str, Any], unit_id: str) -> dict[str, Any]:
+    module = next(m for m in plan["modules"] if m["reference_unit_id"] == unit_id)
+    scope = next(
+        s for s in plan["_compact_scopes"]["modules"] if s["module_id"] == module["id"]
+    )
+    return {
+        k: deepcopy(v)
+        for source in (module, scope)
+        for k, v in source.items()
+        if k
+        in {
+            "reference_unit_id",
+            "visual_contract",
+            "page_duty",
+            "buyer_conclusion",
+            "generation_brief",
+            "copy_units",
+            "product_visibility",
+            "required_identity_checks",
+            "not_applicable_checks",
+            "text_bindings",
+        }
+    }
+
+
+def validate_copy_coverage(proposed: dict[str, Any]) -> None:
+    """Surplus approved text must not silently disappear from the render bindings."""
+    for index, copy in enumerate(proposed["copy_units"]):
+        covered: set[int] = set()
+        for binding in proposed["text_bindings"]:
+            if (
+                binding.get("action") != "render"
+                or binding.get("copy_unit_index") != index
+            ):
+                continue
+            fragment = binding["fragment"]
+            start = copy.find(fragment)
+            while start >= 0:
+                covered.update(range(start, start + len(fragment)))
+                start = copy.find(fragment, start + 1)
+        if any(not char.isspace() and i not in covered for i, char in enumerate(copy)):
+            raise ValueError(
+                f"{proposed['reference_unit_id']}: "
+                f"copy_units[{index}] has unbound text; "
+                "bind the complete copy within existing reference regions or remove "
+                "surplus copy. Do not add a carrier or another headline."
+            )
+
+
 def materialize_plan(value: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     requested = targets(data)
     if [m["reference_unit_id"] for m in value["modules"]] != [
@@ -452,6 +501,12 @@ def materialize_plan(value: dict[str, Any], data: dict[str, Any]) -> dict[str, A
             modules.append(deepcopy(old[uid]))
             continue
         proposed = replacements[uid]
+        validate_copy_coverage(proposed)
+        if uid in old and proposed == plan_proposal(prior, uid):
+            raise ValueError(
+                f"{uid}: a failed plan must actually change before another audit; "
+                "repair the proposal or bindings, never resample an unchanged FAIL"
+            )
         modules.append(
             {
                 "id": mid,
@@ -517,7 +572,7 @@ class CompactExactReplicaRun(NativeReplicaRun):
 
     observation_attempts = 1
     contract_attempts = 1
-    planning_revisions = 2
+    planning_revisions = 3
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -623,6 +678,9 @@ class CompactExactReplicaRun(NativeReplicaRun):
                         }
                         for m in prior.get("modules", [])
                     ],
+                    "previous_targets": [plan_proposal(prior, u["id"]) for u in units]
+                    if prior
+                    else [],
                     "prior_audit": data.get("prior_visual_audit"),
                 }
             )
@@ -866,6 +924,42 @@ class CompactExactReplicaRun(NativeReplicaRun):
         context: Any,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        if (
+            not stage.startswith("exact-module-constraints")
+            and phase_for(stage) == "review_plan"
+        ):
+            data = context.get("data", context)
+            audits = []
+            # Keep the same native full-set gate, but inspect one physical pair
+            # at a time instead of mixing every screen in one visual request.
+            for unit in data["reference_units"]:
+                module = next(
+                    m for m in data["modules"] if m["reference_unit_id"] == unit["id"]
+                )
+                scoped = {
+                    **data,
+                    "reference_units": [unit],
+                    "modules": [module],
+                    "_compact_scopes": {
+                        "modules": [
+                            s
+                            for s in data["_compact_scopes"]["modules"]
+                            if s["module_id"] == module["id"]
+                        ]
+                    },
+                }
+                options = {k: v for k, v in kwargs.items() if k != "paths"}
+                result = await self._ask_stage(
+                    f"{stage}-{unit['id']}",
+                    instruction,
+                    {
+                        "data": scoped,
+                        "validation_error": context.get("validation_error", ""),
+                    },
+                    **options,
+                )
+                audits.extend(result["unit_audits"])
+            return {"method": "AI_FRESH_REFERENCE_AUDIT", "unit_audits": audits}
         if stage.startswith("exact-module-constraints") or phase_for(stage) != "intake":
             return await self._ask_stage(stage, instruction, context, **kwargs)
         columns_observation = await self._ask_stage(

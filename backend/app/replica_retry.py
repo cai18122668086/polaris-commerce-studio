@@ -69,7 +69,9 @@ def retry_artwork_candidates(
 ) -> dict[str, RetryArtwork]:
     if current.get("method") != "exact" or any(
         previous.get(key) != current.get(key)
-        for key in ("schema", "method", "skill_id", "source_hash", "root")
+        for key in (
+            "schema", "method", "skill_id", "source_hash", "root", "model_protocol"
+        )
     ):
         return {}
     before, now = (

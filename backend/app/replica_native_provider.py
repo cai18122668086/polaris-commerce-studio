@@ -187,7 +187,12 @@ class NativeReplicaProvider:
             values, document_id, ordinal = self._load(request)
             execution = values.get("native_executions", {}).get(request.job_id, {})
             snapshot = execution.get("snapshot") or values["native_snapshot"]
-            run = NativeReplicaRun(
+            run_type = NativeReplicaRun
+            if snapshot.get("model_protocol"):
+                from .replica_exact_compact import run_class
+
+                run_type = run_class(values["replication_method"], snapshot["model_protocol"])
+            run = run_type(
                 values["replication_method"],
                 document_id,
                 request.workspace_id,
@@ -488,6 +493,7 @@ class NativeReplicaProvider:
                     "preview dimensions or a locally enlarged copy.\n"
                     + dispatch_prompt
                 )
+        dispatch_prompt = run.image_prompt(dispatch_prompt)
         bound_prompt = (
             dispatch_prompt
             + "\n\nIMAGE_BINDINGS="

@@ -187,12 +187,28 @@ class NativeReplicaProvider:
             values, document_id, ordinal = self._load(request)
             execution = values.get("native_executions", {}).get(request.job_id, {})
             snapshot = execution.get("snapshot") or values["native_snapshot"]
+            from .replica_execution_resume import (
+                budget_resume_source,
+                restore_execution,
+            )
+
+            resumed = (
+                None
+                if execution
+                else budget_resume_source(values, request, self.session_factory)
+            )
+            if resumed:
+                snapshot = resumed[0]
             run_type = NativeReplicaRun
             if snapshot.get("model_protocol"):
-                from .replica_exact_compact import run_class
+                from .replica_exact_compact import CompactExactReplicaRun, run_class
 
-                run_type = run_class(
-                    values["replication_method"], snapshot["model_protocol"]
+                run_type = (
+                    CompactExactReplicaRun
+                    if resumed
+                    else run_class(
+                        values["replication_method"], snapshot["model_protocol"]
+                    )
                 )
             run = run_type(
                 values["replication_method"],
@@ -202,7 +218,10 @@ class NativeReplicaProvider:
                 self.storage,
                 root=Path(snapshot["root"]),
             )
-            await run.restore(snapshot)
+            if resumed:
+                await restore_execution(run, snapshot, resumed[1])
+            else:
+                await run.restore(snapshot)
             initial_calls = len(run.usage)
             delivery = execution.get("delivery", [])
             if not delivery:

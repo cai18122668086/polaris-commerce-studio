@@ -148,6 +148,14 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
             "部分方案仍未通过校验，已完成的规划和素材已保留。"
             "请先调整未通过的方案，再继续处理。"
         )
+    if (
+        row.status == "failed"
+        and row.payload.get("error_code") == "REPLICA_ANALYSIS_BUDGET_REACHED"
+        and row.payload.get("job_ids")
+    ):
+        value["payload"]["error"] = (
+            "本次处理已中断，已完成的图片和审图记录已保留。可继续处理剩余步骤。"
+        )
     if row.payload.get("auto_start_after_plan") is True:
         value["payload"]["plans"] = [
             {"reference": plan["reference"], "analysis": {}, "prompt": ""}
@@ -586,6 +594,7 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
         if payload.get("replication_method") in SKILLS:
             run_type = NativeReplicaRun
             if payload.get("_exact_model_protocol"):
+                from .replica_exact_compact import VERSION as compact_version
                 from .replica_exact_compact import run_class
 
                 run_type = run_class(
@@ -599,7 +608,7 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 and revision.get("parent_protocol") == parent.get("model_protocol")
                 and payload.get("_analysis_input_hash")
                 == _analysis_input_hash(payload, "exact-compact-v2")
-                and payload.get("_exact_model_protocol") == "exact-compact-v3"
+                and payload.get("_exact_model_protocol") == compact_version
             )
             if (
                 revision
@@ -655,9 +664,6 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
             run.on_progress = progress_updated
             if hasattr(run, "on_checkpoint"):
                 run.on_checkpoint = checkpoint_updated
-                run.analysis_timeout_seconds = getattr(
-                    app.state.settings, "replica_exact_analysis_timeout_seconds", 1800
-                )
             plans = await run.prepare(payload, records)
             snapshot = await run.snapshot()
             binding = {
@@ -1247,7 +1253,12 @@ def retry_image(
         **{
             key: value
             for key, value in values.items()
-            if key not in {"execution_progress", "error", "error_code"}
+            if key
+            not in (
+                {"error", "error_code"}
+                if values.get("error_code") == "REPLICA_ANALYSIS_BUDGET_REACHED"
+                else {"execution_progress", "error", "error_code"}
+            )
         },
         "job_ids": list(jobs),
         "retry_events": [

@@ -1,10 +1,10 @@
 # Independently audit proposed screens
 
-This is a WRITTEN PLAN review BEFORE image generation. The attached images are
-product originals and reference crops. Compare the proposed directions and copy
-against those pixels; do not demand a generated image that does not exist yet.
-Exactly one review_target joins the current crop to its proposal. Return its
+Review a WRITTEN PLAN before generation. Images are product originals and one
+reference crop; no generated image exists yet. Return this review_target's
 reference_unit_id as unit_id. Inspect only this pair; no module IDs are needed.
+Layout rects are normalized 0..1000 on BOTH axes, not output pixels. Scale them
+to the full canvas. Product-mark rects use original product-image pixels.
 
 Reopen the actual reference pixels and freshly observe each requested unit. Compare
 the proposed composition and supported copy in all eight ordered dimensions.
@@ -13,17 +13,15 @@ or objects exist; arrows or stages do not imply separate carriers.
 Count actual headline tiers and line groups, check subject bounds, carriers,
 edge content, commercial function and meaningful absences.
 
-Read both explicit user facts and original product evidence. Distinguish lack of
-photo evidence from a direct contradiction; do not deny a user-authorized claim
-merely because it is absent from the photo. Do not authorize invented claims.
-Assess the commercial mechanism after truthful product adaptation: supported
-benefit education, ingredient evidence, comparisons and instructions can use this
-product's facts. Do not require a copied ingredient, enzyme, percentage or claim
-that this product does not support. Preserve the carrier, hierarchy and buyer
-question where supported; fail when an authorized benefit is needlessly erased
-or a visual process becomes a generic ingredient list. A justified replacement
-of an unsupported claim is not itself a missing screen or a visual failure.
+Use the shared resolved_facts and the proposal's fact_adaptations. Check that copy
+uses approved supporting facts and that a truthful substitution preserves its
+declared visual mechanism. Do not reopen the raw fact conflict, demand an excluded
+reference claim, or reject an approved benefit because packaging does not mention it.
+Still fail an erased approved benefit or a visual process changed into a generic
+ingredient list. A justified substitution does not constitute a missing screen.
 
 Return the actual verdict with specific evidence per dimension and all material
 differences. PASS requires every comparison to match and no material difference.
 Do not repeat the proposed observation as a fresh observation or soften a failure.
+Scope this review to this proposal. Unchanged valid reviews of other screens are
+retained by the server; do not redesign another screen or re-open global choices.

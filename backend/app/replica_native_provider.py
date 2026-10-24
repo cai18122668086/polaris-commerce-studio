@@ -16,7 +16,6 @@ from .models import JobItemRecord, JobRecord, ReplicaDocumentRecord, utc_now
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
 from .replica_layout import exact_review_context
 from .replica_native import (
-    VISUAL_EVIDENCE_POLICY,
     VISUAL_EVIDENCE_POLICY_VERSION,
     NativeReplicaRun,
     ReplicaAnalysisUnavailable,
@@ -508,7 +507,7 @@ class NativeReplicaProvider:
             "its passed regions and correct only the audited mismatches using the "
             "original product evidence."
             + "\n\n"
-            + VISUAL_EVIDENCE_POLICY
+            + run.generation_policy()
             + "\nThe separately bound format_canvas, when present, defines only the exact "
             f"{canvas[0]}x{canvas[1]} output boundary. Its white pixels are not a background "
             "reference. Paint the full requested canvas using the composition reference's "
@@ -518,8 +517,12 @@ class NativeReplicaProvider:
             getattr(run, "context", {}).get("module_constraints", {}).get(key)
         )
         if module_constraints:
+            adapt_evidence = getattr(run, "model_module_evidence", None)
             bound_prompt += "\nAPPROVED_MODULE_EVIDENCE=" + json.dumps(
-                module_constraints, ensure_ascii=False
+                adapt_evidence(module_constraints)
+                if callable(adapt_evidence)
+                else module_constraints,
+                ensure_ascii=False,
             )
             if module_constraints.get("text_bindings") is not None:
                 bound_prompt += (

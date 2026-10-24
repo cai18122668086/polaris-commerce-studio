@@ -8,10 +8,23 @@ export type ReplicaProgressDocument = {
     job_ids?: string[];
     submission_complete?: boolean;
     execution_progress?: { percentage: number };
+    analysis_progress?: { stage: string; total: number; planned: number; reviewed: number; accepted: number; pending_corrections: number };
   };
 };
 
 const terminal = new Set(["completed", "partial", "failed", "cancelled"]);
+
+export function replicaAnalysisMessage(document: ReplicaProgressDocument): string | undefined {
+  const progress = document.payload.analysis_progress;
+  if (!progress) return undefined;
+  if (progress.total > 0) {
+    if (progress.accepted === progress.total) return `${progress.total} 屏方案已确认，正在准备生成`;
+    if (progress.stage === "review_plan") return `已确认 ${progress.accepted} / ${progress.total} 屏方案，正在处理剩余部分`;
+    if (progress.stage === "plan") return `已规划 ${progress.planned} / ${progress.total} 屏${progress.pending_corrections ? "，正在调整剩余方案" : "，保留整套画面的顺序与风格"}`;
+  }
+  if (progress.stage === "facts" || progress.stage === "product") return "正在统一商品信息，供整套画面使用";
+  return undefined;
+}
 
 export function replicaWorkflowStep(document: ReplicaProgressDocument | undefined, jobStatuses: Readonly<Record<string, string>>): number {
   if (!document) return 0;

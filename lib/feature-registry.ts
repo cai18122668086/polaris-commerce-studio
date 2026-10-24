@@ -55,6 +55,7 @@ export type FeatureDefinition = {
   tone: "coral" | "amber" | "indigo" | "cyan" | "green" | "rose";
   badge?: string;
   skillId: string;
+  skillVariants?: Readonly<Record<string, string>>;
   jobType: FeatureJobType;
   taskPreset?: ProductImagePreset;
   presetSlug?: ProductImagePresetSlug;
@@ -405,17 +406,18 @@ export const FEATURE_REGISTRY = [
     icon: Images,
     tone: "indigo",
     badge: "新功能",
-    skillId: "reference-visual-reverse-remix",
+    skillId: "aurora-ecommerce-reference-remix",
+    skillVariants: { exact: "aurora-ecommerce-reference-remix", style: "all-category-style-benchmark-still" },
     jobType: "reference_remix",
     runtimeCapability: "reference_remix",
     workspaceTemplate: "product_image",
     inputRoles: ["product_reference", "style_reference"],
     resultTemplate: "result_grid",
-    completionPolicy: "independent_images",
+    completionPolicy: "native_replica_accepted_set",
     supportsAssetPicker: true,
     supportsMultiSelect: true,
-    supportsZipDownload: true,
-    supportsContinueEditing: true,
+    supportsZipDownload: false,
+    supportsContinueEditing: false,
     searchKeywords: ["一键复刻", "商品复刻", "链接复刻", "参考图", "淘宝", "天猫", "1688", "京东"],
     aliases: ["爆款复刻", "风格复刻"],
     featured: true,

@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 from urllib.request import Request as UrlRequest
@@ -34,6 +36,7 @@ from .replica_native import (
     NativeReplicaRun,
     ReplicaAnalysisUnavailable,
     ReplicaInputTooLarge,
+    ReplicaNativeError,
     ReplicaPlanAuditRejected,
     ReplicaSegmentationInvalid,
     native_accounting,
@@ -114,13 +117,22 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
             for key, value in row.payload.items()
             if key
             not in {
-                "native_snapshot", "native_executions", "_automatic_submission",
+                "native_snapshot",
+                "native_executions",
+                "_automatic_submission",
                 "_exact_model_protocol",
+                "_analysis_checkpoint",
+                "_analysis_input_hash",
             }
         },
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
     }
+    value["payload"]["analysis_resume_available"] = (
+        bool(row.payload.get("_analysis_checkpoint"))
+        and row.status == "failed"
+        and not row.payload.get("job_ids")
+    )
     if row.payload.get("auto_start_after_plan") is True:
         value["payload"]["plans"] = [
             {"reference": plan["reference"], "analysis": {}, "prompt": ""}
@@ -439,7 +451,28 @@ async def _analyse(app: Any, document_id: str, attempt_id: str) -> None:
         )
     async with slots:
         if _analysis_current(app, document_id, attempt_id):
-            await _analyse_document(app, document_id, attempt_id)
+
+            async def heartbeat() -> None:
+                while True:
+                    await asyncio.sleep(30)
+                    with app.state.session_factory() as session:
+                        row = session.get(ReplicaDocumentRecord, document_id)
+                        if (
+                            row is None
+                            or row.status != "analysing"
+                            or row.payload.get("analysis_attempt_id") != attempt_id
+                        ):
+                            return
+                        row.updated_at = utc_now()
+                        session.commit()
+
+            pulse = asyncio.create_task(heartbeat())
+            try:
+                await _analyse_document(app, document_id, attempt_id)
+            finally:
+                pulse.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await pulse
             from .replica_auto_start import submit_automatic
 
             await submit_automatic(app, document_id, attempt_id)
@@ -452,6 +485,7 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
         row = session.get(ReplicaDocumentRecord, document_id)
         workspace_id, payload = row.workspace_id, dict(row.payload)
     plans = list(payload.get("plans", []))
+    run = None
     try:
         with app.state.session_factory() as session:
             assets = get_ready_assets(
@@ -482,16 +516,50 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 run_type = run_class(
                     payload["replication_method"], payload["_exact_model_protocol"]
                 )
+            input_hash = _hash(
+                {
+                    key: payload.get(key)
+                    for key in (
+                        "product_asset_ids",
+                        "references",
+                        "facts",
+                        "language",
+                        "platform_code",
+                        "replication_method",
+                        "_exact_model_protocol",
+                    )
+                }
+            )
+            checkpoint = (
+                payload.get("_analysis_checkpoint")
+                if payload.get("_analysis_input_hash") == input_hash
+                else None
+            )
             run = run_type(
                 payload["replication_method"],
                 document_id,
                 workspace_id,
                 gateway,
                 app.state.storage,
+                **({"root": Path(checkpoint["root"])} if checkpoint else {}),
             )
-            run.root = run.root / payload["analysis_attempt_id"]
-            run.root.mkdir(parents=True, exist_ok=True)
-            run.run = run.root
+            if checkpoint:
+                await run.restore(checkpoint)
+            else:
+                run.root = run.root / payload["analysis_attempt_id"]
+                run.root.mkdir(parents=True, exist_ok=True)
+                run.run = run.root
+
+            async def checkpoint_updated() -> None:
+                if not _analysis_current(app, document_id, attempt_id):
+                    raise ReplicaNativeError("Analysis attempt is no longer current")
+                payload.update(
+                    _analysis_checkpoint=await run.snapshot(),
+                    _analysis_input_hash=input_hash,
+                    analysis_progress=run.context.get("analysis_progress", {}),
+                    analysis_accounting=native_accounting(run.usage),
+                )
+                _save(app, document_id, "analysing", dict(payload))
 
             def progress_updated(progress: int, label: str) -> None:
                 # Replanning is additional work in the same attempt, not a reset.
@@ -502,6 +570,11 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 _save(app, document_id, "analysing", dict(payload))
 
             run.on_progress = progress_updated
+            if hasattr(run, "on_checkpoint"):
+                run.on_checkpoint = checkpoint_updated
+                run.analysis_timeout_seconds = getattr(
+                    app.state.settings, "replica_exact_analysis_timeout_seconds", 1800
+                )
             plans = await run.prepare(payload, records)
             snapshot = await run.snapshot()
             binding = {
@@ -637,6 +710,11 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
         payload["plan_hash"] = _hash(plans)
         _save(app, document_id, "awaiting_confirmation", payload)
     except Exception as error:
+        save_checkpoint = getattr(run, "checkpoint", None)
+        if callable(save_checkpoint):
+            # Preserve the primary failure if checkpoint storage is unavailable.
+            with suppress(Exception):
+                await save_checkpoint()
         _save(
             app,
             document_id,
@@ -724,7 +802,13 @@ def retry_analysis(
         for key, value in row.payload.items()
         if key not in {"error", "error_code"}
     }
-    row.payload = {**row.payload, "analysis_attempt_id": uuid4().hex, "progress": 0}
+    row.payload = {
+        **row.payload,
+        "analysis_attempt_id": uuid4().hex,
+        "progress": row.payload.get("progress", 0)
+        if row.payload.get("_analysis_checkpoint")
+        else 0,
+    }
     session.commit()
     background_tasks.add_task(
         _analyse, request.app, row.id, row.payload["analysis_attempt_id"]

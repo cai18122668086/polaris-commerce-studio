@@ -219,6 +219,7 @@ class Settings(BaseSettings):
     xinghe_concurrency: int = Field(default=6, ge=1, le=32)
     replica_analysis_concurrency: int = Field(default=4, ge=1, le=16)
     replica_exact_compact_workspaces: tuple[str, ...] = ()
+    replica_exact_analysis_timeout_seconds: float = Field(default=1800, gt=0, le=3600)
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)
     xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)

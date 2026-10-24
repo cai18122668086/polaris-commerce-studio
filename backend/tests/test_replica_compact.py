@@ -20,6 +20,7 @@ from app.replica_exact_compact import (
     PLAN_DIMENSIONS,
     CompactExactReplicaRun,
     CompactResponseInvalid,
+    model_geometry,
     protocol_binding,
     rectangle_edges,
     run_class,
@@ -115,6 +116,21 @@ class SyntheticGateway:
                     }
                 ]
             }
+        elif phase == "facts":
+            value = {
+                "facts": [
+                    {
+                        "id": f"F{i + 1:03}",
+                        "statement": row["text"],
+                        "disposition": "approved",
+                        "kind": "other",
+                        "user_statement_ids": [row["id"]],
+                        "product_marks": [],
+                        "reason": "Explicit synthetic statement, no contradiction",
+                    }
+                    for i, row in enumerate(data["user_statements"])
+                ]
+            }
         elif phase == "layout":
             value = {
                 "units": [
@@ -185,6 +201,21 @@ class SyntheticGateway:
                                 "fragment": "Supported synthetic product",
                             }
                         ],
+                        **(
+                            {
+                                "fact_adaptations": [
+                                    {
+                                        "region_id": "headline",
+                                        "mode": "supported_copy",
+                                        "fact_ids": ["F001"],
+                                        "reason": "Approved synthetic headline fact",
+                                        "preserved_mechanism": "Same headline layout",
+                                    }
+                                ]
+                            }
+                            if "resolved_facts" in data
+                            else {}
+                        ),
                     }
                     for u in data["requested_units"]
                 ]
@@ -300,8 +331,8 @@ def test_compact_preparation_uses_real_guard_and_server_owned_metadata(tmp_path)
     run.on_progress = lambda value, label: progress.append(value)
     result = asyncio.run(run.prepare(payload, records))
     assert len(result) == 2 and run.state()["state"] == "READY"
-    assert len(gateway.requests) == 8  # Independent count and two focused audits.
-    assert progress == [12, 12, 12, 24, 30, 48, 82, 82, 92]
+    assert len(gateway.requests) == 10  # Includes one shared fact resolution.
+    assert progress == [12, 12, 12, 24, 30, 48, 48, 82, 82, 92]
     for request in gateway.requests:
         assert request.planning_profile == "replica_exact_compact"
         assert len(request.system_prompt) < 4000
@@ -311,6 +342,7 @@ def test_compact_preparation_uses_real_guard_and_server_owned_metadata(tmp_path)
         envelope = json.loads(request.product_information[0])
         assert "crop_path" not in json.dumps(envelope)
         assert "sha256" not in json.dumps(envelope)
+        assert '"bbox"' not in json.dumps(envelope)
         assert len(envelope["image_order"]) == len(request.sources)
     state = run.state()
     assert state["plan"]["sequence_contract"]["source_unit_order"] == ["R001", "R002"]
@@ -333,11 +365,11 @@ def test_compact_preparation_uses_real_guard_and_server_owned_metadata(tmp_path)
         if json.loads(r.product_information[0])["stage"] == "plan"
     )
     assert (
-        len(plan.sources) == 3
-    )  # Original + two screen crops, no duplicate auxiliary views.
+        len(plan.sources) == 2
+    )  # Original + only the current screen, no neighboring crop.
 
 
-def test_plan_revision_replaces_only_failed_unit_and_keeps_full_native_audit(tmp_path):
+def test_plan_revision_replaces_failed_unit_and_reuses_unchanged_pass(tmp_path):
     run, gateway, payload, records = setup_run(
         tmp_path, SyntheticGateway(reject_first=True)
     )
@@ -348,7 +380,8 @@ def test_plan_revision_replaces_only_failed_unit_and_keeps_full_native_audit(tmp
         if json.loads(r.product_information[0])["stage"] == "plan"
     ]
     assert [[u["id"] for u in p["context"]["requested_units"]] for p in plans] == [
-        ["R001", "R002"],
+        ["R001"],
+        ["R002"],
         ["R002"],
     ]
     reviews = [
@@ -356,14 +389,14 @@ def test_plan_revision_replaces_only_failed_unit_and_keeps_full_native_audit(tmp
         for r in gateway.requests
         if json.loads(r.product_information[0])["stage"] == "review_plan"
     ]
-    assert len(reviews) == 4 and all(len(r.sources) == 2 for r in reviews)
+    assert len(reviews) == 3 and all(len(r.sources) == 2 for r in reviews)
     assert [
         json.loads(r.product_information[0])["context"]["review_targets"][0][
             "reference_unit_id"
         ]
         for r in reviews
-    ] == ["R001", "R002", "R001", "R002"]
-    previous = plans[1]["context"]["previous_targets"]
+    ] == ["R001", "R002", "R002"]
+    previous = plans[2]["context"]["previous_targets"]
     assert len(previous) == 1 and previous[0]["reference_unit_id"] == "R002"
     assert previous[0]["generation_brief"] and previous[0]["visual_contract"]
     assert set(previous[0]["visual_contract"]) == set(OBSERVATIONS)
@@ -390,7 +423,8 @@ def test_written_plan_review_joins_source_and_proposal_without_module_aliases(tm
     )
     data = review["context"]
     assert data["audit_subject"] == "written_plan_before_rendering"
-    assert data["user_facts"] == payload["facts"]
+    assert "user_facts" not in data
+    assert data["resolved_facts"]["facts"][0]["statement"] == payload["facts"]
     assert "M001" not in json.dumps(data) and "M002" not in json.dumps(data)
     assert [t["reference_unit_id"] for t in data["review_targets"]] == ["R001"]
     for target in data["review_targets"]:
@@ -406,6 +440,79 @@ def test_written_plan_review_joins_source_and_proposal_without_module_aliases(tm
     schema = review["response_schema"]["properties"]["unit_audits"]
     assert schema["minItems"] == schema["maxItems"] == 1
     assert schema["items"]["properties"]["unit_id"]["enum"] == ["R001"]
+
+
+def test_model_geometry_declares_units_and_preserves_native_coordinates():
+    native = {
+        "layout_anchors": [{"label": "bottom scene", "bbox": [50, 750, 350, 1000]}]
+    }
+    before = deepcopy(native)
+    model = model_geometry(native, "normalized_0_1000")
+    assert model["coordinate_space"] == "normalized_0_1000"
+    rect = model["layout_anchors"][0]["rect"]
+    assert rect == {"x": 50, "y": 750, "width": 300, "height": 250}
+    # Regression: y=1000 is the bottom of a 1916px canvas, not 52% of it.
+    assert (rect["y"] + rect["height"]) * 1916 / 1000 == 1916
+    assert native == before and '"bbox"' not in json.dumps(model)
+    marks = model_geometry(
+        {"readable_marks": [{"text": "Original mark", "bbox": [50, 1500, 300, 1760]}]},
+        "original_product_image_pixels",
+    )
+    assert marks["coordinate_space"] == "original_product_image_pixels"
+    assert (
+        marks["readable_marks"][0]["rect"]["y"]
+        + marks["readable_marks"][0]["rect"]["height"]
+        == 1760
+    )
+
+
+@pytest.mark.parametrize("box", [[0, 5, 10, 4], [False, 0, 10, 10], [0, 0, 100, 1200]])
+def test_invalid_native_geometry_never_gets_guessed_or_clipped(box):
+    with pytest.raises(CompactResponseInvalid, match="invalid edges"):
+        model_geometry({"layout_anchors": [{"bbox": box}]}, "normalized_0_1000")
+
+
+def test_single_screen_plans_assemble_once_after_all_unit_validation(tmp_path):
+    gateway = SyntheticGateway()
+    original = gateway.plan
+    requests = []
+
+    async def plan(request):
+        envelope = json.loads(request.product_information[0])
+        if envelope["stage"] == "plan":
+            data = envelope["context"]
+            uid = data["requested_units"][0]["id"]
+            assert len(data["requested_units"]) == 1
+            assert list(data["reference_layouts"]) == [uid]
+            assert (
+                data["reference_layouts"][uid]["coordinate_space"]
+                == "normalized_0_1000"
+            )
+            assert (
+                data["product_evidence"][0]["coordinate_space"]
+                == "original_product_image_pixels"
+            )
+            assert [
+                row["reference_unit_id"]
+                for row in envelope["image_order"]
+                if row["role"] == "reference_screen"
+            ] == [uid]
+            schema = envelope["response_schema"]["properties"]["modules"]
+            assert schema["minItems"] == schema["maxItems"] == 1
+            assert schema["items"]["properties"]["reference_unit_id"]["enum"] == [uid]
+            assert len(data["sequence_roles"]) == 2
+            assert run.state()["state"] == "STARTED" and run.state()["plan"] is None
+            requests.append(uid)
+        return await original(request)
+
+    gateway.plan = plan
+    run, _, payload, records = setup_run(tmp_path, gateway)
+    asyncio.run(run.prepare(payload, records))
+    assert requests == ["R001", "R002"]
+    assert [
+        (m["id"], m["reference_unit_id"]) for m in run.state()["plan"]["modules"]
+    ] == [("M001", "R001"), ("M002", "R002")]
+    assert run.state()["state"] == "READY" and not gateway.image_requests
 
 
 def test_named_xywh_observations_become_native_edge_bounds_without_guessing(tmp_path):
@@ -541,7 +648,7 @@ def test_wrong_module_alias_can_be_corrected_without_resampling_valid_fail(tmp_p
     run, _, payload, records = setup_run(tmp_path, gateway)
     asyncio.run(run.prepare(payload, records))
     assert (
-        len(seen) == 5
+        len(seen) == 4
     )  # Invalid field correction, real FAIL, fresh revised-plan audit.
     assert "reference_unit_id" in seen[1]["validation_error"]
     plans = [
@@ -549,7 +656,7 @@ def test_wrong_module_alias_can_be_corrected_without_resampling_valid_fail(tmp_p
         for r in gateway.requests
         if json.loads(r.product_information[0])["stage"] == "plan"
     ]
-    assert len(plans) == 2
+    assert len(plans) == 3
     assert run.state()["state"] == "READY" and not gateway.image_requests
     original_plan = read_json(next(tmp_path.glob("contracts/exact-plan-r0-0-*.json")))
     repaired_plan = read_json(next(tmp_path.glob("contracts/exact-plan-r1-0-*.json")))
@@ -822,6 +929,7 @@ def test_native_generation_repairs_once_and_finalizes_original_output_bytes(tmp_
     run, gateway, payload, records = setup_run(tmp_path)
     gateway.reject_artwork_once = True
     asyncio.run(run.prepare(payload, records))
+    constraints_before = deepcopy(run.context["module_constraints"])
     provider = NativeReplicaProvider(None, gateway, run.storage)
 
     async def save(*args, **kwargs):
@@ -838,13 +946,28 @@ def test_native_generation_repairs_once_and_finalizes_original_output_bytes(tmp_
     assert run.state()["state"] == "FINALIZED" and len(outputs) == 2
     assert len(gateway.image_requests) == 3
     assert [len(m["attempts"]) for m in run.state()["modules"]] == [2, 1]
-    assert gateway.artwork_reviews == {"M001": 3, "M002": 1}
+    assert gateway.artwork_reviews == {"M001": 2, "M002": 1}
     assert all("Return its JSON" not in r.prompt for r in gateway.image_requests)
     assert all(
         "The target language for new poster copy is" in r.prompt
         for r in gateway.image_requests
     )
     assert len({digest(Path(p).read_bytes()) for p in outputs}) == 2
+    for image_request in gateway.image_requests:
+        evidence = json.loads(
+            image_request.prompt.split("\nAPPROVED_MODULE_EVIDENCE=", 1)[
+                1
+            ].splitlines()[0]
+        )
+        assert evidence["coordinate_space"] == "normalized_0_1000"
+        assert '"bbox"' not in json.dumps(evidence)
+        assert evidence["text_bindings"][0]["rect"] == {
+            "x": 80,
+            "y": 40,
+            "width": 840,
+            "height": 140,
+        }
+    assert run.context["module_constraints"] == constraints_before
     for path, module in zip(outputs, run.state()["modules"], strict=True):
         assert module["attempts"][-1]["judgment"]["derived_decision"] == "PASS"
         assert (
@@ -857,8 +980,9 @@ def test_native_generation_repairs_once_and_finalizes_original_output_bytes(tmp_
     assert sum(b["role"] == "product_original" for b in bindings) == 1
 
 
+@pytest.mark.parametrize("interrupted", [False, True])
 def test_normal_http_submission_worker_history_and_original_download(
-    client, monkeypatch, tmp_path
+    client, monkeypatch, tmp_path, interrupted
 ):
     from sqlalchemy import select
 
@@ -869,6 +993,23 @@ def test_normal_http_submission_worker_history_and_original_download(
     client.app.state.settings.reference_remix_provider_enabled = True
     client.app.state.settings.replica_exact_compact_workspaces = ("ws_test",)
     gateway = SyntheticGateway()
+    original_plan = gateway.plan
+    failed_once = False
+
+    async def interrupt_one_review(request):
+        nonlocal failed_once
+        result = await original_plan(request)
+        if (
+            interrupted
+            and not failed_once
+            and "exact-plan-audit-r0-0-R002" in request.group_key
+        ):
+            failed_once = True
+            result.error_code = "SYNTHETIC_TRANSPORT_FAILURE"
+            result.payload = None
+        return result
+
+    gateway.plan = interrupt_one_review
     client.app.state.replica_gateway = gateway
     client.app.state.task_runner = MockTaskRunner(
         client.app.state.session_factory,
@@ -911,10 +1052,27 @@ def test_normal_http_submission_worker_history_and_original_download(
     )
     assert response.status_code == 202, response.text
     document = client.get(route + "/documents/" + response.json()["id"]).json()
+    if interrupted:
+        assert document["status"] == "failed", document
+        assert document["payload"]["analysis_resume_available"] is True
+        assert document["payload"]["analysis_progress"]["accepted"] == 1
+        assert "_analysis_checkpoint" not in document["payload"]
+        assert "analysis_accounting" in document["payload"]
+        before = len(gateway.requests)
+        retry = client.post(route + "/sessions/" + document["id"] + "/retry", json={})
+        assert retry.status_code == 202, retry.text
+        assert retry.json()["payload"]["progress"] == document["payload"]["progress"]
+        assert (
+            retry.json()["payload"]["analysis_attempt_id"]
+            != document["payload"]["analysis_attempt_id"]
+        )
+        document = client.get(route + "/documents/" + document["id"]).json()
+        # All completed observations, facts, plans and the first PASS survive.
+        assert len(gateway.requests) == before + 1
     assert document["status"] == "generating", document
     assert len(document["payload"]["job_ids"]) == 1
     assert "_exact_model_protocol" not in document["payload"]
-    assert len(gateway.requests) == 8
+    assert len(gateway.requests) == 10 + int(interrupted)
     for _ in range(2):
         client.get(route + "/documents/" + document["id"])
     with client.app.state.session_factory() as session:
@@ -971,7 +1129,7 @@ def test_repeated_plan_failure_stops_after_two_directed_repairs(tmp_path):
     with pytest.raises(ReplicaPlanAuditRejected):
         asyncio.run(run.prepare(payload, records))
     phases = [json.loads(r.product_information[0])["stage"] for r in gateway.requests]
-    assert phases.count("plan") == 3 and phases.count("review_plan") == 6
+    assert phases.count("plan") == 4 and phases.count("review_plan") == 4
     assert not gateway.image_requests
     assert run.state()["state"] == "PLAN_REJECTED"
 
@@ -1019,7 +1177,7 @@ def test_unbound_copy_is_rejected_before_plan_review(tmp_path, partial):
     assert not gateway.image_requests
 
 
-def test_later_fresh_finding_repairs_current_failed_target_only(tmp_path):
+def test_unchanged_pass_is_not_reopened_when_another_screen_is_repaired(tmp_path):
     gateway = SyntheticGateway(reject_first=True)
     original = gateway.plan
 
@@ -1046,14 +1204,14 @@ def test_later_fresh_finding_repairs_current_failed_target_only(tmp_path):
         if json.loads(r.product_information[0])["stage"] == "plan"
     ]
     assert [[u["id"] for u in p["requested_units"]] for p in plans] == [
-        ["R001", "R002"],
-        ["R002"],
         ["R001"],
+        ["R002"],
+        ["R002"],
     ]
-    assert plans[2]["previous_targets"][0]["reference_unit_id"] == "R001"
-    revised = read_json(next(tmp_path.glob("contracts/exact-plan-r1-0-*.json")))
-    final = read_json(next(tmp_path.glob("contracts/exact-plan-r2-0-*.json")))
-    assert revised["modules"][1] == final["modules"][1]
+    assert not any(
+        r.group_key == "exact-plan-audit-r1-0-R001" for r in gateway.requests
+    )
+    assert run.context["analysis_progress"]["reused_reviews"] == 1
     assert run.state()["state"] == "READY" and not gateway.image_requests
 
 
@@ -1115,7 +1273,9 @@ def test_server_binding_failure_never_triggers_another_model_request(tmp_path):
                 bind_evidence=broken_binding,
             )
         )
-    assert len(gateway.requests) == before + 1
+    assert (
+        len(gateway.requests) == before
+    )  # Binding failure also applies on a cache hit.
 
 
 def test_compact_gateway_uses_its_stage_schema_and_visual_task_prompt(tmp_path):

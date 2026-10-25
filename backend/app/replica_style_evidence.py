@@ -63,8 +63,15 @@ CROP_PATCH_SCHEMA = {
                         "minItems": 1,
                         "items": {"type": "string", "minLength": 1},
                     },
-                    "source_role": {"type": "string", "minLength": 1},
-                    "source_semantics": {"type": "string", "minLength": 1},
+                    "source_role": {
+                        "enum": [
+                            "style_mechanism_only",
+                            "layout_only",
+                            "color_only",
+                            "human_action_only",
+                        ]
+                    },
+                    "source_semantics": {"type": "array", "minItems": 1},
                     "review_status": {"const": "visual_model"},
                     **{flag: {"type": "boolean"} for flag in FLAGS},
                 },

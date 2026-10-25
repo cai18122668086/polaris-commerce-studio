@@ -105,7 +105,7 @@ def test_partial_or_unsafe_review_never_inherits_old_safe_flags(
 
 
 @pytest.mark.parametrize(
-    "defect", ["frozen", "duplicate", "unknown", "new_without_spec"]
+    "defect", ["frozen", "duplicate", "new_without_bindings", "new_without_spec"]
 )
 def test_crop_patch_rejects_source_edits_and_unbound_new_units(tmp_path, defect):
     _, analysis, _, _, _ = setup_run(tmp_path)
@@ -116,7 +116,8 @@ def test_crop_patch_rejects_source_edits_and_unbound_new_units(tmp_path, defect)
         response["units"] *= 2
     else:
         response["units"][0]["id"] = "NEW"
-        if defect == "unknown":
+        if defect == "new_without_bindings":
+            response["units"][0].pop("source_content_step_ids")
             response["crop_specs"] = [
                 {"id": "NEW", "reference_input_id": "R01", "bbox": [0, 0, 8, 8]}
             ]
@@ -134,6 +135,7 @@ def test_crop_patch_rejects_source_edits_and_unbound_new_units(tmp_path, defect)
         ("source_content_step_ids", "T01"),
         ("source_role", {}),
         ("source_semantics", []),
+        ("source_semantics", "invalid scalar"),
     ],
 )
 def test_malformed_crop_bindings_are_repairable_contract_errors(tmp_path, field, value):

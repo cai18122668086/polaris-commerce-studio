@@ -96,6 +96,8 @@ def setup_run(tmp_path):
                 "reference_input_id": "R01",
                 "source_crop_path": str(crop),
                 "source_content_step_ids": ["T01"],
+                "source_role": "style_mechanism_only",
+                "source_semantics": ["Synthetic physical material"],
                 "review_status": "visual_model",
                 **dict.fromkeys(FLAGS, False),
             }
@@ -123,7 +125,7 @@ def corrected(analysis):
             "id": "C02",
             "source_content_step_ids": ["T02"],
             "source_role": "style_mechanism_only",
-            "source_semantics": "Synthetic physical material",
+            "source_semantics": ["Synthetic physical material"],
         }
     )
     value["crop_specs"] = [

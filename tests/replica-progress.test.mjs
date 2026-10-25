@@ -90,3 +90,15 @@ test("segmentation failures explain affected references without advertising a bl
   failed.payload.error_code = "REPLICA_ANALYSIS_UNAVAILABLE";
   assert.equal(replicaSegmentationFailure(failed), undefined);
 });
+
+
+test("legacy style failures retain materials without claiming a missing analysis checkpoint", () => {
+  const failed = doc(92, {status:"failed"});
+  Object.assign(failed.payload, {error_code:"REPLICA_PLAN_AUDIT_REJECTED",replication_method:"style",analysis_revision_available:false});
+  const failure = replicaPlanFailure(failed);
+  assert.equal(failure.title, "风格方案需要调整");
+  assert.match(failure.message, /可使用现有素材重新诊断/);
+  assert.doesNotMatch(failure.message, /已完成的规划/);
+  failed.payload.analysis_revision_available = true;
+  assert.match(replicaPlanFailure(failed).message, /已完成的规划/);
+});

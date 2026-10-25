@@ -15,23 +15,60 @@ from .replica_native import (
     NativeReplicaRun,
     ReplicaNativeError,
     ReplicaPlanAuditRejected,
+    digest,
     read_json,
     write_json,
 )
+from .replica_style_evidence import (
+    FLAGS,
+    PROVENANCE,
+    StyleEvidenceInvalid,
+    apply_specs,
+    crop_errors,
+    review_crops,
+)
 
 JOURNAL = "style-analysis-checkpoints.json"
+CURSOR = JOURNAL
+VERSION = "style-analysis-resume-v2"
+__all__ = [
+    "FLAGS",
+    "PROVENANCE",
+    "StyleEvidenceInvalid",
+    "crop_errors",
+    "DurableStyleAnalysisRun",
+    "StyleReplicaRun",
+    "policy",
+    "revision_checkpoint",
+    "JOURNAL",
+    "CURSOR",
+    "VERSION",
+]
 
 
 def policy() -> dict[str, str]:
-    return {
-        "version": "style-analysis-resume-v1",
-        "sha256": hashlib.sha256(
-            Path(__file__)
-            .read_text(encoding="utf-8-sig")
-            .replace("\r\n", "\n")
-            .encode()
-        ).hexdigest(),
-    }
+    sha = hashlib.sha256()
+    for path in (
+        Path(__file__),
+        Path(__file__).with_name("replica_style_evidence.py"),
+        Path(__file__).with_name("replica_native.py"),
+    ):
+        sha.update(path.name.encode())
+        sha.update(path.read_text(encoding="utf-8-sig").replace("\r\n", "\n").encode())
+    return {"version": VERSION, "sha256": sha.hexdigest()}
+
+
+def revision_checkpoint(payload: dict[str, Any]) -> bool:
+    from .replica_analysis_recovery import document_file
+
+    snapshot = payload.get("_analysis_checkpoint", {})
+    cursor = document_file(snapshot, JOURNAL).get("cursor", {})
+    return bool(
+        snapshot.get("method") == "style"
+        and snapshot.get("analysis_policy") == policy()
+        and cursor.get("phase") == "rejected"
+        and cursor.get("prior_audit", {}).get("pass") is False
+    )
 
 
 class DurableStyleAnalysisRun(NativeReplicaRun):
@@ -53,6 +90,12 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
     async def restore(self, snapshot: dict[str, Any]) -> None:
         if snapshot.get("analysis_policy") != policy():
             raise ReplicaNativeError("风格分析恢复规则已变化，请保留原记录并重新诊断。")
+        prefix = f"{self.workspace_id}/replica/{self.document_id}/"
+        if any(
+            "object_key" in r and not r["object_key"].startswith(prefix)
+            for r in snapshot["files"].values()
+        ):
+            raise ReplicaNativeError("Style analysis snapshot belongs to another task")
         await super().restore(snapshot)
         self.journal = read_json(self.root / JOURNAL)
 
@@ -74,7 +117,57 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
             else [],
         }
 
+    def cli(self, command: str, **arguments: Any) -> dict[str, Any]:
+        try:
+            return super().cli(command, **arguments)
+        except ReplicaNativeError as error:
+            # Invalid format/structure is not a reusable accepted contract.
+            # Preserve its bytes and metadata, then request an explicit correction.
+            for key in ("facts", "plan", "audit", "analysis"):
+                path = arguments.get(key)
+                if not isinstance(path, Path) or not path.is_file():
+                    continue
+                value = read_json(path)
+                if command == "audit-plan" and value.get("pass") is False:
+                    continue  # A real FAIL remains a reusable historical verdict.
+                sha = canonical_hash(value)
+                for record in self.journal["requests"].values():
+                    if record["sha256"] == sha:
+                        record["invalid_contract"] = True
+                        record["validation_failure"] = {
+                            "command": command,
+                            "detail": str(error)[-5000:],
+                        }
+            raise
+
+    def crop(self, source: Path, bbox: list[int], target: Path) -> Path:
+        path = super().crop(source, bbox, target)
+        if path.name.startswith("style-"):
+            file = self.root / PROVENANCE
+            rows = read_json(file) if file.exists() else {}
+            rows[str(path)] = {
+                "source_path": str(source.resolve()),
+                "source_sha256": digest(source.read_bytes()),
+                "bbox": bbox,
+                "crop_sha256": digest(path.read_bytes()),
+            }
+            write_json(file, rows)
+        return path
+
+    def _apply_specs(self, analysis: dict[str, Any]) -> bool:
+        return apply_specs(self, analysis)
+
+    async def _review_crops(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        return await review_crops(self, analysis)
+
     async def ask(
+        self, stage: str, instruction: str, context: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        if stage == "style-crop-review":
+            return await self._review_crops(context["analysis"])
+        return await self._ask_model(stage, instruction, context, **kwargs)
+
+    async def _ask_model(
         self, stage: str, instruction: str, context: Any, **kwargs: Any
     ) -> dict[str, Any]:
         sources = self.sources(kwargs.get("paths"))
@@ -91,6 +184,19 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
             }
         )
         cached = self.journal["requests"].get(identity)
+        if cached is not None and cached.get("invalid_contract"):
+            revision = getattr(self, "evidence_revision", "initial")
+            if context.get("_correction_revision") == revision:
+                raise ReplicaNativeError(
+                    "本轮合同修正仍未通过原生校验，已保留结果；请显式继续下一轮修正。"
+                )
+            context = {
+                **context,
+                "_contract_validation": cached["validation_failure"],
+                "_prior_response_sha256": cached["sha256"],
+                "_correction_revision": getattr(self, "evidence_revision", "initial"),
+            }
+            return await self._ask_model(stage, instruction, context, **kwargs)
         if cached is not None:
             if canonical_hash(cached["response"]) != cached["sha256"]:
                 raise ReplicaNativeError("原风格分析结果哈希不一致。")
@@ -255,8 +361,27 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
                         len("".join(t.split())) for t in step.get("verbatim_text", [])
                     )
             write_json(template, analysis)
-            self.cli("compile-reference-crops", workspace=self.run, analysis=template)
-            self.cli("compile-visual-passport", workspace=self.run, analysis=template)
+            try:
+                if self.state()["state"] in {
+                    "ROUTE_CLASSIFIED",
+                    "REFERENCE_DECOMPOSED",
+                }:
+                    self.cli(
+                        "compile-reference-crops", workspace=self.run, analysis=template
+                    )
+                if self.state()["state"] == "REFERENCE_DECOMPOSED":
+                    self.cli(
+                        "compile-visual-passport", workspace=self.run, analysis=template
+                    )
+            except ReplicaNativeError as error:
+                cursor["phase"] = "review"
+                cursor.setdefault("evidence", {})["validation_errors"] = [
+                    str(error)[-5000:]
+                ]
+                await self.checkpoint()
+                raise StyleEvidenceInvalid(
+                    "Native crop evidence contract needs correction"
+                ) from error
             cursor["phase"] = "facts"
             await self.checkpoint()
         if cursor["phase"] == "facts":
@@ -281,7 +406,7 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
             await self.checkpoint()
         if cursor["phase"] == "rejected":
             raise ReplicaPlanAuditRejected(cursor.get("prior_audit") or {})
-        return await self.finish_style_planning()
+        return await self.finish_style_planning(cursor.get("prior_audit"))
 
     async def finish_style_planning(
         self, previous_audit: dict[str, Any] | None = None
@@ -363,3 +488,7 @@ CROP_INSTRUCTION = "Reinspect all actual style crops and panel images. Return th
 FACTS_INSTRUCTION = "Return native product facts {facts,evidence_inventory,product_category,palette_contract}. Include concrete product geometry (>=3 facts), with correct product input evidence ids. User prose/readable product copy is authorized; benchmark claims are not facts."
 PLAN_INSTRUCTION = "Return native {units:[...]}, EXACT layout unit order. Correct every actual prior audit mismatch, without relabeling a failed audit as pass. Bind every source semantic/content step, density sample, transitions and confirmed facts. Rebuild the product world; never inherit literal composition. Visible copy uses target language. Keep the user's original physical product labels unchanged; font-form bans govern only NEW artwork copy. Use full-panel observations for global layout mechanisms and safe crops for supplementary texture/type/action cues. Originality must preserve the mapped persuasive action: if the reference proves human scale through holding/contact/leaning, retain credible human-product interaction in a DIFFERENT scene, pose, camera and composition. Never ban all contact or replace this obligation with only crossed feet. Do not add preserved physical label text to independently authored visible_copy. Fill all route fields and native non-fixture validators."
 AUDIT_INSTRUCTION = "Freshly compare plan with original references, actual safe crops and cropped product identity pixels. Return {review_kind:visual_model,route,unit_ids,pass,evidence:[dimension-specific observations]}; fail honestly on wrong mappings, identity, contamination or missed screens. Global composition/density/hierarchy/reading-path evidence comes from physical full-panel analysis, not from product-free color patches alone. Safe supplementary crops must have real useful type/material/action evidence; do not require them to reintroduce the entire original scene. Original product wordmarks remain as explicitly requested; style font bans apply to NEW authored page copy. Never change a semantic failure merely to satisfy a gate."
+
+
+# Public name used by the physical-evidence integration; one implementation/state.
+StyleReplicaRun = DurableStyleAnalysisRun

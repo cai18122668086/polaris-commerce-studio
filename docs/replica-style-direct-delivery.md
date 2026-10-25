@@ -39,3 +39,56 @@ Synthetic tests cover both native single/pair branches, format failures,
 planning gates, immutable history, changed bindings, unknown results, returned
 but unrecorded requests, deletion of temporary files, and a real HTTP/worker
 retry through durable storage. They do not claim live visual quality.
+
+The style analysis adapter (`replica_style_analysis.py`) verifies generation
+reference coverage before page planning. Every observed source content step
+must bind a reviewed physical crop from its corresponding source panel. Crop
+origin, coordinates and actual bytes are server-recorded. Model-proposed crop
+corrections are materialized and their new pixels receive a fresh pre-generation
+review; changing flags or relabeling another panel's swatch cannot fill a gap.
+The original native crop compiler, factual registration and plan audit remain
+mandatory. Full analysis panels still supply global layout evidence, while safe
+generation crops supply supplementary type, material and action details.
+
+This addresses an observed failure: a twelve-step live plan had only four safe
+crops bound to four steps. Eight steps lacked generation references, while the
+old revision loop only rewrote page plans. The immutable native generation
+compiler would also reject those missing bindings. Tests reproduce that failure
+and verify corrected bindings with the unchanged native compiler.
+
+Failed crop, facts and plan stages retain hash-verified native snapshots and a
+style cursor. Normal retry/revision restores original inputs and the failed
+stage without repeating completed intake or source observations. New crop
+bytes must be reviewed again. Explicit plan revision retains prior FAIL
+contracts and re-runs the real plan audit; it does not adopt an old rejection as
+PASS. Legacy failed sessions without a durable checkpoint are not claimed to
+support that restoration.
+
+
+## Unified evidence and analysis recovery
+
+PR126 and PR127 compose through one `style-analysis-checkpoints.json` journal.
+`replica_style_evidence.py` owns deterministic source/panel/step crop validation
+and physical recrop proposals; it does not own workflow state or an independent
+model cache. The analysis adapter persists early stages, uses the same hash-bound
+request cache for crop reviews, and materializes all proposed crops before
+computing review image hashes. A changed crop can never inherit an old pixel
+review merely because its filename or stage name is unchanged.
+
+The v2 analysis policy binds the analysis adapter, physical evidence service and
+native adapter sources. Old failed analysis contracts remain unchanged; explicit
+plan correction records its parent snapshot hash and preserves the original
+snapshot in private lineage. Existing style tasks with no durable checkpoint
+require one explicit new diagnosis using their retained original material.
+
+
+The compiler's `(path, reference_input_id)` de-duplication can lose a second
+source-step binding when one job uses the same reviewed crop for multiple steps
+within the same physical panel. The generation workspace adds a real,
+byte-identical file alias only for a step that this actual job would otherwise
+lose. Each alias preserves the canonical crop, source/bbox, original review and
+SHA, and is marked as inherited identical pixels. No new visual PASS is created.
+Separate jobs with one step continue to share the canonical crop. Cross-panel
+misbinding still fails. Both generation-workflow and manifest copies receive the
+same normalized manifest before any generation token is issued; the confirmed
+workflow, route plan and source manifest remain unchanged.

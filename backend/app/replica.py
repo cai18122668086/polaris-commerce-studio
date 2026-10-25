@@ -45,6 +45,7 @@ from .replica_native import (
     native_accounting,
 )
 from .replica_progress import reconcile_document
+from .replica_style_evidence import StyleEvidenceInvalid
 from .schemas_v1 import ReferenceRemixJobCreate
 from .services import get_ready_assets, lock_workspace_limits
 from .skill_protocol import load_skill_protocol
@@ -132,6 +133,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_segmentation_parent",
                 "_segmentation_revision",
                 "_style_revision_requested",
+                "_style_analysis_revision",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -883,6 +885,7 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                         ReplicaInputTooLarge,
                         ReplicaAnalysisUnavailable,
                         ReplicaPlanAuditRejected,
+                        StyleEvidenceInvalid,
                     ),
                 )
                 else "分析服务暂时不可用，请稍后再试。",
@@ -1013,6 +1016,13 @@ def revise_analysis(
                 k: v for k, v in row.payload.items() if k not in {"error", "error_code"}
             },
             "_style_revision_requested": uuid4().hex,
+            "_style_analysis_revision": {
+                "parent_snapshot_sha256": _hash(row.payload["_analysis_checkpoint"])
+            },
+            "_analysis_lineage": [
+                *row.payload.get("_analysis_lineage", []),
+                row.payload["_analysis_checkpoint"],
+            ],
             "analysis_attempt_id": uuid4().hex,
         }
         row.status, row.updated_at = "analysing", utc_now()

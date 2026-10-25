@@ -148,3 +148,17 @@ def configure_run(run: Any, values: dict[str, Any], checkpoint: Any) -> None:
             run.cost = int(run.segmentation_parent.get("cost", 0))
     else:
         run.authorized_revision = values.get("_style_revision_requested")
+        run.evidence_revision = values.get("analysis_attempt_id", "initial")
+        authority = values.get("_style_analysis_revision")
+        if (
+            authority
+            and run.journal.get("cursor", {}).get("applied_revision")
+            != run.authorized_revision
+        ):
+            from .replica_exact_contracts import canonical_hash
+            from .replica_native import ReplicaNativeError
+
+            if canonical_hash(checkpoint) != authority.get("parent_snapshot_sha256"):
+                raise ReplicaNativeError(
+                    "Style correction authority does not match its original snapshot"
+                )

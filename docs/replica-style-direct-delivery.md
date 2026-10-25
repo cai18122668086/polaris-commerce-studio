@@ -148,6 +148,12 @@ history, task center and navigation merge each session with its current and
 previous retry jobs into one entry that opens the original replica session.
 Analysis-only sessions appear before an image job exists.
 
+History reads small document headers first. A bounded, database/workspace/version
+scoped cache reuses unchanged summaries; PostgreSQL expands each changed private
+checkpoint only once with `jsonb_to_record`. Status and update timestamps are
+checked on every read, and linked image-job status is always read fresh. The
+cache does not bypass workspace authorization or retention filtering.
+
 “新建复刻” clears all local images, facts, links, selections, parameters, URL
 session identifiers and draft storage, and creates a fresh request identifier.
 Late uploads, analysis responses and polling from the previous draft cannot

@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Request
-from sqlalchemy import create_engine, delete, select, text
+from sqlalchemy import create_engine, delete, event, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -20,6 +20,7 @@ from app.models import ReplicaDocumentRecord, UserRecord, WorkspaceRecord, utc_n
 from app.replica import (
     _analysis_heartbeat,
     _touch_analysis_heartbeat,
+    creation_records,
     get_document,
 )
 
@@ -95,6 +96,53 @@ class ReplicaHeartbeatPostgresTests(unittest.TestCase):
             )
             session.execute(delete(UserRecord).where(UserRecord.id == self.user_id))
             session.commit()
+
+    def test_creation_history_unpacks_once_and_invalidates_versions(self):
+        with self.factory() as session:
+            row = session.get(ReplicaDocumentRecord, self.document_id)
+            row.payload = {
+                **row.payload,
+                "replication_method": "style",
+                "progress": 42,
+                "analysis_progress": {"total": 12},
+                "_analysis_checkpoint": {"private": "PRIVATE_CHECKPOINT" * 100000},
+            }
+            session.commit()
+        workspace = SimpleNamespace(workspace_id=self.workspace_id)
+        with self.factory() as session:
+            first = creation_records(workspace, session)
+        self.assertEqual(first[0]["expected"], 12)
+        self.assertEqual(first[0]["progress"], 42)
+        self.assertNotIn("PRIVATE_CHECKPOINT", str(first))
+        statements = []
+
+        def observe(_connection, _cursor, sql, _parameters, _context, _many):
+            statements.append(sql)
+
+        event.listen(self.engine, "before_cursor_execute", observe)
+        try:
+            with self.factory() as session:
+                repeated = creation_records(workspace, session)
+        finally:
+            event.remove(self.engine, "before_cursor_execute", observe)
+        self.assertEqual(first, repeated)
+        self.assertFalse(any("jsonb_to_record" in sql for sql in statements))
+        with self.factory() as session:
+            row = session.get(ReplicaDocumentRecord, self.document_id)
+            row.payload = {**row.payload, "progress": 73}
+            row.updated_at = utc_now()
+            session.commit()
+        with self.factory() as session:
+            self.assertEqual(creation_records(workspace, session)[0]["progress"], 73)
+            self.assertEqual(
+                creation_records(SimpleNamespace(workspace_id="ws_missing"), session),
+                [],
+            )
+            row = session.get(ReplicaDocumentRecord, self.document_id)
+            row.updated_at = utc_now() - timedelta(days=31)
+            session.commit()
+        with self.factory() as session:
+            self.assertEqual(creation_records(workspace, session), [])
 
     def test_poll_releases_row_lock_before_dependency_scope_ends(self):
         with self.factory() as reader:

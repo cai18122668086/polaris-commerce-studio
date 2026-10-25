@@ -511,34 +511,9 @@ def creation_records(
     Select only display metadata, never the large private model checkpoints.
     Existing sessions appear immediately without copying or creating paid jobs.
     """
-    row = ReplicaDocumentRecord
-    rows = (
-        session.execute(
-            select(
-                row.id,
-                row.status,
-                row.created_at,
-                row.updated_at,
-                row.payload["replication_method"].label("method"),
-                row.payload["job_ids"].label("job_ids"),
-                row.payload["retry_events"].label("retry_events"),
-                row.payload["progress"].label("progress"),
-                row.payload["analysis_stage"].label("stage"),
-                row.payload["analysis_progress"].label("analysis"),
-                row.payload["execution_progress"].label("execution"),
-                row.payload["references"].label("references"),
-            )
-            .where(
-                row.workspace_id == workspace.workspace_id,
-                row.kind == "session",
-                row.updated_at >= utc_now() - timedelta(days=30),
-            )
-            .order_by(row.created_at.desc(), row.id.desc())
-            .limit(100)
-        )
-        .mappings()
-        .all()
-    )
+    from .replica_records import creation_rows
+
+    rows = creation_rows(session, workspace.workspace_id)
     linked_ids = [jid for r in rows for jid in (r["job_ids"] or [])]
     jobs = (
         {

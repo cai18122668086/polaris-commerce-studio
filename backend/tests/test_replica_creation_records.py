@@ -3,6 +3,8 @@
 from datetime import timedelta
 from uuid import uuid4
 
+from sqlalchemy import event
+
 from app.models import ReplicaDocumentRecord, WorkspaceRecord, utc_now
 
 
@@ -56,3 +58,25 @@ def test_records_include_pre_generation_sessions_and_keep_private_payloads_serve
     )
     assert "PRIVATE_" not in response.text and "payload" not in item
     assert client.get("/api/v1/workspaces/ws_other/replica/records").status_code == 404
+
+    statements = []
+
+    def observe(_connection, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    engine = client.app.state.engine
+    event.listen(engine, "before_cursor_execute", observe)
+    try:
+        repeated = client.get("/api/v1/workspaces/ws_test/replica/records")
+    finally:
+        event.remove(engine, "before_cursor_execute", observe)
+    assert repeated.json() == response.json()
+    assert not any("replica_documents.payload" in sql for sql in statements)
+
+    with client.app.state.session_factory() as db:
+        stored = db.get(ReplicaDocumentRecord, keep)
+        stored.payload = {**stored.payload, "progress": 73}
+        stored.updated_at = utc_now() + timedelta(seconds=1)
+        db.commit()
+    fresh = client.get("/api/v1/workspaces/ws_test/replica/records").json()[0]
+    assert fresh["progress"] == 73

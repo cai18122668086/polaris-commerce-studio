@@ -128,16 +128,37 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_analysis_checkpoint",
                 "_analysis_input_hash",
                 "_analysis_revision",
+                "_analysis_lineage",
+                "_segmentation_parent",
+                "_segmentation_revision",
+                "_style_revision_requested",
             }
         },
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
     }
+    from .replica_analysis_recovery import (
+        segmentation_diagnostics,
+        segmentation_repair_available,
+    )
+
+    repair = segmentation_repair_available(row, _analysis_input_hash(row.payload))
+    value["payload"]["segmentation_repair_available"] = repair
+    value["payload"]["segmentation_restart_available"] = bool(
+        row.status == "failed"
+        and row.payload.get("error_code") == "REPLICA_SEGMENTATION_INVALID"
+        and not row.payload.get("job_ids")
+        and not row.payload.get("_analysis_checkpoint")
+    )
+    diagnostic = segmentation_diagnostics(row.payload)
+    if diagnostic:
+        value["payload"]["segmentation_diagnostics"] = diagnostic
     value["payload"]["analysis_resume_available"] = (
         bool(row.payload.get("_analysis_checkpoint"))
         and row.status == "failed"
         and not row.payload.get("job_ids")
-        and row.payload.get("error_code") != ReplicaPlanAuditRejected.code
+        and row.payload.get("error_code")
+        not in {ReplicaPlanAuditRejected.code, "REPLICA_SEGMENTATION_INVALID"}
     )
     value["payload"]["analysis_revision_available"] = _revision_available(row)
     value["payload"]["execution_resume_available"] = (
@@ -149,7 +170,12 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 and row.payload.get("native_snapshot", {})
                 .get("model_protocol", {})
                 .get("version")
-                in {"exact-compact-v3", "exact-compact-v4", "exact-compact-v5"}
+                in {
+                    "exact-compact-v3",
+                    "exact-compact-v4",
+                    "exact-compact-v5",
+                    "exact-compact-v6",
+                }
             )
         )
         and bool(row.payload.get("native_executions"))
@@ -180,6 +206,10 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
 
 
 def _revision_available(row: ReplicaDocumentRecord) -> bool:
+    from .replica_analysis_recovery import style_revision_available
+
+    if style_revision_available(row, _analysis_input_hash(row.payload)):
+        return True
     from .replica_exact_revision import V2_BINDING
 
     return (
@@ -608,6 +638,10 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
         )
         if payload.get("replication_method") in SKILLS:
             run_type = NativeReplicaRun
+            if payload.get("replication_method") == "style":
+                from .replica_style_analysis import DurableStyleAnalysisRun
+
+                run_type = DurableStyleAnalysisRun
             if payload.get("_exact_model_protocol"):
                 from .replica_exact_compact import VERSION as compact_version
                 from .replica_exact_compact import run_class
@@ -657,6 +691,10 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 run.root.mkdir(parents=True, exist_ok=True)
                 run.run = run.root
 
+            from .replica_analysis_recovery import configure_run
+
+            configure_run(run, payload, checkpoint)
+
             async def checkpoint_updated() -> None:
                 if not _analysis_current(app, document_id, attempt_id):
                     raise ReplicaNativeError("Analysis attempt is no longer current")
@@ -665,6 +703,15 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                     _analysis_input_hash=input_hash,
                     analysis_progress=run.context.get("analysis_progress", {}),
                     analysis_accounting=native_accounting(run.usage),
+                    **(
+                        {
+                            "segmentation_diagnostics": run.context[
+                                "segmentation_diagnostics"
+                            ]
+                        }
+                        if run.context.get("segmentation_diagnostics")
+                        else {}
+                    ),
                 )
                 _save(app, document_id, "analysing", dict(payload))
 
@@ -905,6 +952,21 @@ def retry_analysis(
             "REPLICA_PLAN_REVISION_REQUIRED",
             "部分方案仍未通过校验，已完成的规划和素材已保留。请先调整未通过的方案。",
         )
+    from .replica_analysis_recovery import (
+        prepare_segmentation_retry,
+        segmentation_repair_available,
+    )
+
+    if row.payload.get(
+        "error_code"
+    ) == "REPLICA_SEGMENTATION_INVALID" and row.payload.get("_analysis_checkpoint"):
+        if not segmentation_repair_available(row, _analysis_input_hash(row.payload)):
+            raise ApiError(
+                409,
+                "REPLICA_SEGMENTATION_REPAIR_UNAVAILABLE",
+                "原拆屏检查点无法安全恢复，请保留原记录并重新诊断。",
+            )
+        row.payload = prepare_segmentation_retry(row.payload)
     row.status = "analysing"
     row.updated_at = utc_now()
     row.payload = {
@@ -938,7 +1000,26 @@ def revise_analysis(
     from .replica_exact_compact import VERSION
 
     row = _get(session, workspace.workspace_id, document_id, "session")
-    if row.status == "analysing" and row.payload.get("_analysis_revision"):
+    if row.status == "analysing" and (
+        row.payload.get("_analysis_revision")
+        or row.payload.get("_style_revision_requested")
+    ):
+        return _wire(row)
+    from .replica_analysis_recovery import style_revision_available
+
+    if style_revision_available(row, _analysis_input_hash(row.payload)):
+        row.payload = {
+            **{
+                k: v for k, v in row.payload.items() if k not in {"error", "error_code"}
+            },
+            "_style_revision_requested": uuid4().hex,
+            "analysis_attempt_id": uuid4().hex,
+        }
+        row.status, row.updated_at = "analysing", utc_now()
+        session.commit()
+        background_tasks.add_task(
+            _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
+        )
         return _wire(row)
     if (
         not _revision_available(row)

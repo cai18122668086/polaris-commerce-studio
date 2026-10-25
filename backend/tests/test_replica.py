@@ -475,7 +475,9 @@ def test_explicit_protocol_revision_is_scoped_idempotent_and_keeps_checkpoint(
     with client.app.state.session_factory() as session:
         saved = session.get(ReplicaDocumentRecord, document_id)
         assert saved.payload["_analysis_checkpoint"] == checkpoint
-        assert saved.payload["_exact_model_protocol"] == "exact-compact-v5"
+        from app.replica_exact_compact import VERSION
+
+        assert saved.payload["_exact_model_protocol"] == VERSION
         assert saved.payload["_analysis_input_hash"] == original["_analysis_input_hash"]
         assert saved.payload["_analysis_revision"][
             "parent_snapshot_sha256"

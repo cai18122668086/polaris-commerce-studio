@@ -216,7 +216,12 @@ class NativeReplicaProvider:
 
                 run_type = (
                     CompactExactReplicaRun
-                    if resumed or direct_source
+                    if resumed
+                    or (
+                        direct_source
+                        and snapshot["model_protocol"].get("version")
+                        not in {"exact-compact-v5", "exact-compact-v6"}
+                    )
                     else run_class(
                         values["replication_method"], snapshot["model_protocol"]
                     )
@@ -229,11 +234,9 @@ class NativeReplicaProvider:
                 self.storage,
                 root=Path(snapshot["root"]),
             )
-            if (
-                direct_source
-                and snapshot.get("model_protocol", {}).get("version")
-                != "exact-compact-v5"
-            ):
+            if direct_source and snapshot.get("model_protocol", {}).get(
+                "version"
+            ) not in {"exact-compact-v5", "exact-compact-v6"}:
                 await replica_direct_delivery.restore_source(
                     run, snapshot, direct_source[1]
                 )
@@ -247,7 +250,10 @@ class NativeReplicaProvider:
                 if ordinal != 0:
                     raise ReplicaNativeError("前序复刻尚未通过完整验收。")
                 if run.method == "exact":
-                    if getattr(run, "binding", {}).get("version") == "exact-compact-v5":
+                    if getattr(run, "binding", {}).get("version") in {
+                        "exact-compact-v5",
+                        "exact-compact-v6",
+                    }:
                         delivery = await replica_direct_delivery.execute(
                             self, run, request
                         )

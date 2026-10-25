@@ -5,6 +5,8 @@ export type ReplicaProgressDocument = {
   payload: {
     analysis_attempt_id?: string;
     error_code?: string;
+    segmentation_repair_available?: boolean;
+    segmentation_diagnostics?: { coverage_valid: boolean; columns: { reference_index: number | null; split_count: number; inventory_count: number; reason?: string }[] };
     progress?: number;
     job_ids?: string[];
     submission_complete?: boolean;
@@ -74,4 +76,15 @@ export function mergeReplicaProgress<T extends ReplicaProgressDocument>(current:
       } }),
     },
   };
+}
+
+export function replicaSegmentationFailure(document: ReplicaProgressDocument): { title: string; message: string } | undefined {
+  if (document.status !== "failed" || document.payload.error_code !== "REPLICA_SEGMENTATION_INVALID") return undefined;
+  const diagnostic = document.payload.segmentation_diagnostics;
+  if (!diagnostic) return { title: "参考图拆屏需要校正", message: "参考图的屏数或边界尚未一致核对，原始素材已保留。" };
+  if (!diagnostic.coverage_valid) return { title: "参考图范围需要校正", message: "参考图存在遗漏、重叠或裁切范围分歧。原始素材已保留，可重新校正拆屏。" };
+  const details = diagnostic.columns.filter(c => Number.isInteger(c.reference_index)).map(c =>
+    c.reason === "boundaries" ? `第 ${c.reference_index! + 1} 张参考图的分屏边界位置不一致`
+      : `第 ${c.reference_index! + 1} 张参考图：拆屏 ${c.split_count} 屏，复核 ${c.inventory_count} 屏`);
+  return { title: "参考图拆屏需要校正", message: `${details.join("；") || "分屏边界尚未一致核对"}。原始素材与分析记录已保留。` };
 }

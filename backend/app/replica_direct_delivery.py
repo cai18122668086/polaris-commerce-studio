@@ -95,6 +95,7 @@ def retry_source(
         "exact-compact-v3",
         "exact-compact-v4",
         "exact-compact-v5",
+        "exact-compact-v6",
     }:
         return None
     with session_factory() as session:

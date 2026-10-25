@@ -96,7 +96,14 @@ class SyntheticGateway:
                             }
                             for i in range(2)
                         ],
-                        **({"boundary_ys": [320]} if phase == "screen_split" else {}),
+                        **(
+                            {"boundary_ys": [320]}
+                            if "boundary_ys"
+                            in envelope["response_schema"]["properties"]["columns"][
+                                "items"
+                            ]["properties"]
+                            else {}
+                        ),
                     }
                     for c in data["columns"]
                 ],
@@ -763,7 +770,7 @@ def test_column_pixels_determine_all_screen_counts_without_fixed_grid(tmp_path, 
                     }
                     for i in range(count)
                 ]
-                if phase == "screen_split":
+                if phase in {"screen_split", "screen_inventory"}:
                     column["boundary_ys"] = [640 * i // count for i in range(1, count)]
         return result
 
@@ -814,7 +821,7 @@ def test_screen_count_disagreement_gets_one_directed_repair_and_blind_recount(tm
                     }
                     for i in range(3)
                 ]
-                if phase == "screen_split":
+                if phase in {"screen_split", "screen_inventory"}:
                     column["boundary_ys"] = [200, 400]
         return result
 
@@ -837,6 +844,7 @@ def test_unresolved_screen_count_stops_before_planning_or_images(tmp_path):
     async def plan(request):
         result = await original(request)
         if json.loads(request.product_information[0])["stage"] == "screen_inventory":
+            result.payload["columns"][0]["boundary_ys"] = [200, 400]
             result.payload["columns"][0]["screens"].append(
                 {
                     "headline": "A missed independent headline",

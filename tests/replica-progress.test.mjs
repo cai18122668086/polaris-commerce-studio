@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeReplicaProgress, replicaAnalysisMessage, replicaOverallProgress, replicaPlanFailure, replicaWorkflowStep } from "../lib/replica/progress.ts";
+import { mergeReplicaProgress, replicaAnalysisMessage, replicaOverallProgress, replicaPlanFailure, replicaSegmentationFailure, replicaWorkflowStep } from "../lib/replica/progress.ts";
 
 const doc = (progress, extra = {}) => ({ id: "rep_test", status: "analysing", payload: { analysis_attempt_id: "attempt-1", progress }, ...extra });
 
@@ -72,4 +72,21 @@ test("failed, partial and cancelled suites never mark successful delivery in the
   assert.equal(replicaWorkflowStep(success, {job_suite:"completed"}), 5);
   success.payload.submission_complete = false;
   assert.equal(replicaWorkflowStep(success, {job_suite:"completed"}), 4);
+});
+
+
+test("segmentation failures explain affected references without advertising a blind resume", () => {
+  const failed = doc(12, {status:"failed"});
+  failed.payload.error_code = "REPLICA_SEGMENTATION_INVALID";
+  failed.payload.segmentation_diagnostics = {coverage_valid:true, columns:[
+    {reference_index:2,split_count:2,inventory_count:4,reason:"count"},
+    {reference_index:3,split_count:2,inventory_count:2,reason:"boundaries"}]};
+  const failure = replicaSegmentationFailure(failed);
+  assert.match(failure.message, /第 3 张参考图：拆屏 2 屏，复核 4 屏/);
+  assert.match(failure.message, /第 4 张参考图的分屏边界位置不一致/);
+  assert.equal(replicaPlanFailure(failed), undefined);
+  failed.payload.segmentation_diagnostics.coverage_valid = false;
+  assert.match(replicaSegmentationFailure(failed).message, /遗漏、重叠或裁切/);
+  failed.payload.error_code = "REPLICA_ANALYSIS_UNAVAILABLE";
+  assert.equal(replicaSegmentationFailure(failed), undefined);
 });

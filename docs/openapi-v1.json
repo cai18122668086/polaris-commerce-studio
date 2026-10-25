@@ -5821,6 +5821,95 @@
         "title": "ReferenceRemixJobCreate",
         "type": "object"
       },
+      "ReplicaCreationRecordResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current Job Ids",
+            "type": "array"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "integer"
+          },
+          "generated": {
+            "title": "Generated",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "exact",
+                  "style"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "updated_at",
+          "method",
+          "job_ids",
+          "current_job_ids",
+          "progress",
+          "stage",
+          "expected",
+          "generated"
+        ],
+        "title": "ReplicaCreationRecordResponse",
+        "type": "object"
+      },
       "RetryRequest": {
         "properties": {
           "item_ids": {
@@ -14547,6 +14636,58 @@
           }
         ],
         "summary": "Import Images",
+        "tags": [
+          "one-click-replica"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/replica/records": {
+      "get": {
+        "description": "Lightweight durable records for the site-wide history and task centre.\n\nSelect only display metadata, never the large private model checkpoints.\nExisting sessions appear immediately without copying or creating paid jobs.",
+        "operationId": "creation_records_api_v1_workspaces__workspace_id__replica_records_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReplicaCreationRecordResponse"
+                  },
+                  "title": "Response Creation Records Api V1 Workspaces  Workspace Id  Replica Records Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Creation Records",
         "tags": [
           "one-click-replica"
         ]

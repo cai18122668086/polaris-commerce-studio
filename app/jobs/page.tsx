@@ -23,7 +23,6 @@ import { StatusBadge } from "@/components/status-badge";
 import {
   useCancelJob,
   useConfirmPlan,
-  useJobs,
   useRetryJob,
 } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -39,6 +38,7 @@ import { allowsJobAction } from "@/lib/jobs/actions";
 import { JobDetailPanel } from "@/features/jobs/components/job-detail-panel";
 import { JobRecordCover } from "@/features/jobs/components/job-record-cover";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
+import { useCreationRecords } from "@/features/jobs/api/creation-records";
 
 const tabFilters: Record<string, JobStatus[] | undefined> = {
   all: undefined,
@@ -56,7 +56,7 @@ export default function JobsPage() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const { workspace, error: workspaceError } = useWorkspace();
-  const jobsQuery = useJobs(workspace?.id, { statuses: tabFilters[tab], limit: 100 });
+  const jobsQuery = useCreationRecords(workspace?.id, { statuses: tabFilters[tab], limit: 100 });
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
@@ -70,7 +70,7 @@ export default function JobsPage() {
   const allJobs = jobsQuery.data?.items ?? [];
   const actionError = cancel.error ?? retry.error ?? confirmPlan.error;
   const activeJobId = requestedJobId;
-  const openJob = (id: string) => router.push(`/jobs?jobId=${encodeURIComponent(id)}`, { scroll: false });
+  const openJob = (id: string) => router.push(id.startsWith("rep_") ? `/style-replica?sessionId=${encodeURIComponent(id)}` : `/jobs?jobId=${encodeURIComponent(id)}`, { scroll: false });
 
   const runCancel = (job: Job | JobDetail) => {
     if (

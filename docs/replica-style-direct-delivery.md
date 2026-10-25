@@ -124,3 +124,32 @@ restarts cannot grant more rounds. Once approved, the normal worker delivers
 generated files with zero post-generation AI review. Synthetic HTTP/worker tests
 cover temporary-directory deletion, duplicate correction requests, retained
 PASS modules, bounded retries and automatic submission/delivery.
+
+## Automatic completion and website records
+
+Website sessions use `auto_start_after_plan=true`. When bounded analysis or
+quality correction ends without approval, the application prepares a separate,
+hash-bound best-effort execution plan and starts generation automatically.
+Original FAIL judgments, snapshots and usage remain intact; this policy creates
+no replacement PASS and performs no post-generation AI review. Existing failed
+automatic sessions with a valid pre-generation checkpoint recover on their next
+normal document read without granting more analysis rounds. Manual API sessions
+retain their explicit confirmation/revision behavior.
+
+Best-effort style generation uses product originals and available text
+observations, so rejected reference crops are never passed off as safe image
+inputs. Source hashes, workspace ownership, delivery bytes and paid invocation
+fences still apply. Unknown image outcomes retain their invocation tokens and
+cannot silently issue another paid request.
+
+The workspace-scoped creation-record endpoint exposes small session summaries
+from persisted records for the same 30-day history window as image jobs. Global
+history, task center and navigation merge each session with its current and
+previous retry jobs into one entry that opens the original replica session.
+Analysis-only sessions appear before an image job exists.
+
+“新建复刻” clears all local images, facts, links, selections, parameters, URL
+session identifiers and draft storage, and creates a fresh request identifier.
+Late uploads, analysis responses and polling from the previous draft cannot
+restore its contents. “返回修改” retains materials; prior server sessions remain
+available from history.

@@ -15,7 +15,7 @@ import {
   UserRound,
   Zap,
 } from "lucide-react";
-import { useJobs } from "@/features/jobs/api/jobs";
+import { useCreationRecords } from "@/features/jobs/api/creation-records";
 import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { getFeatureByRoute } from "@/lib/feature-registry";
@@ -60,7 +60,7 @@ export function TopNavigation({
   const { workspace } = useWorkspace();
   const currentUser = useCurrentAuthUser();
   const accountLabel = authUserLabel(currentUser.data);
-  const jobs = useJobs(workspace?.id, { limit: 20 });
+  const jobs = useCreationRecords(workspace?.id, { limit: 20 });
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const desktopNavigationRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);

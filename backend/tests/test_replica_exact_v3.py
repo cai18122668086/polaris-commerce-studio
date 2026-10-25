@@ -247,7 +247,7 @@ def test_empty_parallel_column_is_blocked_but_isolated_unsupported_badges_can_om
     assert not blank_parallel_branch(proposal, {"text_regions": regions})
 
 
-def test_http_revision_restores_durable_v2_evidence_and_auto_submits_only_once(
+def test_manual_revision_restores_durable_v2_evidence_and_submits_only_once(
     client, tmp_path, monkeypatch
 ):
     from app import replica_exact_compact
@@ -298,7 +298,7 @@ def test_http_revision_restores_durable_v2_evidence_and_auto_submits_only_once(
             "product_asset_ids": ids[:1],
             "references": [{"asset_id": ids[1]}],
             "facts": "Supported synthetic product",
-            "auto_start_after_plan": True,
+            "auto_start_after_plan": False,
         },
     )
     assert response.status_code == 202
@@ -328,6 +328,13 @@ def test_http_revision_restores_durable_v2_evidence_and_auto_submits_only_once(
     gateway.reject_always = False
     revised = client.post(route + "/sessions/" + document_id + "/revise", json={})
     assert revised.status_code == 202, revised.text
+    current = client.get(route + "/documents/" + document_id).json()
+    assert current["status"] == "awaiting_confirmation", current
+    confirmed = client.post(
+        route + "/sessions/" + document_id + "/confirm",
+        json={"plan_hash": current["payload"]["plan_hash"], "instructions": []},
+    )
+    assert confirmed.status_code == 202, confirmed.text
     current = client.get(route + "/documents/" + document_id).json()
     assert current["status"] == "generating", current
     assert len(gateway.requests) == before + 2

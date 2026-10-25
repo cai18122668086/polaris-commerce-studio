@@ -4,7 +4,8 @@ import Link from "next/link";
 import { Ban, ChevronRight, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 
-import { useCancelJob, useJobs, useRetryJob } from "@/features/jobs/api/jobs";
+import { useCancelJob, useRetryJob } from "@/features/jobs/api/jobs";
+import { useCreationRecords } from "@/features/jobs/api/creation-records";
 import { useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation";
@@ -56,7 +57,7 @@ export function TaskDrawer({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
   const { workspace } = useWorkspace();
-  const jobs = useJobs(workspace?.id, { limit: 8 });
+  const jobs = useCreationRecords(workspace?.id, { limit: 8 });
   const runtime = useRuntimeStatus();
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);

@@ -1100,26 +1100,15 @@ def test_normal_http_submission_worker_history_and_original_download(
     assert response.status_code == 202, response.text
     document = client.get(route + "/documents/" + response.json()["id"]).json()
     if interrupted:
-        assert document["status"] == "failed", document
-        assert document["payload"]["analysis_resume_available"] is True
+        assert document["status"] == "generating", document
+        assert document["payload"]["planning_status"] == "BEST_EFFORT"
         assert document["payload"]["analysis_progress"]["accepted"] == 1
         assert "_analysis_checkpoint" not in document["payload"]
         assert "analysis_accounting" in document["payload"]
-        before = len(gateway.requests)
-        retry = client.post(route + "/sessions/" + document["id"] + "/retry", json={})
-        assert retry.status_code == 202, retry.text
-        assert retry.json()["payload"]["progress"] == document["payload"]["progress"]
-        assert (
-            retry.json()["payload"]["analysis_attempt_id"]
-            != document["payload"]["analysis_attempt_id"]
-        )
-        document = client.get(route + "/documents/" + document["id"]).json()
-        # All completed observations, facts, plans and the first PASS survive.
-        assert len(gateway.requests) == before + 1
     assert document["status"] == "generating", document
     assert len(document["payload"]["job_ids"]) == 1
     assert "_exact_model_protocol" not in document["payload"]
-    assert len(gateway.requests) == 10 + int(interrupted)
+    assert len(gateway.requests) == 10
     for _ in range(2):
         client.get(route + "/documents/" + document["id"])
     with client.app.state.session_factory() as session:

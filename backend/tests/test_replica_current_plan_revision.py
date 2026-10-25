@@ -105,7 +105,7 @@ def test_revision_authority_must_match_original_parent(tmp_path):
         configure_run(run, values, values["_analysis_checkpoint"])
 
 
-def test_http_current_revision_restores_only_failed_plan_then_delivers_without_review(
+def test_legacy_manual_revision_restores_only_failed_plan_then_delivers_without_review(
     client, tmp_path, monkeypatch
 ):
     settings = client.app.state.settings
@@ -149,7 +149,7 @@ def test_http_current_revision_restores_only_failed_plan_then_delivers_without_r
             "product_asset_ids": ids[:1],
             "references": [{"asset_id": ids[1]}],
             "facts": "Supported synthetic product",
-            "auto_start_after_plan": True,
+            "auto_start_after_plan": False,
         },
     )
     assert response.status_code == 202
@@ -186,7 +186,13 @@ def test_http_current_revision_restores_only_failed_plan_then_delivers_without_r
     ]
     assert all("R002" in r.group_key for r in new)
     ready = client.get(current).json()
-    assert ready["status"] == "generating", ready
+    assert ready["status"] == "awaiting_confirmation", ready
+    confirmed = client.post(
+        route + "/sessions/" + document_id + "/confirm",
+        json={"plan_hash": ready["payload"]["plan_hash"], "instructions": []},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    ready = client.get(current).json()
     assert len(ready["payload"]["job_ids"]) == 1
     assert client.post(revise).status_code == 409
     with client.app.state.session_factory() as session:

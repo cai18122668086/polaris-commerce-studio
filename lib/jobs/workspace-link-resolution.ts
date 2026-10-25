@@ -25,6 +25,9 @@ export function resolveJobWorkspaceHref(
   job: WorkspaceLinkJob,
   features: readonly WorkspaceLinkFeature[],
 ): string {
+  if (job.type === "reference_remix" && /^rep_[a-f0-9]{32}$/.test(job.id)) {
+    return `/style-replica?sessionId=${encodeURIComponent(job.id)}`;
+  }
   const replicaSessionId = job.configuration?.replica_session_id;
   if (job.type === "reference_remix" && typeof replicaSessionId === "string" && replicaSessionId.startsWith("rep_")) {
     return `/style-replica?sessionId=${encodeURIComponent(replicaSessionId)}`;

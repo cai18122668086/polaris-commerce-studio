@@ -1837,6 +1837,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/replica/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Creation Records
+         * @description Lightweight durable records for the site-wide history and task centre.
+         *
+         *     Select only display metadata, never the large private model checkpoints.
+         *     Existing sessions appear immediately without copying or creating paid jobs.
+         */
+        get: operations["creation_records_api_v1_workspaces__workspace_id__replica_records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/replica/sessions": {
         parameters: {
             query?: never;
@@ -4167,6 +4190,37 @@ export interface components {
              * @enum {string}
              */
             type: "reference_remix";
+        };
+        /** ReplicaCreationRecordResponse */
+        ReplicaCreationRecordResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Job Ids */
+            current_job_ids: string[];
+            /** Expected */
+            expected: number;
+            /** Generated */
+            generated: number;
+            /** Id */
+            id: string;
+            /** Job Ids */
+            job_ids: string[];
+            /** Method */
+            method: ("exact" | "style") | null;
+            /** Progress */
+            progress: number;
+            /** Stage */
+            stage: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** RetryRequest */
         RetryRequest: {
@@ -8427,6 +8481,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    creation_records_api_v1_workspaces__workspace_id__replica_records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaCreationRecordResponse"][];
                 };
             };
             /** @description Validation Error */

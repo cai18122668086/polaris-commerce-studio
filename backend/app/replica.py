@@ -104,6 +104,20 @@ class ConfirmRequest(BaseModel):
     instructions: list[str] = Field(default_factory=list, max_length=20)
 
 
+class ReplicaCreationRecordResponse(BaseModel):
+    id: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    method: Literal["exact", "style"] | None
+    job_ids: list[str]
+    current_job_ids: list[str]
+    progress: int
+    stage: str | None
+    expected: int
+    generated: int
+
+
 def _hash(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(
@@ -136,6 +150,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_style_revision_requested",
                 "_style_analysis_revision",
                 "_style_crop_policy_adoption",
+                "_completion_requested",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -408,6 +423,33 @@ def get_document(
     row = _get(session, workspace.workspace_id, document_id)
     if reconcile_document(session, row):
         session.commit()
+    if (
+        row.status == "failed"
+        and row.payload.get("auto_start_after_plan") is True
+        and not row.payload.get("job_ids")
+        and row.payload.get("_analysis_checkpoint")
+        and row.payload.get("error_code")
+        in {
+            "REPLICA_PLAN_AUDIT_REJECTED",
+            "REPLICA_STYLE_EVIDENCE_INVALID",
+            "REPLICA_MODEL_RESPONSE_INVALID",
+            "REPLICA_SEGMENTATION_INVALID",
+            "REPLICA_ANALYSIS_UNAVAILABLE",
+        }
+    ):
+        # Old automatic submissions adopt the same completion behavior when
+        # reopened. No button or fresh analysis window is required.
+        values = dict(row.payload)
+        values["_completion_requested"] = values["error_code"]
+        values.pop("error", None)
+        values.pop("error_code", None)
+        values["analysis_attempt_id"] = uuid4().hex
+        values["analysis_stage"] = "正在按现有方案准备生成"
+        row.status, row.payload, row.updated_at = "analysing", values, utc_now()
+        session.commit()
+        background_tasks.add_task(
+            _analyse, request.app, row.id, values["analysis_attempt_id"]
+        )
     since = (
         row.updated_at.replace(tzinfo=UTC)
         if row.updated_at.tzinfo is None
@@ -458,6 +500,91 @@ def history(workspace: WorkspaceDependency, session: SessionDependency) -> list[
     if any(changed):
         session.commit()
     return [_wire(row) for row in rows]
+
+
+@router.get("/records", response_model=list[ReplicaCreationRecordResponse])
+def creation_records(
+    workspace: WorkspaceDependency, session: SessionDependency
+) -> list[dict]:
+    """Lightweight durable records for the site-wide history and task centre.
+
+    Select only display metadata, never the large private model checkpoints.
+    Existing sessions appear immediately without copying or creating paid jobs.
+    """
+    from .replica_records import creation_rows
+
+    rows = creation_rows(session, workspace.workspace_id)
+    linked_ids = [jid for r in rows for jid in (r["job_ids"] or [])]
+    jobs = (
+        {
+            j.id: j
+            for j in session.execute(
+                select(
+                    JobRecord.id,
+                    JobRecord.status,
+                    JobRecord.progress,
+                    JobRecord.expected_item_count,
+                    JobRecord.succeeded_item_count,
+                ).where(
+                    JobRecord.workspace_id == workspace.workspace_id,
+                    JobRecord.id.in_(linked_ids),
+                )
+            ).all()
+        }
+        if linked_ids
+        else {}
+    )
+    result = [
+        {
+            "id": r["id"],
+            "status": r["status"],
+            "created_at": r["created_at"].isoformat(),
+            "updated_at": r["updated_at"].isoformat(),
+            "method": r["method"],
+            "job_ids": r["job_ids"] or [],
+            "current_job_ids": r["job_ids"] or [],
+            "progress": r["progress"] or 0,
+            "stage": r["stage"],
+            "expected": (r["execution"] or {}).get("total")
+            or (r["analysis"] or {}).get("total")
+            or len(r["references"] or []),
+            "generated": (r["execution"] or {}).get("generated", 0),
+        }
+        for r in rows
+    ]
+    for record, source in zip(result, rows, strict=True):
+        linked = [jobs[jid] for jid in record["job_ids"] if jid in jobs]
+        if linked:
+            states = {j.status for j in linked}
+            if states == {"completed"}:
+                record["status"] = "completed"
+            elif states == {"cancelled"}:
+                record["status"] = "cancelled"
+            elif states <= {"failed", "cancelled", "partial", "completed"}:
+                record["status"] = (
+                    "partial" if states & {"partial", "completed"} else "failed"
+                )
+            else:
+                record["status"] = "generating"
+            record["progress"] = min(j.progress for j in linked)
+            record["expected"] = sum(j.expected_item_count for j in linked)
+            record["generated"] = max(
+                record["generated"], sum(j.succeeded_item_count for j in linked)
+            )
+        record["job_ids"] = list(
+            dict.fromkeys(
+                [
+                    *record["job_ids"],
+                    *(
+                        event[key]
+                        for event in (source["retry_events"] or [])
+                        for key in ("from", "to")
+                        if event.get(key)
+                    ),
+                ]
+            )
+        )
+    return result
 
 
 @router.get("/jobs/{job_id}/session")
@@ -740,7 +867,29 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
             run.on_progress = progress_updated
             if hasattr(run, "on_checkpoint"):
                 run.on_checkpoint = checkpoint_updated
-            plans = await run.prepare(payload, records)
+            try:
+                if payload.get("_completion_requested"):
+                    from .replica_completion import CompleteExistingAnalysis
+
+                    raise CompleteExistingAnalysis(payload["_completion_requested"])
+                plans = await run.prepare(payload, records)
+            except ReplicaNativeError as error:
+                if payload.get("auto_start_after_plan") is not True or isinstance(
+                    error, ReplicaInputTooLarge
+                ):
+                    raise
+                from .replica_completion import prepare as prepare_completion
+
+                # The original bounded analysis and real FAIL remain evidence.
+                # Completion is a separate application policy, never an audit PASS.
+                failed_snapshot = await run.snapshot()
+                plans = await prepare_completion(run, payload, records, error)
+                payload["_analysis_lineage"] = [
+                    *payload.get("_analysis_lineage", []),
+                    failed_snapshot,
+                ]
+                payload["planning_status"] = "BEST_EFFORT"
+                payload["analysis_stage"] = "方案修正已结束，正在准备生成"
             snapshot = await run.snapshot()
             binding = {
                 "replication_method": run.method,

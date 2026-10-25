@@ -16,7 +16,7 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 
 from .models import JobRecord, ReplicaDocumentRecord, utc_now
-from .provider import ProviderRequest, ProviderResult
+from .provider import ProviderOutcome, ProviderRequest, ProviderResult
 from .replica_native import (
     NativeReplicaRun,
     ReplicaNativeError,
@@ -562,6 +562,29 @@ class ReplicaDeliveryProvider(NativeReplicaProvider):
     async def _save(
         self, run: NativeReplicaRun, job_id: str, *, delivery: list[str] | None = None
     ) -> None:
+        from .replica_completion import CompletionRun
+
+        if isinstance(run, CompletionRun):
+            await super()._save(run, job_id, delivery=delivery)
+            if run.method == "style":
+                # The shared native saver only publishes exact progress.
+                with self.session_factory() as session:
+                    job = session.get(JobRecord, job_id, with_for_update=True)
+                    row = session.get(
+                        ReplicaDocumentRecord, run.document_id, with_for_update=True
+                    )
+                    progress = native_progress(run.state())
+                    progress["job_id"] = job_id
+                    row.payload = {**row.payload, "execution_progress": progress}
+                    if job is not None and job.status not in {
+                        "completed",
+                        "failed",
+                        "partial",
+                        "cancelled",
+                    }:
+                        job.progress = max(job.progress, progress["percentage"])
+                    session.commit()
+            return
         if run.method != "style" or not (run.root / STATE_FILE).exists():
             await super()._save(run, job_id, delivery=delivery)
             return
@@ -604,6 +627,26 @@ class ReplicaDeliveryProvider(NativeReplicaProvider):
             session.commit()
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
+        from . import replica_completion
+
+        # The same workspace/job/plan authorization precedes both execution
+        # policies. A best-effort plan never enters the old passing-audit gate.
+        try:
+            values, document_id, ordinal = super()._load(request)
+        except ReplicaNativeError:
+            return await super().execute(request)
+        if replica_completion.available(values.get("native_snapshot", {})):
+            try:
+                return await replica_completion.execute(
+                    self, request, values, document_id, ordinal
+                )
+            except ReplicaNativeError as error:
+                return ProviderResult(
+                    outcome=ProviderOutcome.FAILED,
+                    error_code=error.code,
+                    error_message="生成任务的持久检查点无法恢复。",
+                    retryable=False,
+                )
         result = await super().execute(request)
         if result.error_code == StyleDeliveryInvalid.code:
             return replace(result, error_message=StyleDeliveryInvalid.message)

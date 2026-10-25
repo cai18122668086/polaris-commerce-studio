@@ -134,6 +134,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_segmentation_revision",
                 "_style_revision_requested",
                 "_style_analysis_revision",
+                "_style_crop_policy_adoption",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -682,6 +683,11 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 app.state.storage,
                 **({"root": Path(checkpoint["root"])} if checkpoint else {}),
             )
+            if payload["replication_method"] == "style":
+                style_run: Any = run
+                style_run.crop_policy_adoption = payload.get(
+                    "_style_crop_policy_adoption"
+                )
             if checkpoint:
                 if revise:
                     revision_run: Any = run
@@ -955,6 +961,34 @@ def retry_analysis(
             "REPLICA_PLAN_REVISION_REQUIRED",
             "部分方案仍未通过校验，已完成的规划和素材已保留。请先调整未通过的方案。",
         )
+    if row.payload.get("replication_method") == "style" and row.payload.get(
+        "_analysis_checkpoint"
+    ):
+        from .replica_style_analysis import crop_policy_upgrade, policy
+
+        checkpoint = row.payload["_analysis_checkpoint"]
+        if checkpoint.get("analysis_policy") != policy():
+            authority = crop_policy_upgrade(
+                row.payload, _analysis_input_hash(row.payload)
+            )
+            if authority is None:
+                raise ApiError(
+                    409,
+                    "REPLICA_RETRY_UNAVAILABLE",
+                    "原裁图检查点无法安全升级，原记录已保留。",
+                )
+            row.payload = {
+                **row.payload,
+                "_style_crop_policy_adoption": authority,
+                "_analysis_lineage": [
+                    *row.payload.get("_analysis_lineage", []),
+                    *(
+                        [checkpoint]
+                        if checkpoint not in row.payload.get("_analysis_lineage", [])
+                        else []
+                    ),
+                ],
+            }
     from .replica_analysis_recovery import (
         prepare_segmentation_retry,
         segmentation_repair_available,

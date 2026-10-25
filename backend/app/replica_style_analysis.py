@@ -30,7 +30,11 @@ from .replica_style_evidence import (
 
 JOURNAL = "style-analysis-checkpoints.json"
 CURSOR = JOURNAL
-VERSION = "style-analysis-resume-v2"
+VERSION = "style-analysis-resume-v3"
+LEGACY_REVIEW_POLICY = {
+    "version": "style-analysis-resume-v2",
+    "sha256": "e8cab24e436f9eecf04021a70433dc748d17b84ecfd3110c9acaa344c6192798",
+}
 __all__ = [
     "FLAGS",
     "PROVENANCE",
@@ -58,6 +62,68 @@ def policy() -> dict[str, str]:
     return {"version": VERSION, "sha256": sha.hexdigest()}
 
 
+def _crop_policy_authority(snapshot: dict[str, Any]) -> dict[str, Any] | None:
+    from .new_detail_skill_provider import BundledSkillManifestValidator
+    from .replica_analysis_recovery import document_file
+    from .replica_native import SKILLS
+
+    if (
+        snapshot.get("schema") != "replica-native-v1"
+        or snapshot.get("method") != "style"
+        or snapshot.get("analysis_policy") != LEGACY_REVIEW_POLICY
+        or snapshot.get("skill_id") != SKILLS["style"]
+        or snapshot.get("source_hash")
+        != BundledSkillManifestValidator().validate(SKILLS["style"])
+    ):
+        return None
+    try:
+        name = (
+            Path(snapshot["run"]).relative_to(Path(snapshot["root"]))
+            / "artifacts/workflow.json"
+        ).as_posix()
+    except (KeyError, ValueError, TypeError):
+        return None
+    workflow = document_file(snapshot, name)
+    cursor = document_file(snapshot, JOURNAL).get("cursor", {})
+    evidence = cursor.get("evidence", {})
+    baseline = evidence.get("source_analysis")
+    if (
+        cursor.get("phase") != "review"
+        or not isinstance(baseline, dict)
+        or not baseline.get("overview_detection", {}).get("panels")
+        or not baseline.get("source_content_analysis", {}).get("sequence")
+        or not isinstance(evidence.get("candidate"), dict)
+        or not evidence["candidate"].get("units")
+        or workflow.get("state") not in {"ROUTE_CLASSIFIED", "REFERENCE_DECOMPOSED"}
+        or workflow.get("active_token")
+        or workflow.get("artwork")
+        or (workflow.get("plan_audit") or {}).get("pass") is True
+    ):
+        return None
+    return {
+        "source_policy": LEGACY_REVIEW_POLICY,
+        "parent_snapshot_sha256": canonical_hash(snapshot),
+        "frozen_source_sha256": canonical_hash(baseline),
+        "target_policy": policy(),
+    }
+
+
+def crop_policy_upgrade(
+    payload: dict[str, Any], input_hash: str
+) -> dict[str, Any] | None:
+    """Admit only the known failed pre-generation review through normal retry."""
+    if (
+        payload.get("replication_method") != "style"
+        or payload.get("error_code") != StyleEvidenceInvalid.code
+        or payload.get("_analysis_input_hash") != input_hash
+        or payload.get("job_ids")
+        or payload.get("plans")
+        or payload.get("native_snapshot")
+    ):
+        return None
+    return _crop_policy_authority(payload.get("_analysis_checkpoint", {}))
+
+
 def revision_checkpoint(payload: dict[str, Any]) -> bool:
     from .replica_analysis_recovery import document_file
 
@@ -77,6 +143,7 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
         self.journal: dict[str, Any] = {"requests": {}, "cursor": {}}
         self.on_checkpoint: Any = None
         self.authorized_revision: str | None = None
+        self.crop_policy_adoption: dict[str, Any] | None = None
 
     async def checkpoint(self) -> None:
         write_json(self.root / JOURNAL, self.journal)
@@ -88,7 +155,9 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
         return {**await super().snapshot(), "analysis_policy": policy()}
 
     async def restore(self, snapshot: dict[str, Any]) -> None:
-        if snapshot.get("analysis_policy") != policy():
+        upgrading = snapshot.get("analysis_policy") != policy()
+        authority = _crop_policy_authority(snapshot) if upgrading else None
+        if upgrading and (not authority or authority != self.crop_policy_adoption):
             raise ReplicaNativeError("风格分析恢复规则已变化，请保留原记录并重新诊断。")
         prefix = f"{self.workspace_id}/replica/{self.document_id}/"
         if any(
@@ -98,6 +167,26 @@ class DurableStyleAnalysisRun(NativeReplicaRun):
             raise ReplicaNativeError("Style analysis snapshot belongs to another task")
         await super().restore(snapshot)
         self.journal = read_json(self.root / JOURNAL)
+        if upgrading:
+            # The HTTP retry retains the complete original snapshot in lineage.
+            # Keep old response bytes and attribution; none is a v3 pixel review.
+            self.journal.setdefault("policy_adoptions", []).append(authority)
+            for record in self.journal["requests"].values():
+                if record["stage"].startswith("style-crop-") and any(
+                    key not in record["response"]
+                    for key in (
+                        "overview_detection",
+                        "source_content_analysis",
+                        "narrative_logic",
+                        "source_semantics",
+                    )
+                ):
+                    record["invalid_contract"] = True
+                    record["validation_failure"] = {
+                        "command": "legacy-crop-review",
+                        "detail": "Legacy response omitted frozen source fields",
+                    }
+            write_json(self.root / JOURNAL, self.journal)
 
     def planner_identity(self) -> dict[str, Any]:
         gateway = self.gateway

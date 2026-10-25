@@ -118,12 +118,26 @@ def setup_run(tmp_path):
 def corrected(analysis):
     value = deepcopy(analysis)
     value["units"].append(
-        {**deepcopy(value["units"][0]), "id": "C02", "source_content_step_ids": ["T02"]}
+        {
+            **deepcopy(value["units"][0]),
+            "id": "C02",
+            "source_content_step_ids": ["T02"],
+            "source_role": "style_mechanism_only",
+            "source_semantics": "Synthetic physical material",
+        }
     )
     value["crop_specs"] = [
         {"id": "C02", "reference_input_id": "R01", "bbox": [0, 64, 16, 80]}
     ]
     return value
+
+
+def crop_response(analysis):
+    return {
+        key: deepcopy(analysis[key])
+        for key in ("units", "crop_specs", "mechanisms")
+        if key in analysis
+    }
 
 
 def test_missing_source_step_is_detected_before_any_page_planning(tmp_path):
@@ -150,7 +164,7 @@ def test_repair_physically_crops_then_freshly_reviews_returned_pixels(
         calls.append(stage)
         if stage == "style-crop-repair-0":
             assert any(e.startswith("T02:") for e in context["validation_errors"])
-            return corrected(context["analysis"])
+            return crop_response(corrected(context["analysis"]))
         if stage == "style-crop-review-1":
             actual = Path(context["analysis"]["units"][1]["source_crop_path"])
             with Image.open(actual) as image:
@@ -159,7 +173,7 @@ def test_repair_physically_crops_then_freshly_reviews_returned_pixels(
                 context["analysis"]["source_content_analysis"]
                 == analysis["source_content_analysis"]
             )
-        return deepcopy(context["analysis"])
+        return crop_response(context["analysis"])
 
     monkeypatch.setattr(NativeReplicaRun, "ask", ask)
     result = asyncio.run(run._review_crops(analysis))
@@ -192,7 +206,7 @@ def test_relabeling_or_changing_source_observations_never_repairs_crops(
             ]["sequence"][:1]
         else:
             value["units"][0]["source_product_presence"] = True
-        return value
+        return value if defect == "delete_source_step" else crop_response(value)
 
     monkeypatch.setattr(NativeReplicaRun, "ask", ask)
     with pytest.raises(StyleEvidenceInvalid):
@@ -430,7 +444,7 @@ def test_new_physical_crop_bytes_never_reuse_old_review_cache(tmp_path, monkeypa
         path = Path(context["analysis"]["units"][0]["source_crop_path"])
         with Image.open(path) as image:
             seen.append(image.getpixel((0, 0)))
-        return deepcopy(context["analysis"])
+        return crop_response(context["analysis"])
 
     monkeypatch.setattr(NativeReplicaRun, "ask", inspect)
     context = {"analysis": analysis}
@@ -495,7 +509,7 @@ def test_twelve_steps_with_four_bindings_stop_before_page_planning(
     async def unchanged(self, stage, instruction, context, **kwargs):
         calls.append(stage)
         assert stage.startswith(("style-crop-review", "style-crop-repair"))
-        return deepcopy(context["analysis"])
+        return crop_response(context["analysis"])
 
     async def forbidden(*args, **kwargs):
         raise AssertionError("Page planning must not run before physical crop coverage")

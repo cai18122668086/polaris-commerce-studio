@@ -365,7 +365,12 @@ def test_preplanning_gate_is_required_and_corrupt_artwork_fails(tmp_path):
 
 
 def test_exact_v5_binding_and_execution_paths_are_unchanged():
-    from app.replica_exact_compact import protocol_binding
+    import sys
+
+    from app.replica_exact_compact import run_class
+
+    legacy = run_class("exact", "exact-compact-v5")
+    protocol_binding = sys.modules[legacy.__module__].protocol_binding
     from app.replica_native_provider import NativeReplicaProvider
 
     assert protocol_binding() == {

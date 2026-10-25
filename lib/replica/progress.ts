@@ -5,6 +5,10 @@ export type ReplicaProgressDocument = {
   payload: {
     analysis_attempt_id?: string;
     error_code?: string;
+    replication_method?: string;
+    analysis_revision_available?: boolean;
+    segmentation_repair_available?: boolean;
+    segmentation_diagnostics?: { coverage_valid: boolean; columns: { reference_index: number | null; split_count: number; inventory_count: number; reason?: string }[] };
     progress?: number;
     job_ids?: string[];
     submission_complete?: boolean;
@@ -25,6 +29,9 @@ export function replicaPlanFailure(document: ReplicaProgressDocument): { title: 
         ? `已通过的 ${progress.accepted} 屏方案和原始素材已保留。请先调整未通过的方案，再继续处理。`
         : "已完成的规划和原始素材已保留。请先调整未通过的方案，再继续处理。",
     };
+  }
+  if (document.payload.replication_method === "style" && !document.payload.analysis_revision_available) {
+    return { title: "风格方案需要调整", message: "系统生成的风格方案尚未通过前置检查。商品图、参考图和商品信息已保留，可使用现有素材重新诊断。" };
   }
   return { title: "部分方案需要调整", message: "部分方案仍未通过校验，已完成的规划和素材已保留。请先调整未通过的方案，再继续处理。" };
 }
@@ -74,4 +81,15 @@ export function mergeReplicaProgress<T extends ReplicaProgressDocument>(current:
       } }),
     },
   };
+}
+
+export function replicaSegmentationFailure(document: ReplicaProgressDocument): { title: string; message: string } | undefined {
+  if (document.status !== "failed" || document.payload.error_code !== "REPLICA_SEGMENTATION_INVALID") return undefined;
+  const diagnostic = document.payload.segmentation_diagnostics;
+  if (!diagnostic) return { title: "参考图拆屏需要校正", message: "参考图的屏数或边界尚未一致核对，原始素材已保留。" };
+  if (!diagnostic.coverage_valid) return { title: "参考图范围需要校正", message: "参考图存在遗漏、重叠或裁切范围分歧。原始素材已保留，可重新校正拆屏。" };
+  const details = diagnostic.columns.filter(c => Number.isInteger(c.reference_index)).map(c =>
+    c.reason === "boundaries" ? `第 ${c.reference_index! + 1} 张参考图的分屏边界位置不一致`
+      : `第 ${c.reference_index! + 1} 张参考图：拆屏 ${c.split_count} 屏，复核 ${c.inventory_count} 屏`);
+  return { title: "参考图拆屏需要校正", message: `${details.join("；") || "分屏边界尚未一致核对"}。原始素材与分析记录已保留。` };
 }

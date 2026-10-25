@@ -343,9 +343,15 @@ def generation_workspace(
         for job in source["layout"]["jobs"]:
             job["canvas"] = [w, screen_h * len(job["unit_ids"])]
         source["route_specific_composition_plan"]["contract"] = source["layout"]
-    write_json(artifacts / "workflow.json", source)
     manifest = run.run / "artifacts/reference-crops/manifest.json"
-    write_json(artifacts / "reference-crops/manifest.json", read_json(manifest))
+    from .replica_style_evidence import job_crop_manifest
+
+    bound_manifest = job_crop_manifest(
+        run, source, read_json(manifest), state["jobs"][index]
+    )
+    source["reference_crops"] = deepcopy(bound_manifest)
+    write_json(artifacts / "workflow.json", source)
+    write_json(artifacts / "reference-crops/manifest.json", bound_manifest)
     return gate
 
 

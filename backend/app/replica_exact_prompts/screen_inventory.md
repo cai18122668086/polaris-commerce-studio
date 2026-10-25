@@ -12,3 +12,11 @@ new screen even when colors or gradients continue. Do not merge adjacent screens
 into a broad topic. Do not split small labels within one continuous proof carrier.
 Do not assume a standard count or equal heights. The server will independently
 compare this inventory with the physical cuts; you do not issue a PASS verdict.
+
+Independently report boundary_ys: each internal horizontal cut as an increasing
+integer y coordinate in that attached COLUMN image. Return one screen per
+interval between 0, your boundary_ys and column height. Equal counts with different
+physical intervals are a disagreement. Distinguish a self-contained panel from
+small text labels within it; never add boundaries merely to reach an expected count.
+For coverage_scope=requested_columns_only, inspect only the supplied columns;
+original reference images provide context and do not request additional columns.

@@ -38,7 +38,7 @@ from .replica_native import (
     write_json,
 )
 
-VERSION = "exact-compact-v5"
+VERSION = "exact-compact-v6"
 PROMPTS = Path(__file__).with_name("replica_exact_prompts")
 OBSERVATIONS = (
     "subject_and_scale",
@@ -114,6 +114,7 @@ def protocol_binding() -> dict[str, str]:
         Path(__file__).with_name("replica_exact_revision.py"),
         Path(__file__).with_name("replica_execution_resume.py"),
         Path(__file__).with_name("replica_direct_delivery.py"),
+        Path(__file__).with_name("replica_screen_boundaries.py"),
         Path(__file__).with_name("replica_layout.py"),
         Path(__file__).with_name("replica_native.py"),
         Path(__file__).with_name("replica_native_provider.py"),
@@ -327,7 +328,7 @@ def response_schema(phase: str) -> dict[str, Any]:
                 maxItems=60,
             ),
         }
-        if phase == "screen_split":
+        if phase in {"screen_split", "screen_inventory"}:
             column["boundary_ys"] = arr({"type": "integer", "minimum": 1}, maxItems=59)
         properties: dict[str, Any] = {
             "columns": arr(obj(column), minItems=1, maxItems=60)
@@ -886,12 +887,28 @@ class CompactExactReplicaRun(NativeReplicaRun):
 
     def _data(self, phase: str, data: dict[str, Any]) -> dict[str, Any]:
         if phase == "intake":
-            return {k: data[k] for k in ("product_dimensions", "reference_dimensions")}
+            return {
+                **{k: data[k] for k in ("product_dimensions", "reference_dimensions")},
+                **(
+                    {
+                        "column_correction": getattr(
+                            self, "segmentation_revision", "initial"
+                        )
+                    }
+                    if getattr(self, "segmentation_coverage_retry", False)
+                    else {}
+                ),
+            }
         if phase in {"screen_split", "screen_inventory"}:
             return clean(
                 {
                     "columns": [model_unit(c) for c in data["columns"]],
                     "reference_dimensions": data.get("reference_dimensions", []),
+                    **(
+                        {"coverage_scope": data["coverage_scope"]}
+                        if "coverage_scope" in data
+                        else {}
+                    ),
                     **(
                         {"boundary_mismatch": data["boundary_mismatch"]}
                         if phase == "screen_split" and "boundary_mismatch" in data
@@ -1150,7 +1167,7 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 c["column_id"] for c in expected
             ]:
                 raise ValueError("Observe every declared column once in source order")
-            if phase == "screen_split":
+            if phase in {"screen_split", "screen_inventory"}:
                 for column, source in zip(value["columns"], expected, strict=True):
                     cuts = column["boundary_ys"]
                     if cuts != sorted(set(cuts)) or any(
@@ -1420,129 +1437,9 @@ class CompactExactReplicaRun(NativeReplicaRun):
             return value
         if stage.startswith("exact-module-constraints") or phase_for(stage) != "intake":
             return await self._visual_stage(stage, context, **kwargs)
-        columns_observation = await self._visual_stage(stage, context, **kwargs)
-        data = context.get("data", context)
-        columns = []
-        for index, column in enumerate(columns_observation["columns"]):
-            path = self.root / "crops" / f"reference-column-{index:03}.png"
-            source = Path(self.context["reference_paths"][column["reference_index"]])
-            self.crop(source, column["bbox"], path)
-            left, top, right, bottom = column["bbox"]
-            columns.append(
-                {
-                    **column,
-                    "column_id": f"C{index + 1:03}",
-                    "width": right - left,
-                    "height": bottom - top,
-                    "crop_path": str(path),
-                }
-            )
-        self.context["reference_columns"] = columns
-        write_json(self.root / "context.json", self.context)
-        inputs = {
-            "columns": columns,
-            "reference_dimensions": data["reference_dimensions"],
-        }
-        column_paths = [Path(c["crop_path"]) for c in columns]
-        split = await self._visual_stage(
-            "identity-screen-split-0", inputs, paths=column_paths
-        )
-        # The counter sees actual pixels, never the proposed cuts, titles or counts.
-        inventory_paths = [
-            *map(Path, self.context["reference_paths"]),
-            *column_paths,
-        ]
-        inventory = await self._visual_stage(
-            "identity-screen-inventory-0", inputs, paths=inventory_paths
-        )
+        from .replica_screen_boundaries import segment_references
 
-        def mismatches() -> list[str]:
-            return [
-                a["column_id"]
-                for a, b in zip(split["columns"], inventory["columns"], strict=True)
-                if len(a["screens"]) != len(b["screens"])
-            ]
-
-        if not inventory["all_columns_covered"]:
-            raise CompactScreenBoundaryMismatch(
-                "Reference columns omit or overlap visible content"
-            )
-        failed = mismatches()
-        if failed:
-            targeted = {
-                **inputs,
-                "columns": [c for c in columns if c["column_id"] in failed],
-                "boundary_mismatch": {
-                    "previous_split": [
-                        c for c in split["columns"] if c["column_id"] in failed
-                    ],
-                    "independent_inventory": [
-                        c for c in inventory["columns"] if c["column_id"] in failed
-                    ],
-                },
-            }
-            repaired = await self._visual_stage(
-                "identity-screen-split-repair",
-                targeted,
-                paths=[Path(c["crop_path"]) for c in targeted["columns"]],
-            )
-            replacements = {c["column_id"]: c for c in repaired["columns"]}
-            split = {
-                "columns": [
-                    replacements.get(c["column_id"], c) for c in split["columns"]
-                ]
-            }
-            inventory = await self._visual_stage(
-                "identity-screen-inventory-1", inputs, paths=inventory_paths
-            )
-        write_json(
-            self.root / "screen-inventory.json",
-            {
-                "split": split,
-                "independent_inventory": inventory,
-                "directed_repair_columns": failed,
-                "mismatched_columns": mismatches(),
-            },
-        )
-        if not inventory["all_columns_covered"] or mismatches():
-            raise CompactScreenBoundaryMismatch(
-                "Physical screen count remains inconsistent after one correction"
-            )
-        units = []
-        for column, observed in zip(columns, split["columns"], strict=True):
-            left, top, right, _ = column["bbox"]
-            edges = [0, *observed["boundary_ys"], column["height"]]
-            for index, screen in enumerate(observed["screens"]):
-                units.append(
-                    {
-                        "reference_index": column["reference_index"],
-                        "column_index": column["column_index"],
-                        "screen_index": index,
-                        "bbox": [
-                            left,
-                            top + edges[index],
-                            right,
-                            top + edges[index + 1],
-                        ],
-                        "screen_boundary_reason": (
-                            f"Distinct screen: {screen['headline']}; "
-                            f"buyer question: {screen['buyer_question']}"
-                        ),
-                    }
-                )
-        result = {
-            k: columns_observation[k]
-            for k in ("product_geometry", "product_crops", "route")
-        }
-        result["units"] = units
-        errors = segmentation_errors(
-            result,
-            [(p["width"], p["height"]) for p in data["product_dimensions"]],
-            [(r["width"], r["height"]) for r in data["reference_dimensions"]],
-        )
-        if errors:
-            raise CompactScreenBoundaryMismatch("; ".join(errors))
-        return result
+        return await segment_references(self, stage, context, **kwargs)
 
     async def _visual_stage(
         self,
@@ -1599,6 +1496,10 @@ class CompactExactReplicaRun(NativeReplicaRun):
             }
         )
         cached = self.checkpoints["results"].get(identity)
+        if cached is None and phase == "intake":
+            from .replica_screen_boundaries import inherited_intake
+
+            cached = inherited_intake(self, data, sources, schema, system, image_order)
         if cached is not None:
             raw = deepcopy(cached["raw"])
             if canonical_hash(raw) != cached["response_sha256"]:
@@ -1751,6 +1652,7 @@ def run_class(method: str, protocol: Any = None) -> type[NativeReplicaRun]:
         "exact-compact-v2",
         "exact-compact-v3",
         "exact-compact-v4",
+        "exact-compact-v5",
     }:
         archive = version.rsplit("-", 1)[-1]
         name = f"app._replica_exact_compact_{archive}"

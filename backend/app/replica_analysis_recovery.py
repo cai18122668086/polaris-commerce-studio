@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from typing import Any
 from uuid import uuid4
 
@@ -117,6 +118,86 @@ def style_revision_available(row: Any, input_hash: str) -> bool:
     )
 
 
+def exact_revision_available(row: Any, input_hash: str) -> bool:
+    """Continue a rejected current-protocol plan through explicit HTTP intent."""
+    values = row.payload
+    snapshot = values.get("_analysis_checkpoint", {})
+    if (
+        row.status != "failed"
+        or values.get("replication_method") != "exact"
+        or values.get("error_code") != "REPLICA_PLAN_AUDIT_REJECTED"
+        or values.get("job_ids")
+        or values.get("plans")
+        or values.get("native_snapshot")
+        or values.get("_analysis_input_hash") != input_hash
+        or snapshot.get("method") != "exact"
+    ):
+        return False
+    from .replica_exact_compact import protocol_binding
+
+    binding = protocol_binding()
+    if (
+        values.get("_exact_model_protocol") != binding["version"]
+        or snapshot.get("model_protocol") != binding
+    ):
+        return False
+    cursor = document_file(snapshot, "compact-checkpoints.json").get("plan_cursor", {})
+    state = document_file(snapshot, "session.json")
+    context = document_file(snapshot, "context.json")
+    plan, audit = cursor.get("plan"), cursor.get("audit", {})
+    native_plan = deepcopy(state.get("plan"))
+    expected_plan = deepcopy(plan)
+    # Native compile-plan annotates this server-derived ratio on each module.
+    for candidate in (native_plan, expected_plan):
+        if isinstance(candidate, dict):
+            for module in candidate.get("modules", []):
+                module.pop("reference_aspect_ratio", None)
+    return bool(
+        cursor.get("phase") == "revise"
+        and type(cursor.get("rounds")) is int
+        and cursor["rounds"] >= 3
+        and plan
+        and state.get("state") == "PLAN_REJECTED"
+        and native_plan == expected_plan
+        and not state.get("current")
+        and context.get("model_protocol") == binding
+        and any(r.get("decision") == "FAIL" for r in audit.get("unit_audits", []))
+    )
+
+
+def configure_exact_revision(run: Any, values: dict[str, Any], checkpoint: Any) -> None:
+    """Extend only the explicit revision, retaining rounds and model caches.
+
+    The native adapter already revises only failed modules and hashes each
+    review subject. Application admission supplies another bounded round window;
+    the persisted receipt prevents retries from granting another window.
+    """
+    from .replica_exact_contracts import canonical_hash
+    from .replica_native import ReplicaNativeError
+
+    authority = values.get("_exact_plan_revision")
+    if not authority:
+        return
+    cursor = run.checkpoints.get("plan_cursor", {})
+    receipt = cursor.get("explicit_revision", {})
+    if receipt.get("id") != authority.get("id"):
+        if (
+            not authority.get("id")
+            or canonical_hash(checkpoint) != authority.get("parent_snapshot_sha256")
+            or cursor.get("phase") != "revise"
+            or run.state().get("state") != "PLAN_REJECTED"
+        ):
+            raise ReplicaNativeError("方案修正授权与原始检查点不一致。")
+        receipt = {
+            **authority,
+            "stop_after": cursor["rounds"] + type(run).planning_revisions,
+        }
+        cursor["explicit_revision"] = receipt
+    if {k: receipt.get(k) for k in authority} != authority:
+        raise ReplicaNativeError("方案修正授权已变化。")
+    run.planning_revisions = receipt["stop_after"]
+
+
 def prepare_segmentation_retry(values: dict[str, Any]) -> dict[str, Any]:
     from .replica_exact_compact import VERSION
 
@@ -139,6 +220,7 @@ def prepare_segmentation_retry(values: dict[str, Any]) -> dict[str, Any]:
 
 def configure_run(run: Any, values: dict[str, Any], checkpoint: Any) -> None:
     if values.get("replication_method") == "exact":
+        configure_exact_revision(run, values, checkpoint)
         correction = values.get("_segmentation_revision", {})
         run.segmentation_revision = correction.get("id", "initial")
         run.segmentation_coverage_retry = correction.get("coverage_retry", False)

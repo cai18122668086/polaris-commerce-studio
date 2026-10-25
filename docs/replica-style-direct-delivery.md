@@ -8,9 +8,9 @@ The production provider factory in `execution.py` installs
 `ReplicaDeliveryProvider`. Its style override replaces the old sequence
 `record → pixel audit → revision → pixel audit → accept → global audit → finalize`
 with generation and file delivery. No post-generation AI review or automatic
-repair is called. The original Skill and shared provider files remain byte
-identical because the released exact v5 protocol hashes those dependencies.
-Exact continues through its existing implementation and binding.
+repair is called. The original Skill remains unchanged. The released exact v5
+adapter and its dependencies are archived with their original binding; the
+current exact v6 adapter has its own source binding and recovery policy.
 
 The original `workflow.json`, route plan, inputs, facts and historical verdicts
 remain immutable. `style-direct-session.json` records `GENERATED` and
@@ -75,11 +75,26 @@ request cache for crop reviews, and materializes all proposed crops before
 computing review image hashes. A changed crop can never inherit an old pixel
 review merely because its filename or stage name is unchanged.
 
-The v2 analysis policy binds the analysis adapter, physical evidence service and
+The analysis policy binds the analysis adapter, physical evidence service and
 native adapter sources. Old failed analysis contracts remain unchanged; explicit
 plan correction records its parent snapshot hash and preserves the original
 snapshot in private lineage. Existing style tasks with no durable checkpoint
 require one explicit new diagnosis using their retained original material.
+
+Crop review uses a crop-only patch contract. The server owns frozen panel,
+source-step, narrative and semantic observations; the model returns only unit
+changes, crop proposals and optional mechanisms. Omitted frozen fields are not
+treated as rewritten observations. A final review must explicitly cover every
+current unit and all eight safety flags. Partial proposals may create real crops
+but cannot pass until the new pixels receive a complete review. Old safe flags
+never fill missing review fields, and true unsafe verdicts remain failures.
+
+Normal retry admits one narrowly scoped v2-to-v3 policy upgrade for the known
+v2 source hash at a failed pre-generation crop review. It requires unchanged
+inputs, native Skill source and hash-verified review state, with no jobs or
+approved plan. The complete old snapshot, source observations, raw responses and
+usage attribution remain preserved. New review requests use the v3 policy;
+completed intake is not repeated. Other policy changes require diagnosis.
 
 
 The compiler's `(path, reference_input_id)` de-duplication can lose a second
@@ -92,3 +107,20 @@ Separate jobs with one step continue to share the canonical crop. Cross-panel
 misbinding still fails. Both generation-workflow and manifest copies receive the
 same normalized manifest before any generation token is issued; the confirmed
 workflow, route plan and source manifest remain unchanged.
+
+## Current exact plan correction
+
+The application recovery layer also admits explicit correction of a rejected
+current-v6 plan. Admission checks unchanged inputs and protocol, hash-verified
+planning/session/context files, a rejected plan matching its native session,
+and no approved execution or image jobs. It retains the original snapshot in
+lineage and records the correction authority privately. It does not alter the
+v6 model protocol, prompts, original Skill or any archived protocol binding.
+
+The existing native planner changes only failed modules and reuses unchanged
+subject-bound PASS reviews. Each explicit correction grants the existing three
+planning rounds; a persisted receipt ensures transport retries and process
+restarts cannot grant more rounds. Once approved, the normal worker delivers
+generated files with zero post-generation AI review. Synthetic HTTP/worker tests
+cover temporary-directory deletion, duplicate correction requests, retained
+PASS modules, bounded retries and automatic submission/delivery.

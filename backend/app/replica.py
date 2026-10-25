@@ -129,11 +129,13 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_analysis_checkpoint",
                 "_analysis_input_hash",
                 "_analysis_revision",
+                "_exact_plan_revision",
                 "_analysis_lineage",
                 "_segmentation_parent",
                 "_segmentation_revision",
                 "_style_revision_requested",
                 "_style_analysis_revision",
+                "_style_crop_policy_adoption",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -208,9 +210,14 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
 
 
 def _revision_available(row: ReplicaDocumentRecord) -> bool:
-    from .replica_analysis_recovery import style_revision_available
+    from .replica_analysis_recovery import (
+        exact_revision_available,
+        style_revision_available,
+    )
 
-    if style_revision_available(row, _analysis_input_hash(row.payload)):
+    if style_revision_available(
+        row, _analysis_input_hash(row.payload)
+    ) or exact_revision_available(row, _analysis_input_hash(row.payload)):
         return True
     from .replica_exact_revision import V2_BINDING
 
@@ -682,6 +689,11 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                 app.state.storage,
                 **({"root": Path(checkpoint["root"])} if checkpoint else {}),
             )
+            if payload["replication_method"] == "style":
+                style_run: Any = run
+                style_run.crop_policy_adoption = payload.get(
+                    "_style_crop_policy_adoption"
+                )
             if checkpoint:
                 if revise:
                     revision_run: Any = run
@@ -955,6 +967,34 @@ def retry_analysis(
             "REPLICA_PLAN_REVISION_REQUIRED",
             "部分方案仍未通过校验，已完成的规划和素材已保留。请先调整未通过的方案。",
         )
+    if row.payload.get("replication_method") == "style" and row.payload.get(
+        "_analysis_checkpoint"
+    ):
+        from .replica_style_analysis import crop_policy_upgrade, policy
+
+        checkpoint = row.payload["_analysis_checkpoint"]
+        if checkpoint.get("analysis_policy") != policy():
+            authority = crop_policy_upgrade(
+                row.payload, _analysis_input_hash(row.payload)
+            )
+            if authority is None:
+                raise ApiError(
+                    409,
+                    "REPLICA_RETRY_UNAVAILABLE",
+                    "原裁图检查点无法安全升级，原记录已保留。",
+                )
+            row.payload = {
+                **row.payload,
+                "_style_crop_policy_adoption": authority,
+                "_analysis_lineage": [
+                    *row.payload.get("_analysis_lineage", []),
+                    *(
+                        [checkpoint]
+                        if checkpoint not in row.payload.get("_analysis_lineage", [])
+                        else []
+                    ),
+                ],
+            }
     from .replica_analysis_recovery import (
         prepare_segmentation_retry,
         segmentation_repair_available,
@@ -1005,10 +1045,44 @@ def revise_analysis(
     row = _get(session, workspace.workspace_id, document_id, "session")
     if row.status == "analysing" and (
         row.payload.get("_analysis_revision")
+        or row.payload.get("_exact_plan_revision")
         or row.payload.get("_style_revision_requested")
     ):
         return _wire(row)
-    from .replica_analysis_recovery import style_revision_available
+    from .replica_analysis_recovery import (
+        exact_revision_available,
+        style_revision_available,
+    )
+
+    if exact_revision_available(row, _analysis_input_hash(row.payload)):
+        if (
+            workspace.workspace_id
+            not in request.app.state.settings.replica_exact_compact_workspaces
+        ):
+            raise ApiError(
+                409, "REPLICA_REVISION_UNAVAILABLE", "当前工作区未启用方案修正。"
+            )
+        checkpoint = row.payload["_analysis_checkpoint"]
+        row.payload = {
+            **{
+                k: v for k, v in row.payload.items() if k not in {"error", "error_code"}
+            },
+            "_exact_plan_revision": {
+                "id": uuid4().hex,
+                "parent_snapshot_sha256": _hash(checkpoint),
+            },
+            "_analysis_lineage": [
+                *row.payload.get("_analysis_lineage", []),
+                checkpoint,
+            ],
+            "analysis_attempt_id": uuid4().hex,
+        }
+        row.status, row.updated_at = "analysing", utc_now()
+        session.commit()
+        background_tasks.add_task(
+            _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
+        )
+        return _wire(row)
 
     if style_revision_available(row, _analysis_input_hash(row.payload)):
         row.payload = {

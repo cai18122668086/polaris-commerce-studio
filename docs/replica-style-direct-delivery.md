@@ -39,3 +39,27 @@ Synthetic tests cover both native single/pair branches, format failures,
 planning gates, immutable history, changed bindings, unknown results, returned
 but unrecorded requests, deletion of temporary files, and a real HTTP/worker
 retry through durable storage. They do not claim live visual quality.
+
+The style analysis adapter (`replica_style_analysis.py`) verifies generation
+reference coverage before page planning. Every observed source content step
+must bind a reviewed physical crop from its corresponding source panel. Crop
+origin, coordinates and actual bytes are server-recorded. Model-proposed crop
+corrections are materialized and their new pixels receive a fresh pre-generation
+review; changing flags or relabeling another panel's swatch cannot fill a gap.
+The original native crop compiler, factual registration and plan audit remain
+mandatory. Full analysis panels still supply global layout evidence, while safe
+generation crops supply supplementary type, material and action details.
+
+This addresses an observed failure: a twelve-step live plan had only four safe
+crops bound to four steps. Eight steps lacked generation references, while the
+old revision loop only rewrote page plans. The immutable native generation
+compiler would also reject those missing bindings. Tests reproduce that failure
+and verify corrected bindings with the unchanged native compiler.
+
+Failed crop, facts and plan stages retain hash-verified native snapshots and a
+style cursor. Normal retry/revision restores original inputs and the failed
+stage without repeating completed intake or source observations. New crop
+bytes must be reviewed again. Explicit plan revision retains prior FAIL
+contracts and re-runs the real plan audit; it does not adopt an old rejection as
+PASS. Legacy failed sessions without a durable checkpoint are not claimed to
+support that restoration.

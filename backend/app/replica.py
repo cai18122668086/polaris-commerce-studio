@@ -45,6 +45,7 @@ from .replica_native import (
     native_accounting,
 )
 from .replica_progress import reconcile_document
+from .replica_style_analysis import StyleEvidenceInvalid
 from .schemas_v1 import ReferenceRemixJobCreate
 from .services import get_ready_assets, lock_workspace_limits
 from .skill_protocol import load_skill_protocol
@@ -128,6 +129,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_analysis_checkpoint",
                 "_analysis_input_hash",
                 "_analysis_revision",
+                "_style_analysis_revision",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -182,6 +184,17 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
 def _revision_available(row: ReplicaDocumentRecord) -> bool:
     from .replica_exact_revision import V2_BINDING
 
+    if row.payload.get("replication_method") == "style":
+        from .replica_style_analysis import revision_checkpoint
+
+        return (
+            row.status == "failed"
+            and not row.payload.get("job_ids")
+            and row.payload.get("error_code") == ReplicaPlanAuditRejected.code
+            and row.payload.get("_analysis_input_hash")
+            == _analysis_input_hash(row.payload)
+            and revision_checkpoint(row.payload)
+        )
     return (
         row.status == "failed"
         and not row.payload.get("job_ids")
@@ -608,6 +621,10 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
         )
         if payload.get("replication_method") in SKILLS:
             run_type = NativeReplicaRun
+            if payload["replication_method"] == "style":
+                from .replica_style_analysis import StyleReplicaRun
+
+                run_type = StyleReplicaRun
             if payload.get("_exact_model_protocol"):
                 from .replica_exact_compact import VERSION as compact_version
                 from .replica_exact_compact import run_class
@@ -836,6 +853,7 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                         ReplicaInputTooLarge,
                         ReplicaAnalysisUnavailable,
                         ReplicaPlanAuditRejected,
+                        StyleEvidenceInvalid,
                     ),
                 )
                 else "分析服务暂时不可用，请稍后再试。",
@@ -938,7 +956,32 @@ def revise_analysis(
     from .replica_exact_compact import VERSION
 
     row = _get(session, workspace.workspace_id, document_id, "session")
-    if row.status == "analysing" and row.payload.get("_analysis_revision"):
+    if row.status == "analysing" and (
+        row.payload.get("_analysis_revision")
+        or row.payload.get("_style_analysis_revision")
+    ):
+        return _wire(row)
+    if row.payload.get("replication_method") == "style":
+        if not _revision_available(row):
+            raise ApiError(
+                409,
+                "REPLICA_REVISION_UNAVAILABLE",
+                "当前任务没有可保留并继续修正的方案。",
+            )
+        row.payload = {
+            **{
+                k: v for k, v in row.payload.items() if k not in {"error", "error_code"}
+            },
+            "_style_analysis_revision": {
+                "parent_snapshot_sha256": _hash(row.payload["_analysis_checkpoint"])
+            },
+            "analysis_attempt_id": uuid4().hex,
+        }
+        row.status, row.updated_at = "analysing", utc_now()
+        session.commit()
+        background_tasks.add_task(
+            _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
+        )
         return _wire(row)
     if (
         not _revision_available(row)

@@ -107,3 +107,20 @@ Separate jobs with one step continue to share the canonical crop. Cross-panel
 misbinding still fails. Both generation-workflow and manifest copies receive the
 same normalized manifest before any generation token is issued; the confirmed
 workflow, route plan and source manifest remain unchanged.
+
+## Current exact plan correction
+
+The application recovery layer also admits explicit correction of a rejected
+current-v6 plan. Admission checks unchanged inputs and protocol, hash-verified
+planning/session/context files, a rejected plan matching its native session,
+and no approved execution or image jobs. It retains the original snapshot in
+lineage and records the correction authority privately. It does not alter the
+v6 model protocol, prompts, original Skill or any archived protocol binding.
+
+The existing native planner changes only failed modules and reuses unchanged
+subject-bound PASS reviews. Each explicit correction grants the existing three
+planning rounds; a persisted receipt ensures transport retries and process
+restarts cannot grant more rounds. Once approved, the normal worker delivers
+generated files with zero post-generation AI review. Synthetic HTTP/worker tests
+cover temporary-directory deletion, duplicate correction requests, retained
+PASS modules, bounded retries and automatic submission/delivery.

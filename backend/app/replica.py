@@ -129,6 +129,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_analysis_checkpoint",
                 "_analysis_input_hash",
                 "_analysis_revision",
+                "_exact_plan_revision",
                 "_analysis_lineage",
                 "_segmentation_parent",
                 "_segmentation_revision",
@@ -209,9 +210,14 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
 
 
 def _revision_available(row: ReplicaDocumentRecord) -> bool:
-    from .replica_analysis_recovery import style_revision_available
+    from .replica_analysis_recovery import (
+        exact_revision_available,
+        style_revision_available,
+    )
 
-    if style_revision_available(row, _analysis_input_hash(row.payload)):
+    if style_revision_available(
+        row, _analysis_input_hash(row.payload)
+    ) or exact_revision_available(row, _analysis_input_hash(row.payload)):
         return True
     from .replica_exact_revision import V2_BINDING
 
@@ -1039,10 +1045,44 @@ def revise_analysis(
     row = _get(session, workspace.workspace_id, document_id, "session")
     if row.status == "analysing" and (
         row.payload.get("_analysis_revision")
+        or row.payload.get("_exact_plan_revision")
         or row.payload.get("_style_revision_requested")
     ):
         return _wire(row)
-    from .replica_analysis_recovery import style_revision_available
+    from .replica_analysis_recovery import (
+        exact_revision_available,
+        style_revision_available,
+    )
+
+    if exact_revision_available(row, _analysis_input_hash(row.payload)):
+        if (
+            workspace.workspace_id
+            not in request.app.state.settings.replica_exact_compact_workspaces
+        ):
+            raise ApiError(
+                409, "REPLICA_REVISION_UNAVAILABLE", "当前工作区未启用方案修正。"
+            )
+        checkpoint = row.payload["_analysis_checkpoint"]
+        row.payload = {
+            **{
+                k: v for k, v in row.payload.items() if k not in {"error", "error_code"}
+            },
+            "_exact_plan_revision": {
+                "id": uuid4().hex,
+                "parent_snapshot_sha256": _hash(checkpoint),
+            },
+            "_analysis_lineage": [
+                *row.payload.get("_analysis_lineage", []),
+                checkpoint,
+            ],
+            "analysis_attempt_id": uuid4().hex,
+        }
+        row.status, row.updated_at = "analysing", utc_now()
+        session.commit()
+        background_tasks.add_task(
+            _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
+        )
+        return _wire(row)
 
     if style_revision_available(row, _analysis_input_hash(row.payload)):
         row.payload = {

@@ -3095,7 +3095,7 @@ def build_fake_coordinator(
         ReferenceRemixRouterProvider,
         ReferenceVisualReverseRemixProvider,
     )
-    from .replica_native_provider import NativeReplicaProvider
+    from .replica_style_delivery import ReplicaDeliveryProvider
     from .xinghe_agent import (
         FakeXingheGateway,
         XingheGateway,
@@ -3327,7 +3327,7 @@ def build_fake_coordinator(
                     ),
                     manifest_validator=manifest_validator.validate,
                 ),
-                NativeReplicaProvider(session_factory, gateway, storage),
+                ReplicaDeliveryProvider(session_factory, gateway, storage),
                 fast=AuroraRemixFastAdapter(
                     RemixFastProvider(
                         session_factory, gateway, storage=storage,

@@ -17,6 +17,7 @@ from app.replica_native import (
     NativeReplicaRun,
     ReplicaNativeError,
     digest,
+    read_json,
     write_json,
 )
 from app.replica_native_provider import (
@@ -314,6 +315,37 @@ def test_changed_approved_source_is_rejected(tmp_path, bad):
             previous["files"][name]["sha256"] = "0" * 64
     with pytest.raises(ReplicaNativeError):
         validate_source(previous, approved, f"ws_test/replica/{run.document_id}/")
+
+
+def test_explicit_retry_of_known_provider_failure_keeps_completed_artwork(tmp_path):
+    from app.provider import ProviderOutcome
+
+    run, provider, request, calls = fixture(tmp_path)
+    edit = run.gateway.edit
+
+    async def fail_second(request):
+        if len(calls) == 1:
+            calls.append(request)
+            return result((1080, 1440), ProviderOutcome.FAILED)
+        return await edit(request)
+
+    run.gateway.edit = fail_second
+    with pytest.raises(ReplicaNativeError):
+        asyncio.run(deliver(provider, run, request))
+    assert len(calls) == 2
+    old_token = direct_state(run)["targets"][1]["request"]["token"]
+    snap = asyncio.run(run.snapshot())
+    rmtree(run.root)
+    asyncio.run(run.restore(snap))
+    # Same job cannot automatically dispatch a known failed request again.
+    with pytest.raises(ReplicaNativeError):
+        asyncio.run(deliver(provider, run, request))
+    assert len(calls) == 2
+    request.job_id = "job_explicit_retry"
+    assert len(asyncio.run(deliver(provider, run, request))) == 3
+    assert len(calls) == 4  # First known image retained; only two remaining new.
+    assert read_json(run.root / "invocations.json")[old_token]["state"] == "rejected"
+    assert direct_state(run)["targets"][1]["request"]["token"] != old_token
 
 
 def test_preplanning_gate_is_required_and_corrupt_artwork_fails(tmp_path):

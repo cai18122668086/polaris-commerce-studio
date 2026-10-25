@@ -362,6 +362,25 @@ async def deliver(
     ):
         state["module_index"] = sum(len(j["unit_ids"]) for j in state["jobs"][:index])
         if record["status"] != "GENERATED":
+            existing = record.get("request")
+            if existing is None and record.get("legacy_request"):
+                existing = read_json(run.path(record["legacy_request"]))
+            ledger_path = run.root / "invocations.json"
+            ledger = read_json(ledger_path) if ledger_path.exists() else {}
+            prior = ledger.get(existing["token"], {}) if existing else {}
+            # _load verifies normal retry lineage before this boundary. A
+            # different job may retry a known provider rejection, retaining
+            # its original token/result. Same-job and unknown calls stay fenced.
+            if (
+                prior.get("state") == "rejected"
+                and isinstance(prior.get("job_id"), str)
+                and prior["job_id"] != request.job_id
+                and prior.get("target") == job["id"]
+            ):
+                record.setdefault("previous_requests", []).append(existing)
+                for key in ("request", "request_path", "gate_path", "legacy_request"):
+                    record.pop(key, None)
+                record["status"] = "PENDING"
             if not record.get("request"):
                 if record.get("legacy_request"):
                     gate = copy(run)

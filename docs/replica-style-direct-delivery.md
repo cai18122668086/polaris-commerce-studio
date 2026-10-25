@@ -29,6 +29,8 @@ Normal HTTP retries require the same workspace, document, confirmed plan,
 source version, original assets and facts. Persisted snapshots verify every
 JSON and object byte. Known canvases, including returned but unrecorded images,
 are reused; an invoked request with unknown outcome cannot be dispatched again.
+An explicitly created retry job may request an unfinished target again after a
+known provider rejection, retaining the rejected token and all completed images.
 The original execution snapshot and AI FAIL/PASS records remain unchanged.
 Progress and usage metadata report generated counts and zero reviewed/accepted
 images, and reuse the existing UI's “未进行自动审图” presentation.

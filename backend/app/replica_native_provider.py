@@ -14,6 +14,7 @@ from PIL import Image
 
 from .models import JobItemRecord, JobRecord, ReplicaDocumentRecord, utc_now
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
+from .replica_canvas import delivery_receipt, native_budget_matches
 from .replica_layout import exact_review_context
 from .replica_native import (
     VISUAL_EVIDENCE_POLICY_VERSION,
@@ -220,7 +221,7 @@ class NativeReplicaProvider:
                     or (
                         direct_source
                         and snapshot["model_protocol"].get("version")
-                        not in {"exact-compact-v5", "exact-compact-v6"}
+                        not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7"}
                     )
                     else run_class(
                         values["replication_method"], snapshot["model_protocol"]
@@ -236,7 +237,7 @@ class NativeReplicaProvider:
             )
             if direct_source and snapshot.get("model_protocol", {}).get(
                 "version"
-            ) not in {"exact-compact-v5", "exact-compact-v6"}:
+            ) not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7"}:
                 await replica_direct_delivery.restore_source(
                     run, snapshot, direct_source[1]
                 )
@@ -253,6 +254,7 @@ class NativeReplicaProvider:
                     if getattr(run, "binding", {}).get("version") in {
                         "exact-compact-v5",
                         "exact-compact-v6",
+                        "exact-compact-v7",
                     }:
                         delivery = await replica_direct_delivery.execute(
                             self, run, request
@@ -373,14 +375,16 @@ class NativeReplicaProvider:
         ledger = read_json(ledger_path) if ledger_path.exists() else {}
         token = native["token"]
         minimum_edge = min(canvas) if run.method == "exact" else 0
+        native_delivery = run.method == "exact" and getattr(run, "direct_execution", False)
         resolution_input: Path | None = None
         resolution_recovery: dict[str, Any] | None = None
         prior = ledger.get(token)
         if prior:
             if (
-                prior.get("state") == "returned"
+                prior.get("state") in {"returned", "canvas_rejected"}
                 and prior.get("path")
                 and run.path(prior["path"]).is_file()
+                and (prior.get("state") == "returned" or native_delivery)
             ):
                 if digest(run.path(prior["path"]).read_bytes()) != prior.get("sha256"):
                     raise ReplicaNativeError(
@@ -388,8 +392,25 @@ class NativeReplicaProvider:
                     )
                 path = run.path(prior["path"])
                 with Image.open(path) as image:
+                    image.load()
+                    actual = image.size
                     if not _canvas_matches(canvas, image.size, minimum_edge):
-                        raise ReplicaCanvasMismatch(canvas, image.size)
+                        if not native_delivery or not native_budget_matches(canvas, actual):
+                            raise ReplicaCanvasMismatch(canvas, actual)
+                        if prior.get("state") == "canvas_rejected" and (
+                            prior.get("target") != key
+                            or prior.get("native_prompt_sha256") != digest(prompt.encode("utf-8"))
+                            or prior.get("actual_size") != list(actual)
+                        ):
+                            raise ReplicaNativeError("缓存图片与原生模块或画幅绑定不一致。")
+                        receipt = delivery_receipt(canvas, actual, prior["sha256"])
+                        if prior.get("delivery_canvas") not in (None, receipt):
+                            raise ReplicaNativeError("原生画幅交付记录发生变化。")
+                        if prior.get("delivery_canvas") != receipt:
+                            # Retain canvas_rejected and its original strict verdict.
+                            prior["delivery_canvas"] = receipt
+                            write_json(ledger_path, ledger)
+                            await self._save(run, request.job_id)
                 return path
             if prior.get("state") == "canvas_rejected":
                 raise ReplicaCanvasMismatch(canvas, tuple(prior["actual_size"]))
@@ -689,6 +710,7 @@ class NativeReplicaProvider:
             with Image.open(path) as image:
                 actual = image.size
             matches = _canvas_matches(canvas, actual, minimum_edge)
+            native_admitted = native_delivery and native_budget_matches(canvas, actual)
             candidates = ledger[token].get("canvas_attempts", [])
             candidates.append(
                 {
@@ -707,9 +729,13 @@ class NativeReplicaProvider:
                 "actual_size": list(actual),
                 "canvas_attempts": candidates,
             }
+            if not matches and native_admitted:
+                ledger[token]["delivery_canvas"] = delivery_receipt(
+                    canvas, actual, ledger[token]["sha256"]
+                )
             write_json(ledger_path, ledger)
             await self._save(run, request.job_id)
-            if matches:
+            if matches or native_admitted:
                 return path
         raise ReplicaCanvasMismatch(canvas, actual)
 

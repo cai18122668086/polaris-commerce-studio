@@ -194,6 +194,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                     "exact-compact-v4",
                     "exact-compact-v5",
                     "exact-compact-v6",
+                    "exact-compact-v7",
                 }
             )
         )

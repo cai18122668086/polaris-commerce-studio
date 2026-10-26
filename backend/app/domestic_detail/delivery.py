@@ -6,19 +6,21 @@ import base64
 import hashlib
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, NoReturn
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from ..aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
     detail_workspace,
 )
+from ..database import read_snapshot_async
 from ..models import (
     AssetRecord,
     JobAssetRecord,
@@ -226,8 +228,47 @@ async def _stored(
         )
 
 
+def _delivery_rows(db: Session, job: JobRecord) -> list[Any]:
+    rows = [
+        (asset, link, item)
+        for asset, link, item in db.execute(
+            select(AssetRecord, JobAssetRecord, JobItemRecord)
+            .join(JobAssetRecord, JobAssetRecord.asset_id == AssetRecord.id)
+            .join(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
+            .where(
+                JobAssetRecord.workspace_id == job.workspace_id,
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.direction == "output",
+                JobAssetRecord.is_deliverable.is_(True),
+                JobAssetRecord.role == "detail_page",
+            )
+            .order_by(JobItemRecord.ordinal)
+        )
+    ]
+    return rows
+
+
+def _delivery_pair_pixels(
+    pair_roots: Sequence[Path],
+    pair_binding: Mapping[str, Any],
+    pair_id: str,
+    canvas_sha: str,
+    group_key: str,
+) -> tuple[dict[str, Any], Any]:
+    bundle = verify_accepted_canvas(
+        pair_roots, pair_binding, pair_id=pair_id, artifact_sha256=canvas_sha
+    )
+    pixels = load_native_pair_pixels(bundle, pair_roots, group_key=group_key)
+    return bundle, pixels
+
+
 async def _verified_context(
-    db: Session, job: JobRecord, plan: JobPlanRecord, storage: ImageStorage
+    db: Session,
+    job: JobRecord,
+    plan: JobPlanRecord,
+    storage: ImageStorage,
+    *,
+    read_only: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any], Path]:
     require_current_pipeline(job.configuration)
     payload = plan.payload
@@ -255,7 +296,11 @@ async def _verified_context(
         native_authorization_text,
     )
 
-    authorization = job_receipt_authorization(db, job, plan)
+    authorization = (
+        await read_snapshot_async(db, job_receipt_authorization, db, job, plan)
+        if read_only
+        else job_receipt_authorization(db, job, plan)
+    )
     expected_state = (
         AUTO_MODE if authorization is not None else "AWAITING_USER_FINAL_REVIEW"
     )
@@ -280,22 +325,11 @@ async def _verified_context(
     count = job.expected_item_count
     if count not in {8, 10, 12} or len(modules) != count:
         _reject("Native delivery does not cover the approved screens")
-    rows = [
-        (asset, link, item)
-        for asset, link, item in db.execute(
-            select(AssetRecord, JobAssetRecord, JobItemRecord)
-            .join(JobAssetRecord, JobAssetRecord.asset_id == AssetRecord.id)
-            .join(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
-            .where(
-                JobAssetRecord.workspace_id == job.workspace_id,
-                JobAssetRecord.job_id == job.id,
-                JobAssetRecord.direction == "output",
-                JobAssetRecord.is_deliverable.is_(True),
-                JobAssetRecord.role == "detail_page",
-            )
-            .order_by(JobItemRecord.ordinal)
-        )
-    ]
+    rows = (
+        await read_snapshot_async(db, _delivery_rows, db, job)
+        if read_only
+        else _delivery_rows(db, job)
+    )
     if len(rows) != count or [item.ordinal for _, _, item in rows] != list(
         range(count)
     ):
@@ -317,18 +351,32 @@ async def _verified_context(
             _accepted(m).get("normalized_image_sha256") != canvas_sha for m in selected
         ):
             _reject("Two accepted screens do not share their original pair canvas")
-        pair_roots, pair_binding = _pair_origin(
-            db, job, binding, state, pair["pair_id"]
+        pair_roots, pair_binding = (
+            await read_snapshot_async(
+                db, _pair_origin, db, job, binding, state, pair["pair_id"]
+            )
+            if read_only
+            else _pair_origin(db, job, binding, state, pair["pair_id"])
         )
-        bundle = verify_accepted_canvas(
-            pair_roots,
-            pair_binding,
-            pair_id=pair["pair_id"],
-            artifact_sha256=canvas_sha,
-        )
-        pixels = load_native_pair_pixels(
-            bundle, pair_roots, group_key=group["group_key"]
-        )
+        if read_only:
+            bundle, pixels = await run_in_threadpool(
+                _delivery_pair_pixels,
+                pair_roots,
+                pair_binding,
+                pair["pair_id"],
+                canvas_sha,
+                group["group_key"],
+            )
+        else:
+            bundle = verify_accepted_canvas(
+                pair_roots,
+                pair_binding,
+                pair_id=pair["pair_id"],
+                artifact_sha256=canvas_sha,
+            )
+            pixels = load_native_pair_pixels(
+                bundle, pair_roots, group_key=group["group_key"]
+            )
         keys = []
         for offset, raster in enumerate(pixels.screens):
             asset, link, item = rows[start + offset]

@@ -7,8 +7,11 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from .admin_auth import AdminDependency, SessionDependency
+from .database import read_snapshot
 from .domain import AssetLifecycleStatus, CrawlTaskStatus, JobAssetDirection, JobStatus
 from .errors import ApiError
 from .models import (
@@ -589,9 +592,9 @@ def _generation_item_detail(
     }
 
 
-async def _generation_detail_assets(
-    request: Request, session: Any, job: JobRecord
-) -> list[dict[str, Any]]:
+def _generation_detail_assets(
+    session: Session, job: JobRecord
+) -> list[tuple[dict[str, Any], AssetRecord]]:
     rows = session.execute(
         select(JobAssetRecord, AssetRecord)
         .join(
@@ -611,17 +614,7 @@ async def _generation_detail_assets(
             JobAssetRecord.id,
         )
     ).all()
-    result: list[dict[str, Any]] = []
-    for relation, asset in rows:
-        view = _asset_metadata(asset, relation)
-        inline = await _asset_access_url(request, asset, "inline")
-        download = await _asset_access_url(request, asset, "attachment")
-        if inline is not None:
-            view["access_url"], view["access_expires_at"] = inline
-        if download is not None:
-            view["download_url"] = download[0]
-        result.append(view)
-    return result
+    return [(_asset_metadata(asset, relation), asset) for relation, asset in rows]
 
 
 def _crawl_events(session, task: CrawlTaskRecord) -> list[dict[str, Any]]:
@@ -711,16 +704,12 @@ def _get_detail(session, kind: str, log_id: str) -> tuple[str, Any]:
     raise ApiError(422, "INVALID_LOG_KIND", "详情必须指定 generation 或 crawl。")
 
 
-@router.get("/logs/{kind}/{log_id}")
-async def get_admin_log_detail(
-    kind: str,
-    log_id: str,
-    request: Request,
-    session: SessionDependency,
-    _admin: AdminDependency,
-) -> dict[str, Any]:
+def _admin_log_snapshot(
+    session: Session, kind: str, log_id: str
+) -> tuple[dict[str, Any], list[tuple[dict[str, Any], AssetRecord]]]:
     normalized, record = _get_detail(session, kind, log_id)
     names = _workspace_names(session, {record.workspace_id})
+    asset_rows: list[tuple[dict[str, Any], AssetRecord]] = []
     if normalized == "generation":
         attempts = _job_attempt_counts(session, [record.id])
         data = _job_item(
@@ -748,7 +737,8 @@ async def get_admin_log_detail(
         attempts_by_item: dict[str, list[JobAttemptRecord]] = {}
         for attempt in attempt_rows:
             attempts_by_item.setdefault(attempt.job_item_id, []).append(attempt)
-        assets = await _generation_detail_assets(request, session, record)
+        asset_rows = _generation_detail_assets(session, record)
+        assets = [view for view, _ in asset_rows]
         data["items"] = [
             _generation_item_detail(item, attempts_by_item.get(item.id, []))
             for item in items
@@ -780,6 +770,27 @@ async def get_admin_log_detail(
         events = _crawl_events(session, record)
     data["events"] = events
     data["event_count"] = len(events)
+    return data, asset_rows
+
+
+@router.get("/logs/{kind}/{log_id}")
+async def get_admin_log_detail(
+    kind: str,
+    log_id: str,
+    request: Request,
+    session: SessionDependency,
+    _admin: AdminDependency,
+) -> dict[str, Any]:
+    data, asset_rows = await run_in_threadpool(
+        read_snapshot, session, _admin_log_snapshot, session, kind, log_id
+    )
+    for view, asset in asset_rows:
+        inline = await _asset_access_url(request, asset, "inline")
+        download = await _asset_access_url(request, asset, "attachment")
+        if inline is not None:
+            view["access_url"], view["access_expires_at"] = inline
+        if download is not None:
+            view["download_url"] = download[0]
     return {"success": True, "data": data}
 
 

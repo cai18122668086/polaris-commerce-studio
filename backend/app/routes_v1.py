@@ -1873,7 +1873,7 @@ async def download_job_deliverables(
         return ArchiveResponse(archive, f"detail-pack-{job.id}.zip")
     archive = await run_in_threadpool(
         open_archive,
-        request.app.state.settings.aurora_work_root.parent / "download-cache",
+        request.app.state.settings.aurora_work_root / "download-cache",
     )
     member_names: set[str] = set()
     bundle = None

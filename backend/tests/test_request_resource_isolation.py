@@ -515,3 +515,28 @@ def test_native_archive_reads_detached_records_and_preserves_screen_hash(
                 output.close()
             assert read_count > 1
         assert app.state.engine.pool.checkedout() == 0
+
+
+def test_archive_uses_writable_work_mount_with_readonly_parent(
+    bounded_client, monkeypatch
+):
+    from errno import EROFS
+    from pathlib import Path
+
+    url = _archive_url(bounded_client)
+    writable = bounded_client.app.state.settings.aurora_work_root.resolve()
+    writable.mkdir(parents=True, exist_ok=True)
+    mkdir = Path.mkdir
+
+    def mounted_mkdir(directory, *args, **kwargs):
+        if not directory.resolve().is_relative_to(writable):
+            raise OSError(EROFS, "Synthetic read-only container filesystem")
+        return mkdir(directory, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", mounted_mkdir)
+    response = bounded_client.get(url)
+    assert response.status_code == 200, response.text
+    assert (writable / "download-cache").is_dir()
+    with ZipFile(BytesIO(response.content)) as archive:
+        assert archive.testzip() is None
+        assert archive.namelist()

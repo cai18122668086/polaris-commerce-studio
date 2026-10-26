@@ -17,7 +17,8 @@ storage waits retained scarce database connections.
   Native detail downloads retain their original review/lineage checks, but use
   separate read snapshots for database lookups and offload pair pixel verification.
   ZIP writes run in worker threads. Archives spool above 8 MiB into anonymous
-  temporary files on existing writable task storage, then stream in 64 KiB
+  temporary files inside the configured `aurora_work_root` mount (not its
+  read-only parent), then stream in 64 KiB
   chunks. The 8 MiB threshold is per archive, not a total process memory bound.
   Failed builds and disconnected responses close their temporary files.
 
@@ -44,5 +45,9 @@ native archive tests use preverified synthetic inputs and do not replace full
 native generation-to-delivery validation. Preserve this local baseline limitation
 in review and require the normal CI gates before integration.
 
-The branch also contains the prior inspiration fix (`35c93ee`). Integration and
-production rollout stay separate from the other chat's in-progress release.
+The combined release includes the prior inspiration fix (`35c93ee`) and PR133
+provider-refusal handling. Final candidate validation found the generic archive
+spool path incorrectly selected the parent of the writable work mount. That
+parent is read-only in production; the spool now stays inside the work mount.
+A regression simulates that mount boundary and exercises a real download.
+The combined tree must pass full CI and server candidate checks before rollout.

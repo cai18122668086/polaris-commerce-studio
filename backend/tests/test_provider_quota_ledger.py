@@ -38,7 +38,7 @@ MODERN_RESERVATION_OCCURRED_AT = datetime(2026, 8, 4, 7, 13, tzinfo=UTC)
 
 
 @pytest.mark.parametrize("charge,requests", [(545000, 3), (680001, 3), (545000, 5)])
-def test_legacy_masked_review_reserve_settles_truthfully_with_bounded_correction(
+def test_masked_usage_above_estimates_settles_truthfully(
     client, charge, requests,
 ):
     now = utc_now()
@@ -82,11 +82,6 @@ def test_legacy_masked_review_reserve_settles_truthfully_with_bounded_correction
         session.add(reservation)
         session.commit()
         day, month = _period_starts(now)
-        if charge > 680000 or requests > 4:
-            with pytest.raises(ProviderQuotaLedgerError):
-                reconcile_and_total(session, workspace_id=WORKSPACE_ID,
-                    day_start=day, month_start=month)
-            return
         for _ in range(2):
             assert reconcile_and_total(session, workspace_id=WORKSPACE_ID,
                 day_start=day, month_start=month) == (charge, charge, requests)
@@ -96,8 +91,8 @@ def test_legacy_masked_review_reserve_settles_truthfully_with_bounded_correction
             AuditEventRecord.action == "provider.beta_job_settled"))
         assert settlement.details["charged_cost_micros"] == charge
         assert settlement.details[
-            "legacy_visual_review_reserve_correction_micros"
-        ] == 115000
+            "observed_cost_over_estimate_micros"
+        ] == charge - 430000
         assert reservation.details["estimated_cost_micros"] == 430000
 
 

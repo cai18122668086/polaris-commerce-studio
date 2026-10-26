@@ -21,6 +21,7 @@ const EXPECTED_FEATURE_CONTRACT = [
   ["model-image", "/workspace/product-image/model-image", "product_image", "product_image.model_image"],
   ["try-on", "/workspace/product-image/try-on", "product_image", "product_image.try_on"],
   ["reference-remix", "/workspace/reference-remix", "reference_remix", "reference_remix"],
+  ["one-click-replica", "/style-replica", "reference_remix", "reference_remix"],
   ["model-pose-transfer", "/workspace/model-pose-transfer", "model_pose_transfer", "model_pose_transfer"],
   ["creative-image", "/workspace/creative-image", "creative_image", "creative_image"],
   ["detail-pack", "/workspace/detail-pack", "detail_pack", "detail_pack"],
@@ -32,6 +33,7 @@ const AI_FEATURE_MENU_IDS = [
   "local-edit",
   "change-background",
   "reference-remix",
+  "one-click-replica",
   "domestic-main-image",
   "detail-pack",
   "amazon-visual-suite",
@@ -50,6 +52,7 @@ const AI_TOOLBOX_MENU_IDS = [
 ];
 
 const HOME_TOOLBOX_IDS = [
+  "change-background",
   "change-color",
   "change-scene",
   "change-model",
@@ -63,8 +66,8 @@ const HOME_TOOLBOX_IDS = [
 
 const FEATURED_TASK_IDS = [
   "local-edit",
-  "change-background",
   "reference-remix",
+  "one-click-replica",
   "detail-pack",
   "domestic-main-image",
   "amazon-visual-suite",
@@ -192,7 +195,7 @@ test("the two navigation dropdowns are disjoint and resolve every item through t
   for (const featureId of [...allFeatures, ...toolbox]) {
     const feature = registryById.get(featureId);
     assert.ok(feature, `${featureId} must exist in FEATURE_REGISTRY`);
-    assert.match(feature.route, /^\/workspace\//, `${featureId} must keep a known workspace route`);
+    assert.match(feature.route, /^(?:\/workspace\/|\/style-replica$)/, `${featureId} must keep a known workspace route`);
   }
   assert.equal(
     new Set([...allFeatures, ...toolbox]).size,
@@ -230,7 +233,7 @@ test("the homepage AI toolbox excludes all one-click featured tasks", async () =
     [],
     "homepage toolbox must not duplicate any 一键直达任务 item",
   );
-  assert.equal(toolboxIds.includes("change-background"), false);
+  assert.equal(toolboxIds.includes("change-background"), true);
   assert.equal(toolboxIds.includes("model-pose-transfer"), true);
 
   assert.match(source, /getFeatureById\(item\.id\)/);
@@ -266,10 +269,10 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
   const styles = await utf8("app/focus-inspired.css");
   const globalStyles = await utf8("app/globals.css");
 
-  assert.match(featurePriorities, /HOT_FEATURE_IDS = new Set\(\[\s*"local-edit",\s*"detail-pack",\s*"domestic-main-image",\s*\]\)/s);
+  assert.match(featurePriorities, /HOT_FEATURE_IDS = new Set\(\[\s*"local-edit",\s*"one-click-replica",\s*"detail-pack",\s*"domestic-main-image",\s*\]\)/s);
   assert.match(toolDirectory, /import \{ HOT_FEATURE_IDS \} from "@\/lib\/feature-priorities"/);
-  assert.match(toolDirectory, /tool\.featured && HOT_FEATURE_IDS\.has\(tool\.id\)/);
-  assert.match(toolDirectory, /tool\.featured && !HOT_FEATURE_IDS\.has\(tool\.id\)/);
+  assert.match(toolDirectory, /"local-edit", "one-click-replica", "reference-remix"/);
+  assert.match(toolDirectory, /HOT_FEATURE_IDS\.has\(tool\.id\)/);
   assert.match(toolDirectory, /pattern: \/亚马逊\|amazon\|跨境\|a\\\+\/iu[\s\S]*?featureIds: \["amazon-visual-suite", "detail-pack", "white-background"\]/);
   assert.match(toolDirectory, /pattern: \/主图\|淘宝\|天猫\|京东\|轮播\/iu[\s\S]*?featureIds: \["domestic-main-image", "scene-main", "white-background"\]/);
   assert.match(toolDirectory, /role=\{searchResults\.length \? "listbox" : "region"\}/);
@@ -289,9 +292,10 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
   assert.match(globalStyles, /\.nav-tool-link__hot\s*\{/);
 
   assert.match(topNavigation, /const errorCount =/);
-  assert.match(topNavigation, /const taskStateClass = errorCount \? "has-error" : activeCount \? "is-active"/);
+  assert.match(topNavigation, /const taskStateClass = activeCount \? "is-active"/);
+  assert.doesNotMatch(topNavigation, /taskLabel = errorCount \? "异常"/);
   assert.match(topNavigation, /className=\{`task-trigger \$\{taskStateClass\}`\}/);
-  assert.match(topNavigation, /const taskAriaLabel = errorCount/);
+  assert.match(topNavigation, /const taskAriaLabel = activeCount/);
   assert.match(topNavigation, /aria-label=\{taskAriaLabel\}/);
   assert.match(styles, /\.task-trigger\.is-active\s*\{/);
   assert.match(styles, /\.task-trigger\.has-error\s*\{/);

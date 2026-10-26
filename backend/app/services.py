@@ -362,7 +362,11 @@ def allowed_actions(job: JobRecord) -> list[str]:
         ):
             actions.append("resolve_intake")
         else:
-            actions.extend(["edit_plan", "confirm_plan"])
+            from .amazon_auto_start import eligible as automatic_amazon
+            from .domestic_detail.auto_start import eligible
+
+            if not eligible(job) and not automatic_amazon(job):
+                actions.extend(["edit_plan", "confirm_plan"])
     if current in {
         JobStatus.PARTIAL,
         JobStatus.FAILED,

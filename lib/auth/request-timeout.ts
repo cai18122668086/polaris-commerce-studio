@@ -1,3 +1,5 @@
+import { prepareAuthRequest } from "./diagnostics";
+
 export const AUTH_REQUEST_TIMEOUT_MS = 8000;
 
 export function authRequestInit(requestInit: RequestInit, timeoutMs = AUTH_REQUEST_TIMEOUT_MS): RequestInit {
@@ -8,8 +10,13 @@ export function authRequestInit(requestInit: RequestInit, timeoutMs = AUTH_REQUE
   return { ...requestInit, signal };
 }
 
-export async function boundedAuthRequest(context: { url: string; requestInit: RequestInit }) {
-  return { url: context.url, requestInit: authRequestInit(context.requestInit) };
+export async function boundedAuthRequest(context: { url: string; requestInit: RequestInit; userContext?: unknown }) {
+  const headers = new Headers(context.requestInit.headers);
+  const id = headers.get("X-Request-Id") || crypto.randomUUID();
+  headers.set("X-Request-Id", id);
+  const requestInit = authRequestInit({ ...context.requestInit, headers });
+  prepareAuthRequest({ id, url: context.url, userContext: context.userContext, signal: requestInit.signal });
+  return { url: context.url, requestInit };
 }
 
 // Bound SDK work as well as fetch: session restoration may be waiting for a

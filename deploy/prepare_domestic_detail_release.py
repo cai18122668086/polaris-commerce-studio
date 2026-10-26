@@ -33,6 +33,7 @@ def overlay(
     caddy_file: str,
     provider: dict[str, str],
     native_creation: bool = True,
+    worker_concurrency: int = 6,
 ) -> dict[str, Any]:
     if base.get("name") != "polaris-production":
         raise ValueError("Expected the existing production Compose project")
@@ -48,6 +49,8 @@ def overlay(
     ):
         raise ValueError("Use the reviewed Caddyfile inside this exact release")
     original = base["services"]
+    if isinstance(worker_concurrency, bool) or not 1 <= worker_concurrency <= 32:
+        raise ValueError("Detail worker concurrency must be from 1 through 32")
     for name in ("api", "worker", "dispatcher", "frontend", "caddy", "migrate"):
         if name not in original:
             raise ValueError("A required original production service is missing")
@@ -123,7 +126,7 @@ def overlay(
         if len(service["volumes"]) != 1:
             raise ValueError("The existing shared native Harness volume is required")
     api["mem_limit"] = "512m"
-    worker["mem_limit"] = "768m"
+    worker["mem_limit"] = "2g"
     worker["command"] = [
         "python",
         "-m",
@@ -132,7 +135,7 @@ def overlay(
         "app.celery_app:celery_app",
         "worker",
         "--loglevel=INFO",
-        "--concurrency=1",
+        f"--concurrency={worker_concurrency}",
         "--prefetch-multiplier=1",
         "--queues=domestic_detail_v431",
         "--hostname=domestic-detail@%h",
@@ -167,6 +170,7 @@ def main() -> None:
     parser.add_argument("--provider-json", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--disable-new-native-creation", action="store_true")
+    parser.add_argument("--worker-concurrency", type=int, default=6)
     args = parser.parse_args()
     result = overlay(
         json.load(sys.stdin),
@@ -176,6 +180,7 @@ def main() -> None:
         caddy_file=args.caddy_file,
         provider=json.loads(args.provider_json.read_bytes()),
         native_creation=not args.disable_new_native_creation,
+        worker_concurrency=args.worker_concurrency,
     )
     if not args.output.is_absolute() or args.output.is_symlink():
         parser.error("The private server output must be an absolute, new regular file")

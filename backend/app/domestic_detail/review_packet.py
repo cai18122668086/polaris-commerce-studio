@@ -309,15 +309,12 @@ async def _packet(
             "residual_checks"
         ):
             value["quality_state"] = "WITH_RESIDUALS"
-    from .delivery_authorization import AUTO_MODE, receipt_authorization
-
-    authorization = receipt_authorization(
-        plan.payload,
-        job_id=job.id,
-        workspace_id=job.workspace_id,
-        plan_id=plan.id,
-        revision=plan.revision,
+    from .delivery_authorization import (
+        AUTO_MODE,
+        job_receipt_authorization,
     )
+
+    authorization = job_receipt_authorization(db, job, plan)
     if authorization is not None:
         value["delivery_mode"] = AUTO_MODE
         value["automatic_delivery_authorization"] = authorization

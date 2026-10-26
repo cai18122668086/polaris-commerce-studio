@@ -1700,6 +1700,8 @@ def _usage_record(
     execution_path: str,
 ) -> dict[str, Any]:
     normalized = dict(result.normalized_usage)
+    from .provider_diagnostics import retained_metrics
+
     attempts = tuple(review_attempts)
     review_performed = bool(attempts)
     reviews_reported = all(
@@ -1749,6 +1751,7 @@ def _usage_record(
             ),
         },
         "metrics": {
+            **retained_metrics(result.raw_usage),
             "source_sha256": source_sha256,
             "mask_sha256": mask_sha256,
             "normalized_source_sha256": normalized_source_sha256,

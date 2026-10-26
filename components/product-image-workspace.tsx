@@ -14,9 +14,14 @@ import {
   Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
+import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
+import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
+import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
 import { SkillReviewChecklist } from "@/components/skill-review-checklist";
@@ -26,7 +31,7 @@ import { useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import type { ProductImageJobCreate } from "@/lib/api/types";
 import {
   PRODUCT_IMAGE_FEATURES,
@@ -78,82 +83,80 @@ function UploadPanel({
   uploading: boolean;
   disabled?: boolean;
   uploadLabel?: string;
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[]) => void | Promise<void>;
   onOpenLibrary?: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <div className={styles.uploadPanel}>
-      <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
-      <div className={styles.uploadCopy}>
-        <div>
-          <strong>{title}</strong>
-          {required ? <span>必填</span> : <span data-optional>可选</span>}
+    <ImageDropZone label={title} className={styles.uploadPanel} multiple maxFiles={Math.max(0, 8 - count)}
+      disabled={disabled} busy={uploading} onFiles={onFiles}>
+      {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <>
+        <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
+        <div className={styles.uploadCopy}>
+          <div>
+            <strong>{title}</strong>
+            {required ? <span>必填</span> : <span data-optional>可选</span>}
+          </div>
+          <p>{description}</p>
+          <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
         </div>
-        <p>{description}</p>
-        <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
-      </div>
-      <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading || disabled}
-        >
-          {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
-          {uploadLabel}
-        </button>
-        {onOpenLibrary ? (
+        <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
           <button
             type="button"
-            data-library
-            aria-haspopup="dialog"
-            onClick={onOpenLibrary}
-            disabled={disabled}
+            onClick={openFileDialog}
+            disabled={uploadDisabled}
           >
-            <Images size={16} />
-            从素材库选择
+            {uploadingFile ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
+            {uploadLabel}
           </button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        className={styles.hiddenInput}
-        type="file"
-        accept={IMAGE_UPLOAD_ACCEPT}
-        multiple
-        onChange={(event) => {
-          const files = Array.from(event.currentTarget.files ?? []);
-          event.currentTarget.value = "";
-          if (files.length) onFiles(files);
-        }}
-      />
-    </div>
+          {onOpenLibrary ? (
+            <button
+              type="button"
+              data-library
+              aria-haspopup="dialog"
+              onClick={onOpenLibrary}
+              disabled={disabled || uploadingFile}
+            >
+              <Images size={16} />
+              从素材库选择
+            </button>
+          ) : null}
+        </div>
+      </>}
+    </ImageDropZone>
   );
 }
 
 export function ProductImageWorkspace({ preset }: { preset: string }) {
   const router = useRouter();
   const feature = getProductImageFeatureByPresetSlug(preset);
+  const [jobId, setJobId] = useWorkspaceJobId(feature?.route ?? `/workspace/product-image/${preset}`);
   const { workspace, isPending: workspacePending, error: workspaceError } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
-  const [productAssetIds, setProductAssetIds] = useState<string[]>([]);
-  const [referenceAssetIds, setReferenceAssetIds] = useState<string[]>([]);
+  const [draftProductAssetIds, setProductAssetIds] = useState<string[]>([]);
+  const [draftReferenceAssetIds, setReferenceAssetIds] = useState<string[]>([]);
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [referenceLibraryOpen, setReferenceLibraryOpen] = useState(false);
-  const [platformCode, setPlatformCode] = useState("tmall");
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
-  const [imageCount, setImageCount] = useState(1);
-  const [instruction, setInstruction] = useState("");
-  const [targetColor, setTargetColor] = useState("");
-  const [jobId, setJobId] = useState<string>();
+  const [draftPlatformCode, setPlatformCode] = useState("tmall");
+  const [draftAspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
+  const [draftImageCount, setImageCount] = useState(1);
+  const [draftInstruction, setInstruction] = useState("");
+  const [draftTargetColor, setTargetColor] = useState("");
   const [uiError, setUiError] = useState<string>();
-  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
+  const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const runtime = useRuntimeStatus();
   const capability = resolveRuntimeCapability(runtime.data, feature?.runtimeCapability ?? "product_image");
   const workflow = presentWorkflow(capability);
   const createJob = useCreateJob(workspace?.id);
   const retryJob = useRetryJob(workspace?.id);
   const job = useJob(workspace?.id, jobId);
+  const saved = workspaceJobSnapshot(job.data);
+  const productAssetIds = jobId ? saved.ids("product_asset_ids") : draftProductAssetIds;
+  const referenceAssetIds = jobId ? saved.ids("reference_asset_ids") : draftReferenceAssetIds;
+  const platformCode = jobId ? saved.text("platform_code") : draftPlatformCode;
+  const aspectRatio = jobId ? saved.choice("aspect_ratio", aspectRatios.map((ratio) => ratio.value), "1:1") : draftAspectRatio;
+  const imageCount = jobId ? saved.number("image_count", job.data?.expected_item_count ?? 1) : draftImageCount;
+  const instruction = jobId ? saved.text("instruction") : draftInstruction;
+  const targetColor = jobId ? saved.text("target_color") : draftTargetColor;
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = workspaceError ?? upload.error ?? job.error ?? retryJob.error;
 
@@ -202,7 +205,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
 
   const targetColorMissing = feature.taskPreset === "change_color" && !targetColor.trim();
   const canSubmit = Boolean(
-    workspace &&
+    !jobId && workspace &&
     productAssetIds.length &&
     !targetColorMissing &&
     workflow.canSubmit &&
@@ -267,9 +270,11 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   };
 
   return (
+    <WorkspaceJobGate jobId={jobId} job={job.data} error={job.error} onRetry={() => void job.refetch()} expectedType="product_image" expectedPreset={feature.taskPreset}>
     <AppShell flush sidebar={false}>
       <div className={styles.workspacePage}>
         <WorkspaceHeader
+          jobId={jobId}
           eyebrow="万能生图 · 统一工作台"
           title={feature.title}
           description={feature.description}
@@ -296,6 +301,8 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
           ))}
         </nav>
 
+        <JobProgressFeedback pending={createJob.isPending && !jobId} />
+
         <div className={styles.workspaceGrid} data-single-column>
           <main className={styles.mainColumn}>
             <section className={styles.card}>
@@ -314,9 +321,9 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   count={productAssetIds.length}
                   required
                   uploading={upload.isPending}
-                  disabled={Boolean(jobId)}
+                  disabled={!workspace || Boolean(jobId)}
                   uploadLabel="上传图片"
-                  onFiles={(files) => void addUploadedAssets(files, "product")}
+                  onFiles={(files) => addUploadedAssets(files, "product")}
                   onOpenLibrary={() => setProductLibraryOpen(true)}
                 />
                 <UploadPanel
@@ -324,13 +331,13 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   description="可选场景、背景、模特或颜色参考，不会替代商品主体。"
                   count={referenceAssetIds.length}
                   uploading={upload.isPending}
-                  disabled={Boolean(jobId)}
+                  disabled={!workspace || Boolean(jobId)}
                   uploadLabel="上传图片"
-                  onFiles={(files) => void addUploadedAssets(files, "reference")}
+                  onFiles={(files) => addUploadedAssets(files, "reference")}
                   onOpenLibrary={() => setReferenceLibraryOpen(true)}
                 />
               </div>
-
+              {jobId && <WorkspaceJobInputs workspaceId={workspace?.id} job={job.data} />}
             </section>
 
             <section className={styles.card}>
@@ -447,20 +454,12 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" />正在读取任务…</div>
-                ) : job.error ? (
+                ) : job.error && !job.data ? (
                   <div className={styles.jobError} role="alert">{errorMessage(job.error)}</div>
                 ) : job.data ? (
                   <div className={styles.jobPanel}>
-                    <div className={styles.progressRow}>
-                      <div>
-                        <strong>{progressText}</strong>
-                        <span>正在生成，请稍候。</span>
-                      </div>
-                      <em>{Math.round(job.data.progress)}%</em>
-                    </div>
-                    <div className={styles.progressTrack} aria-label={`任务进度 ${Math.round(job.data.progress)}%`}>
-                      <i style={{ width: `${Math.max(0, Math.min(100, job.data.progress))}%` }} />
-                    </div>
+                    <JobProgressFeedback job={job.data} error={job.error} lastSyncedAt={job.dataUpdatedAt}
+                      refreshing={job.isFetching} onRefresh={() => void job.refetch()} />
                     <div className={styles.itemGrid}>
                       {job.data.items.map((item, index) => (
                         <span key={item.id} data-status={item.status}>
@@ -468,9 +467,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                         </span>
                       ))}
                     </div>
-                    {job.data.error_message ? (
-                      <div className={styles.jobError} role="alert">{job.data.error_message}</div>
-                    ) : null}
                     {allowsJobAction(job.data.allowed_actions, "retry") &&
                     ["failed", "partial", "completed"].includes(job.data.status) ? (
                       <button
@@ -495,7 +491,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               title={`${feature.title}结果`}
             />
             {job.data && ["completed", "partial"].includes(job.data.status) && resultAssets.length > 0 ? (
-              <SkillReviewChecklist
+              <SkillReviewChecklist key={jobId}
                 items={[
                   { key: "fidelity", label: "商品仍是同一 SKU，轮廓、结构、颜色、材质、包装、Logo 和关键细节没有跑偏。" },
                   { key: "composition", label: "商品比例、透视和场景关系自然，背景或道具没有遮挡主体。" },
@@ -588,5 +584,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
         </footer>
       </div>
     </AppShell>
+    </WorkspaceJobGate>
   );
 }

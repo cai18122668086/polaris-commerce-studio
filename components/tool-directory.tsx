@@ -21,8 +21,12 @@ import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
-  { description?: string }
+  { title?: string; description?: string }
 > = {
+  "one-click-replica": {
+    title: "一键复刻同行套图",
+    description: "参考同行构图与视觉风格，生成自己的商品套图。",
+  },
   "local-edit": {
     description: "用一句话完成局部精修，让你的出图更加精美",
   },
@@ -37,7 +41,7 @@ const searchableTools = FEATURE_REGISTRY.map((feature) => {
   const presentation = FEATURE_PRESENTATION_OVERRIDES[feature.id];
   return {
     id: feature.id,
-    title: feature.title,
+    title: presentation?.title ?? feature.title,
     description: presentation?.description ?? feature.description,
     href: feature.route,
     icon: feature.icon,
@@ -52,9 +56,12 @@ const searchableTools = FEATURE_REGISTRY.map((feature) => {
 });
 
 const featuredTools = [
-  ...searchableTools.filter((tool) => tool.featured && HOT_FEATURE_IDS.has(tool.id)),
-  ...searchableTools.filter((tool) => tool.featured && !HOT_FEATURE_IDS.has(tool.id)),
-];
+  "local-edit", "one-click-replica", "reference-remix",
+  "detail-pack", "domestic-main-image", "amazon-visual-suite",
+].flatMap(id => {
+  const tool = searchableTools.find(item => item.id === id && item.featured);
+  return tool ? [tool] : [];
+});
 
 const RELATED_SCENARIO_RECOMMENDATIONS = [
   {

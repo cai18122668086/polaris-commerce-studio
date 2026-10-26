@@ -1,5 +1,8 @@
 "use client";
 
+import { PrimaryNavigationLink } from "./primary-navigation-link";
+import styles from "./top-navigation.module.css";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -7,13 +10,12 @@ import type { RefObject } from "react";
 import {
   ChevronDown,
   CircleHelp,
-  Flame,
   Menu,
   PanelRightOpen,
   UserRound,
   Zap,
 } from "lucide-react";
-import { useJobs } from "@/features/jobs/api/jobs";
+import { useCreationRecords } from "@/features/jobs/api/creation-records";
 import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { getFeatureByRoute } from "@/lib/feature-registry";
@@ -58,7 +60,7 @@ export function TopNavigation({
   const { workspace } = useWorkspace();
   const currentUser = useCurrentAuthUser();
   const accountLabel = authUserLabel(currentUser.data);
-  const jobs = useJobs(workspace?.id, { limit: 20 });
+  const jobs = useCreationRecords(workspace?.id, { limit: 20 });
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const desktopNavigationRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -74,13 +76,11 @@ export function TopNavigation({
     jobs.data?.items.filter((job) => activeTaskStatuses.includes(job.status)).length ?? 0;
   const errorCount =
     jobs.data?.items.filter((job) => ["failed", "partial"].includes(job.status)).length ?? 0;
-  const taskStateClass = errorCount ? "has-error" : activeCount ? "is-active" : "";
-  const taskLabel = errorCount ? "异常" : activeCount ? "进行中" : "任务中心";
-  const taskAriaLabel = errorCount
-    ? `打开任务中心，${errorCount} 个异常任务`
-    : activeCount
-      ? `打开任务中心，${activeCount} 个进行中任务`
-      : "打开任务中心";
+  const taskStateClass = activeCount ? "is-active" : errorCount ? styles.taskNotice : "";
+  const taskLabel = activeCount ? "进行中" : "任务中心";
+  const taskAriaLabel = activeCount
+    ? `打开任务中心，${activeCount} 个进行中任务`
+    : errorCount ? `打开任务中心，${errorCount} 项任务可查看详情` : "打开任务中心";
 
   useEffect(() => {
     if (!openMenu) {
@@ -119,7 +119,8 @@ export function TopNavigation({
       active={
         pathname === menu.href ||
         (menu.href === "/tools" && pathname.startsWith("/tools/")) ||
-        menuContainsFeature(menu, currentFeature?.id)
+        (menuContainsFeature(menu, currentFeature?.id) &&
+          !PRIMARY_NAVIGATION_LINKS.some(item => item.href === pathname))
       }
       open={openMenu === menu.key}
       onClose={() => setOpenMenu(null)}
@@ -128,7 +129,7 @@ export function TopNavigation({
   );
 
   return (
-    <header className="top-nav">
+    <header className={`top-nav ${styles.header}`}>
       <div className="top-nav__inner">
         {showMenu && (
           <button
@@ -144,36 +145,14 @@ export function TopNavigation({
         </Link>
         <nav ref={desktopNavigationRef} className="main-nav" aria-label="主导航">
           {PRIMARY_NAVIGATION_LINKS.slice(0, 2).map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={
-                pathname === item.href || pathname.startsWith(`${item.href}/`) ? "active" : ""
-              }
-            >
-              {item.href === "/inspiration" ? (
-                <Flame
-                  className="main-nav__flame"
-                  size={14}
-                  fill="currentColor"
-                  aria-hidden="true"
-                />
-              ) : null}
-              {item.label}
-            </Link>
+            <PrimaryNavigationLink key={item.href} href={item.href} label={item.label}
+              active={pathname === item.href || pathname.startsWith(`${item.href}/`)} />
           ))}
           {renderMegaMenu(AI_FEATURES_MENU)}
           {renderMegaMenu(AI_TOOLBOX_MENU)}
           {PRIMARY_NAVIGATION_LINKS.slice(2).map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={
-                pathname === item.href || pathname.startsWith(`${item.href}/`) ? "active" : ""
-              }
-            >
-              {item.label}
-            </Link>
+            <PrimaryNavigationLink key={item.href} href={item.href} label={item.label}
+              active={pathname === item.href || pathname.startsWith(`${item.href}/`)} />
           ))}
         </nav>
         <button
@@ -222,7 +201,7 @@ export function TopNavigation({
           >
             <PanelRightOpen size={18} />
             <span>{taskLabel}</span>
-            {errorCount || activeCount ? <i>{errorCount || activeCount}</i> : null}
+            {activeCount || errorCount ? <i>{activeCount || errorCount}</i> : null}
           </button>
           <Link
             href="/account"

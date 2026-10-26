@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Any
 
+from .automatic_brand import fallback_basis
 from .facts import INTAKE_VERSION, user_fact_ledger
 from .intake import active_fact_ids
 
@@ -86,8 +87,10 @@ def mock_intake(
         "reference_materials": references,
         "brand_confirmation_required": False,
     }
-    confirmation = settings.get("brandless_confirmation") or (resolution or {}).get(
-        "brandless_confirmation"
+    confirmation = (
+        settings.get("brandless_confirmation")
+        or (resolution or {}).get("brandless_confirmation")
+        or fallback_basis(settings)
     )
     if not confirmation:
         value.update(

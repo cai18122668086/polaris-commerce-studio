@@ -246,8 +246,8 @@ def test_default_mock_runner_still_allows_quota_disabled(
         ({"tengli_smoke_budget_usd": 0}, "budget"),
         ({"tengli_smoke_budget_usd": 20_000_001}, "budget"),
         ({"tengli_smoke_budget_usd": float("nan")}, "budget"),
-        ({"xinghe_concurrency": 1}, "concurrency"),
-        ({"xinghe_concurrency": 2}, "concurrency"),
+        ({"xinghe_concurrency": 0}, "concurrency"),
+        ({"xinghe_concurrency": 33}, "concurrency"),
         ({"tengli_monthly_budget_usd": 0.5}, "monthly budget"),
         ({"tengli_base_url": ""}, "base URL"),
         ({"tengli_base_url": "ftp://provider.example"}, "base URL"),
@@ -289,7 +289,7 @@ def test_tengli_failure_does_not_expose_api_key(
         tmp_path,
         task_runner="tengli",
         tengli_api_key=SecretStr(api_key),
-        xinghe_concurrency=1,
+        xinghe_concurrency=0,
     )
 
     with pytest.raises(RuntimeError) as captured:

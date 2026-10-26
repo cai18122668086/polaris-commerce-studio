@@ -462,6 +462,7 @@ class PlannerRequest:
     intake_settings: Mapping[str, Any] | None = None
     detail_intake: Mapping[str, Any] | None = None
     intake_resolution: Mapping[str, Any] | None = None
+    intake_brand_repair: Mapping[str, Any] | None = None
     native_dispatch: Mapping[str, Any] | None = None
     authoring_stage: str = ""
     authoring_target_ids: tuple[str, ...] = ()
@@ -704,7 +705,7 @@ class XingheGateway(Protocol):
 def normalize_usage(raw_usage: object) -> dict[str, Any]:
     """Preserve missing usage as unreported instead of fabricating zeros."""
 
-    if not isinstance(raw_usage, dict):
+    if not isinstance(raw_usage, dict) or raw_usage.get("_provider_usage_reported") is False:
         return {
             "reported": False,
             "input_tokens": None,
@@ -2151,9 +2152,11 @@ class UrllibOpenAITransport:
             with cls._open(request, timeout_seconds) as response:
                 status = int(response.status)
                 raw = response.read()
+                response_headers = getattr(response, "headers", {})
         except HTTPError as exc:
             status = int(exc.code)
             raw = exc.read()
+            response_headers = exc.headers or {}
             error_status = True
         except (TimeoutError, URLError, OSError) as exc:
             raise XingheAgentError(
@@ -2165,16 +2168,27 @@ class UrllibOpenAITransport:
             payload = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             if error_status:
-                return status, {"error": {"code": "non_json_error_response"}}
-            raise XingheAgentError(
-                "PROVIDER_RESPONSE_INVALID",
-                "Provider returned invalid JSON.",
-            ) from exc
+                from .provider_diagnostics import safe_text
+
+                payload = {"error": {
+                    "code": "non_json_error_response",
+                    "message": safe_text(raw.decode("utf-8", errors="replace")),
+                }}
+            else:
+                raise XingheAgentError(
+                    "PROVIDER_RESPONSE_INVALID",
+                    "Provider returned invalid JSON.",
+                ) from exc
         if not isinstance(payload, dict):
             raise XingheAgentError(
                 "PROVIDER_RESPONSE_INVALID",
                 "Provider returned a non-object JSON response.",
             )
+        header_id = response_headers.get("x-request-id") or response_headers.get("request-id")
+        if header_id and not _safe_request_id(payload):
+            from .provider_diagnostics import safe_text
+
+            payload["_transport_request_id"] = safe_text(str(header_id), 255)
         return status, payload
 
 
@@ -2215,6 +2229,9 @@ class TengliOpenAICompatibleGateway:
         failover_base_url: str | None = None,
         failover_model: str | None = None,
         failover_image_model: str | None = None,
+        image_failover_api_key: str | None = None,
+        image_failover_base_url: str | None = None,
+        image_failover_model: str | None = None,
         rotation_order: str = "primary,failover",
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
@@ -2291,6 +2308,19 @@ class TengliOpenAICompatibleGateway:
                     image_base_url=self._image_base_url,
                     image_model=self.image_model,
                 )
+        self._image_failover_route: _ProviderRoute | None = None
+        if image_failover_api_key:
+            image_url = image_failover_base_url or base_url
+            parsed_image = urlparse(image_url)
+            if parsed_image.scheme not in {"http", "https"} or not parsed_image.netloc:
+                raise ValueError("Image failover base URL must be absolute HTTP(S).")
+            self._image_failover_route = replace(
+                primary_route,
+                name="image-failover",
+                image_api_key=image_failover_api_key.strip(),
+                image_base_url=image_url.rstrip("/") + "/",
+                image_model=image_failover_model or self.image_model,
+            )
         self._provider_routes = routes
         self._rotation_order = tuple(
             name.strip().lower()
@@ -2312,14 +2342,14 @@ class TengliOpenAICompatibleGateway:
         return tuple(ordered)
 
     def _image_routes(self) -> tuple[_ProviderRoute, ...]:
-        """Keep image generation on the primary image account.
-
-        Failover keys are planner accounts. Image calls must not walk them.
-        """
+        """Use only image accounts; planner fallback credentials never enter here."""
 
         ordered = self._ordered_routes()
         primary = tuple(route for route in ordered if route.name == "primary")
-        return primary or ordered[:1]
+        image_routes = primary or ordered[:1]
+        if self._image_failover_route is not None:
+            return (*image_routes, self._image_failover_route)
+        return image_routes
 
     def _visual_review_route(self, attempt: int = 0) -> _ProviderRoute:
         routes = self._ordered_routes()
@@ -2456,7 +2486,9 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
-        if request.planning_profile == refined_detail.PROFILE:
+        if request.planning_profile in {"replica_native_contract", "replica_exact_compact"}:
+            payload.update({"max_completion_tokens": 16000})
+        elif request.planning_profile == refined_detail.PROFILE:
             payload.update({"max_completion_tokens": 24000})
         elif request.planning_profile == "amazon_visual_suite":
             payload.update(
@@ -2711,6 +2743,9 @@ class TengliOpenAICompatibleGateway:
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
         started = time.perf_counter()
+        from .provider_diagnostics import known_image_route_rejection
+
+        attempts: list[dict[str, Any]] = []
         fields = [
             ("model", self.image_model),
             ("prompt", request.prompt),
@@ -2755,18 +2790,32 @@ class TengliOpenAICompatibleGateway:
                         files=files,
                         timeout_seconds=self.timeout_seconds,
                     )
-                except XingheAgentError as exc:
-                    if exc.retryable and route_index < last_route_index:
-                        continue
+                except XingheAgentError as error:
+                    attempts.append({
+                        "route": route.name, "host": urlparse(route.image_base_url).hostname,
+                        "model": route.image_model, "http_status": None,
+                        "request_id": None, "error": {"code": error.code},
+                    })
                     raise
+                attempts.append({
+                    "route": route.name, "host": urlparse(route.image_base_url).hostname,
+                    "model": route.image_model, "http_status": status,
+                    "request_id": _safe_request_id(response),
+                    **({"error": _provider_error_summary(response)} if status >= 400 else {}),
+                })
                 if (
-                    self._should_failover_status(status)
+                    (
+                        self._should_failover_status(status)
+                        or known_image_route_rejection(status, response)
+                    )
                     and route_index < last_route_index
                 ):
                     continue
                 break
             raw_usage = _raw_usage(response)  # type: ignore[arg-type]
             normalized = normalize_usage(raw_usage)
+            raw_usage = {**(raw_usage or {}), "_provider_usage_reported": normalized["reported"], "network_requests": len(attempts),
+                         "metrics": {"provider_attempts": attempts}}
             estimated_cost = (
                 self.high_price_micros
                 if request.quality == "high"
@@ -2787,7 +2836,7 @@ class TengliOpenAICompatibleGateway:
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
                     raw_usage={
                         **(raw_usage or {}),
-                        "metrics": {"provider_error": raw_error},
+                        "metrics": {"provider_error": raw_error, "provider_attempts": attempts},
                     },
                     normalized_usage=normalized,
                     api_latency_seconds=time.perf_counter() - started,
@@ -2829,7 +2878,9 @@ class TengliOpenAICompatibleGateway:
                     ProviderOutcome.OUTCOME_UNKNOWN if unknown else ProviderOutcome.FAILED
                 ),
                 provider_request_id=None,
-                raw_usage=None,
+                raw_usage={"network_requests": len(attempts), "metrics": {
+                    "provider_error": {"code": exc.code}, "provider_attempts": attempts,
+                }},
                 normalized_usage=normalize_usage(None),
                 api_latency_seconds=time.perf_counter() - started,
                 actual_cost_micros=None,
@@ -2917,9 +2968,7 @@ class TengliOpenAICompatibleGateway:
                         files=files,
                         timeout_seconds=self.timeout_seconds,
                     )
-                except XingheAgentError as exc:
-                    if exc.retryable and route_index < last_route_index:
-                        continue
+                except XingheAgentError:
                     raise
                 if (
                     self._should_failover_status(status)
@@ -2934,7 +2983,15 @@ class TengliOpenAICompatibleGateway:
                 return MaskedEditCallResult(
                     outcome=ProviderOutcome.FAILED,
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
-                    raw_usage=raw_usage,
+                    raw_usage={**(raw_usage or {}), "metrics": {
+                        "provider_error": _provider_error_summary(response or {}),
+                        "provider_attempts": [{
+                            "route": route.name,
+                            "host": urlparse(route.image_base_url).hostname,
+                            "model": route.image_model, "http_status": status,
+                            "request_id": _safe_request_id(response or {}),
+                        }],
+                    }},
                     normalized_usage=normalized,
                     actual_cost_micros=_usage_cost_micros(raw_usage),
                     estimated_cost_micros=estimated_cost,
@@ -3306,6 +3363,12 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         failover_base_url=settings.provider_failover_base_url,
         failover_model=settings.provider_failover_model,
         failover_image_model=settings.provider_failover_image_model,
+        image_failover_api_key=(
+            settings.tengli_api_key.get_secret_value()
+            if settings.replica_image_failover_enabled else None
+        ),
+        image_failover_base_url=settings.tengli_base_url,
+        image_failover_model=settings.tengli_image_model,
         rotation_order=settings.provider_rotation_order,
     )
 
@@ -3666,6 +3729,7 @@ class XinghePlanningCoordinator:
     ) -> tuple[PlannerRequest, tuple[PlannerCallResult, ...]]:
         """Run/recover one role-bound intake before any full-plan call."""
         settings = dict(request.intake_settings or {})
+        from .domestic_detail import automatic_brand
         resolution = request.intake_resolution
         brandless = (resolution or {}).get("brandless_confirmation") or settings.get(
             "brandless_confirmation"
@@ -3703,6 +3767,7 @@ class XinghePlanningCoordinator:
             model=selected_route["model"],
             dispatch_route=selected_route,
             resolution=resolution,
+            brand_repair=request.intake_brand_repair,
         )
         store = IntakeStore(
             detail_workspace(request.job_id) / "intake", binding, request.job_id
@@ -3710,7 +3775,10 @@ class XinghePlanningCoordinator:
         result: PlannerCallResult | None = None
         calls: tuple[PlannerCallResult, ...] = ()
         try:
-            stored = store.completed()
+            stored = (
+                store.recover_for_revalidation()
+                if automatic_brand.enabled(settings) else store.completed()
+            )
             source_id = request.job_id
             if stored is None:
                 source_ids: list[str] = []
@@ -3828,6 +3896,35 @@ class XinghePlanningCoordinator:
                 _schema(result.payload, intake_response_schema(), "/intake")
             assert isinstance(result.payload, Mapping)
             canonical_wire = canonical_intake_wire(result.payload, has_style_sources=bool(style_ids))
+            canonical_wire, brand_receipt, needs_identity = automatic_brand.project(
+                canonical_wire, settings, sources,
+                force_no_logo=request.intake_brand_repair is not None,
+            )
+            if needs_identity and request.intake_brand_repair is None:
+                # A successful old response may lack identity because the old
+                # contract stopped for a brand choice. Reinspect pixels once;
+                # never fabricate geometry or overwrite its original receipt.
+                repair_context = {
+                    "version": automatic_brand.VERSION,
+                    "source_payload_sha256": canonical_hash(result.payload),
+                    "reason": "Continue pixel-based identity analysis without an independent logo or brand question.",
+                }
+                def merge_calls(extra: Sequence[PlannerCallResult]) -> tuple[PlannerCallResult, ...]:
+                    merged = {}
+                    for call in (*calls, *extra):
+                        receipt = (call.provider_envelope or {}).get("native_intake_receipt")
+                        key = canonical_hash(receipt) if receipt else canonical_hash(asdict(call))
+                        merged[key] = call
+                    return tuple(merged.values())
+                try:
+                    repaired_request, repaired_calls = await self._with_domestic_intake(
+                        replace(request, intake_brand_repair=repair_context)
+                    )
+                except DetailIntakeError as exc:
+                    exc.call_results = merge_calls(exc.call_results)
+                    calls = exc.call_results
+                    raise
+                return repaired_request, merge_calls(repaired_calls)
             from .domestic_detail.intake import preserve_confirmed_history
 
             canonical_wire, confirmed_history = preserve_confirmed_history(
@@ -3840,6 +3937,7 @@ class XinghePlanningCoordinator:
                 wire_settings=settings if wire else None,
                 source_conflicts_resolved=resolution is not None,
                 style_asset_ids=list(style_ids),
+                force_no_logo=request.intake_brand_repair is not None,
             ), "/intake")
             projected, identity_projection = project_identity_observations(canonical_wire)
             if identity_projection is not None:
@@ -3854,6 +3952,8 @@ class XinghePlanningCoordinator:
             )
             if identity_projection is not None:
                 contract["identity_projection_receipt"] = identity_projection
+            if brand_receipt is not None:
+                contract["automatic_brand_handling"] = brand_receipt
             if confirmed_history is not None:
                 contract["confirmed_history_receipt"] = confirmed_history
             prior_intake = (resolution or {}).get("source_intake")
@@ -4452,7 +4552,16 @@ class XinghePlanningCoordinator:
                 .with_for_update()
             )
             if existing is not None:
-                if existing.payload.get("state") == "intake_resolved":
+                automatic_continuation = job.configuration.get("automatic_brand_continuation")
+                automatic_resume = (
+                    existing.payload.get("state") == "automatic_brand_continuation"
+                    and isinstance(automatic_continuation, Mapping)
+                    and automatic_continuation.get("version") == "website-automatic-brand-v1"
+                    and automatic_continuation == existing.payload.get("automatic_brand_continuation")
+                    and automatic_continuation.get("source_intake_sha256")
+                    == canonical_hash(existing.payload.get("product_intake"))
+                )
+                if existing.payload.get("state") == "intake_resolved" or automatic_resume:
                     requests = self._planning_requests(session, job)
                     self._authorize_planning(session, job, requests)
                     existing.payload = {
@@ -4810,7 +4919,11 @@ class XinghePlanningCoordinator:
                     product_information=tuple(selling_points_value),
                     platform_code=platform_code,
                     size=size,
-                    idempotency_key=(f"{job.id}:planner:{group_index}:{signature}"),
+                    idempotency_key=(
+                        f"{job.id}:planner:{group_index}:{signature}"
+                        + (":automatic-brand:" + canonical_hash(configuration["automatic_brand_continuation"])
+                           if configuration.get("automatic_brand_continuation") else "")
+                    ),
                     planning_directives=()
                     if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
                     else identity_directives,
@@ -5746,8 +5859,18 @@ class XinghePlanningCoordinator:
                     },
                 )
             )
+            from .domestic_detail.auto_start import confirm_validated_plan
+
+            # Confirm in the same transaction as the finished plan. A crash
+            # cannot strand an automatic task at a manual-only checkpoint.
+            confirm_validated_plan(session, job, plan)
+            from .crossborder_auto_start import (
+                confirm_validated_plan as confirm_crossborder,
+            )
+
+            confirm_crossborder(session, job, plan)
             session.commit()
-            return JobStatus.AWAITING_CONFIRMATION
+            return JobStatus(job.status)
 
     def _complete_amazon_planning_locked(
         self,
@@ -5947,6 +6070,10 @@ class XinghePlanningCoordinator:
             stage="awaiting_confirmation",
             progress=15,
         )
+        from .amazon_auto_start import confirm_validated_plan
+
+        # Confirm and bind all 21 items atomically with the finished plan.
+        confirm_validated_plan(session, job, plan)
         session.add(
             AuditEventRecord(
                 workspace_id=job.workspace_id,
@@ -5958,12 +6085,12 @@ class XinghePlanningCoordinator:
                     "page_count": AMAZON_EXPECTED_ITEM_COUNT,
                     "high_count": AMAZON_EXPECTED_ITEM_COUNT,
                     "estimated_pending_micros": estimated_pending_cost,
-                    "manual_confirmation_required": True,
+                    "manual_confirmation_required": plan.confirmed_at is None,
                 },
             )
         )
         session.commit()
-        return JobStatus.AWAITING_CONFIRMATION
+        return JobStatus(job.status)
 
 
 class XingheImageProvider:
@@ -5983,8 +6110,8 @@ class XingheImageProvider:
         skill_id: str = "xinghe-ecommerce-detail",
         revision_settings: Settings | None = None,
     ) -> None:
-        if max_concurrency not in {1, 2, 6}:
-            raise ValueError("Xinghe concurrency must be one of 1, 2, or 6.")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
+            raise ValueError("Xinghe concurrency must be from 1 through 32.")
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage
@@ -6737,12 +6864,13 @@ class XingheImageProvider:
                 plan_record.payload if isinstance(plan_record.payload, Mapping) else {}
             )
         from .domestic_detail.delivery_authorization import (
+            job_receipt_authorization,
             native_authorization_text,
             native_delivery_mode,
-            receipt_authorization,
         )
 
-        receipt_authorization(payload, job_id=request.job_id, workspace_id=request.workspace_id, plan_id=plan_record.id, revision=plan_record.revision)
+        with self.session_factory() as db:
+            job_receipt_authorization(db, job, plan_record)
         native_plan = extract_native_plan(payload)
         if native_plan is None:
             raise AuroraDetailHarnessError(
@@ -10515,6 +10643,16 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "replica_exact_compact":
+        contract = json.loads(request.product_information[0])
+        return {"type": "json_schema", "json_schema": {
+            "name": "replica_exact_compact", "strict": False,
+            "schema": contract["response_schema"],
+        }}
+    if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
+        from .remix_fast_contract import response_format as remix_fast_response_format
+
+        return remix_fast_response_format(request.planning_profile)
     if request.planning_profile == refined_detail.PROFILE:
         return {"type": "json_schema", "json_schema": {
             "name": "xinghe_detail_4_plan", "strict": False,
@@ -10549,6 +10687,7 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             [fact["id"] for fact in user_fact_ledger(request.intake_settings or {})],
             wire_settings=request.intake_settings or {},
             source_conflicts_resolved=request.intake_resolution is not None,
+            force_no_logo=request.intake_brand_repair is not None,
             style_asset_ids=[source.asset_id for source in request.sources if source.source_role == "style_reference"],
         )
         # Compatible providers require a plain object at the response root.
@@ -10819,6 +10958,14 @@ def _planner_prompt(request: PlannerRequest) -> str:
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile == "replica_exact_compact":
+        return "Perform only this visual task. Server metadata is managed separately. Return the requested JSON.\n" + "\n".join(request.product_information)
+    if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
+        return ("Execute only the current fast Skill stage from attached image pixels. "
+                "Return the exact requested JSON contract.\n"
+                + "\n".join(request.product_information))
+    if request.planning_profile == "replica_native_contract":
+        return "Author the requested native Skill contract from actual attached pixels. JSON only.\n" + "\n".join(request.product_information)
     if request.planning_profile == refined_detail.PROFILE:
         return refined_detail.planner_prompt(request)
     if request.planning_profile == "aurora_detail_revision_scope":
@@ -10841,6 +10988,7 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
                 for source in request.sources
             ],
             request.intake_resolution,
+            request.intake_brand_repair,
         )
     if request.planning_profile == "creative_image":
         return (
@@ -10882,20 +11030,17 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
         )
     if request.planning_profile == "reference_visual_remix":
         ordered_roles = tuple(source.source_role for source in request.sources)
-        if ordered_roles and ordered_roles[0] == "product_reference":
-            input_contract = (
-                "The attached images are ordered by semantic role: Image 1 is "
-                "product_identity_reference and Image 2 is "
-                "visual_strategy_reference. The product image is the only authority "
-                "for product identity; the visual-strategy image is composition-only."
+        input_contract = (
+            "The attached images are ordered by semantic role: "
+            + " and ".join(
+                f"Image {index + 1} is "
+                + ("product_identity_reference" if role == "product_reference"
+                   else "visual_strategy_reference")
+                for index, role in enumerate(ordered_roles)
             )
-        else:
-            input_contract = (
-                "The attached images are ordered by semantic role: Image 1 is "
-                "visual_strategy_reference and Image 2 is "
-                "product_identity_reference. The product image is the only authority "
-                "for product identity; the visual-strategy image is composition-only."
-            )
+            + ". Product images are the only authority for product identity; "
+            "visual-strategy images are composition-only."
+        )
         return (
             "You are the reference-visual-reverse-remix visual analysis stage. "
             + input_contract
@@ -10916,10 +11061,20 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "unsupported "
             "claims out of the result. The original_remix_prompt must put the hard "
             "composition skeleton before style adjectives and must be executable by "
-            "an image model using the same two attached images. "
+            "an image model using the same attached images in their stated roles. "
             "Each string field must stay under 900 characters. Do not copy, quote, "
             "or summarize the verified Skill protocol, its file paths, or its "
             "schema text into any field. Return JSON only."
+            "\nThe following user brief is authoritative. Use the requested canvas "
+            "size even when the strategy image has a different aspect ratio; "
+            "adapt its spatial anchors to that canvas. All newly authored visible "
+            "copy and the original_remix_prompt must use target_language, while "
+            "existing product labels retain their original wording.\n"
+            + json.dumps({"target_language": request.language,
+                          "canvas_size": request.size,
+                          "target_platform": request.platform_code,
+                          "user_requirements": request.product_information},
+                         ensure_ascii=False)
         )
     if request.planning_profile == "aurora_v20_visual_audit":
         return (
@@ -12886,25 +13041,35 @@ def _raw_usage(payload: Mapping[str, Any]) -> dict[str, Any] | None:
 
 
 def _safe_request_id(payload: Mapping[str, Any]) -> str | None:
-    for key in ("request_id", "id"):
+    for key in ("request_id", "id", "_transport_request_id"):
         value = payload.get(key)
         if isinstance(value, str) and value:
             return value[:255]
     return None
 
 
+def _explicit_image_text_reply(status: int, payload: Mapping[str, Any]) -> bool:
+    """A relay explicitly rejected text-only output; no image outcome is pending."""
+
+    error = payload.get("error")
+    return (
+        status == 400
+        and isinstance(error, Mapping)
+        and error.get("code") == "upstream_text_reply"
+        and error.get("type") == "invalid_request_error"
+        and not any(
+            payload.get(key)
+            for key in ("data", "images", "output", "url", "b64_json")
+        )
+    )
+
+
 def _provider_error_summary(payload: Mapping[str, Any]) -> dict[str, str]:
     """Keep bounded, redaction-safe provider error details for local diagnosis."""
 
-    value = payload.get("error")
-    if isinstance(value, Mapping):
-        summary: dict[str, str] = {}
-        for key in ("code", "type", "message", "param"):
-            item = value.get(key)
-            if isinstance(item, str) and item:
-                summary[key] = item[:512]
-        return summary or {"code": "provider_error"}
-    return {"code": "provider_error"}
+    from .provider_diagnostics import error_summary
+
+    return error_summary(payload)
 
 
 def _encode_multipart(

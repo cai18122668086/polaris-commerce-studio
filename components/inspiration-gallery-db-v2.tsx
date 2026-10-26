@@ -1,5 +1,10 @@
 "use client";
 
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
+import { ImageDropZone } from "@/components/image-drop-zone";
+import { validateImageUpload } from "@/lib/image-upload";
+import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Copy, ImagePlus, Layers3, Loader2, Sparkles, X } from "lucide-react";
 import { getAssetAccessUrl, useAssetAccessUrl, useAssets, useUploadAsset } from "@/features/assets/api/assets";
@@ -63,9 +68,11 @@ function PersonalRepositoryThumbnail({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const access = useAssetAccessUrl(workspaceId, asset.id);
+  const { ref: previewRef, visible: previewVisible } = usePreviewVisibility<HTMLButtonElement>();
+  const access = useAssetAccessUrl(workspaceId, previewVisible ? asset.id : undefined, "thumbnail");
   return (
     <button
+      ref={previewRef}
       type="button"
       className={styles.repositoryTile}
       data-selected={selected || undefined}
@@ -73,7 +80,7 @@ function PersonalRepositoryThumbnail({
       aria-pressed={selected}
       aria-label={`${selected ? "取消选择" : "选择"} ${asset.original_filename}`}
     >
-      {access.data?.url ? <img src={access.data.url} alt={asset.original_filename} /> : <Loader2 className="spin" size={22} />}
+      {access.data?.url ? <img src={access.data.url} alt={asset.original_filename} loading="lazy" decoding="async" /> : <Loader2 className="spin" size={22} />}
       {selected && <span className={styles.repositoryCheck}>✓</span>}
     </button>
   );
@@ -105,6 +112,7 @@ export function InspirationGalleryDb() {
   const [aspectOpen, setAspectOpen] = useState(false);
   const [materializingCaseId, setMaterializingCaseId] = useState<string | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const composerMutationLock = useRef(false);
   const { workspace, workspaceState } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
@@ -128,6 +136,9 @@ export function InspirationGalleryDb() {
     repositoryPage * repositoryPageSize,
   );
   const job = useJob(workspace?.id, jobId);
+  const composerBusy = uploadingAssetId !== null || Boolean(materializingCaseId) || generating || createJob.isPending;
+  const composerDisabled = composerBusy || !workspace?.id;
+  const remainingSourceSlots = Math.max(0, 8 - composerAssets.filter((asset) => asset.role !== "result").length);
 
   useEffect(() => {
     const detail = job.data;
@@ -209,7 +220,7 @@ export function InspirationGalleryDb() {
       setComposeError(workspaceState === "loading" ? "工作区正在准备，请稍后再试。" : "工作区不可用，请稍后再试。");
       return;
     }
-    if (materializingCaseId) return;
+    if (materializingCaseId || composerMutationLock.current || generating || createJob.isPending) return;
     setSelected(null);
     setActiveCase(null);
     setComposerAssets([]);
@@ -250,7 +261,10 @@ export function InspirationGalleryDb() {
   };
 
   const replaceComposerAsset = async (asset: Asset, file: File) => {
-    if (!workspace?.id) return;
+    if (!workspace?.id || composerDisabled || composerMutationLock.current) return;
+    const selected = validateImageUpload([file]);
+    if (selected.error) { setComposeError(selected.error); return; }
+    composerMutationLock.current = true;
     setUploadingAssetId(asset.asset_id);
     try {
       const uploaded = await upload.mutateAsync({ file, mediaKind: "image" });
@@ -262,59 +276,68 @@ export function InspirationGalleryDb() {
     } catch (reason) {
       setComposeError(reason instanceof Error ? reason.message : "图片上传失败，请稍后重试。");
     } finally {
+      composerMutationLock.current = false;
       setUploadingAssetId(null);
     }
   };
 
   const addComposerAssets = async (files: File[], role: "reference" | "user_upload") => {
-    if (!workspace?.id || files.length === 0) return;
-    const availableSlots = 8 - composerAssets.filter((asset) => asset.role !== "result").length;
-    if (files.length > availableSlots) {
-      setComposeError(`最多同时添加 ${availableSlots} 张图片。`);
-      return;
-    }
+    if (!workspace?.id || composerDisabled || composerMutationLock.current) return;
+    const selected = validateImageUpload(files, { multiple: true, maxFiles: remainingSourceSlots });
+    if (selected.error) { setComposeError(selected.error); return; }
+    if (!selected.files.length) return;
+    composerMutationLock.current = true;
     setUploadingAssetId("new");
     try {
-      const nextAssets = await Promise.all(files.map(async (file, index) => {
+      // Wait for the entire batch, including failed requests, before unlocking.
+      const outcomes = await Promise.allSettled(selected.files.map(async (file) => {
         const uploaded = await upload.mutateAsync({ file, mediaKind: "image" });
         const access = await getAssetAccessUrl(workspace.id!, uploaded.id);
-        return { asset_id: uploaded.id, role, ordinal: index, url: access.url } satisfies Asset;
+        return { asset_id: uploaded.id, role, ordinal: 0, url: access.url } satisfies Asset;
       }));
+      const nextAssets = outcomes.flatMap((outcome) => outcome.status === "fulfilled" ? [outcome.value] : []);
       setComposerAssets((current) => {
         const roleOffset = current.filter((entry) => entry.role === role).length;
         return [...current, ...nextAssets.map((asset, index) => ({ ...asset, ordinal: roleOffset + index }))];
       });
-      setComposeError(undefined);
-    } catch (reason) {
-      setComposeError(reason instanceof Error ? reason.message : "图片上传失败，请稍后重试。");
+      const failed = outcomes.filter((outcome) => outcome.status === "rejected").length;
+      setComposeError(failed ? `已添加 ${nextAssets.length} 张，${failed} 张上传失败，请重新上传失败的图片。` : undefined);
     } finally {
+      composerMutationLock.current = false;
       setUploadingAssetId(null);
     }
   };
 
   const removeComposerAsset = (asset: Asset) => {
+    if (composerDisabled || composerMutationLock.current) return;
     setComposerAssets((current) => current.filter((entry) => entry.asset_id !== asset.asset_id));
     setComposeError(undefined);
   };
 
   const openRepository = () => {
+    if (composerDisabled || composerMutationLock.current) return;
     setRepositorySelected(composerAssets.filter((asset) => asset.role === "user_upload").map((asset) => asset.asset_id));
     setRepositoryPage(1);
     setRepositoryOpen(true);
   };
 
   const confirmRepository = async () => {
-    if (!workspace?.id) return;
+    if (!workspace?.id || composerDisabled || composerMutationLock.current) return;
+    const selectedAssets = repositoryAssets.filter((asset) => repositorySelected.includes(asset.id));
+    const referenceCount = composerAssets.filter((asset) => asset.role === "reference").length;
+    if (selectedAssets.length + referenceCount > 8) {
+      setComposeError(`商品图与参考图合计最多 8 张，当前参考图 ${referenceCount} 张。`);
+      return;
+    }
+    composerMutationLock.current = true;
+    setUploadingAssetId("repository");
     try {
-      const selectedAssets = repositoryAssets.filter((asset) => repositorySelected.includes(asset.id));
-      const resolved = await Promise.all(
-        selectedAssets.map(async (asset, ordinal) => ({
-          asset_id: asset.id,
-          role: "user_upload" as const,
-          ordinal,
-          url: (await getAssetAccessUrl(workspace.id, asset.id)).url,
-        })),
-      );
+      const resolved = await Promise.all(selectedAssets.map(async (asset, ordinal) => ({
+        asset_id: asset.id,
+        role: "user_upload" as const,
+        ordinal,
+        url: (await getAssetAccessUrl(workspace.id, asset.id)).url,
+      })));
       setComposerAssets((current) => [
         ...current.filter((asset) => asset.role !== "user_upload" && asset.role !== "result"),
         ...resolved,
@@ -323,6 +346,9 @@ export function InspirationGalleryDb() {
       setRepositoryOpen(false);
     } catch {
       setComposeError("个人仓库素材暂时无法读取，请稍后重试。");
+    } finally {
+      composerMutationLock.current = false;
+      setUploadingAssetId(null);
     }
   };
 
@@ -333,6 +359,7 @@ export function InspirationGalleryDb() {
   };
 
   const launchRemix = async () => {
+    if (composerDisabled || composerMutationLock.current) return;
     const remixCase = activeCase;
     const requiredWorkflow =
       !remixCase || remixCase.workflow_type === "product_prompt"
@@ -537,24 +564,30 @@ export function InspirationGalleryDb() {
       <div className={styles.heroInner}>
         <div className={styles.heroTitle}><Sparkles size={27} /><h1>极光商绘，国内/跨境电商出图专家</h1></div>
         <div className={`${styles.command} ${activeCase || composerAssets.length > 0 || generating ? styles.commandWithAssets : ""}`} ref={composerRef}>
-          <div className={`${styles.uploadBox} ${generating ? styles.composerGenerating : ""}`} aria-label="案例素材">
-            {composerAssets.length > 0 ? composerAssets.filter((asset) => asset.role !== "result").map((asset) => (
-              <div className={styles.composerAssetTile} key={asset.asset_id}>
-                <button type="button" className={styles.assetPreviewButton} aria-label="放大查看上传图片" onClick={() => setPreviewAsset(asset)}><img src={asset.url} alt={asset.role === "reference" ? "参考图" : "用户上传图"} /></button>
-                <span>{asset.role === "reference" ? "参考图" : "用户上传"}{uploadingAssetId === asset.asset_id ? " · 上传中" : ""}</span>
-                <label className={styles.assetReplaceButton}>替换<input type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={uploadingAssetId !== null} onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void replaceComposerAsset(asset, file); }} /></label>
-                <button type="button" className={styles.assetRemoveButton} aria-label="删除上传图片" onClick={() => removeComposerAsset(asset)}><X size={13} /></button>
-              </div>
-            )) : materializingCaseId || generating ? <Loader2 className="spin" size={24} /> : null}
-            <label className={styles.composerAddTile} aria-label="添加商品图">
-              <ImagePlus size={22} />
-              <span>添加商品图</span>
-              <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={uploadingAssetId !== null} onChange={(event) => { const files = Array.from(event.target.files ?? []); event.currentTarget.value = ""; if (files.length) void addComposerAssets(files, "user_upload"); }} />
-            </label>
-          </div>
+          <ImageDropZone label="灵感商品图" className={styles.composerDropZone} multiple maxFiles={remainingSourceSlots}
+            disabled={composerDisabled} busy={uploadingAssetId !== null} onFiles={(files) => addComposerAssets(files, "user_upload")}>
+            {({ openFileDialog, disabled: addDisabled }) => <div className={`${styles.uploadBox} ${generating ? styles.composerGenerating : ""}`} aria-label="案例素材">
+              {composerAssets.filter((asset) => asset.role !== "result").map((asset) => (
+                <ImageDropZone key={asset.asset_id} label={`替换${asset.role === "reference" ? "参考图" : "商品图"} ${asset.ordinal + 1}`}
+                  className={styles.composerAssetTile} showHint={false} disabled={composerDisabled}
+                  busy={uploadingAssetId === asset.asset_id} onFiles={async ([file]) => { if (file) await replaceComposerAsset(asset, file); }}>
+                  {({ openFileDialog: replaceFile, disabled: replaceDisabled }) => <>
+                    <button type="button" className={styles.assetPreviewButton} aria-label="放大查看上传图片" onClick={() => setPreviewAsset(asset)}><img src={asset.url} alt={asset.role === "reference" ? "参考图" : "用户上传图"} /></button>
+                    <span>{asset.role === "reference" ? "参考图" : "用户上传"}{uploadingAssetId === asset.asset_id ? " · 上传中" : ""}</span>
+                    <button type="button" className={styles.assetReplaceButton} disabled={replaceDisabled} onClick={replaceFile}>替换</button>
+                    <button type="button" className={styles.assetRemoveButton} aria-label="删除上传图片" disabled={composerDisabled} onClick={() => removeComposerAsset(asset)}><X size={13} /></button>
+                  </>}
+                </ImageDropZone>
+              ))}
+              {materializingCaseId && <Loader2 className="spin" size={24} />}
+              <button type="button" className={styles.composerAddTile} aria-label="添加商品图" disabled={addDisabled} onClick={openFileDialog}>
+                <ImagePlus size={22} /><span>添加商品图</span>
+              </button>
+            </div>}
+          </ImageDropZone>
           <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="万能出图，写什么就出什么，大白话，具体讲清楚要求" />
           <div className={styles.commandBar}>
-            <button type="button" onClick={openRepository}><Layers3 size={15} /> 个人仓库</button>
+            <button type="button" onClick={openRepository} disabled={composerDisabled}><Layers3 size={15} /> 个人仓库</button>
             <div className={styles.aspectControl}>
               <button type="button" className={styles.aspectTrigger} aria-label="选择生成图片比例" aria-expanded={aspectOpen} disabled={Boolean(materializingCaseId)} onClick={() => setAspectOpen((open) => !open)}>▣ 比例: {aspectRatio} <ChevronDown size={13} /></button>
               {aspectOpen && <div className={styles.aspectMenu} role="menu"><strong>生成比例</strong><div className={styles.aspectGrid}>{ASPECT_OPTIONS.map((option) => <button type="button" role="menuitem" key={option.value} className={aspectRatio === option.value ? styles.aspectSelected : ""} onClick={() => { setAspectRatio(option.value); setAspectOpen(false); }}>{option.label}</button>)}</div></div>}
@@ -564,19 +597,23 @@ export function InspirationGalleryDb() {
               {imageCountOpen && <div className={styles.countMenu} role="menu" aria-label="生成张数">{IMAGE_COUNT_OPTIONS.map((count) => <button type="button" role="menuitem" key={count} className={imageCount === count ? styles.countSelected : ""} onClick={() => { setImageCount(count); setImageCountOpen(false); }}>{count} 张</button>)}</div>}
             </div>
             <small>消耗 {imageCount} 次</small>
-          <button className={styles.commandSubmit} aria-label={activeCase ? activeCase.button_label : "开始创作"} onClick={launchRemix} disabled={Boolean(materializingCaseId) || generating || createJob.isPending || !workspace?.id || !launchWorkflow.canSubmit || (activeCase ? activeCase.workflow_type === "legacy_unclassified" || activeCase.workflow_type === "local_edit" || composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || (activeCase.workflow_type === "reference_remix" && composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id)) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
+          <button className={styles.commandSubmit} aria-label={activeCase ? activeCase.button_label : "开始创作"} onClick={launchRemix} disabled={composerDisabled || !launchWorkflow.canSubmit || (activeCase ? activeCase.workflow_type === "legacy_unclassified" || activeCase.workflow_type === "local_edit" || composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || (activeCase.workflow_type === "reference_remix" && composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id)) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
           </div>
           {activeCase && activeCase.workflow_type === "legacy_unclassified" && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例正在配置中，暂不支持一键使用。</p>}
           {activeCase && activeCase.workflow_type === "reference_remix" && !composerAssets.some((asset) => asset.role === "reference") && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例需要商品图 + 参考图；可替换或补充参考图后生成。</p>}
           {activeCase && activeCase.workflow_type === "product_prompt" && !composerAssets.some((asset) => asset.role === "user_upload") && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例只需要商品图，不需要参考图。</p>}
         </div>
         {resultAsset && <div className={styles.resultShowcase}><div className={styles.resultShowcaseMeta}><strong>本次生成结果 · {resultAssets.length} 张</strong><span>点击图片查看大图</span></div><div className={styles.resultShowcaseGrid}>{resultAssets.map((asset) => <button type="button" key={asset.asset_id} aria-label={`查看第 ${asset.ordinal + 1} 张生成结果`} onClick={() => setPreviewAsset(asset)}><img src={asset.url} alt={`生成结果 ${asset.ordinal + 1}`} /></button>)}</div></div>}
-        {materializingCaseId ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>正在准备案例素材</span><b>上传中</b></div> : generating ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>{job.data?.status === "completed" ? "生成完成，正在加载结果" : job.data?.stage ? `正在${job.data.stage}` : "正在准备生成"}</span><b>{job.data ? `${Math.round(job.data.progress)}%` : "排队中"}</b></div> : null}
+        {materializingCaseId ? <div className={styles.generationStatus} role="status"><Loader2 className="spin" size={15} /><span>正在准备案例素材</span></div> : (generating || jobId) ? <div className={styles.progressFeedback}>
+          <JobProgressFeedback job={job.data} pending={createJob.isPending || (generating && !job.data)} error={job.error}
+            lastSyncedAt={job.dataUpdatedAt} refreshing={job.isFetching} onRefresh={jobId ? () => void job.refetch() : undefined}
+            summary={generating && job.data?.status === "completed" ? "生成已完成，正在载入结果图片" : undefined} />
+        </div> : null}
         {composeError && !generating ? <div className={styles.composeError} role="alert">{composeError}</div> : null}
       </div>
     </section>
-    <main className={styles.content}><section className={styles.materialPanel}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>CURATED VISUAL LIBRARY</p><h2>灵感素材</h2></div><span className={styles.count}>{filtered.length} 个方案</span></div><div className={styles.filters}><div className={styles.filterRow}><b>类型:</b><div>{types.map((value) => <button key={value} className={type === value ? styles.active : ""} onClick={() => setType(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>品类:</b><div>{categories.map((value) => <button key={value} className={category === value ? styles.active : ""} onClick={() => setCategory(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>分类:</b><div>{["全部", "国内", "跨境"].map((value) => <button key={value} className={platform === value ? styles.active : ""} onClick={() => setPlatform(value)}>{value}</button>)}</div></div></div>{loading ? <div className={styles.emptyInput}><Loader2 /> 正在加载灵感案例…</div> : error ? <div className={styles.emptyInput}>{error}</div> : <div className={styles.grid}>{filtered.map((item) => <article className={styles.card} key={item.id}><div className={styles.imageWrap}>{item.cover_image?.url ? <img src={item.cover_image.url} alt={item.title} /> : null}<span>{item.platform}</span><div className={styles.imageHover}><button onClick={() => setSelected(item)}>查看指令</button></div></div><div className={styles.cardBody}><div className={styles.cardTags}><span>{item.type}</span><span>{item.category}</span></div><h3>{item.title}</h3><p>{item.description}</p><div className={styles.cardFooter}><small>{item.role} · {item.ratio}</small><button onClick={() => selectCase(item)}>{item.button_label || "一键做同款"} <ChevronRight size={15} /></button></div></div></article>)}</div>}</section></main>
-    {repositoryOpen && <div className={styles.repositoryOverlay} role="dialog" aria-modal="true" aria-labelledby="personal-repository-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setRepositoryOpen(false); }}><section className={styles.repositoryModal} onMouseDown={(event) => event.stopPropagation()}><header className={styles.repositoryHeader}><h2 id="personal-repository-title">个人仓库</h2><button type="button" className={styles.repositoryClose} aria-label="关闭个人仓库" onClick={() => setRepositoryOpen(false)}><X size={21} /></button></header><div className={styles.repositoryBody}>{repositoryQuery.isPending ? <div className={styles.repositoryState}><Loader2 className="spin" size={22} /> 正在加载个人素材…</div> : repositoryQuery.isError ? <div className={styles.repositoryState}>个人素材暂时无法读取，请稍后重试。</div> : repositoryPageAssets.length ? <div className={styles.repositoryGrid}>{repositoryPageAssets.map((asset) => <PersonalRepositoryThumbnail key={asset.id} asset={asset} workspaceId={workspace!.id} selected={repositorySelected.includes(asset.id)} onToggle={() => setRepositorySelected((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} />)}</div> : <div className={styles.repositoryState}>还没有用户上传素材，请先上传图片。</div>}</div><footer className={styles.repositoryFooter}><div className={styles.repositoryPager}><button type="button" aria-label="上一页" disabled={repositoryPage <= 1} onClick={() => setRepositoryPage((page) => Math.max(1, page - 1))}>‹</button>{Array.from({ length: repositoryPageCount }, (_, index) => index + 1).slice(0, 5).map((page) => <button type="button" key={page} className={repositoryPage === page ? styles.repositoryPageSelected : ""} onClick={() => setRepositoryPage(page)}>{page}</button>)}<button type="button" aria-label="下一页" disabled={repositoryPage >= repositoryPageCount} onClick={() => setRepositoryPage((page) => Math.min(repositoryPageCount, page + 1))}>›</button><span>{repositoryAssets.length ? `${repositoryAssets.length} 个上传素材` : "0 个上传素材"}</span></div><div className={styles.repositoryActions}><button type="button" onClick={() => setRepositoryOpen(false)}>取消</button><button type="button" className={styles.repositoryConfirm} onClick={() => void confirmRepository()} disabled={!workspace || repositoryQuery.isPending}>确定</button></div></footer></section></div>}
+    <main className={styles.content}><section className={styles.materialPanel}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>CURATED VISUAL LIBRARY</p><h2>灵感素材</h2></div><span className={styles.count}>{filtered.length} 个方案</span></div><div className={styles.filters}><div className={styles.filterRow}><b>类型:</b><div>{types.map((value) => <button key={value} className={type === value ? styles.active : ""} onClick={() => setType(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>品类:</b><div>{categories.map((value) => <button key={value} className={category === value ? styles.active : ""} onClick={() => setCategory(value)}>{value}</button>)}</div></div><div className={styles.filterRow}><b>分类:</b><div>{["全部", "国内", "跨境"].map((value) => <button key={value} className={platform === value ? styles.active : ""} onClick={() => setPlatform(value)}>{value}</button>)}</div></div></div>{loading ? <div className={styles.emptyInput}><Loader2 /> 正在加载灵感案例…</div> : error ? <div className={styles.emptyInput}>{error}</div> : <div className={styles.grid}>{filtered.map((item) => <article className={styles.card} key={item.id}><div className={styles.imageWrap}>{item.cover_image?.url ? <img src={`${item.cover_image.url}?variant=thumbnail`} alt={item.title} loading="lazy" decoding="async" /> : null}<span>{item.platform}</span><div className={styles.imageHover}><button onClick={() => setSelected(item)}>查看指令</button></div></div><div className={styles.cardBody}><div className={styles.cardTags}><span>{item.type}</span><span>{item.category}</span></div><h3>{item.title}</h3><p>{item.description}</p><div className={styles.cardFooter}><small>{item.role} · {item.ratio}</small><button onClick={() => selectCase(item)}>{item.button_label || "一键做同款"} <ChevronRight size={15} /></button></div></div></article>)}</div>}</section></main>
+    {repositoryOpen && <div className={styles.repositoryOverlay} role="dialog" aria-modal="true" aria-labelledby="personal-repository-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setRepositoryOpen(false); }}><section className={styles.repositoryModal} onMouseDown={(event) => event.stopPropagation()}><header className={styles.repositoryHeader}><h2 id="personal-repository-title">个人仓库</h2><button type="button" className={styles.repositoryClose} aria-label="关闭个人仓库" onClick={() => setRepositoryOpen(false)}><X size={21} /></button></header><div className={styles.repositoryBody}>{repositoryQuery.isPending ? <div className={styles.repositoryState}><Loader2 className="spin" size={22} /> 正在加载个人素材…</div> : repositoryQuery.isError ? <div className={styles.repositoryState}>个人素材暂时无法读取，请稍后重试。</div> : repositoryPageAssets.length ? <div className={styles.repositoryGrid}>{repositoryPageAssets.map((asset) => <PersonalRepositoryThumbnail key={asset.id} asset={asset} workspaceId={workspace!.id} selected={repositorySelected.includes(asset.id)} onToggle={() => setRepositorySelected((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} />)}</div> : <div className={styles.repositoryState}>还没有用户上传素材，请先上传图片。</div>}</div><footer className={styles.repositoryFooter}><div className={styles.repositoryPager}><button type="button" aria-label="上一页" disabled={repositoryPage <= 1} onClick={() => setRepositoryPage((page) => Math.max(1, page - 1))}>‹</button>{Array.from({ length: repositoryPageCount }, (_, index) => index + 1).slice(0, 5).map((page) => <button type="button" key={page} className={repositoryPage === page ? styles.repositoryPageSelected : ""} onClick={() => setRepositoryPage(page)}>{page}</button>)}<button type="button" aria-label="下一页" disabled={repositoryPage >= repositoryPageCount} onClick={() => setRepositoryPage((page) => Math.min(repositoryPageCount, page + 1))}>›</button><span>{repositoryAssets.length ? `${repositoryAssets.length} 个上传素材` : "0 个上传素材"}</span></div><div className={styles.repositoryActions}><button type="button" onClick={() => setRepositoryOpen(false)}>取消</button><button type="button" className={styles.repositoryConfirm} onClick={() => void confirmRepository()} disabled={composerDisabled || repositoryQuery.isPending}>确定</button></div></footer></section></div>}
     {previewAsset && <div className={styles.resultPreviewOverlay} role="dialog" aria-label="生成成品大图" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewAsset(null); }}><button type="button" className={styles.resultPreviewClose} aria-label="关闭大图预览" onClick={() => setPreviewAsset(null)}><X size={22} /></button><img src={previewAsset.url} alt="生成成品大图" /></div>}
     {selected && <div className={styles.overlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}><aside className={styles.focusModal}><button className={styles.close} onClick={() => setSelected(null)}><X size={20} /></button><div className={styles.modalGallery}><div className={styles.inputGrid}>{selected.gallery.filter((asset) => asset.role !== "result").map((asset) => <div className={styles.inputTile} key={asset.asset_id}><span>{asset.role === "user_upload" ? "用户上传" : "参考图"}</span><img src={asset.url} alt="案例输入" /></div>)}</div><div className={styles.resultTile}>{selected.gallery.filter((asset) => asset.role === "result").map((asset) => <img key={asset.asset_id} src={asset.url} alt="案例结果" />)}</div></div><div className={styles.modalInfo}><h2>{selected.title}</h2><h3>创作指令</h3><p>{displayPrompt(selected.prompt)}</p><button className={styles.modalApply} onClick={copy}>{copied ? "已复制" : <><Copy size={15} /> 复制指令</>}</button><button className={styles.modalApply} onClick={() => selectCase(selected)}>{selected.button_label || "一键做同款"}</button></div></aside></div>}
   </div>;

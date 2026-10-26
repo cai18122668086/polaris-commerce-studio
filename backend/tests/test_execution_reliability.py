@@ -37,9 +37,57 @@ from app.models import (
 )
 from app.outbox import publish_pending_events
 from app.provider import FakeProvider, ProviderOutcome, ProviderResult
-from app.provider_quota_ledger import ProviderQuotaLedgerError
 
 WORKSPACE_ID = "ws_test"
+
+
+def test_provider_failure_receipt_survives_attempt_item_and_usage(client):
+    job_id = _create_job(client)
+    coordinator = _coordinator(client, FakeProvider(), "receipt-worker")
+    assert coordinator.prepare(job_id) == JobStatus.PROCESSING
+    lease = coordinator.claim_next_item(job_id)
+    assert lease is not None and coordinator.mark_provider_started(lease)
+    error = {
+        "code": "invalid_image",
+        "param": "image",
+        "message": "Unsupported encoding",
+    }
+    assert coordinator.finish_attempt(
+        lease,
+        ProviderResult(
+            outcome=ProviderOutcome.FAILED,
+            error_code="IMAGE_REQUEST_FAILED",
+            http_status=400,
+            provider_request_id="req-fixture",
+            retryable=False,
+            raw_usage={
+                "metrics": {
+                    "provider_error": error,
+                    "provider_attempts": [
+                        {
+                            "route": "primary",
+                            "host": "fixture.example",
+                            "model": "fixture",
+                            "http_status": 400,
+                            "request_id": "req-fixture",
+                            "error": error,
+                        }
+                    ],
+                }
+            },
+        ),
+    )
+    with client.app.state.session_factory() as session:
+        attempt = session.get(JobAttemptRecord, lease.attempt_id)
+        item = session.get(JobItemRecord, attempt.job_item_id)
+        usage = session.scalar(
+            select(UsageEventRecord).where(
+                UsageEventRecord.attempt_id == lease.attempt_id
+            )
+        )
+        assert attempt.error_details["provider_error"] == error
+        assert item.error_details["provider_attempts"][0]["http_status"] == 400
+        assert usage.raw_usage["metrics"]["provider_error"] == error
 
 
 def _image_payload(color: tuple[int, int, int]) -> bytes:
@@ -1599,7 +1647,7 @@ def test_finalize_amazon_review_merges_mixed_evidence_into_quota_settlement(
     ("reserved_cost_micros", "reserved_request_count"),
     [(4_530_000, 1), (1, 45)],
 )
-def test_finalize_amazon_review_true_quota_overflow_fails_closed(
+def test_finalize_amazon_usage_above_estimates_is_recorded(
     client: TestClient,
     reserved_cost_micros: int,
     reserved_request_count: int,
@@ -1629,11 +1677,7 @@ def test_finalize_amazon_review_true_quota_overflow_fails_closed(
         reserved_request_count=reserved_request_count,
     )
 
-    with pytest.raises(
-        ProviderQuotaLedgerError,
-        match="Observed provider attempts exceed the durable job reservation",
-    ):
-        coordinator.finalize_job(job_id)
+    assert coordinator.finalize_job(job_id) == JobStatus.COMPLETED
 
     with client.app.state.session_factory() as session:
         job = session.get(JobRecord, job_id)
@@ -1644,5 +1688,6 @@ def test_finalize_amazon_review_true_quota_overflow_fails_closed(
             )
         )
         assert job is not None
-        assert job.status == JobStatus.PROCESSING.value
-        assert settlement is None
+        assert job.status == JobStatus.COMPLETED.value
+        assert settlement is not None
+        assert settlement.details["enforcement_mode"] == "observe_only"

@@ -1,12 +1,11 @@
-"""Durable, fail-closed quotas for the controlled real-provider beta."""
+"""Durable provider usage estimates. Estimates never limit generation."""
 
+import logging
 from datetime import UTC, datetime
 
-from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .errors import ApiError
 from .models import AuditEventRecord, JobRecord, utc_now
 from .provider_quota_ledger import (
     LEDGER_VERSION,
@@ -16,6 +15,11 @@ from .provider_quota_ledger import (
 from .services import lock_workspace_limits, quota_enabled
 
 PROVIDER_JOB_QUOTA_ACTION = "provider.beta_job_reserved"
+_LOGGER = logging.getLogger(__name__)
+
+
+def _estimate(value: object) -> int:
+    return value if type(value) is int and value >= 0 else 0
 
 
 def reserve_provider_job_quota(
@@ -32,109 +36,42 @@ def reserve_provider_job_quota(
     image_budget_micros: int | None = None,
     group_count: int | None = None,
 ) -> None:
-    """Atomically reserve one real-provider job against durable beta limits."""
+    """Record an advisory estimate; preserve the legacy caller signature.
 
+    Daily/monthly/request limits are retired. A prior ledger inconsistency is
+    recorded for accounting review in its own savepoint, never surfaced as a
+    submission/retry failure. Idempotent dispatch and provider usage remain
+    independently recorded by the existing job/attempt execution protocol.
+    """
     if not quota_enabled():
         return
-
-    values = (
-        estimated_cost_micros,
-        provider_request_count,
-        daily_limit_micros,
-        monthly_limit_micros,
-        daily_request_limit,
-    )
-    if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-        raise ApiError(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "PROVIDER_QUOTA_INVALID",
-            "Real-provider quota values are invalid.",
-        )
-    if (
-        estimated_cost_micros <= 0
-        or provider_request_count <= 0
-        or daily_limit_micros < 0
-        or monthly_limit_micros < 0
-        or daily_request_limit < 0
-        or (
-            daily_limit_micros > 0
-            and monthly_limit_micros > 0
-            and monthly_limit_micros < daily_limit_micros
-        )
-    ):
-        raise ApiError(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "PROVIDER_QUOTA_INVALID",
-            "Real-provider quota values are invalid.",
-        )
-
-    # A zero recurring limit means unlimited during the internal beta. Keep the
-    # durable reservation and settlement ledger active so provider usage and
-    # costs remain auditable; only the membership-era rejection gate is skipped.
-    limits = lock_workspace_limits(session, job.workspace_id)
-    effective_daily_limit = (
-        min(
-            daily_limit_micros,
-            int(limits.daily_provider_cost_limit_micros),
-        )
-        if daily_limit_micros > 0
-        else 0
-    )
-    effective_monthly_limit = (
-        min(
-            monthly_limit_micros,
-            int(limits.monthly_provider_cost_limit_micros),
-        )
-        if monthly_limit_micros > 0
-        else 0
-    )
+    lock_workspace_limits(session, job.workspace_id)
     now = utc_now()
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
-    day_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
-    month_start = datetime(now.year, now.month, 1, tzinfo=UTC)
     try:
-        daily_cost, monthly_cost, daily_requests = reconcile_and_total(
-            session,
-            workspace_id=job.workspace_id,
-            day_start=day_start,
-            month_start=month_start,
-        )
+        with session.begin_nested():
+            reconcile_and_total(
+                session,
+                workspace_id=job.workspace_id,
+                day_start=datetime(now.year, now.month, now.day, tzinfo=UTC),
+                month_start=datetime(now.year, now.month, 1, tzinfo=UTC),
+            )
     except ProviderQuotaLedgerError as exc:
-        raise ApiError(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "PROVIDER_QUOTA_LEDGER_INVALID",
-            str(exc),
-        ) from exc
-
-    if (
-        effective_daily_limit > 0
-        and daily_cost + estimated_cost_micros > effective_daily_limit
-    ):
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "PROVIDER_DAILY_BUDGET_EXCEEDED",
-            "The daily real-provider budget is exhausted.",
+        _LOGGER.warning(
+            "Provider usage reconciliation deferred for job %s: %s", job.id, exc
         )
-    if (
-        effective_monthly_limit > 0
-        and monthly_cost + estimated_cost_micros > effective_monthly_limit
-    ):
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "PROVIDER_MONTHLY_BUDGET_EXCEEDED",
-            "The monthly real-provider budget is exhausted.",
+        session.add(
+            AuditEventRecord(
+                workspace_id=job.workspace_id,
+                actor_user_id=actor_user_id,
+                action="provider.beta_ledger_reconciliation_pending",
+                resource_type="job",
+                resource_id=job.id,
+                request_id=job.id,
+                details={"enforcement_mode": "observe_only", "reason": str(exc)},
+            )
         )
-    if (
-        daily_request_limit > 0
-        and daily_requests + provider_request_count > daily_request_limit
-    ):
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "PROVIDER_DAILY_REQUEST_LIMIT_EXCEEDED",
-            "The daily real-provider request limit is exhausted.",
-        )
-
     session.add(
         AuditEventRecord(
             workspace_id=job.workspace_id,
@@ -145,26 +82,27 @@ def reserve_provider_job_quota(
             request_id=job.id,
             details={
                 "ledger_version": LEDGER_VERSION,
+                "enforcement_mode": "observe_only",
                 "job_type": job.type,
                 "planner_reserve_micros": planner_reserve_micros,
                 "image_budget_micros": image_budget_micros,
                 "group_count": group_count,
-                "estimated_cost_micros": estimated_cost_micros,
-                "provider_request_count": provider_request_count,
-                "daily_limit_micros": effective_daily_limit,
-                "monthly_limit_micros": effective_monthly_limit,
-                "daily_request_limit": daily_request_limit,
+                "estimated_cost_micros": _estimate(estimated_cost_micros),
+                "provider_request_count": _estimate(provider_request_count),
+                "estimate_available": type(estimated_cost_micros) is int
+                and estimated_cost_micros >= 0,
+                "daily_limit_micros": 0,
+                "monthly_limit_micros": 0,
+                "daily_request_limit": 0,
             },
         )
     )
 
 
 def require_provider_job_quota(session: Session, job: JobRecord) -> None:
-    """Fail closed when a real provider job bypassed the submit-time gate."""
-
+    """Compatibility hook: a missing estimate is recorded, never an execution gate."""
     if not quota_enabled():
         return
-
     reservation = session.scalar(
         select(AuditEventRecord.id)
         .where(
@@ -176,4 +114,13 @@ def require_provider_job_quota(session: Session, job: JobRecord) -> None:
         .limit(1)
     )
     if reservation is None:
-        raise RuntimeError("Real provider job has no durable quota reservation.")
+        session.add(
+            AuditEventRecord(
+                workspace_id=job.workspace_id,
+                action="provider.beta_job_estimate_missing",
+                resource_type="job",
+                resource_id=job.id,
+                request_id=job.id,
+                details={"enforcement_mode": "observe_only"},
+            )
+        )

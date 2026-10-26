@@ -187,6 +187,8 @@ class Settings(BaseSettings):
     provider_failover_model: str = "gpt-5.6-sol"
     provider_failover_image_model: str = "gpt-image-2"
     provider_rotation_order: str = "primary,failover"
+    # Opt in only on the isolated one-click replica API/worker.
+    replica_image_failover_enabled: bool = False
     tengli_smoke_budget_usd: float = Field(
         default=200,
         gt=0,
@@ -214,7 +216,11 @@ class Settings(BaseSettings):
         ge=1,
         le=2_000_000,
     )
-    xinghe_concurrency: Literal[1, 2, 6] = 6
+    xinghe_concurrency: int = Field(default=6, ge=1, le=32)
+    replica_analysis_concurrency: int = Field(default=4, ge=1, le=16)
+    # Kept for compatibility with existing deployment environments. Exact
+    # sessions now use the current protocol in every workspace.
+    replica_exact_compact_workspaces: tuple[str, ...] = ()
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)
     xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)
@@ -222,6 +228,7 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/1"
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=40_000_000, ge=1)
+    justone_api_token: SecretStr = SecretStr("")
     ecommerce_browser_fallback: bool = False
     # Server-side policy switch only; domestic adapters fail closed when true.
     # This does not configure a proxy or permit automatic direct fallback.
@@ -275,6 +282,8 @@ class Settings(BaseSettings):
     @field_validator("xinghe_concurrency", mode="before")
     @classmethod
     def parse_xinghe_concurrency(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Image concurrency must be an integer from 1 through 32")
         if isinstance(value, int):
             return value
         if isinstance(value, str):

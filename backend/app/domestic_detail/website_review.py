@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 from copy import deepcopy
 from typing import Any
 
@@ -28,6 +30,71 @@ OBSERVATIONS = (
     "independent_brand_logo_count",
     "independent_brand_logo_source_fidelity",
 )
+
+
+def project_native_negative_decisions(
+    value: dict[str, Any], contracts: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Native findings may deny a model PASS, never manufacture an acceptance.
+
+    The original model message stays immutable. The unchanged bundled validator
+    supplies every finding; unknown/missing observations still fail closed.
+    """
+    from ..config import default_skill_root
+    from ..skill_runtime import SkillManifestRegistry
+    from .review import DetailReviewError
+
+    skill = "aurora-domestic-ecommerce-detail-page"
+    root = default_skill_root(skill)
+    SkillManifestRegistry.bundled().verify_source(skill, root)
+    package = "_polaris_native_website_review"
+    if package not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            package,
+            root / "scripts/runtime/__init__.py",
+            submodule_search_locations=[str(root / "scripts/runtime")],
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[package] = module
+        spec.loader.exec_module(module)
+    from importlib import import_module
+
+    native = import_module(package + ".website_review")
+    result = deepcopy(value)
+    findings: list[dict[str, Any]] = []
+    for report, contract in zip(result["module_judgments"], contracts, strict=True):
+        if report["status"] != "PASS":
+            continue
+        # Explicit contradictory negatives remain invalid under the ordinary
+        # adapter checks. This handles additional findings computed by native.
+        if (
+            any(row["pass"] is False for row in report["checks"].values())
+            or report["material_failures"]
+        ):
+            continue
+        diagnostic = deepcopy(report)
+        diagnostic["status"] = "DIAGNOSTIC_ONLY_NEVER_ACCEPTED"
+        try:
+            negative = native.validate_module(
+                diagnostic, {"id": contract["module_id"], "plan": contract["contract"]}
+            )
+        except Exception as exc:
+            raise DetailReviewError("AURORA_NATIVE_AUDIT_INVALID", str(exc)) from exc
+        if not negative:
+            continue
+        report["status"] = "MATERIAL_FAIL"
+        report["material_failures"] = negative
+        failed = {row["check"] for row in negative}
+        report["passed_layers"] = [
+            key for key in report["passed_layers"] if key not in failed
+        ]
+        findings.extend({"module_id": report["module_id"], **row} for row in negative)
+    if findings:
+        result["status"] = "MATERIAL_FAIL"
+        result["material_failures"] = [*result["material_failures"], *findings]
+        result["passed_layers"] = []
+    return result
 
 
 def project_failed_scope(value: dict[str, Any]) -> dict[str, Any]:
@@ -57,6 +124,33 @@ def project_failed_scope(value: dict[str, Any]) -> dict[str, Any]:
             and identity.get("comparison_scope") in scopes.values()
         ):
             identity["comparison_scope"] = scopes[presence]
+    # A failed pair's duplicate aggregate scope follows its two explicit
+    # per-screen presence reports too. Preserve all comparisons and evidence.
+    reports = result.get("module_judgments") or []
+    aggregate = result.get("identity_silhouette")
+    if (
+        result.get("status") == "MATERIAL_FAIL"
+        and result.get("material_failures")
+        and isinstance(aggregate, dict)
+        and aggregate.get("comparison_scope") in scopes.values()
+        and len(reports) == 2
+        and all(
+            isinstance(row, dict)
+            and row.get("status") == "MATERIAL_FAIL"
+            and row.get("material_failures")
+            and (row.get("observations") or {}).get("product_presence_observed")
+            in scopes
+            for row in reports
+        )
+    ):
+        priority = identity_schema()["x-scope-priority"]
+        aggregate["comparison_scope"] = max(
+            (
+                scopes[row["observations"]["product_presence_observed"]]
+                for row in reports
+            ),
+            key=priority.index,
+        )
     return result
 
 

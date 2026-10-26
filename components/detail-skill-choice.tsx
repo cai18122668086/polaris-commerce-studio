@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { DETAIL_SKILLS, type DetailSkill } from "@/lib/detail-skills";
 import styles from "./detail-skill-choice.module.css";
 
@@ -13,7 +13,7 @@ export function DetailSkillChoice({ value, disabled, onChange }: {
     <div className={styles.options}>
       {DETAIL_SKILLS.map(option => <label key={option.value} className={styles.option} data-selected={value === option.value}>
         <input type="radio" name="detail-skill" value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} />
-        <span className={styles.icon}>{option.value === "quick" ? <Clock3 size={20} /> : <Sparkles size={20} />}</span>
+        <span className={styles.icon}>{<Sparkles size={20} />}</span>
         <span><strong>{option.title}</strong><small>{option.description}</small></span>
       </label>)}
     </div>

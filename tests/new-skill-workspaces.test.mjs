@@ -42,7 +42,7 @@ test("standalone workspaces submit the exact backend job families", async () => 
       workspace.indexOf('type: "reference_remix"'),
     ),
   );
-  assert.match(remixBody, /reference_skill: "reference-visual-reverse-remix"/);
+  assert.match(remixBody, /reference_skill: "aurora-remix-fast"/);
   assert.match(remixBody, /inspiration_product_first: true/);
 
   const amazonBody = workspace.slice(
@@ -64,7 +64,8 @@ test("standalone workspaces submit the exact backend job families", async () => 
 });
 test("creative and reference workspaces preserve the full count and aspect-ratio controls", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
-  assert.match(workspace, /const \[imageCount, setImageCount\] = useState\(1\)/);
+  assert.match(workspace, /const \[draftImageCount, setImageCount\] = useState\(1\)/);
+  assert.match(workspace, /const imageCount = jobId \? saved\.number\("image_count"/);
   assert.match(workspace, /image_count: imageCount/);
   assert.doesNotMatch(workspace, /image_count: Math\.min/);
   assert.match(workspace, /Array\.from\(\{ length: 12 \}/);
@@ -163,20 +164,20 @@ test("Amazon simplified source roles share the backend eight-image limit", async
   );
   assert.match(
     workspace,
-    /const availableSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selections\[role\]\.length/,
+    /const availableSlots = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - selectedIds\.length[\s\S]*AMAZON_SOURCE_ASSET_LIMIT\) - selections\[role\]\.length/,
   );
-  assert.match(workspace, /const filesToUpload = files\.slice\(0, availableSlots\)/);
+  assert.match(workspace, /validateImageUpload\(files, \{ multiple: true, maxFiles: availableSlots \}\)/);
   assert.match(
     workspace,
-    /addDisabled=\{isAmazon && amazonRemainingSourceSlots === 0\}/,
-  );
-  assert.match(
-    workspace,
-    /maxItems=\{[\s\S]*isAmazon[\s\S]*selections\[activeLibraryRole\.key\]\.length \+ \(amazonRemainingSourceSlots \?\? 0\)[\s\S]*: AMAZON_SOURCE_ASSET_LIMIT/,
+    /maxFiles=\{amazonRemainingSourceSlots \?\? Math\.max\(0, \(featureId === "reference-remix" \? 1 : AMAZON_SOURCE_ASSET_LIMIT\) - selections\[role\.key\]\.length\)\}/,
   );
   assert.match(
     workspace,
-    /const roleLimit = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount[\s\S]*: AMAZON_SOURCE_ASSET_LIMIT/,
+    /maxItems=\{[\s\S]*isAmazon[\s\S]*selections\[activeLibraryRole\.key\]\.length \+ \(amazonRemainingSourceSlots \?\? 0\)[\s\S]*: featureId === "reference-remix" \? 1 : AMAZON_SOURCE_ASSET_LIMIT/,
+  );
+  assert.match(
+    workspace,
+    /const roleLimit = isAmazon[\s\S]*AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount[\s\S]*: featureId === "reference-remix" \? 1 : AMAZON_SOURCE_ASSET_LIMIT/,
   );
 });
 
@@ -253,11 +254,14 @@ test("Amazon form exposes only three concise Chinese content fields", async () =
   }
 });
 
-test("Amazon workflow reviews and confirms the backend 21-page plan", async () => {
+test("Amazon automatically generates after planning and retains historical confirmation", async () => {
   const workspace = await utf8("components/commerce-skill-workspace.tsx");
   const jobApi = await utf8("features/jobs/api/jobs.ts");
 
   assert.match(workspace, /readAmazonPlanPages\(job\.data\?\.plan\?\.payload\)/);
+  assert.match(workspace, /auto_start_after_plan: true/);
+  assert.match(workspace, /isAmazon && !automaticAmazonPlan && job\.data\?\.status/);
+  assert.match(workspace, /完成校验后将自动生成 21 张图片/);
   assert.match(workspace, /job\.data\?\.status === "awaiting_confirmation"/);
   assert.match(workspace, /确认 21 项页面规划/);
   assert.match(workspace, /amazonPlanPages\.map/);
@@ -329,7 +333,7 @@ test("Amazon review infrastructure failure preserves generated-image semantics",
   );
   assert.match(
     workspace,
-    /job\.data\.error_message && !isAmazonReviewInfrastructureFailure/,
+    /suppressFailureDetails=\{isAmazonReviewInfrastructureFailure\}/,
   );
   assert.match(
     workspace,
@@ -366,16 +370,18 @@ test("public navigation uses registry route matching instead of local-edit fallb
   assert.match(navigationRegistry, /href: "\/tools"/);
   assert.doesNotMatch(navigation, /\/\#tools/);
   assert.match(directory, /FEATURE_REGISTRY\.map/);
-  assert.match(directory, /searchableTools\.filter/);
+  assert.match(directory, /searchableTools\.find/);
 });
 
-test("detail workspace submits the selected market and requires explicit plan confirmation", async () => {
+test("detail workspace automatically starts submitted suite plans and retains historical confirmation", async () => {
   const detail = await utf8("app/workspace/detail-pack/page.tsx");
   assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920"/);
   assert.match(detail, /严格交付 \{imageSize\}/);
   assert.match(detail, /\{selectedMarketplace\.name\} · \{imageSize\}/);
   assert.match(detail, /market_region: marketRegion/);
-  assert.match(detail, /auto_start_after_plan: false/);
+  assert.match(detail, /auto_start_after_plan: true/);
+  assert.match(detail, /!automaticPlan && job\.data\?\.plan && workflowAvailable/);
+  assert.match(detail, /生成整套详情图/);
   assert.doesNotMatch(detail, /market_region: "international" as const/);
   assert.match(detail, /selectRegion\("domestic"\).*disabled=\{Boolean\(jobId\)\}/);
   assert.match(detail, /selectRegion\("international"\).*disabled=\{Boolean\(jobId\)\}/);

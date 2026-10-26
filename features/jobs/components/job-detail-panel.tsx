@@ -108,7 +108,7 @@ export function JobDetailPanel({
                 <RefreshCw size={16} className={detail.isFetching ? "spin" : ""} />
               </button>
             </div>
-            <JobProgress job={job} />
+            <JobProgress job={job} error={detail.error} lastSyncedAt={detail.dataUpdatedAt} refreshing={detail.isFetching} onRefresh={() => void detail.refetch()} />
             <Link className="secondary-button" href={jobWorkspaceHref(job)}>打开对应工作台</Link>
 
             <section className="job-detail-section">

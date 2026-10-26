@@ -14,8 +14,8 @@ const utf8 = (file) => readFile(path.join(root, file), "utf8");
 
 const EXPECTED_FEATURE_IDS = [
   "local-edit",
-  "change-background",
   "reference-remix",
+  "one-click-replica",
   "detail-pack",
   "domestic-main-image",
   "amazon-visual-suite",
@@ -84,19 +84,19 @@ function mappedImages() {
   ]);
 }
 
-test("the homepage grid covers all six one-click tasks without changing navigation", () => {
+test("the homepage grid covers all one-click tasks and their registered routes", () => {
   const featured = FEATURE_REGISTRY.filter((feature) => feature.featured);
   assert.deepEqual(
     featured.map((feature) => feature.id),
     EXPECTED_FEATURE_IDS,
   );
-  assert.deepEqual(Object.keys(HOME_FEATURE_VISUALS), EXPECTED_FEATURE_IDS);
+  assert.deepEqual(Object.keys(HOME_FEATURE_VISUALS), EXPECTED_FEATURE_IDS.filter(id => id !== "one-click-replica"));
   assert.deepEqual(
     featured.map((feature) => feature.route),
     [
       "/workspace/local-edit",
-      "/workspace/product-image/change-background",
       "/workspace/reference-remix",
+      "/style-replica",
       "/workspace/detail-pack",
       "/workspace/domestic-main-image",
       "/workspace/amazon-visual-suite",
@@ -110,10 +110,10 @@ test("all responsive production assets use supported formats with declared stabl
   assert.equal(files.some((file) => file.toLowerCase().endsWith(".gif")), false);
 
   const images = mappedImages();
-  assert.equal(images.length, 36);
+  assert.equal(images.length, 30);
   assert.deepEqual(
     images.map((image) => path.basename(image.src)).sort(),
-    [...EXPECTED_FILES, ...EXPECTED_INPUT_FILES].sort(),
+    [...EXPECTED_FILES, ...EXPECTED_INPUT_FILES].filter(file => !file.startsWith("02-")).sort(),
   );
 
   for (const image of images) {

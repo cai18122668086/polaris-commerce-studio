@@ -253,8 +253,11 @@ class AuroraMainImagePlanner:
                 stage="awaiting_plan_confirmation",
                 progress=15,
             )
+            from .main_image_auto_start import confirm_validated_plan
+
+            confirm_validated_plan(session, job, plan, work_root=self.work_root)
             session.commit()
-            return JobStatus.AWAITING_CONFIRMATION
+            return JobStatus(job.status)
 
     def job_workspace(self, job_id: str) -> Path:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", job_id):

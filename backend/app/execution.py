@@ -423,10 +423,6 @@ def _settle_amazon_provider_quota(
             }
         )
 
-    if requests > reserved_requests or charge > reserved_cost:
-        raise ProviderQuotaLedgerError(
-            "Observed provider attempts exceed the durable job reservation."
-        )
     conservative_unknown_count = sum(
         source["cost_basis"] == "conservative_unknown" for source in sources
     )
@@ -442,6 +438,7 @@ def _settle_amazon_provider_quota(
         else "estimated_fallback"
     )
     common = {
+        "enforcement_mode": "observe_only",
         "ledger_version": quota_ledger.LEDGER_VERSION,
         "reservation_event_id": reservation.id,
         "reserved_cost_micros": reserved_cost,
@@ -466,8 +463,8 @@ def _settle_amazon_provider_quota(
         quota_ledger.RELEASE_ACTION,
         {
             **common,
-            "released_cost_micros": reserved_cost - charge,
-            "released_request_count": reserved_requests - requests,
+            "released_cost_micros": max(0, reserved_cost - charge),
+            "released_request_count": max(0, reserved_requests - requests),
             "release_reason": f"terminal_{job.status}",
         },
     )
@@ -556,8 +553,8 @@ class ExecutionCoordinator:
             raise ValueError("lease_seconds must be positive")
         if heartbeat_seconds <= 0 or heartbeat_seconds >= lease_seconds:
             raise ValueError("heartbeat_seconds must be positive and less than lease")
-        if max_concurrency < 1 or max_concurrency > 6:
-            raise ValueError("max_concurrency must be from 1 through 6")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
+            raise ValueError("max_concurrency must be from 1 through 32")
         if max_detail_retries < 0 or max_detail_retries > 2:
             raise ValueError("max_detail_retries must be from 0 through 2")
         if max_amazon_retries < 0 or max_amazon_retries > 2:
@@ -644,6 +641,7 @@ class ExecutionCoordinator:
             if (
                 self._is_domestic_main_image_job(job_id)
                 or self._is_aurora_domestic_detail_job(job_id)
+                or self._is_native_replica_job(job_id)
             )
             and not is_parallel_aurora
             else self.max_concurrency
@@ -657,6 +655,7 @@ class ExecutionCoordinator:
                     break
                 leases.append(lease)
             if not leases:
+                self._close_failed_native_replica(job_id)
                 if self._domestic_detail_has_blocking_failure(job_id):
                     self._skip_domestic_detail_pages_after_execution_failure(job_id)
                     break
@@ -741,11 +740,23 @@ class ExecutionCoordinator:
             )
             if set_audit is False and set_audit_error is not None:
                 self._mark_parallel_aurora_set_audit_failed(job_id, set_audit_error)
-            elif set_audit in (True, False) and set_audit_error is None:
-                # A native v2 audit can complete with a BLOCKED verdict.  The
-                # skill still moves to user final review so the residual issue
-                # is disclosed and the user can explicitly approve the set.
+            elif set_audit is False and set_audit_error is None:
+                from .main_image_auto_start import eligible as automatic_main_image
+
+                with self.session_factory() as session:
+                    job = session.get(JobRecord, job_id)
+                    automatic = job is not None and automatic_main_image(job)
+                if automatic:
+                    self._mark_parallel_aurora_set_audit_failed(
+                        job_id,
+                        ValueError("Automatic delivery needs a passing set audit"),
+                    )
+                    return self.finalize_job(job_id)
                 return self._mark_aurora_final_review_pending(job_id)
+            elif set_audit is True and set_audit_error is None:
+                return await self._maybe_finalize_domestic_automatic_delivery(
+                    job_id, self._mark_aurora_final_review_pending(job_id)
+                )
         return await self._maybe_finalize_domestic_automatic_delivery(
             job_id, self.finalize_job(job_id)
         )
@@ -753,6 +764,47 @@ class ExecutionCoordinator:
     async def _maybe_finalize_domestic_automatic_delivery(
         self, job_id: str, current: JobStatus | None
     ) -> JobStatus | None:
+        if (
+            current == JobStatus.AWAITING_FINAL_REVIEW
+            and self._is_domestic_main_image_job(job_id)
+        ):
+            from .main_image_auto_start import finalize_validated_set
+
+            with self.session_factory() as session:
+                job = session.get(JobRecord, job_id, with_for_update=True)
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(
+                        JobPlanRecord.job_id == job_id,
+                    )
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                if job is None or plan is None:
+                    return current
+                planner_root = getattr(self.campaign_planner, "work_root", None)
+                if planner_root is None or not finalize_validated_set(
+                    session,
+                    job,
+                    plan,
+                    work_root=planner_root,
+                ):
+                    return current
+                session.commit()
+            return self.finalize_job(job_id)
+        if current == JobStatus.AWAITING_FINAL_REVIEW:
+            from .crossborder_auto_start import complete_delivery, eligible
+
+            with self.session_factory() as session:
+                job = session.get(JobRecord, job_id, with_for_update=True)
+                if job is not None and eligible(job):
+                    plan = session.scalar(select(JobPlanRecord).where(
+                        JobPlanRecord.job_id == job.id,
+                    ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                    if plan is not None and complete_delivery(session, job, plan):
+                        session.commit()
+                        return JobStatus.COMPLETED
         if current != JobStatus.AWAITING_FINAL_REVIEW or not (
             self._is_aurora_domestic_detail_job(job_id)
         ):
@@ -1316,6 +1368,58 @@ class ExecutionCoordinator:
             job = session.get(JobRecord, job_id, with_for_update=True)
             if job is None:
                 return None
+            if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+                from .main_image_auto_start import (
+                    confirm_validated_plan as confirm_main,
+                )
+
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(
+                        JobPlanRecord.job_id == job.id,
+                    )
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                if plan is not None:
+                    confirm_main(
+                        session,
+                        job,
+                        plan,
+                        work_root=getattr(self.campaign_planner, "work_root", None),
+                    )
+                    session.commit()
+                return JobStatus(job.status)
+            if job.type == JobType.AMAZON_VISUAL_SUITE.value:
+                from .amazon_auto_start import confirm_validated_plan
+
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(JobPlanRecord.job_id == job.id)
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                if plan is not None:
+                    confirm_validated_plan(session, job, plan)
+                    session.commit()
+                return JobStatus(job.status)
+            from .crossborder_auto_start import (
+                confirm_validated_plan as confirm_crossborder,
+            )
+            from .crossborder_auto_start import (
+                eligible as crossborder_eligible,
+            )
+
+            if crossborder_eligible(job):
+                plan = session.scalar(select(JobPlanRecord).where(
+                    JobPlanRecord.job_id == job.id,
+                ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                if plan is not None:
+                    confirm_crossborder(session, job, plan)
+                    session.commit()
+                return JobStatus(job.status)
             settings = job.configuration.get("settings")
             if not isinstance(settings, dict):
                 return JobStatus(job.status)
@@ -1325,8 +1429,20 @@ class ExecutionCoordinator:
                 or JobStatus(job.status) != JobStatus.AWAITING_CONFIRMATION
             ):
                 return JobStatus(job.status)
-            # Aurora v4.3 has one explicit campaign-approval checkpoint; never
-            # bypass it through the legacy domestic auto-start flag.
+            from .domestic_detail.auto_start import confirm_validated_plan, eligible
+
+            if not eligible(job) or job.stage == "intake_confirmation_required":
+                return JobStatus(job.status)
+            plan = session.scalar(
+                select(JobPlanRecord)
+                .where(JobPlanRecord.job_id == job.id)
+                .order_by(JobPlanRecord.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if plan is not None:
+                confirm_validated_plan(session, job, plan)
+                session.commit()
             return JobStatus(job.status)
 
     def fail_missing_detail_planner(self, job_id: str) -> JobStatus | None:
@@ -1491,7 +1607,19 @@ class ExecutionCoordinator:
                     if isinstance(policy, Mapping)
                     else None
                 )
-            if (
+            if self._native_replica_record(job):
+                succeeded_pages = session.scalar(
+                    select(func.count())
+                    .select_from(JobItemRecord)
+                    .where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status.in_(SUCCESS_ITEM_STATUSES),
+                    )
+                )
+                item_query = item_query.where(
+                    JobItemRecord.ordinal == int(succeeded_pages or 0)
+                )
+            elif (
                 job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                 and not self._job_uses_parallel_aurora(session, job.id)
             ):
@@ -1698,6 +1826,42 @@ class ExecutionCoordinator:
             and settings.get("market_region") == "domestic"
             and not refined_detail.is_refined(job.configuration)
         )
+
+    @staticmethod
+    def _native_replica_record(job: JobRecord) -> bool:
+        return bool(
+            job.type == JobType.REFERENCE_REMIX.value
+            and job.configuration.get("replica_session_id")
+            and job.configuration.get("settings", {}).get("reference_skill")
+            in {
+                "aurora-ecommerce-reference-remix",
+                "all-category-style-benchmark-still",
+            }
+        )
+
+    def _is_native_replica_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            return job is not None and self._native_replica_record(job)
+
+    def _close_failed_native_replica(self, job_id: str) -> None:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None or not self._native_replica_record(job):
+                return
+            items = session.scalars(
+                select(JobItemRecord).where(JobItemRecord.job_id == job_id)
+            ).all()
+            if not any(item.status in {"failed", "outcome_unknown"} for item in items):
+                return
+            for item in items:
+                if item.status in {"pending", "queued", "retry_wait"}:
+                    item.status, item.stage = "skipped", "blocked_by_skill_audit"
+                    item.error_code = "REPLICA_NATIVE_DELIVERY_BLOCKED"
+                    item.error_message = "原生 Skill 尚未通过完整验收，未交付后续图片。"
+                    item.finished_at, item.next_attempt_at = utc_now(), None
+                    item.state_version += 1
+            session.commit()
 
     @staticmethod
     def _job_uses_v20_aurora(session: Session, job_id: str) -> bool:
@@ -2343,6 +2507,9 @@ class ExecutionCoordinator:
                     "provider_request_id": result.provider_request_id,
                     "provider_outcome": result.outcome.value,
                 }
+                from .provider_diagnostics import retained_metrics
+
+                failure_details.update(retained_metrics(result.raw_usage))
                 gateway_diagnostics = failure_metrics.get("aurora_gateway_diagnostics")
                 if isinstance(gateway_diagnostics, Mapping):
                     failure_details["aurora_gateway_diagnostics"] = dict(
@@ -2769,6 +2936,9 @@ class ExecutionCoordinator:
                 else target.value
             )
             transition_job(job, target, stage=terminal_stage, progress=100)
+            from .replica_progress import reconcile_job_document
+
+            reconcile_job_document(session, job)
             if job.type in {
                 JobType.DETAIL_PACK.value,
                 JobType.AMAZON_VISUAL_SUITE.value,
@@ -2923,10 +3093,12 @@ def build_fake_coordinator(
         UnavailableProvider,
     )
     from .reference_remix_provider import (
+        AuroraRemixFastAdapter,
         ReferenceRemixProvider,
         ReferenceRemixRouterProvider,
         ReferenceVisualReverseRemixProvider,
     )
+    from .replica_style_delivery import ReplicaDeliveryProvider
     from .xinghe_agent import (
         FakeXingheGateway,
         XingheGateway,
@@ -3079,6 +3251,8 @@ def build_fake_coordinator(
             budget_limit_micros=budget_limit_micros,
             skill_root=default_masked_skill_root(),
         )
+    from .remix_fast_provider import RemixFastProvider
+
     manifest_validator = BundledSkillManifestValidator()
     if storage is None:
         raise ValueError("Aurora main-image workflow requires image storage.")
@@ -3092,7 +3266,9 @@ def build_fake_coordinator(
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
             JobType.PRODUCT_IMAGE.value: default_provider,
-            JobType.REFERENCE_REMIX.value: default_provider,
+            JobType.REFERENCE_REMIX.value: ReferenceRemixRouterProvider(
+                default_provider, default_provider, UnavailableProvider()
+            ),
             JobType.MODEL_POSE_TRANSFER.value: default_provider,
             JobType.CREATIVE_IMAGE.value: default_provider,
             JobType.AMAZON_VISUAL_SUITE.value: AmazonVisualSuiteProvider(
@@ -3152,6 +3328,18 @@ def build_fake_coordinator(
                         JobType.REFERENCE_REMIX.value,
                         ReferenceVisualReverseRemixProvider.skill_id,
                     ),
+                    manifest_validator=manifest_validator.validate,
+                ),
+                ReplicaDeliveryProvider(session_factory, gateway, storage),
+                fast=AuroraRemixFastAdapter(
+                    RemixFastProvider(
+                        session_factory, gateway, storage=storage,
+                        operation=JobType.REFERENCE_REMIX.value,
+                        skill_id="aurora-remix-fast",
+                        manifest_validator=manifest_validator.validate,
+                        work_root=(aurora_work_root / "remix-fast"
+                                   if aurora_work_root else None),
+                    ) if reference_remix_provider_enabled else UnavailableProvider(),
                     manifest_validator=manifest_validator.validate,
                 ),
             ),

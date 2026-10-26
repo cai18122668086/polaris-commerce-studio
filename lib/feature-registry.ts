@@ -55,6 +55,7 @@ export type FeatureDefinition = {
   tone: "coral" | "amber" | "indigo" | "cyan" | "green" | "rose";
   badge?: string;
   skillId: string;
+  skillVariants?: Readonly<Record<string, string>>;
   jobType: FeatureJobType;
   taskPreset?: ProductImagePreset;
   presetSlug?: ProductImagePresetSlug;
@@ -173,7 +174,7 @@ export const FEATURE_REGISTRY = [
     aliases: ["替换背景", "商品背景替换", "商品换背景"],
     useCases: ["更换商品背景", "给商品换背景", "商品换场景背景"],
     userIntents: ["想把商品放到新背景里", "想替换图片背景"],
-    featured: true,
+    featured: false,
     inputHint: "商品图；可选背景参考",
     outputHint: "1–4 张独立结果",
     guidance: "描述背景类型、光线和是否保留原阴影，能获得更稳定的结果。",
@@ -375,7 +376,7 @@ export const FEATURE_REGISTRY = [
     icon: Images,
     tone: "rose",
     badge: "双图输入",
-    skillId: "xinghe-reference-image-remix-3",
+    skillId: "aurora-remix-fast",
     jobType: "reference_remix",
     runtimeCapability: "reference_remix",
     workspaceTemplate: "product_image",
@@ -393,7 +394,36 @@ export const FEATURE_REGISTRY = [
     featured: true,
     inputHint: "我的商品图 + 参考图",
     outputHint: "1–4 张独立结果",
-    guidance: "锁定参考图的构图、景别与光影，替换商品、品牌和活动信息。",
+    guidance: "适合单张快速试版式；保留商品身份并进行四项快检，严格保真套图请使用一键复刻。",
+  },
+  {
+    id: "one-click-replica",
+    title: "一键复刻",
+    shortTitle: "一键复刻",
+    description: "粘贴商品链接或上传风格图，生成属于你的商品图片。",
+    category: "commerce_pack",
+    route: "/style-replica",
+    icon: Images,
+    tone: "indigo",
+    badge: "新功能",
+    skillId: "aurora-ecommerce-reference-remix",
+    skillVariants: { exact: "aurora-ecommerce-reference-remix", style: "all-category-style-benchmark-still" },
+    jobType: "reference_remix",
+    runtimeCapability: "reference_remix",
+    workspaceTemplate: "product_image",
+    inputRoles: ["product_reference", "style_reference"],
+    resultTemplate: "result_grid",
+    completionPolicy: "native_replica_accepted_set",
+    supportsAssetPicker: true,
+    supportsMultiSelect: true,
+    supportsZipDownload: false,
+    supportsContinueEditing: false,
+    searchKeywords: ["一键复刻", "商品复刻", "链接复刻", "参考图", "淘宝", "天猫", "1688", "京东"],
+    aliases: ["爆款复刻", "风格复刻"],
+    featured: true,
+    inputHint: "我的产品图 + 商品链接或风格参考图",
+    outputHint: "逐张规划与生成，自动保存素材",
+    guidance: "参考图学习构图与光影，产品图锁定你的商品外观。",
   },
   {
     id: "model-pose-transfer",
@@ -513,7 +543,7 @@ export const FEATURE_REGISTRY = [
     featured: true,
     inputHint: "1–8 张真实商品图 + 已核实卖点",
     outputHint: "1 张搜索主图 + 5 张轮播图",
-    guidance: "必须先确认整组六图计划；生成期间保持商品身份与视觉连续性。",
+    guidance: "提交素材后由后台规划并自动生成六图；生成期间保持商品身份与视觉连续性。",
   },
   {
     id: "amazon-visual-suite",

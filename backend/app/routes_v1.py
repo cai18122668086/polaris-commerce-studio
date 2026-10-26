@@ -104,6 +104,7 @@ from .schemas_v1 import (
     CapabilityStatus,
     CreativeImageJobCreate,
     CurrentUserResponse,
+    DetailAutomaticBrandRequest,
     DetailIntakeResolutionRequest,
     DetailPackJobCreate,
     DevelopmentProviderSettingsResponse,
@@ -1416,6 +1417,15 @@ def create_job(
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
+    if (
+        isinstance(payload, ReferenceRemixJobCreate)
+        and payload.configuration.reference_skill
+        in {"aurora-ecommerce-reference-remix", "all-category-style-benchmark-still"}
+        and not getattr(request.state, "replica_session_id", None)
+    ):
+        raise ApiError(
+            409, "REPLICA_CONFIRM_REQUIRED", "请在一键复刻中分析并确认方案后生成。"
+        )
     key = require_idempotency_key(idempotency_header)
     inspiration_case = _validate_inspiration_case_job(session, payload)
     payload_data = payload.model_dump(mode="json")
@@ -1446,6 +1456,32 @@ def create_job(
             request.app.state.settings.xinghe_medium_price_micros
         ),
         detail_high_price_micros=(request.app.state.settings.xinghe_high_price_micros),
+    )
+    replica_session_id = getattr(request.state, "replica_session_id", None)
+    if (
+        job.type == JobType.REFERENCE_REMIX.value
+        and isinstance(replica_session_id, str)
+    ):
+        job.configuration = {
+            **job.configuration,
+            "replica_session_id": replica_session_id,
+        }
+    from .amazon_auto_start import bind_submission as bind_amazon_submission
+    from .domestic_detail.auto_start import bind_submission
+
+    bind_submission(job, workspace.principal.user_id)
+    bind_amazon_submission(job, workspace.principal.user_id)
+    from .main_image_auto_start import bind_submission as bind_main_submission
+
+    bind_main_submission(job, workspace.principal.user_id)
+    from .crossborder_auto_start import bind_submission as bind_crossborder_submission
+
+    bind_crossborder_submission(
+        job, workspace.principal.user_id,
+        requested=(
+            isinstance(payload, DetailPackJobCreate)
+            and "auto_start_after_plan" in payload.configuration.model_fields_set
+        ),
     )
     if inspiration_case is not None:
         job.configuration["inspiration_case_id"] = inspiration_case.id
@@ -1952,6 +1988,17 @@ def submit_job(
             "当前任务状态不能提交。",
             {"status": job.status},
         )
+    from .amazon_auto_start import bind_submission as bind_amazon_submission
+    from .domestic_detail.auto_start import bind_submission
+
+    bind_submission(job, workspace.principal.user_id)
+    bind_amazon_submission(job, workspace.principal.user_id)
+    from .main_image_auto_start import bind_submission as bind_main_submission
+
+    bind_main_submission(job, workspace.principal.user_id)
+    from .crossborder_auto_start import bind_submission as bind_crossborder_submission
+
+    bind_crossborder_submission(job, workspace.principal.user_id)
     enforce_active_job_limit(session, workspace.workspace_id)
     _reserve_real_provider_job_if_enabled(
         session,
@@ -2470,6 +2517,139 @@ def update_plan(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/intake/brand/continue",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def continue_detail_brand(
+    job_id: str,
+    payload: DetailAutomaticBrandRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .domestic_detail import automatic_brand
+    from .domestic_detail.generation import PIPELINE_VERSION
+
+    key = require_idempotency_key(idempotency_header)
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/brand/continue",
+        idempotency_key=key,
+        request_hash=canonical_hash({"job_id": job.id, **payload.model_dump()}),
+    )
+    if replay:
+        return job_detail_response(session, job)
+    settings = job.configuration.get("settings") or {}
+    if (
+        job.type != JobType.DETAIL_PACK.value
+        or job.configuration.get("domestic_detail_pipeline") != PIPELINE_VERSION
+        or not automatic_brand.enabled(settings)
+        or job.status != JobStatus.AWAITING_CONFIRMATION.value
+        or job.stage != "intake_confirmation_required"
+        or job.cancel_requested_at is not None
+    ):
+        raise ApiError(
+            409, "INTAKE_NOT_AWAITING_BRAND", "当前任务没有待后台处理的品牌信息。"
+        )
+    plan = session.scalar(
+        select(JobPlanRecord)
+        .where(JobPlanRecord.job_id == job.id)
+        .order_by(JobPlanRecord.revision.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if plan is None or plan.revision != payload.expected_revision:
+        raise ApiError(409, "PLAN_REVISION_CONFLICT", "商品信息已更新，请刷新后重试。")
+    intake = plan.payload.get("product_intake")
+    if (
+        not isinstance(intake, dict)
+        or canonical_hash(intake) != plan.payload.get("intake_question_sha256")
+        or canonical_hash(settings) != plan.payload.get("intake_settings_sha256")
+    ):
+        raise ApiError(
+            409, "INTAKE_BINDING_CHANGED", "商品信息来源已变化，请刷新后重试。"
+        )
+    facts = {str(row.get("id")): row for row in intake.get("observed_facts", [])}
+    if not intake.get("brand_confirmation_required") and not any(
+        automatic_brand.brand_conflict(row, facts)
+        for row in intake.get("source_conflicts", [])
+    ):
+        raise ApiError(
+            409, "INTAKE_NOT_AWAITING_BRAND", "当前需要处理的是商品规格信息。"
+        )
+    manifest = plan.payload.get("intake_source_manifest")
+    if not isinstance(manifest, list) or not manifest:
+        raise ApiError(409, "INTAKE_BINDING_CHANGED", "商品图片来源已变化。")
+    for source in manifest:
+        asset = session.get(AssetRecord, source["asset_id"])
+        role_exists = session.scalar(
+            select(JobAssetRecord.id)
+            .where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.asset_id == source["asset_id"],
+                JobAssetRecord.role == source["role"],
+                JobAssetRecord.direction == JobAssetDirection.INPUT.value,
+            )
+            .limit(1)
+        )
+        if (
+            asset is None
+            or asset.workspace_id != job.workspace_id
+            or asset.deleted_at is not None
+            or asset.sha256 != source["sha256"]
+            or role_exists is None
+        ):
+            raise ApiError(409, "INTAKE_BINDING_CHANGED", "商品图片或来源用途已变化。")
+    receipt = {
+        "version": automatic_brand.VERSION,
+        "decision_source": "website_default",
+        "source_intake_sha256": canonical_hash(intake),
+        "product_brandless_claim": False,
+        "requested_at": utc_now().isoformat(),
+    }
+    job.configuration = {**job.configuration, "automatic_brand_continuation": receipt}
+    plan.payload = {
+        **plan.payload,
+        "state": "automatic_brand_continuation",
+        "automatic_brand_continuation": receipt,
+        "planner_lease_expires_at": None,
+    }
+    plan.payload_hash = canonical_hash(plan.payload)
+    plan.revision += 1
+    transition_job(job, JobStatus.PLANNING, stage="analyzing_product", progress=10)
+    session.add(
+        AuditEventRecord(
+            workspace_id=job.workspace_id,
+            action="detail_brand.automatic_continuation",
+            resource_type="job",
+            resource_id=job.id,
+            request_id=job.id,
+            details=receipt,
+        )
+    )
+    add_outbox_event(
+        session,
+        workspace_id=job.workspace_id,
+        job_id=job.id,
+        event_type="job.dispatch_requested",
+        suffix=f"automatic-brand-{plan.revision}",
+    )
+    complete_idempotency(
+        idem, resource_type="job", resource_id=job.id, response_status=202
+    )
+    session.commit()
+    _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, job)
+
+@router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve",
     response_model=JobDetailResponse,
     status_code=status.HTTP_202_ACCEPTED,
@@ -2882,8 +3062,7 @@ def confirm_plan(
     if refined_detail.is_refined(job.configuration):
         approval = plan.payload.get("refined_approval") or {}
         if (
-            payload.approval_document_sha256
-            != refined_detail.approval_hash(plan.payload)
+            not refined_detail.approval_matches(plan.payload)
             or payload.approval_document_sha256 != approval.get("document_sha256")
             or not payload.approval_text
             or len(payload.approval_text.strip()) < 2
@@ -3600,7 +3779,6 @@ def recover_automatic_detail_delivery(
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
-    from .domestic_detail.delivery_authorization import receipt_authorization
 
     key = require_idempotency_key(idempotency_header)
     job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
@@ -3619,13 +3797,9 @@ def recover_automatic_detail_delivery(
             raise ValueError(
                 "This is not an original automatic domestic detail delivery"
             )
-        authorization = receipt_authorization(
-            plan.payload,
-            job_id=job.id,
-            workspace_id=job.workspace_id,
-            plan_id=plan.id,
-            revision=plan.revision,
-        )
+        from .domestic_detail.delivery_authorization import job_receipt_authorization
+
+        authorization = job_receipt_authorization(session, job, plan)
         if (
             authorization is None
             or authorization["sha256"] != payload.authorization_sha256
@@ -4333,6 +4507,21 @@ def _reserve_real_provider_job_if_enabled(
             + _AURORA_INITIAL_IMAGE_REQUESTS * transient_retry_count
         )
         group_count = _AURORA_PLANNER_REQUEST_ENVELOPE
+    elif (
+        job.type == JobType.REFERENCE_REMIX.value
+        and (job.configuration.get("settings") or {}).get("reference_skill")
+        == "aurora-remix-fast"
+        and settings.task_runner == "tengli"
+    ):
+        fast_count = (
+            runnable_item_count if runnable_item_count is not None
+            else job.expected_item_count
+        )
+        estimated_cost = (
+            image_cost * 2 + settings.tengli_planner_reserve_micros * 4 * fast_count
+        )
+        provider_requests = 6 * fast_count
+        group_count = 2 * fast_count
     elif job.type == JobType.REFERENCE_REMIX.value and settings.task_runner == "tengli":
         # Reference remix now performs one bounded vision-analysis call before
         # the image edit so the Skill's composition skeleton reaches the image
@@ -5038,9 +5227,7 @@ def _validate_plan_payload(
 
             try:
                 refined_detail.validate_payload(payload, job.expected_item_count)
-                if refined_detail.approval_hash(payload) != (
-                    payload.get("refined_approval") or {}
-                ).get("document_sha256"):
+                if not refined_detail.approval_matches(payload):
                     errors.append(
                         {
                             "field": "refined_approval",

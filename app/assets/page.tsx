@@ -1,5 +1,7 @@
 "use client";
 
+import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
+
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -16,6 +18,8 @@ import {
   Upload,
 } from "lucide-react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
+import dropStyles from "@/components/image-drop-zone.module.css";
 import { AppShell } from "@/components/app-shell";
 import {
   useAssetAccessUrl,
@@ -26,7 +30,7 @@ import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import type { Asset } from "@/lib/api/types";
 import { formatDate } from "@/lib/jobs/presentation";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 
 function AssetCard({
   asset,
@@ -39,12 +43,13 @@ function AssetCard({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const accessUrl = useAssetAccessUrl(workspaceId, asset.id);
+  const { ref: previewRef, visible: previewVisible } = usePreviewVisibility<HTMLElement>();
+  const accessUrl = useAssetAccessUrl(workspaceId, previewVisible ? asset.id : undefined, "thumbnail");
   return (
-    <article className={`asset-card ${selected ? "selected" : ""}`}>
+    <article ref={previewRef} className={`asset-card ${selected ? "selected" : ""}`}>
       <div className="asset-image tone-violet">
         {accessUrl.data ? (
-          <img src={accessUrl.data.url} alt={asset.original_filename} />
+          <img src={accessUrl.data.url} alt={asset.original_filename} loading="lazy" decoding="async" />
         ) : (
           <div className="api-image-placeholder" aria-label="正在加载素材预览">
             {accessUrl.isError ? <FileWarning size={26} /> : <LoaderCircle className="spin" size={26} />}
@@ -59,7 +64,7 @@ function AssetCard({
         <div>
           <strong>{asset.original_filename}</strong>
           {accessUrl.data && (
-            <a href={accessUrl.data.url} target="_blank" rel="noreferrer" aria-label="打开素材">
+            <a href={accessUrl.data.original_url ?? accessUrl.data.url} target="_blank" rel="noreferrer" aria-label="打开素材">
               <ArrowUpRight size={15} />
             </a>
           )}
@@ -93,10 +98,10 @@ export default function AssetsPage() {
   const requestError = workspaceError ?? assetsQuery.error ?? upload.error;
 
   const chooseFile = () => fileInput.current?.click();
-  const onFile = (file?: File) => {
+  const onFile = async (file?: File) => {
     if (!file) return;
-    if (fileInput.current) fileInput.current.value = "";
-    upload.mutate({ file });
+    try { await upload.mutateAsync({ file }); }
+    catch { /* The mutation error is rendered above the asset grid. */ }
   };
   const toggleSelected = (id: string) =>
     setSelected((items) => (items.includes(id) ? items.filter((item) => item !== id) : [...items, id]));
@@ -114,13 +119,6 @@ export default function AssetsPage() {
             {upload.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}
             {upload.isPending ? "正在上传" : "上传素材"}
           </button>
-          <input
-            ref={fileInput}
-            className="visually-hidden"
-            type="file"
-            accept={IMAGE_UPLOAD_ACCEPT}
-            onChange={(event) => onFile(event.target.files?.[0])}
-          />
         </div>
 
         <section className="asset-overview">
@@ -174,10 +172,13 @@ export default function AssetsPage() {
             </div>
           )}
           <div className="asset-grid">
-            <button className="upload-asset-card" onClick={chooseFile} disabled={!workspace || upload.isPending}>
-              <span><Upload size={24} /></span><strong>上传新素材</strong>
-              <p>点击选择图片文件</p><small>{IMAGE_UPLOAD_FORMAT_HINT}</small>
-            </button>
+            <ImageDropZone label="素材中心" className={dropStyles.assetTile} inputRef={fileInput}
+              disabled={!workspace} busy={upload.isPending} showHint={false} onFiles={(files) => onFile(files[0])}>
+              {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <button type="button" className="upload-asset-card" onClick={openFileDialog} disabled={uploadDisabled}>
+                <span>{uploadingFile ? <LoaderCircle className="spin" size={24} /> : <Upload size={24} />}</span><strong>{uploadingFile ? "正在上传" : "上传新素材"}</strong>
+                <p>点击选择，或将图片拖到此处</p><small>{IMAGE_UPLOAD_FORMAT_HINT} · 每次 1 张</small>
+              </button>}
+            </ImageDropZone>
             {assets.map((asset) => (
               <AssetCard key={asset.id} asset={asset} workspaceId={workspace!.id} selected={selected.includes(asset.id)} onToggle={() => toggleSelected(asset.id)} />
             ))}

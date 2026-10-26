@@ -251,17 +251,11 @@ async def _verified_context(
     state = _json(root / "session.json")
     from .delivery_authorization import (
         AUTO_MODE,
+        job_receipt_authorization,
         native_authorization_text,
-        receipt_authorization,
     )
 
-    authorization = receipt_authorization(
-        payload,
-        job_id=job.id,
-        workspace_id=job.workspace_id,
-        plan_id=plan.id,
-        revision=plan.revision,
-    )
+    authorization = job_receipt_authorization(db, job, plan)
     expected_state = (
         AUTO_MODE if authorization is not None else "AWAITING_USER_FINAL_REVIEW"
     )

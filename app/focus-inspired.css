@@ -4793,3 +4793,31 @@ select:focus-visible {
   opacity: 1 !important;
 }
 
+
+
+/* Keep the expanded navigation readable after adding the replica entry. */
+.main-nav > a,
+.nav-menu__trigger,
+.top-nav__actions {
+  white-space: nowrap;
+}
+
+@media (min-width: 1081px) and (max-width: 1650px) {
+  .top-nav__brand { flex-basis: 200px; }
+  .main-nav > a,
+  .nav-menu__trigger { padding-inline: 11px; }
+}
+
+@media (max-width: 1400px) {
+  .main-nav { display: none; }
+  .mobile-tool-entry { display: inline-flex; margin-left: auto; }
+  .top-nav__actions { margin-left: 8px; }
+}
+
+.user-menu > span:nth-child(2) {
+  display: block;
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

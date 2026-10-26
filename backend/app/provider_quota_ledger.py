@@ -161,10 +161,6 @@ def _append_settlement(
     conservative_unknown_count = sum(
         source["cost_basis"] == "conservative_unknown" for source in sources
     )
-    if requests > reserved_requests or charge > _settlement_cost_ceiling(reservation):
-        raise ProviderQuotaLedgerError(
-            "Observed provider attempts exceed the durable job reservation."
-        )
     basis = (
         "mixed_conservative_unknown"
         if conservative_unknown_count and actual_cost_count
@@ -177,6 +173,7 @@ def _append_settlement(
         else "estimated_fallback"
     )
     common = {
+        "enforcement_mode": "observe_only",
         "ledger_version": LEDGER_VERSION,
         "reservation_event_id": reservation.id,
         "reserved_cost_micros": reserved_cost,
@@ -189,9 +186,9 @@ def _append_settlement(
         "conservative_unknown_count": conservative_unknown_count,
     }
     if charge > reserved_cost:
-        common["legacy_visual_review_reserve_correction_micros"] = (
-            charge - reserved_cost
-        )
+        common["observed_cost_over_estimate_micros"] = charge - reserved_cost
+    if requests > reserved_requests:
+        common["observed_requests_over_estimate"] = requests - reserved_requests
     _add_event(session, job, ATTEMPTS_ACTION, {**common, "attempts": sources})
     _add_event(session, job, SETTLEMENT_ACTION, common)
     _add_event(
@@ -201,7 +198,7 @@ def _append_settlement(
         {
             **common,
             "released_cost_micros": max(0, reserved_cost - charge),
-            "released_request_count": reserved_requests - requests,
+            "released_request_count": max(0, reserved_requests - requests),
             "release_reason": f"terminal_{job.status}",
         },
     )
@@ -256,9 +253,7 @@ def _planner_charges(
         # zero-value source in the settlement so the repair remains visible.
         image_usage = usage.get("image") if isinstance(usage, dict) else None
         image_requests = (
-            image_usage.get("requests")
-            if isinstance(image_usage, dict)
-            else None
+            image_usage.get("requests") if isinstance(image_usage, dict) else None
         )
         if (
             job.status == JobStatus.CANCELLED.value
@@ -351,8 +346,7 @@ def _is_legacy_preplanner_amazon_reservation(
 
     if (
         job.type != JobType.AMAZON_VISUAL_SUITE.value
-        or _aware_utc(reservation.occurred_at)
-        >= LEGACY_AMAZON_PREPLANNER_CUTOFF
+        or _aware_utc(reservation.occurred_at) >= LEGACY_AMAZON_PREPLANNER_CUTOFF
         or job.retry_of_job_id is not None
         or job.root_job_id is not None
         or job.status != JobStatus.COMPLETED.value
@@ -538,29 +532,6 @@ def _settlement_for_reservation(
     return settlement
 
 
-def _settlement_cost_ceiling(reservation: AuditEventRecord) -> int:
-    """Honor the four-call bound of older masked-edit reservations.
-
-    Those records reserved two edits and only one visual review, although the
-    workflow allowed two reviews. Preserve the original immutable reservation
-    and account for observed usage within that missing review's bounded cost.
-    """
-
-    cost, requests = _reservation_values(reservation)
-    details = _details(reservation)
-    image = details.get("image_budget_micros")
-    review = details.get("planner_reserve_micros")
-    if (
-        details.get("job_type") == JobType.LOCAL_EDIT.value
-        and requests == 4
-        and _is_positive_int(image)
-        and _is_positive_int(review)
-        and cost == image * 2 + review
-    ):
-        return cost + review
-    return cost
-
-
 def _validate_settlement(
     reservation: AuditEventRecord,
     settlement: AuditEventRecord,
@@ -585,19 +556,9 @@ def _validate_settlement(
         raise ProviderQuotaLedgerError(
             "A quota settlement changed the reserved request count."
         )
-    charged = _required_int(details, "charged_cost_micros")
-    if charged > _settlement_cost_ceiling(reservation):
-        raise ProviderQuotaLedgerError("A quota settlement exceeds the reserved cost.")
-    if charged > reserved_cost and _required_int(
-        details, "legacy_visual_review_reserve_correction_micros"
-    ) != charged - reserved_cost:
-        raise ProviderQuotaLedgerError(
-            "A legacy visual-review correction is inconsistent."
-        )
-    if _required_int(details, "actual_provider_request_count") > reserved_requests:
-        raise ProviderQuotaLedgerError(
-            "A quota settlement exceeds the reserved request count."
-        )
+    # Validate recorded values, without treating estimates as spending authority.
+    _required_int(details, "charged_cost_micros")
+    _required_int(details, "actual_provider_request_count")
 
 
 def _add_event(

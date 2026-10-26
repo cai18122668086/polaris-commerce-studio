@@ -320,8 +320,11 @@ def _create_local_edit_job(client: TestClient) -> str:
 def test_bundled_manifests_load_with_frozen_policies() -> None:
     registry = SkillManifestRegistry.bundled()
     assert registry.skill_ids == (
+        "all-category-style-benchmark-still",
         "aurora-domestic-ecommerce-detail-page",
         "aurora-domestic-ecommerce-main-image",
+        "aurora-ecommerce-reference-remix",
+        "aurora-remix-fast",
         "ecommerce-model-pose-transfer",
         "masked-image-repair",
         "reference-visual-reverse-remix",
@@ -334,6 +337,13 @@ def test_bundled_manifests_load_with_frozen_policies() -> None:
         "xinghe-reference-image-remix-3",
         "xinghe-wanneng-shengtu-3-0",
     )
+    fast = registry.get("aurora-remix-fast")
+    assert fast.content_hash == (
+        "67c50598adb2a0bc9f1137d29419266f1476541f9d82b79f411e771979eb86a1"
+    )
+    assert len(fast.files) == 10
+    assert fast.policy.auto_review_regeneration_allowed is False
+    assert fast.policy.successful_page_auto_redraw_allowed is False
     masked = registry.get("masked-image-repair")
     xinghe = registry.get("xinghe-ecommerce-detail")
     assert masked.content_hash == MASKED_HASH

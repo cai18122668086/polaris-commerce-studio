@@ -18,7 +18,7 @@ from tests.test_api import WORKSPACE_ID, dispatch_pending, idem, upload_asset
 from tests.test_domestic_detail_execution import _gateway
 
 
-def create(client, *, skill="refined", count=8, intent="submit"):
+def create(client, *, skill="refined", count=8, intent="submit", auto_start=False):
     source = upload_asset(client)
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs",
@@ -39,6 +39,7 @@ def create(client, *, skill="refined", count=8, intent="submit"):
                 "market_region": "domestic",
                 "page_count": count,
                 "selling_points": ["合成测试输入"],
+                "auto_start_after_plan": auto_start,
             },
         },
     )

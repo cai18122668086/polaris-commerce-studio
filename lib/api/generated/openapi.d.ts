@@ -1363,7 +1363,8 @@ export interface paths {
         /** Get Job */
         get: operations["get_job_api_v1_workspaces__workspace_id__jobs__job_id__get"];
         put?: never;
-        post?: never;
+        /** Continue Detail Brand Compatible Edge */
+        post: operations["continue_detail_brand_compatible_edge_api_v1_workspaces__workspace_id__jobs__job_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1595,6 +1596,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/brand/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Continue Detail Brand */
+        post: operations["continue_detail_brand_api_v1_workspaces__workspace_id__jobs__job_id__intake_brand_continue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve": {
         parameters: {
             query?: never;
@@ -1751,6 +1769,186 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/replica/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document */
+        get: operations["get_document_api_v1_workspaces__workspace_id__replica_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/jobs/{job_id}/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session For Job */
+        get: operations["session_for_job_api_v1_workspaces__workspace_id__replica_jobs__job_id__session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Product */
+        post: operations["create_product_api_v1_workspaces__workspace_id__replica_products_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/products/{document_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Images */
+        post: operations["import_images_api_v1_workspaces__workspace_id__replica_products__document_id__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Creation Records
+         * @description Lightweight durable records for the site-wide history and task centre.
+         *
+         *     Select only display metadata, never the large private model checkpoints.
+         *     Existing sessions appear immediately without copying or creating paid jobs.
+         */
+        get: operations["creation_records_api_v1_workspaces__workspace_id__replica_records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v1_workspaces__workspace_id__replica_sessions_get"];
+        put?: never;
+        /** Analyse */
+        post: operations["analyse_api_v1_workspaces__workspace_id__replica_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/sessions/{document_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm */
+        post: operations["confirm_api_v1_workspaces__workspace_id__replica_sessions__document_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/sessions/{document_id}/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Image */
+        post: operations["retry_image_api_v1_workspaces__workspace_id__replica_sessions__document_id__jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/sessions/{document_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Analysis */
+        post: operations["retry_analysis_api_v1_workspaces__workspace_id__replica_sessions__document_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/sessions/{document_id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Analysis
+         * @description Explicitly adopt corrected rules while retaining verifiable earlier work.
+         */
+        post: operations["revise_analysis_api_v1_workspaces__workspace_id__replica_sessions__document_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/ecommerce": {
         parameters: {
             query?: never;
@@ -1859,6 +2057,11 @@ export interface components {
              * @default
              */
             a_plus_copy: string;
+            /**
+             * Auto Start After Plan
+             * @default true
+             */
+            auto_start_after_plan: boolean;
             /** Brand Colors */
             brand_colors?: string[];
             /** Bullet Points */
@@ -1951,6 +2154,37 @@ export interface components {
              * @enum {string}
              */
             type: "amazon_visual_suite";
+        };
+        /** AnalysisRequest */
+        AnalysisRequest: {
+            /**
+             * Auto Start After Plan
+             * @default false
+             */
+            auto_start_after_plan: boolean;
+            /**
+             * Facts
+             * @default
+             */
+            facts: string;
+            /**
+             * Language
+             * @default zh-CN
+             */
+            language: string;
+            /**
+             * Platform Code
+             * @default tmall
+             */
+            platform_code: string;
+            /** Product Asset Ids */
+            product_asset_ids: string[];
+            /** References */
+            references: components["schemas"]["ReferenceChoice"][];
+            /** Replication Method */
+            replication_method?: ("exact" | "style") | null;
+            /** Request Id */
+            request_id: string;
         };
         /** AnnouncementAdminAccessResponse */
         AnnouncementAdminAccessResponse: {
@@ -2151,6 +2385,13 @@ export interface components {
              */
             reason_code: ("LOCAL_EDIT_PROVIDER_NOT_IMPLEMENTED" | "TASK_RUNNER_MOCK" | "REAL_PROVIDER_NOT_REGISTERED" | "EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED") | null;
         };
+        /** ConfirmRequest */
+        ConfirmRequest: {
+            /** Instructions */
+            instructions?: string[];
+            /** Plan Hash */
+            plan_hash: string;
+        };
         /** CostSummary */
         CostSummary: {
             actual: components["schemas"]["MoneyAmount"] | null;
@@ -2276,6 +2517,11 @@ export interface components {
             /** Id */
             id: string;
             status: components["schemas"]["UserStatus"];
+        };
+        /** DetailAutomaticBrandRequest */
+        DetailAutomaticBrandRequest: {
+            /** Expected Revision */
+            expected_revision: number;
         };
         /** DetailIntakeResolutionRequest */
         DetailIntakeResolutionRequest: {
@@ -2887,6 +3133,11 @@ export interface components {
              * @enum {string}
              */
             aurora_shadow_mode: "off" | "contract_first_rebuild_v1" | "execution_semantics_v1";
+            /**
+             * Auto Start After Plan
+             * @default true
+             */
+            auto_start_after_plan: boolean;
             /** Category */
             category: string;
             /**
@@ -3041,6 +3292,16 @@ export interface components {
             status: "ok" | "degraded";
             /** Version */
             version: string;
+        };
+        /** ImageRetryRequest */
+        ImageRetryRequest: {
+            /** Request Id */
+            request_id: string;
+        };
+        /** ImportRequest */
+        ImportRequest: {
+            /** Urls */
+            urls: string[];
         };
         /** InspirationAdminAccessResponse */
         InspirationAdminAccessResponse: {
@@ -3781,6 +4042,33 @@ export interface components {
              */
             type: "product_image";
         };
+        /** ProductRequest */
+        ProductRequest: {
+            /**
+             * Platform
+             * @default auto
+             * @enum {string}
+             */
+            platform: "auto" | "taobao" | "tmall" | "1688" | "jd";
+            /** Url */
+            url: string;
+        };
+        /** ReferenceChoice */
+        ReferenceChoice: {
+            /**
+             * Aspect Ratio
+             * @default follow-reference
+             * @enum {string}
+             */
+            aspect_ratio: "follow-reference" | "1:1" | "3:4" | "4:3" | "4:5" | "9:16" | "16:9";
+            /** Asset Id */
+            asset_id: string;
+            /**
+             * Title
+             * @default 参考图
+             */
+            title: string;
+        };
         /** ReferenceRemixConfiguration */
         ReferenceRemixConfiguration: {
             /**
@@ -3858,12 +4146,16 @@ export interface components {
              */
             quality: "low" | "medium" | "high";
             /** Reference Skill */
-            reference_skill?: "reference-visual-reverse-remix" | null;
+            reference_skill?: ("aurora-remix-fast" | "reference-visual-reverse-remix" | "aurora-ecommerce-reference-remix" | "all-category-style-benchmark-still") | null;
             /**
              * Reference Visual Analysis
              * @default
              */
             reference_visual_analysis: string;
+            /** Replica Plan Hash */
+            replica_plan_hash?: string | null;
+            /** Replication Method */
+            replication_method?: ("exact" | "style") | null;
             /**
              * Reusable Visual Strategy
              * @default
@@ -3898,6 +4190,37 @@ export interface components {
              * @enum {string}
              */
             type: "reference_remix";
+        };
+        /** ReplicaCreationRecordResponse */
+        ReplicaCreationRecordResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Job Ids */
+            current_job_ids: string[];
+            /** Expected */
+            expected: number;
+            /** Generated */
+            generated: number;
+            /** Id */
+            id: string;
+            /** Job Ids */
+            job_ids: string[];
+            /** Method */
+            method: ("exact" | "style") | null;
+            /** Progress */
+            progress: number;
+            /** Stage */
+            stage: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** RetryRequest */
         RetryRequest: {
@@ -7132,6 +7455,44 @@ export interface operations {
             };
         };
     };
+    continue_detail_brand_compatible_edge_api_v1_workspaces__workspace_id__jobs__job_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailAutomaticBrandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_draft_job_api_v1_workspaces__workspace_id__jobs__job_id__patch: {
         parameters: {
             query?: never;
@@ -7625,6 +7986,44 @@ export interface operations {
             };
         };
     };
+    continue_detail_brand_api_v1_workspaces__workspace_id__jobs__job_id__intake_brand_continue_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailAutomaticBrandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resolve_detail_intake_api_v1_workspaces__workspace_id__jobs__job_id__intake_resolve_post: {
         parameters: {
             query?: never;
@@ -7939,6 +8338,395 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_api_v1_workspaces__workspace_id__replica_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_for_job_api_v1_workspaces__workspace_id__replica_jobs__job_id__session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_product_api_v1_workspaces__workspace_id__replica_products_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_images_api_v1_workspaces__workspace_id__replica_products__document_id__import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    creation_records_api_v1_workspaces__workspace_id__replica_records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaCreationRecordResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_v1_workspaces__workspace_id__replica_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyse_api_v1_workspaces__workspace_id__replica_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_api_v1_workspaces__workspace_id__replica_sessions__document_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_image_api_v1_workspaces__workspace_id__replica_sessions__document_id__jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_analysis_api_v1_workspaces__workspace_id__replica_sessions__document_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_analysis_api_v1_workspaces__workspace_id__replica_sessions__document_id__revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

@@ -2,13 +2,8 @@ export type DetailSkill = "quick" | "refined";
 
 export const DETAIL_SKILLS = [
   {
-    value: "quick" as const,
-    title: "快速",
-    description: "精简规划，连续画面，适合尽快完成整套详情图。",
-  },
-  {
     value: "refined" as const,
-    title: "精美",
+    title: "精致",
     description: "深入梳理买家需求与卖点，丰富逐页构图和视觉节奏。",
   },
 ];

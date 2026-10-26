@@ -21,6 +21,7 @@ from .admin_management_routes import router as admin_management_router
 from .admin_usage_routes import router as admin_usage_router
 from .announcement_routes import router as announcement_router
 from .auth import ensure_development_identity
+from .brand_resume_routes import router as brand_resume_router
 from .config import Settings
 from .database import Base, build_database
 from .ecommerce_account_routes import router as ecommerce_account_router
@@ -43,6 +44,7 @@ from .errors import ApiError
 from .inspiration_routes import router as inspiration_router
 from .legacy_detail_proxy import LegacyDetailProxy
 from .models import WorkspaceLimitRecord
+from .replica import router as replica_router
 from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse
 from .services import set_credit_enforcement_enabled, set_quota_enabled
@@ -493,6 +495,7 @@ def create_app(
         return {"status": "ok", "metrics": metrics}
 
     application.include_router(v1_router)
+    application.include_router(brand_resume_router)
     application.include_router(announcement_router)
     application.include_router(admin_dashboard_router)
     application.include_router(admin_account_router)
@@ -501,6 +504,7 @@ def create_app(
     application.include_router(admin_management_router)
     application.include_router(inspiration_router)
     application.include_router(ecommerce_router)
+    application.include_router(replica_router)
     application.include_router(ecommerce_account_router)
     application.include_router(ecommerce_crawl_tasks_router)
     application.include_router(ecommerce_worker_router)

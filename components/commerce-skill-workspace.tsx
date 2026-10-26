@@ -15,7 +15,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ImageDropZone } from "@/components/image-drop-zone";
+import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
+import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
+import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
+import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
 import { SkillReviewChecklist } from "@/components/skill-review-checklist";
@@ -36,7 +41,7 @@ import type {
   ReferenceRemixJobCreate,
 } from "@/lib/api/types";
 import { getFeatureById } from "@/lib/feature-registry";
-import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { IMAGE_UPLOAD_FORMAT_HINT, validateImageUpload } from "@/lib/image-upload";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import amazonStyles from "./amazon-visual-suite-form.module.css";
@@ -94,7 +99,7 @@ const aspectRatios: { value: AspectRatio; label: string; note: string }[] = [
 ];
 
 const referenceAspectRatios: { value: AspectRatio; label: string; note: string }[] = [
-  { value: "follow-reference", label: "跟随参考图", note: "首张参考图实际尺寸" },
+  { value: "follow-reference", label: "跟随参考图", note: "首张参考图画幅比例" },
   ...aspectRatios,
 ];
 
@@ -249,13 +254,13 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
       {
         key: "product",
         title: "我的商品图",
-        description: "至少 1 张，作为二创后必须保留的商品主体。",
+        description: "1 张清晰产品原图，用于锁定外形、材质和关键细节。",
         required: true,
       },
       {
         key: "reference",
         title: "参考图",
-        description: "至少 1 张，用于提供构图、景别、光影和视觉节奏。",
+        description: "1 张单屏对标图，画幅与构图跟随这张图片。",
         required: true,
       },
     ];
@@ -323,16 +328,7 @@ function rolesFor(featureId: WorkspaceFeatureId): RoleDefinition[] {
 }
 
 function UploadPanel({
-  title,
-  description,
-  count,
-  required,
-  uploading,
-  disabled,
-  addDisabled = false,
-  uploadLabel = "本地上传",
-  onFiles,
-  onOpenLibrary,
+  title, description, count, required, uploading, disabled, maxFiles, onFiles, onOpenLibrary,
 }: {
   title: string;
   description: string;
@@ -340,59 +336,35 @@ function UploadPanel({
   required: boolean;
   uploading: boolean;
   disabled: boolean;
-  addDisabled?: boolean;
-  uploadLabel?: string;
-  onFiles: (files: File[]) => void;
+  maxFiles: number;
+  onFiles: (files: File[]) => Promise<void>;
   onOpenLibrary?: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <div className={styles.uploadPanel}>
-      <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
-      <div className={styles.uploadCopy}>
-        <div>
-          <strong>{title}</strong>
-          {required ? <span>必填</span> : <span data-optional>可选</span>}
+    <ImageDropZone label={title} className={styles.uploadPanel} multiple maxFiles={maxFiles}
+      disabled={disabled} busy={uploading} onFiles={onFiles}>
+      {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <>
+        <div className={styles.uploadIcon}><ImagePlus size={22} /></div>
+        <div className={styles.uploadCopy}>
+          <div>
+            <strong>{title}</strong>
+            {required ? <span>必填</span> : <span data-optional>可选</span>}
+          </div>
+          <p>{description}</p>
+          <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
         </div>
-        <p>{description}</p>
-        <small>{count ? `已选择 ${count} 张素材` : IMAGE_UPLOAD_FORMAT_HINT}</small>
-      </div>
-      <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading || disabled || addDisabled}
-        >
-          {uploading ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
-          {uploadLabel}
-        </button>
-        {onOpenLibrary ? (
-          <button
-            type="button"
-            data-library
-            aria-haspopup="dialog"
-            onClick={onOpenLibrary}
-            disabled={disabled}
-          >
-            <Images size={16} />
-            从素材库选择
+        <div className={styles.uploadActions} data-has-library={Boolean(onOpenLibrary) || undefined}>
+          <button type="button" onClick={openFileDialog} disabled={uploadDisabled}>
+            {uploadingFile ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
+            上传图片
           </button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        className={styles.hiddenInput}
-        type="file"
-        accept={IMAGE_UPLOAD_ACCEPT}
-        multiple
-        disabled={disabled || addDisabled}
-        onChange={(event) => {
-          const files = Array.from(event.currentTarget.files ?? []);
-          event.currentTarget.value = "";
-          if (files.length) onFiles(files);
-        }}
-      />
-    </div>
+          {onOpenLibrary && <button type="button" data-library aria-haspopup="dialog"
+            onClick={onOpenLibrary} disabled={disabled || uploading}>
+            <Images size={16} />从素材库选择
+          </button>}
+        </div>
+      </>}
+    </ImageDropZone>
   );
 }
 
@@ -414,42 +386,64 @@ export function CommerceSkillWorkspace({
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
 
-  const [selections, setSelections] = useState(emptySelections);
-  const [platformCode, setPlatformCode] = useState(
+  const [jobId, setJobId] = useWorkspaceJobId(feature.route);
+  const job = useJob(workspace?.id, jobId);
+  const saved = workspaceJobSnapshot(job.data);
+
+  const [draftSelections, setSelections] = useState(emptySelections);
+  const [draftPlatformCode, setPlatformCode] = useState(
     featureId === "amazon-visual-suite" ? "amazon-us" : "tmall",
   );
-  const [language, setLanguage] = useState(
+  const [draftLanguage, setLanguage] = useState(
     featureId === "amazon-visual-suite" ? "en-US" : "zh-CN",
   );
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(
+  const [draftAspectRatio, setAspectRatio] = useState<AspectRatio>(
     featureId === "reference-remix" ? "follow-reference" : "1:1",
   );
-  const [imageCount, setImageCount] = useState(1);
-  const [creativeDirection, setCreativeDirection] =
+  const [draftImageCount, setImageCount] = useState(1);
+  const [draftCreativeDirection, setCreativeDirection] =
     useState<CreativeDirection>("selling_point");
-  const [instruction, setInstruction] = useState("");
-  const [sellingPoints, setSellingPoints] = useState("");
-  const [productName, setProductName] = useState("");
+  const [draftInstruction, setInstruction] = useState("");
+  const [draftSellingPoints, setSellingPoints] = useState("");
+  const [draftProductName, setProductName] = useState("");
   // Keep the full backend contract while the simplified Amazon form leaves legacy optional fields blank.
   const category = "";
   const targetBuyer = "";
   const listingTitle = "";
   const listingDescription = "";
   const aPlusCopy = "";
-  const [productFacts, setProductFacts] = useState("");
+  const [draftProductFacts, setProductFacts] = useState("");
   const parameters = "";
   const certificationsOrEvidence = "";
   const forbiddenClaims = "";
   const brandColors = "";
   const stylePreferences = "";
-  const [jobId, setJobId] = useState<string>();
   const [uiError, setUiError] = useState<string>();
-  const [humanReviewComplete, setHumanReviewComplete] = useState(false);
+  const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const [libraryRole, setLibraryRole] = useState<RoleKey>();
   const [autoStart, setAutoStart] = useState(false);
+  const [uploadingSources, setUploadingSources] = useState(false);
+  const uploadBatchLock = useRef(false);
+  const uploadBusy = uploadingSources || upload.isPending;
+
+  const selections = jobId ? {
+    product: saved.ids("product_asset_ids"), reference: saved.ids("reference_asset_ids"),
+    competitor: saved.ids(featureId === "amazon-visual-suite" ? "competitor_reference_asset_ids" : "competitor_asset_ids"),
+    whiteBackground: saved.ids("white_background_product_asset_ids"), detail: saved.ids("detail_asset_ids"),
+    package: saved.ids("package_asset_ids"), scene: saved.ids("scene_asset_ids"), brand: saved.ids("brand_asset_ids"),
+  } : draftSelections;
+  const platformCode = jobId ? saved.text(featureId === "amazon-visual-suite" ? "marketplace" : "platform_code") : draftPlatformCode;
+  const language = jobId ? saved.text("language") : draftLanguage;
+  const aspectRatio = jobId ? saved.choice("aspect_ratio", referenceAspectRatios.map((ratio) => ratio.value), "1:1") : draftAspectRatio;
+  const imageCount = jobId ? saved.number("image_count", job.data?.expected_item_count ?? 1) : draftImageCount;
+  const creativeDirection = jobId ? saved.choice("creative_direction", creativeDirections.map((direction) => direction.value), "selling_point") : draftCreativeDirection;
+  const instruction = jobId ? saved.text("instruction") : draftInstruction;
+  const sellingPoints = jobId ? saved.lines(featureId === "amazon-visual-suite" ? "bullet_points" : "selling_points") : draftSellingPoints;
+  const productName = jobId ? saved.text("product_name") : draftProductName;
+  const productFacts = jobId ? [saved.lines("bullet_points"), saved.lines("product_facts")].filter(Boolean).join("\n") : draftProductFacts;
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (jobId || typeof window === "undefined") return;
     try {
       if (featureId !== "reference-remix") {
         const rawCompose = window.localStorage.getItem("polaris-inspiration-compose");
@@ -481,17 +475,14 @@ export function CommerceSkillWorkspace({
         ].filter(Boolean).join("\n\n");
         setInstruction((current) => current || handoffInstruction);
       }
-      if (strategy.ratio && referenceAspectRatios.some((item) => item.value === strategy.ratio)) {
-        setAspectRatio(strategy.ratio);
-      }
+
       if (strategy.autoStart) setAutoStart(true);
       window.localStorage.removeItem("polaris-inspiration-strategy");
     } catch {
       // Ignore malformed handoff data and keep the normal workspace flow intact.
     }
-  }, [featureId]);
+  }, [featureId, jobId]);
 
-  const job = useJob(workspace?.id, jobId);
   const resultAssets = selectJobResultAssets(job.data);
   const requestError = workspaceError ?? upload.error ?? confirmPlan.error ?? job.error;
   const isAmazon = featureId === "amazon-visual-suite";
@@ -514,7 +505,7 @@ export function CommerceSkillWorkspace({
   const selectedSizeLabel = isAmazon
     ? "主图 2000 × 2000；副图 1200 × 1600；桌面 A+ 1464 × 600；移动 A+ 1600 × 1200"
     : aspectRatio === "follow-reference"
-      ? "跟随首张参考图实际尺寸"
+      ? "跟随首张参考图画幅比例"
       : aspectRatios.find((ratio) => ratio.value === aspectRatio)?.note ?? "未选择";
   const expectedCount = isAmazon
     ? 21
@@ -544,18 +535,17 @@ export function CommerceSkillWorkspace({
         ),
       ),
   );
+  const automaticAmazonPlan = isAmazon && Boolean(job.data?.configuration.automatic_amazon_submission);
   const canConfirmAmazonPlan = Boolean(
     isAmazon &&
+      !automaticAmazonPlan &&
       job.data?.status === "awaiting_confirmation" &&
       job.data.plan &&
       amazonPlanPages.length > 0 &&
       allowsJobAction(job.data.allowed_actions, "confirm_plan"),
   );
 
-  const selectedIds = useMemo(
-    () => Object.values(selections).flat(),
-    [selections],
-  );
+  const selectedIds = Object.values(selections).flat();
   const amazonRemainingSourceSlots = isAmazon
     ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selectedIds.length)
     : undefined;
@@ -568,16 +558,20 @@ export function CommerceSkillWorkspace({
     (role) => role.required && selections[role.key].length === 0,
   );
   const canSubmit = Boolean(
-    workspace &&
+    !jobId && workspace &&
       workflow.canSubmit &&
       !runtime.isPending &&
       !missingRequiredRole &&
-      !upload.isPending &&
+      (featureId !== "reference-remix" || splitList(sellingPoints).length > 0) &&
+      !uploadBusy &&
       !createJob.isPending,
   );
 
   const progressText = useMemo(() => {
     if (!job.data) return "任务创建后将自动轮询状态";
+    if (automaticAmazonPlan && job.data.status === "planning") {
+      return "正在规划，完成校验后将自动生成 21 张图片";
+    }
     if (isAmazonReviewInfrastructureFailure) {
       const generatedCount = resultAssets.length;
       return generatedCount === expectedCount
@@ -585,7 +579,7 @@ export function CommerceSkillWorkspace({
         : `${generatedCount} / ${expectedCount} 张图片已生成，自动视觉审核未完成`;
     }
     return `${job.data.succeeded_item_count} / ${job.data.expected_item_count} 项完成`;
-  }, [expectedCount, isAmazonReviewInfrastructureFailure, job.data, resultAssets.length]);
+  }, [automaticAmazonPlan, expectedCount, isAmazonReviewInfrastructureFailure, job.data, resultAssets.length]);
 
   const replaceRoleSelection = (role: RoleKey, ids: string[]) => {
     const requested = [...new Set(ids)].slice(0, AMAZON_SOURCE_ASSET_LIMIT);
@@ -602,49 +596,48 @@ export function CommerceSkillWorkspace({
       );
       const roleLimit = isAmazon
         ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - otherRoleCount)
-        : AMAZON_SOURCE_ASSET_LIMIT;
+        : featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT;
       next[role] = requested.slice(0, roleLimit);
       return next;
     });
   };
 
   const addUploadedAssets = async (files: File[], role: RoleKey) => {
+    if (!workspace?.id || jobId || createJob.isPending || uploadBatchLock.current) return;
     setUiError(undefined);
     const availableSlots = isAmazon
       ? Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selectedIds.length)
-      : Math.max(0, AMAZON_SOURCE_ASSET_LIMIT - selections[role].length);
-    if (availableSlots === 0) {
-      setUiError(
-        isAmazon
-          ? `亚马逊套图素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张；请先取消已选素材。`
-          : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张素材；请先取消已选素材。`,
-      );
+      : Math.max(0, (featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT) - selections[role].length);
+    const selected = validateImageUpload(files, { multiple: true, maxFiles: availableSlots });
+    if (selected.error) {
+      setUiError(selected.error);
       return;
     }
-    const filesToUpload = files.slice(0, availableSlots);
-    const uploadedIds: string[] = [];
-    const failures: string[] = [];
-    for (const file of filesToUpload) {
-      try {
-        const asset = await upload.mutateAsync({ file, mediaKind: "image" });
-        uploadedIds.push(asset.id);
-      } catch (error) {
-        failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
+    if (!selected.files.length) return;
+    uploadBatchLock.current = true;
+    setUploadingSources(true);
+    try {
+      const uploadedIds: string[] = [];
+      const failures: string[] = [];
+      for (const file of selected.files) {
+        try {
+          const asset = await upload.mutateAsync({ file, mediaKind: "image" });
+          uploadedIds.push(asset.id);
+        } catch (error) {
+          failures.push(`${file.name || "所选图片"}：${errorMessage(error)}`);
+        }
       }
-    }
-    if (uploadedIds.length) {
-      replaceRoleSelection(role, [...selections[role], ...uploadedIds]);
-    }
-    if (failures.length) {
-      const uploadedNote = uploadedIds.length ? `已成功上传 ${uploadedIds.length} 张；` : "";
-      const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
-      setUiError(`${uploadedNote}${failures[0]}${remaining}`);
-    } else if (files.length > filesToUpload.length) {
-      setUiError(
-        isAmazon
-          ? `亚马逊套图素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`
-          : `每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张，本次已上传剩余可选的 ${filesToUpload.length} 张。`,
-      );
+      if (uploadedIds.length) {
+        replaceRoleSelection(role, [...selections[role], ...uploadedIds]);
+      }
+      if (failures.length) {
+        const uploadedNote = uploadedIds.length ? `已成功上传 ${uploadedIds.length} 张；` : "";
+        const remaining = failures.length > 1 ? `，另有 ${failures.length - 1} 张上传失败` : "";
+        setUiError(`${uploadedNote}${failures[0]}${remaining}`);
+      }
+    } finally {
+      uploadBatchLock.current = false;
+      setUploadingSources(false);
     }
   };
 
@@ -662,11 +655,11 @@ export function CommerceSkillWorkspace({
           reference_asset_ids: selections.reference,
         },
         configuration: {
-          reference_skill: "reference-visual-reverse-remix" as const,
+          reference_skill: "aurora-remix-fast" as const,
           platform_code: platformCode,
-          language,
+          language: "zh-CN",
           selling_points: splitList(sellingPoints),
-          aspect_ratio: aspectRatio,
+          aspect_ratio: "follow-reference",
           image_count: imageCount,
           execution_mode: "planner",
           inspiration_product_first: true,
@@ -726,6 +719,7 @@ export function CommerceSkillWorkspace({
         competitor_reference_asset_ids: selections.competitor,
       },
       configuration: {
+        auto_start_after_plan: true,
         marketplace:
           amazonPlatforms.find((platform) => platform.value === platformCode)?.value ??
           amazonPlatforms[0].value,
@@ -749,7 +743,7 @@ export function CommerceSkillWorkspace({
   };
 
   const submit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || uploadBatchLock.current) return;
     setUiError(undefined);
     try {
       const created = await createJob.mutateAsync(buildJobBody());
@@ -780,9 +774,11 @@ export function CommerceSkillWorkspace({
   };
 
   return (
+    <WorkspaceJobGate jobId={jobId} job={job.data} error={job.error} onRetry={() => void job.refetch()} expectedType={feature.jobType}>
     <AppShell flush sidebar={false}>
       <div className={`${styles.workspacePage} ${isAmazon ? amazonStyles.amazonWorkspace : ""}`}>
         <WorkspaceHeader
+          jobId={jobId}
           eyebrow={`${feature.shortTitle} · 独立工作台`}
           title={feature.title}
           description={feature.description}
@@ -800,6 +796,8 @@ export function CommerceSkillWorkspace({
           <span data-active={resultAssets.length > 0 || undefined}><i>4</i>结果交付</span>
         </div>
 
+        <JobProgressFeedback pending={createJob.isPending && !jobId} />
+
         <div className={styles.workspaceGrid} data-single-column>
           <main className={styles.mainColumn}>
             <section className={styles.card}>
@@ -810,7 +808,8 @@ export function CommerceSkillWorkspace({
                     <h2>{isAmazon ? "上传商品素材" : "选择角色素材"}</h2>
                     <p>
                       {isAmazon
-                        ? `至少上传 1 张清晰商品图，全部素材最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
+                        ? `至少上传 1 张清晰商品图，素材合计最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`
+                        : featureId === "reference-remix" ? "每个角色各 1 张，同一素材不能跨角色重复使用。"
                         : `同一素材不能跨角色重复选择，每个角色最多 ${AMAZON_SOURCE_ASSET_LIMIT} 张。`}
                     </p>
                   </div>
@@ -830,11 +829,10 @@ export function CommerceSkillWorkspace({
                     description={role.description}
                     count={selections[role.key].length}
                     required={role.required}
-                    uploading={upload.isPending}
-                    disabled={Boolean(jobId)}
-                    addDisabled={isAmazon && amazonRemainingSourceSlots === 0}
-                    uploadLabel="上传图片"
-                    onFiles={(files) => void addUploadedAssets(files, role.key)}
+                    uploading={uploadBusy}
+                    disabled={Boolean(jobId) || !workspace?.id || createJob.isPending}
+                    maxFiles={amazonRemainingSourceSlots ?? Math.max(0, (featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT) - selections[role.key].length)}
+                    onFiles={(files) => addUploadedAssets(files, role.key)}
                     onOpenLibrary={() => setLibraryRole(role.key)}
                   />
                 ))}
@@ -856,11 +854,10 @@ export function CommerceSkillWorkspace({
                             description={role.description}
                             count={selections[role.key].length}
                             required={role.required}
-                            uploading={upload.isPending}
-                            disabled={Boolean(jobId)}
-                            addDisabled={amazonRemainingSourceSlots === 0}
-                            uploadLabel="上传图片"
-                            onFiles={(files) => void addUploadedAssets(files, role.key)}
+                            uploading={uploadBusy}
+                            disabled={Boolean(jobId) || !workspace?.id || createJob.isPending}
+                            maxFiles={amazonRemainingSourceSlots ?? 0}
+                            onFiles={(files) => addUploadedAssets(files, role.key)}
                             onOpenLibrary={() => setLibraryRole(role.key)}
                           />
                         ))}
@@ -882,11 +879,10 @@ export function CommerceSkillWorkspace({
                             description={role.description}
                             count={selections[role.key].length}
                             required={role.required}
-                            uploading={upload.isPending}
-                            disabled={Boolean(jobId)}
-                            addDisabled={amazonRemainingSourceSlots === 0}
-                            uploadLabel="上传图片"
-                            onFiles={(files) => void addUploadedAssets(files, role.key)}
+                            uploading={uploadBusy}
+                            disabled={Boolean(jobId) || !workspace?.id || createJob.isPending}
+                            maxFiles={amazonRemainingSourceSlots ?? 0}
+                            onFiles={(files) => addUploadedAssets(files, role.key)}
                             onOpenLibrary={() => setLibraryRole(role.key)}
                           />
                         ))}
@@ -895,6 +891,7 @@ export function CommerceSkillWorkspace({
                   </details>
                 </div>
               ) : null}
+              {jobId && <WorkspaceJobInputs workspaceId={workspace?.id} job={job.data} />}
             </section>
             <section className={styles.card}>
               <div className={styles.sectionHeading}>
@@ -971,7 +968,7 @@ export function CommerceSkillWorkspace({
                         onChange={(event) => setLanguage(event.target.value)}
                         disabled={Boolean(jobId)}
                       >
-                        {languageOptions.map((option) => (
+                        {(featureId === "reference-remix" && !jobId ? languageOptions.filter(option => option.value === "zh-CN") : languageOptions).map((option) => (
                           <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
                       </select>
@@ -1001,7 +998,7 @@ export function CommerceSkillWorkspace({
                   <fieldset className={styles.optionGroup} disabled={Boolean(jobId)}>
                     <legend>画面比例</legend>
                     <div className={styles.ratioGrid}>
-                      {(featureId === "reference-remix" ? referenceAspectRatios : aspectRatios).map((ratio) => (
+                      {(featureId === "reference-remix" && !jobId ? referenceAspectRatios.filter(ratio => ratio.value === "follow-reference") : featureId === "reference-remix" ? referenceAspectRatios : aspectRatios).map((ratio) => (
                         <label key={ratio.value} data-selected={aspectRatio === ratio.value || undefined}>
                           <input
                             type="radio"
@@ -1035,12 +1032,12 @@ export function CommerceSkillWorkspace({
                   </fieldset>
 
                   <label className={styles.instructionField}>
-                    <span>商品卖点</span>
+                    <span>{featureId === "reference-remix" ? "商品事实与不可变特征 *" : "商品卖点"}</span>
                     <textarea
                       value={sellingPoints}
                       onChange={(event) => setSellingPoints(event.target.value)}
                       rows={4}
-                      placeholder="每行一项，最多 12 项"
+                      placeholder={featureId === "reference-remix" ? "请填写真实商品事实、结构特征或纹样方向，每行一项" : "每行一项，最多 12 项"}
                       disabled={Boolean(jobId)}
                     />
                     <small>按换行或逗号拆分，最多提交 12 项。</small>
@@ -1067,26 +1064,19 @@ export function CommerceSkillWorkspace({
                 <div className={styles.sectionHeading}>
                   <div>
                     <span>03</span>
-                    <div><h2>任务状态</h2><p>任务详情约每 1.5 秒自动轮询。</p></div>
+                    <div><h2>任务状态</h2><p>阶段与完成数量会自动更新。</p></div>
                   </div>
                   {job.data ? <StatusBadge status={job.data.status} /> : null}
                 </div>
                 {job.isPending ? (
                   <div className={styles.jobState}><LoaderCircle className="spin" size={18} />正在读取任务…</div>
-                ) : job.isError ? (
+                ) : job.isError && !job.data ? (
                   <div className={styles.jobError} role="alert">{errorMessage(job.error)}</div>
                 ) : job.data ? (
                   <div className={styles.jobPanel}>
-                    <div className={styles.progressRow}>
-                      <div>
-                        <strong>{progressText}</strong>
-                        <span>{job.data.stage ? `当前阶段：${job.data.stage}` : "等待执行器更新阶段"}</span>
-                      </div>
-                      <em>{Math.round(job.data.progress)}%</em>
-                    </div>
-                    <div className={styles.progressTrack} aria-label={`任务进度 ${Math.round(job.data.progress)}%`}>
-                      <i style={{ width: `${Math.max(0, Math.min(100, job.data.progress))}%` }} />
-                    </div>
+                    <JobProgressFeedback job={job.data} error={job.error} lastSyncedAt={job.dataUpdatedAt}
+                      refreshing={job.isFetching} onRefresh={() => void job.refetch()}
+                      summary={isAmazonReviewInfrastructureFailure ? progressText : undefined} suppressFailureDetails={isAmazonReviewInfrastructureFailure} />
                     <div className={styles.itemGrid}>
                       {job.data.items.map((item) => {
                         const isPreservedReviewBlocker =
@@ -1108,15 +1098,12 @@ export function CommerceSkillWorkspace({
                         );
                       })}
                     </div>
-                    {job.data.error_message && !isAmazonReviewInfrastructureFailure ? (
-                      <div className={styles.jobError} role="alert">{job.data.error_message}</div>
-                    ) : null}
                   </div>
                 ) : null}
               </section>
             ) : null}
 
-            {isAmazon && job.data?.status === "awaiting_confirmation" && amazonPlanPages.length > 0 ? (
+            {isAmazon && !automaticAmazonPlan && job.data?.status === "awaiting_confirmation" && amazonPlanPages.length > 0 ? (
               <section className={styles.card} aria-labelledby="amazon-plan-review-title">
                 <div className={styles.sectionHeading}>
                   <div>
@@ -1196,7 +1183,7 @@ export function CommerceSkillWorkspace({
               archiveJobId={canDownloadAmazonArchive ? job.data?.id : undefined}
             />
             {!isAmazon && job.data?.status === "completed" && resultAssets.length > 0 ? (
-              <SkillReviewChecklist
+              <SkillReviewChecklist key={jobId}
                 items={isCreative
                   ? [
                       { key: "fidelity", label: "产品外观、颜色、包装、Logo、结构和 SKU 关键细节保持保真。" },
@@ -1240,9 +1227,9 @@ export function CommerceSkillWorkspace({
             maxItems={
               isAmazon
                 ? selections[activeLibraryRole.key].length + (amazonRemainingSourceSlots ?? 0)
-                : AMAZON_SOURCE_ASSET_LIMIT
+                : featureId === "reference-remix" ? 1 : AMAZON_SOURCE_ASSET_LIMIT
             }
-            disabled={Boolean(jobId)}
+            disabled={Boolean(jobId) || !workspace?.id || createJob.isPending || uploadBusy}
           />
         ) : null}
 
@@ -1259,6 +1246,8 @@ export function CommerceSkillWorkspace({
               <p role="alert"><Info size={15} />{uiError ?? errorMessage(requestError ?? createJob.error)}</p>
             ) : !workflow.canSubmit ? (
               <p role="alert"><Info size={15} />{workflow.message}</p>
+            ) : featureId === "reference-remix" && !jobId && splitList(sellingPoints).length === 0 ? (
+              <p><Info size={15} />请填写真实商品事实与不可变特征。</p>
             ) : missingRequiredRole ? (
               <p><Info size={15} />请先选择：{missingRequiredRole.title}。</p>
             ) : (
@@ -1288,5 +1277,6 @@ export function CommerceSkillWorkspace({
         </footer>
       </div>
     </AppShell>
+    </WorkspaceJobGate>
   );
 }

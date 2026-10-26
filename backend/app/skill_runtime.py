@@ -31,6 +31,9 @@ POLICY_SCHEMA_VERSION = "skill-runtime-policy-v1"
 CONTENT_HASH_ALGORITHM = "sha256-ordered-path-nul-file-sha256-lf-v1"
 IGNORED_RUNTIME_ARTIFACTS = ("**/__pycache__/**", "**/*.pyc")
 KNOWN_SKILLS = {
+    "aurora-remix-fast",
+    "aurora-ecommerce-reference-remix",
+    "all-category-style-benchmark-still",
     "masked-image-repair",
     "xinghe-ecommerce-detail",
     "xinghe-wanneng-shengtu-3-0",

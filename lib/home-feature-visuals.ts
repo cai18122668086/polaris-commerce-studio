@@ -48,11 +48,6 @@ export const HOME_FEATURE_VISUALS: Readonly<Record<string, HomeFeatureVisual>> =
     primary: nativePrimary("01-masked"),
     input: nativeInput("01"),
   },
-  "change-background": {
-    kind: "native",
-    primary: nativePrimary("02-background"),
-    input: nativeInput("02"),
-  },
   "reference-remix": {
     kind: "native",
     primary: nativePrimary("03-remix"),

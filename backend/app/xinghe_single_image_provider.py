@@ -401,8 +401,8 @@ class XingheSingleImageProvider:
     ) -> None:
         if not operation or not skill_id:
             raise ValueError("operation and skill_id are required.")
-        if isinstance(max_concurrency, bool) or not 1 <= max_concurrency <= 8:
-            raise ValueError("max_concurrency must be between 1 and 8.")
+        if isinstance(max_concurrency, bool) or not 1 <= max_concurrency <= 32:
+            raise ValueError("max_concurrency must be between 1 and 32.")
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage
@@ -1914,6 +1914,26 @@ class XingheSingleImageProvider:
                     "no_watermark_or_unrequested_extra_elements",
                 ],
             }
+        from .provider_diagnostics import retained_metrics
+
+        prior_metrics = usage.get("metrics")
+        diagnostics = retained_metrics(
+            call_result.raw_usage if call_result is not None else None
+        )
+        usage["metrics"] = {
+            **(dict(prior_metrics) if isinstance(prior_metrics, Mapping) else {}),
+            **diagnostics,
+        }
+        if call_result is not None and isinstance(call_result.raw_usage, Mapping):
+            count = call_result.raw_usage.get("network_requests")
+            trace = diagnostics.get("provider_attempts")
+            # Only our route receipts can override the adapter's logical call
+            # count. A vendor/mock usage field is not a transport observation.
+            if (
+                isinstance(trace, list) and type(count) is int
+                and count == len(trace) and 0 <= count <= 4
+            ):
+                usage["network_requests"] = count
         return usage
 
     def _rejection(

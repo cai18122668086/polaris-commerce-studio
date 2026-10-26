@@ -44,7 +44,7 @@ const tabFilters: Record<string, JobStatus[] | undefined> = {
   all: undefined,
   active: ["queued", "planning", "awaiting_confirmation", "processing", "cancelling"],
   completed: ["completed"],
-  attention: ["partial", "failed"],
+  attention: ["partial", "failed", "awaiting_confirmation", "awaiting_final_review"],
   draft: ["draft"],
 };
 
@@ -56,16 +56,16 @@ export default function JobsPage() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const { workspace, error: workspaceError } = useWorkspace();
-  const jobsQuery = useCreationRecords(workspace?.id, { statuses: tabFilters[tab], limit: 100 });
+  const jobsQuery = useCreationRecords(workspace?.id);
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
   const jobs = useMemo(
     () =>
       (jobsQuery.data?.items ?? []).filter((job) =>
-        `${job.display_name ?? ""} ${job.id}`.toLowerCase().includes(query.toLowerCase()),
+        (!tabFilters[tab] || tabFilters[tab]!.includes(job.status)) && `${job.display_name ?? ""} ${job.id}`.toLowerCase().includes(query.toLowerCase()),
       ),
-    [jobsQuery.data, query],
+    [jobsQuery.data, query, tab],
   );
   const allJobs = jobsQuery.data?.items ?? [];
   const actionError = cancel.error ?? retry.error ?? confirmPlan.error;
@@ -117,7 +117,7 @@ export default function JobsPage() {
           <div><span className="stat-icon stat-icon--violet"><Sparkles size={19} /></span><p>当前加载</p><strong>{jobsQuery.data?.total ?? allJobs.length}</strong><small>由任务列表统计</small></div>
           <div><span className="stat-icon stat-icon--green"><CheckCircle2 size={19} /></span><p>已完成</p><strong>{allJobs.filter((job) => job.status === "completed").length}</strong><small>已完成任务</small></div>
           <div><span className="stat-icon stat-icon--blue"><Clock3 size={19} /></span><p>处理中</p><strong>{allJobs.filter((job) => ["queued", "planning", "processing"].includes(job.status)).length}</strong><small>实时更新</small></div>
-          <div><span className="stat-icon stat-icon--orange"><TimerReset size={19} /></span><p>需处理</p><strong>{allJobs.filter((job) => ["partial", "failed", "awaiting_confirmation"].includes(job.status)).length}</strong><small>可恢复或确认</small></div>
+          <div><span className="stat-icon stat-icon--orange"><TimerReset size={19} /></span><p>需处理</p><strong>{allJobs.filter((job) => ["partial", "failed", "awaiting_confirmation", "awaiting_final_review"].includes(job.status)).length}</strong><small>可恢复或确认</small></div>
         </section>
 
         <section className="records-card" aria-busy={jobsQuery.isPending}>

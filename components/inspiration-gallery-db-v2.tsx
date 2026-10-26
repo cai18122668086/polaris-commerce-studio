@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { assetCreationHref } from "@/lib/assets/creation-handoff";
 import { useQuery } from "@tanstack/react-query";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import { JobProgressFeedback } from "@/components/job-progress-feedback";
@@ -105,6 +107,7 @@ function PromptTemplateArtwork({ item }: { item: Case }) {
 }
 
 export function InspirationGalleryDb() {
+  const router = useRouter();
   const catalog = useQuery({
     queryKey: ["inspiration-cases"],
     retry: false,
@@ -291,6 +294,11 @@ export function InspirationGalleryDb() {
         const access = await getAssetAccessUrl(workspace.id, uploaded.id);
         return { ...asset, asset_id: uploaded.id, url: access.url } satisfies Asset;
       }));
+      if (item.workflow_type === "local_edit") {
+        const sourceIds = copied.filter(asset => asset.role === "user_upload").map(asset => asset.asset_id);
+        router.push(assetCreationHref("/workspace/local-edit", workspace.id, sourceIds, item.id));
+        return;
+      }
       setActiveCase(item);
       setComposerAssets(copied);
     } catch (reason) {

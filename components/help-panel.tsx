@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   AlertTriangle,
   BookOpen,
@@ -151,10 +153,10 @@ export function HelpPanel({
           </div>
         </section>
       ) : null}
-      <button className="help-more">
+      <Link href="/help" className="help-more">
         查看完整使用指南
         <ChevronRight size={16} />
-      </button>
+      </Link>
       {!local && (
         <div className="risk-note">
           <AlertTriangle size={15} />

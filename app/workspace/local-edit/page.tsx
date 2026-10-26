@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { assetHandoffKey } from "@/lib/assets/creation-handoff";
+import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
 import { AlertCircle, Check, CheckCircle2, ImagePlus, Images, Info, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
@@ -27,9 +30,17 @@ import { selectJobResultAssets } from "@/lib/jobs/results";
 import workspaceStyles from "@/components/product-image-workspace.module.css";
 
 export default function LocalEditPage() {
+  const search = useSearchParams();
+  return <LocalEditWorkspace key={assetHandoffKey(search)} />;
+}
+
+function LocalEditWorkspace() {
   const fileInput = useRef<HTMLInputElement>(null);
   const maskEditor = useRef<MaskEditorHandle>(null);
-  const [draftPrompt, setPrompt] = useState("");
+  const [draftPrompt, setDraftPrompt] = useState("");
+  const [promptEdited, setPromptEdited] = useState(false);
+  const setPrompt = (value: string) => { setDraftPrompt(value); setPromptEdited(true); };
+  const [sourceOverridden, setSourceOverridden] = useState(false);
   const [draftQuality, setQuality] = useState<"preview" | "balanced" | "final" | "auto">("balanced");
   const [draftExecutionPath, setExecutionPath] = useState<"auto" | "deterministic" | "hybrid" | "cropped" | "full">("auto");
   const [draftSourceAsset, setSourceAsset] = useState<Asset>();
@@ -39,13 +50,14 @@ export default function LocalEditPage() {
   const [editorError, setEditorError] = useState<string>();
   const { workspace } = useWorkspace();
   const [jobId, setJobId] = useWorkspaceJobId("/workspace/local-edit");
+  const handoff = useAssetHandoff(workspace?.id, 1, jobId);
   const job = useJob(workspace?.id, jobId);
   const saved = workspaceJobSnapshot(job.data);
   const restoredSourceId = saved.id("source_asset_id");
   const restoredMaskId = saved.id("selection_mask_asset_id");
   const restoredSource = useAsset(workspace?.id, jobId ? restoredSourceId : undefined);
-  const sourceAsset = jobId ? restoredSource.data : draftSourceAsset;
-  const prompt = jobId ? saved.text("instruction") : draftPrompt;
+  const sourceAsset = jobId ? restoredSource.data : draftSourceAsset ?? (!sourceOverridden ? handoff.data?.sources[0]?.asset : undefined);
+  const prompt = jobId ? saved.text("instruction") : promptEdited ? draftPrompt : handoff.data?.instruction ?? draftPrompt;
   const quality = jobId ? saved.choice("quality", ["preview", "balanced", "final", "auto"], "balanced") : draftQuality;
   const executionPath = jobId ? saved.choice("execution_path", ["auto", "deterministic", "hybrid", "cropped", "full"], "auto") : draftExecutionPath;
   const upload = useUploadAsset(workspace?.id);
@@ -82,10 +94,11 @@ export default function LocalEditPage() {
 
   const onSourceFile = async (file?: File) => {
     if (!file) return;
+    setSourceOverridden(true);
     setSourceAsset(undefined);
     setHasSelection(false);
     setEditorError(undefined);
-    setJobId(undefined);
+    if (jobId) setJobId(undefined);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(undefined);
     try {
@@ -108,6 +121,7 @@ export default function LocalEditPage() {
       const mask = await upload.mutateAsync({ file: maskFile, mediaKind: "mask" });
       const created = await createJob.mutateAsync({
         type: "local_edit",
+        inspiration_case_id: handoff.data?.caseId,
         intent: "submit",
         display_name: `一句话改图 · ${sourceAsset.original_filename}`,
         input: { source_asset_id: sourceAsset.id, selection_mask_asset_id: mask.id },
@@ -135,8 +149,8 @@ export default function LocalEditPage() {
     setJobId(retried.id);
   };
 
-  const requestError = restoredSource.error ?? sourceAccess.error ?? upload.error ?? createJob.error ?? retryJob.error ?? job.error;
-  const busy = upload.isPending || createJob.isPending || retryJob.isPending;
+  const requestError = handoff.error ?? restoredSource.error ?? sourceAccess.error ?? upload.error ?? createJob.error ?? retryJob.error ?? job.error;
+  const busy = handoff.loading || upload.isPending || createJob.isPending || retryJob.isPending;
   const canRetry = job.data && allowsJobAction(job.data.allowed_actions, "retry");
 
   const currentStep = jobId ? (resultAsset ? 3 : 2) : !sourceAsset ? 0 : !hasSelection ? 1 : 2;
@@ -264,9 +278,10 @@ export default function LocalEditPage() {
               const selectedAsset = assets[0];
               if (!selectedAsset) return;
               setSourceAsset(selectedAsset);
+              setSourceOverridden(true);
               setHasSelection(false);
               setEditorError(undefined);
-              setJobId(undefined);
+              if (jobId) setJobId(undefined);
               if (previewUrl) URL.revokeObjectURL(previewUrl);
               setPreviewUrl(undefined);
               setLibraryOpen(false);

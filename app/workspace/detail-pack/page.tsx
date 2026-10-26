@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, CircleDollarSign, Clock3,
   FileCheck2, Globe2, GripVertical, ImagePlus, Info, Languages, LoaderCircle,
@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { assetHandoffKey } from "@/lib/assets/creation-handoff";
+import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
 import { ReplicaSelect } from "@/components/replica-select";
 import { AppShell } from "@/components/app-shell";
 import { DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
@@ -110,6 +112,11 @@ function SavedSource({ workspaceId, assetId, index }: { workspaceId?: string; as
 }
 
 export default function DetailPackPage() {
+  const search = useSearchParams();
+  return <DetailPackWorkspace key={assetHandoffKey(search)} />;
+}
+
+function DetailPackWorkspace() {
   const uploadBatchLock = useRef(false);
   const [uploadingSources, setUploadingSources] = useState(false);
   const searchParams = useSearchParams();
@@ -127,7 +134,7 @@ export default function DetailPackPage() {
   const [automaticChoice, setAutomaticChoice] = useState<{ scope: string; requested: boolean; authorization?: AutomaticDeliveryAuthorization }>();
   const [reviewedFinalKey, setReviewedFinalKey] = useState("");
   const [campaignChoice, setCampaignChoice] = useState<{ workspaceId?: string; sourceId: string; selection: CampaignSelection }>();
-  const [sources, setSources] = useState<UploadedSource[]>([]);
+  const [sourceOverrides, setSourceOverrides] = useState<UploadedSource[]>();
   const [uploadError, setUploadError] = useState<string>();
   // Prefer the task-center URL when present; the local value covers jobs
   // created or retried from this form. Deriving this value also handles SPA
@@ -135,6 +142,10 @@ export default function DetailPackPage() {
   const [localJobId, setLocalJobId] = useState<string>();
   const jobId = searchParams.get("jobId") ?? localJobId ?? "";
   const { workspace } = useWorkspace();
+  const handoff = useAssetHandoff(workspace?.id, 8, jobId);
+  const sources = useMemo(() => sourceOverrides ?? handoff.data?.sources ?? [], [sourceOverrides, handoff.data]);
+  const setSources = (next: UploadedSource[] | ((current: UploadedSource[]) => UploadedSource[])) =>
+    setSourceOverrides(current => typeof next === "function" ? next(current ?? handoff.data?.sources ?? []) : next);
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
@@ -193,7 +204,7 @@ export default function DetailPackPage() {
   const automaticReady = !automaticRequested || Boolean(automaticConsent && automaticQuote.data && !automaticQuote.isError && !automaticQuote.isFetching && automaticConsent.sha256 === automaticQuote.data.sha256 && automaticQuote.data.native_approval_document_sha256 === nativeApproval?.document_sha256 && automaticQuote.data.plan_revision === job.data?.plan?.revision);
   const originalAutomaticAuthority = automaticAuthorityForJob(job.data);
   const resultAssets = selectJobResultAssets(job.data);
-  const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
+  const requestError = handoff.error ?? createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
   const productSources = marketRegion === "domestic" ? sources.filter(source => source.role === "product_reference") : sources;
   const sourcesRef = useRef(sources);
@@ -226,7 +237,7 @@ export default function DetailPackPage() {
   };
 
   const addFiles = async (files: File[]) => {
-    if (!workspace?.id || jobId || createJob.isPending || uploadBatchLock.current) return;
+    if (!workspace?.id || jobId || handoff.loading || createJob.isPending || uploadBatchLock.current) return;
     const selected = validateImageUpload(files, { multiple: true, maxFiles: Math.max(0, 8 - sources.length) });
     setUploadError(selected.error);
     if (selected.error || !selected.files.length) return;
@@ -264,7 +275,7 @@ export default function DetailPackPage() {
   };
 
   const createPlanningJob = async () => {
-    if (!workflowAvailable || !productSources.length || !productName.trim() || !workspace || uploadBatchLock.current || createJob.isPending || jobId) return;
+    if (!workflowAvailable || !productSources.length || !productName.trim() || !workspace || handoff.loading || uploadBatchLock.current || createJob.isPending || jobId) return;
     const configuration = {
       product_name: productName.trim(),
       platform_code: marketplaceId,
@@ -342,7 +353,7 @@ export default function DetailPackPage() {
           <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip">1</span><div><h2>商品素材</h2><p>每张图片都会先保存到当前工作区。</p></div>{sourceCount > 0 && <span className="validation-chip"><CheckCircle2 size={15} />已上传 {sourceCount} 张</span>}</div>
             <ImageDropZone label="详情商品素材" multiple maxFiles={Math.max(0, 8 - sources.length)}
-              disabled={Boolean(jobId) || !workspace?.id || createJob.isPending} busy={uploadingSources} onFiles={addFiles}>
+              disabled={Boolean(jobId) || !workspace?.id || createJob.isPending} busy={uploadingSources || handoff.loading} onFiles={addFiles}>
               {({ openFileDialog, disabled: uploadDisabled, busy }) => <div className="multi-uploader" data-empty={sourceCount === 0 || undefined}>
                 {jobId ? savedAssetIds.map((assetId, index) => <SavedSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={uploadingSources || createJob.isPending} onChange={event => {
                   const role = event.target.value as UploadedSource["role"]; setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));

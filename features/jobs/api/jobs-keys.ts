@@ -3,6 +3,7 @@ export type JobListFilters = {
   statuses?: string[];
   cursor?: string;
   limit?: number;
+  allPages?: boolean;
 };
 
 function normalize(filters: JobListFilters) {
@@ -11,6 +12,7 @@ function normalize(filters: JobListFilters) {
     statuses: [...(filters.statuses ?? [])].sort(),
     cursor: filters.cursor ?? null,
     limit: filters.limit ?? 20,
+    allPages: filters.allPages ?? false,
   };
 }
 

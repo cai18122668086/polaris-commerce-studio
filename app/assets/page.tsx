@@ -3,6 +3,7 @@
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 
 import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
   Check,
@@ -31,6 +32,7 @@ import { errorMessage } from "@/lib/api/request";
 import type { Asset } from "@/lib/api/types";
 import { formatDate } from "@/lib/jobs/presentation";
 import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
+import { assetCreationHref } from "@/lib/assets/creation-handoff";
 
 function AssetCard({
   asset,
@@ -58,7 +60,7 @@ function AssetCard({
         <button className="asset-check" onClick={onToggle} aria-label={`选择 ${asset.original_filename}`}>
           {selected && <Check size={14} />}
         </button>
-        <span>{asset.origin_kind === "upload" ? "上传原图" : "任务产物"}</span>
+        <span>{{ upload: "上传原图", generated: "任务产物", imported: "导入素材", derived: "派生素材" }[asset.origin_kind]}</span>
       </div>
       <div className="asset-info">
         <div>
@@ -82,6 +84,7 @@ function AssetCard({
 }
 
 export default function AssetsPage() {
+  const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -128,7 +131,7 @@ export default function AssetsPage() {
             <em>素材中心</em>
           </div>
           <div><ImageIcon size={19} /><span><p>已加载素材</p><strong>{assetsQuery.data?.total ?? assets.length}</strong></span></div>
-          <div><Sparkles size={19} /><span><p>任务产物</p><strong>{assets.filter((item) => item.origin_kind !== "upload").length}</strong></span></div>
+          <div><Sparkles size={19} /><span><p>任务产物</p><strong>{assets.filter((item) => item.origin_kind === "generated").length}</strong></span></div>
           <div><CloudUpload size={19} /><span><p>上传原图</p><strong>{assets.filter((item) => item.origin_kind === "upload").length}</strong></span></div>
         </section>
 
@@ -166,8 +169,8 @@ export default function AssetsPage() {
           {selected.length > 0 && (
             <div className="selection-toolbar">
               <span><i><Check size={13} /></i>已选择 {selected.length} 项</span>
-              <button><Paintbrush2 size={15} />带入一句话改图</button>
-              <button><Sparkles size={15} />创建商品详情图</button>
+              <button disabled={!workspace || selected.length !== 1} title="选择 1 张图片进行局部修改" onClick={() => router.push(assetCreationHref("/workspace/local-edit", workspace!.id, selected))}><Paintbrush2 size={15} />带入一句话改图</button>
+              <button disabled={!workspace || selected.length > 8} title="选择 1–8 张商品图片" onClick={() => router.push(assetCreationHref("/workspace/detail-pack", workspace!.id, selected))}><Sparkles size={15} />创建商品详情图</button>
               <button onClick={() => setSelected([])}>取消选择</button>
             </div>
           )}

@@ -71,7 +71,7 @@ export function TopNavigation({
   const { workspace } = useWorkspace();
   const currentUser = useCurrentAuthUser();
   const accountLabel = authUserLabel(currentUser.data);
-  const jobs = useCreationRecords(workspace?.id, { limit: 20 });
+  const jobs = useCreationRecords(workspace?.id);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const desktopNavigationRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -86,7 +86,7 @@ export function TopNavigation({
   const activeCount =
     jobs.data?.items.filter((job) => activeTaskStatuses.includes(job.status)).length ?? 0;
   const errorCount =
-    jobs.data?.items.filter((job) => ["failed", "partial"].includes(job.status)).length ?? 0;
+    jobs.data?.items.filter((job) => ["failed", "partial", "awaiting_final_review"].includes(job.status)).length ?? 0;
   const taskStateClass = activeCount ? "is-active" : errorCount ? styles.taskNotice : "";
   const taskLabel = activeCount ? "进行中" : "任务中心";
   const taskAriaLabel = activeCount

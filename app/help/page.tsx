@@ -227,7 +227,7 @@ export default function HelpPage() {
                     <div className="help-search-results__summary">找到 {filteredFaqs.length} 个相关问题</div>
                     <div className="help-search-results__list">
                       {filteredFaqs.map(({ item, index }) => (
-                        <button key={item.question} onMouseDown={() => selectSearchResult(index)} role="option" aria-selected="false">
+                        <button key={item.question} onClick={() => selectSearchResult(index)} role="option" aria-selected="false">
                           <CircleHelp size={18} />
                           <span>
                             <strong>{item.question}</strong>

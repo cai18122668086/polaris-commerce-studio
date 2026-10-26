@@ -1,0 +1,8 @@
+{
+  "cases": 27,
+  "verified_local_original_images": 65,
+  "unique_original_hashes": 63,
+  "pixel_source_bytes_match_original_website": true,
+  "prompts_match_original_website": true,
+  "gallery_order_and_roles_match": true
+}

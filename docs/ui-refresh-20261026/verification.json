@@ -1,0 +1,222 @@
+{
+  "date": "2026-10-26",
+  "repository": "D:/Projects/polaris-commerce-studio-model-pose-entrypoints",
+  "branch": "codex/polaris-frontend-refresh-20261026",
+  "target_base": "447d563a56813f08aa1f6d4721dfa9f41b99cfa9",
+  "reference_base": "b1b5a9dafee05353023917dc18c5216e91262937",
+  "handoff": "D:/Documents/ChatGPT/polaris-ui-handoff-20261026",
+  "handoff_manifest": {
+    "verified_files": 701,
+    "errors": 0,
+    "zip_sha256": "d8e36a6f29237037de60cec2adb7f03e608e428deb6a73e269c921041e9d0fce"
+  },
+  "commits": [
+    {
+      "sha": "2443fc0",
+      "stage": "Homepage, motion, navigation, neutral naming and reference assets"
+    },
+    {
+      "sha": "1bd4364",
+      "stage": "Workspace forms, dialogs, asset pagination, inspiration loading recovery and Polaris SVG branding"
+    }
+  ],
+  "changes": [
+    "Reference layout and layered theme adapted under commerce-* names; source branding excluded.",
+    "Hero collage, pointer-following wash, reveal motion, moving galleries, scenario cards, comparison slider and navigation animations retained.",
+    "Home, tool directory, navigation, main image, detail, local edit, replica, shared creation forms, inspiration display, assets and help adapted.",
+    "New Polaris SVG north-star logo in lilac, deep purple and lime; site mark and favicon use the new symbol.",
+    "Existing service availability checks and all quality/execution-path choices retained. Optional inputs remain mounted while collapsed.",
+    "Source merchant stories clearly labeled as illustrative creation scenarios, with no customer testimonial claims.",
+    "Asset pickers and asset library now traverse all API cursor pages; inspiration loading failures expose a bounded timeout and retry control."
+  ],
+  "preserved_paths_verified_by_git_diff": [
+    "backend",
+    "lib/auth",
+    "lib/jobs",
+    "app/legal",
+    "package.json",
+    "package-lock.json",
+    "vite.config.ts",
+    ".openai",
+    "features/auth",
+    "features/jobs",
+    "features/runtime",
+    "lib/api/client.ts",
+    "lib/api/generated",
+    "lib/api/types.ts"
+  ],
+  "preserved_behavior": [
+    "API fields",
+    "authentication and authorization",
+    "allowed_actions",
+    "billing semantics",
+    "job recovery and polling",
+    "provider refusal receipts",
+    "local-edit request construction and mask semantics",
+    "existing inspiration import and submission logic"
+  ],
+  "validation": {
+    "runtime": "D:/Tools/node-v22.14.0-win-x64/node.exe",
+    "typecheck": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false",
+      "exit": 0
+    },
+    "lint_frontend": {
+      "command": "node node_modules/eslint/bin/eslint.js app components features lib tests --no-warn-ignored",
+      "exit": 0
+    },
+    "lint_tracked_js_ts": {
+      "files": 214,
+      "command": "eslint --no-warn-ignored <git ls-files *.ts *.tsx *.js *.mjs>",
+      "exit": 0
+    },
+    "lint_default_limitation": "Default whole-directory traversal encounters existing inaccessible .pytest_cache directories; configuration was not modified.",
+    "build": {
+      "command": "npm run build",
+      "exit": 0,
+      "validation_only_process_environment": {
+        "NODE_ENV": "production",
+        "NEXT_PUBLIC_AUTH_MODE": "external",
+        "VITE_LOCAL_DEV_AUTH": "false",
+        "NEXT_PUBLIC_LOCAL_DEV_AUTH": "false",
+        "NEXT_PUBLIC_LOCAL_HOME_PREVIEW": "false",
+        "NEXT_PUBLIC_LOCAL_HELP_PREVIEW": "false",
+        "NEXT_PUBLIC_LOCAL_INSPIRATION_PREVIEW": "false"
+      },
+      "env_files_modified": false
+    },
+    "automated_tests": {
+      "command": "node --experimental-strip-types --test <all tests/*.test.mjs except production-server.test.mjs>",
+      "tests": 207,
+      "pass": 207,
+      "fail": 0,
+      "exit": 0
+    },
+    "production_server_test": {
+      "status": "not passed",
+      "reason": "Windows headless test-browser cleanup encountered EBUSY on its temporary profile lockfile and remained running; only this task's test process tree was stopped."
+    },
+    "browser": {
+      "surface": "Codex in-app Browser",
+      "real_backend": "Existing local Docker services restored. API readiness, storage, workspace assets, jobs, runtime and replica records are reachable through the frontend proxy. Local API/worker/dispatcher now use current repository code with exactly the original installed dependencies.",
+      "fixtures": "Historical layout checks used isolated fixtures. Both fixture services (4173 and 8031) are now stopped; port 3000 uses the original local business API.",
+      "width_1440": [
+        "home",
+        "tools",
+        "domestic-main-image",
+        "detail-pack",
+        "local-edit",
+        "style-replica",
+        "inspiration",
+        "help",
+        "assets"
+      ],
+      "width_390": [
+        "home",
+        "tools",
+        "domestic-main-image",
+        "detail-pack",
+        "local-edit",
+        "style-replica",
+        "inspiration"
+      ],
+      "horizontal_overflow_or_missing_images_observed": false,
+      "verified_interactions": [
+        "hero pause/resume",
+        "showcase tab switching",
+        "comparison slider keyboard increment",
+        "mobile navigation Escape/focus return",
+        "mobile navigation scroll lock and restoration",
+        "tool search filtering",
+        "sample file upload",
+        "mask drawing",
+        "mask clear disables submission",
+        "local-edit quality selection survives collapse/reopen",
+        "Original website 27-case catalog rendered with real images",
+        "Original case details and exact prompt shown",
+        "Case input image and exact original prompt copied to composer; generation control enabled; no paid submission"
+      ],
+      "not_completed": [
+        "1024 and 360 pixel browser checks",
+        "main-image optional textarea retention interaction",
+        "detail-page custom selector keyboard interaction"
+      ],
+      "remaining_browser_limit": "Additional browser calls encountered automatic approval review timeouts. No unperformed browser checks are reported as passed.",
+      "original_site_catalog": {
+        "source": "original live Polaris website",
+        "source_url": "https://www.tengliapi.xyz/api/v1/inspiration/cases",
+        "case_count": 27,
+        "verified_original_images": 64,
+        "gallery_relations": 65,
+        "uploaded_images": 49,
+        "titles_prompts_classification_workflows_match": true,
+        "existing_jobs_unchanged": true,
+        "remote_writes": 0
+      },
+      "original_site_bytes": {
+        "cases": 27,
+        "verified_local_original_images": 65,
+        "unique_original_hashes": 63,
+        "pixel_source_bytes_match_original_website": true,
+        "prompts_match_original_website": true,
+        "gallery_order_and_roles_match": true
+      },
+      "original_case_handoff": {
+        "caseTitle": "白底图（通用）",
+        "promptMatchesOriginal": true,
+        "sourceImages": 1,
+        "generateEnabled": true,
+        "paidGenerationTriggered": false
+      }
+    },
+    "brand_text_scan": {
+      "roots": [
+        "app",
+        "components",
+        "lib",
+        "features",
+        "public",
+        "tests"
+      ],
+      "pattern": "海宇|haiyu",
+      "matches": 0
+    },
+    "raster_brand_review": {
+      "assets_reviewed": 44,
+      "source_site_brand_marks_found": 0
+    },
+    "git_diff_check": "passed"
+  },
+  "no_push_or_deployment": true,
+  "no_paid_generation": true,
+  "preexisting_untracked_backend_work_preserved": true,
+  "artifact_export": {
+    "requested_directory": "D:/Documents/ChatGPT/polaris-ui-migration-20261026",
+    "status": "complete"
+  },
+  "temporary_process_cleanup": {
+    "status": "complete for temporary fixtures",
+    "stopped_ports": [
+      4173,
+      8031
+    ],
+    "retained_preview": {
+      "port": 3000,
+      "purpose": "User-requested preview backed by existing local services"
+    },
+    "old_frontend_renderer_restarted": true
+  },
+  "local_runtime": {
+    "url": "http://localhost:3000/inspiration",
+    "api": "http://127.0.0.1:8000",
+    "data_volumes_preserved": true,
+    "dependencies_preserved": true,
+    "existing_migrations_applied": [
+      "20261017_0026",
+      "20261021_0027"
+    ],
+    "database_backups": "work/ui-recovery-20261026/",
+    "environment_files_modified": false,
+    "production_writes": 0
+  }
+}

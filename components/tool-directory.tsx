@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Flame, Search, Sparkles, type LucideIcon } from "lucide-react";
 
 import { HomeAiToolbox } from "@/components/home-ai-toolbox";
-import { HomeBannerCarousel } from "@/components/home-banner-carousel";
+import { HomeHero, HomeHomeFooter, HomeHomeReveal, HomeProductShowcase, HomeCreativeVoices, HomeReplicaCardArt } from "@/components/home-showcase";
 import {
   resolveRuntimeCapability,
   useRuntimeStatus,
@@ -18,6 +18,7 @@ import {
   type HomeFeatureResponsiveImage,
 } from "@/lib/home-feature-visuals";
 import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
+import { CreationStartHub } from "@/components/creation-start-hub";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
@@ -56,8 +57,7 @@ const searchableTools = FEATURE_REGISTRY.map((feature) => {
 });
 
 const featuredTools = [
-  "local-edit", "one-click-replica", "reference-remix",
-  "detail-pack", "domestic-main-image", "amazon-visual-suite",
+  "local-edit", "reference-remix", "amazon-visual-suite",
 ].flatMap(id => {
   const tool = searchableTools.find(item => item.id === id && item.featured);
   return tool ? [tool] : [];
@@ -149,6 +149,7 @@ function HomeFeatureCardArt({
   }, []);
 
   if (!visual) {
+    if (featureId === "one-click-replica") return <HomeReplicaCardArt />;
     return (
       <span
         className="home-feature-card__art home-feature-card__art--fallback"
@@ -274,14 +275,16 @@ export function ToolDirectory() {
   };
 
   return (
-    <section className="focus-home" id="tools">
-      <HomeBannerCarousel />
+    <section className="focus-home">
+      <HomeHero />
+      <CreationStartHub />
 
       <div className="focus-home__content">
-        <div className="home-command home-command--primary">
-          <h2>描述你的商品图需求，快速找到合适功能</h2>
+        <div className="home-command home-command--primary" id="tools">
+          <span className="commerce-eyebrow">FIND YOUR CREATIVE TOOL</span>
+          <h2>更多创作能力，都在这里。</h2>
           <p>
-            <strong>全品类</strong> 都可以用
+            {FEATURE_REGISTRY.length} 项创作功能，搜索你的需求，或直接选下面的工具
           </p>
           <label>
             <span className="home-command__icon">
@@ -310,7 +313,7 @@ export function ToolDirectory() {
                   setQuery("");
                 }
               }}
-              placeholder="描述你要处理的商品或任务，例如：耳机局部精修、护肤品详情套图"
+              placeholder="试试：商品换背景、耳机局部精修、护肤品详情套图"
               aria-label="搜索创作任务"
               role="combobox"
               aria-autocomplete="list"
@@ -440,20 +443,20 @@ export function ToolDirectory() {
           ) : null}
           <div className="home-command__promises">
             <span>
-              <Check size={13} /> 保留原有工作台
+              <Check size={13} /> 商品主图
             </span>
             <span>
-              <Check size={13} /> 不改变任务语义
+              <Check size={13} /> 详情套图
             </span>
             <span>
-              <Check size={13} /> 支持生成记录追踪
+              <Check size={13} /> 模特与场景
             </span>
           </div>
         </div>
 
         <header className="focus-home__section-head">
-          <h2>一键直达任务</h2>
-          <p>快速定位，保留你熟悉的电商工作流程</p>
+          <h2>精修、模仿与跨境套图</h2>
+          <p>主力工作台之外，这些工具也能帮你把图做好。</p>
         </header>
 
         <div className="home-feature-grid" ref={featureGridRef}>
@@ -513,6 +516,10 @@ export function ToolDirectory() {
 
         <HomeAiToolbox />
       </div>
+      <HomeProductShowcase />
+      <HomeCreativeVoices />
+      <HomeHomeFooter />
+      <HomeHomeReveal />
     </section>
   );
 }

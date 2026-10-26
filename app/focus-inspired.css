@@ -16,15 +16,15 @@
   --ink-150: #ebe9e4;
   --ink-100: #f1efeb;
   --ink-50: #f7f6f3;
-  --violet-700: #d74b2e;
-  --violet-600: #f26343;
-  --violet-500: #ff7655;
-  --violet-400: #ff967d;
-  --violet-300: #ffb9a8;
-  --violet-200: #ffd5ca;
-  --violet-100: #ffe9e3;
-  --violet-50: #fff5f1;
-  --blue-600: #e1583a;
+  --violet-700: #52466f;
+  --violet-600: #675a88;
+  --violet-500: #7c6e9b;
+  --violet-400: #9f91bd;
+  --violet-300: #c1b4db;
+  --violet-200: #ddd4ee;
+  --violet-100: #eee8f8;
+  --violet-50: #f7f4fc;
+  --blue-600: #675a88;
   --cyan-500: #b2604e;
   --green-600: #25815f;
   --green-100: #e8f4ee;
@@ -41,9 +41,9 @@
   --shadow-sm: 0 1px 3px rgb(24 24 24 / 5%);
   --shadow-md: 0 8px 24px rgb(24 24 24 / 8%);
   --shadow-lg: 0 18px 45px rgb(24 24 24 / 13%);
-  --studio-orange: #f26343;
-  --studio-orange-dark: #d74b2e;
-  --studio-orange-soft: #fff0ea;
+  --studio-orange: #675a88;
+  --studio-orange-dark: #52466f;
+  --studio-orange-soft: #f3eef9;
   --studio-black: #1e1e1e;
   --studio-paper: #f7f6f3;
   --studio-line: #e6e3de;
@@ -87,7 +87,7 @@ a:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline-color: rgb(242 99 67 / 30%);
+  outline-color: rgb(103 90 136 / 30%);
 }
 
 .top-nav {
@@ -122,7 +122,7 @@ select:focus-visible {
 }
 
 .brand-mark b {
-  background: #ffcfbf;
+  background: #e5dbf4;
 }
 
 .brand-copy strong {
@@ -185,8 +185,8 @@ select:focus-visible {
 }
 
 .usage-pill {
-  color: #ffc2b2;
-  background: rgb(242 99 67 / 12%);
+  color: #d9e7bc;
+  background: rgb(103 90 136 / 12%);
 }
 
 .usage-pill strong {
@@ -201,7 +201,7 @@ select:focus-visible {
 .task-trigger.is-active {
   border-color: rgb(255 160 113 / 42%);
   color: #fff;
-  background: rgb(242 99 67 / 18%);
+  background: rgb(103 90 136 / 18%);
 }
 
 .task-trigger.has-error {
@@ -216,7 +216,7 @@ select:focus-visible {
 
 .avatar {
   color: #6b2c1c;
-  background: #ffd3c7;
+  background: #e3d9f2;
 }
 
 .notification-dot {
@@ -314,9 +314,9 @@ select:focus-visible {
 }
 
 .sidebar-tip {
-  border: 1px solid #ffd9ce;
+  border: 1px solid #f3eef9;
   border-radius: 10px;
-  background: #fff5f1;
+  background: #f7f4fc;
   box-shadow: none;
 }
 
@@ -393,7 +393,7 @@ select:focus-visible {
 .primary-button:disabled {
   border-color: #e1c7c0;
   color: #9d7e77;
-  background: #f1ded9;
+  background: #f3eef9;
 }
 
 .secondary-button {
@@ -564,7 +564,7 @@ select:focus-visible {
 .search-field:focus-within,
 .select-filter:focus-within {
   border-color: var(--studio-orange);
-  box-shadow: 0 0 0 3px rgb(242 99 67 / 10%);
+  box-shadow: 0 0 0 3px rgb(103 90 136 / 10%);
 }
 
 .record-row {
@@ -635,7 +635,7 @@ select:focus-visible {
 
 .asset-card.selected {
   border-color: var(--studio-orange);
-  box-shadow: 0 0 0 3px rgb(242 99 67 / 12%);
+  box-shadow: 0 0 0 3px rgb(103 90 136 / 12%);
 }
 
 .asset-check {
@@ -674,7 +674,7 @@ select:focus-visible {
   color: var(--ink-950);
   background:
     radial-gradient(circle at 80% 34%, rgb(255 255 255 / 68%), transparent 16rem),
-    linear-gradient(115deg, #ffd9cd 0%, #ffece6 52%, #f4eee9 100%);
+    linear-gradient(115deg, #f3eef9 0%, #f3eef9 52%, #f4eee9 100%);
 }
 
 .tool-market__head::before {
@@ -683,7 +683,7 @@ select:focus-visible {
   right: 11%;
   width: 210px;
   height: 210px;
-  border: 18px solid rgb(242 99 67 / 16%);
+  border: 18px solid rgb(103 90 136 / 16%);
   border-radius: 50%;
   content: "";
 }
@@ -696,8 +696,8 @@ select:focus-visible {
   height: 210px;
   border-radius: 78px 78px 16px 16px;
   background:
-    linear-gradient(145deg, rgb(255 255 255 / 82%), rgb(242 99 67 / 22%));
-  box-shadow: 50px -20px 0 -18px rgb(242 99 67 / 18%);
+    linear-gradient(145deg, rgb(255 255 255 / 82%), rgb(103 90 136 / 22%));
+  box-shadow: 50px -20px 0 -18px rgb(103 90 136 / 18%);
   content: "";
   transform: rotate(11deg);
 }
@@ -774,7 +774,7 @@ select:focus-visible {
 }
 
 .category-note {
-  border-color: #ffd6ca;
+  border-color: #f3eef9;
   background: #fff7f4;
 }
 
@@ -971,11 +971,11 @@ select:focus-visible {
 }
 
 .mask-shape {
-  border-color: rgb(242 99 67 / 70%);
+  border-color: rgb(103 90 136 / 70%);
   background:
     repeating-linear-gradient(
       45deg,
-      rgb(242 99 67 / 25%) 0 5px,
+      rgb(103 90 136 / 25%) 0 5px,
       rgb(255 255 255 / 12%) 5px 10px
     );
 }
@@ -1009,11 +1009,11 @@ select:focus-visible {
 
 .textarea-wrap:focus-within {
   border-color: var(--studio-orange);
-  box-shadow: 0 0 0 3px rgb(242 99 67 / 10%);
+  box-shadow: 0 0 0 3px rgb(103 90 136 / 10%);
 }
 
 .prompt-chips button.applied {
-  border-color: #ffc4b4;
+  border-color: #d5c8e7;
   color: var(--studio-orange-dark);
   background: var(--studio-orange-soft);
 }
@@ -1025,7 +1025,7 @@ select:focus-visible {
 .quality-options button.selected {
   border-color: var(--studio-orange);
   background: var(--studio-orange-soft);
-  box-shadow: 0 0 0 2px rgb(242 99 67 / 8%);
+  box-shadow: 0 0 0 2px rgb(103 90 136 / 8%);
 }
 
 .quality-options button.selected i {
@@ -1197,12 +1197,12 @@ select:focus-visible {
   min-height: 320px;
   color: #fff;
   background:
-    radial-gradient(circle at 78% 18%, rgb(242 99 67 / 42%), transparent 18rem),
+    radial-gradient(circle at 78% 18%, rgb(103 90 136 / 42%), transparent 18rem),
     var(--studio-black);
 }
 
 .help-hero > span {
-  color: #ffd0c4;
+  color: #f3eef9;
 }
 
 .help-hero h1 {
@@ -1236,7 +1236,7 @@ select:focus-visible {
 
 .help-flow-grid article.aurora {
   border-color: #ffc6b3;
-  background: linear-gradient(135deg, #fff 0%, #fff3ee 100%);
+  background: linear-gradient(135deg, #fff 0%, #f3eef9 100%);
 }
 
 .help-flow-grid article.aurora > a {
@@ -1640,7 +1640,7 @@ select:focus-visible {
   overflow: hidden;
   background:
     radial-gradient(circle at 62% 48%, rgb(255 255 255 / 48%), transparent 17rem),
-    linear-gradient(105deg, #ffd7ca 0%, #ffe7de 64%, #f5eee9 100%);
+    linear-gradient(105deg, #f3eef9 0%, #f3eef9 64%, #f3eef9 100%);
 }
 
 .focus-home__hero-inner {
@@ -1706,7 +1706,7 @@ select:focus-visible {
   color: #8d4936;
   background:
     radial-gradient(circle at 68% 24%, #fff 0 8%, transparent 9%),
-    linear-gradient(145deg, #ffe3d8, #ef9277);
+    linear-gradient(145deg, #f3eef9, #89769f);
   box-shadow: 0 16px 36px rgb(75 37 28 / 14%);
   transform: rotate(4deg);
 }
@@ -1806,10 +1806,10 @@ select:focus-visible {
   top: 12px;
   right: 12px;
   display: inline-flex;
-  color: #e94724;
+  color: #675a88;
   filter:
     drop-shadow(0 2px 3px rgb(109 29 13 / 38%))
-    drop-shadow(0 0 9px rgb(233 71 36 / 62%));
+    drop-shadow(0 0 9px rgb(103 90 136 / 62%));
   transform-origin: center bottom;
   animation: home-hot-flame 1.7s ease-in-out infinite;
 }
@@ -1824,7 +1824,7 @@ select:focus-visible {
   50% {
     filter:
       drop-shadow(0 3px 5px rgb(109 29 13 / 44%))
-      drop-shadow(0 0 13px rgb(233 71 36 / 78%));
+      drop-shadow(0 0 13px rgb(103 90 136 / 78%));
     transform: translateY(-1px) scale(1.11);
   }
 }
@@ -1843,7 +1843,7 @@ select:focus-visible {
   overflow: hidden;
   isolation: isolate;
   color: #8c4c3c;
-  background: #f3ebe5;
+  background: #f3eef9;
   transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -1852,14 +1852,14 @@ select:focus-visible {
   place-items: center;
   background:
     radial-gradient(circle at 68% 24%, rgb(255 255 255 / 74%) 0 7%, transparent 8%),
-    linear-gradient(145deg, #fff1eb, #efb19f) !important;
+    linear-gradient(145deg, #f3eef9, #efb19f) !important;
 }
 
 .home-feature--pack > .home-feature-card__art--fallback {
   color: #765449;
   background:
     radial-gradient(circle at 34% 28%, rgb(255 255 255 / 72%) 0 8%, transparent 9%),
-    linear-gradient(145deg, #fff5e8, #e7bea0) !important;
+    linear-gradient(145deg, #f3eef9, #e7bea0) !important;
 }
 
 .home-feature-card__visual-stage,
@@ -1951,7 +1951,7 @@ select:focus-visible {
   border: 1px solid rgb(255 255 255 / 56%);
   border-radius: 999px;
   color: #fff;
-  background: rgb(239 105 70 / 92%);
+  background: rgb(137 118 159 / 92%);
   box-shadow: 0 8px 18px rgb(102 46 31 / 20%);
   opacity: 0;
   font-size: 12px;
@@ -1995,18 +1995,18 @@ select:focus-visible {
 
 .home-feature-card svg {
   margin-left: auto;
-  color: #ffc4b4;
+  color: #d5c8e7;
 }
 
 .home-feature-card:not(.is-unavailable):is(:hover, :focus-visible, :focus-within, .is-mobile-played) {
-  border-color: #f5ad99;
+  border-color: #b8c997;
   outline: none;
   box-shadow: 0 10px 28px rgb(28 24 22 / 12%);
   transform: translateY(-2px);
 }
 
 .home-feature-card:focus-visible {
-  outline: 3px solid rgb(238 103 71 / 32%);
+  outline: 3px solid rgb(137 118 159 / 32%);
   outline-offset: 3px;
 }
 
@@ -2171,13 +2171,13 @@ select:focus-visible {
   height: clamp(140px, 10.4vw, 200px);
   place-items: center;
   color: #9a553f;
-  background: linear-gradient(145deg, #fff2ed, #eeb09e);
+  background: linear-gradient(145deg, #f3eef9, #eeb09e);
   mask-image: linear-gradient(90deg, transparent 0%, #000 28%);
   transition: transform 240ms ease;
 }
 
 .home-category-card:hover {
-  border-color: #f5ad99;
+  border-color: #b8c997;
   box-shadow: var(--shadow-md);
 }
 
@@ -2198,7 +2198,7 @@ select:focus-visible {
 .home-command--primary > label {
   min-height: 96px;
   border-color: #e7b0a1;
-  box-shadow: 0 10px 28px rgb(209 83 54 / 13%);
+  box-shadow: 0 10px 28px rgb(103 90 136 / 13%);
 }
 
 .home-command h2 {
@@ -2475,7 +2475,7 @@ select:focus-visible {
 }
 
 .workspace-sidebar-links a:last-child svg {
-  color: #c79a2e;
+  color: #675a88;
 }
 
 .workspace-sidebar-links a:hover {
@@ -4534,7 +4534,7 @@ select:focus-visible {
 .home-feature-card__flow svg {
   flex: 0 0 auto;
   margin: 0;
-  color: #ffd5c9;
+  color: #f3eef9;
 }
 
 .home-feature-card__count-badge {
@@ -4638,7 +4638,7 @@ select:focus-visible {
 }
 
 .home-feature-card__art--domestic .home-feature-card__image--hover {
-  background: #f5eee7;
+  background: #f3eef9;
 }
 
 .home-feature-card:not(.is-unavailable):is(:hover, :focus-visible, :focus-within, .is-mobile-played) .home-feature-card__image--hover {
@@ -4654,8 +4654,8 @@ select:focus-visible {
   width: 0;
   height: 3px;
   border-radius: 0 999px 999px 0;
-  background: linear-gradient(90deg, #fff7f2, #f58a69 58%, #ef5d39);
-  box-shadow: 0 0 12px rgb(255 220 205 / 82%);
+  background: linear-gradient(90deg, #fff7f2, #89769f 58%, #89769f);
+  box-shadow: 0 0 12px rgb(243 238 249 / 82%);
   content: "";
   opacity: 0;
   transition: width 5.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;

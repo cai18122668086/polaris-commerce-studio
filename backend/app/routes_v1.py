@@ -7,7 +7,6 @@ import os
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
-from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 from zipfile import ZIP_STORED, ZipFile
@@ -33,6 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import refined_detail
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
+from .archive_response import ArchiveResponse, close_archive, open_archive
 from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
 from .auth import (
     Principal,
@@ -40,7 +40,7 @@ from .auth import (
     WorkspaceWriteDependency,
     get_principal,
 )
-from .database import get_session
+from .database import get_session, read_snapshot
 from .domain import (
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
@@ -1458,9 +1458,8 @@ def create_job(
         detail_high_price_micros=(request.app.state.settings.xinghe_high_price_micros),
     )
     replica_session_id = getattr(request.state, "replica_session_id", None)
-    if (
-        job.type == JobType.REFERENCE_REMIX.value
-        and isinstance(replica_session_id, str)
+    if job.type == JobType.REFERENCE_REMIX.value and isinstance(
+        replica_session_id, str
     ):
         job.configuration = {
             **job.configuration,
@@ -1477,7 +1476,8 @@ def create_job(
     from .crossborder_auto_start import bind_submission as bind_crossborder_submission
 
     bind_crossborder_submission(
-        job, workspace.principal.user_id,
+        job,
+        workspace.principal.user_id,
         requested=(
             isinstance(payload, DetailPackJobCreate)
             and "auto_start_after_plan" in payload.configuration.model_fields_set
@@ -1726,33 +1726,14 @@ def _allows_preserved_amazon_partial_archive(
     )
 
 
-@router.get(
-    "/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip",
-    response_class=Response,
-    responses={
-        status.HTTP_200_OK: {
-            "content": {
-                "application/zip": {"schema": {"type": "string", "format": "binary"}}
-            },
-            "description": "Complete canonical deliverables archive.",
-        }
-    },
-    tags=["jobs"],
-)
-async def download_job_deliverables(
-    job_id: str,
-    request: Request,
-    workspace: WorkspaceDependency,
-    session: SessionDependency,
-) -> Response:
-    job = get_workspace_job(session, workspace.workspace_id, job_id)
+def _job_archive_snapshot(
+    session: Session, workspace_id: str, job_id: str
+) -> tuple[JobRecord, JobPlanRecord | None, list[Any], bool]:
+    job = get_workspace_job(session, workspace_id, job_id)
     if (
         job.type == JobType.DETAIL_PACK.value
         and job.configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
     ):
-        from .domestic_detail.delivery import DetailDeliveryError
-        from .domestic_detail.review_packet import delivery_archive
-
         plan = session.scalar(
             select(JobPlanRecord)
             .where(JobPlanRecord.job_id == job.id)
@@ -1763,23 +1744,7 @@ async def download_job_deliverables(
             raise ApiError(
                 409, "NATIVE_DETAIL_DELIVERY_CONTEXT_MISSING", "原始方案缺失。"
             )
-        try:
-            body = await delivery_archive(session, job, plan, request.app.state.storage)
-        except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
-            raise ApiError(
-                getattr(exc, "status_code", 409),
-                getattr(exc, "code", "NATIVE_DETAIL_DELIVERY_INVALID"),
-                str(exc),
-            ) from exc
-        return Response(
-            body,
-            media_type="application/zip",
-            headers={
-                "Content-Disposition": build_content_disposition(
-                    "attachment", f"detail-pack-{job.id}.zip"
-                )
-            },
-        )
+        return job, plan, [], False
     if job.type not in {
         JobType.DETAIL_PACK.value,
         JobType.AMAZON_VISUAL_SUITE.value,
@@ -1798,7 +1763,7 @@ async def download_job_deliverables(
         partial_items = session.scalars(
             select(JobItemRecord)
             .where(
-                JobItemRecord.workspace_id == workspace.workspace_id,
+                JobItemRecord.workspace_id == workspace_id,
                 JobItemRecord.job_id == job.id,
             )
             .order_by(JobItemRecord.ordinal)
@@ -1818,7 +1783,7 @@ async def download_job_deliverables(
         .join(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
         .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
         .where(
-            JobAssetRecord.workspace_id == workspace.workspace_id,
+            JobAssetRecord.workspace_id == workspace_id,
             JobAssetRecord.job_id == job.id,
             JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
             JobAssetRecord.is_deliverable.is_(True),
@@ -1849,9 +1814,73 @@ async def download_job_deliverables(
             },
         )
 
-    archive = BytesIO()
+    return job, None, list(deliverables), preserved_partial_archive
+
+
+def _append_archive_member(
+    bundle: ZipFile, name: str, payload: bytes, byte_size: int, sha256: str
+) -> None:
+    if len(payload) != byte_size or hashlib.sha256(payload).hexdigest() != sha256:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "DELIVERABLE_INTEGRITY_FAILED",
+            "套图文件完整性校验失败，请联系管理员处理。",
+        )
+    bundle.writestr(name, payload)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/deliverables.zip",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            },
+            "description": "Complete canonical deliverables archive.",
+        }
+    },
+    tags=["jobs"],
+)
+async def download_job_deliverables(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> Response:
+    job, plan, deliverables, preserved_partial_archive = await run_in_threadpool(
+        read_snapshot,
+        session,
+        _job_archive_snapshot,
+        session,
+        workspace.workspace_id,
+        job_id,
+    )
+    if plan is not None:
+        from .domestic_detail.delivery import DetailDeliveryError
+        from .domestic_detail.review_packet import delivery_archive
+
+        try:
+            archive = await delivery_archive(
+                session, job, plan, request.app.state.storage
+            )
+        except (DetailDeliveryError, ValueError, OSError, KeyError) as exc:
+            raise ApiError(
+                getattr(exc, "status_code", 409),
+                getattr(exc, "code", "NATIVE_DETAIL_DELIVERY_INVALID"),
+                str(exc),
+            ) from exc
+        return ArchiveResponse(archive, f"detail-pack-{job.id}.zip")
+    archive = await run_in_threadpool(
+        open_archive,
+        request.app.state.settings.aurora_work_root / "download-cache",
+    )
     member_names: set[str] = set()
-    with ZipFile(archive, mode="w", compression=ZIP_STORED) as bundle:
+    bundle = None
+    try:
+        bundle = await run_in_threadpool(
+            ZipFile, archive, mode="w", compression=ZIP_STORED
+        )
         for _, item, asset in deliverables:
             extension = {
                 "image/jpeg": ".jpg",
@@ -1881,26 +1910,22 @@ async def download_job_deliverables(
                     "套图中存在不可交付或命名冲突的文件，暂不能打包下载。",
                 )
             payload = await request.app.state.storage.read_bytes(asset.object_key)
-            if (
-                len(payload) != asset.byte_size
-                or hashlib.sha256(payload).hexdigest() != asset.sha256
-            ):
-                raise ApiError(
-                    status.HTTP_409_CONFLICT,
-                    "DELIVERABLE_INTEGRITY_FAILED",
-                    "套图文件完整性校验失败，请联系管理员处理。",
-                )
             member_names.add(member_name)
-            bundle.writestr(member_name, payload)
+            await run_in_threadpool(
+                _append_archive_member,
+                bundle,
+                member_name,
+                payload,
+                asset.byte_size,
+                asset.sha256,
+            )
 
-    archive_name = f"{job.type.replace('_', '-')}-{job.id}.zip"
-    return Response(
-        archive.getvalue(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": build_content_disposition("attachment", archive_name)
-        },
-    )
+        await run_in_threadpool(bundle.close)
+        archive_name = f"{job.type.replace('_', '-')}-{job.id}.zip"
+        return ArchiveResponse(archive, archive_name)
+    except BaseException:
+        await run_in_threadpool(close_archive, bundle, archive)
+        raise
 
 
 @router.patch(
@@ -2649,6 +2674,7 @@ def continue_detail_brand(
     _schedule_outbox(request, background_tasks)
     return job_detail_response(session, job)
 
+
 @router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/intake/resolve",
     response_model=JobDetailResponse,
@@ -3231,7 +3257,9 @@ def confirm_plan(
         and job.retry_scope == RetryScope.SELECTED.value
     ):
         runnable_count = session.scalar(
-            select(func.count()).select_from(JobItemRecord).where(
+            select(func.count())
+            .select_from(JobItemRecord)
+            .where(
                 JobItemRecord.job_id == job.id,
                 JobItemRecord.status == JobItemStatus.PENDING.value,
             )
@@ -4514,7 +4542,8 @@ def _reserve_real_provider_job_if_enabled(
         and settings.task_runner == "tengli"
     ):
         fast_count = (
-            runnable_item_count if runnable_item_count is not None
+            runnable_item_count
+            if runnable_item_count is not None
             else job.expected_item_count
         )
         estimated_cost = (

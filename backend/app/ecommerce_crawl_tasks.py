@@ -58,7 +58,7 @@ from .models import (
     WorkspaceRecord,
     utc_now,
 )
-from .storage import ALLOWED_IMAGE_FORMATS, ImageStorage, ValidatedImage
+from .storage import ALLOWED_IMAGE_FORMATS, ImageStorage, StoredImage, ValidatedImage
 
 router = APIRouter(prefix="/api/ecommerce", tags=["ecommerce-crawl-tasks"])
 logger = logging.getLogger(__name__)
@@ -317,21 +317,131 @@ def _download_remote_image(
     )
 
 
+def _snapshot_workspace(session_factory: Any, task_id: str) -> str:
+    with session_factory() as session:
+        task = session.get(CrawlTaskRecord, task_id)
+        if task is None:
+            raise RuntimeError("crawl task disappeared before snapshot persistence")
+        workspace_id = task.workspace_id
+
+    return str(workspace_id)
+
+
+def _commit_crawled_asset(
+    session_factory: Any, workspace_id: str, stored: StoredImage, url: str, task_id: str
+) -> str:
+    with session_factory() as session:
+        asset = session.scalar(
+            select(AssetRecord).where(
+                AssetRecord.workspace_id == workspace_id,
+                AssetRecord.storage_provider == stored.storage_provider,
+                AssetRecord.storage_bucket == stored.storage_bucket,
+                AssetRecord.object_key == stored.object_key,
+                AssetRecord.object_version == stored.object_version,
+            )
+        )
+        if asset is None:
+            asset = AssetRecord(
+                id=_new_id("ast"),
+                workspace_id=workspace_id,
+                media_kind="image",
+                origin_kind="imported",
+                lifecycle_status="ready",
+                original_filename=stored.filename,
+                content_type=stored.content_type,
+                byte_size=stored.byte_size,
+                width=stored.width,
+                height=stored.height,
+                sha256=stored.sha256,
+                storage_provider=stored.storage_provider,
+                storage_bucket=stored.storage_bucket,
+                object_key=stored.object_key,
+                object_version=stored.object_version,
+                etag=stored.etag,
+                asset_metadata={"source_url": url, "crawl_task_id": task_id},
+            )
+            session.add(asset)
+            session.flush()
+            session.commit()
+        asset_id = asset.id
+    return str(asset_id)
+
+
+def _snapshot_lease_owned(
+    session: Session,
+    lease_guard: Callable[[], bool] | None,
+    lease_guard_in_session: Callable[[Session], bool] | None,
+) -> bool:
+    if lease_guard_in_session is not None:
+        return lease_guard_in_session(session)
+    return lease_guard is None or lease_guard()
+
+
+def _commit_product_snapshot(
+    session_factory: Any,
+    task_id: str,
+    enriched: dict[str, Any],
+    asset_refs: list[dict[str, Any]],
+    lease_guard: Callable[[], bool] | None,
+    lease_guard_in_session: Callable[[Session], bool] | None,
+) -> tuple[str, dict[str, Any]]:
+    snapshot_id = str(enriched["snapshotId"])
+    with session_factory() as session:
+        task = session.get(CrawlTaskRecord, task_id)
+        if task is None:
+            raise RuntimeError("crawl task disappeared during snapshot persistence")
+        if not _snapshot_lease_owned(session, lease_guard, lease_guard_in_session):
+            raise _ProfileLeaseLost("profile lease lost before snapshot persistence")
+        snapshot = ProductSnapshotRecord(
+            id=snapshot_id,
+            workspace_id=task.workspace_id,
+            task_id=task.id,
+            platform=str(enriched.get("platform") or task.platform),
+            product_id=_safe_text(enriched.get("numIid"), 128),
+            canonical_url=task.canonical_url,
+            title=_safe_text(enriched.get("title"), 500),
+            price=_safe_text(enriched.get("price"), 128),
+            shop_name=_safe_text(enriched.get("shopName"), 300),
+            sales=_safe_text(enriched.get("sales"), 128),
+            payload=enriched,
+            warnings=enriched["warnings"],
+        )
+        session.add(snapshot)
+        task.result_snapshot_id = snapshot_id
+        session.flush()
+        for ref in asset_refs:
+            session.add(
+                ProductAssetRecord(
+                    id=_new_id("pas"),
+                    snapshot_id=snapshot_id,
+                    asset_id=str(ref["asset_id"]),
+                    role=str(ref["role"]),
+                    ordinal=int(ref["ordinal"]),
+                    source_url=str(ref["source_url"]),
+                    source=str(ref.get("source") or "crawler"),
+                )
+            )
+        if not _snapshot_lease_owned(session, lease_guard, lease_guard_in_session):
+            session.rollback()
+            raise _ProfileLeaseLost("profile lease lost before snapshot commit")
+        session.commit()
+    return snapshot_id, enriched
+
+
 async def _persist_product_snapshot(
     app: Any,
     task_id: str,
     result_data: dict[str, Any],
     *,
     lease_guard: Callable[[], bool] | None = None,
+    lease_guard_in_session: Callable[[Session], bool] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     session_factory = app.state.session_factory
     storage: ImageStorage = app.state.storage
     settings = app.state.settings
-    with session_factory() as session:
-        task = session.get(CrawlTaskRecord, task_id)
-        if task is None:
-            raise RuntimeError("crawl task disappeared before snapshot persistence")
-        workspace_id = task.workspace_id
+    workspace_id = await asyncio.to_thread(
+        _snapshot_workspace, session_factory, task_id
+    )
 
     enriched = deepcopy(result_data)
     raw_warnings = enriched.get("warnings", [])
@@ -346,7 +456,7 @@ async def _persist_product_snapshot(
         if not isinstance(values, list):
             continue
         for ordinal, value in enumerate(values):
-            if lease_guard is not None and not lease_guard():
+            if lease_guard is not None and not await asyncio.to_thread(lease_guard):
                 raise _ProfileLeaseLost("profile lease lost during asset persistence")
             url = str(value).strip() if value is not None else ""
             if not url:
@@ -384,40 +494,14 @@ async def _persist_product_snapshot(
                 )
                 continue
 
-            with session_factory() as session:
-                asset = session.scalar(
-                    select(AssetRecord).where(
-                        AssetRecord.workspace_id == workspace_id,
-                        AssetRecord.storage_provider == stored.storage_provider,
-                        AssetRecord.storage_bucket == stored.storage_bucket,
-                        AssetRecord.object_key == stored.object_key,
-                        AssetRecord.object_version == stored.object_version,
-                    )
-                )
-                if asset is None:
-                    asset = AssetRecord(
-                        id=_new_id("ast"),
-                        workspace_id=workspace_id,
-                        media_kind="image",
-                        origin_kind="imported",
-                        lifecycle_status="ready",
-                        original_filename=stored.filename,
-                        content_type=stored.content_type,
-                        byte_size=stored.byte_size,
-                        width=stored.width,
-                        height=stored.height,
-                        sha256=stored.sha256,
-                        storage_provider=stored.storage_provider,
-                        storage_bucket=stored.storage_bucket,
-                        object_key=stored.object_key,
-                        object_version=stored.object_version,
-                        etag=stored.etag,
-                        asset_metadata={"source_url": url, "crawl_task_id": task_id},
-                    )
-                    session.add(asset)
-                    session.flush()
-                    session.commit()
-                asset_id = asset.id
+            asset_id = await asyncio.to_thread(
+                _commit_crawled_asset,
+                session_factory,
+                workspace_id,
+                stored,
+                url,
+                task_id,
+            )
             asset_refs.append(
                 {
                     "asset_id": asset_id,
@@ -434,47 +518,15 @@ async def _persist_product_snapshot(
     enriched["assets"] = asset_refs
     enriched["warnings"] = list(dict.fromkeys(warnings))
 
-    snapshot_id = str(enriched["snapshotId"])
-    with session_factory() as session:
-        task = session.get(CrawlTaskRecord, task_id)
-        if task is None:
-            raise RuntimeError("crawl task disappeared during snapshot persistence")
-        if lease_guard is not None and not lease_guard():
-            raise _ProfileLeaseLost("profile lease lost before snapshot persistence")
-        snapshot = ProductSnapshotRecord(
-            id=snapshot_id,
-            workspace_id=task.workspace_id,
-            task_id=task.id,
-            platform=str(enriched.get("platform") or task.platform),
-            product_id=_safe_text(enriched.get("numIid"), 128),
-            canonical_url=task.canonical_url,
-            title=_safe_text(enriched.get("title"), 500),
-            price=_safe_text(enriched.get("price"), 128),
-            shop_name=_safe_text(enriched.get("shopName"), 300),
-            sales=_safe_text(enriched.get("sales"), 128),
-            payload=enriched,
-            warnings=enriched["warnings"],
-        )
-        session.add(snapshot)
-        task.result_snapshot_id = snapshot_id
-        session.flush()
-        for ref in asset_refs:
-            session.add(
-                ProductAssetRecord(
-                    id=_new_id("pas"),
-                    snapshot_id=snapshot_id,
-                    asset_id=str(ref["asset_id"]),
-                    role=str(ref["role"]),
-                    ordinal=int(ref["ordinal"]),
-                    source_url=str(ref["source_url"]),
-                    source=str(ref.get("source") or "crawler"),
-                )
-            )
-        if lease_guard is not None and not lease_guard():
-            session.rollback()
-            raise _ProfileLeaseLost("profile lease lost before snapshot commit")
-        session.commit()
-    return snapshot_id, enriched
+    return await asyncio.to_thread(
+        _commit_product_snapshot,
+        session_factory,
+        task_id,
+        enriched,
+        asset_refs,
+        lease_guard,
+        lease_guard_in_session,
+    )
 
 
 async def cleanup_orphaned_crawl_assets(
@@ -732,18 +784,30 @@ def _profile_lease_is_owned(
     task_id: str,
     owner_id: str,
     fencing_token: int,
+    session: Session | None = None,
 ) -> bool:
-    now = utc_now()
-    with session_factory() as session:
-        lease = session.scalar(
-            select(CrawlProfileLeaseRecord).where(
-                CrawlProfileLeaseRecord.profile_id == profile_id,
-                CrawlProfileLeaseRecord.task_id == task_id,
-                CrawlProfileLeaseRecord.owner_id == owner_id,
-                CrawlProfileLeaseRecord.fencing_token == fencing_token,
+    if session is None:
+        with session_factory() as owned:
+            return _profile_lease_is_owned(
+                session_factory,
+                profile_id=profile_id,
+                task_id=task_id,
+                owner_id=owner_id,
+                fencing_token=fencing_token,
+                session=owned,
             )
+    now = utc_now()
+    lease = session.scalar(
+        select(CrawlProfileLeaseRecord)
+        .where(
+            CrawlProfileLeaseRecord.profile_id == profile_id,
+            CrawlProfileLeaseRecord.task_id == task_id,
+            CrawlProfileLeaseRecord.owner_id == owner_id,
+            CrawlProfileLeaseRecord.fencing_token == fencing_token,
         )
-        return lease is not None and _lease_time_is_active(lease.expires_at, now)
+        .execution_options(populate_existing=True)
+    )
+    return lease is not None and _lease_time_is_active(lease.expires_at, now)
 
 
 def _release_profile_lease(
@@ -1295,6 +1359,14 @@ async def _run_task(app: Any, task_id: str, *, worker_id: str | None = None) -> 
                 task_id=task_id,
                 owner_id=worker_id,
                 fencing_token=fencing_token,
+            ),
+            lease_guard_in_session=lambda db: _profile_lease_is_owned(
+                session_factory,
+                profile_id=profile_id,
+                task_id=task_id,
+                owner_id=worker_id,
+                fencing_token=fencing_token,
+                session=db,
             ),
         )
     except asyncio.CancelledError:

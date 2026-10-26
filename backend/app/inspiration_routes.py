@@ -5,6 +5,7 @@ from typing import Annotated, Literal, cast
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from .announcement_routes import _is_announcement_admin
 from .auth import Principal, get_principal
@@ -280,18 +281,10 @@ def get_case(
     return _response(item, session, request)
 
 
-@router.get(
-    "/inspiration/cases/{case_id}/assets/{asset_id}",
-    name="get_inspiration_case_asset",
-    include_in_schema=False,
-)
-async def get_case_asset(
-    case_id: str,
-    asset_id: str,
-    request: Request,
-    session: SessionDependency,
-    variant: Literal["original", "thumbnail"] = "original",
-) -> Response:
+def _case_asset_for_storage(
+    session: Session, case_id: str, asset_id: str
+) -> AssetRecord:
+    """Load verified metadata without holding a DB connection during image I/O."""
     item = session.scalar(
         select(InspirationCaseRecord).where(
             InspirationCaseRecord.id == case_id,
@@ -315,6 +308,24 @@ async def get_case_asset(
         raise ApiError(
             404, "INSPIRATION_ASSET_NOT_FOUND", "The inspiration image was not found."
         )
+    session.expunge(asset)
+    session.rollback()
+    return asset
+
+
+@router.get(
+    "/inspiration/cases/{case_id}/assets/{asset_id}",
+    name="get_inspiration_case_asset",
+    include_in_schema=False,
+)
+async def get_case_asset(
+    case_id: str,
+    asset_id: str,
+    request: Request,
+    session: SessionDependency,
+    variant: Literal["original", "thumbnail"] = "original",
+) -> Response:
+    asset = await run_in_threadpool(_case_asset_for_storage, session, case_id, asset_id)
     # Check publication and asset access before either cache or conditional hits.
     headers = {
         "Cache-Control": "public, max-age=300",

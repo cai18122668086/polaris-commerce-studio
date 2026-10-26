@@ -6,15 +6,17 @@ import hashlib
 import json
 from collections.abc import Mapping
 from copy import deepcopy
-from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from zipfile import ZIP_STORED, ZipFile
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
+from ..archive_response import close_archive, open_archive
 from ..aurora_detail_runtime import AuroraDetailHarnessRunner
+from ..database import read_snapshot_async
 from ..models import AssetRecord, JobAssetRecord, JobPlanRecord, JobRecord
 from ..storage import ImageStorage, StoredImage
 from .delivery import (
@@ -250,6 +252,7 @@ async def _packet(
     register: bool,
     selection: Mapping[str, Any] | None = None,
     frozen: Mapping[str, Any] | None = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     supplement = frozen
     if selection is not None:
@@ -267,11 +270,21 @@ async def _packet(
             or stored.storage_bucket != storage.bucket_name
         ):
             _reject("Original accepted pair-master bytes or storage changed")
-        asset = _master_record(db, job, pair, stored, context, register=register)
+        asset = (
+            await read_snapshot_async(
+                db, _master_record, db, job, pair, stored, context, register=register
+            )
+            if read_only
+            else _master_record(db, job, pair, stored, context, register=register)
+        )
         masters.append({**pair, **_metadata(stored), "asset_id": asset.id})
     screens = []
     for row, module in zip(context["screens"], state["modules"], strict=True):
-        screen_asset = db.get(AssetRecord, row["asset_id"])
+        screen_asset = (
+            await read_snapshot_async(db, db.get, AssetRecord, row["asset_id"])
+            if read_only
+            else db.get(AssetRecord, row["asset_id"])
+        )
         assert screen_asset is not None
         _, stored = await _read(
             storage, screen_asset.object_key, screen_asset.object_version
@@ -314,7 +327,11 @@ async def _packet(
         job_receipt_authorization,
     )
 
-    authorization = job_receipt_authorization(db, job, plan)
+    authorization = (
+        await read_snapshot_async(db, job_receipt_authorization, db, job, plan)
+        if read_only
+        else job_receipt_authorization(db, job, plan)
+    )
     if authorization is not None:
         value["delivery_mode"] = AUTO_MODE
         value["automatic_delivery_authorization"] = authorization
@@ -377,6 +394,8 @@ async def validate_final_review(
     state: Mapping[str, Any],
     root: Path,
     fingerprint: str | None,
+    *,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     if (
         not isinstance(fingerprint, str)
@@ -415,6 +434,7 @@ async def validate_final_review(
         register=False,
         selection=supplement if job.status != "completed" else None,
         frozen=supplement if job.status == "completed" else None,
+        read_only=read_only,
     )
     if (
         canonical_hash(packet) != canonical_hash(expected)
@@ -432,10 +452,12 @@ async def delivery_archive(
     job: JobRecord,
     plan: JobPlanRecord,
     storage: ImageStorage,
-) -> bytes:
+) -> BinaryIO:
     if job.status != "completed":
         _reject("Final human review is required before downloading this delivery")
-    context, state, root = await _verified_context(db, job, plan, storage)
+    context, state, root = await _verified_context(
+        db, job, plan, storage, read_only=True
+    )
     public = plan.payload["final_manifest"]
     packet = await validate_final_review(
         db,
@@ -446,35 +468,45 @@ async def delivery_archive(
         state,
         root,
         public["final_review"]["sha256"],
+        read_only=True,
     )
     original_path = Path(state["final"]["manifest"])
-    inspection = _inspect(root, original_path)
+    inspection = await run_in_threadpool(_inspect, root, original_path)
     if inspection["manifest_file_sha256"] != public["native_manifest_sha256"] or any(
         canonical_hash(public.get(k)) != canonical_hash(v)
         for k, v in inspection["manifest"].items()
     ):
         _reject("Native final approval differs from the recorded delivery")
-    output = BytesIO()
-    with ZipFile(output, "w", compression=ZIP_STORED) as archive:
+    output = await run_in_threadpool(open_archive, root / "download-cache")
+    archive = None
+    try:
+        archive = await run_in_threadpool(ZipFile, output, "w", compression=ZIP_STORED)
         for row in packet["screens"]:
-            asset = db.get(AssetRecord, row["asset_id"])
+            asset = await read_snapshot_async(db, db.get, AssetRecord, row["asset_id"])
             assert asset is not None
             payload, _ = await _read(storage, asset.object_key, asset.object_version)
             if hashlib.sha256(payload).hexdigest() != row["sha256"]:
                 _reject("A screen changed while building the delivery archive")
-            archive.writestr(
+            await run_in_threadpool(
+                archive.writestr,
                 "screens/" + row["module_id"] + Path(asset.original_filename).suffix,
                 payload,
             )
         for row in packet["pair_canvases"]:
-            asset = db.get(AssetRecord, row["asset_id"])
+            asset = await read_snapshot_async(db, db.get, AssetRecord, row["asset_id"])
             assert asset is not None
-            archive.writestr(
+            await run_in_threadpool(
+                archive.writestr,
                 "pair-masters/" + asset.original_filename,
                 await read_pair_master(storage, asset),
             )
-        archive.writestr("final-review.md", packet["document_markdown"].encode("utf-8"))
-        archive.writestr(
+        await run_in_threadpool(
+            archive.writestr,
+            "final-review.md",
+            packet["document_markdown"].encode("utf-8"),
+        )
+        await run_in_threadpool(
+            archive.writestr,
             "final-review.json",
             json.dumps(packet, ensure_ascii=False, indent=2).encode("utf-8"),
         )
@@ -488,6 +520,16 @@ async def delivery_archive(
                 context,
             )
             for name, data in files.items():
-                archive.writestr("supplementary-review/" + name, data)
-        archive.writestr("native-final-manifest.json", original_path.read_bytes())
-    return output.getvalue()
+                await run_in_threadpool(
+                    archive.writestr, "supplementary-review/" + name, data
+                )
+        await run_in_threadpool(
+            archive.writestr,
+            "native-final-manifest.json",
+            await run_in_threadpool(original_path.read_bytes),
+        )
+        await run_in_threadpool(archive.close)
+        return output
+    except BaseException:
+        await run_in_threadpool(close_archive, archive, output)
+        raise

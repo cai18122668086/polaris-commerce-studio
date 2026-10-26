@@ -705,7 +705,7 @@ class XingheGateway(Protocol):
 def normalize_usage(raw_usage: object) -> dict[str, Any]:
     """Preserve missing usage as unreported instead of fabricating zeros."""
 
-    if not isinstance(raw_usage, dict):
+    if not isinstance(raw_usage, dict) or raw_usage.get("_provider_usage_reported") is False:
         return {
             "reported": False,
             "input_tokens": None,
@@ -2152,9 +2152,11 @@ class UrllibOpenAITransport:
             with cls._open(request, timeout_seconds) as response:
                 status = int(response.status)
                 raw = response.read()
+                response_headers = getattr(response, "headers", {})
         except HTTPError as exc:
             status = int(exc.code)
             raw = exc.read()
+            response_headers = exc.headers or {}
             error_status = True
         except (TimeoutError, URLError, OSError) as exc:
             raise XingheAgentError(
@@ -2166,16 +2168,27 @@ class UrllibOpenAITransport:
             payload = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             if error_status:
-                return status, {"error": {"code": "non_json_error_response"}}
-            raise XingheAgentError(
-                "PROVIDER_RESPONSE_INVALID",
-                "Provider returned invalid JSON.",
-            ) from exc
+                from .provider_diagnostics import safe_text
+
+                payload = {"error": {
+                    "code": "non_json_error_response",
+                    "message": safe_text(raw.decode("utf-8", errors="replace")),
+                }}
+            else:
+                raise XingheAgentError(
+                    "PROVIDER_RESPONSE_INVALID",
+                    "Provider returned invalid JSON.",
+                ) from exc
         if not isinstance(payload, dict):
             raise XingheAgentError(
                 "PROVIDER_RESPONSE_INVALID",
                 "Provider returned a non-object JSON response.",
             )
+        header_id = response_headers.get("x-request-id") or response_headers.get("request-id")
+        if header_id and not _safe_request_id(payload):
+            from .provider_diagnostics import safe_text
+
+            payload["_transport_request_id"] = safe_text(str(header_id), 255)
         return status, payload
 
 
@@ -2730,6 +2743,9 @@ class TengliOpenAICompatibleGateway:
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
         started = time.perf_counter()
+        from .provider_diagnostics import known_image_route_rejection
+
+        attempts: list[dict[str, Any]] = []
         fields = [
             ("model", self.image_model),
             ("prompt", request.prompt),
@@ -2774,12 +2790,23 @@ class TengliOpenAICompatibleGateway:
                         files=files,
                         timeout_seconds=self.timeout_seconds,
                     )
-                except XingheAgentError:
+                except XingheAgentError as error:
+                    attempts.append({
+                        "route": route.name, "host": urlparse(route.image_base_url).hostname,
+                        "model": route.image_model, "http_status": None,
+                        "request_id": None, "error": {"code": error.code},
+                    })
                     raise
+                attempts.append({
+                    "route": route.name, "host": urlparse(route.image_base_url).hostname,
+                    "model": route.image_model, "http_status": status,
+                    "request_id": _safe_request_id(response),
+                    **({"error": _provider_error_summary(response)} if status >= 400 else {}),
+                })
                 if (
                     (
                         self._should_failover_status(status)
-                        or _explicit_image_text_reply(status, response)
+                        or known_image_route_rejection(status, response)
                     )
                     and route_index < last_route_index
                 ):
@@ -2787,6 +2814,8 @@ class TengliOpenAICompatibleGateway:
                 break
             raw_usage = _raw_usage(response)  # type: ignore[arg-type]
             normalized = normalize_usage(raw_usage)
+            raw_usage = {**(raw_usage or {}), "_provider_usage_reported": normalized["reported"], "network_requests": len(attempts),
+                         "metrics": {"provider_attempts": attempts}}
             estimated_cost = (
                 self.high_price_micros
                 if request.quality == "high"
@@ -2807,7 +2836,7 @@ class TengliOpenAICompatibleGateway:
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
                     raw_usage={
                         **(raw_usage or {}),
-                        "metrics": {"provider_error": raw_error},
+                        "metrics": {"provider_error": raw_error, "provider_attempts": attempts},
                     },
                     normalized_usage=normalized,
                     api_latency_seconds=time.perf_counter() - started,
@@ -2849,7 +2878,9 @@ class TengliOpenAICompatibleGateway:
                     ProviderOutcome.OUTCOME_UNKNOWN if unknown else ProviderOutcome.FAILED
                 ),
                 provider_request_id=None,
-                raw_usage=None,
+                raw_usage={"network_requests": len(attempts), "metrics": {
+                    "provider_error": {"code": exc.code}, "provider_attempts": attempts,
+                }},
                 normalized_usage=normalize_usage(None),
                 api_latency_seconds=time.perf_counter() - started,
                 actual_cost_micros=None,
@@ -2952,7 +2983,15 @@ class TengliOpenAICompatibleGateway:
                 return MaskedEditCallResult(
                     outcome=ProviderOutcome.FAILED,
                     provider_request_id=_safe_request_id(response),  # type: ignore[arg-type]
-                    raw_usage=raw_usage,
+                    raw_usage={**(raw_usage or {}), "metrics": {
+                        "provider_error": _provider_error_summary(response or {}),
+                        "provider_attempts": [{
+                            "route": route.name,
+                            "host": urlparse(route.image_base_url).hostname,
+                            "model": route.image_model, "http_status": status,
+                            "request_id": _safe_request_id(response or {}),
+                        }],
+                    }},
                     normalized_usage=normalized,
                     actual_cost_micros=_usage_cost_micros(raw_usage),
                     estimated_cost_micros=estimated_cost,
@@ -13002,7 +13041,7 @@ def _raw_usage(payload: Mapping[str, Any]) -> dict[str, Any] | None:
 
 
 def _safe_request_id(payload: Mapping[str, Any]) -> str | None:
-    for key in ("request_id", "id"):
+    for key in ("request_id", "id", "_transport_request_id"):
         value = payload.get(key)
         if isinstance(value, str) and value:
             return value[:255]
@@ -13028,15 +13067,9 @@ def _explicit_image_text_reply(status: int, payload: Mapping[str, Any]) -> bool:
 def _provider_error_summary(payload: Mapping[str, Any]) -> dict[str, str]:
     """Keep bounded, redaction-safe provider error details for local diagnosis."""
 
-    value = payload.get("error")
-    if isinstance(value, Mapping):
-        summary: dict[str, str] = {}
-        for key in ("code", "type", "message", "param"):
-            item = value.get(key)
-            if isinstance(item, str) and item:
-                summary[key] = item[:512]
-        return summary or {"code": "provider_error"}
-    return {"code": "provider_error"}
+    from .provider_diagnostics import error_summary
+
+    return error_summary(payload)
 
 
 def _encode_multipart(

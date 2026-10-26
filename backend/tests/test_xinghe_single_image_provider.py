@@ -67,6 +67,37 @@ OPERATION = "product_image"
 SECRET = "sk-test-never-leak-123456789"
 
 
+def test_adapter_retains_gateway_error_for_durable_usage(harness):
+    harness.gateway.result = ImageCallResult(
+        outcome=ProviderOutcome.FAILED,
+        provider_request_id="req-fixture",
+        raw_usage={
+            "network_requests": 1,
+            "metrics": {
+                "provider_error": {
+                    "code": "invalid_image",
+                    "type": "invalid_request_error",
+                    "param": "image",
+                    "message": "Unsupported image encoding",
+                }
+            },
+        },
+        normalized_usage=normalize_usage(None),
+        error_code="IMAGE_REQUEST_FAILED",
+        error_message="HTTP 400",
+        http_status=400,
+        api_latency_seconds=0.1,
+        actual_cost_micros=None,
+    )
+    result = asyncio.run(harness.provider().execute(_request(_envelope())))
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.provider_request_id == "req-fixture"
+    assert (
+        result.raw_usage["metrics"]["provider_error"]["message"]
+        == "Unsupported image encoding"
+    )
+
+
 def _image_bytes(
     size: tuple[int, int] = (64, 48),
     *,
@@ -976,7 +1007,9 @@ def test_inspiration_competitor_reference_runs_reference_planner_before_edit(
         skill_id="xinghe-ecommerce-creative-image",
     )
 
-    result = asyncio.run(provider.execute(_request(envelope, operation="creative_image")))
+    result = asyncio.run(
+        provider.execute(_request(envelope, operation="creative_image"))
+    )
 
     assert result.outcome == ProviderOutcome.SUCCEEDED
     assert harness.gateway.plan_calls == 1
@@ -1097,8 +1130,7 @@ def test_reference_execution_prompt_drops_echoed_skill_protocol(
         "product_identity_lock": "fan identity",
         "hard_composition_skeleton": "hard skeleton " + ("layout " * 4_000),
         "reference_visual_analysis": (
-            "reference observations skill-protocol-v1 "
-            + ("document " * 8_000)
+            "reference observations skill-protocol-v1 " + ("document " * 8_000)
         ),
         "original_remix_prompt": "preserve the reference composition",
     }

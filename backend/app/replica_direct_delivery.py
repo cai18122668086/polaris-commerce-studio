@@ -39,18 +39,34 @@ V6_BINDING = {
         "67e52f5ff635e39f077a9819ceff2a0ee8d4fded1f44b3e0ffab2c9e3bca5c11"
     ),
 }
+V7_BINDING = {
+    "version": "exact-compact-v7",
+    "content_sha256": (
+        "519035c1a051b8ee27c6d8b8d502af9c69af8c825335b5cf71dd74df0534ba63"
+    ),
+}
 
 
 def validate_source(
     previous: dict[str, Any], approved: dict[str, Any], prefix: str
 ) -> None:
-    from .replica_exact_compact import protocol_binding
+    from .replica_exact_compact import protocol_binding, run_class
     from .replica_execution_resume import V3_BINDING
 
-    allowed = (V3_BINDING, V4_BINDING, V5_BINDING, V6_BINDING, protocol_binding())
+    allowed = (None, V3_BINDING, V4_BINDING, V5_BINDING, V6_BINDING,
+               V7_BINDING, protocol_binding())
+    for snapshot in (previous, approved):
+        binding = snapshot.get("model_protocol")
+        if binding is not None and binding not in allowed:
+            run_class("exact", binding)  # Validate frozen v1/v2 hashes as well.
+            if binding.get("version") not in {"exact-compact-v1", "exact-compact-v2"}:
+                raise ReplicaNativeError("不支持的原生协议。")
+    compatible = previous.get("model_protocol") == approved.get("model_protocol") or (
+        previous.get("model_protocol") in allowed[1:]
+        and approved.get("model_protocol") in allowed[1:]
+    )
     if (
-        previous.get("model_protocol") not in allowed
-        or approved.get("model_protocol") not in allowed
+        not compatible
         or previous.get("method") != "exact"
         or any(
             previous.get(k) != approved.get(k)
@@ -102,15 +118,7 @@ def validate_source(
 def retry_source(
     values: dict[str, Any], request: Any, session_factory: Any
 ) -> tuple[dict[str, Any], str] | None:
-    if values.get("replication_method") != "exact" or values.get(
-        "native_snapshot", {}
-    ).get("model_protocol", {}).get("version") not in {
-        "exact-compact-v3",
-        "exact-compact-v4",
-        "exact-compact-v5",
-        "exact-compact-v6",
-        "exact-compact-v7",
-    }:
+    if values.get("replication_method") != "exact":
         return None
     with session_factory() as session:
         job = session.get(JobRecord, request.job_id)
@@ -123,7 +131,7 @@ def retry_source(
         parent = session.get(JobRecord, parent_id)
         if (
             not parent
-            or parent.status != "failed"
+            or parent.status not in {"failed", "partial"}
             or job.workspace_id != request.workspace_id
             or parent.workspace_id != request.workspace_id
             or parent.configuration.get("replica_session_id")

@@ -1038,7 +1038,10 @@ def test_normal_http_submission_worker_history_and_original_download(
     from tests.test_api import dispatch_pending
 
     client.app.state.settings.reference_remix_provider_enabled = True
-    client.app.state.settings.replica_exact_compact_workspaces = ("ws_test",)
+    # A workspace outside the old pilot allowlist must receive the same flow.
+    client.app.state.settings.replica_exact_compact_workspaces = (
+        "unrelated_workspace",
+    )
     gateway = SyntheticGateway()
     original_plan = gateway.plan
     failed_once = False

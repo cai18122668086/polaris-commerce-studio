@@ -218,6 +218,8 @@ class Settings(BaseSettings):
     )
     xinghe_concurrency: int = Field(default=6, ge=1, le=32)
     replica_analysis_concurrency: int = Field(default=4, ge=1, le=16)
+    # Kept for compatibility with existing deployment environments. Exact
+    # sessions now use the current protocol in every workspace.
     replica_exact_compact_workspaces: tuple[str, ...] = ()
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)

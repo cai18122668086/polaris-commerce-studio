@@ -38,7 +38,7 @@ from .replica_native import (
     write_json,
 )
 
-VERSION = "exact-compact-v7"
+VERSION = "exact-compact-v8"
 PROMPTS = Path(__file__).with_name("replica_exact_prompts")
 OBSERVATIONS = (
     "subject_and_scale",
@@ -119,6 +119,7 @@ def protocol_binding() -> dict[str, str]:
         Path(__file__).with_name("replica_native.py"),
         Path(__file__).with_name("replica_native_provider.py"),
         Path(__file__).with_name("replica_canvas.py"),
+        Path(__file__).with_name("replica_platform_delivery.py"),
         *sorted(PROMPTS.glob("*.md")),
     ]
     for path in dependencies:
@@ -1655,6 +1656,7 @@ def run_class(method: str, protocol: Any = None) -> type[NativeReplicaRun]:
         "exact-compact-v4",
         "exact-compact-v5",
         "exact-compact-v6",
+        "exact-compact-v7",
     }:
         archive = version.rsplit("-", 1)[-1]
         name = f"app._replica_exact_compact_{archive}"

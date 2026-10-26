@@ -188,6 +188,11 @@ def test_all_references_and_product_images_must_be_covered():
 def test_expected_failure_retains_stage_selection_and_retry_policy(
     client, monkeypatch, error_factory
 ):
+    from app import replica_exact_compact
+
+    # This regression models saved pre-pilot analysis and its native retry.
+    # New submissions are exercised by the compact HTTP/worker regression.
+    monkeypatch.setattr(replica_exact_compact, "VERSION", None)
     client.app.state.settings.reference_remix_provider_enabled = True
     client.app.state.replica_gateway = SimpleNamespace()
     product, reference = upload(client, "red"), upload(client, "blue")

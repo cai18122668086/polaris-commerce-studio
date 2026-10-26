@@ -195,6 +195,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                     "exact-compact-v5",
                     "exact-compact-v6",
                     "exact-compact-v7",
+                    "exact-compact-v8",
                 }
             )
         )
@@ -1066,9 +1067,7 @@ def analyse(
     if not request.app.state.settings.reference_remix_provider_enabled:
         raise ApiError(503, "REPLICA_DISABLED", "复刻生成服务暂未开放，请稍后再试。")
     values = payload.model_dump(mode="json")
-    if payload.replication_method == "exact" and workspace.workspace_id in getattr(
-        request.app.state.settings, "replica_exact_compact_workspaces", ()
-    ):
+    if payload.replication_method == "exact":
         from .replica_exact_compact import VERSION
 
         values["_exact_model_protocol"] = VERSION
@@ -1205,13 +1204,6 @@ def revise_analysis(
     )
 
     if exact_revision_available(row, _analysis_input_hash(row.payload)):
-        if (
-            workspace.workspace_id
-            not in request.app.state.settings.replica_exact_compact_workspaces
-        ):
-            raise ApiError(
-                409, "REPLICA_REVISION_UNAVAILABLE", "当前工作区未启用方案修正。"
-            )
         checkpoint = row.payload["_analysis_checkpoint"]
         row.payload = {
             **{
@@ -1257,8 +1249,6 @@ def revise_analysis(
         return _wire(row)
     if (
         not _revision_available(row)
-        or workspace.workspace_id
-        not in request.app.state.settings.replica_exact_compact_workspaces
         or row.payload.get("_analysis_input_hash") != _analysis_input_hash(row.payload)
     ):
         raise ApiError(

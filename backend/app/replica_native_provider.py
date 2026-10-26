@@ -221,23 +221,23 @@ class NativeReplicaProvider:
                     or (
                         direct_source
                         and snapshot["model_protocol"].get("version")
-                        not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7"}
+                        not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8"}
                     )
                     else run_class(
                         values["replication_method"], snapshot["model_protocol"]
                     )
                 )
+            if values["replication_method"] == "exact":
+                from .replica_platform_delivery import delivery_run_type
+
+                run_type = delivery_run_type(run_type)
             run = run_type(
-                values["replication_method"],
-                document_id,
-                request.workspace_id,
-                self.gateway,
-                self.storage,
-                root=Path(snapshot["root"]),
+                values["replication_method"], document_id, request.workspace_id,
+                self.gateway, self.storage, root=Path(snapshot["root"]),
             )
-            if direct_source and snapshot.get("model_protocol", {}).get(
+            if direct_source and snapshot.get("model_protocol") and snapshot.get("model_protocol", {}).get(
                 "version"
-            ) not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7"}:
+            ) not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8"}:
                 await replica_direct_delivery.restore_source(
                     run, snapshot, direct_source[1]
                 )
@@ -251,21 +251,7 @@ class NativeReplicaProvider:
                 if ordinal != 0:
                     raise ReplicaNativeError("前序复刻尚未通过完整验收。")
                 if run.method == "exact":
-                    if getattr(run, "binding", {}).get("version") in {
-                        "exact-compact-v5",
-                        "exact-compact-v6",
-                        "exact-compact-v7",
-                    }:
-                        delivery = await replica_direct_delivery.execute(
-                            self, run, request
-                        )
-                    else:
-                        candidates = self._retry_candidates(values, request, snapshot)
-                        delivery = (
-                            await self._exact(run, request, candidates)
-                            if candidates
-                            else await self._exact(run, request)
-                        )
+                    delivery = await replica_direct_delivery.execute(self, run, request)
                 else:
                     delivery = await self._style(run, request)
                 if len(delivery) != len(values["plans"]):
@@ -318,6 +304,11 @@ class NativeReplicaProvider:
                 with suppress(Exception):
                     await self._save(run, request.job_id)
             accounting = native_accounting(run.usage[initial_calls:] if run else [])
+            from .provider_diagnostics import retained_metrics
+
+            diagnostics = next((retained_metrics(call) for call in reversed(
+                run.usage[initial_calls:] if run else []
+            ) if retained_metrics(call)), {})
             progress: dict[str, Any] = {}
             if run is not None and run.method == "exact":
                 with suppress(Exception):
@@ -352,7 +343,7 @@ class NativeReplicaProvider:
                 raw_usage={
                     **accounting,
                     "native_calls": run.usage[initial_calls:] if run else [],
-                    "metrics": {"native_error": str(exc)[:1200]},
+                    "metrics": {"native_error": str(exc)[:1200], **diagnostics},
                 },
                 actual_cost_micros=accounting["actual_cost_micros"],
                 estimated_cost_micros=accounting["estimated_cost_micros"],
@@ -678,6 +669,11 @@ class NativeReplicaProvider:
                 else 1
             )
             run.record_usage(result, "image", requests)
+            from .provider_diagnostics import retained_metrics
+
+            run.usage[-1]["metrics"] = retained_metrics(getattr(result, "raw_usage", None))
+            run.usage[-1]["http_status"] = getattr(result, "http_status", None)
+            run.usage[-1]["provider_request_id"] = getattr(result, "provider_request_id", None)
             run.usage[-1].update(
                 http_status=result.http_status,
                 error_code=result.error_code,

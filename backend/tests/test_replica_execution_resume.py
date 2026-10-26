@@ -128,7 +128,7 @@ def test_resume_refuses_changed_source_or_a_verdict_it_would_ignore(tmp_path, ba
 def test_http_retry_restores_durable_partial_run_and_keeps_actual_pass(
     client, monkeypatch, tmp_path, source_version
 ):
-    from app import replica_exact_compact
+    from app import replica_direct_delivery, replica_exact_compact
     from app.models import ReplicaDocumentRecord
     from app.task_runner import MockTaskRunner
     from tests.test_api import dispatch_pending
@@ -206,7 +206,15 @@ def test_http_retry_restores_durable_partial_run_and_keeps_actual_pass(
     document_id = response.json()["id"]
     document = client.get(route + "/documents/" + document_id).json()
     job_id = document["payload"]["job_ids"][0]
+    current_delivery = replica_direct_delivery.execute
+
+    async def historical_delivery(provider, run, request):
+        # Build an actual old failed checkpoint before applying today's policy.
+        return await provider._exact(run, request)
+
+    monkeypatch.setattr(replica_direct_delivery, "execute", historical_delivery)
     dispatch_pending(client)
+    monkeypatch.setattr(replica_direct_delivery, "execute", current_delivery)
     failed = client.get(route + "/documents/" + document_id).json()
     assert failed["status"] == "failed"
     assert failed["payload"]["execution_resume_available"]

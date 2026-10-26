@@ -9,7 +9,12 @@ from types import SimpleNamespace
 import pytest
 
 from app.replica_canvas import NATIVE_PIXEL_BUDGET, POLICY, native_budget_matches
-from app.replica_direct_delivery import V5_BINDING, V6_BINDING, inspect_artwork
+from app.replica_direct_delivery import (
+    V5_BINDING,
+    V6_BINDING,
+    V7_BINDING,
+    inspect_artwork,
+)
 from app.replica_exact_compact import protocol_binding, run_class
 from app.replica_native import ReplicaNativeError, digest, read_json, write_json
 from app.replica_native_provider import (
@@ -177,8 +182,8 @@ def test_every_failed_task_aspect_keeps_its_complete_native_canvas(tmp_path, can
     )
 
 
-def test_deployed_protocols_keep_their_original_hashes_and_new_runs_use_v7():
-    for binding in (V5_BINDING, V6_BINDING):
+def test_deployed_protocols_keep_their_original_hashes_and_new_runs_use_v8():
+    for binding in (V5_BINDING, V6_BINDING, V7_BINDING):
         cls = run_class("exact", binding)
         assert sys.modules[cls.__module__].protocol_binding() == binding
-    assert protocol_binding()["version"] == "exact-compact-v7"
+    assert protocol_binding()["version"] == "exact-compact-v8"

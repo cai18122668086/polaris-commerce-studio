@@ -2507,6 +2507,9 @@ class ExecutionCoordinator:
                     "provider_request_id": result.provider_request_id,
                     "provider_outcome": result.outcome.value,
                 }
+                from .provider_diagnostics import retained_metrics
+
+                failure_details.update(retained_metrics(result.raw_usage))
                 gateway_diagnostics = failure_metrics.get("aurora_gateway_diagnostics")
                 if isinstance(gateway_diagnostics, Mapping):
                     failure_details["aurora_gateway_diagnostics"] = dict(

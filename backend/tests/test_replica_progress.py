@@ -91,7 +91,10 @@ def test_active_attempt_exposes_repair_without_counting_it_as_passed():
 
 
 @pytest.mark.parametrize("job_status", ["failed", "cancelled", "completed", "partial"])
-def test_document_history_uses_actual_job_terminal_state(client, job_status):
+@pytest.mark.parametrize("incomplete_native_submission", [False, True])
+def test_document_history_uses_actual_job_terminal_state(
+    client, job_status, incomplete_native_submission
+):
     client.get("/api/v1/workspaces")
     with client.app.state.session_factory() as session:
         job_id, document_id = "job_" + uuid4().hex, "rep_" + uuid4().hex
@@ -123,6 +126,14 @@ def test_document_history_uses_actual_job_terminal_state(client, job_status):
                 "error_code": "REPLICA_SKILL_BLOCKED",
             },
         )
+        if incomplete_native_submission:
+            job.configuration = {"replica_session_id": document_id}
+            row.payload = {
+                **row.payload,
+                "submission_complete": False,
+                "native_snapshot": {"schema": "replica-native-v1"},
+                "confirmed_instructions_hash": "confirmed-fixture",
+            }
         session.add_all([job, row])
         session.flush()
         if job_status == "failed":

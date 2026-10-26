@@ -75,13 +75,20 @@ def native_progress(state: dict[str, Any]) -> dict[str, Any]:
 def reconcile_document(session: Session, row: ReplicaDocumentRecord) -> bool:
     """Reconcile only current jobs; a failed run is never labelled completed."""
     ids = row.payload.get("job_ids", [])
-    if not ids or row.payload.get("submission_complete") is False:
+    if not ids:
         return False
     jobs = session.scalars(
         select(JobRecord).where(
             JobRecord.workspace_id == row.workspace_id, JobRecord.id.in_(ids)
         )
     ).all()
+    if row.payload.get("submission_complete") is False and not (
+        row.payload.get("native_snapshot")
+        and row.payload.get("confirmed_instructions_hash")
+        and len(ids) == len(jobs) == 1
+        and jobs[0].configuration.get("replica_session_id") == row.id
+    ):
+        return False
     if len(jobs) != len(ids) or any(job.status not in TERMINAL for job in jobs):
         return False
     statuses = {job.status for job in jobs}

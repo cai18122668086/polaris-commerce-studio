@@ -1914,6 +1914,17 @@ class XingheSingleImageProvider:
                     "no_watermark_or_unrequested_extra_elements",
                 ],
             }
+        from .provider_diagnostics import retained_metrics
+
+        prior_metrics = usage.get("metrics")
+        usage["metrics"] = {
+            **(dict(prior_metrics) if isinstance(prior_metrics, Mapping) else {}),
+            **retained_metrics(call_result.raw_usage if call_result is not None else None),
+        }
+        if call_result is not None and isinstance(call_result.raw_usage, Mapping):
+            count = call_result.raw_usage.get("network_requests")
+            if type(count) is int and 0 <= count <= 4:
+                usage["network_requests"] = count
         return usage
 
     def _rejection(

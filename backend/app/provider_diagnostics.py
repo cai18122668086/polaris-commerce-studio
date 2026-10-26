@@ -6,6 +6,36 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+CONTENT_REJECTION_CODE = "IMAGE_CONTENT_REJECTED"
+CONTENT_REJECTION_MESSAGE = (
+    "生成服务因内容限制拒绝了本次请求，未返回图片。原素材和要求已保留。"
+)
+
+
+def image_content_refusal(payload: Mapping[str, Any]) -> bool:
+    """Recognize an explicit refusal even when a relay wraps it as text output."""
+    error = payload.get("error")
+    if not isinstance(error, Mapping) or any(
+        payload.get(key) for key in (
+            "data", "images", "output", "url", "b64_json", "generation_id", "task_id"
+        )
+    ):
+        return False
+    code = str(error.get("code") or "").casefold()
+    if code in {
+        "content_policy_violation", "content_policy_rejected", "safety_violation",
+        "moderation_blocked", CONTENT_REJECTION_CODE.casefold(),
+    }:
+        return True
+    if code != "upstream_text_reply":
+        return False
+    return bool(re.search(
+        r"(?:violat\w*.{0,80}(?:guardrails?|content polic)|"
+        r"similarity to third.party content|content.policy.violation|"
+        r"内容(?:政策|审核).{0,12}(?:拒绝|限制|不允许)|违反.{0,12}安全)",
+        str(error.get("message") or "")[:2400], re.I | re.S,
+    ))
+
 
 def safe_text(value: str, limit: int = 1200) -> str:
     value = re.sub(r"data:[^\s\"']+", "[image omitted]", value)
@@ -43,6 +73,7 @@ def known_image_route_rejection(status: int, payload: Mapping[str, Any]) -> bool
     error = payload.get("error")
     if (
         status != 400
+        or image_content_refusal(payload)
         or not isinstance(error, Mapping)
         or any(
         payload.get(key) for key in (

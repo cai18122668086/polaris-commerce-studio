@@ -112,7 +112,7 @@ export function jobNote(job: Job | JobDetail): string {
   if (job.type === "detail_pack" && job.stage === "intake_confirmation_required") return "请先确认商品事实，随后审阅完整详情规划。";
   if (job.status === "failed" && "items" in job) {
     const failed = job.items.find((item) => item.status === "failed");
-    if (failed?.error_code) return safeJobFailureSummary(failed.error_code);
+    if (failed?.error_code) return safeJobFailureSummary(failed.error_code, failed.error_details);
   }
   if (job.status === "partial") return "部分结果已完成，可在详情中查看并重试失败项目。";
   if (job.status === "failed") return "生成未完成，请查看详情中的安全错误摘要。";
@@ -127,9 +127,14 @@ export function jobNote(job: Job | JobDetail): string {
   return job.stage ? `当前阶段：${jobStageLabel(job.stage, job.status)}` : "任务正在处理中。";
 }
 
-export function safeJobFailureSummary(errorCode?: string | null): string {
+export function safeJobFailureSummary(errorCode?: string | null, errorDetails?: unknown): string {
   if (errorCode === "PROVIDER_OUTCOME_UNKNOWN") {
     return "生成请求的结果尚未确认，系统已停止自动重试，请联系管理员核查，避免重复生成。";
+  }
+  const details = errorDetails && typeof errorDetails === "object" ? errorDetails as Record<string, unknown> : {};
+  const providerError = details.provider_error && typeof details.provider_error === "object" ? details.provider_error as Record<string, unknown> : {};
+  if (errorCode === "IMAGE_CONTENT_REJECTED" || ["content_policy_violation", "content_policy_rejected", "safety_violation", "moderation_blocked"].includes(String(providerError.code))) {
+    return "生成服务因内容限制拒绝了本次请求，未返回图片。原素材和要求已保留。";
   }
   if (errorCode?.startsWith("LOCAL_EDIT_VISUAL_REVIEW") && errorCode !== "LOCAL_EDIT_VISUAL_REVIEW_REJECTED") {
     return "图片已生成，但审核服务暂时不可用。重试会继续审核已保存的图片。";

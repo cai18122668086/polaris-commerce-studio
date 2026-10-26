@@ -88,6 +88,15 @@ def test_provider_failure_receipt_survives_attempt_item_and_usage(client):
         assert attempt.error_details["provider_error"] == error
         assert item.error_details["provider_attempts"][0]["http_status"] == 400
         assert usage.raw_usage["metrics"]["provider_error"] == error
+    assert coordinator.finalize_job(job_id) == JobStatus.FAILED
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
+        assert job.error_code == "IMAGE_REQUEST_FAILED"
+        assert job.error_details["provider_error"] == error
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}")
+    assert detail.status_code == 200
+    assert detail.json()["error_code"] == "IMAGE_REQUEST_FAILED"
+    assert detail.json()["error_details"]["provider_error"] == error
 
 
 def _image_payload(color: tuple[int, int, int]) -> bytes:

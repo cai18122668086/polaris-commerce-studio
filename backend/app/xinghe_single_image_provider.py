@@ -1710,11 +1710,25 @@ class XingheSingleImageProvider:
         actual_cost_micros = _safe_cost(call_result.actual_cost_micros)
         http_status = _safe_http_status(call_result.http_status)
         if call_result.outcome != ProviderOutcome.SUCCEEDED:
+            from .provider_diagnostics import (
+                CONTENT_REJECTION_CODE,
+                CONTENT_REJECTION_MESSAGE,
+                image_content_refusal,
+            )
+
+            content_rejected = call_result.outcome == ProviderOutcome.FAILED and (
+                call_result.error_code == CONTENT_REJECTION_CODE
+                or image_content_refusal({
+                    "error": raw_usage.get("metrics", {}).get("provider_error")
+                })
+            )
             return ProviderResult(
                 outcome=call_result.outcome,
-                error_code=_safe_error_code(call_result.error_code),
-                error_message="Image provider returned a controlled failure.",
-                retryable=bool(call_result.retryable),
+                error_code=(CONTENT_REJECTION_CODE if content_rejected else
+                            _safe_error_code(call_result.error_code)),
+                error_message=(CONTENT_REJECTION_MESSAGE if content_rejected else
+                               "Image provider returned a controlled failure."),
+                retryable=bool(call_result.retryable) and not content_rejected,
                 provider_request_id=provider_request_id,
                 usage_reported=usage_reported,
                 raw_usage=raw_usage,

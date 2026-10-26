@@ -48,6 +48,32 @@ class CapturingTransport:
         return 400, {"id": "request_bad_mask", "error": {"code": "invalid_mask"}}
 
 
+def test_masked_content_refusal_is_terminal_even_when_relay_uses_503():
+    class RefusalTransport(CapturingTransport):
+        calls = 0
+
+        async def post_multipart(self, **kwargs):
+            self.calls += 1
+            return 503, {"error": {"code": "content_policy_violation"}}
+
+    transport = RefusalTransport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="primary-fixture", base_url="https://primary.example",
+        planner_model="planner-fixture", image_model="image-fixture",
+        image_failover_api_key="backup-fixture",
+        image_failover_base_url="https://backup.example", transport=transport,
+    )
+    data = _png(Image.new("RGBA", (4, 4), (30, 40, 50, 255)))
+    result = asyncio.run(gateway.edit_masked(MaskedEditGatewayRequest(
+        source_png=data, api_mask_png=data, mask_png=data, prompt="background edit",
+        quality="medium", width=4, height=4, idempotency_key="refusal-fixture",
+    )))
+    assert transport.calls == 1
+    assert result.retryable is False
+    assert result.error_code == "IMAGE_CONTENT_REJECTED"
+    assert result.artifact is None
+
+
 class ProviderCompatibilityTransport(CapturingTransport):
     def __init__(self, result_png: bytes) -> None:
         super().__init__()

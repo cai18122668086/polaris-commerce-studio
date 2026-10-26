@@ -2930,6 +2930,18 @@ class ExecutionCoordinator:
                 target = JobStatus.CANCELLED
             else:
                 target = JobStatus.FAILED
+            if target in {JobStatus.FAILED, JobStatus.PARTIAL} and not job.error_code:
+                failure = session.scalar(
+                    select(JobItemRecord).where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status == JobItemStatus.FAILED.value,
+                        JobItemRecord.error_code.is_not(None),
+                    ).order_by(JobItemRecord.ordinal).limit(1)
+                )
+                if failure is not None:
+                    job.error_code = failure.error_code
+                    job.error_message = failure.error_message
+                    job.error_details = dict(failure.error_details or {})
             terminal_stage = (
                 "awaiting_user_final_review"
                 if target == JobStatus.AWAITING_FINAL_REVIEW

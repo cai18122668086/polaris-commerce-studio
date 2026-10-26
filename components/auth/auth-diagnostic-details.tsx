@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { AuthDiagnostic } from "@/lib/auth/diagnostic-payload";
+import { AUTH_LOCATION_LABELS } from "@/lib/auth/diagnostic-evidence";
 import styles from "./auth-status.module.css";
 
 export function AuthDiagnosticDetails({ diagnostic }: { diagnostic: AuthDiagnostic }) {
@@ -9,6 +10,7 @@ export function AuthDiagnosticDetails({ diagnostic }: { diagnostic: AuthDiagnost
   return <details className={styles.diagnostic}>
     <summary>故障排查信息</summary>
     <p>诊断编号：{diagnostic.id}<br />发生时间：{new Date(diagnostic.occurred_at).toLocaleString("zh-CN")}</p>
+    {diagnostic.evidence ? <p>定位码：{diagnostic.evidence.location}<br />观测阶段：{AUTH_LOCATION_LABELS[diagnostic.evidence.location]}</p> : null}
     <button type="button" onClick={async () => {
       try { await navigator.clipboard.writeText(JSON.stringify(diagnostic, null, 2)); setCopied(true); setCopyError(false); }
       catch { setCopyError(true); }

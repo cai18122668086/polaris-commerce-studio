@@ -28,7 +28,7 @@ export async function POST(request: Request): Promise<Response> {
       const { done, value } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > 4096) {
+      if (length > 8192) {
         await reader.cancel();
         return new Response(null, { status: 413, headers });
       }

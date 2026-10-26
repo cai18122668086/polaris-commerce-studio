@@ -136,3 +136,19 @@ def test_both_routes_reject_without_looping_or_claiming_a_deliverable():
     assert result.outcome == ProviderOutcome.FAILED
     assert result.artifact is None
     assert count == len(calls) == 2
+
+
+@pytest.mark.parametrize("error", [
+    {"code": "content_policy_violation", "type": "image_generation_user_error"},
+    {"code": "upstream_text_reply", "type": "invalid_request_error",
+     "message": ("The image we created may violate our guardrails concerning "
+                 "similarity to third-party content.")},
+])
+def test_content_refusal_never_uses_another_route_or_requests_retry(error):
+    result, calls, count = dispatch({"error": error})
+    assert result.outcome == ProviderOutcome.FAILED
+    assert result.error_code == "IMAGE_CONTENT_REJECTED"
+    assert result.retryable is False and result.artifact is None
+    assert count == len(calls) == 1
+    assert "内容限制" in result.error_message
+    assert result.raw_usage["metrics"]["provider_error"]["code"] == error["code"]

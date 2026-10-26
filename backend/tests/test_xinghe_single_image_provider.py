@@ -98,6 +98,26 @@ def test_adapter_retains_gateway_error_for_durable_usage(harness):
     )
 
 
+def test_adapter_preserves_content_refusal_in_public_error(harness):
+    harness.gateway.result = ImageCallResult(
+        outcome=ProviderOutcome.FAILED,
+        provider_request_id=None,
+        raw_usage={"metrics": {"provider_error": {"code": "content_policy_violation"}}},
+        normalized_usage=normalize_usage(None),
+        error_code="IMAGE_REQUEST_FAILED",
+        error_message="HTTP 400",
+        retryable=True,
+        http_status=400,
+        api_latency_seconds=0.1,
+        actual_cost_micros=None,
+    )
+    result = asyncio.run(harness.provider().execute(_request(_envelope())))
+    assert result.error_code == "IMAGE_CONTENT_REJECTED"
+    assert result.retryable is False
+    assert "内容限制" in result.error_message
+    assert "controlled failure" not in result.error_message
+
+
 @pytest.mark.parametrize(
     ("trace_count", "raw_count", "expected"),
     [(None, 0, 1), (2, 2, 2), (1, 3, 1), (0, 0, 0)],

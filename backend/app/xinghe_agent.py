@@ -2743,7 +2743,12 @@ class TengliOpenAICompatibleGateway:
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
         started = time.perf_counter()
-        from .provider_diagnostics import known_image_route_rejection
+        from .provider_diagnostics import (
+            CONTENT_REJECTION_CODE,
+            CONTENT_REJECTION_MESSAGE,
+            image_content_refusal,
+            known_image_route_rejection,
+        )
 
         attempts: list[dict[str, Any]] = []
         fields = [
@@ -2804,7 +2809,8 @@ class TengliOpenAICompatibleGateway:
                     **({"error": _provider_error_summary(response)} if status >= 400 else {}),
                 })
                 if (
-                    (
+                    not image_content_refusal(response)
+                    and (
                         self._should_failover_status(status)
                         or known_image_route_rejection(status, response)
                     )
@@ -2822,7 +2828,8 @@ class TengliOpenAICompatibleGateway:
                 else self.medium_price_micros
             )
             if status >= 400:
-                uncertain = request.single_dispatch and (
+                content_rejected = image_content_refusal(response or {})
+                uncertain = not content_rejected and request.single_dispatch and (
                     status >= 500 or status in {408, 409}
                 )
                 rate_limited = status == 429
@@ -2843,10 +2850,12 @@ class TengliOpenAICompatibleGateway:
                     actual_cost_micros=_usage_cost_micros(raw_usage),
                     estimated_cost_micros=estimated_cost,
                     error_code=(
+                        CONTENT_REJECTION_CODE if content_rejected else
                         "IMAGE_RATE_LIMITED" if rate_limited else "IMAGE_REQUEST_FAILED"
                     ),
-                    error_message=f"Image request failed with HTTP {status}.",
-                    retryable=(rate_limited or status >= 500) and not uncertain,
+                    error_message=(CONTENT_REJECTION_MESSAGE if content_rejected else
+                                   f"Image request failed with HTTP {status}."),
+                    retryable=(rate_limited or status >= 500) and not uncertain and not content_rejected,
                     http_status=status,
                     rate_limited=rate_limited,
                 )
@@ -2906,6 +2915,12 @@ class TengliOpenAICompatibleGateway:
         ``mask`` contract.  The legacy branch remains for third-party callers
         that have not yet been upgraded.
         """
+
+        from .provider_diagnostics import (
+            CONTENT_REJECTION_CODE,
+            CONTENT_REJECTION_MESSAGE,
+            image_content_refusal,
+        )
 
         estimated_cost = (
             self.high_price_micros
@@ -2971,7 +2986,8 @@ class TengliOpenAICompatibleGateway:
                 except XingheAgentError:
                     raise
                 if (
-                    self._should_failover_status(status)
+                    not image_content_refusal(response)
+                    and self._should_failover_status(status)
                     and route_index < last_route_index
                 ):
                     continue
@@ -2979,6 +2995,7 @@ class TengliOpenAICompatibleGateway:
             raw_usage = _raw_usage(response)  # type: ignore[arg-type]
             normalized = normalize_usage(raw_usage)
             if status >= 400:
+                content_rejected = image_content_refusal(response or {})
                 rate_limited = status == 429
                 return MaskedEditCallResult(
                     outcome=ProviderOutcome.FAILED,
@@ -2996,12 +3013,14 @@ class TengliOpenAICompatibleGateway:
                     actual_cost_micros=_usage_cost_micros(raw_usage),
                     estimated_cost_micros=estimated_cost,
                     error_code=(
+                        CONTENT_REJECTION_CODE if content_rejected else
                         "LOCAL_EDIT_RATE_LIMITED"
                         if rate_limited
                         else "LOCAL_EDIT_REQUEST_FAILED"
                     ),
-                    error_message=f"Local-edit request failed with HTTP {status}.",
-                    retryable=rate_limited or status >= 500,
+                    error_message=(CONTENT_REJECTION_MESSAGE if content_rejected else
+                                   f"Local-edit request failed with HTTP {status}."),
+                    retryable=(rate_limited or status >= 500) and not content_rejected,
                     http_status=status,
                 )
             image_bytes = _image_bytes(response)  # type: ignore[arg-type]

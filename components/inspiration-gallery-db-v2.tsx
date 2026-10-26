@@ -3,6 +3,7 @@
 import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { validateImageUpload } from "@/lib/image-upload";
+import { jobNote } from "@/lib/jobs/presentation";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -149,7 +150,7 @@ export function InspirationGalleryDb() {
       // local composer state when its status changes.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setGenerating(false);
-      setComposeError(detail.error_message || "生成未完成，请稍后重试。");
+      setComposeError(detail.status === "cancelled" ? "任务已取消，素材和要求已保留。" : jobNote(detail));
       return;
     }
 

@@ -4363,7 +4363,16 @@
             "title": "Task Preset"
           },
           "type": {
-            "$ref": "#/components/schemas/JobType"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobType"
+              },
+              {
+                "const": "product_replica",
+                "type": "string"
+              }
+            ],
+            "title": "Type"
           },
           "updated_at": {
             "format": "date-time",
@@ -4668,7 +4677,16 @@
             "title": "Task Preset"
           },
           "type": {
-            "$ref": "#/components/schemas/JobType"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobType"
+              },
+              {
+                "const": "product_replica",
+                "type": "string"
+              }
+            ],
+            "title": "Type"
           },
           "updated_at": {
             "format": "date-time",

@@ -681,7 +681,8 @@ class PlanResponse(BaseModel):
 class JobListItemResponse(BaseModel):
     id: str
     workspace_id: str
-    type: JobType
+    # Retired executors remain readable without becoming valid creation types.
+    type: JobType | Literal["product_replica"]
     status: JobStatus
     stage: str | None
     display_name: str | None

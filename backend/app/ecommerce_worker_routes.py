@@ -13,7 +13,7 @@ import base64
 import hashlib
 import hmac
 import secrets
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from typing import Annotated, Any
@@ -24,9 +24,10 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from .auth import Principal, get_principal
-from .database import get_session
+from .database import get_session, read_snapshot
 from .domain import (
     CRAWL_TASK_TERMINAL_STATUSES,
     CrawlTaskStatus,
@@ -1497,17 +1498,13 @@ def complete_worker_task(
     return {"success": True, "data": {"task_id": task.id, "status": task.status}}
 
 
-@router.post("/{worker_id}/tasks/{task_id}/result")
-async def upload_worker_task_result(
+def _prepare_worker_task_result(
+    session: Session,
     worker_id: str,
     task_id: str,
     payload: WorkerResultUploadRequest,
-    request: Request,
-    session: SessionDependency,
-    authorization: Annotated[str | None, Header()] = None,
-) -> dict[str, Any]:
-    """Persist one structured product result while the worker lease is held."""
-
+    authorization: str | None,
+) -> str | dict[str, Any]:
     worker = _authorized_worker(session, worker_id, authorization)
     task = session.get(CrawlTaskRecord, task_id)
     if task is None or task.workspace_id != worker.workspace_id:
@@ -1569,36 +1566,17 @@ async def upload_worker_task_result(
             "商品结果至少需要标题或商品编号。",
         )
 
-    def lease_guard() -> bool:
-        return _profile_lease_is_owned(
-            request.app.state.session_factory,
-            profile_id=lease.profile_id,
-            task_id=task_id,
-            owner_id=worker.id,
-            fencing_token=payload.fencing_token,
-        )
+    return str(lease.profile_id)
 
-    try:
-        snapshot_id, enriched = await _persist_product_snapshot(
-            request.app,
-            task_id,
-            result_data,
-            lease_guard=lease_guard,
-        )
-    except _ProfileLeaseLost as exc:
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "TASK_LEASE_LOST",
-            "任务租约已失效，请停止本次执行。",
-        ) from exc
-    except Exception as exc:
-        raise ApiError(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "RESULT_PERSIST_FAILED",
-            "商品结果暂时无法保存，请稍后重试。",
-        ) from exc
 
-    with request.app.state.session_factory() as commit_session:
+def _finish_worker_task_result(
+    session_factory: Any,
+    task_id: str,
+    snapshot_id: str,
+    enriched: dict[str, Any],
+    lease_guard_in_session: Callable[[Session], bool],
+) -> None:
+    with session_factory() as commit_session:
         stored_task = commit_session.get(CrawlTaskRecord, task_id)
         if stored_task is None:
             raise ApiError(
@@ -1606,7 +1584,7 @@ async def upload_worker_task_result(
                 "CRAWL_TASK_NOT_FOUND",
                 "未找到指定抓取任务。",
             )
-        if not lease_guard():
+        if not lease_guard_in_session(commit_session):
             raise ApiError(
                 status.HTTP_409_CONFLICT,
                 "TASK_LEASE_LOST",
@@ -1626,11 +1604,88 @@ async def upload_worker_task_result(
             event_type="worker_completed",
         )
         commit_session.commit()
-    _release_profile_lease(
+
+
+@router.post("/{worker_id}/tasks/{task_id}/result")
+async def upload_worker_task_result(
+    worker_id: str,
+    task_id: str,
+    payload: WorkerResultUploadRequest,
+    request: Request,
+    session: SessionDependency,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Persist one structured product result while the worker lease is held."""
+
+    prepared = await run_in_threadpool(
+        read_snapshot,
+        session,
+        _prepare_worker_task_result,
+        session,
+        worker_id,
+        task_id,
+        payload,
+        authorization,
+    )
+    if isinstance(prepared, dict):
+        return prepared
+    profile_id = prepared
+    result_data = payload.result.model_dump(by_alias=True, exclude_none=True)
+
+    def lease_guard() -> bool:
+        return _profile_lease_is_owned(
+            request.app.state.session_factory,
+            profile_id=profile_id,
+            task_id=task_id,
+            owner_id=worker_id,
+            fencing_token=payload.fencing_token,
+        )
+
+    def lease_guard_in_session(check_session: Session) -> bool:
+        return _profile_lease_is_owned(
+            request.app.state.session_factory,
+            profile_id=profile_id,
+            task_id=task_id,
+            owner_id=worker_id,
+            fencing_token=payload.fencing_token,
+            session=check_session,
+        )
+
+    try:
+        snapshot_id, enriched = await _persist_product_snapshot(
+            request.app,
+            task_id,
+            result_data,
+            lease_guard=lease_guard,
+            lease_guard_in_session=lease_guard_in_session,
+        )
+    except _ProfileLeaseLost as exc:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "TASK_LEASE_LOST",
+            "任务租约已失效，请停止本次执行。",
+        ) from exc
+    except Exception as exc:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "RESULT_PERSIST_FAILED",
+            "商品结果暂时无法保存，请稍后重试。",
+        ) from exc
+
+    await run_in_threadpool(
+        _finish_worker_task_result,
         request.app.state.session_factory,
-        profile_id=lease.profile_id,
+        task_id,
+        snapshot_id,
+        enriched,
+        lease_guard_in_session,
+    )
+    await run_in_threadpool(
+        _release_profile_lease,
+        request.app.state.session_factory,
+        profile_id=profile_id,
         task_id=task_id,
-        owner_id=worker.id,
+        owner_id=worker_id,
         fencing_token=payload.fencing_token,
     )
     return {

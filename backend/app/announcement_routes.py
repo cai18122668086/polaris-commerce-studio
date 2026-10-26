@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
+from starlette.concurrency import run_in_threadpool
 
 from .admin_auth import is_admin
 from .announcement_schemas import (
@@ -18,7 +19,7 @@ from .announcement_schemas import (
 )
 from .auth import Principal, get_principal
 from .config import Settings
-from .database import get_session
+from .database import get_session, read_snapshot
 from .domain import AssetLifecycleStatus
 from .errors import ApiError
 from .models import AnnouncementRecord, AssetRecord
@@ -197,16 +198,7 @@ def list_public_announcements(
     )
 
 
-@router.get(
-    "/announcements/{announcement_id}/image",
-    name="get_announcement_image",
-    include_in_schema=False,
-)
-async def get_announcement_image(
-    announcement_id: str,
-    request: Request,
-    session: SessionDependency,
-) -> Response:
+def _announcement_image_asset(session: Session, announcement_id: str) -> AssetRecord:
     record = session.scalar(
         select(AnnouncementRecord).where(
             AnnouncementRecord.id == announcement_id,
@@ -232,6 +224,22 @@ async def get_announcement_image(
             "ANNOUNCEMENT_IMAGE_NOT_FOUND",
             "The announcement image was not found.",
         )
+    return asset
+
+
+@router.get(
+    "/announcements/{announcement_id}/image",
+    name="get_announcement_image",
+    include_in_schema=False,
+)
+async def get_announcement_image(
+    announcement_id: str,
+    request: Request,
+    session: SessionDependency,
+) -> Response:
+    asset = await run_in_threadpool(
+        read_snapshot, session, _announcement_image_asset, session, announcement_id
+    )
     body = await request.app.state.storage.read_bytes(asset.object_key)
     return Response(
         body,

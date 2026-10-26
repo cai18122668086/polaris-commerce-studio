@@ -98,6 +98,25 @@ def test_adapter_retains_gateway_error_for_durable_usage(harness):
     )
 
 
+@pytest.mark.parametrize(
+    ("trace_count", "raw_count", "expected"),
+    [(None, 0, 1), (2, 2, 2), (1, 3, 1), (0, 0, 0)],
+)
+def test_only_observed_route_receipts_override_adapter_call_count(
+    harness, trace_count, raw_count, expected
+):
+    usage = {"network_requests": raw_count}
+    if trace_count is not None:
+        usage["metrics"] = {"provider_attempts": [
+            {"route": f"route-{i}", "http_status": 200}
+            for i in range(trace_count)
+        ]}
+    harness.gateway.result = _success_result(raw_usage=usage)
+    result = asyncio.run(harness.provider().execute(_request()))
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert result.raw_usage["network_requests"] == expected
+
+
 def _image_bytes(
     size: tuple[int, int] = (64, 48),
     *,

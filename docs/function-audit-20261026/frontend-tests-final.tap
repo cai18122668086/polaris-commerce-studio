@@ -1,0 +1,1126 @@
+TAP version 13
+# (node:25280) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: asset handoff keeps original asset IDs, selection order and case identity
+ok 1 - asset handoff keeps original asset IDs, selection order and case identity
+  ---
+  duration_ms: 2.3515
+  ...
+# Subtest: handoff rejects wrong workspace, excess or invalid IDs and never overrides saved job inputs
+ok 2 - handoff rejects wrong workspace, excess or invalid IDs and never overrides saved job inputs
+  ---
+  duration_ms: 1.0081
+  ...
+# (node:25388) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: asset library includes older pages and deduplicates boundary records
+ok 3 - asset library includes older pages and deduplicates boundary records
+  ---
+  duration_ms: 1.9841
+  ...
+# Subtest: asset library rejects broken pagination instead of reporting an incomplete library
+ok 4 - asset library rejects broken pagination instead of reporting an incomplete library
+  ---
+  duration_ms: 0.8822
+  ...
+# Subtest: Aurora domestic main image keeps the six-page Harness workflow visible
+ok 5 - Aurora domestic main image keeps the six-page Harness workflow visible
+  ---
+  duration_ms: 6.5848
+  ...
+# Subtest: authentication retries only transient failures and never a final 4xx or offline state
+ok 6 - authentication retries only transient failures and never a final 4xx or offline state
+  ---
+  duration_ms: 82.9607
+  ...
+# Subtest: v2 distinguishes a stalled transport from a 200 response stalled in body reading
+ok 7 - v2 distinguishes a stalled transport from a 200 response stalled in body reading
+  ---
+  duration_ms: 208.108
+  ...
+# Subtest: v2 preserves both attempts and separates SDK waiting before a request and after a complete body
+ok 8 - v2 preserves both attempts and separates SDK waiting before a request and after a complete body
+  ---
+  duration_ms: 196.2517
+  ...
+# Subtest: late responses from an earlier attempt cannot overwrite the next attempt's status
+ok 9 - late responses from an earlier attempt cannot overwrite the next attempt's status
+  ---
+  duration_ms: 211.1687
+  ...
+# Subtest: untracked requests and frozen responses keep their original results and errors
+ok 10 - untracked requests and frozen responses keep their original results and errors
+  ---
+  duration_ms: 273.87
+  ...
+# Subtest: v2 nested evidence is bounded and strips secrets at every level
+ok 11 - v2 nested evidence is bounded and strips secrets at every level
+  ---
+  duration_ms: 368.7957
+  ...
+# Subtest: diagnostic delivery remains independent of a stalled SDK fetch interceptor
+ok 12 - diagnostic delivery remains independent of a stalled SDK fetch interceptor
+  ---
+  duration_ms: 167.3718
+  ...
+# Subtest: diagnostic endpoint records v2 successful response evidence without nested private fields
+ok 13 - diagnostic endpoint records v2 successful response evidence without nested private fields
+  ---
+  duration_ms: 117.1151
+  ...
+# Subtest: diagnostics whitelist fields and reject secret-bearing URLs or arbitrary request IDs
+ok 14 - diagnostics whitelist fields and reject secret-bearing URLs or arbitrary request IDs
+  ---
+  duration_ms: 596.348
+  ...
+# Subtest: auth hooks correlate requests without inspecting their bodies
+ok 15 - auth hooks correlate requests without inspecting their bodies
+  ---
+  duration_ms: 157.4401
+  ...
+# Subtest: frontend diagnostic endpoint bounds, deduplicates and sanitizes anonymous reports
+ok 16 - frontend diagnostic endpoint bounds, deduplicates and sanitizes anonymous reports
+  ---
+  duration_ms: 82.4096
+  ...
+# Subtest: SDK-thrown HTTP responses retain their status and server request ID
+ok 17 - SDK-thrown HTTP responses retain their status and server request ID
+  ---
+  duration_ms: 100.9451
+  ...
+# Subtest: auth and legal routes are public and account does not require a workspace
+ok 18 - auth and legal routes are public and account does not require a workspace
+  ---
+  duration_ms: 111.5799
+  ...
+# Subtest: auth checks terminate stalled SDK work and abort slow requests
+ok 19 - auth checks terminate stalled SDK work and abort slow requests
+  ---
+  duration_ms: 87.3974
+  ...
+# Subtest: registration requires explicit agreement and opens legal documents without leaving the form
+ok 20 - registration requires explicit agreement and opens legal documents without leaving the form
+  ---
+  duration_ms: 2.3752
+  ...
+# Subtest: legal documents use confirmed operator details and actual data flows
+ok 21 - legal documents use confirmed operator details and actual data flows
+  ---
+  duration_ms: 3.1135
+  ...
+# Subtest: returnTo accepts internal business routes and rejects open redirects or auth loops
+ok 22 - returnTo accepts internal business routes and rejects open redirects or auth loops
+  ---
+  duration_ms: 54.4517
+  ...
+# Subtest: final API 401 is centralised without browser token storage
+ok 23 - final API 401 is centralised without browser token storage
+  ---
+  duration_ms: 2.7293
+  ...
+# (node:22416) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: overlapping dialogs release scroll in order 0,1
+ok 24 - overlapping dialogs release scroll in order 0,1
+  ---
+  duration_ms: 1.6782
+  ...
+# Subtest: overlapping dialogs release scroll in order 1,0
+ok 25 - overlapping dialogs release scroll in order 1,0
+  ---
+  duration_ms: 0.2556
+  ...
+# Subtest: route cleanup restores previous styles and a subsequent dialog can lock again
+ok 26 - route cleanup restores previous styles and a subsequent dialog can lock again
+  ---
+  duration_ms: 0.2959
+  ...
+# (node:15512) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: a replica exists in global records before there is an image job
+ok 27 - a replica exists in global records before there is an image job
+  ---
+  duration_ms: 2.5414
+  ...
+# Subtest: job creation and retry do not duplicate the original replica record
+ok 28 - job creation and retry do not duplicate the original replica record
+  ---
+  duration_ms: 14.6097
+  ...
+# Subtest: current server summary wins over a stale retry job in the client cache
+ok 29 - current server summary wins over a stale retry job in the client cache
+  ---
+  duration_ms: 0.296
+  ...
+# Subtest: brand questions render automatic progress with no brandless declaration or upload choice
+ok 30 - brand questions render automatic progress with no brandless declaration or upload choice
+  ---
+  duration_ms: 26.199
+  ...
+# Subtest: a background-brand question is automatic while specification choices remain available
+ok 31 - a background-brand question is automatic while specification choices remain available
+  ---
+  duration_ms: 41.2978
+  ...
+# (node:22964) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: new website offers only refined detail
+ok 32 - new website offers only refined detail
+  ---
+  duration_ms: 1.686
+  ...
+# Subtest: choosing refined does not send the quick planning contract
+ok 33 - choosing refined does not send the quick planning contract
+  ---
+  duration_ms: 0.2289
+  ...
+# Subtest: saved task identity takes precedence over unsaved form state
+ok 34 - saved task identity takes precedence over unsaved form state
+  ---
+  duration_ms: 0.2468
+  ...
+# Subtest: ordinary confirmation keeps its original body and omits every auto field
+ok 35 - ordinary confirmation keeps its original body and omits every auto field
+  ---
+  duration_ms: 124.9062
+  ...
+# Subtest: explicit auto consent is submitted verbatim and keeps its key after unknown HTTP
+ok 36 - explicit auto consent is submitted verbatim and keeps its key after unknown HTTP
+  ---
+  duration_ms: 64.2122
+  ...
+# Subtest: authorization quote is opt-in and source/revision scoped
+ok 37 - authorization quote is opt-in and source/revision scoped
+  ---
+  duration_ms: 109.7049
+  ...
+# Subtest: recovery reuses its original source authorization and unknown-HTTP key
+ok 38 - recovery reuses its original source authorization and unknown-HTTP key
+  ---
+  duration_ms: 83.946
+  ...
+# Subtest: automatic polling stops on required reconciliation and never activates manual tasks
+ok 39 - automatic polling stops on required reconciliation and never activates manual tasks
+  ---
+  duration_ms: 45.6599
+  ...
+# Subtest: automatic delivery starts off and consent never follows a stale quote
+ok 40 - automatic delivery starts off and consent never follows a stale quote
+  ---
+  duration_ms: 12.7547
+  ...
+# Subtest: an automatic record never renders a post-generation human-confirmation checkbox
+ok 41 - an automatic record never renders a post-generation human-confirmation checkbox
+  ---
+  duration_ms: 1.761
+  ...
+# Subtest: job history hook follows every cursor and keeps recent-only cache separate
+ok 42 - job history hook follows every cursor and keeps recent-only cache separate
+  ---
+  duration_ms: 146.2394
+  ...
+# Subtest: paid review requires exact consent and retains the same HTTP key after transport unknown
+ok 43 - paid review requires exact consent and retains the same HTTP key after transport unknown
+  ---
+  duration_ms: 118.7574
+  ...
+# Subtest: saved recovery accepts only the original zero-model quote and preserves its retry key
+ok 44 - saved recovery accepts only the original zero-model quote and preserves its retry key
+  ---
+  duration_ms: 85.855
+  ...
+# Subtest: history uses the exact source endpoint and forwards its pagination cursor
+ok 45 - history uses the exact source endpoint and forwards its pagination cursor
+  ---
+  duration_ms: 62.4797
+  ...
+# Subtest: a report from another source is rejected before displaying or selecting it
+ok 46 - a report from another source is rejected before displaying or selecting it
+  ---
+  duration_ms: 71.7041
+  ...
+# Subtest: final-review choice changes its query key and sends only the explicit ID and SHA
+ok 47 - final-review choice changes its query key and sends only the explicit ID and SHA
+  ---
+  duration_ms: 80.951
+  ...
+# Subtest: authorization renders unticked, with a disabled submit button and exact visible reserve
+ok 48 - authorization renders unticked, with a disabled submit button and exact visible reserve
+  ---
+  duration_ms: 17.3866
+  ...
+# Subtest: original report text is escaped and missing observations never render as an accepted audit
+ok 49 - original report text is escaped and missing observations never render as an accepted audit
+  ---
+  duration_ms: 17.0269
+  ...
+# Subtest: final review retains every material residual and says which campaign review was not run
+ok 50 - final review retains every material residual and says which campaign review was not run
+  ---
+  duration_ms: 63.9169
+  ...
+# Subtest: download contains exact UTF-8 review and original record including residuals
+ok 51 - download contains exact UTF-8 review and original record including residuals
+  ---
+  duration_ms: 4.0798
+  ...
+# Subtest: another job, malformed fingerprint or incomplete/duplicate result cannot enable current review
+ok 52 - another job, malformed fingerprint or incomplete/duplicate result cannot enable current review
+  ---
+  duration_ms: 0.5936
+  ...
+# Subtest: completed delivery shows the accepted scope without a new approval checkbox
+ok 53 - completed delivery shows the accepted scope without a new approval checkbox
+  ---
+  duration_ms: 1.9232
+  ...
+# Subtest: finalize hook keeps main-image request and intent unchanged, and scopes detail keys to reviewed bytes
+ok 54 - finalize hook keeps main-image request and intent unchanged, and scopes detail keys to reviewed bytes
+  ---
+  duration_ms: 151.5268
+  ...
+# Subtest: the original historical document can be acknowledged without new native artifacts
+ok 55 - the original historical document can be acknowledged without new native artifacts
+  ---
+  duration_ms: 3.5272
+  ...
+# Subtest: historical acknowledgment cannot carry across another task, document or invalid plan
+ok 56 - historical acknowledgment cannot carry across another task, document or invalid plan
+  ---
+  duration_ms: 0.2336
+  ...
+# Subtest: current native approval still requires its original artifact protocol
+ok 57 - current native approval still requires its original artifact protocol
+  ---
+  duration_ms: 0.3887
+  ...
+# Subtest: complete native approval renders every row and safely escapes authored markup
+ok 58 - complete native approval renders every row and safely escapes authored markup
+  ---
+  duration_ms: 32.4566
+  ...
+# Subtest: download retains exact UTF-8 document and approval starts unchecked
+ok 59 - download retains exact UTF-8 document and approval starts unchecked
+  ---
+  duration_ms: 8.5388
+  ...
+# (node:16564) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: feature registry exposes the complete first-phase tool catalog
+ok 60 - feature registry exposes the complete first-phase tool catalog
+  ---
+  duration_ms: 3.8403
+  ...
+# Subtest: eight product-image routes share one job type, skill, and workspace template
+ok 61 - eight product-image routes share one job type, skill, and workspace template
+  ---
+  duration_ms: 0.2808
+  ...
+# Subtest: product-image registry includes the exact agreed preset set
+ok 62 - product-image registry includes the exact agreed preset set
+  ---
+  duration_ms: 0.3403
+  ...
+# Subtest: OpenAPI exposes every frontend integration operation
+ok 63 - OpenAPI exposes every frontend integration operation
+  ---
+  duration_ms: 13.6914
+  ...
+# Subtest: business UI is API-backed and runtime capability is fail-closed
+ok 64 - business UI is API-backed and runtime capability is fail-closed
+  ---
+  duration_ms: 3.7865
+  ...
+# Subtest: browser API client defaults to the same-origin edge proxy
+ok 65 - browser API client defaults to the same-origin edge proxy
+  ---
+  duration_ms: 0.9742
+  ...
+# Subtest: development auth bypass is explicit and skips SuperTokens initialization
+ok 66 - development auth bypass is explicit and skips SuperTokens initialization
+  ---
+  duration_ms: 1.6072
+  ...
+# Subtest: runtime sources contain no non-loopback remote URLs
+ok 67 - runtime sources contain no non-loopback remote URLs
+  ---
+  duration_ms: 329.9607
+  ...
+# Subtest: public service copy stays honest and icon actions have stable names
+ok 68 - public service copy stays honest and icon actions have stable names
+  ---
+  duration_ms: 14.3546
+  ...
+# Subtest: write actions use server allowed_actions as the only authority
+ok 69 - write actions use server allowed_actions as the only authority
+  ---
+  duration_ms: 50.9662
+  ...
+# Subtest: workflow pages submit the bounded inputs and failed-only retry scope
+ok 70 - workflow pages submit the bounded inputs and failed-only retry scope
+  ---
+  duration_ms: 11.176
+  ...
+# Subtest: upload inputs match the backend image contract and recover from file-level failures
+ok 71 - upload inputs match the backend image contract and recover from file-level failures
+  ---
+  duration_ms: 42.37
+  ...
+# Subtest: mask editor exposes brush, eraser, and rectangle authority tools
+ok 72 - mask editor exposes brush, eraser, and rectangle authority tools
+  ---
+  duration_ms: 1.1992
+  ...
+# (node:15264) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: saved edit candidates report review failure and the recovery action
+ok 73 - saved edit candidates report review failure and the recovery action
+  ---
+  duration_ms: 3.5792
+  ...
+# Subtest: failed job uses its item error when the job-level error is absent
+ok 74 - failed job uses its item error when the job-level error is absent
+  ---
+  duration_ms: 0.5838
+  ...
+# Subtest: unconfirmed image requests do not encourage automatic regeneration
+ok 75 - unconfirmed image requests do not encourage automatic regeneration
+  ---
+  duration_ms: 0.5489
+  ...
+# Subtest: help center search suggests matching FAQs and opens the selected answer
+ok 76 - help center search suggests matching FAQs and opens the selected answer
+  ---
+  duration_ms: 18.559
+  ...
+# Subtest: help center removes the crowded quick-start and feature-picker sections and uses a guide dialog
+ok 77 - help center removes the crowded quick-start and feature-picker sections and uses a guide dialog
+  ---
+  duration_ms: 9.5703
+  ...
+# Subtest: help center preserves retention guidance and uses online WeChat contact
+ok 78 - help center preserves retention guidance and uses online WeChat contact
+  ---
+  duration_ms: 13.1114
+  ...
+# Subtest: mobile primary navigation includes a direct help-center entry
+ok 79 - mobile primary navigation includes a direct help-center entry
+  ---
+  duration_ms: 5.1768
+  ...
+# (node:24196) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: the homepage grid covers all one-click tasks and their registered routes
+ok 80 - the homepage grid covers all one-click tasks and their registered routes
+  ---
+  duration_ms: 3.2828
+  ...
+# Subtest: all responsive production assets use supported formats with declared stable dimensions
+ok 81 - all responsive production assets use supported formats with declared stable dimensions
+  ---
+  duration_ms: 67.074
+  ...
+# Subtest: homepage cards expose hover, keyboard, mobile-once, and reduced-motion states
+ok 82 - homepage cards expose hover, keyboard, mobile-once, and reduced-motion states
+  ---
+  duration_ms: 17.1241
+  ...
+# (node:20852) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: feature IDs, routes, job types, and runtime capability keys remain unchanged
+ok 83 - feature IDs, routes, job types, and runtime capability keys remain unchanged
+  ---
+  duration_ms: 1.9605
+  ...
+# Subtest: the two navigation dropdowns are disjoint and resolve every item through the feature registry
+ok 84 - the two navigation dropdowns are disjoint and resolve every item through the feature registry
+  ---
+  duration_ms: 34.5808
+  ...
+# Subtest: the homepage AI toolbox excludes all one-click featured tasks
+ok 85 - the homepage AI toolbox excludes all one-click featured tasks
+  ---
+  duration_ms: 8.8589
+  ...
+# Subtest: Aurora domestic main image has discoverable entrypoints across the product
+ok 86 - Aurora domestic main image has discoverable entrypoints across the product
+  ---
+  duration_ms: 5.1344
+  ...
+# Subtest: homepage search recommendations, hot cards, and task status cues stay scoped
+ok 87 - homepage search recommendations, hot cards, and task status cues stay scoped
+  ---
+  duration_ms: 7.3316
+  ...
+# Subtest: homepage and navigation public copy no longer exposes internal implementation wording
+ok 88 - homepage and navigation public copy no longer exposes internal implementation wording
+  ---
+  duration_ms: 10.0383
+  ...
+# Subtest: the exact two desktop and two mobile homepage banners are present
+ok 89 - the exact two desktop and two mobile homepage banners are present
+  ---
+  duration_ms: 3.4704
+  ...
+# (node:3868) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: homepage search maps 一句话改图 to the intended feature
+ok 90 - homepage search maps 一句话改图 to the intended feature
+  ---
+  duration_ms: 3.9056
+  ...
+# Subtest: homepage search maps 耳机局部精修 to the intended feature
+ok 91 - homepage search maps 耳机局部精修 to the intended feature
+  ---
+  duration_ms: 0.7772
+  ...
+# Subtest: homepage search maps 耳机局部修改 to the intended feature
+ok 92 - homepage search maps 耳机局部修改 to the intended feature
+  ---
+  duration_ms: 1.6266
+  ...
+# Subtest: homepage search maps 商品局部修图 to the intended feature
+ok 93 - homepage search maps 商品局部修图 to the intended feature
+  ---
+  duration_ms: 0.5719
+  ...
+# Subtest: homepage search maps 想修改图片的一小部分 to the intended feature
+ok 94 - homepage search maps 想修改图片的一小部分 to the intended feature
+  ---
+  duration_ms: 0.6643
+  ...
+# Subtest: homepage search maps 商品换色 to the intended feature
+ok 95 - homepage search maps 商品换色 to the intended feature
+  ---
+  duration_ms: 0.6002
+  ...
+# Subtest: homepage search maps 耳机换颜色 to the intended feature
+ok 96 - homepage search maps 耳机换颜色 to the intended feature
+  ---
+  duration_ms: 0.5306
+  ...
+# Subtest: homepage search maps 更换商品背景 to the intended feature
+ok 97 - homepage search maps 更换商品背景 to the intended feature
+  ---
+  duration_ms: 0.5566
+  ...
+# Subtest: homepage search maps 给商品换背景 to the intended feature
+ok 98 - homepage search maps 给商品换背景 to the intended feature
+  ---
+  duration_ms: 0.9123
+  ...
+# Subtest: homepage search maps 亚马逊主图 to the intended feature
+ok 99 - homepage search maps 亚马逊主图 to the intended feature
+  ---
+  duration_ms: 29.2261
+  ...
+# Subtest: homepage search maps 商品详情图 to the intended feature
+ok 100 - homepage search maps 商品详情图 to the intended feature
+  ---
+  duration_ms: 0.6584
+  ...
+# Subtest: homepage search maps 一整套电商图 to the intended feature
+ok 101 - homepage search maps 一整套电商图 to the intended feature
+  ---
+  duration_ms: 0.4865
+  ...
+# Subtest: homepage search maps 商品试穿 to the intended feature
+ok 102 - homepage search maps 商品试穿 to the intended feature
+  ---
+  duration_ms: 0.55
+  ...
+# Subtest: homepage search maps 模特换姿势 to the intended feature
+ok 103 - homepage search maps 模特换姿势 to the intended feature
+  ---
+  duration_ms: 0.4215
+  ...
+# Subtest: homepage search maps 电商白底图 to the intended feature
+ok 104 - homepage search maps 电商白底图 to the intended feature
+  ---
+  duration_ms: 0.4725
+  ...
+# Subtest: homepage search normalizes case, punctuation, and extra spaces
+ok 105 - homepage search normalizes case, punctuation, and extra spaces
+  ---
+  duration_ms: 0.5767
+  ...
+# Subtest: homepage search returns an empty list for unrelated input
+ok 106 - homepage search returns an empty list for unrelated input
+  ---
+  duration_ms: 1.1095
+  ...
+# Subtest: homepage search keeps the strongest intent match ahead of broad keyword matches
+ok 107 - homepage search keeps the strongest intent match ahead of broad keyword matches
+  ---
+  duration_ms: 0.7254
+  ...
+# Subtest: homepage search removes weak broad-keyword matches when a strong intent match exists
+ok 108 - homepage search removes weak broad-keyword matches when a strong intent match exists
+  ---
+  duration_ms: 1.8503
+  ...
+# (node:20760) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: upload reuses its logical-intent key after a lost response
+ok 109 - upload reuses its logical-intent key after a lost response
+  ---
+  duration_ms: 1.8635
+  ...
+# Subtest: create-job reuses its logical-intent key after a lost response
+ok 110 - create-job reuses its logical-intent key after a lost response
+  ---
+  duration_ms: 0.1629
+  ...
+# Subtest: cancel-job reuses its logical-intent key after a lost response
+ok 111 - cancel-job reuses its logical-intent key after a lost response
+  ---
+  duration_ms: 0.1893
+  ...
+# Subtest: retry-job reuses its logical-intent key after a lost response
+ok 112 - retry-job reuses its logical-intent key after a lost response
+  ---
+  duration_ms: 0.1308
+  ...
+# Subtest: confirm-plan reuses its logical-intent key after a lost response
+ok 113 - confirm-plan reuses its logical-intent key after a lost response
+  ---
+  duration_ms: 0.2322
+  ...
+# Subtest: changed or abandoned input rotates the idempotency key
+ok 114 - changed or abandoned input rotates the idempotency key
+  ---
+  duration_ms: 0.2453
+  ...
+# Subtest: reselecting the same upload content preserves its intent signature
+ok 115 - reselecting the same upload content preserves its intent signature
+  ---
+  duration_ms: 17.3979
+  ...
+# Subtest: job status never authorizes a missing server action
+ok 116 - job status never authorizes a missing server action
+  ---
+  duration_ms: 0.7043
+  ...
+# Subtest: picker and drop validation preserve File identities, order, bytes and names
+ok 117 - picker and drop validation preserve File identities, order, bytes and names
+  ---
+  duration_ms: 1.8061
+  ...
+# Subtest: single-image roles reject multiple files before accepting any input
+ok 118 - single-image roles reject multiple files before accepting any input
+  ---
+  duration_ms: 0.8518
+  ...
+# Subtest: product roles enforce remaining capacity without silently truncating a batch
+ok 119 - product roles enforce remaining capacity without silently truncating a batch
+  ---
+  duration_ms: 0.5754
+  ...
+# Subtest: mixed unsupported batches are rejected before uploading or resetting an existing source
+ok 120 - mixed unsupported batches are rejected before uploading or resetting an existing source
+  ---
+  duration_ms: 0.5019
+  ...
+# Subtest: OS drops with missing MIME metadata retain supported raster extensions
+ok 121 - OS drops with missing MIME metadata retain supported raster extensions
+  ---
+  duration_ms: 0.5535
+  ...
+# Subtest: text and URL drags do not become file uploads
+ok 122 - text and URL drags do not become file uploads
+  ---
+  duration_ms: 0.4895
+  ...
+# (node:23868) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: archive action follows supported backend task types and complete outputs
+ok 123 - archive action follows supported backend task types and complete outputs
+  ---
+  duration_ms: 1.2684
+  ...
+# Subtest: preserved Amazon infrastructure failures keep download access without authorizing image failures
+ok 124 - preserved Amazon infrastructure failures keep download access without authorizing image failures
+  ---
+  duration_ms: 0.276
+  ...
+# (node:25188) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: history loads beyond 100 records without dropping legacy or boundary records
+ok 125 - history loads beyond 100 records without dropping legacy or boundary records
+  ---
+  duration_ms: 4.0583
+  ...
+# Subtest: history fails visibly when an older page fails or repeats its cursor
+ok 126 - history fails visibly when an older page fails or repeats its cursor
+  ---
+  duration_ms: 3.1438
+  ...
+# (node:5372) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: zero-progress active tasks show activity without inventing completed items
+ok 127 - zero-progress active tasks show activity without inventing completed items
+  ---
+  duration_ms: 1.2459
+  ...
+# Subtest: terminal and user-action states override stale generating stage and stop activity
+ok 128 - terminal and user-action states override stale generating stage and stop activity
+  ---
+  duration_ms: 0.6361
+  ...
+# Subtest: known common phases use user-facing copy, unknown provider stages stay generic
+ok 129 - known common phases use user-facing copy, unknown provider stages stay generic
+  ---
+  duration_ms: 0.2746
+  ...
+# Subtest: elapsed time survives refresh using the saved timestamp while completion stays fixed
+ok 130 - elapsed time survives refresh using the saved timestamp while completion stays fixed
+  ---
+  duration_ms: 3.1657
+  ...
+# Subtest: invalid timestamps and clock skew do not produce NaN or negative waiting time
+ok 131 - invalid timestamps and clock skew do not produce NaN or negative waiting time
+  ---
+  duration_ms: 7.2848
+  ...
+# Subtest: legacy timestamps without a zone represent UTC just like offset-aware records
+ok 132 - legacy timestamps without a zone represent UTC just like offset-aware records
+  ---
+  duration_ms: 0.4532
+  ...
+# Subtest: elapsed labels remain readable for short and long tasks
+ok 133 - elapsed labels remain readable for short and long tasks
+  ---
+  duration_ms: 0.4285
+  ...
+# Subtest: rendered feedback distinguishes indeterminate progress and preserves reconnection and failure details
+ok 134 - rendered feedback distinguishes indeterminate progress and preserves reconnection and failure details
+  ---
+  duration_ms: 1508.3058
+  ...
+# (node:3384) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: content refusal has an actionable safe summary for new and historical jobs
+ok 135 - content refusal has an actionable safe summary for new and historical jobs
+  ---
+  duration_ms: 1.1533
+  ...
+# Subtest: technical rejection and unknown outcome keep their distinct recovery messages
+ok 136 - technical rejection and unknown outcome keep their distinct recovery messages
+  ---
+  duration_ms: 0.2022
+  ...
+# (node:24060) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: product-image list jobs route by their explicit task preset
+ok 137 - product-image list jobs route by their explicit task preset
+  ---
+  duration_ms: 1.1772
+  ...
+# Subtest: scene-main detail jobs route from configuration.settings.task_type
+ok 138 - scene-main detail jobs route from configuration.settings.task_type
+  ---
+  duration_ms: 0.4878
+  ...
+# Subtest: missing or unknown product-image presets fall back to job details
+ok 139 - missing or unknown product-image presets fall back to job details
+  ---
+  duration_ms: 0.2372
+  ...
+# Subtest: the jobs page opens a fallback jobId in the detail panel
+ok 140 - the jobs page opens a fallback jobId in the detail panel
+  ---
+  duration_ms: 7.8121
+  ...
+# Subtest: model pose catalog exposes the exact stable 21 male and 39 female slugs
+ok 141 - model pose catalog exposes the exact stable 21 male and 39 female slugs
+  ---
+  duration_ms: 4.4424
+  ...
+# Subtest: catalog points only at public WebP derivatives and keeps originals private
+ok 142 - catalog points only at public WebP derivatives and keeps originals private
+  ---
+  duration_ms: 324.8514
+  ...
+# Subtest: private originals have the catalogued hashes, byte sizes, and PNG dimensions
+ok 143 - private originals have the catalogued hashes, byte sizes, and PNG dimensions
+  ---
+  duration_ms: 474.4921
+  ...
+# (node:21748) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: model pose transfer is an independent registered workspace
+ok 144 - model pose transfer is an independent registered workspace
+  ---
+  duration_ms: 6.1817
+  ...
+# Subtest: embedded browser catalog has stable slugs and original hashes for all 60 poses
+ok 145 - embedded browser catalog has stable slugs and original hashes for all 60 poses
+  ---
+  duration_ms: 2.3718
+  ...
+# Subtest: pose browsing uses responsive thumbnails and a non-cropped 960 preview
+ok 146 - pose browsing uses responsive thumbnails and a non-cropped 960 preview
+  ---
+  duration_ms: 3.9275
+  ...
+# Subtest: built-in poses materialize through the fixed endpoint before the unified job API
+ok 147 - built-in poses materialize through the fixed endpoint before the unified job API
+  ---
+  duration_ms: 6.1381
+  ...
+# Subtest: completed or failed tasks can replace the source image without refreshing the page
+ok 148 - completed or failed tasks can replace the source image without refreshing the page
+  ---
+  duration_ms: 16.4836
+  ...
+# Subtest: custom pose upload is exclusive with catalog selection and submission is fail closed
+ok 149 - custom pose upload is exclusive with catalog selection and submission is fail closed
+  ---
+  duration_ms: 3.3951
+  ...
+# Subtest: new frontend files are valid UTF-8 without replacement placeholders
+ok 150 - new frontend files are valid UTF-8 without replacement placeholders
+  ---
+  duration_ms: 18.9117
+  ...
+# Subtest: all new standalone feature routes render the shared commerce workspace
+ok 151 - all new standalone feature routes render the shared commerce workspace
+  ---
+  duration_ms: 17.9172
+  ...
+# Subtest: standalone workspaces submit the exact backend job families
+ok 152 - standalone workspaces submit the exact backend job families
+  ---
+  duration_ms: 1.4877
+  ...
+# Subtest: creative and reference workspaces preserve the full count and aspect-ratio controls
+ok 153 - creative and reference workspaces preserve the full count and aspect-ratio controls
+  ---
+  duration_ms: 28.2742
+  ...
+# Subtest: inspiration automatic ratio remains dynamic instead of silently becoming square
+ok 154 - inspiration automatic ratio remains dynamic instead of silently becoming square
+  ---
+  duration_ms: 11.3352
+  ...
+# Subtest: commerce workspaces do not require a guessed product name
+ok 155 - commerce workspaces do not require a guessed product name
+  ---
+  duration_ms: 5.2224
+  ...
+# Subtest: Amazon fixed pack delegates all 21 JobItems to the backend
+ok 156 - Amazon fixed pack delegates all 21 JobItems to the backend
+  ---
+  duration_ms: 1.5267
+  ...
+# Subtest: Amazon keeps one primary source role, one general reference role, and five classified roles
+ok 157 - Amazon keeps one primary source role, one general reference role, and five classified roles
+  ---
+  duration_ms: 2.5667
+  ...
+# Subtest: Amazon simplified source roles share the backend eight-image limit
+ok 158 - Amazon simplified source roles share the backend eight-image limit
+  ---
+  duration_ms: 1.6929
+  ...
+# Subtest: Amazon form exposes only three concise Chinese content fields
+ok 159 - Amazon form exposes only three concise Chinese content fields
+  ---
+  duration_ms: 2.6485
+  ...
+# Subtest: Amazon automatically generates after planning and retains historical confirmation
+ok 160 - Amazon automatically generates after planning and retains historical confirmation
+  ---
+  duration_ms: 2.2122
+  ...
+# Subtest: Amazon distinguishes technical completion from business quality review
+ok 161 - Amazon distinguishes technical completion from business quality review
+  ---
+  duration_ms: 1.197
+  ...
+# Subtest: Amazon review infrastructure failure preserves generated-image semantics
+ok 162 - Amazon review infrastructure failure preserves generated-image semantics
+  ---
+  duration_ms: 3.4998
+  ...
+# Subtest: new workspaces are runtime gated and never fabricate output
+ok 163 - new workspaces are runtime gated and never fabricate output
+  ---
+  duration_ms: 1.7203
+  ...
+# Subtest: public navigation uses registry route matching instead of local-edit fallback
+ok 164 - public navigation uses registry route matching instead of local-edit fallback
+  ---
+  duration_ms: 2.2785
+  ...
+# Subtest: detail workspace automatically starts submitted suite plans and retains historical confirmation
+ok 165 - detail workspace automatically starts submitted suite plans and retains historical confirmation
+  ---
+  duration_ms: 1.1877
+  ...
+# Subtest: completed detail and Amazon packs expose real attachment and ZIP downloads
+ok 166 - completed detail and Amazon packs expose real attachment and ZIP downloads
+  ---
+  duration_ms: 4.7931
+  ...
+# (node:24512) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: typed API buckets do not re-filter valid 1688 CDN names
+ok 167 - typed API buckets do not re-filter valid 1688 CDN names
+  ---
+  duration_ms: 1.541
+  ...
+# Subtest: classified 1688 asset names are preserved in typed API buckets
+ok 168 - classified 1688 asset names are preserved in typed API buckets
+  ---
+  duration_ms: 0.3598
+  ...
+# Subtest: variable-size main-image buckets keep all valid images
+ok 169 - variable-size main-image buckets keep all valid images
+  ---
+  duration_ms: 1.0596
+  ...
+# Subtest: CDN query variants do not collapse distinct assets by pathname alone
+ok 170 - CDN query variants do not collapse distinct assets by pathname alone
+  ---
+  duration_ms: 0.5877
+  ...
+# Subtest: explicit UI assets remain filtered while product-sized images remain valid
+ok 171 - explicit UI assets remain filtered while product-sized images remain valid
+  ---
+  duration_ms: 0.1622
+  ...
+# Subtest: dynamic product-image route renders one shared workspace for all presets
+ok 172 - dynamic product-image route renders one shared workspace for all presets
+  ---
+  duration_ms: 8.5198
+  ...
+# Subtest: workspace uploads role-based assets and submits a bounded product_image job
+ok 173 - workspace uploads role-based assets and submits a bounded product_image job
+  ---
+  duration_ms: 15.9479
+  ...
+# Subtest: asset picker prevents cross-role duplication and result grid uses deliverable assets
+ok 174 - asset picker prevents cross-role duplication and result grid uses deliverable assets
+  ---
+  duration_ms: 15.2387
+  ...
+# Subtest: tools directory is registry driven and keeps one primary action per card
+ok 175 - tools directory is registry driven and keeps one primary action per card
+  ---
+  duration_ms: 2.8307
+  ...
+# Subtest: server-renders the authentication gate for protected routes
+ok 176 - server-renders the authentication gate for protected routes
+  ---
+  duration_ms: 710.0615
+  ...
+# Subtest: server-renders the public login route
+ok 177 - server-renders the public login route
+  ---
+  duration_ms: 108.6555
+  ...
+# Subtest: core product routes render
+ok 178 - core product routes render
+  ---
+  duration_ms: 250.186
+  ...
+# (node:19388) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: native and legacy replica jobs restore the authenticated replica session
+ok 179 - native and legacy replica jobs restore the authenticated replica session
+  ---
+  duration_ms: 1.0806
+  ...
+# Subtest: the replica source selector and execution modes have separate state
+ok 180 - the replica source selector and execution modes have separate state
+  ---
+  duration_ms: 4.3194
+  ...
+# (node:11144) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: exhausted quality reviews explain retained plans instead of suggesting another transport retry
+ok 181 - exhausted quality reviews explain retained plans instead of suggesting another transport retry
+  ---
+  duration_ms: 1.3105
+  ...
+# Subtest: planning progress explains retained work without presenting a failed screen as a restart
+ok 182 - planning progress explains retained work without presenting a failed screen as a restart
+  ---
+  duration_ms: 0.2518
+  ...
+# Subtest: replanning and delayed poll responses do not move progress backwards
+ok 183 - replanning and delayed poll responses do not move progress backwards
+  ---
+  duration_ms: 0.3715
+  ...
+# Subtest: an explicitly new analysis or job may reset progress
+ok 184 - an explicitly new analysis or job may reset progress
+  ---
+  duration_ms: 0.1965
+  ...
+# Subtest: a terminal failure is not revived by an old generating reply
+ok 185 - a terminal failure is not revived by an old generating reply
+  ---
+  duration_ms: 0.2687
+  ...
+# Subtest: a delayed reply for the old job cannot replace a newer retry
+ok 186 - a delayed reply for the old job cannot replace a newer retry
+  ---
+  duration_ms: 0.8812
+  ...
+# Subtest: analysis completion and generation share one scale, failure is not success 100%
+ok 187 - analysis completion and generation share one scale, failure is not success 100%
+  ---
+  duration_ms: 0.3479
+  ...
+# Subtest: failed, partial and cancelled suites never mark successful delivery in the stepper
+ok 188 - failed, partial and cancelled suites never mark successful delivery in the stepper
+  ---
+  duration_ms: 0.2739
+  ...
+# Subtest: segmentation failures explain affected references without advertising a blind resume
+ok 189 - segmentation failures explain affected references without advertising a blind resume
+  ---
+  duration_ms: 0.6116
+  ...
+# Subtest: legacy style failures retain materials without claiming a missing analysis checkpoint
+ok 190 - legacy style failures retain materials without claiming a missing analysis checkpoint
+  ---
+  duration_ms: 0.5542
+  ...
+# (node:18216) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: valid square and long product images remain usable
+ok 191 - valid square and long product images remain usable
+  ---
+  duration_ms: 1.4157
+  ...
+# Subtest: only successfully decoded undersized images are classified as blank
+ok 192 - only successfully decoded undersized images are classified as blank
+  ---
+  duration_ms: 11.1914
+  ...
+# Subtest: all entry documents share the replica image policy across SPA navigation
+ok 193 - all entry documents share the replica image policy across SPA navigation
+  ---
+  duration_ms: 3.6565
+  ...
+# Subtest: source selection advertises only supported data providers
+ok 194 - source selection advertises only supported data providers
+  ---
+  duration_ms: 1.0976
+  ...
+# Subtest: shared text pairs remain readable on normal, selected and disabled surfaces
+ok 195 - shared text pairs remain readable on normal, selected and disabled surfaces
+  ---
+  duration_ms: 6.9859
+  ...
+# Subtest: production commands apply the vinext patch without install scripts
+ok 196 - production commands apply the vinext patch without install scripts
+  ---
+  duration_ms: 5.4681
+  ...
+# Subtest: vinext production patch is fresh-install safe and idempotent
+ok 197 - vinext production patch is fresh-install safe and idempotent
+  ---
+  duration_ms: 269.8234
+  ...
+# (node:23080) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: display coordinates map to original raster pixels
+ok 198 - display coordinates map to original raster pixels
+  ---
+  duration_ms: 2.0311
+  ...
+# Subtest: mask export data is binary black/white with opaque alpha
+ok 199 - mask export data is binary black/white with opaque alpha
+  ---
+  duration_ms: 0.3686
+  ...
+# Subtest: empty and full-image masks are rejected
+ok 200 - empty and full-image masks are rejected
+  ---
+  duration_ms: 0.5315
+  ...
+# Subtest: only deliverable output assets become visible results
+ok 201 - only deliverable output assets become visible results
+  ---
+  duration_ms: 0.2224
+  ...
+# Subtest: input, reference, intermediate, and output assets stay in separate groups
+ok 202 - input, reference, intermediate, and output assets stay in separate groups
+  ---
+  duration_ms: 0.4671
+  ...
+# Subtest: retry visibility follows allowed_actions only
+ok 203 - retry visibility follows allowed_actions only
+  ---
+  duration_ms: 0.1682
+  ...
+# Subtest: job detail displays stages without fabricating unknown values
+ok 204 - job detail displays stages without fabricating unknown values
+  ---
+  duration_ms: 0.2095
+  ...
+# Subtest: job detail labels item statuses and asset roles from backend values
+ok 205 - job detail labels item statuses and asset roles from backend values
+  ---
+  duration_ms: 1.0743
+  ...
+# Subtest: job record list uses the summary contract instead of per-card detail queries
+ok 206 - job record list uses the summary contract instead of per-card detail queries
+  ---
+  duration_ms: 9.95
+  ...
+# Subtest: job detail renders explicit output, empty, download, and safe failure states
+ok 207 - job detail renders explicit output, empty, download, and safe failure states
+  ---
+  duration_ms: 2.4519
+  ...
+# Subtest: workspace header starts a fresh task instead of rendering an inert button
+ok 208 - workspace header starts a fresh task instead of rendering an inert button
+  ---
+  duration_ms: 20.9467
+  ...
+# (node:15324) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: history restores server settings and input roles without promoting output or mask assets
+ok 209 - history restores server settings and input roles without promoting output or mask assets
+  ---
+  duration_ms: 2.4837
+  ...
+# Subtest: switching task snapshots does not carry parameters or assets from the previous task
+ok 210 - switching task snapshots does not carry parameters or assets from the previous task
+  ---
+  duration_ms: 0.2783
+  ...
+# Subtest: missing or malformed saved sections remain empty instead of inventing source selections
+ok 211 - missing or malformed saved sections remain empty instead of inventing source selections
+  ---
+  duration_ms: 0.2154
+  ...
+# Subtest: saved values validate primitive types and enum options
+ok 212 - saved values validate primitive types and enum options
+  ---
+  duration_ms: 0.321
+  ...
+# Subtest: a task must match both the workspace type and the product preset
+ok 213 - a task must match both the workspace type and the product preset
+  ---
+  duration_ms: 0.2308
+  ...
+# Subtest: model pose history keeps the full resolution source, pose and catalog identity separate
+ok 214 - model pose history keeps the full resolution source, pose and catalog identity separate
+  ---
+  duration_ms: 0.178
+  ...
+1..214
+# tests 214
+# suites 0
+# pass 214
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4800.0765

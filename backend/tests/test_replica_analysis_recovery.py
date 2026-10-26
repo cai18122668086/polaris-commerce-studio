@@ -153,7 +153,7 @@ def test_legacy_v5_failure_reuses_intake_with_original_provenance(tmp_path):
     upgraded = prepare_segmentation_retry(values)
     assert upgraded["_analysis_lineage"][0] == parent
     assert "_analysis_checkpoint" not in upgraded
-    assert upgraded["_exact_model_protocol"] == "exact-compact-v6"
+    assert upgraded["_exact_model_protocol"] == "exact-compact-v7"
 
 
 def style_run(tmp_path):

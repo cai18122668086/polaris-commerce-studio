@@ -15,6 +15,7 @@ from uuid import uuid4
 from PIL import Image
 
 from .models import JobRecord
+from .replica_canvas import delivery_receipt, native_budget_matches
 from .replica_exact_contracts import canonical_hash
 from .replica_native import ReplicaNativeError, contained, digest, read_json, write_json
 from .replica_retry import _document
@@ -26,6 +27,18 @@ V4_BINDING = {
         "015928ce4643858ca182ed38e8a24c444ea866047548bc0e75a8744436999e83"
     ),
 }
+V5_BINDING = {
+    "version": "exact-compact-v5",
+    "content_sha256": (
+        "82dddb7fffe4f733d3a5879c91ed8ba9f21dd40a4abaa3d05168c31f9ca8e438"
+    ),
+}
+V6_BINDING = {
+    "version": "exact-compact-v6",
+    "content_sha256": (
+        "67e52f5ff635e39f077a9819ceff2a0ee8d4fded1f44b3e0ffab2c9e3bca5c11"
+    ),
+}
 
 
 def validate_source(
@@ -34,7 +47,7 @@ def validate_source(
     from .replica_exact_compact import protocol_binding
     from .replica_execution_resume import V3_BINDING
 
-    allowed = (V3_BINDING, V4_BINDING, protocol_binding())
+    allowed = (V3_BINDING, V4_BINDING, V5_BINDING, V6_BINDING, protocol_binding())
     if (
         previous.get("model_protocol") not in allowed
         or approved.get("model_protocol") not in allowed
@@ -96,6 +109,7 @@ def retry_source(
         "exact-compact-v4",
         "exact-compact-v5",
         "exact-compact-v6",
+        "exact-compact-v7",
     }:
         return None
     with session_factory() as session:
@@ -180,9 +194,12 @@ def inspect_artwork(
         image.load()
         size = image.size
     expected = [canvas["width"], canvas["height"]]
+    record: dict[str, Any] = {"artwork": str(file), "sha256": sha, "size": list(size)}
     if not _canvas_matches(expected, size, min(expected)):
-        raise ReplicaCanvasMismatch(expected, size)
-    return {"artwork": str(file), "sha256": sha, "size": list(size)}
+        if not native_budget_matches(expected, size):
+            raise ReplicaCanvasMismatch(expected, size)
+        record["delivery_canvas"] = delivery_receipt(expected, size, sha)
+    return record
 
 
 def validate_direct_state(run: Any) -> None:

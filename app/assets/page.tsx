@@ -171,7 +171,7 @@ export default function AssetsPage() {
               <button onClick={() => setSelected([])}>取消选择</button>
             </div>
           )}
-          <div className="asset-grid">
+          <div className="asset-grid" data-empty={assets.length === 0 || undefined}>
             <ImageDropZone label="素材中心" className={dropStyles.assetTile} inputRef={fileInput}
               disabled={!workspace} busy={upload.isPending} showHint={false} onFiles={(files) => onFile(files[0])}>
               {({ openFileDialog, disabled: uploadDisabled, busy: uploadingFile }) => <button type="button" className="upload-asset-card" onClick={openFileDialog} disabled={uploadDisabled}>

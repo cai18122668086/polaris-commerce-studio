@@ -12,6 +12,7 @@ import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 import { StatusBadge } from "./status-badge";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 
 const stageLabels: Record<string, string> = {
   draft: "草稿",
@@ -54,6 +55,7 @@ export function TaskDrawer({
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const drawerRef = useRef<HTMLElement>(null);
+  useBodyScrollLock(open);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
   const { workspace } = useWorkspace();

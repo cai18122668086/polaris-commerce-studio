@@ -8,9 +8,9 @@
 .secondary:disabled, .primary:disabled { cursor: wait; opacity: .6; }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 34px; }
 .metricCard { display: flex; gap: 13px; min-height: 126px; padding: 19px; border: 1px solid #ececf2; border-radius: 17px; background: linear-gradient(145deg, #fff, #fafaff); box-shadow: 0 12px 30px rgba(38, 33, 78, .04); }
-.metricCardWarn { border-color: #f1d4c6; background: #fffaf7; }
+.metricCardWarn { border-color: #f3eef9; background: #fffaf7; }
 .metricIcon { display: grid; flex: 0 0 40px; width: 40px; height: 40px; place-items: center; border-radius: 12px; background: #f0edff; color: #7964ef; }
-.metricCardWarn .metricIcon { background: #fff0e8; color: #da724d; }
+.metricCardWarn .metricIcon { background: #f3eef9; color: #89769f; }
 .metricCard small, .platformHeading small, .accountRow small { display: block; color: #9b9eac; font-size: 11px; }
 .metricCard strong { display: block; margin-top: 3px; font-size: 27px; letter-spacing: -.04em; }
 .metricCard p { margin: 5px 0 0; color: #7c8193; font-size: 11px; }
@@ -25,7 +25,7 @@
 .platformHeading { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .platformHeading strong { font-size: 16px; }
 .platformHeading small { margin-top: 5px; }
-.statusNeedsLogin { padding: 5px 8px; color: #b75331; background: #fff0e8; }
+.statusNeedsLogin { padding: 5px 8px; color: #675a88; background: #f3eef9; }
 .statusReady { padding: 5px 8px; color: #3c8d67; background: #edf9f0; }
 .platformStats { display: flex; gap: 16px; margin: 17px 0 12px; color: #8b8e9f; font-size: 11px; }
 .platformStats b { margin-left: 3px; color: #3f4256; font-size: 13px; }
@@ -36,10 +36,10 @@
 .accountMain small { margin-top: 4px; }
 .dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: #c4c6d0; }
 .dotReady { background: #62b78b; box-shadow: 0 0 0 3px #e6f7ed; }
-.dotWarn { background: #df784e; box-shadow: 0 0 0 3px #fff0e8; }
+.dotWarn { background: #89769f; box-shadow: 0 0 0 3px #f3eef9; }
 .accountAside { display: flex; gap: 6px; align-items: center; }
 .busy { padding: 4px 7px; color: #7061d5; background: #f0edff; }
-.relogin { padding: 4px 7px; color: #b75331; background: #fff0e8; }
+.relogin { padding: 4px 7px; color: #675a88; background: #f3eef9; }
 .empty { margin: 0; padding: 15px 0 4px; color: #9b9eac; font-size: 12px; }
 .plannedGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .plannedGrid > div { padding: 15px; border-radius: 13px; background: #fafaff; }

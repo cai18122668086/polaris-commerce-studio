@@ -19,11 +19,13 @@ export function HelpPanel({
   taskTitle,
   assetSummary,
   outputSummary,
+  currentStep,
 }: {
   mode: "local-edit" | "detail-pack";
   taskTitle?: string;
   assetSummary?: string;
   outputSummary?: string;
+  currentStep?: number;
 }) {
   const local = mode === "local-edit";
   const runtime = useRuntimeStatus();
@@ -58,6 +60,7 @@ export function HelpPanel({
 
   return (
     <aside className="help-panel">
+      {!local && <figure className="workspace-example"><img src="/images/homepage-features/native-v2-webp/04-detail-primary-desktop.webp" alt="商品详情图的视觉与排版参考" width={1374} height={1145} /><figcaption>从商品卖点，到完整的详情视觉</figcaption></figure>}
       <div className="help-panel__title">
         <span>
           <BookOpen size={17} />
@@ -105,9 +108,10 @@ export function HelpPanel({
           {steps.map((step, index) => (
             <li
               key={step}
-              className={index < 2 ? "done" : index === 2 ? "current" : ""}
+              aria-current={index === (currentStep ?? 2) ? "step" : undefined}
+              className={index < (currentStep ?? 2) ? "done" : index === (currentStep ?? 2) ? "current" : ""}
             >
-              <i>{index < 2 ? <CheckCircle2 size={15} /> : index + 1}</i>
+              <i>{index < (currentStep ?? 2) ? <CheckCircle2 size={15} /> : index + 1}</i>
               <span>{step}</span>
             </li>
           ))}

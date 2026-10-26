@@ -36,8 +36,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .top-nav .top-nav__inner { max-width: 1680px; padding: 0 32px; gap: 12px; }
 .top-nav .top-nav__brand { flex-basis: 185px; }
 .brand-lockup { gap: 9px; color: #191b18; }
-.brand-lockup .brand-mark { width: 34px; height: 34px; flex-shrink: 0; border: 0; border-radius: 9px; background: #f26343; box-shadow: none; overflow: hidden; }
-.brand-lockup .brand-mark b { background: #ffcfbf; }
+.brand-lockup .brand-mark { width: 37px; height: 37px; flex-shrink: 0; border: 0; border-radius: 11px; background: transparent; box-shadow: none; overflow: hidden; }
+.brand-lockup .brand-mark::before { content: none; }
+.brand-lockup .brand-mark img { display: block; width: 100%; height: 100%; }
 .brand-lockup .brand-copy strong { color: #191b18; font-size: 20px; font-weight: 900; letter-spacing: -.06em; line-height: 1.3; }
 .brand-lockup .brand-copy small { color: #777a72; font-size: 9px; letter-spacing: .14em; }
 .top-nav .main-nav { gap: 0; }

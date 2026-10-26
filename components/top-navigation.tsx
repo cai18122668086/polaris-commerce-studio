@@ -19,6 +19,7 @@ import { useCreationRecords } from "@/features/jobs/api/creation-records";
 import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { getFeatureByRoute } from "@/lib/feature-registry";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import {
   AI_NAVIGATION_MENUS,
   ALL_TOOLS_MENU,
@@ -121,6 +122,8 @@ export function TopNavigation({
     };
   }, [openMenu]);
 
+  useBodyScrollLock(openMenu === "mobile");
+
   const renderMegaMenu = (menu: NavigationMenuDefinition) => (
     <NavigationMegaMenu
       key={menu.key}
@@ -189,7 +192,7 @@ export function TopNavigation({
           <Link href="/assets" className="commerce-workspace-link" aria-label="素材中心">素材</Link>
           <Link href="/jobs" className="commerce-workspace-link" aria-label="生成记录">记录</Link>
           <AnnouncementBanner />
-          <Link href="/dashboard" className="usage-pill" aria-label="个人控制台">
+          <Link href="/dashboard" className="usage-pill" aria-label="个人控制台" title="套餐与用量">
             <Zap size={15} />
             <span>个人控制台</span>
           </Link>

@@ -14,7 +14,7 @@ export function HomeHero() {
     const hero = heroRef.current;
     if (!hero || paused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let frame = 0;
-    let current = { x: hero.clientWidth * .72, y: hero.clientHeight * .68 };
+    const current = { x: hero.clientWidth * .72, y: hero.clientHeight * .68 };
     let target = { ...current };
     const draw = () => {
       current.x += (target.x - current.x) * .095;

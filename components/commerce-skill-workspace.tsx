@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { ReplicaSelect } from "@/components/replica-select";
 import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
@@ -950,46 +951,18 @@ export function CommerceSkillWorkspace({
                   <div className={styles.formGrid}>
                     <label>
                       <span>目标平台</span>
-                      <select
-                        value={platformCode}
-                        onChange={(event) => setPlatformCode(event.target.value)}
-                        disabled={Boolean(jobId)}
-                      >
-                        {platforms.map((platform) => (
-                          <option key={platform.value} value={platform.value}>{platform.label}</option>
-                        ))}
-                      </select>
+                      <ReplicaSelect label="目标平台" value={platformCode} onChange={setPlatformCode} disabled={Boolean(jobId)} options={platforms.map(platform => [platform.value, platform.label] as const)} />
                       <small>用于匹配不同渠道的构图与视觉规范。图片尺寸：{selectedSizeLabel}</small>
                     </label>
                     <label>
                       <span>图片文案语言</span>
-                      <select
-                        value={language}
-                        onChange={(event) => setLanguage(event.target.value)}
-                        disabled={Boolean(jobId)}
-                      >
-                        {(featureId === "reference-remix" && !jobId ? languageOptions.filter(option => option.value === "zh-CN") : languageOptions).map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
+                      <ReplicaSelect label="图片文案语言" value={language} onChange={setLanguage} disabled={Boolean(jobId)} options={(featureId === "reference-remix" && !jobId ? languageOptions.filter(option => option.value === "zh-CN") : languageOptions).map(option => [option.value, option.label] as const)} />
                       <small>用于生成图片中的文字内容。</small>
                     </label>
                     {isCreative ? (
                       <label>
                         <span>创意方向</span>
-                        <select
-                          value={creativeDirection}
-                          onChange={(event) =>
-                            setCreativeDirection(event.target.value as CreativeDirection)
-                          }
-                          disabled={Boolean(jobId)}
-                        >
-                          {creativeDirections.map((direction) => (
-                            <option key={direction.value} value={direction.value}>
-                              {direction.label}
-                            </option>
-                          ))}
-                        </select>
+                        <ReplicaSelect label="创意方向" value={creativeDirection} onChange={value => setCreativeDirection(value as CreativeDirection)} disabled={Boolean(jobId)} options={creativeDirections.map(direction => [direction.value, direction.label] as const)} />
                         <small>用于确定画面的主要表达方向。</small>
                       </label>
                     ) : null}
@@ -1007,6 +980,7 @@ export function CommerceSkillWorkspace({
                             checked={aspectRatio === ratio.value}
                             onChange={() => setAspectRatio(ratio.value)}
                           />
+                          <span className={styles.ratioPreview} aria-hidden="true"><i style={{ aspectRatio: ratio.value === "follow-reference" ? "3 / 4" : ratio.value.replace(":", " / ") }} /></span>
                           <strong>{ratio.label}</strong>
                           <small>{ratio.note}</small>
                         </label>

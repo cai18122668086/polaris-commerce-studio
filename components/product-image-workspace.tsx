@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { ReplicaSelect } from "@/components/replica-select";
 import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
@@ -352,29 +353,11 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               <div className={styles.formGrid}>
                 <label>
                   <span>创作功能</span>
-                  <select
-                    value={feature.presetSlug}
-                    onChange={(event) =>
-                      router.push(`/workspace/product-image/${event.target.value}`)
-                    }
-                    disabled={Boolean(jobId)}
-                  >
-                    {PRODUCT_IMAGE_FEATURES.map((item) => (
-                      <option key={item.taskPreset} value={item.presetSlug}>{item.title}</option>
-                    ))}
-                  </select>
+                  <ReplicaSelect label="创作功能" value={feature.presetSlug} onChange={value => router.push(`/workspace/product-image/${value}`)} disabled={Boolean(jobId)} options={PRODUCT_IMAGE_FEATURES.map(item => [item.presetSlug, item.title] as const)} />
                 </label>
                 <label>
                   <span>目标平台</span>
-                  <select
-                    value={platformCode}
-                    onChange={(event) => setPlatformCode(event.target.value)}
-                    disabled={Boolean(jobId)}
-                  >
-                    {platforms.map((platform) => (
-                      <option key={platform.value} value={platform.value}>{platform.label}</option>
-                    ))}
-                  </select>
+                  <ReplicaSelect label="目标平台" value={platformCode} onChange={setPlatformCode} disabled={Boolean(jobId)} options={platforms.map(platform => [platform.value, platform.label] as const)} />
                 </label>
               </div>
 
@@ -390,6 +373,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                         checked={aspectRatio === ratio.value}
                         onChange={() => setAspectRatio(ratio.value)}
                       />
+                      <span className={styles.ratioPreview} aria-hidden="true"><i style={{ aspectRatio: ratio.value.replace(":", " / ") }} /></span>
                       <strong>{ratio.label}</strong>
                       <small>{ratio.note}</small>
                     </label>

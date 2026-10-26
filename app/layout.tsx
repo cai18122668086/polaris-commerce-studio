@@ -29,6 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s｜极光商绘",
     },
     description,
+    icons: { icon: "/polaris-mark.svg", shortcut: "/polaris-mark.svg" },
     openGraph: {
       title,
       description,

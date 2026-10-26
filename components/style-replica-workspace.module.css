@@ -6,8 +6,8 @@
 
 .methodChoice { display: grid; gap: 8px; margin-bottom: 18px; }
 .methodChoice label { display: flex; gap: 9px; align-items: center; padding: 12px; border: 1px solid #e8e4e2; border-radius: 12px; cursor: pointer; }
-.methodChoice .methodSelected { border-color: #f47765; background: #fff5f2; }
-.methodChoice input { accent-color: #ef735f; }
+.methodChoice .methodSelected { border-color: #89769f; background: #fff5f2; }
+.methodChoice input { accent-color: #89769f; }
 .methodChoice span { display: grid; gap: 4px; }
 .methodChoice strong { font-size: 13px; }
 .methodChoice small { font-size: 11px; color: #817570; line-height: 1.5; }
@@ -35,9 +35,52 @@
   .stageHeader nav { width: 100%; gap: 8px; }
   .stageHeader .newReplicaButton { padding: 10px 14px; }
 }
-.executionProgress { display: grid; gap: 10px; margin: 20px 24px; padding: 18px 20px; border: 1px solid #f1ddd5; border-radius: 14px; background: #fff8f4; }
-.executionProgress progress { width: 100%; height: 8px; accent-color: #f66b50; }
+.executionProgress { display: grid; gap: 10px; margin: 20px 24px; padding: 18px 20px; border: 1px solid #f3eef9; border-radius: 14px; background: #fff8f4; }
+.executionProgress progress { width: 100%; height: 8px; accent-color: #89769f; }
 .executionProgress span { font-size: 13px; color: #60534e; }
 .executionProgress small { color: #756f6b; }
 .auditReasons { padding: 12px; font-size: 12px; line-height: 1.6; color: #784a3b; }
 .auditReasons ul { padding-left: 18px; }
+
+.outputGroup{margin:20px 0 14px;padding:15px 12px 4px;border:1px solid #e9e3f0;border-radius:10px;background:#fbf9fe}
+.outputGroup .fieldHeading{margin:0 0 12px}
+.outputGroup .fieldHeading strong{font-size:12px}
+.outputGroup .fieldHeading small{font-size:10px}
+.outputGroup .dualFields{gap:9px}
+.outputGroup .field{margin-top:0}
+.methodChoice label{position:relative;transition:border-color .2s,background .2s,box-shadow .2s}
+.methodChoice label:hover{border-color:#c7b7df}
+.methodChoice label:has(input:focus-visible){outline:3px solid #dfd2f3;outline-offset:2px}
+.methodChoice .methodSelected{box-shadow:0 2px 7px #5361240c}
+
+/* Shared creation palette; all processing states keep the original workflow. */
+.page { --accent:#242424; --accent-soft:#f1edf8; max-width:1480px; margin:0 auto; padding:0 24px 32px; background:transparent; color:#29292d; }
+.layout { gap:22px; }
+.sidebar,.stage { border-color:#e7e5ec; box-shadow:0 6px 25px #26213704; }
+.sidebar { top:142px; max-height:calc(100dvh - 156px); }
+.stage { min-height:660px; }
+.stepper { height:83px; }
+.stepCurrent span { background:#d8ff00; color:#202020; box-shadow:0 0 0 4px #f1ffc1; }
+.methodChoice label { border-color:#e7e5eb; background:#faf9fc; }
+.methodChoice .methodSelected { border-color:#bddb40; background:#f4ffce; }
+.methodChoice input { accent-color:#343434; }
+.methodChoice small { color:#8a8792; }
+.uploadArea { background:#fcfbfe; border-color:#dcd8e5; }
+.uploadTarget,.addUpload { width:100%;min-width:0; }
+.uploadTarget small { max-width:100%;line-height:1.6;overflow-wrap:anywhere; }
+.uploadGrid { display:flex;flex-wrap:wrap;justify-content:center; }
+.uploadGrid > .uploadThumb { flex:0 0 calc((100% - 21px) / 4);min-width:0; }
+.field select,.field input,.field textarea,.planCard textarea { background:#faf9fc; color:#45434c; border-color:#e9e6ef; }
+.modeTabs .modeActive { background:#fff; color:#242424; }
+.startButton,.stageHeader .newReplicaButton { background:#242424; box-shadow:none; }
+.startButton:disabled,.stageHeader .newReplicaButton:disabled { color:var(--accent-control-disabled-text);background:var(--accent-control-disabled-bg);opacity:1; }
+.startButton:hover:not(:disabled),.stageHeader .newReplicaButton:hover:not(:disabled) { color:#202020; background:#d8ff00; filter:none; }
+.emptyState h2 { color:#29272e; font-weight:700; font-size:24px; }
+.emptyState p { color:#93909c; max-width:440px; }
+.emptyState>button { color:#333; background:#eaff94; border-color:#dfedaf; }
+.executionProgress,.confirmBar { background:#f7f4fc; border-color:#e8e1f1; }
+.executionProgress span,.executionProgress small { color:#797182; }
+.sourceSelected { border-color:#b7d100; }
+.sourceSelected>button { color:#202020; background:#d8ff00; border-color:#b7d100; }
+@media(max-width:760px){.page{padding:0 13px 20px}.sidebar{position:static;max-height:none;overflow:visible}.stage{min-height:490px}.stepper{height:68px}.emptyState h2{font-size:21px}.layout{gap:14px}}
+@media(max-width:640px){.stepper{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;height:auto;min-height:76px;padding-block:12px}.stepItem{flex-direction:column;min-width:0;gap:5px;text-align:center}.stepItem b{font-size:9px;font-weight:600;white-space:normal}.stepItem i{display:none}}

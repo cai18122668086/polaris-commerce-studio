@@ -22,6 +22,7 @@ import {
   createBinaryMask,
   mapDisplayPointToRaster,
 } from "@/lib/mask/mask-utils";
+import styles from "./mask-editor.module.css";
 
 export type MaskEditorHandle = {
   exportMaskFile: () => Promise<File>;
@@ -268,7 +269,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
     };
 
     return (
-      <div className="raster-mask-editor">
+      <div className={`raster-mask-editor ${styles.editor}`}>
         <div className="card-toolbar">
           <div className="toolbar-group" aria-label="蒙版工具">
             <button
@@ -325,9 +326,9 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
             </button>
           </div>
         </div>
-        <div className="image-editor">
+        <div className={`image-editor ${styles.viewport}`}>
           {sourceUrl ? (
-            <div className={`raster-canvas-stack tool-${tool}`}>
+            <div className={`raster-canvas-stack tool-${tool} ${styles.stack}`}>
               <canvas ref={imageCanvas} aria-hidden="true" />
               <canvas
                 ref={maskCanvas}
@@ -339,13 +340,13 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
               />
             </div>
           ) : (
-            <div className="empty-state">
+            <div className={styles.emptyState}>
               <Brush size={30} />
               <h3>先上传商品原图</h3>
               <p>上传后用画笔涂抹允许修改的真实像素区域。</p>
             </div>
           )}
-          <div className="canvas-status">
+          <div className={`canvas-status ${styles.status}`}>
             <span className="safe">紫色覆盖区域可编辑；蒙版外像素由服务端锁定。</span>
           </div>
         </div>

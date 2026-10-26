@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 
 import { apiClient } from "@/lib/api/client";
+import { collectAssetPages } from "@/lib/api/asset-pages";
 import {
   IdempotencyIntentRegistry,
   uploadIntentSignature,
@@ -19,7 +20,7 @@ export function useAssets(
   return useQuery({
     queryKey: assetKeys.list(workspaceId ?? "pending", filters),
     enabled: Boolean(workspaceId),
-    queryFn: async ({ signal }) => {
+    queryFn: ({ signal }) => collectAssetPages(async (cursor) => {
       const result = await apiClient.GET(
         "/api/v1/workspaces/{workspace_id}/assets",
         {
@@ -30,13 +31,14 @@ export function useAssets(
               media_kind: "image",
               limit: filters.limit ?? 100,
               include_total: true,
+              cursor,
             },
           },
           signal,
         },
       );
       return unwrapApiResponse(result);
-    },
+    }),
   });
 }
 

@@ -366,7 +366,7 @@ test("public navigation uses registry route matching instead of local-edit fallb
   assert.match(sidebar, /currentFeature\?\.jobType/);
   assert.match(sidebar, /currentFeature\?\.route \?\? "\/tools"/);
   assert.doesNotMatch(sidebar, /pathname\.includes\("detail-pack"\) \? "detail_pack" : "local_edit"/);
-  assert.match(navigation, /AI_FEATURES_MENU/);
+  assert.match(navigation, /ALL_TOOLS_MENU/);
   assert.match(navigationRegistry, /href: "\/tools"/);
   assert.doesNotMatch(navigation, /\/\#tools/);
   assert.match(directory, /FEATURE_REGISTRY\.map/);

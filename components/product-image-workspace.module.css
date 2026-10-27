@@ -1,10 +1,11 @@
 .workspacePage {
+  --studio-orange: #202020;
+  --studio-orange-dark: #000;
+  --studio-orange-soft: #f3f1f7;
   min-height: calc(100vh - var(--nav-height));
   padding: 0 0 112px;
   color: var(--ink-900);
-  background:
-    linear-gradient(180deg, rgb(255 245 241 / 52%), transparent 340px),
-    var(--studio-paper, var(--ink-50));
+  background: transparent;
 }
 
 .workspacePage > :global(.workspace-header) {
@@ -73,8 +74,8 @@
 }
 
 .stepBar span[data-active] {
-  background: var(--violet-50);
-  color: var(--studio-orange-dark, var(--violet-700));
+  background: #eaff94;
+  color: #202020;
 }
 
 .stepBar span[data-active] i {
@@ -97,6 +98,7 @@
 .mainColumn,
 .sideColumn {
   display: grid;
+  min-width: 0;
   gap: 18px;
 }
 
@@ -110,6 +112,7 @@
 .guardrailCard,
 .resultSection,
 .resultEmpty {
+  min-width: 0;
   border: 1px solid var(--ink-150);
   border-radius: var(--radius-lg);
   background: white;
@@ -131,6 +134,7 @@
 
 .sectionHeading > div {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   gap: 12px;
 }
@@ -178,11 +182,13 @@
 
 .uploadPanel {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-content: center;
   align-items: center;
   gap: 13px;
-  min-height: 112px;
-  padding: 16px;
+  min-height: 248px;
+  padding: 24px 20px;
   border: 1px dashed var(--ink-200);
   border-radius: var(--radius-md);
   background: var(--ink-50);
@@ -201,10 +207,14 @@
 
 .uploadCopy {
   min-width: 0;
+  width: 100%;
+  text-align: center;
 }
 
 .uploadCopy > div {
   display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
   align-items: center;
   gap: 7px;
 }
@@ -236,6 +246,7 @@
   font-size: 11px;
   line-height: 1.45;
   text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .uploadCopy small {
@@ -663,6 +674,23 @@
   font-size: 9px;
 }
 
+.ratioGrid label,.countOptions label{position:relative;transition:background .18s,border-color .18s,box-shadow .18s,transform .18s}
+.ratioGrid label{align-content:center;gap:6px;min-height:112px;padding:14px 8px 12px;background:#fcfbfe}
+.ratioGrid label:hover,.countOptions label:hover{border-color:#c2afd9;background:#faf7ff;transform:translateY(-2px)}
+.ratioGrid label[data-selected],.countOptions label[data-selected]{border-color:#bdd34c;background:#f6ffd9;box-shadow:0 0 0 1px #e3f2ad}
+.ratioGrid label[data-selected]::after,.countOptions label[data-selected]::after{content:"";position:absolute;right:6px;top:6px;width:15px;height:15px;border-radius:50%;background:#d8ff00}
+.ratioGrid label[data-selected]::before,.countOptions label[data-selected]::before{content:"";position:absolute;z-index:1;right:10px;top:10px;width:7px;height:4px;border-left:1.5px solid #333;border-bottom:1.5px solid #333;transform:rotate(-45deg)}
+.ratioGrid label:has(input:focus-visible),.countOptions label:has(input:focus-visible){outline:3px solid #dfd3ef;outline-offset:3px}
+.ratioGrid label:has(input:disabled),.countOptions label:has(input:disabled){cursor:default;transform:none}
+.ratioGrid input,.countOptions input{width:1px;height:1px}
+.ratioPreview{display:flex;align-items:center;justify-content:center;width:46px;height:35px;margin-bottom:2px}
+.ratioPreview i{display:block;max-width:38px;max-height:32px;height:30px;border:1.5px solid #b3a7c2;border-radius:3px;background:linear-gradient(140deg,#f3eef9,#e2d9ef)}
+.ratioPreview i[style*="16 / 9"],.ratioPreview i[style*="4 / 3"]{width:36px;height:auto}
+.ratioGrid label[data-selected] .ratioPreview i{border-color:#9fb82f;background:linear-gradient(140deg,#e2f698,#d5ee73)}
+.countOptions{grid-template-columns:repeat(4,minmax(60px,86px));gap:10px}
+.countOptions label{min-height:46px;padding-inline:18px;background:#fcfbfe}
+@media(prefers-reduced-motion:reduce){.ratioGrid label,.countOptions label{transition:none}.ratioGrid label:hover,.countOptions label:hover{transform:none}}
+
 .countOptions {
   display: grid;
   grid-template-columns: repeat(4, 86px);
@@ -787,7 +815,7 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--studio-orange, var(--violet-600)), #ff9b78);
+  background: linear-gradient(90deg, var(--studio-orange, var(--violet-600)), #89769f);
   transition: width 240ms ease;
 }
 
@@ -1183,7 +1211,10 @@
 
 .primaryAction:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  color: var(--accent-control-disabled-text);
+  background: var(--accent-control-disabled-bg);
+  border-color: #ded7e7;
+  opacity: 1;
 }
 
 .secondaryAction {
@@ -1207,7 +1238,7 @@
   .uploadGrid,
   .formGrid,
   .sideColumn { grid-template-columns: 1fr; }
-  .uploadPanel { grid-template-columns: auto minmax(0, 1fr); }
+  .uploadPanel { grid-template-columns: minmax(0, 1fr); }
   .uploadActions { grid-column: 1 / -1; }
   .uploadActions[data-has-library] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .libraryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1246,3 +1277,16 @@
   .primaryAction,
   .secondaryAction { width: 100%; }
 }
+
+/* Upload actions form one centered group, including paired library actions. */
+.uploadPanel > .uploadIcon { justify-self:center; }
+.uploadPanel > .uploadCopy { max-width:42ch; }
+.uploadPanel > .uploadCopy p,.uploadPanel > .uploadCopy small { overflow:visible;white-space:normal; }
+.uploadPanel > .uploadActions { width:min(100%,320px);grid-template-columns:minmax(0,1fr);justify-self:center; }
+.uploadPanel > .uploadActions[data-has-library] { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.uploadPanel > .uploadActions button { min-width:0;min-height:40px;padding:9px 8px; }
+.sectionHeading > div > div { min-width:0; }
+.sectionHeading p { overflow-wrap:anywhere; }
+@media(max-width:360px){.uploadPanel > .uploadActions[data-has-library]{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){.countOptions{grid-template-columns:repeat(4,minmax(0,1fr));max-width:100%}.countOptions label{min-width:0;padding-inline:4px;gap:2px}}
+@media(max-width:480px){.countOptions strong{font-size:16px}}

@@ -331,6 +331,8 @@ def _raise_amazon_review_retry_not_applicable(blocker_ids: set[str]) -> None:
 
 
 def allowed_actions(job: JobRecord) -> list[str]:
+    if job.type == "product_replica":
+        return []
     current = JobStatus(job.status)
     if job.type == JobType.DOMESTIC_DETAIL_REVIEW.value:
         return (
@@ -423,7 +425,7 @@ def job_list_response(
     return JobListItemResponse(
         id=job.id,
         workspace_id=job.workspace_id,
-        type=JobType(job.type),
+        type="product_replica" if job.type == "product_replica" else JobType(job.type),
         status=status,
         stage="completed" if generated_set_complete else job.stage,
         display_name=job.display_name,
@@ -630,6 +632,12 @@ def get_workspace_job(
             status.HTTP_404_NOT_FOUND,
             "JOB_NOT_FOUND",
             "未找到指定任务。",
+        )
+    if for_update and job.type == "product_replica":
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "LEGACY_JOB_READ_ONLY",
+            "旧版商品复刻任务支持查看与下载；如需重新创作，请使用一键复刻工作台。",
         )
     return job
 

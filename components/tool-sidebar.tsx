@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight, Clock3, FolderOpen, Plus, X } from "lucide-react";
-import { futureTools, toolGroups } from "@/lib/tool-registry";
+import { ArrowUpRight, CircleHelp, Clock3, FolderOpen, Grid2X2, Home, Lightbulb, Plus, X } from "lucide-react";
+import { PRIMARY_CREATION_ENTRIES } from "@/lib/creation-entrypoints";
 import { useJobs } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobTitle } from "@/lib/jobs/presentation";
@@ -68,51 +68,21 @@ export function ToolSidebar({
           </>
         ) : (
           <>
-            <div className="tool-groups">
-              {toolGroups.map((group) => (
-                <section key={group.label} className="tool-group">
-                  <p>{group.label}</p>
-                  {group.items.map((item) => {
-                    const active = pathname === item.href;
-                    const Icon = item.icon;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`tool-link ${active ? "active" : ""}`}
-                        onClick={onClose}
-                      >
-                        <span className={`tool-icon tone-${item.tone}`}>
-                          <Icon size={18} />
-                        </span>
-                        <span>
-                          <strong>{item.title}</strong>
-                          <small>{item.description}</small>
-                        </span>
-                        {item.badge ? <em>{item.badge}</em> : <ChevronRight size={14} />}
-                      </Link>
-                    );
-                  })}
-                </section>
-              ))}
-            </div>
-            <div className="future-tools">
-              <p>即将上线</p>
-              {futureTools.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <span key={item.label}>
-                    <Icon size={15} />
-                    {item.label}
-                    <i>敬请期待</i>
-                  </span>
-                );
-              })}
-            </div>
+            <nav className="commerce-sidebar-nav" aria-label="工作区导航">
+              {[
+                { href: "/", label: "创作首页", icon: Home },
+                { href: "/tools", label: "全部工具", icon: Grid2X2 },
+                { href: "/inspiration", label: "灵感专区", icon: Lightbulb },
+                { href: "/help", label: "帮助中心", icon: CircleHelp },
+                { href: "/assets", label: "我的素材", icon: FolderOpen },
+                { href: "/jobs", label: "历史记录", icon: Clock3 },
+              ].map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={onClose} aria-current={pathname === href ? "page" : undefined}><Icon size={17} /><span>{label}</span></Link>)}
+            </nav>
+            <section className="commerce-sidebar-primary"><p>优先体验</p>{PRIMARY_CREATION_ENTRIES.slice(0, 3).map(entry => <Link key={entry.id} href={entry.href} onClick={onClose}><span>{entry.label}</span><ArrowUpRight size={14} /></Link>)}</section>
             <div className="sidebar-tip">
-              <span>PRO</span>
+              <span>POLARIS</span>
               <strong>让创作流程更顺畅</strong>
-              <p>本月已为你节省约 12.6 小时</p>
+              <p>从商品原图，到心动视觉</p>
             </div>
           </>
         )}

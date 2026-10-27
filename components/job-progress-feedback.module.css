@@ -1,6 +1,6 @@
 .feedback { display: grid; min-width: 0; gap: 14px; padding: 18px; border: 1px solid var(--ink-150, #e9e5e1); border-radius: 14px; background: linear-gradient(125deg, #fffaf5, #fff 60%); color: var(--ink-800, #302b27); }
 .heading { display: flex; align-items: flex-start; gap: 11px; }
-.icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #b85e33; background: #fbebdf; }
+.icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #675a88; background: #f3eef9; }
 .copy { min-width: 0; }
 .copy strong { display: block; font-size: 14px; line-height: 1.5; }
 .feedback .copy p, .feedback .note { margin: 5px 0 0; color: #7d746d; font-size: 12px; line-height: 1.7; }
@@ -8,7 +8,7 @@
 .meta strong { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .meta span { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #8a8179; font-variant-numeric: tabular-nums; }
 .track { position: relative; height: 6px; overflow: hidden; border-radius: 20px; background: #eee9e4; }
-.track i { position: relative; display: block; height: 100%; overflow: hidden; border-radius: inherit; background: #dc9465; transition: width .35s ease; }
+.track i { position: relative; display: block; height: 100%; overflow: hidden; border-radius: inherit; background: #89769f; transition: width .35s ease; }
 .track[data-moving="true"] i::after { position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #fff8, transparent); content: ""; animation: sweep 1.8s ease-in-out infinite; }
 .track[data-indeterminate="true"] i { width: 32%; background: #d9b89e; }
 .track[data-indeterminate="true"][data-moving="true"] i { animation: waiting 2.1s ease-in-out infinite; }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { CreationQuickStartLinks } from "@/components/creation-start-hub";
 import {
   ArrowLeft,
   ArrowRight,
@@ -17,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 
 type Faq = {
   question: string;
@@ -152,6 +154,7 @@ export default function HelpPage() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideFlowIndex, setGuideFlowIndex] = useState<number | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
+  useBodyScrollLock(guideOpen || contactOpen);
   const faqRefs = useRef<Array<HTMLElement | null>>([]);
 
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
@@ -179,13 +182,6 @@ export default function HelpPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  useEffect(() => {
-    document.body.style.overflow = guideOpen || contactOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [guideOpen, contactOpen]);
 
   useEffect(() => {
     if (pendingScrollIndex === null) return;
@@ -231,7 +227,7 @@ export default function HelpPage() {
                     <div className="help-search-results__summary">找到 {filteredFaqs.length} 个相关问题</div>
                     <div className="help-search-results__list">
                       {filteredFaqs.map(({ item, index }) => (
-                        <button key={item.question} onMouseDown={() => selectSearchResult(index)} role="option" aria-selected="false">
+                        <button key={item.question} onClick={() => selectSearchResult(index)} role="option" aria-selected="false">
                           <CircleHelp size={18} />
                           <span>
                             <strong>{item.question}</strong>
@@ -254,6 +250,7 @@ export default function HelpPage() {
         </section>
 
         <div className="help-page__content">
+          <CreationQuickStartLinks />
           <section className="guide-entry-section" aria-labelledby="guide-entry-title">
             <div className="section-heading">
               <div>

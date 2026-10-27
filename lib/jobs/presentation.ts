@@ -1,6 +1,7 @@
-import type { Job, JobDetail, JobItemStatus, JobStatus, JobType } from "@/lib/api/types";
+import type { Job, JobDetail, JobItemStatus, JobStatus } from "@/lib/api/types";
 
-const JOB_TYPE_LABELS: Record<JobType, string> = {
+const JOB_TYPE_LABELS: Record<Job["type"], string> = {
+  product_replica: "旧版商品复刻",
   local_edit: "一句话改图",
   product_image: "万能生图",
   reference_remix: "一键模仿",
@@ -93,7 +94,7 @@ const JOB_ASSET_ROLE_LABELS: Record<string, string> = {
   provider_raw: "生成中间产物",
 };
 
-export function jobTypeLabel(type: JobType): string { return JOB_TYPE_LABELS[type]; }
+export function jobTypeLabel(type: Job["type"]): string { return JOB_TYPE_LABELS[type]; }
 export function jobStatusLabel(status: JobStatus): string { return JOB_STATUS_LABELS[status]; }
 
 /** Uses backend stage values as the source of truth; unknown values remain visible. */

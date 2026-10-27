@@ -3,6 +3,11 @@ import { headers } from "next/headers";
 import { Providers } from "./providers";
 import "./globals.css";
 import "./focus-inspired.css";
+import "./commerce-theme.css";
+import "./commerce-surfaces.css";
+import "./commerce-workspaces.css";
+import "./commerce-forms.css";
+import "./commerce-readability.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -24,6 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s｜极光商绘",
     },
     description,
+    icons: { icon: "/polaris-mark.svg", shortcut: "/polaris-mark.svg" },
     openGraph: {
       title,
       description,

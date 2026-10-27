@@ -1,7 +1,7 @@
 .zone { position: relative; min-width: 0; }
-.zone[data-dragging="true"] { outline: 2px solid var(--studio-orange, #f26343); outline-offset: -2px; }
+.zone[data-dragging="true"] { outline: 2px solid var(--studio-orange, #675a88); outline-offset: -2px; }
 .hint, .error { grid-column: 1 / -1; margin: 0; font-size: 11px; line-height: 1.6; }
-.hint { color: var(--ink-500, #777281); }
+.hint { width:100%;color:var(--accent-text-muted,var(--ink-500,#777281));text-align:center;overflow-wrap:anywhere; }
 .error { color: #a53b24; overflow-wrap: anywhere; }
 .overlay {
   position: absolute; z-index: 5; inset: 2px; display: grid; place-content: center;

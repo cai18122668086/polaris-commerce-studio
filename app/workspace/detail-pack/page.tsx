@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, CircleDollarSign, Clock3,
   FileCheck2, Globe2, GripVertical, ImagePlus, Info, Languages, LoaderCircle,
@@ -9,8 +9,10 @@ import {
 } from "lucide-react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
+import { assetHandoffKey } from "@/lib/assets/creation-handoff";
+import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
+import { ReplicaSelect } from "@/components/replica-select";
 import { AppShell } from "@/components/app-shell";
-import { HelpPanel } from "@/components/help-panel";
 import { DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
 import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
 import { DomesticDetailCampaignReview } from "@/components/domestic-detail-campaign-review";
@@ -110,6 +112,11 @@ function SavedSource({ workspaceId, assetId, index }: { workspaceId?: string; as
 }
 
 export default function DetailPackPage() {
+  const search = useSearchParams();
+  return <DetailPackWorkspace key={assetHandoffKey(search)} />;
+}
+
+function DetailPackWorkspace() {
   const uploadBatchLock = useRef(false);
   const [uploadingSources, setUploadingSources] = useState(false);
   const searchParams = useSearchParams();
@@ -127,7 +134,7 @@ export default function DetailPackPage() {
   const [automaticChoice, setAutomaticChoice] = useState<{ scope: string; requested: boolean; authorization?: AutomaticDeliveryAuthorization }>();
   const [reviewedFinalKey, setReviewedFinalKey] = useState("");
   const [campaignChoice, setCampaignChoice] = useState<{ workspaceId?: string; sourceId: string; selection: CampaignSelection }>();
-  const [sources, setSources] = useState<UploadedSource[]>([]);
+  const [sourceOverrides, setSourceOverrides] = useState<UploadedSource[]>();
   const [uploadError, setUploadError] = useState<string>();
   // Prefer the task-center URL when present; the local value covers jobs
   // created or retried from this form. Deriving this value also handles SPA
@@ -135,6 +142,10 @@ export default function DetailPackPage() {
   const [localJobId, setLocalJobId] = useState<string>();
   const jobId = searchParams.get("jobId") ?? localJobId ?? "";
   const { workspace } = useWorkspace();
+  const handoff = useAssetHandoff(workspace?.id, 8, jobId);
+  const sources = useMemo(() => sourceOverrides ?? handoff.data?.sources ?? [], [sourceOverrides, handoff.data]);
+  const setSources = (next: UploadedSource[] | ((current: UploadedSource[]) => UploadedSource[])) =>
+    setSourceOverrides(current => typeof next === "function" ? next(current ?? handoff.data?.sources ?? []) : next);
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
   const confirmPlan = useConfirmPlan(workspace?.id);
@@ -193,7 +204,7 @@ export default function DetailPackPage() {
   const automaticReady = !automaticRequested || Boolean(automaticConsent && automaticQuote.data && !automaticQuote.isError && !automaticQuote.isFetching && automaticConsent.sha256 === automaticQuote.data.sha256 && automaticQuote.data.native_approval_document_sha256 === nativeApproval?.document_sha256 && automaticQuote.data.plan_revision === job.data?.plan?.revision);
   const originalAutomaticAuthority = automaticAuthorityForJob(job.data);
   const resultAssets = selectJobResultAssets(job.data);
-  const requestError = createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
+  const requestError = handoff.error ?? createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
   const productSources = marketRegion === "domestic" ? sources.filter(source => source.role === "product_reference") : sources;
   const sourcesRef = useRef(sources);
@@ -226,7 +237,7 @@ export default function DetailPackPage() {
   };
 
   const addFiles = async (files: File[]) => {
-    if (!workspace?.id || jobId || createJob.isPending || uploadBatchLock.current) return;
+    if (!workspace?.id || jobId || handoff.loading || createJob.isPending || uploadBatchLock.current) return;
     const selected = validateImageUpload(files, { multiple: true, maxFiles: Math.max(0, 8 - sources.length) });
     setUploadError(selected.error);
     if (selected.error || !selected.files.length) return;
@@ -264,7 +275,7 @@ export default function DetailPackPage() {
   };
 
   const createPlanningJob = async () => {
-    if (!workflowAvailable || !productSources.length || !productName.trim() || !workspace || uploadBatchLock.current || createJob.isPending || jobId) return;
+    if (!workflowAvailable || !productSources.length || !productName.trim() || !workspace || handoff.loading || uploadBatchLock.current || createJob.isPending || jobId) return;
     const configuration = {
       product_name: productName.trim(),
       platform_code: marketplaceId,
@@ -342,8 +353,8 @@ export default function DetailPackPage() {
           <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip">1</span><div><h2>商品素材</h2><p>每张图片都会先保存到当前工作区。</p></div>{sourceCount > 0 && <span className="validation-chip"><CheckCircle2 size={15} />已上传 {sourceCount} 张</span>}</div>
             <ImageDropZone label="详情商品素材" multiple maxFiles={Math.max(0, 8 - sources.length)}
-              disabled={Boolean(jobId) || !workspace?.id || createJob.isPending} busy={uploadingSources} onFiles={addFiles}>
-              {({ openFileDialog, disabled: uploadDisabled, busy }) => <div className="multi-uploader">
+              disabled={Boolean(jobId) || !workspace?.id || createJob.isPending} busy={uploadingSources || handoff.loading} onFiles={addFiles}>
+              {({ openFileDialog, disabled: uploadDisabled, busy }) => <div className="multi-uploader" data-empty={sourceCount === 0 || undefined}>
                 {jobId ? savedAssetIds.map((assetId, index) => <SavedSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />) : sources.map((source, index) => <div key={source.asset.id} className="upload-thumb"><img src={source.previewUrl} alt={`商品角度 ${index + 1}`} /><span>{source.role === "style_reference" ? "风格参考" : `商品图 ${index + 1}`}</span>{marketRegion === "domestic" && <select aria-label={`第 ${index + 1} 张图片用途`} value={source.role} disabled={uploadingSources || createJob.isPending} onChange={event => {
                   const role = event.target.value as UploadedSource["role"]; setSources(items => items.map(item => item.asset.id === source.asset.id ? { ...item, role } : item));
                 }}><option value="product_reference">商品图</option><option value="style_reference">风格参考</option></select>}<button type="button" disabled={uploadingSources || createJob.isPending} aria-label={`移除第 ${index + 1} 张图片`} onClick={() => removeSource(source.asset.id)}><X size={13} /></button></div>)}
@@ -362,15 +373,14 @@ export default function DetailPackPage() {
               <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize}</strong></div></label>
               <label className="full"><span>核心卖点</span><textarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
             </div>
-          </section>
-
-          <section className="detail-form-card">
-            <div className="form-section-head"><span className="number-chip">3</span><div><h2>输出设置</h2><p>{workflow.mode === "provider" ? "确认后将开始生成，请先核对输出设置。" : "当前仅保存规划和任务状态，暂不生成图片。"}</p></div></div>
+          <div className="creation-output-settings">
+            <div className="creation-output-heading"><h3>输出设置</h3><span>{selectedMarketplace.name} · {language === "zh-CN" ? "简体中文" : "English"} · {pageCount} 页</span></div>
             <div className="output-options">
-              <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button className={language === "zh-CN" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("zh-CN")}>简体中文</button><button className={language === "en-US" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("en-US")}>English</button></div></div>
-              <div className="option-field"><span><FileCheck2 size={16} />详情页数</span>{isRefinedDetail ? <select aria-label="详情页数" disabled={Boolean(jobId)} value={pageCount} onChange={event => setPageCount(Number(event.target.value))}>{Array.from({ length: 12 }, (_, index) => index + 1).map(count => <option key={count} value={count}>{count} 页</option>)}</select> : <div className="page-count-control">{[8, 10, 12].map((count) => <button key={count} className={pageCount === count ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setPageCount(count)}>{count} 页</button>)}</div>}</div>
+              <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button type="button" aria-pressed={language === "zh-CN"} className={language === "zh-CN" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("zh-CN")}>{language === "zh-CN" && <Check size={14} aria-hidden="true" />}简体中文</button><button type="button" aria-pressed={language === "en-US"} className={language === "en-US" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("en-US")}>{language === "en-US" && <Check size={14} aria-hidden="true" />}English</button></div></div>
+              <div className="option-field"><span><FileCheck2 size={16} />详情页数</span>{isRefinedDetail ? <ReplicaSelect label="详情页数" layout="grid" disabled={Boolean(jobId)} value={String(pageCount)} onChange={value => setPageCount(Number(value))} options={Array.from({ length: 12 }, (_, index) => [String(index + 1), `${index + 1} 页`] as const)} /> : <div className="page-count-control">{[8, 10, 12].map((count) => <button key={count} className={pageCount === count ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setPageCount(count)}>{count} 页</button>)}</div>}</div>
               {marketRegion === "international" && <div className="option-field"><span><Globe2 size={16} />图片尺寸</span><div className="page-count-control">{selectedMarketplace.sizePresets?.map((preset) => <button key={preset.value} className={imageSize === preset.value ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setImageSize(preset.value)}>{preset.label}</button>)}</div></div>}
             </div>
+          </div>
           </section>
 
           {requestError && <div className="api-state api-state--error" role="alert"><AlertCircle size={24} /><div><strong>请求未完成</strong><p>{errorMessage(requestError)}</p></div></div>}
@@ -458,12 +468,6 @@ export default function DetailPackPage() {
             </div>
           </section>
         </div>
-        <HelpPanel
-          mode="detail-pack"
-          taskTitle={productName.trim() ? `${productName.trim()}详情套图` : "等待填写商品名称"}
-          assetSummary={sourceCount ? `${sourceCount} 张 · 同一分组` : "尚未上传"}
-          outputSummary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "中文" : "English"} · ${pageCount} 页${marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精致" : "历史快速"}` : ""}`}
-        />
       </div>
     </AppShell>
   );

@@ -22,12 +22,14 @@ import {
   type RetryScope,
 } from "@/lib/api/types";
 import { jobKeys } from "./jobs-keys";
+import { collectCursorPages } from "@/lib/api/cursor-pages";
 import { assertJobAction } from "@/lib/jobs/actions";
 
 type JobFilters = {
   type?: JobType;
   statuses?: JobStatus[];
   limit?: number;
+  allPages?: boolean;
 };
 
 export function useJobs(
@@ -38,7 +40,7 @@ export function useJobs(
     queryKey: jobKeys.list(workspaceId ?? "pending", filters),
     enabled: Boolean(workspaceId),
     queryFn: async ({ signal }) => {
-      const result = await apiClient.GET(
+      const fetchPage = async (cursor?: string) => unwrapApiResponse(await apiClient.GET(
         "/api/v1/workspaces/{workspace_id}/jobs",
         {
           params: {
@@ -48,12 +50,15 @@ export function useJobs(
               statuses: filters.statuses,
               limit: filters.limit ?? 100,
               include_total: true,
+              cursor,
             },
           },
           signal,
         },
-      );
-      return unwrapApiResponse(result);
+      ));
+      return filters.allPages
+        ? collectCursorPages(fetchPage, "任务记录分页异常，请重新连接后再试。")
+        : fetchPage();
     },
     refetchInterval(current) {
       return current.state.data?.items.some((job) => isActiveJob(job.status))

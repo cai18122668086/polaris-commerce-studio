@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronDown, Flame, Grid2X2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
+import { FEATURE_THUMBNAILS } from "@/lib/creation-entrypoints";
 import type {
   NavigationFeatureGroup,
   NavigationMenuDefinition,
@@ -15,18 +16,20 @@ function FeatureLinks({
   groups,
   activeFeatureId,
   onNavigate,
+  idPrefix,
 }: {
   groups: readonly NavigationFeatureGroup[];
   activeFeatureId?: string;
   onNavigate: () => void;
+  idPrefix: string;
 }) {
   return groups.map((group, index) => (
-    <section key={group.label} aria-labelledby={`navigation-group-${group.label}`}>
+    <section key={group.label} aria-labelledby={`${idPrefix}-group-${index}`}>
       <div
         className="nav-mega__head"
         style={index === 0 ? undefined : { marginTop: 10 }}
       >
-        <span id={`navigation-group-${group.label}`}>
+        <span id={`${idPrefix}-group-${index}`}>
           {index === 0 ? <Sparkles size={14} /> : <Grid2X2 size={14} />}
           {group.label}
         </span>
@@ -45,7 +48,7 @@ function FeatureLinks({
               onClick={onNavigate}
             >
               <span className={`tool-icon ${item.tone}`} aria-hidden="true">
-                <Icon size={19} />
+                {FEATURE_THUMBNAILS[item.featureId] ? <img src={FEATURE_THUMBNAILS[item.featureId]} alt="" width={42} height={42} loading="lazy" /> : <Icon size={19} />}
               </span>
               <span className="nav-tool-link__copy">
                 <span className="nav-tool-link__title">
@@ -77,6 +80,8 @@ export function NavigationMegaMenu({
   open,
   onClose,
   onToggle,
+  idPrefix = "navigation-menu",
+  triggerAsButton = false,
 }: {
   definition: NavigationMenuDefinition;
   activeFeatureId?: string;
@@ -84,8 +89,10 @@ export function NavigationMegaMenu({
   open: boolean;
   onClose: () => void;
   onToggle: () => void;
+  idPrefix?: string;
+  triggerAsButton?: boolean;
 }) {
-  const menuId = `navigation-menu-${definition.key}`;
+  const menuId = `${idPrefix}-${definition.key}`;
 
   return (
     <div
@@ -96,7 +103,7 @@ export function NavigationMegaMenu({
         }
       }}
     >
-      <div className={`nav-menu__trigger ${active ? "active" : ""}`}>
+      {triggerAsButton ? <button type="button" className="workspace-tool-picker" onClick={onToggle} aria-label={`切换工具：${definition.label}`} aria-controls={menuId} aria-expanded={open}><span>{definition.label}</span><ChevronDown size={16} style={{ transform: open ? "rotate(180deg)" : undefined }} /></button> : <div className={`nav-menu__trigger ${active ? "active" : ""}`}>
         <Link
           href={definition.href}
           onClick={onClose}
@@ -126,12 +133,13 @@ export function NavigationMegaMenu({
             style={{ transform: open ? "rotate(180deg)" : undefined }}
           />
         </button>
-      </div>
+      </div>}
       <div id={menuId} className="nav-mega" aria-hidden={!open}>
         <FeatureLinks
           groups={definition.groups}
           activeFeatureId={activeFeatureId}
           onNavigate={onClose}
+          idPrefix={menuId}
         />
         {definition.footer && (
           <div className="nav-mega__footer">
@@ -205,10 +213,10 @@ export function MobileNavigationMenu({
                 active={active} onClick={onClose} mobile
                 style={{
                   padding: "10px 7px",
-                  border: `1px solid ${active ? "#cfc4ff" : "#eceef3"}`,
+                  border: `1px solid ${active ? "#c5df45" : "#eceef3"}`,
                   borderRadius: 9,
-                  color: active ? "#5d42c7" : "#343846",
-                  background: active ? "#f4f0ff" : "#fafbfc",
+                  color: active ? "#242424" : "#343846",
+                  background: active ? "#d8ff00" : "#fafbfc",
                   textAlign: "center",
                   fontSize: 12,
                   fontWeight: 700,
@@ -293,22 +301,23 @@ export function MobileNavigationMenu({
                                 minWidth: 0,
                                 padding: "10px 9px",
                                 paddingRight: HOT_FEATURE_IDS.has(item.featureId) ? 30 : 9,
-                                border: `1px solid ${active ? "#cfc4ff" : "#eceef3"}`,
+                                border: `1px solid ${active ? "#c5df45" : "#eceef3"}`,
                                 borderRadius: 9,
-                                color: active ? "#5d42c7" : "#252938",
-                                background: active ? "#f4f0ff" : "#fafbfc",
+                                color: active ? "#242424" : "#252938",
+                                background: active ? "#d8ff00" : "#fafbfc",
                                 fontSize: 12,
                                 fontWeight: 650,
                                 position: "relative",
                               }}
                             >
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 3, paddingRight: HOT_FEATURE_IDS.has(item.featureId) ? 20 : 0 }}>
+                                {FEATURE_THUMBNAILS[item.featureId] && <img className="mobile-tool-thumbnail" src={FEATURE_THUMBNAILS[item.featureId]} alt="" width={30} height={30} loading="lazy" />}
                                 {item.label}
                                 {HOT_FEATURE_IDS.has(item.featureId) ? (
                                   <Flame
                                     size={13}
                                     fill="currentColor"
-                                    color="#e94724"
+                                    color="#786490"
                                     className="mobile-nav-tool-link__hot"
                                     style={{ position: "absolute", top: 7, right: 7, display: "block" }}
                                     aria-label="热门功能"
@@ -325,7 +334,7 @@ export function MobileNavigationMenu({
                     <Link
                       href={menu.footer.href}
                       onClick={onClose}
-                      style={{ padding: "7px 3px 2px", color: "#5d42c7", fontSize: 12, fontWeight: 700 }}
+                      style={{ padding: "7px 3px 2px", color: "#52683b", fontSize: 12, fontWeight: 700 }}
                     >
                       {menu.footer.label}
                     </Link>

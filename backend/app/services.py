@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from fastapi import status
 from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
@@ -874,7 +875,7 @@ def reserve_credits(
             )
             .execution_options(synchronize_session=False)
         )
-        if changed.rowcount != 1:
+        if cast(CursorResult[Any], changed).rowcount != 1:
             raise ApiError(
                 402, "BUDGET_LIMIT_EXCEEDED", "当前可用积分不足，请充值后再试。"
             )
@@ -925,7 +926,7 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
         .values(status=CreditReservationStatus.SETTLED.value, settled_credits=charged)
         .execution_options(synchronize_session=False)
     )
-    if claimed.rowcount != 1:
+    if cast(CursorResult[Any], claimed).rowcount != 1:
         session.expire_all()
         return
     enforced = _credit_reservation_is_enforced(session, reservation)
@@ -990,7 +991,7 @@ def release_credits(session: Session, job: JobRecord) -> None:
         .values(status=CreditReservationStatus.RELEASED.value)
         .execution_options(synchronize_session=False)
     )
-    if claimed.rowcount != 1:
+    if cast(CursorResult[Any], claimed).rowcount != 1:
         session.expire_all()
         return
     released = reservation.reserved_credits

@@ -195,7 +195,7 @@ class Settings(BaseSettings):
         le=MAX_PROVIDER_ALLOWANCE,
     )
     provider_quota_enabled: bool = Field(default=True)
-    workspace_credit_enforcement_enabled: bool = Field(default=True)
+    workspace_credit_enforcement_enabled: bool = Field(default=False)
     tengli_daily_budget_usd: float = Field(
         default=0,
         ge=0,

@@ -1265,7 +1265,9 @@ class CreditReservationRecord(TimestampMixin, Base):
     job_id: Mapped[str] = mapped_column(
         ForeignKey("jobs.id", ondelete="CASCADE"), unique=True, nullable=False
     )
-    pricing_snapshot: Mapped[dict[str, Any] | None] = mapped_column(json_type(), nullable=True)
+    pricing_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        json_type(), nullable=True
+    )
     reserved_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
     settled_credits: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     status: Mapped[str] = mapped_column(

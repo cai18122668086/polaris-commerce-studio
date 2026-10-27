@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { assetHandoffKey } from "@/lib/assets/creation-handoff";
 import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
-import { AlertCircle, Check, CheckCircle2, ImagePlus, Images, Info, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, ImagePlus, Images, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { JobProgressFeedback } from "@/components/job-progress-feedback";

@@ -1591,6 +1591,130 @@
         "title": "CreditLedgerResponse",
         "type": "object"
       },
+      "CreditMembershipState": {
+        "properties": {
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "expiring_credits": {
+            "title": "Expiring Credits",
+            "type": "integer"
+          },
+          "member_credits": {
+            "title": "Member Credits",
+            "type": "integer"
+          },
+          "monthly_credits": {
+            "title": "Monthly Credits",
+            "type": "integer"
+          },
+          "next_expiry_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Expiry At"
+          },
+          "next_grant_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Grant At"
+          },
+          "next_plan_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Plan Name"
+          },
+          "next_plan_starts_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Plan Starts At"
+          },
+          "pack_credits": {
+            "title": "Pack Credits",
+            "type": "integer"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "plan_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Name"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          }
+        },
+        "required": [
+          "plan_id",
+          "plan_name",
+          "monthly_credits",
+          "starts_at",
+          "ends_at",
+          "next_plan_name",
+          "next_plan_starts_at",
+          "next_grant_at",
+          "next_expiry_at",
+          "expiring_credits",
+          "member_credits",
+          "pack_credits"
+        ],
+        "title": "CreditMembershipState",
+        "type": "object"
+      },
       "CreditPackage": {
         "properties": {
           "amount_fen": {
@@ -1605,16 +1729,43 @@
             "title": "Id",
             "type": "string"
           },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "months": {
+            "title": "Months",
+            "type": "integer"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "validity_months": {
+            "title": "Validity Months",
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "name",
           "amount_fen",
-          "credits"
+          "credits",
+          "kind",
+          "plan_id",
+          "months",
+          "validity_months"
         ],
         "title": "CreditPackage",
         "type": "object"
@@ -1684,6 +1835,34 @@
         "title": "CreditPurchaseCreate",
         "type": "object"
       },
+      "CreditPurchaseList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CreditPurchaseResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CreditPurchaseList",
+        "type": "object"
+      },
       "CreditPurchaseResponse": {
         "properties": {
           "amount_fen": {
@@ -1701,6 +1880,10 @@
             ],
             "title": "Checkout Url"
           },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
           "credits": {
             "title": "Credits",
             "type": "integer"
@@ -1709,8 +1892,49 @@
             "title": "Id",
             "type": "string"
           },
+          "membership_ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Ends At"
+          },
+          "membership_starts_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Starts At"
+          },
+          "months": {
+            "title": "Months",
+            "type": "integer"
+          },
           "package_name": {
             "title": "Package Name",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "product_kind": {
+            "title": "Product Kind",
             "type": "string"
           },
           "status": {
@@ -1724,7 +1948,13 @@
           "amount_fen",
           "credits",
           "status",
-          "checkout_url"
+          "checkout_url",
+          "created_at",
+          "paid_at",
+          "product_kind",
+          "membership_starts_at",
+          "membership_ends_at",
+          "months"
         ],
         "title": "CreditPurchaseResponse",
         "type": "object"
@@ -12769,6 +12999,53 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/credits/membership": {
+      "get": {
+        "operationId": "membership_api_v1_workspaces__workspace_id__credits_membership_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditMembershipState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Membership",
+        "tags": [
+          "credit payments"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/credits/packages": {
       "get": {
         "operationId": "packages_api_v1_workspaces__workspace_id__credits_packages_get",
@@ -12780,6 +13057,16 @@
             "schema": {
               "title": "Workspace Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_memberships",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Memberships",
+              "type": "boolean"
             }
           }
         ],
@@ -12817,6 +13104,99 @@
       }
     },
     "/api/v1/workspaces/{workspace_id}/credits/purchases": {
+      "get": {
+        "operationId": "purchase_list_api_v1_workspaces__workspace_id__credits_purchases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "paid"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPurchaseList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Purchase List",
+        "tags": [
+          "credit payments"
+        ]
+      },
       "post": {
         "operationId": "create_purchase_api_v1_workspaces__workspace_id__credits_purchases_post",
         "parameters": [

@@ -3,13 +3,14 @@
 import hashlib
 import hmac
 import re
-from typing import Annotated, Any, cast
+from datetime import UTC
+from typing import Annotated, Any, Literal, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -17,12 +18,14 @@ from starlette.concurrency import run_in_threadpool
 
 from .auth import SessionDependency, WorkspaceDependency, WorkspaceWriteDependency
 from .config import Settings
+from .credit_memberships import add_months, aware, grant, membership_state, refresh
+from .credit_products import PRODUCTS
 from .errors import ApiError
 from .models import (
     AuditEventRecord,
     CreditLedgerEntryRecord,
+    CreditMembershipRecord,
     CreditPurchaseRecord,
-    WorkspaceCreditAccountRecord,
     utc_now,
 )
 from .services import credit_enforcement_enabled, new_id, require_idempotency_key
@@ -116,6 +119,10 @@ class CreditPackage(BaseModel):
     name: str
     amount_fen: int
     credits: int
+    kind: str
+    plan_id: str | None
+    months: int
+    validity_months: int
 
 
 class CreditPackageCatalog(BaseModel):
@@ -135,6 +142,12 @@ class CreditPurchaseResponse(BaseModel):
     credits: int
     status: str
     checkout_url: str | None
+    created_at: str
+    paid_at: str | None
+    product_kind: str
+    membership_starts_at: str | None
+    membership_ends_at: str | None
+    months: int
 
 
 def _response(order: CreditPurchaseRecord) -> CreditPurchaseResponse:
@@ -144,6 +157,12 @@ def _response(order: CreditPurchaseRecord) -> CreditPurchaseResponse:
         amount_fen=order.amount_fen,
         credits=order.credits,
         status=order.status,
+        created_at=aware(order.created_at).isoformat(),
+        paid_at=aware(order.paid_at).isoformat() if order.paid_at else None,
+        product_kind=(order.product_snapshot or {}).get("kind", "pack"),
+        membership_starts_at=(order.product_snapshot or {}).get("starts_at"),
+        membership_ends_at=(order.product_snapshot or {}).get("ends_at"),
+        months=(order.product_snapshot or {}).get("months", 0),
         checkout_url=order.checkout_url if order.status == "pending" else None,
     )
 
@@ -152,7 +171,9 @@ def _response(order: CreditPurchaseRecord) -> CreditPurchaseResponse:
     "/api/v1/workspaces/{workspace_id}/credits/packages",
     response_model=CreditPackageCatalog,
 )
-def packages(request: Request, workspace: WorkspaceDependency) -> CreditPackageCatalog:
+def packages(
+    request: Request, workspace: WorkspaceDependency, include_memberships: bool = False
+) -> CreditPackageCatalog:
     settings: Settings = request.app.state.settings
     enabled = credit_enforcement_enabled(workspace.workspace_id)
     if enabled:
@@ -163,12 +184,9 @@ def packages(request: Request, workspace: WorkspaceDependency) -> CreditPackageC
     return CreditPackageCatalog(
         enabled=enabled,
         packages=[
-            CreditPackage(
-                id=PACKAGE_ID,
-                name=PACKAGE_NAME,
-                amount_fen=AMOUNT_FEN,
-                credits=PACKAGE_CREDITS,
-            )
+            CreditPackage(**product.snapshot())
+            for product in PRODUCTS.values()
+            if include_memberships or product.kind == "pack"
         ]
         if enabled
         else [],
@@ -191,7 +209,8 @@ def create_purchase(
         raise ApiError(403, "CREDIT_PILOT_REQUIRED", "当前账号暂未开放积分充值。")
     settings: Settings = request.app.state.settings
     key = _creation_key(settings)
-    if payload.package_id != PACKAGE_ID:
+    product = PRODUCTS.get(payload.package_id)
+    if product is None:
         raise ApiError(422, "INVALID_CREDIT_PACKAGE", "充值套餐不存在。")
     request_key = require_idempotency_key(idempotency_header)
     statement = select(CreditPurchaseRecord).where(
@@ -201,13 +220,17 @@ def create_purchase(
     )
     existing = session.scalar(statement)
     if existing is not None:
+        if existing.package_id != payload.package_id:
+            raise ApiError(
+                409, "IDEMPOTENCY_CONFLICT", "这次购买内容已改变，请重新确认。"
+            )
         return _response(existing)
     order_id = new_id("pay")
     parameters = {
         "pid": settings.credit_epay_pid,
         "out_trade_no": order_id,
-        "name": PACKAGE_NAME,
-        "money": "99.00",
+        "name": product.name,
+        "money": f"{product.amount_fen // 100}.{product.amount_fen % 100:02d}",
         "notify_url": settings.credit_epay_notify_url,
         "return_url": settings.credit_epay_return_url + "?purchase=" + order_id,
         "param": order_id,
@@ -219,10 +242,11 @@ def create_purchase(
         workspace_id=workspace.workspace_id,
         created_by_user_id=workspace.principal.user_id,
         idempotency_key=request_key,
-        package_id=PACKAGE_ID,
-        package_name=PACKAGE_NAME,
-        amount_fen=AMOUNT_FEN,
-        credits=PACKAGE_CREDITS,
+        package_id=product.id,
+        package_name=product.name,
+        amount_fen=product.amount_fen,
+        credits=product.credits,
+        product_snapshot=product.snapshot(),
         merchant_pid=settings.credit_epay_pid,
         signing_key_id=settings.credit_epay_active_key_id,
         checkout_url=settings.credit_epay_base_url.rstrip("/")
@@ -238,8 +262,90 @@ def create_purchase(
         existing = session.scalar(statement)
         if existing is None:
             raise
+        if existing.package_id != payload.package_id:
+            raise ApiError(
+                409, "IDEMPOTENCY_CONFLICT", "这次购买内容已改变，请重新确认。"
+            ) from None
         return _response(existing)
     return _response(order)
+
+
+class CreditPurchaseList(BaseModel):
+    items: list[CreditPurchaseResponse]
+    next_cursor: str | None
+
+
+class CreditMembershipState(BaseModel):
+    plan_id: str | None
+    plan_name: str | None
+    monthly_credits: int
+    starts_at: str | None
+    ends_at: str | None
+    next_plan_name: str | None
+    next_plan_starts_at: str | None
+    next_grant_at: str | None
+    next_expiry_at: str | None
+    expiring_credits: int
+    member_credits: int
+    pack_credits: int
+
+
+@router.get(
+    "/api/v1/workspaces/{workspace_id}/credits/membership",
+    response_model=CreditMembershipState,
+)
+def membership(workspace: WorkspaceDependency, session: SessionDependency) -> dict:
+    if credit_enforcement_enabled(workspace.workspace_id):
+        refresh(session, workspace.workspace_id)
+        session.commit()
+    return membership_state(session, workspace.workspace_id)
+
+
+@router.get(
+    "/api/v1/workspaces/{workspace_id}/credits/purchases",
+    response_model=CreditPurchaseList,
+)
+def purchase_list(
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    status: Literal["pending", "paid"] | None = None,
+) -> CreditPurchaseList:
+    statement = select(CreditPurchaseRecord).where(
+        CreditPurchaseRecord.workspace_id == workspace.workspace_id
+    )
+    if status:
+        statement = statement.where(CreditPurchaseRecord.status == status)
+    if cursor:
+        anchor = session.scalar(
+            select(CreditPurchaseRecord).where(
+                CreditPurchaseRecord.id == cursor,
+                CreditPurchaseRecord.workspace_id == workspace.workspace_id,
+            )
+        )
+        if anchor is None:
+            raise ApiError(422, "INVALID_ORDER_CURSOR", "订单分页位置无效。")
+        statement = statement.where(
+            or_(
+                CreditPurchaseRecord.created_at < anchor.created_at,
+                and_(
+                    CreditPurchaseRecord.created_at == anchor.created_at,
+                    CreditPurchaseRecord.id < anchor.id,
+                ),
+            )
+        )
+    rows = list(
+        session.scalars(
+            statement.order_by(
+                CreditPurchaseRecord.created_at.desc(), CreditPurchaseRecord.id.desc()
+            ).limit(limit + 1)
+        )
+    )
+    return CreditPurchaseList(
+        items=[_response(row) for row in rows[:limit]],
+        next_cursor=rows[limit - 1].id if len(rows) > limit else None,
+    )
 
 
 @router.get(
@@ -312,33 +418,83 @@ def settle_paid_purchase(
         # Reload and validate the committed winner; never ACK a missing ledger.
         settle_paid_purchase(session, settings, parameters)
         return
-    account = session.get(
-        WorkspaceCreditAccountRecord, order.workspace_id, with_for_update=True
-    )
-    if account is None:
-        raise ApiError(409, "CREDIT_ACCOUNT_NOT_CONFIGURED", "积分账户尚未配置。")
-    session.execute(
-        update(WorkspaceCreditAccountRecord)
-        .where(WorkspaceCreditAccountRecord.workspace_id == order.workspace_id)
-        .values(
-            balance_credits=WorkspaceCreditAccountRecord.balance_credits
-            + order.credits,
-            version=WorkspaceCreditAccountRecord.version + 1,
+    account = refresh(session, order.workspace_id)
+    terms = order.product_snapshot
+    if terms and terms.get("kind") == "membership":
+        # A paid renewal starts after all already purchased periods. Even two
+        # different plans paid concurrently cannot overlap or lose paid time.
+        now = aware(utc_now())
+        last_end = session.scalar(
+            select(CreditMembershipRecord.ends_at)
+            .where(
+                CreditMembershipRecord.workspace_id == order.workspace_id,
+                CreditMembershipRecord.ends_at > now,
+            )
+            .order_by(CreditMembershipRecord.ends_at.desc())
+            .limit(1)
         )
-        .execution_options(synchronize_session=False)
-    )
-    session.refresh(account)
-    entry = CreditLedgerEntryRecord(
-        workspace_id=order.workspace_id,
-        entry_type="purchase",
-        delta_balance_credits=order.credits,
-        delta_reserved_credits=0,
-        balance_after_credits=account.balance_credits,
-        reserved_after_credits=account.reserved_credits,
-    )
-    session.add(entry)
-    session.flush()
-    order.ledger_entry_id = entry.id
+        begins = max(now, aware(last_end)) if last_end else now
+        member = CreditMembershipRecord(
+            id=new_id("mem"),
+            workspace_id=order.workspace_id,
+            purchase_id=order.id,
+            plan_id=terms["plan_id"],
+            plan_name=order.package_name.split(" · ")[0],
+            monthly_credits=order.credits,
+            months=terms["months"],
+            starts_at=begins,
+            ends_at=add_months(begins, terms["months"]),
+        )
+        session.add(member)
+        order.product_snapshot = {
+            **terms,
+            "starts_at": begins.isoformat(),
+            "ends_at": aware(member.ends_at).isoformat(),
+        }
+        session.flush()
+        if begins <= now:
+            lot = grant(
+                session,
+                account,
+                f"{order.id}:0",
+                order.credits,
+                add_months(begins, 1),
+                f"{member.plan_name} · 第 1 期积分",
+            )
+            order.ledger_entry_id = lot.ledger_entry_id
+        else:
+            entry = CreditLedgerEntryRecord(
+                workspace_id=order.workspace_id,
+                entry_type="renewal",
+                delta_balance_credits=0,
+                delta_reserved_credits=0,
+                balance_after_credits=account.balance_credits,
+                reserved_after_credits=account.reserved_credits,
+                description=(
+                    f"{order.package_name} · {begins.astimezone(UTC).date()} 生效"
+                ),
+            )
+            session.add(entry)
+            session.flush()
+            order.ledger_entry_id = entry.id
+    else:
+        # Orders created before this release retain their original non-expiring
+        # pack contract, including pending orders paid after the upgrade.
+        expiry = (
+            add_months(utc_now(), terms["validity_months"])
+            if terms and terms.get("validity_months")
+            else None
+        )
+        lot = grant(
+            session,
+            account,
+            order.id,
+            order.credits,
+            expiry,
+            order.package_name,
+            kind="purchase",
+        )
+        order.ledger_entry_id = lot.ledger_entry_id
     session.add(
         AuditEventRecord(
             workspace_id=order.workspace_id,

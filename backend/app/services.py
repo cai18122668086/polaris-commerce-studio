@@ -857,6 +857,10 @@ def reserve_credits(
             "工作区额度账户尚未配置。",
         )
     enforced = credit_enforcement_enabled(workspace_id)
+    if enforced:
+        from .credit_memberships import refresh
+
+        account = refresh(session, workspace_id)
     available = account.balance_credits - account.reserved_credits
     if enforced and available < credits:
         raise ApiError(
@@ -873,6 +877,10 @@ def reserve_credits(
         settled_credits=0,
         status=CreditReservationStatus.ACTIVE.value,
     )
+    if enforced:
+        from .credit_memberships import allocate
+
+        allocate(session, account, reservation, utc_now())
     reserved_delta = credits if enforced else 0
     if enforced:
         changed = session.execute(
@@ -970,6 +978,10 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
             reserved_after_credits=account.reserved_credits,
         )
     )
+    if enforced:
+        from .credit_memberships import finish_allocation
+
+        finish_allocation(session, account, reservation, charged)
     job.actual_credits = charged
 
 
@@ -1033,6 +1045,10 @@ def release_credits(session: Session, job: JobRecord) -> None:
         )
     )
     session.flush()
+    if enforced:
+        from .credit_memberships import finish_allocation
+
+        finish_allocation(session, account, reservation, 0)
 
 
 def add_outbox_event(

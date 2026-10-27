@@ -1,8 +1,9 @@
+import asyncio
 import hmac
 import logging
 import math
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from time import monotonic
 from uuid import uuid4
 
@@ -215,8 +216,16 @@ def create_app(
             # detail API disables this entire crawler startup path.
             if app_settings.task_dispatcher == "inline":
                 resume_queued_crawl_tasks(application, session_factory)
-        yield
-        engine.dispose()
+        from .credit_memberships import maintenance_loop
+
+        membership_task = asyncio.create_task(maintenance_loop(session_factory))
+        try:
+            yield
+        finally:
+            membership_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await membership_task
+            engine.dispose()
 
     application = FastAPI(
         title=app_settings.app_name,

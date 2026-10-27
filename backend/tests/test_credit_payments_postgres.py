@@ -17,7 +17,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import services
 from app.config import Settings
-from app.credit_payment_routes import settle_paid_purchase
+from app.credit_payment_routes import _settle_verified_purchase, settle_paid_purchase
 from app.database import Base
 from app.errors import ApiError
 from app.models import (
@@ -117,18 +117,24 @@ def _settings():
     )
 
 
-def test_postgres_duplicate_notifications_credit_once(postgres_credits):
+@pytest.mark.parametrize("mix_reconciliation", [False, True])
+def test_postgres_duplicate_notifications_credit_once(
+    postgres_credits, mix_reconciliation
+):
     factory, _ = postgres_credits
     fields = paid_fields(_order(factory))
     barrier = Barrier(8)
 
-    def notify():
+    def notify(index):
         barrier.wait(timeout=10)
         with factory() as session:
-            settle_paid_purchase(session, _settings(), fields)
+            if mix_reconciliation and index % 2:
+                _settle_verified_purchase(session, fields)
+            else:
+                settle_paid_purchase(session, _settings(), fields)
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(notify) for _ in range(8)]
+        futures = [executor.submit(notify, index) for index in range(8)]
         for future in futures:
             future.result(timeout=20)
     with factory() as session:

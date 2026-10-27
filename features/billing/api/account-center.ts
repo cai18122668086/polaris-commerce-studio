@@ -112,6 +112,22 @@ export function usePurchaseOrder(workspaceId: string, orderId: string | null) {
     retry: false,
   });
 }
+export function useReconcilePurchase(workspaceId: string, orderId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async () => unwrapApiResponse(await apiClient.POST(
+      "/api/v1/workspaces/{workspace_id}/credits/purchases/{purchase_id}/reconcile",
+      { params: { path: { workspace_id: workspaceId, purchase_id: orderId } } },
+    )),
+    onSuccess: (order) => {
+      client.setQueryData(["credit-purchase", workspaceId, orderId], order);
+      for (const queryKey of [["credits", workspaceId], ["credit-orders", workspaceId],
+        ["credit-membership", workspaceId], ["credit-ledger-history", workspaceId]])
+        void client.invalidateQueries({ queryKey });
+    },
+  });
+}
+
 export function useCreatePurchase(workspaceId: string) {
   const queryClient = useQueryClient();
   const intent = useRef<{ productId: string; key: string } | null>(null);

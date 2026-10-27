@@ -44,7 +44,7 @@ export function CreditPurchasePanel({ workspaceId }: { workspaceId: string }) {
     <h3>补充创作积分</h3>
     {catalog.data.packages.map(pack => <div key={pack.id} className={styles.purchaseRow}>
       <div><strong>{pack.credits.toLocaleString()} 积分</strong><small>可创作约 {Math.floor(pack.credits / 5)} 张普通图片</small></div>
-      <b>¥{(pack.amount_fen / 100).toFixed(0)}</b>
+      <b>¥{(pack.amount_fen / 100).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}</b>
       <button type="button" disabled={purchase.isPending || (Boolean(purchase.data) && !paid)} onClick={() => { if (paid) { requestKey.current = null; purchase.reset(); } purchase.mutate(pack.id); }}>
         {purchase.isPending ? "正在创建订单…" : paid ? "继续充值" : purchase.data ? "订单已创建" : "立即充值"}
       </button>

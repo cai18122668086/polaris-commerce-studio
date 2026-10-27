@@ -28,6 +28,7 @@ import {
   Menu,
   Plus,
   Search,
+  RefreshCw,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -48,6 +49,7 @@ import {
   useMembership,
   usePurchaseHistory,
   usePurchaseOrder,
+  useReconcilePurchase,
   type Product,
 } from "@/features/billing/api/account-center";
 import { useCreationRecords } from "@/features/jobs/api/creation-records";
@@ -845,8 +847,15 @@ function Membership({
           {products.map((product, index) => {
             const copy = product.plan_id
               ? planCopy[product.plan_id]
-              : undefined;
-            const featured = product.plan_id === "pro" || tab === "pack";
+              : {
+                  name: product.name,
+                  description: product.id === "pack_small"
+                    ? "先试试，找到你的出图节奏"
+                    : product.id === "pack_large"
+                      ? "为下一轮上新多做些准备"
+                      : "备好额度，随时上新",
+                };
+            const featured = product.plan_id === "pro" || product.id === "pack_medium";
             return (
               <article
                 className={`plan-card ${featured ? "featured" : ""}`}
@@ -855,7 +864,7 @@ function Membership({
                 {featured && (
                   <span className="plan-badge">
                     <Sparkles size={12} />
-                    {tab === "member" ? "商家推荐" : "随心创作"}
+                    {tab === "member" ? "商家推荐" : "最受欢迎"}
                   </span>
                 )}
                 <div className="plan-symbol">
@@ -1014,6 +1023,7 @@ function OrderDialog({
   onClose: () => void;
 }) {
   const order = usePurchaseOrder(workspaceId, orderId);
+  const reconcile = useReconcilePurchase(workspaceId, orderId);
   return (
     <Dialog title="订单详情" onClose={onClose}>
       {order.isError ? (
@@ -1081,11 +1091,20 @@ function OrderDialog({
           ) : (
             <>
               <p className="checkout-note">
-                付款后等待收款通知确认，余额与订单会自动更新。也可稍后在订单页继续付款。
+                付款后余额与订单会自动更新。如已扣款，请点击“我已付款，核对到账”，无需重复支付。
               </p>
+              <Button variant="primary" disabled={reconcile.isPending}
+                onClick={() => reconcile.mutate()}>
+                {reconcile.isPending ? "正在核对收款…" : "我已付款，核对到账"}
+                <RefreshCw size={16} />
+              </Button>
+              {reconcile.isError && <p className="account-error" role="alert">{errorMessage(reconcile.error)}</p>}
+              {reconcile.data?.status === "pending" && <p className="checkout-note" role="status">
+                支付渠道尚未确认到账。如微信或支付宝账单已显示成功，请勿重复支付，保留账单和订单号，在消息与帮助中联系核对。
+              </p>}
               {order.data.checkout_url && (
                 <a
-                  className="button primary full-width"
+                  className="button outline full-width"
                   href={order.data.checkout_url}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -1647,7 +1666,7 @@ const faqs = [
   ],
   [
     "付款后还没有到账怎么办？",
-    "收银台返回页面不会直接增加积分，系统以收款通知确认为准。可以在订单页查看状态和继续支付；若已扣款仍未更新，请保留订单号联系帮助渠道，避免重复付款。",
+    "收银台返回页面不会直接增加积分，系统以收款通知确认为准。可以在订单详情点击“我已付款，核对到账”，由服务器向支付渠道核对；若渠道仍未确认，请保留账单与订单号联系帮助，避免重复付款。",
   ],
   [
     "可以在线申请发票吗？",

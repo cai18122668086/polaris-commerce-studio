@@ -35,6 +35,7 @@ export function AppShell({
   return (
     <div className={`app-shell${creationId ? " app-shell--creation" : ""}${pathname === "/" ? " app-shell--home" : ""}`} data-feature={creationId}>
       {pilotAccount ? <CreditAccountHeader /> : <TopNavigation
+        compactAccountActions={Boolean(credits.data?.enforcement_enabled)}
         onOpenTasks={() => setTaskOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}
         showMenu={showSidebar}

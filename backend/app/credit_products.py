@@ -18,8 +18,9 @@ class Product:
         return asdict(self)
 
 
-# Preserve the previously offered pack and every pending order's original terms.
-# The other pack prices in the prototype were never approved as final products.
+# The original single-pack offer remains compatible with existing clients and
+# pending orders. The account center uses the three approved prototype packs.
+LEGACY_PACK_ID = "credits_1500"
 PRODUCTS = {
     "credits_1500": Product(
         "credits_1500",
@@ -30,6 +31,15 @@ PRODUCTS = {
         validity_months=0,
     ),
 }
+for product_id, name, price, credits in (
+    ("pack_small", "灵感补给", 2990, 300),
+    ("pack_medium", "日常创作", 9900, 1100),
+    ("pack_large", "高频出图", 29900, 3600),
+):
+    PRODUCTS[product_id] = Product(
+        product_id, name, price, credits, "pack", validity_months=12
+    )
+
 for plan_id, name, credits, monthly, annual in (
     ("light", "轻享版", 600, 4900, 46800),
     ("pro", "专业版", 1500, 9900, 94800),

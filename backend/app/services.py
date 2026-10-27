@@ -65,6 +65,7 @@ def new_id(prefix: str) -> str:
 
 _quota_enabled: bool = True
 _credit_enforcement_enabled: bool = True
+_credit_pilot_workspace_ids: frozenset[str] = frozenset()
 
 
 def set_quota_enabled(enabled: bool) -> None:
@@ -89,8 +90,14 @@ def set_credit_enforcement_enabled(enabled: bool) -> None:
     _credit_enforcement_enabled = enabled
 
 
-def credit_enforcement_enabled() -> bool:
-    return _credit_enforcement_enabled
+def set_credit_pilot_workspaces(workspace_ids: Sequence[str]) -> None:
+    """Server-only workspace allowlist; never populated from customer input."""
+    global _credit_pilot_workspace_ids
+    _credit_pilot_workspace_ids = frozenset(workspace_ids)
+
+
+def credit_enforcement_enabled(workspace_id: str | None = None) -> bool:
+    return _credit_enforcement_enabled or workspace_id in _credit_pilot_workspace_ids
 
 
 def canonical_hash(value: Any) -> str:
@@ -730,11 +737,17 @@ def transition_job(
 
 
 def estimate_job(
-    job_type: JobType, item_count: int, configuration: Mapping[str, Any] | None = None
+    job_type: JobType,
+    item_count: int,
+    configuration: Mapping[str, Any] | None = None,
+    *,
+    workspace_id: str | None = None,
 ) -> tuple[int, int, int]:
     from .credit_billing import image_unit_credits
 
     credits = item_count * image_unit_credits(job_type.value, configuration)
+    if workspace_id is not None and not credit_enforcement_enabled(workspace_id):
+        credits = 2 if job_type == JobType.LOCAL_EDIT else item_count * 2
     if job_type == JobType.LOCAL_EDIT:
         return 40_000, 80_000, credits
     return item_count * 45_000, item_count * 90_000, credits
@@ -807,6 +820,8 @@ def reserve_image_credits(
     )
     if existing is not None:
         return reserve_credits(session, workspace_id, job, existing.reserved_credits)
+    if not credit_enforcement_enabled(workspace_id):
+        return reserve_credits(session, workspace_id, job, _estimate)
     credits, pricing = bind_image_reservation(session, job)
     reservation = reserve_credits(session, workspace_id, job, credits)
     if reservation is not None:
@@ -817,7 +832,7 @@ def reserve_image_credits(
 def reserve_credits(
     session: Session, workspace_id: str, job: JobRecord, credits: int
 ) -> CreditReservationRecord | None:
-    if not (_quota_enabled or _credit_enforcement_enabled):
+    if not (_quota_enabled or credit_enforcement_enabled(workspace_id)):
         return None
 
     existing = session.scalar(
@@ -841,7 +856,7 @@ def reserve_credits(
             "CREDIT_ACCOUNT_NOT_CONFIGURED",
             "工作区额度账户尚未配置。",
         )
-    enforced = _credit_enforcement_enabled
+    enforced = credit_enforcement_enabled(workspace_id)
     available = account.balance_credits - account.reserved_credits
     if enforced and available < credits:
         raise ApiError(
@@ -898,8 +913,6 @@ def reserve_credits(
 
 
 def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> None:
-    if not (_quota_enabled or _credit_enforcement_enabled):
-        return
 
     reservation = session.scalar(
         select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)
@@ -962,8 +975,6 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
 
 def release_credits(session: Session, job: JobRecord) -> None:
     """Release an active reservation without deducting workspace balance."""
-    if not (_quota_enabled or _credit_enforcement_enabled):
-        return
 
     reservation = session.scalar(
         select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)

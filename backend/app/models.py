@@ -1509,3 +1509,46 @@ class ReplicaDocumentRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
+
+
+class CreditPurchaseRecord(TimestampMixin, Base):
+    __tablename__ = "credit_purchases"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "created_by_user_id",
+            "idempotency_key",
+            name="uq_credit_purchase_request",
+        ),
+        UniqueConstraint(
+            "merchant_pid", "gateway_trade_no", name="uq_credit_purchase_gateway_trade"
+        ),
+        CheckConstraint(
+            "amount_fen > 0 AND credits > 0", name="ck_credit_purchase_positive"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'paid')", name="ck_credit_purchase_status"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    package_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    package_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    amount_fen: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    merchant_pid: Mapped[str] = mapped_column(String(32), nullable=False)
+    signing_key_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    checkout_url: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    gateway_trade_no: Mapped[str | None] = mapped_column(String(64))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ledger_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("credit_ledger_entries.id", ondelete="RESTRICT"), unique=True
+    )

@@ -8,7 +8,12 @@ from sqlalchemy import select
 from .auth import SessionDependency, WorkspaceDependency
 from .credit_billing import PRICING_VERSION, pricing_catalog
 from .errors import ApiError
-from .models import CreditLedgerEntryRecord, JobRecord, WorkspaceCreditAccountRecord
+from .models import (
+    CreditLedgerEntryRecord,
+    CreditPurchaseRecord,
+    JobRecord,
+    WorkspaceCreditAccountRecord,
+)
 from .schemas_v1 import JobCreate
 from .services import credit_enforcement_enabled
 
@@ -71,7 +76,7 @@ def account(
         balance_credits=row.balance_credits,
         reserved_credits=row.reserved_credits,
         available_credits=row.balance_credits - row.reserved_credits,
-        enforcement_enabled=credit_enforcement_enabled(),
+        enforcement_enabled=credit_enforcement_enabled(workspace.workspace_id),
         pricing_version=PRICING_VERSION,
         pricing=[CreditPricingRule(**item) for item in pricing_catalog()],
     )
@@ -85,11 +90,19 @@ def ledger(
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
 ) -> dict:
     statement = (
-        select(CreditLedgerEntryRecord, JobRecord.display_name)
+        select(
+            CreditLedgerEntryRecord,
+            JobRecord.display_name,
+            CreditPurchaseRecord.package_name,
+        )
         .outerjoin(
             JobRecord,
             (JobRecord.id == CreditLedgerEntryRecord.job_id)
             & (JobRecord.workspace_id == CreditLedgerEntryRecord.workspace_id),
+        )
+        .outerjoin(
+            CreditPurchaseRecord,
+            CreditPurchaseRecord.ledger_entry_id == CreditLedgerEntryRecord.id,
         )
         .where(CreditLedgerEntryRecord.workspace_id == workspace.workspace_id)
     )
@@ -99,12 +112,12 @@ def ledger(
         statement.order_by(CreditLedgerEntryRecord.id.desc()).limit(limit + 1)
     ).all()
     items = []
-    for entry, title in rows[:limit]:
+    for entry, title, package_name in rows[:limit]:
         items.append(
             {
                 "id": entry.id,
                 "job_id": entry.job_id,
-                "title": title or "创作任务",
+                "title": title or package_name or "创作任务",
                 "entry_type": entry.entry_type,
                 "delta_balance_credits": entry.delta_balance_credits,
                 "delta_reserved_credits": entry.delta_reserved_credits,
@@ -148,6 +161,6 @@ def quote(
         "image_count": job.expected_item_count,
         "estimated_credits": job.estimated_credits,
         "available_credits": available,
-        "sufficient": not credit_enforcement_enabled()
+        "sufficient": not credit_enforcement_enabled(workspace.workspace_id)
         or available >= (job.estimated_credits or 0),
     }

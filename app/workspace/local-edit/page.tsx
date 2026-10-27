@@ -238,7 +238,7 @@ function LocalEditWorkspace() {
                 </div>
               </section>
               </FormDisclosure>
-              <div className="cost-bar"><span>本次创作</span>{jobId ? <strong>已保存任务 · 输入参数已锁定</strong> : <CreditCostHint jobType="local_edit" count={1} />}</div>
+              <div className="cost-bar"><span>本次创作</span>{jobId ? <strong>已保存任务 · 输入参数已锁定</strong> : <CreditCostHint jobType="local_edit" count={1} fallback={<strong>{workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "生成服务暂不可用"}</strong>} />}</div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}
               <JobProgressFeedback job={job.data} pending={createJob.isPending} error={job.error}
                 lastSyncedAt={job.dataUpdatedAt} refreshing={job.isFetching} onRefresh={jobId ? () => void job.refetch() : undefined} />

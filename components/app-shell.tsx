@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useWorkspace } from "@/features/workspaces/api/workspaces";
+import { useCreditAccount } from "@/features/billing/api/credits";
 import { TopNavigation } from "./top-navigation";
 import { ToolSidebar } from "./tool-sidebar";
 import { TaskDrawer } from "./task-drawer";
@@ -23,13 +25,16 @@ export function AppShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const taskTriggerRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
+  const { workspace } = useWorkspace();
+  const credits = useCreditAccount(workspace?.id);
+  const pilotAccount = pathname === "/account" && Boolean(credits.data?.enforcement_enabled);
   const feature = getFeatureByRoute(pathname);
   const creationId = feature?.id ?? (pathname === "/inspiration" ? "inspiration" : undefined);
   const showSidebar = sidebar && !creationId;
 
   return (
     <div className={`app-shell${creationId ? " app-shell--creation" : ""}${pathname === "/" ? " app-shell--home" : ""}`} data-feature={creationId}>
-      {pathname === "/account" ? <CreditAccountHeader /> : <TopNavigation
+      {pilotAccount ? <CreditAccountHeader /> : <TopNavigation
         onOpenTasks={() => setTaskOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}
         showMenu={showSidebar}
@@ -54,12 +59,12 @@ export function AppShell({
           {children}
         </main>
       </div>
-      {pathname !== "/account" && <TaskDrawer
+      {!pilotAccount && <TaskDrawer
         open={taskOpen}
         onClose={() => setTaskOpen(false)}
         triggerRef={taskTriggerRef}
       />}
-      {pathname !== "/account" && <AnnouncementPrompt />}
+      {!pilotAccount && <AnnouncementPrompt />}
     </div>
   );
 }

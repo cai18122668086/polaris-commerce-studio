@@ -17,10 +17,10 @@ export function useCreditAccount(workspaceId: string | undefined) {
   });
 }
 
-export function useCreditLedger(workspaceId: string | undefined) {
+export function useCreditLedger(workspaceId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["credits-ledger", workspaceId],
-    enabled: Boolean(workspaceId),
+    enabled: enabled && Boolean(workspaceId),
     queryFn: async ({ signal }) => unwrapApiResponse(await apiClient.GET(
       "/api/v1/workspaces/{workspace_id}/credits/ledger",
       { params: { path: { workspace_id: workspaceId! }, query: { limit: 100 } }, signal },

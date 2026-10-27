@@ -1591,6 +1591,55 @@
         "title": "CreditLedgerResponse",
         "type": "object"
       },
+      "CreditPackage": {
+        "properties": {
+          "amount_fen": {
+            "title": "Amount Fen",
+            "type": "integer"
+          },
+          "credits": {
+            "title": "Credits",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "amount_fen",
+          "credits"
+        ],
+        "title": "CreditPackage",
+        "type": "object"
+      },
+      "CreditPackageCatalog": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "packages": {
+            "items": {
+              "$ref": "#/components/schemas/CreditPackage"
+            },
+            "title": "Packages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "packages"
+        ],
+        "title": "CreditPackageCatalog",
+        "type": "object"
+      },
       "CreditPricingRule": {
         "properties": {
           "credits_per_image": {
@@ -1619,6 +1668,65 @@
           "credits_per_image"
         ],
         "title": "CreditPricingRule",
+        "type": "object"
+      },
+      "CreditPurchaseCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "package_id": {
+            "title": "Package Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package_id"
+        ],
+        "title": "CreditPurchaseCreate",
+        "type": "object"
+      },
+      "CreditPurchaseResponse": {
+        "properties": {
+          "amount_fen": {
+            "title": "Amount Fen",
+            "type": "integer"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "credits": {
+            "title": "Credits",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "package_name": {
+            "title": "Package Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "package_name",
+          "amount_fen",
+          "credits",
+          "status",
+          "checkout_url"
+        ],
+        "title": "CreditPurchaseResponse",
         "type": "object"
       },
       "CreditQuoteResponse": {
@@ -12075,6 +12183,46 @@
         ]
       }
     },
+    "/api/v1/payments/epay/notify": {
+      "get": {
+        "operationId": "epay_notify_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Epay Notify",
+        "tags": [
+          "credit payments"
+        ]
+      },
+      "post": {
+        "operationId": "epay_notify_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Epay Notify",
+        "tags": [
+          "credit payments"
+        ]
+      }
+    },
     "/api/v1/runtime": {
       "get": {
         "description": "Reports internal-test workflow availability and execution mode. availability=available only means the workflow/API can be exercised; clients must read execution before describing real generation support.",
@@ -12618,6 +12766,182 @@
         "summary": "Ledger",
         "tags": [
           "credits"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/credits/packages": {
+      "get": {
+        "operationId": "packages_api_v1_workspaces__workspace_id__credits_packages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPackageCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Packages",
+        "tags": [
+          "credit payments"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/credits/purchases": {
+      "post": {
+        "operationId": "create_purchase_api_v1_workspaces__workspace_id__credits_purchases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditPurchaseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPurchaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Purchase",
+        "tags": [
+          "credit payments"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/credits/purchases/{purchase_id}": {
+      "get": {
+        "operationId": "purchase_detail_api_v1_workspaces__workspace_id__credits_purchases__purchase_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_id",
+            "required": true,
+            "schema": {
+              "title": "Purchase Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPurchaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Purchase Detail",
+        "tags": [
+          "credit payments"
         ]
       }
     },

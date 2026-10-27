@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from .config import MAX_PROVIDER_ALLOWANCE, Settings
 from .domain import JobStatus
 from .execution import ExecutionCoordinator, build_fake_coordinator
-from .services import set_credit_enforcement_enabled, set_quota_enabled
+from .services import (
+    set_credit_enforcement_enabled,
+    set_credit_pilot_workspaces,
+    set_quota_enabled,
+)
 from .storage import ImageStorage
 
 
@@ -191,6 +195,7 @@ def build_task_runner(
     validate_task_runner_settings(settings)
     set_quota_enabled(settings.provider_quota_enabled)
     set_credit_enforcement_enabled(settings.workspace_credit_enforcement_enabled)
+    set_credit_pilot_workspaces(settings.workspace_credit_pilot_ids)
     if settings.task_runner == "mock":
         return MockTaskRunner(
             session_factory,

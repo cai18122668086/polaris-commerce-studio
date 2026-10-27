@@ -4365,6 +4365,7 @@ def _new_job_from_payload(
         JobType(payload.type),
         item_count,
         {"settings": payload.configuration.model_dump(mode="json")},
+        workspace_id=workspace_id,
     )
     is_submit = payload.intent == "submit"
     job = JobRecord(
@@ -4845,7 +4846,10 @@ def _copy_job_for_retry(
     selected: list[str],
 ) -> JobRecord:
     minimum, maximum, credits = estimate_job(
-        JobType(source.type), len(selected), source.configuration
+        JobType(source.type),
+        len(selected),
+        source.configuration,
+        workspace_id=source.workspace_id,
     )
     if source.type == JobType.LOCAL_EDIT.value:
         minimum = source.estimated_cost_min_micros or minimum

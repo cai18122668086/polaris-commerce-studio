@@ -1229,6 +1229,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/epay/notify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Epay Notify */
+        get: operations["epay_notify_get"];
+        put?: never;
+        /** Epay Notify */
+        post: operations["epay_notify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runtime": {
         parameters: {
             query?: never;
@@ -1329,6 +1347,108 @@ export interface paths {
         put?: never;
         /** Create Asset Access Url */
         post: operations["create_asset_access_url_api_v1_workspaces__workspace_id__assets__asset_id__access_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Account */
+        get: operations["account_api_v1_workspaces__workspace_id__credits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/credits/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ledger */
+        get: operations["ledger_api_v1_workspaces__workspace_id__credits_ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/credits/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Packages */
+        get: operations["packages_api_v1_workspaces__workspace_id__credits_packages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/credits/purchases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Purchase */
+        post: operations["create_purchase_api_v1_workspaces__workspace_id__credits_purchases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/credits/purchases/{purchase_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Purchase Detail */
+        get: operations["purchase_detail_api_v1_workspaces__workspace_id__credits_purchases__purchase_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/credits/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quote */
+        post: operations["quote_api_v1_workspaces__workspace_id__credits_quote_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2505,6 +2625,109 @@ export interface components {
              * @enum {string}
              */
             type: "creative_image";
+        };
+        /** CreditAccountResponse */
+        CreditAccountResponse: {
+            /** Available Credits */
+            available_credits: number;
+            /** Balance Credits */
+            balance_credits: number;
+            /** Enforcement Enabled */
+            enforcement_enabled: boolean;
+            /** Pricing */
+            pricing: components["schemas"]["CreditPricingRule"][];
+            /** Pricing Version */
+            pricing_version: string;
+            /** Reserved Credits */
+            reserved_credits: number;
+        };
+        /** CreditLedgerEntry */
+        CreditLedgerEntry: {
+            /** Available After Credits */
+            available_after_credits: number;
+            /** Created At */
+            created_at: string;
+            /** Delta Balance Credits */
+            delta_balance_credits: number;
+            /** Delta Reserved Credits */
+            delta_reserved_credits: number;
+            /** Entry Type */
+            entry_type: string;
+            /** Id */
+            id: number;
+            /** Job Id */
+            job_id: string | null;
+            /** Released Credits */
+            released_credits: number;
+            /** Title */
+            title: string;
+        };
+        /** CreditLedgerResponse */
+        CreditLedgerResponse: {
+            /** Items */
+            items: components["schemas"]["CreditLedgerEntry"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+        };
+        /** CreditPackage */
+        CreditPackage: {
+            /** Amount Fen */
+            amount_fen: number;
+            /** Credits */
+            credits: number;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** CreditPackageCatalog */
+        CreditPackageCatalog: {
+            /** Enabled */
+            enabled: boolean;
+            /** Packages */
+            packages: components["schemas"]["CreditPackage"][];
+        };
+        /** CreditPricingRule */
+        CreditPricingRule: {
+            /** Credits Per Image */
+            credits_per_image: number;
+            /** Job Type */
+            job_type: string;
+            /** Task Type */
+            task_type: string | null;
+        };
+        /** CreditPurchaseCreate */
+        CreditPurchaseCreate: {
+            /** Package Id */
+            package_id: string;
+        };
+        /** CreditPurchaseResponse */
+        CreditPurchaseResponse: {
+            /** Amount Fen */
+            amount_fen: number;
+            /** Checkout Url */
+            checkout_url: string | null;
+            /** Credits */
+            credits: number;
+            /** Id */
+            id: string;
+            /** Package Name */
+            package_name: string;
+            /** Status */
+            status: string;
+        };
+        /** CreditQuoteResponse */
+        CreditQuoteResponse: {
+            /** Available Credits */
+            available_credits: number;
+            /** Estimated Credits */
+            estimated_credits: number;
+            /** Image Count */
+            image_count: number;
+            /** Pricing Version */
+            pricing_version: string;
+            /** Sufficient */
+            sufficient: boolean;
         };
         /** CurrentUserResponse */
         CurrentUserResponse: {
@@ -7129,6 +7352,46 @@ export interface operations {
             };
         };
     };
+    epay_notify_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    epay_notify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
     get_runtime_status_api_v1_runtime_get: {
         parameters: {
             query?: never;
@@ -7338,6 +7601,206 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccessUrlResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_api_v1_workspaces__workspace_id__credits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ledger_api_v1_workspaces__workspace_id__credits_ledger_get: {
+        parameters: {
+            query?: {
+                before_id?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditLedgerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    packages_api_v1_workspaces__workspace_id__credits_packages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditPackageCatalog"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_purchase_api_v1_workspaces__workspace_id__credits_purchases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditPurchaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditPurchaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purchase_detail_api_v1_workspaces__workspace_id__credits_purchases__purchase_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditPurchaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_api_v1_workspaces__workspace_id__credits_quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalEditJobCreate"] | components["schemas"]["ProductImageJobCreate"] | components["schemas"]["ReferenceRemixJobCreate"] | components["schemas"]["ModelPoseTransferJobCreate"] | components["schemas"]["CreativeImageJobCreate"] | components["schemas"]["DetailPackJobCreate"] | components["schemas"]["AmazonVisualSuiteJobCreate"] | components["schemas"]["DomesticMainImageJobCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditQuoteResponse"];
                 };
             };
             /** @description Validation Error */

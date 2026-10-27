@@ -2888,7 +2888,14 @@ class ExecutionCoordinator:
                 if total_usage_count and total_known_cost == total_usage_count
                 else None
             )
-            job.actual_credits = 0 if usage_count else None
+            from .credit_billing import successful_image_credits
+
+            customer_credits = successful_image_credits(session, job)
+            job.actual_credits = (
+                customer_credits
+                if customer_credits is not None
+                else (0 if usage_count else None)
+            )
             real_usage_events = session.scalars(
                 select(UsageEventRecord).where(
                     UsageEventRecord.job_id == job.id,

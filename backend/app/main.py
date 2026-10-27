@@ -23,6 +23,8 @@ from .announcement_routes import router as announcement_router
 from .auth import ensure_development_identity
 from .brand_resume_routes import router as brand_resume_router
 from .config import Settings
+from .credit_payment_routes import router as credit_payment_router
+from .credit_routes import router as credit_router
 from .database import Base, build_database
 from .ecommerce_account_routes import router as ecommerce_account_router
 from .ecommerce_crawl_tasks import (
@@ -47,7 +49,11 @@ from .models import WorkspaceLimitRecord
 from .replica import router as replica_router
 from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse
-from .services import set_credit_enforcement_enabled, set_quota_enabled
+from .services import (
+    set_credit_enforcement_enabled,
+    set_credit_pilot_workspaces,
+    set_quota_enabled,
+)
 from .storage import (
     ImageStorage,
     LocalImageStorage,
@@ -186,6 +192,7 @@ def create_app(
     validate_task_runner_settings(app_settings)
     set_quota_enabled(app_settings.provider_quota_enabled)
     set_credit_enforcement_enabled(app_settings.workspace_credit_enforcement_enabled)
+    set_credit_pilot_workspaces(app_settings.workspace_credit_pilot_ids)
     auth_backend = external_auth_backend
     if app_settings.auth_mode == "external":
         auth_backend = auth_backend or SuperTokensAuthAdapter(app_settings)
@@ -495,6 +502,8 @@ def create_app(
         return {"status": "ok", "metrics": metrics}
 
     application.include_router(v1_router)
+    application.include_router(credit_router)
+    application.include_router(credit_payment_router)
     application.include_router(brand_resume_router)
     application.include_router(announcement_router)
     application.include_router(admin_dashboard_router)

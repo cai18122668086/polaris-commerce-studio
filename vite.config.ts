@@ -46,6 +46,7 @@ export default defineConfig(async ({ mode }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    cacheDir: ".cache/node_modules/.vite-credits",
     build: {
       // `/assets` is a product route. Keep browser files beneath a dedicated
       // reserved path; the pinned vinext compatibility patch teaches its local

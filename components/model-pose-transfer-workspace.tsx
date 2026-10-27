@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditCostHint } from "@/features/billing/components/credit-account";
+
 import { useMutation } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -732,7 +734,7 @@ export function ModelPoseTransferWorkspace() {
         <footer className={styles.stickyBar}>
           <div className={styles.stickyContext}>
             <span>{workspacePending ? <LoaderCircle className="spin" size={17} /> : <Clock3 size={17} />}</span>
-            <p><strong>{workspace?.name ?? "正在连接工作区"}</strong><small>{jobId ? progressText : "固定生成 1 张高清结果"}</small></p>
+            <p><strong>{workspace?.name ?? "正在连接工作区"}</strong><small>{jobId ? progressText : "固定生成 1 张高清结果"}</small>{!jobId && <CreditCostHint jobType="model_pose_transfer" count={1} />}</p>
           </div>
           <div className={styles.stickyActions}>
             {(uiError || requestError) ? (

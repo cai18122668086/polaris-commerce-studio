@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -196,6 +197,22 @@ class Settings(BaseSettings):
     )
     provider_quota_enabled: bool = Field(default=True)
     workspace_credit_enforcement_enabled: bool = Field(default=False)
+    workspace_credit_pilot_ids: list[str] = Field(default_factory=list)
+    credit_payments_enabled: bool = False
+    credit_epay_pid: str = ""
+    credit_epay_active_key_id: str = ""
+    credit_epay_keys: dict[str, SecretStr] = Field(default_factory=dict)
+    credit_epay_base_url: str = "https://pay.tengliapi.xyz"
+    credit_epay_notify_url: str = "https://www.tengliapi.xyz/api/v1/payments/epay/notify"
+    credit_epay_return_url: str = "https://www.tengliapi.xyz/account"
+
+    @field_validator("workspace_credit_pilot_ids")
+    @classmethod
+    def validate_credit_pilot_ids(cls, value: list[str]) -> list[str]:
+        if any(re.fullmatch(r"ws_[A-Za-z0-9_-]{1,37}", item) is None for item in value):
+            raise ValueError("credit pilot requires exact workspace IDs")
+        return list(dict.fromkeys(value))
+
     tengli_daily_budget_usd: float = Field(
         default=0,
         ge=0,

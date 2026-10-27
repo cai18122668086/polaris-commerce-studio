@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditCostHint } from "@/features/billing/components/credit-account";
+
 import {
   ArrowRight,
   CheckCircle2,
@@ -1213,6 +1215,7 @@ export function CommerceSkillWorkspace({
             <p>
               <strong>{workspace?.name ?? "正在连接工作区"}</strong>
               <small>{jobId ? progressText : isAmazon ? "预计生成 21 张套图" : `预计生成 ${imageCount} 张图片`}</small>
+              {!jobId && <CreditCostHint jobType={feature.jobType} count={expectedCount} />}
             </p>
           </div>
           <div className={styles.stickyActions}>

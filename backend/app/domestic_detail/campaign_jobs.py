@@ -14,7 +14,8 @@ from ..config import Settings
 from ..domain import JobType
 from ..models import JobAttemptRecord, JobItemRecord, JobPlanRecord, JobRecord, utc_now
 from ..provider_quota import reserve_provider_job_quota
-from ..services import enforce_active_job_limit, new_id, reserve_credits
+from ..services import enforce_active_job_limit, new_id
+from ..services import reserve_image_credits as reserve_credits
 from ..storage import ImageStorage
 from .delivery import _json, _reject, _verified_context
 from .generation import runtime_source_hash

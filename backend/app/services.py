@@ -7,7 +7,8 @@ from typing import Any, cast, get_args
 from uuid import uuid4
 
 from fastapi import status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
@@ -64,6 +65,7 @@ def new_id(prefix: str) -> str:
 
 _quota_enabled: bool = True
 _credit_enforcement_enabled: bool = True
+_credit_pilot_workspace_ids: frozenset[str] = frozenset()
 
 
 def set_quota_enabled(enabled: bool) -> None:
@@ -88,8 +90,14 @@ def set_credit_enforcement_enabled(enabled: bool) -> None:
     _credit_enforcement_enabled = enabled
 
 
-def credit_enforcement_enabled() -> bool:
-    return _credit_enforcement_enabled
+def set_credit_pilot_workspaces(workspace_ids: Sequence[str]) -> None:
+    """Server-only workspace allowlist; never populated from customer input."""
+    global _credit_pilot_workspace_ids
+    _credit_pilot_workspace_ids = frozenset(workspace_ids)
+
+
+def credit_enforcement_enabled(workspace_id: str | None = None) -> bool:
+    return _credit_enforcement_enabled or workspace_id in _credit_pilot_workspace_ids
 
 
 def canonical_hash(value: Any) -> str:
@@ -728,10 +736,21 @@ def transition_job(
             fence_amazon_suite_review_attempts(session, job)
 
 
-def estimate_job(job_type: JobType, item_count: int) -> tuple[int, int, int]:
+def estimate_job(
+    job_type: JobType,
+    item_count: int,
+    configuration: Mapping[str, Any] | None = None,
+    *,
+    workspace_id: str | None = None,
+) -> tuple[int, int, int]:
+    from .credit_billing import image_unit_credits
+
+    credits = item_count * image_unit_credits(job_type.value, configuration)
+    if workspace_id is not None and not credit_enforcement_enabled(workspace_id):
+        credits = 2 if job_type == JobType.LOCAL_EDIT else item_count * 2
     if job_type == JobType.LOCAL_EDIT:
-        return 40_000, 80_000, 2
-    return item_count * 45_000, item_count * 90_000, item_count * 2
+        return 40_000, 80_000, credits
+    return item_count * 45_000, item_count * 90_000, credits
 
 
 def lock_workspace_limits(
@@ -790,10 +809,30 @@ def _credit_reservation_is_enforced(
     return reserve_entry.delta_reserved_credits > 0
 
 
+def reserve_image_credits(
+    session: Session, workspace_id: str, job: JobRecord, _estimate: int = 0
+) -> CreditReservationRecord | None:
+    """All generation constructors share this server-authoritative gate."""
+    from .credit_billing import bind_image_reservation
+
+    existing = session.scalar(
+        select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)
+    )
+    if existing is not None:
+        return reserve_credits(session, workspace_id, job, existing.reserved_credits)
+    if not credit_enforcement_enabled(workspace_id):
+        return reserve_credits(session, workspace_id, job, _estimate)
+    credits, pricing = bind_image_reservation(session, job)
+    reservation = reserve_credits(session, workspace_id, job, credits)
+    if reservation is not None:
+        reservation.pricing_snapshot = pricing
+    return reservation
+
+
 def reserve_credits(
     session: Session, workspace_id: str, job: JobRecord, credits: int
 ) -> CreditReservationRecord | None:
-    if not _quota_enabled:
+    if not (_quota_enabled or credit_enforcement_enabled(workspace_id)):
         return None
 
     existing = session.scalar(
@@ -817,7 +856,7 @@ def reserve_credits(
             "CREDIT_ACCOUNT_NOT_CONFIGURED",
             "工作区额度账户尚未配置。",
         )
-    enforced = _credit_enforcement_enabled
+    enforced = credit_enforcement_enabled(workspace_id)
     available = account.balance_credits - account.reserved_credits
     if enforced and available < credits:
         raise ApiError(
@@ -836,8 +875,26 @@ def reserve_credits(
     )
     reserved_delta = credits if enforced else 0
     if enforced:
-        account.reserved_credits += credits
-        account.version += 1
+        changed = session.execute(
+            update(WorkspaceCreditAccountRecord)
+            .where(
+                WorkspaceCreditAccountRecord.workspace_id == workspace_id,
+                WorkspaceCreditAccountRecord.balance_credits
+                - WorkspaceCreditAccountRecord.reserved_credits
+                >= credits,
+            )
+            .values(
+                reserved_credits=WorkspaceCreditAccountRecord.reserved_credits
+                + credits,
+                version=WorkspaceCreditAccountRecord.version + 1,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if cast(CursorResult[Any], changed).rowcount != 1:
+            raise ApiError(
+                402, "BUDGET_LIMIT_EXCEEDED", "当前可用积分不足，请充值后再试。"
+            )
+        session.refresh(account)
     session.add(reservation)
     session.flush()
     session.add(
@@ -856,8 +913,6 @@ def reserve_credits(
 
 
 def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> None:
-    if not _quota_enabled:
-        return
 
     reservation = session.scalar(
         select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)
@@ -869,12 +924,38 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
     )
     if account is None:
         return
-    charged = min(actual_credits, reservation.reserved_credits)
+    from .credit_billing import successful_image_credits
+
+    computed = successful_image_credits(session, job)
+    if computed is not None:
+        actual_credits = computed
+    charged = min(max(0, actual_credits), reservation.reserved_credits)
+    claimed = session.execute(
+        update(CreditReservationRecord)
+        .where(
+            CreditReservationRecord.id == reservation.id,
+            CreditReservationRecord.status == CreditReservationStatus.ACTIVE.value,
+        )
+        .values(status=CreditReservationStatus.SETTLED.value, settled_credits=charged)
+        .execution_options(synchronize_session=False)
+    )
+    if cast(CursorResult[Any], claimed).rowcount != 1:
+        session.expire_all()
+        return
     enforced = _credit_reservation_is_enforced(session, reservation)
     if enforced:
-        account.reserved_credits -= reservation.reserved_credits
-        account.balance_credits -= charged
-        account.version += 1
+        session.execute(
+            update(WorkspaceCreditAccountRecord)
+            .where(WorkspaceCreditAccountRecord.workspace_id == job.workspace_id)
+            .values(
+                reserved_credits=WorkspaceCreditAccountRecord.reserved_credits
+                - reservation.reserved_credits,
+                balance_credits=WorkspaceCreditAccountRecord.balance_credits - charged,
+                version=WorkspaceCreditAccountRecord.version + 1,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        session.refresh(account)
     reservation.settled_credits = charged
     reservation.status = CreditReservationStatus.SETTLED.value
     session.add(
@@ -894,8 +975,6 @@ def settle_credits(session: Session, job: JobRecord, actual_credits: int) -> Non
 
 def release_credits(session: Session, job: JobRecord) -> None:
     """Release an active reservation without deducting workspace balance."""
-    if not _quota_enabled:
-        return
 
     reservation = session.scalar(
         select(CreditReservationRecord).where(CreditReservationRecord.job_id == job.id)
@@ -914,11 +993,32 @@ def release_credits(session: Session, job: JobRecord) -> None:
     if account is None:
         return
 
+    claimed = session.execute(
+        update(CreditReservationRecord)
+        .where(
+            CreditReservationRecord.id == reservation.id,
+            CreditReservationRecord.status == CreditReservationStatus.ACTIVE.value,
+        )
+        .values(status=CreditReservationStatus.RELEASED.value)
+        .execution_options(synchronize_session=False)
+    )
+    if cast(CursorResult[Any], claimed).rowcount != 1:
+        session.expire_all()
+        return
     released = reservation.reserved_credits
     enforced = _credit_reservation_is_enforced(session, reservation)
     if enforced:
-        account.reserved_credits -= released
-        account.version += 1
+        session.execute(
+            update(WorkspaceCreditAccountRecord)
+            .where(WorkspaceCreditAccountRecord.workspace_id == job.workspace_id)
+            .values(
+                reserved_credits=WorkspaceCreditAccountRecord.reserved_credits
+                - released,
+                version=WorkspaceCreditAccountRecord.version + 1,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        session.refresh(account)
     reservation.status = CreditReservationStatus.RELEASED.value
     session.add(
         CreditLedgerEntryRecord(

@@ -347,11 +347,12 @@ def test_enforced_workspace_credits_still_reject_insufficient_balance(
 # ---------------------------------------------------------------------------
 
 
-def test_quota_disabled_reserve_returns_none(
+def test_billing_and_quota_disabled_reserve_returns_none(
     client: TestClient,
 ) -> None:
     with client.app.state.session_factory() as session:
         set_quota_enabled(False)
+        set_credit_enforcement_enabled(False)
         try:
             _seed_account(session)
             job = _make_job(session)
@@ -363,13 +364,15 @@ def test_quota_disabled_reserve_returns_none(
             assert account.reserved_credits == 0  # untouched
         finally:
             set_quota_enabled(True)
+            set_credit_enforcement_enabled(True)
 
 
-def test_quota_disabled_settle_and_release_are_noops(
+def test_billing_and_quota_disabled_settle_and_release_are_noops(
     client: TestClient,
 ) -> None:
     with client.app.state.session_factory() as session:
         set_quota_enabled(False)
+        set_credit_enforcement_enabled(False)
         try:
             _seed_account(session)
             job = _make_job(session)
@@ -383,13 +386,15 @@ def test_quota_disabled_settle_and_release_are_noops(
             assert account.balance_credits == 100
         finally:
             set_quota_enabled(True)
+            set_credit_enforcement_enabled(True)
 
 
-def test_quota_disabled_does_not_write_ledger(
+def test_billing_and_quota_disabled_does_not_write_ledger(
     client: TestClient,
 ) -> None:
     with client.app.state.session_factory() as session:
         set_quota_enabled(False)
+        set_credit_enforcement_enabled(False)
         try:
             _seed_account(session)
             job = _make_job(session)
@@ -405,6 +410,7 @@ def test_quota_disabled_does_not_write_ledger(
             assert count == 0
         finally:
             set_quota_enabled(True)
+            set_credit_enforcement_enabled(True)
 
 
 def test_quota_enabled_flag_is_read_from_config(tmp_path) -> None:

@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditCostHint } from "@/features/billing/components/credit-account";
+
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -435,6 +437,7 @@ function DetailPackWorkspace() {
               <span><ShieldCheck size={18} /><div><p>图片产物</p><strong>{resultAssets.length > 0 ? `${resultAssets.length} 张已生成` : "暂无图片结果"}</strong></div></span>
             </div>
             <div className="generation-actions">
+              {!jobId && <CreditCostHint jobType="detail_pack" count={pageCount} />}
               <p><Info size={14} />{workflow.mode === "provider" ? marketRegion === "domestic" ? "提交后自动完成规划、生成和交付。" : "确认后将开始整套图片生成。" : workflow.mode === "mock" ? "确认后将保存任务计划，当前暂不生成图片。" : "生成服务状态确认中，确认入口暂时关闭。"}</p>
               {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>

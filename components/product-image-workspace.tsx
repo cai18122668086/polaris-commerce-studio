@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditCostHint } from "@/features/billing/components/credit-account";
+
 import {
   ArrowRight,
   CheckCircle2,
@@ -534,6 +536,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
             <p>
               <strong>{workspace?.name ?? "正在连接工作区"}</strong>
               <small>{jobId ? progressText : `预计生成 ${imageCount} 张图片`}</small>
+              {!jobId && <CreditCostHint jobType="product_image" taskPreset={feature.taskPreset} count={imageCount} />}
             </p>
           </div>
           <div className={styles.stickyActions}>

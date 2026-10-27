@@ -8,6 +8,7 @@ import { AnnouncementPrompt } from "./announcement-prompt";
 import { usePathname } from "next/navigation";
 import { getFeatureByRoute } from "@/lib/feature-registry";
 import { CreationWorkspaceBar } from "./creation-workspace-bar";
+import { CreditAccountHeader, CreditUsageNotice } from "@/features/billing/components/credit-account";
 
 export function AppShell({
   children,
@@ -28,14 +29,15 @@ export function AppShell({
 
   return (
     <div className={`app-shell${creationId ? " app-shell--creation" : ""}${pathname === "/" ? " app-shell--home" : ""}`} data-feature={creationId}>
-      <TopNavigation
+      {pathname === "/account" ? <CreditAccountHeader /> : <TopNavigation
         onOpenTasks={() => setTaskOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}
         showMenu={showSidebar}
         taskOpen={taskOpen}
         taskTriggerRef={taskTriggerRef}
-      />
+      />}
       {creationId && <CreationWorkspaceBar key={creationId} featureId={creationId} />}
+      {feature && <CreditUsageNotice jobType={feature.jobType} taskPreset={feature.taskPreset} />}
       <div className="app-shell__body">
         {showSidebar && (
           <ToolSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -52,12 +54,12 @@ export function AppShell({
           {children}
         </main>
       </div>
-      <TaskDrawer
+      {pathname !== "/account" && <TaskDrawer
         open={taskOpen}
         onClose={() => setTaskOpen(false)}
         triggerRef={taskTriggerRef}
-      />
-      <AnnouncementPrompt />
+      />}
+      {pathname !== "/account" && <AnnouncementPrompt />}
     </div>
   );
 }

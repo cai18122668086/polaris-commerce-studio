@@ -155,6 +155,8 @@ function useJobMutation<TResult, TVariables>(
     },
     onSuccess: async (_, variables) => {
       registry.current!.complete(signatureFor(variables));
+      await queryClient.invalidateQueries({ queryKey: ["credits", workspaceId!] });
+      await queryClient.invalidateQueries({ queryKey: ["credits-ledger", workspaceId!] });
       await queryClient.invalidateQueries({
         queryKey: jobKeys.all(workspaceId!),
       });

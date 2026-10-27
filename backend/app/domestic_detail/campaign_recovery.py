@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..aurora_detail_runtime import AuroraDetailHarnessRunner, detail_workspace
 from ..models import JobItemRecord, JobRecord, UsageEventRecord, utc_now
 from ..provider import ProviderOutcome, ProviderRequest, ProviderResult
-from ..services import enforce_active_job_limit, new_id, reserve_credits
+from ..services import enforce_active_job_limit, new_id, reserve_image_credits as reserve_credits
 from ..storage import ImageStorage
 from .campaign_durability import (
     JOURNAL,

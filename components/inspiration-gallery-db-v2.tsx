@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditCostHint } from "@/features/billing/components/credit-account";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { assetCreationHref } from "@/lib/assets/creation-handoff";
@@ -647,7 +649,7 @@ export function InspirationGalleryDb() {
               <button type="button" className={styles.countButton} aria-label="选择生成张数" aria-expanded={imageCountOpen} onClick={() => setImageCountOpen((open) => !open)}>{imageCount} 张 <ChevronDown size={13} /></button>
               {imageCountOpen && <div className={styles.countMenu} role="menu" aria-label="生成张数">{IMAGE_COUNT_OPTIONS.map((count) => <button type="button" role="menuitem" key={count} className={imageCount === count ? styles.countSelected : ""} onClick={() => { setImageCount(count); setImageCountOpen(false); }}>{count} 张</button>)}</div>}
             </div>
-            <small>消耗 {imageCount} 次</small>
+            <CreditCostHint jobType={activeCase?.workflow_type === "reference_remix" ? "reference_remix" : "creative_image"} count={imageCount} />
           <button className={styles.commandSubmit} aria-label={activeCase ? activeCase.button_label : "开始创作"} onClick={launchRemix} disabled={composerDisabled || !launchWorkflow.canSubmit || (activeCase ? activeCase.workflow_type === "legacy_unclassified" || activeCase.workflow_type === "local_edit" || composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || (activeCase.workflow_type === "reference_remix" && composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id)) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
           </div>
           {activeCase && activeCase.workflow_type === "legacy_unclassified" && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例正在配置中，暂不支持一键使用。</p>}

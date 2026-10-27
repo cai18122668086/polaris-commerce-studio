@@ -163,7 +163,7 @@ from .services import (
     new_id,
     release_credits,
     require_idempotency_key,
-    reserve_credits,
+    reserve_image_credits as reserve_credits,
     retry_item_ids,
     settle_credits,
     transition_job,
@@ -1925,6 +1925,7 @@ def update_draft_job(
         job.display_name = payload.display_name
     if payload.configuration is not None:
         updated_configuration = dict(payload.configuration)
+        updated_configuration.pop("customer_credit_pricing", None)
         if job.type == JobType.DETAIL_PACK.value:
             updated_configuration.pop("domestic_detail_pipeline", None)
             pipeline = job.configuration.get("domestic_detail_pipeline")
@@ -4330,7 +4331,11 @@ def _new_job_from_payload(
     else:
         minimum = item_count * min(detail_medium_price_micros, detail_high_price_micros)
         maximum = item_count * max(detail_medium_price_micros, detail_high_price_micros)
-    _, _, credits = estimate_job(JobType(payload.type), item_count)
+    _, _, credits = estimate_job(
+        JobType(payload.type),
+        item_count,
+        {"settings": payload.configuration.model_dump(mode="json")},
+    )
     is_submit = payload.intent == "submit"
     job = JobRecord(
         id=new_id("job"),
@@ -4808,7 +4813,9 @@ def _copy_job_for_retry(
     scope: RetryScope,
     selected: list[str],
 ) -> JobRecord:
-    minimum, maximum, credits = estimate_job(JobType(source.type), len(selected))
+    minimum, maximum, credits = estimate_job(
+        JobType(source.type), len(selected), source.configuration
+    )
     if source.type == JobType.LOCAL_EDIT.value:
         minimum = source.estimated_cost_min_micros or minimum
         maximum = source.estimated_cost_max_micros or maximum

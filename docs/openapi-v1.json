@@ -1462,6 +1462,198 @@
         "title": "CreativeImageJobCreate",
         "type": "object"
       },
+      "CreditAccountResponse": {
+        "properties": {
+          "available_credits": {
+            "title": "Available Credits",
+            "type": "integer"
+          },
+          "balance_credits": {
+            "title": "Balance Credits",
+            "type": "integer"
+          },
+          "enforcement_enabled": {
+            "title": "Enforcement Enabled",
+            "type": "boolean"
+          },
+          "pricing": {
+            "items": {
+              "$ref": "#/components/schemas/CreditPricingRule"
+            },
+            "title": "Pricing",
+            "type": "array"
+          },
+          "pricing_version": {
+            "title": "Pricing Version",
+            "type": "string"
+          },
+          "reserved_credits": {
+            "title": "Reserved Credits",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "balance_credits",
+          "reserved_credits",
+          "available_credits",
+          "enforcement_enabled",
+          "pricing_version",
+          "pricing"
+        ],
+        "title": "CreditAccountResponse",
+        "type": "object"
+      },
+      "CreditLedgerEntry": {
+        "properties": {
+          "available_after_credits": {
+            "title": "Available After Credits",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "delta_balance_credits": {
+            "title": "Delta Balance Credits",
+            "type": "integer"
+          },
+          "delta_reserved_credits": {
+            "title": "Delta Reserved Credits",
+            "type": "integer"
+          },
+          "entry_type": {
+            "title": "Entry Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "released_credits": {
+            "title": "Released Credits",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "title",
+          "entry_type",
+          "delta_balance_credits",
+          "delta_reserved_credits",
+          "released_credits",
+          "available_after_credits",
+          "created_at"
+        ],
+        "title": "CreditLedgerEntry",
+        "type": "object"
+      },
+      "CreditLedgerResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CreditLedgerEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CreditLedgerResponse",
+        "type": "object"
+      },
+      "CreditPricingRule": {
+        "properties": {
+          "credits_per_image": {
+            "title": "Credits Per Image",
+            "type": "integer"
+          },
+          "job_type": {
+            "title": "Job Type",
+            "type": "string"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Type"
+          }
+        },
+        "required": [
+          "job_type",
+          "task_type",
+          "credits_per_image"
+        ],
+        "title": "CreditPricingRule",
+        "type": "object"
+      },
+      "CreditQuoteResponse": {
+        "properties": {
+          "available_credits": {
+            "title": "Available Credits",
+            "type": "integer"
+          },
+          "estimated_credits": {
+            "title": "Estimated Credits",
+            "type": "integer"
+          },
+          "image_count": {
+            "title": "Image Count",
+            "type": "integer"
+          },
+          "pricing_version": {
+            "title": "Pricing Version",
+            "type": "string"
+          },
+          "sufficient": {
+            "title": "Sufficient",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pricing_version",
+          "image_count",
+          "estimated_credits",
+          "available_credits",
+          "sufficient"
+        ],
+        "title": "CreditQuoteResponse",
+        "type": "object"
+      },
       "CurrentUserResponse": {
         "properties": {
           "display_name": {
@@ -12304,6 +12496,224 @@
         "summary": "Create Asset Access Url",
         "tags": [
           "assets"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/credits": {
+      "get": {
+        "operationId": "account_api_v1_workspaces__workspace_id__credits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditAccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Account",
+        "tags": [
+          "credits"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/credits/ledger": {
+      "get": {
+        "operationId": "ledger_api_v1_workspaces__workspace_id__credits_ledger_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditLedgerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ledger",
+        "tags": [
+          "credits"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/credits/quote": {
+      "post": {
+        "operationId": "quote_api_v1_workspaces__workspace_id__credits_quote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "amazon_visual_suite": "#/components/schemas/AmazonVisualSuiteJobCreate",
+                    "creative_image": "#/components/schemas/CreativeImageJobCreate",
+                    "detail_pack": "#/components/schemas/DetailPackJobCreate",
+                    "domestic_main_image": "#/components/schemas/DomesticMainImageJobCreate",
+                    "local_edit": "#/components/schemas/LocalEditJobCreate",
+                    "model_pose_transfer": "#/components/schemas/ModelPoseTransferJobCreate",
+                    "product_image": "#/components/schemas/ProductImageJobCreate",
+                    "reference_remix": "#/components/schemas/ReferenceRemixJobCreate"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/LocalEditJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProductImageJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReferenceRemixJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelPoseTransferJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CreativeImageJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DetailPackJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AmazonVisualSuiteJobCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DomesticMainImageJobCreate"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditQuoteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Quote",
+        "tags": [
+          "credits"
         ]
       }
     },

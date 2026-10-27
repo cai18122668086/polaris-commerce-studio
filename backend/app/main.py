@@ -23,6 +23,7 @@ from .announcement_routes import router as announcement_router
 from .auth import ensure_development_identity
 from .brand_resume_routes import router as brand_resume_router
 from .config import Settings
+from .credit_routes import router as credit_router
 from .database import Base, build_database
 from .ecommerce_account_routes import router as ecommerce_account_router
 from .ecommerce_crawl_tasks import (
@@ -495,6 +496,7 @@ def create_app(
         return {"status": "ok", "metrics": metrics}
 
     application.include_router(v1_router)
+    application.include_router(credit_router)
     application.include_router(brand_resume_router)
     application.include_router(announcement_router)
     application.include_router(admin_dashboard_router)

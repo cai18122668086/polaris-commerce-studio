@@ -26,7 +26,7 @@ from ..services import (
     enforce_active_job_limit,
     lock_workspace_limits,
     new_id,
-    reserve_credits,
+    reserve_image_credits as reserve_credits,
 )
 from ..storage import ImageStorage
 from .delivery import _json, _reject

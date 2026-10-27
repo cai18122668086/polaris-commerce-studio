@@ -80,3 +80,9 @@ next-env.d.ts
 /pnpm-lock.yaml
 /backend/uv.lock
 
+
+.cache/
+
+backend/work/
+
+/backend/backend/work/

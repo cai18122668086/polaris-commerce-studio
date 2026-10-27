@@ -13325,6 +13325,62 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/credits/purchases/{purchase_id}/reconcile": {
+      "post": {
+        "operationId": "reconcile_purchase_api_v1_workspaces__workspace_id__credits_purchases__purchase_id__reconcile_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_id",
+            "required": true,
+            "schema": {
+              "title": "Purchase Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPurchaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Reconcile Purchase",
+        "tags": [
+          "credit payments"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/credits/quote": {
       "post": {
         "operationId": "quote_api_v1_workspaces__workspace_id__credits_quote_post",

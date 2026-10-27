@@ -34,7 +34,7 @@ import {
   NavigationMegaMenu,
 } from "./navigation-mega-menu";
 
-type OpenMenu = NavigationMenuDefinition["key"] | "mobile" | null;
+type OpenMenu = NavigationMenuDefinition["key"] | "mobile" | "account" | null;
 
 function menuContainsFeature(menu: NavigationMenuDefinition, featureId: string | undefined) {
   return menu.groups.some((group) =>
@@ -46,12 +46,14 @@ export function TopNavigation({
   onOpenTasks,
   onOpenSidebar,
   showMenu = true,
+  compactAccountActions = false,
   taskOpen,
   taskTriggerRef,
 }: {
   onOpenTasks: () => void;
   onOpenSidebar: () => void;
   showMenu?: boolean;
+  compactAccountActions?: boolean;
   taskOpen: boolean;
   taskTriggerRef: RefObject<HTMLButtonElement | null>;
 }) {
@@ -73,6 +75,7 @@ export function TopNavigation({
   const accountLabel = authUserLabel(currentUser.data);
   const jobs = useCreationRecords(workspace?.id);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const desktopNavigationRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const mobilePanelRef = useRef<HTMLDivElement>(null);
@@ -106,6 +109,7 @@ export function TopNavigation({
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (
+        !accountMenuRef.current?.contains(target) &&
         !desktopNavigationRef.current?.contains(target) &&
         !mobileTriggerRef.current?.contains(target) &&
         !mobilePanelRef.current?.contains(target)
@@ -189,6 +193,35 @@ export function TopNavigation({
           pathname={pathname}
         />
         <div className="top-nav__actions">
+          {compactAccountActions ? (
+            <div className={styles.accountMenu} ref={accountMenuRef}>
+              <button type="button" className="user-menu"
+                aria-expanded={openMenu === "account"}
+                aria-controls="personal-center-menu"
+                onClick={() => setOpenMenu(current => current === "account" ? null : "account")}>
+                <span className="avatar" aria-hidden="true"><UserRound size={17} /></span>
+                <span>个人中心</span><ChevronDown size={13} />
+              </button>
+              {openMenu === "account" && (
+                <nav id="personal-center-menu" className={styles.accountMenuPanel} aria-label="个人中心快捷导航">
+                  <strong>{accountLabel}</strong>
+                  {[
+                    ["overview", "账户概览"], ["membership", "会员与充值"],
+                    ["credits", "积分明细"], ["orders", "订单与发票"],
+                    ["creations", "创作记录"], ["assets", "我的素材"],
+                    ["help", "消息与帮助"], ["settings", "账户设置"],
+                  ].map(([section, label]) => (
+                    <Link key={section} href={`/account#${section}`} onClick={() => setOpenMenu(null)}>
+                      {label}{section === "creations" && activeCount > 0 && <small>{activeCount} 进行中</small>}
+                    </Link>
+                  ))}
+                  <button type="button" onClick={() => { setOpenMenu(null); onOpenTasks(); }}>
+                    查看任务进度{errorCount > 0 && <small>{errorCount} 项待查看</small>}
+                  </button>
+                </nav>
+              )}
+            </div>
+          ) : <>
           <Link href="/assets" className="commerce-workspace-link" aria-label="素材中心">素材</Link>
           <Link href="/jobs" className="commerce-workspace-link" aria-label="生成记录">记录</Link>
           <AnnouncementBanner />
@@ -224,6 +257,7 @@ export function TopNavigation({
             </span>
             <span className="desktop-only">{accountLabel}</span>
           </Link>
+          </>}
         </div>
       </div>
     </header>

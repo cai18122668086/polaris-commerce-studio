@@ -7,6 +7,7 @@ from datetime import UTC
 from typing import Annotated, Any, Literal, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+import httpx
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict
@@ -19,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 from .auth import SessionDependency, WorkspaceDependency, WorkspaceWriteDependency
 from .config import Settings
 from .credit_memberships import add_months, aware, grant, membership_state, refresh
-from .credit_products import PRODUCTS
+from .credit_products import LEGACY_PACK_ID, PRODUCTS
 from .errors import ApiError
 from .models import (
     AuditEventRecord,
@@ -186,7 +187,8 @@ def packages(
         packages=[
             CreditPackage(**product.snapshot())
             for product in PRODUCTS.values()
-            if include_memberships or product.kind == "pack"
+            if product.id != LEGACY_PACK_ID
+            and (include_memberships or product.kind == "pack")
         ]
         if enabled
         else [],
@@ -366,6 +368,117 @@ def purchase_detail(
     return _response(order)
 
 
+def _query_gateway_order(settings: Settings, merchant_pid: str, order_id: str) -> dict:
+    # MPAY api.php accepts the active merchant key in a UTF-8 POST body.
+    # Keep credentials out of URLs, logs, exception chains and API responses.
+    secret = settings.credit_epay_keys.get(settings.credit_epay_active_key_id)
+    if secret is None or len(secret.get_secret_value()) < 16:
+        raise ApiError(
+            503, "PAYMENT_QUERY_UNAVAILABLE", "暂时无法核对到账，请稍后重试。"
+        )
+    try:
+        with httpx.Client(timeout=8, follow_redirects=False, trust_env=False) as client:
+            response = client.post(
+                "https://pay.tengliapi.xyz/api.php",
+                data={
+                    "act": "order",
+                    "pid": merchant_pid,
+                    "key": secret.get_secret_value(),
+                    "out_trade_no": order_id,
+                },
+            )
+            response.raise_for_status()
+            if len(response.content) > 65536:
+                raise ValueError("Oversized gateway response")
+            data = response.json()
+    except (httpx.HTTPError, ValueError):
+        raise ApiError(
+            502, "PAYMENT_QUERY_UNAVAILABLE", "支付渠道暂时无法查询，请稍后重试。"
+        ) from None
+    if (
+        not isinstance(data, dict)
+        or type(data.get("code")) is not int
+        or data["code"] != 1
+    ):
+        raise ApiError(
+            502,
+            "PAYMENT_QUERY_UNAVAILABLE",
+            "支付渠道尚未返回有效订单，请稍后重试或联系帮助核对。",
+        )
+    required = ["pid", "out_trade_no", "trade_no", "type", "name", "money", "param"]
+    if (
+        any(not isinstance(data.get(key), str) for key in required)
+        or type(data.get("status")) is not int
+        or data["status"] not in {0, 1}
+        or data["pid"] != merchant_pid
+        or data["out_trade_no"] != order_id
+    ):
+        raise ApiError(
+            502, "PAYMENT_ORDER_MISMATCH", "支付渠道订单信息不一致，请联系帮助核对。"
+        )
+    return data
+
+
+@router.post(
+    "/api/v1/workspaces/{workspace_id}/credits/purchases/{purchase_id}/reconcile",
+    response_model=CreditPurchaseResponse,
+)
+def reconcile_purchase(
+    purchase_id: str,
+    request: Request,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+) -> CreditPurchaseResponse:
+    order = session.scalar(
+        select(CreditPurchaseRecord).where(
+            CreditPurchaseRecord.id == purchase_id,
+            CreditPurchaseRecord.workspace_id == workspace.workspace_id,
+        )
+    )
+    if order is None:
+        raise ApiError(404, "CREDIT_PURCHASE_NOT_FOUND", "充值订单不存在。")
+    if order.status == "paid":
+        return _response(order)
+    merchant_pid, order_id = order.merchant_pid, order.id
+    # Never hold wallet/order locks while waiting for a remote response.
+    session.rollback()
+    data = _query_gateway_order(request.app.state.settings, merchant_pid, order_id)
+    if data["status"] == 1:
+        parameters = {
+            key: data[key]
+            for key in [
+                "pid",
+                "out_trade_no",
+                "trade_no",
+                "type",
+                "name",
+                "money",
+                "param",
+            ]
+        }
+        parameters["trade_status"] = "TRADE_SUCCESS"
+        try:
+            _settle_verified_purchase(session, parameters)
+        except IntegrityError:
+            session.rollback()
+            raise ApiError(
+                409, "PAYMENT_RECEIPT_CONFLICT", "支付流水需要核对。"
+            ) from None
+        except Exception:
+            session.rollback()
+            raise
+    # Reload after the remote query: a callback may have committed meanwhile.
+    current = session.scalar(
+        select(CreditPurchaseRecord)
+        .where(
+            CreditPurchaseRecord.id == order_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    assert current is not None
+    return _response(current)
+
+
 def settle_paid_purchase(
     session: Session, settings: Settings, parameters: dict[str, str]
 ) -> None:
@@ -388,6 +501,19 @@ def settle_paid_purchase(
         )
     ):
         raise ApiError(400, "INVALID_PAYMENT_SIGNATURE", "支付通知签名无效。")
+    _settle_verified_purchase(session, parameters)
+
+
+def _settle_verified_purchase(session: Session, parameters: dict[str, str]) -> None:
+    """Only verified callbacks or authenticated server queries may call this."""
+    order = session.scalar(
+        select(CreditPurchaseRecord)
+        .where(CreditPurchaseRecord.id == parameters.get("out_trade_no", ""))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if order is None:
+        raise ApiError(400, "INVALID_PAYMENT_CALLBACK", "支付通知无法确认。")
     trade_no = parameters.get("trade_no", "")
     if (
         parameters.get("pid") != order.merchant_pid
@@ -416,7 +542,7 @@ def settle_paid_purchase(
     if cast(CursorResult[Any], claimed).rowcount != 1:
         session.rollback()
         # Reload and validate the committed winner; never ACK a missing ledger.
-        settle_paid_purchase(session, settings, parameters)
+        _settle_verified_purchase(session, parameters)
         return
     account = refresh(session, order.workspace_id)
     terms = order.product_snapshot

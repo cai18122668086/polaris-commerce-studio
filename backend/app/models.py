@@ -1240,6 +1240,9 @@ class WorkspaceCreditAccountRecord(TimestampMixin, Base):
     )
     reserved_credits: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    lots_initialized: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
 
 class CreditReservationRecord(TimestampMixin, Base):
@@ -1264,6 +1267,9 @@ class CreditReservationRecord(TimestampMixin, Base):
     )
     job_id: Mapped[str] = mapped_column(
         ForeignKey("jobs.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    credit_allocations: Mapped[dict[str, int] | None] = mapped_column(
+        json_type(), nullable=True
     )
     pricing_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
         json_type(), nullable=True
@@ -1309,6 +1315,7 @@ class CreditLedgerEntryRecord(Base):
     job_id: Mapped[str | None] = mapped_column(
         ForeignKey("jobs.id", ondelete="SET NULL")
     )
+    description: Mapped[str | None] = mapped_column(String(200))
     entry_type: Mapped[str] = mapped_column(String(24), nullable=False)
     delta_balance_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
     delta_reserved_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -1539,6 +1546,9 @@ class CreditPurchaseRecord(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    product_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        json_type(), nullable=True
+    )
     package_id: Mapped[str] = mapped_column(String(40), nullable=False)
     package_name: Mapped[str] = mapped_column(String(100), nullable=False)
     amount_fen: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -1551,4 +1561,56 @@ class CreditPurchaseRecord(TimestampMixin, Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ledger_entry_id: Mapped[int | None] = mapped_column(
         ForeignKey("credit_ledger_entries.id", ondelete="RESTRICT"), unique=True
+    )
+
+
+class CreditMembershipRecord(TimestampMixin, Base):
+    __tablename__ = "credit_memberships"
+    __table_args__ = (
+        CheckConstraint(
+            "months IN (1, 12) AND monthly_credits > 0 AND ends_at > starts_at",
+            name="ck_credit_membership_terms",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    purchase_id: Mapped[str] = mapped_column(
+        ForeignKey("credit_purchases.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    plan_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    plan_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    monthly_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    months: Mapped[int] = mapped_column(Integer, nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CreditGrantRecord(TimestampMixin, Base):
+    __tablename__ = "credit_grants"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "source_key", name="uq_credit_grant_source"),
+        CheckConstraint(
+            "amount >= 0 AND remaining >= 0 AND held >= 0 "
+            "AND held <= remaining AND remaining <= amount",
+            name="ck_credit_grant_balance",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    source_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    remaining: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    held: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ledger_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("credit_ledger_entries.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
     )

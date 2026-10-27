@@ -21,7 +21,9 @@ from app.credit_payment_routes import settle_paid_purchase
 from app.database import Base
 from app.errors import ApiError
 from app.models import (
+    CreditGrantRecord,
     CreditLedgerEntryRecord,
+    CreditMembershipRecord,
     CreditPurchaseRecord,
     CreditReservationRecord,
     JobRecord,
@@ -230,6 +232,17 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
         )
         session.commit()
     with engine.begin() as connection:
+        CreditGrantRecord.__table__.drop(connection)
+        CreditMembershipRecord.__table__.drop(connection)
+        connection.execute(
+            text("ALTER TABLE workspace_credit_accounts DROP COLUMN lots_initialized")
+        )
+        connection.execute(
+            text("ALTER TABLE credit_reservations DROP COLUMN credit_allocations")
+        )
+        connection.execute(
+            text("ALTER TABLE credit_ledger_entries DROP COLUMN description")
+        )
         CreditPurchaseRecord.__table__.drop(connection)
         connection.execute(
             text("ALTER TABLE credit_reservations DROP COLUMN pricing_snapshot")
@@ -237,6 +250,7 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
         for name in [
             "20261027_0028_credit_pricing_snapshot.py",
             "20261027_0029_credit_purchases.py",
+            "20261027_0030_credit_memberships.py",
         ]:
             path = Path(__file__).resolve().parents[1] / "migrations/versions" / name
             spec = importlib.util.spec_from_file_location("credit_migration", path)
@@ -255,3 +269,59 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
         )
         assert session.get(CreditReservationRecord, "hold_legacy").status == "settled"
     _order(factory)
+
+
+def test_postgres_yearly_boundary_grants_once(postgres_credits):
+    from datetime import timedelta
+
+    from app.credit_memberships import add_months, refresh
+    from app.credit_products import PRODUCTS
+
+    factory, _ = postgres_credits
+    order = _order(factory)
+    with factory() as session:
+        record = session.get(CreditPurchaseRecord, order["id"])
+        product = PRODUCTS["pro_annual"]
+        record.package_id = product.id
+        record.package_name = product.name
+        record.amount_fen = product.amount_fen
+        record.product_snapshot = product.snapshot()
+        session.commit()
+    order["package_name"] = product.name
+    fields = paid_fields(order, money="948.00")
+    with factory() as session:
+        settle_paid_purchase(session, _settings(), fields)
+        member = session.scalar(select(CreditMembershipRecord))
+        boundary = add_months(member.starts_at, 1) + timedelta(seconds=1)
+    barrier = Barrier(8)
+
+    def reconcile():
+        barrier.wait(timeout=10)
+        with factory() as session:
+            # Simulate an identity-map cache populated before waiting on the
+            # wallet lock: it must refresh after another transaction commits.
+            session.get(WorkspaceCreditAccountRecord, "ws_test")
+            account = refresh(session, "ws_test", now=boundary)
+            session.commit()
+            return account.balance_credits
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        values = list(executor.map(lambda _: reconcile(), range(8)))
+    assert values == [1520] * 8
+    with factory() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(CreditGrantRecord)
+                .where(CreditGrantRecord.kind == "membership")
+            )
+            == 2
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(CreditLedgerEntryRecord)
+                .where(CreditLedgerEntryRecord.entry_type == "expire")
+            )
+            == 1
+        )

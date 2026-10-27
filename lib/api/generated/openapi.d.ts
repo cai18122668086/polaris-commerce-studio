@@ -1387,6 +1387,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/credits/membership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Membership */
+        get: operations["membership_api_v1_workspaces__workspace_id__credits_membership_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/credits/packages": {
         parameters: {
             query?: never;
@@ -1411,7 +1428,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Purchase List */
+        get: operations["purchase_list_api_v1_workspaces__workspace_id__credits_purchases_get"];
         put?: never;
         /** Create Purchase */
         post: operations["create_purchase_api_v1_workspaces__workspace_id__credits_purchases_post"];
@@ -2669,6 +2687,33 @@ export interface components {
             /** Next Cursor */
             next_cursor: number | null;
         };
+        /** CreditMembershipState */
+        CreditMembershipState: {
+            /** Ends At */
+            ends_at: string | null;
+            /** Expiring Credits */
+            expiring_credits: number;
+            /** Member Credits */
+            member_credits: number;
+            /** Monthly Credits */
+            monthly_credits: number;
+            /** Next Expiry At */
+            next_expiry_at: string | null;
+            /** Next Grant At */
+            next_grant_at: string | null;
+            /** Next Plan Name */
+            next_plan_name: string | null;
+            /** Next Plan Starts At */
+            next_plan_starts_at: string | null;
+            /** Pack Credits */
+            pack_credits: number;
+            /** Plan Id */
+            plan_id: string | null;
+            /** Plan Name */
+            plan_name: string | null;
+            /** Starts At */
+            starts_at: string | null;
+        };
         /** CreditPackage */
         CreditPackage: {
             /** Amount Fen */
@@ -2677,8 +2722,16 @@ export interface components {
             credits: number;
             /** Id */
             id: string;
+            /** Kind */
+            kind: string;
+            /** Months */
+            months: number;
             /** Name */
             name: string;
+            /** Plan Id */
+            plan_id: string | null;
+            /** Validity Months */
+            validity_months: number;
         };
         /** CreditPackageCatalog */
         CreditPackageCatalog: {
@@ -2701,18 +2754,37 @@ export interface components {
             /** Package Id */
             package_id: string;
         };
+        /** CreditPurchaseList */
+        CreditPurchaseList: {
+            /** Items */
+            items: components["schemas"]["CreditPurchaseResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** CreditPurchaseResponse */
         CreditPurchaseResponse: {
             /** Amount Fen */
             amount_fen: number;
             /** Checkout Url */
             checkout_url: string | null;
+            /** Created At */
+            created_at: string;
             /** Credits */
             credits: number;
             /** Id */
             id: string;
+            /** Membership Ends At */
+            membership_ends_at: string | null;
+            /** Membership Starts At */
+            membership_starts_at: string | null;
+            /** Months */
+            months: number;
             /** Package Name */
             package_name: string;
+            /** Paid At */
+            paid_at: string | null;
+            /** Product Kind */
+            product_kind: string;
             /** Status */
             status: string;
         };
@@ -7679,7 +7751,7 @@ export interface operations {
             };
         };
     };
-    packages_api_v1_workspaces__workspace_id__credits_packages_get: {
+    membership_api_v1_workspaces__workspace_id__credits_membership_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7696,7 +7768,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["CreditMembershipState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    packages_api_v1_workspaces__workspace_id__credits_packages_get: {
+        parameters: {
+            query?: {
+                include_memberships?: boolean;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["CreditPackageCatalog"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purchase_list_api_v1_workspaces__workspace_id__credits_purchases_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+                status?: ("pending" | "paid") | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditPurchaseList"];
                 };
             };
             /** @description Validation Error */

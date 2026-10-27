@@ -71,6 +71,11 @@ def _account(session: Any, workspace_id: str) -> WorkspaceCreditAccountRecord:
 def account(
     workspace: WorkspaceDependency, session: SessionDependency
 ) -> CreditAccountResponse:
+    if credit_enforcement_enabled(workspace.workspace_id):
+        from .credit_memberships import refresh
+
+        refresh(session, workspace.workspace_id)
+        session.commit()
     row = _account(session, workspace.workspace_id)
     return CreditAccountResponse(
         balance_credits=row.balance_credits,
@@ -117,12 +122,14 @@ def ledger(
             {
                 "id": entry.id,
                 "job_id": entry.job_id,
-                "title": title or package_name or "创作任务",
+                "title": title or package_name or entry.description or "创作任务",
                 "entry_type": entry.entry_type,
                 "delta_balance_credits": entry.delta_balance_credits,
                 "delta_reserved_credits": entry.delta_reserved_credits,
-                "released_credits": max(
-                    0, -entry.delta_reserved_credits + entry.delta_balance_credits
+                "released_credits": (
+                    max(0, -entry.delta_reserved_credits + entry.delta_balance_credits)
+                    if entry.entry_type in {"settle", "release"}
+                    else 0
                 ),
                 "available_after_credits": entry.balance_after_credits
                 - entry.reserved_after_credits,
@@ -154,6 +161,11 @@ def quote(
         detail_medium_price_micros=request.app.state.settings.xinghe_medium_price_micros,
         detail_high_price_micros=request.app.state.settings.xinghe_high_price_micros,
     )
+    if credit_enforcement_enabled(workspace.workspace_id):
+        from .credit_memberships import refresh
+
+        refresh(session, workspace.workspace_id)
+        session.commit()
     row = _account(session, workspace.workspace_id)
     available = row.balance_credits - row.reserved_credits
     return {

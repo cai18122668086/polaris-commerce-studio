@@ -17,7 +17,7 @@ export type HomeFeatureVisual = {
 };
 
 const image = (file: string, width: number, height: number): HomeFeatureImage => ({
-  src: `/images/homepage-features/native-v2/${file}`,
+  src: `/images/homepage-features/native-v2-webp/${file}`,
   width,
   height,
 });
@@ -30,16 +30,16 @@ const responsive = (
 
 const nativePrimary = (prefix: string) =>
   responsive(
-    image(`${prefix}-primary-desktop.png`, 1374, 1145),
-    image(`${prefix}-primary-tablet.png`, 1536, 1024),
-    image(`${prefix}-primary-mobile.png`, 1774, 887),
+    image(`${prefix}-primary-desktop.webp`, 1374, 1145),
+    image(`${prefix}-primary-tablet.webp`, 1536, 1024),
+    image(`${prefix}-primary-mobile.webp`, 1774, 887),
   );
 
 const nativeInput = (prefix: string) =>
   responsive(
-    image(`${prefix}-input-desktop.png`, 1374, 1145),
-    image(`${prefix}-input-tablet.png`, 1536, 1024),
-    image(`${prefix}-input-mobile.png`, 1774, 887),
+    image(`${prefix}-input-desktop.webp`, 1374, 1145),
+    image(`${prefix}-input-tablet.webp`, 1536, 1024),
+    image(`${prefix}-input-mobile.webp`, 1774, 887),
   );
 
 export const HOME_FEATURE_VISUALS: Readonly<Record<string, HomeFeatureVisual>> = {

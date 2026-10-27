@@ -29,6 +29,7 @@ import {
   safeJobFailureSummary,
 } from "@/lib/jobs/presentation";
 import {
+  canDownloadJobArchive,
   selectJobInputAssets,
   selectJobIntermediateAssets,
   selectJobReferenceAssets,
@@ -153,7 +154,7 @@ export function JobDetailPanel({
                       />
                     ))}
                   </div>
-                  {resultAssets.length === job.expected_item_count && ["completed", "partial"].includes(job.status) ? <JobDeliverablesDownload workspaceId={workspaceId} jobId={job.id} /> : null}
+                  {canDownloadJobArchive(job) ? <JobDeliverablesDownload workspaceId={workspaceId} jobId={job.id} /> : null}
                 </>
               ) : (
                 <div className="job-empty-panel job-empty-panel--result">{resultEmptyMessage(job)}</div>

@@ -9,7 +9,7 @@ import { mergeCreationRecords, type ReplicaCreationRecord } from "@/lib/jobs/cre
 import type { JobStatus } from "@/lib/api/types";
 
 export function useCreationRecords(workspaceId: string | undefined, filters: { statuses?: JobStatus[]; limit?: number } = {}) {
-  const jobs = useJobs(workspaceId, { limit: 100 });
+  const jobs = useJobs(workspaceId, { limit: 100, allPages: true });
   const replicas = useQuery({
     queryKey: ["replica-creation-records", workspaceId],
     enabled: Boolean(workspaceId),
@@ -35,7 +35,7 @@ export function useCreationRecords(workspaceId: string | undefined, filters: { s
   const filtered = filters.statuses ? merged.filter(job => filters.statuses!.includes(job.status)) : merged;
   return {
     ...jobs,
-    data: { items: filtered.slice(0, filters.limit ?? 100), total: filtered.length, next_cursor: null, has_more: filtered.length > (filters.limit ?? 100) },
+    data: { items: filters.limit ? filtered.slice(0, filters.limit) : filtered, total: filtered.length, next_cursor: null, has_more: filters.limit ? filtered.length > filters.limit : false },
     isPending: jobs.isPending || replicas.isPending,
     error: jobs.error ?? replicas.error,
     refetch: refetchRecords,

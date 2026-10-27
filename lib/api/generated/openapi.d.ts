@@ -3667,7 +3667,8 @@ export interface components {
             succeeded_item_count: number;
             /** Task Preset */
             task_preset?: ("scene_main" | "white_background" | "model_image" | "change_model" | "try_on" | "change_scene" | "change_background" | "change_color") | null;
-            type: components["schemas"]["JobType"];
+            /** Type */
+            type: components["schemas"]["JobType"] | "product_replica";
             /**
              * Updated At
              * Format: date-time
@@ -3745,7 +3746,8 @@ export interface components {
             succeeded_item_count: number;
             /** Task Preset */
             task_preset?: ("scene_main" | "white_background" | "model_image" | "change_model" | "try_on" | "change_scene" | "change_background" | "change_color") | null;
-            type: components["schemas"]["JobType"];
+            /** Type */
+            type: components["schemas"]["JobType"] | "product_replica";
             /**
              * Updated At
              * Format: date-time

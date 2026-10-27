@@ -208,8 +208,9 @@ test("the two navigation dropdowns are disjoint and resolve every item through t
   assert.match(source, /throw new Error\(`Navigation feature is missing/);
 
   const topNavigation = await utf8("components/top-navigation.tsx");
-  assert.match(topNavigation, /AI_FEATURES_MENU/);
-  assert.match(topNavigation, /AI_TOOLBOX_MENU/);
+  assert.match(topNavigation, /renderMegaMenu\(ALL_TOOLS_MENU\)/);
+  assert.match(topNavigation, /menus=\{AI_NAVIGATION_MENUS\}/);
+  assert.match(source, /label: "全部工具"/);
   assert.doesNotMatch(topNavigation, /const\s+navItems\s*=/);
 });
 
@@ -271,7 +272,11 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
 
   assert.match(featurePriorities, /HOT_FEATURE_IDS = new Set\(\[\s*"local-edit",\s*"one-click-replica",\s*"detail-pack",\s*"domestic-main-image",\s*\]\)/s);
   assert.match(toolDirectory, /import \{ HOT_FEATURE_IDS \} from "@\/lib\/feature-priorities"/);
-  assert.match(toolDirectory, /"local-edit", "one-click-replica", "reference-remix"/);
+  assert.match(toolDirectory, /"local-edit", "reference-remix", "amazon-visual-suite"/);
+  const creationEntries = await utf8("lib/creation-entrypoints.ts");
+  for (const id of ["one-click-replica", "domestic-main-image", "detail-pack", "inspiration"]) {
+    assert.ok(creationEntries.includes(`id: "${id}"`), `${id} keeps a primary homepage entry`);
+  }
   assert.match(toolDirectory, /HOT_FEATURE_IDS\.has\(tool\.id\)/);
   assert.match(toolDirectory, /pattern: \/亚马逊\|amazon\|跨境\|a\\\+\/iu[\s\S]*?featureIds: \["amazon-visual-suite", "detail-pack", "white-background"\]/);
   assert.match(toolDirectory, /pattern: \/主图\|淘宝\|天猫\|京东\|轮播\/iu[\s\S]*?featureIds: \["domestic-main-image", "scene-main", "white-background"\]/);
@@ -279,7 +284,7 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
   assert.match(toolDirectory, /aria-label=\{searchResults\.length \? "功能搜索结果" : "相近场景推荐"\}/);
   assert.match(toolDirectory, /home-search-recommendation/);
   assert.match(toolDirectory, /home-command home-command--primary/);
-  assert.match(toolDirectory, /<HomeBannerCarousel \/>[\s\S]*?home-command home-command--primary/);
+  assert.match(toolDirectory, /<HomeHero \/>[\s\S]*?<CreationStartHub \/>[\s\S]*?home-command home-command--primary/);
   assert.match(toolDirectory, /event\.key === "Enter" && searchResults\.length/);
   assert.match(styles, /\.home-command--primary > label\s*\{[\s\S]*?min-height: 96px;/);
   assert.match(styles, /\.home-search-recommendation\.is-unavailable/);

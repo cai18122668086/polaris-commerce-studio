@@ -1,15 +1,16 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Check, ImagePlus, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, ImagePlus, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { AppShell } from "@/components/app-shell";
 import { DevelopmentProviderSettings } from "@/components/development-provider-settings";
+import { AppShell } from "@/components/app-shell";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
+import { FormDisclosure } from "@/components/form-disclosure";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useConfirmPlan, useCreateJob, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
@@ -335,10 +336,10 @@ export function DomesticMainImageWorkspace() {
     <AppShell flush>
       <div className={styles.page}>
         <WorkspaceHeader
-          eyebrow="AURORA · 国内电商六图连续创作"
+          eyebrow="极光商绘 · 国内电商主图"
           title="国内电商主图"
           description="提交商品素材后，后台自动规划、生成与审图，完成后直接查看六张成图。"
-          meta={<span className={styles.secure}><ShieldCheck size={15} />Harness 全程接管</span>}
+          meta={<span className={styles.secure}><ShieldCheck size={15} />连续创作流程</span>}
         />
 
         <div className={styles.rail} aria-label="工作流程">
@@ -352,7 +353,7 @@ export function DomesticMainImageWorkspace() {
         <div className={styles.grid}>
           <main>
             <section className={styles.card}>
-              <div className={styles.heading}><span>01</span><div><h2>商品身份权威素材</h2><p>上传真实商品多角度图。生成图不会被反过来当作身份依据。</p></div></div>
+              <div className={styles.heading}><span>01</span><div><h2>上传商品原图</h2><p>清晰展示外观与细节，多角度图片有助于保持商品一致。</p></div></div>
               {jobId ? <div className={styles.uploads}>{restoredAssetIds.map((assetId, index) => <RestoredSource key={assetId} workspaceId={workspace?.id} assetId={assetId} index={index} />)}</div> : <>
                 {sources.length < MAX_SOURCE_IMAGES && <div
                   className={styles.dropZone}
@@ -375,24 +376,32 @@ export function DomesticMainImageWorkspace() {
             </section>
 
             <section className={styles.card}>
-              <div className={styles.heading}><span>02</span><div><h2>已核实的商品事实</h2><p>这里只写能够从素材或业务资料确认的内容，避免不实参数与承诺。</p></div></div>
+              <div className={styles.heading}><span>02</span><div><h2>告诉我们商品的亮点</h2><p>先填写名称、类目和核心卖点，其他信息可以按需补充。</p></div></div>
               <div className={styles.form}>
                 <label><span>商品名称 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("product_name") : productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：轻量保温随行杯" /></label>
                 <label><span>商品类目 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("category") : category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：杯壶 / 保温杯" /></label>
                 <label className={styles.full}><span>核心卖点 * <small>换行分隔</small></span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("selling_points") : sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder={'轻量便携\n杯盖防误开\n食品接触级内胆'} /></label>
+              </div>
+              <FormDisclosure title="补充商品细节" summary={[displayFacts, scenes, offers, trustFacts].filter(value => value.trim()).length ? `已补充 ${[displayFacts, scenes, offers, trustFacts].filter(value => value.trim()).length} 项信息` : "选填 · 规格、使用场景、优惠与服务"} defaultOpen={Boolean(jobId)}>
+              <div className={styles.form}>
                 <label className={styles.full}><span>图片中清晰可读的事实 <small>逐行转录</small></span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("user_provided_display_facts") : displayFacts} onChange={(event) => setDisplayFacts(event.target.value)} placeholder={'12V 电瓶\n双座\n清晰可见的原图标题、数字或规格'} /></label>
                 <label><span>真实使用场景</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("scenes") : scenes} onChange={(event) => setScenes(event.target.value)} placeholder="通勤、办公室、短途出行" /></label>
                 <label><span>优惠或条件事实</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("offers") : offers} onChange={(event) => setOffers(event.target.value)} placeholder="仅填写原图或业务资料中明确存在的优惠与条件" /></label>
                 <label><span>服务或信任事实</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("service_or_trust_facts") : trustFacts} onChange={(event) => setTrustFacts(event.target.value)} placeholder="仅填写能够证实的检测、质保或服务" /></label>
+              </div>
+              </FormDisclosure>
+              <FormDisclosure title="视觉与文案偏好" summary={[style, instruction].filter(value => value.trim()).length ? "已添加创作偏好" : "选填 · 风格、色调与需要保留的细节"} defaultOpen={Boolean(jobId)}>
+              <div className={styles.form}>
                 <label><span>视觉偏好</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("style_preferences") : style} onChange={(event) => setStyle(event.target.value)} placeholder="克制、高级、暖灰背景、清晰商品轮廓" /></label>
                 <label><span>补充要求</span><textarea disabled={Boolean(jobId)} value={jobId ? restoredString("instruction") : instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="不能改变的结构、Logo、颜色或包装信息" /></label>
-                {runtime.data?.environment === "development" && <label className={styles.full}><span>本地生成预览</span><span className={styles.shadowToggle}><select disabled={Boolean(jobId)} value={activeShadowMode} onChange={(event) => setShadowMode(event.target.value as AuroraShadowMode)}><option value="off">关闭</option><option value="contract_first_rebuild_v1">contract-first v1</option><option value="execution_semantics_v1">execution semantics v1</option></select><span><strong>Shadow 构图模式</strong><small>仅本地开发提交使用；execution semantics v1 会强制页面空间层级和反复骨架约束。</small></span></span></label>}
               </div>
+              </FormDisclosure>
+              {runtime.data?.environment === "development" && <details className="creation-dev-options"><summary>本地开发选项</summary><label className={styles.full}><span>本地生成预览</span><span className={styles.shadowToggle}><select disabled={Boolean(jobId)} value={activeShadowMode} onChange={(event) => setShadowMode(event.target.value as AuroraShadowMode)}><option value="off">关闭</option><option value="contract_first_rebuild_v1">contract-first v1</option><option value="execution_semantics_v1">execution semantics v1</option></select><span><strong>Shadow 构图模式</strong><small>仅本地开发提交使用；execution semantics v1 会强制页面空间层级和反复骨架约束。</small></span></span></label></details>}
             </section>
 
             {!automaticPlan && <section className={styles.card}>
               <div className={styles.heading}><span>03</span><div><h2>六图方案确认</h2><p>确认后锁定商品身份、事实边界和整套视觉世界。</p></div>{job.data && <StatusBadge status={job.data.status} />}</div>
-              {!plan.length ? <div className={styles.empty}>创建任务后，Aurora 会先分析商品并锁定身份，再编译 1 张搜索主图与 5 张轮播图的完整方案。</div> : <>
+              {!plan.length ? <div className={styles.empty}>创建任务后，会先分析商品并锁定身份，再编译 1 张搜索主图与 5 张轮播图的完整方案。</div> : <>
                 <div className={styles.identityLock}>
                   <span>PRODUCT IDENTITY LOCK</span>
                   <h3>{identityLock?.product_form ?? "当前商品身份已锁定"}</h3>
@@ -434,9 +443,9 @@ export function DomesticMainImageWorkspace() {
           </main>
 
           <aside className={styles.side}>
-            <div><span>AURORA / 06</span><h3>连续创作约束</h3><ul><li><Check size={15} />固定六张，不增不减</li><li><Check size={15} />严格按页顺序生成</li><li><Check size={15} />每页最多自动修复一次</li><li><Check size={15} />最终整组等待人工确认</li></ul></div>
+            <details className="creation-dev-options"><summary>六图创作说明</summary><p>固定六张，不增不减；每页最多自动修复一次。</p></details>
+            {runtime.data?.environment === "development" && <details className="creation-dev-options"><summary>开发服务设置</summary><DevelopmentProviderSettings /></details>}
             {localError || createJob.error || confirmPlan.error || finalizeJob.error || retryJob.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error ?? finalizeJob.error ?? retryJob.error)}</p> : null}
-            {runtime.data?.environment === "development" && <DevelopmentProviderSettings />}
             {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成主图六件套<ArrowRight size={17} /></button> : job.data && !automaticPlan && allowsJobAction(job.data.allowed_actions, "finalize") ? <button className={styles.primary} disabled={finalizeJob.isPending} onClick={() => finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: "我已审阅六张成图，确认整组结果并批准按 Aurora Skill 完成交付。" })}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认整组并完成交付<ArrowRight size={17} /></button> : job.data && ["completed", "failed", "partial", "cancelled"].includes(job.data.status) && !hasCompleteSet && providerReady && allowsJobAction(job.data.allowed_actions, "retry") ? <button className={styles.primary} disabled={retryJob.isPending} onClick={() => void retryFailedPages()}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}按原方案重新生成<ArrowRight size={17} /></button> : !automaticPlan && job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") && providerReady ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{terminalIncomplete ? "任务已终止" : automaticPlan && job.data?.status === "awaiting_final_review" ? "正在整理交付" : job.data?.status === "completed" && hasCompleteSet ? "整组已完成" : job.data?.status === "completed" ? "未生成真实图片" : workflow.mode === "mock" && job.data?.status === "awaiting_confirmation" ? "真实生成服务未启用" : "任务处理中"}</button>}
             <small className={styles.note}>{providerReady ? "在线生成已启用；提交后自动规划、生成、审图与交付" : "当前为安全 Mock：只允许编译和查看规划，不会授权生图或产生图片费用"}</small>
           </aside>

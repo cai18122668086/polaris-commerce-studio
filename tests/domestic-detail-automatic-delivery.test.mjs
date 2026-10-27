@@ -24,6 +24,7 @@ function harness() {
     if (name === "@/lib/jobs/actions") return { assertJobAction: (allowed, action) => assert.ok(allowed.includes(action)) };
     if (name === "@/lib/api/error-mapper") return {};
     if (name === "./jobs-keys") return keys;
+    if (name === "@/lib/api/cursor-pages") return load("../lib/api/cursor-pages.ts");
     return require(name);
   };
   return { jobs: load("../features/jobs/api/jobs.ts", resolver), automatic: load("../features/jobs/api/automatic-delivery.ts", resolver), calls, lose: () => { unknown = true; } };

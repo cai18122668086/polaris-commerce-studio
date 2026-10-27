@@ -14,6 +14,7 @@ import {
 
 import { usePublicAnnouncements } from "@/features/announcements/api/announcements";
 import { errorMessage } from "@/lib/api/request";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 
 const tabs = [
   { key: "notice", label: "公告通知", Icon: Megaphone },
@@ -37,17 +38,15 @@ export function AnnouncementBanner() {
   const announcements = usePublicAnnouncements();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<AnnouncementTab>("notice");
+  useBodyScrollLock(open);
 
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);

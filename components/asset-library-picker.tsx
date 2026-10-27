@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 
@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { useAssetAccessUrl, useAssets } from "@/features/assets/api/assets";
 import type { Asset } from "@/lib/api/types";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import styles from "./product-image-workspace.module.css";
 
 function LibraryAssetCard({
@@ -157,16 +158,15 @@ export function AssetLibraryDialog({
   const [draftIds, setDraftIds] = useState(selectedIds);
   const assetsQuery = useAssets(workspaceId, { limit: 60 });
 
+  useBodyScrollLock(true);
+
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
 
-    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);

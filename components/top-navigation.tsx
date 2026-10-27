@@ -19,10 +19,10 @@ import { useCreationRecords } from "@/features/jobs/api/creation-records";
 import { authUserLabel, useCurrentAuthUser } from "@/features/auth/api/me";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { getFeatureByRoute } from "@/lib/feature-registry";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import {
-  AI_FEATURES_MENU,
   AI_NAVIGATION_MENUS,
-  AI_TOOLBOX_MENU,
+  ALL_TOOLS_MENU,
   MOBILE_PRIMARY_NAVIGATION_LINKS,
   PRIMARY_NAVIGATION_LINKS,
   type NavigationMenuDefinition,
@@ -56,11 +56,22 @@ export function TopNavigation({
   taskTriggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const pathname = usePathname();
+  const isHome = pathname === "/";
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    if (!isHome) return;
+    let frame = 0;
+    const update = () => { frame = 0; setScrolled(window.scrollY > 32); };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); cancelAnimationFrame(frame); };
+  }, [isHome]);
   const currentFeature = getFeatureByRoute(pathname);
   const { workspace } = useWorkspace();
   const currentUser = useCurrentAuthUser();
   const accountLabel = authUserLabel(currentUser.data);
-  const jobs = useCreationRecords(workspace?.id, { limit: 20 });
+  const jobs = useCreationRecords(workspace?.id);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const desktopNavigationRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -75,7 +86,7 @@ export function TopNavigation({
   const activeCount =
     jobs.data?.items.filter((job) => activeTaskStatuses.includes(job.status)).length ?? 0;
   const errorCount =
-    jobs.data?.items.filter((job) => ["failed", "partial"].includes(job.status)).length ?? 0;
+    jobs.data?.items.filter((job) => ["failed", "partial", "awaiting_final_review"].includes(job.status)).length ?? 0;
   const taskStateClass = activeCount ? "is-active" : errorCount ? styles.taskNotice : "";
   const taskLabel = activeCount ? "进行中" : "任务中心";
   const taskAriaLabel = activeCount
@@ -111,6 +122,8 @@ export function TopNavigation({
     };
   }, [openMenu]);
 
+  useBodyScrollLock(openMenu === "mobile");
+
   const renderMegaMenu = (menu: NavigationMenuDefinition) => (
     <NavigationMegaMenu
       key={menu.key}
@@ -129,7 +142,7 @@ export function TopNavigation({
   );
 
   return (
-    <header className={`top-nav ${styles.header}`}>
+    <header className={`top-nav ${styles.header}`} data-transparent={isHome && !scrolled || undefined}>
       <div className="top-nav__inner">
         {showMenu && (
           <button
@@ -144,16 +157,11 @@ export function TopNavigation({
           <BrandMark />
         </Link>
         <nav ref={desktopNavigationRef} className="main-nav" aria-label="主导航">
-          {PRIMARY_NAVIGATION_LINKS.slice(0, 2).map((item) => (
+          {PRIMARY_NAVIGATION_LINKS.slice(0, 5).map((item) => (
             <PrimaryNavigationLink key={item.href} href={item.href} label={item.label}
               active={pathname === item.href || pathname.startsWith(`${item.href}/`)} />
           ))}
-          {renderMegaMenu(AI_FEATURES_MENU)}
-          {renderMegaMenu(AI_TOOLBOX_MENU)}
-          {PRIMARY_NAVIGATION_LINKS.slice(2).map((item) => (
-            <PrimaryNavigationLink key={item.href} href={item.href} label={item.label}
-              active={pathname === item.href || pathname.startsWith(`${item.href}/`)} />
-          ))}
+          {renderMegaMenu(ALL_TOOLS_MENU)}
         </nav>
         <button
           ref={mobileTriggerRef}
@@ -181,10 +189,12 @@ export function TopNavigation({
           pathname={pathname}
         />
         <div className="top-nav__actions">
+          <Link href="/assets" className="commerce-workspace-link" aria-label="素材中心">素材</Link>
+          <Link href="/jobs" className="commerce-workspace-link" aria-label="生成记录">记录</Link>
           <AnnouncementBanner />
-          <Link href="/dashboard" className="usage-pill" aria-label="套餐与用量">
+          <Link href="/dashboard" className="usage-pill" aria-label="个人控制台" title="套餐与用量">
             <Zap size={15} />
-            <span>套餐与用量</span>
+            <span>个人控制台</span>
           </Link>
           <Link href="/help" className="usage-pill desktop-only" aria-label="帮助">
             <CircleHelp size={16} />

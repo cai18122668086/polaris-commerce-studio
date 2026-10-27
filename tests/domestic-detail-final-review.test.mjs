@@ -89,6 +89,7 @@ test("finalize hook keeps main-image request and intent unchanged, and scopes de
     if (name === "@/lib/api/request") return { unwrapApiResponse: response => response.data };
     if (name === "@/lib/jobs/actions") return { assertJobAction: (allowed, action) => assert.ok(allowed.includes(action)) };
     if (name === "./jobs-keys") return { jobKeys: {} };
+    if (name === "@/lib/api/cursor-pages") return load("../lib/api/cursor-pages.ts");
     if (["@/lib/api/types", "@/lib/api/error-mapper"].includes(name)) return {};
     return require(name);
   });

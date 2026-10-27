@@ -6,13 +6,15 @@ import { ArrowRight, Clock3, ImagePlus, LoaderCircle, Sparkles } from "lucide-re
 import { AppShell } from "@/components/app-shell";
 import { ProgressRing } from "@/components/progress-ring";
 import { StatusBadge } from "@/components/status-badge";
-import { useJobs } from "@/features/jobs/api/jobs";
+import { useCreationRecords } from "@/features/jobs/api/creation-records";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation";
+import { errorMessage } from "@/lib/api/request";
+import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 
 export default function DashboardPage() {
-  const { workspace } = useWorkspace();
-  const jobs = useJobs(workspace?.id, { limit: 20 });
+  const { workspace, error: workspaceError } = useWorkspace();
+  const jobs = useCreationRecords(workspace?.id);
   const items = jobs.data?.items ?? [];
   const completed = items.filter((job) => job.status === "completed").length;
   const active = items.filter((job) => ["queued", "planning", "processing"].includes(job.status)).length;
@@ -34,12 +36,14 @@ export default function DashboardPage() {
           <div className="recent-jobs-card">
             <div className="card-heading"><div><span>最近任务</span><h2>继续最近创作</h2></div><Link href="/jobs">查看全部<ArrowRight size={15} /></Link></div>
             {jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
+            {(workspaceError || jobs.error) && <div className="api-state api-state--error" role="alert"><p>{errorMessage(workspaceError ?? jobs.error)}</p><button className="secondary-button" onClick={() => void jobs.refetch()}>重新加载任务</button></div>}
+            {!workspaceError && !jobs.error && !jobs.isPending && items.length === 0 && <div className="api-state"><p>暂无生成任务。</p></div>}
             <div className="recent-job-list">
               {items.slice(0, 3).map((job) => (
                 <article key={job.id}>
                   <div className="api-job-cover"><Sparkles size={20} /></div>
                   <div><div className="recent-job__title"><strong>{jobTitle(job)}</strong><StatusBadge status={job.status} /></div><p>{jobNote(job)}</p><span><Clock3 size={13} />{formatDate(job.created_at)}<i>·</i>{jobCount(job)}</span></div>
-                  <Link href="/jobs" aria-label={`查看任务 ${jobTitle(job)}`}><ArrowRight size={16} /></Link>
+                  <Link href={jobWorkspaceHref(job)} aria-label={`查看任务 ${jobTitle(job)}`}><ArrowRight size={16} /></Link>
                 </article>
               ))}
             </div>

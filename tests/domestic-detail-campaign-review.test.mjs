@@ -13,10 +13,24 @@ function load(file, resolver = require) {
 }
 const idempotency = load("../lib/api/idempotency.ts");
 const keys = load("../features/jobs/api/jobs-keys.ts");
+
+test("job history hook follows every cursor and keeps recent-only cache separate", async () => {
+  const h = harness();
+  h.result(request => request.params.query.cursor
+    ? { items: [{ id: "job_old" }], has_more: false, next_cursor: null }
+    : { items: [{ id: "job_new" }], has_more: true, next_cursor: "older", total: 2 });
+  const full = h.jobs.useJobs("ws_a", { allPages: true });
+  const recent = h.jobs.useJobs("ws_a", { limit: 20 });
+  const result = await full.queryFn({ signal: undefined });
+  assert.deepEqual(result.items.map(job => job.id), ["job_new", "job_old"]);
+  assert.deepEqual(h.calls.map(call => call.request.params.query.cursor), [undefined, "older"]);
+  assert.ok(h.calls.every(call => call.request.params.path.workspace_id === "ws_a"));
+  assert.notDeepEqual(full.queryKey, recent.queryKey);
+});
 function harness() {
   const calls = []; let fail = false; let response = {};
   const client = {
-    GET: async (url, request) => { calls.push({ url, request }); return { data: response }; },
+    GET: async (url, request) => { calls.push({ url, request }); return { data: typeof response === "function" ? response(request) : response }; },
     POST: async (url, request) => { calls.push({ url, request }); if (fail) { fail = false; throw new Error("transport result unknown"); } return { data: { id: "review-created" } }; },
   };
   const resolver = name => {
@@ -30,6 +44,7 @@ function harness() {
     if (name === "@/lib/api/idempotency") return idempotency;
     if (name === "@/lib/api/request") return { unwrapApiResponse: value => value.data };
     if (name === "./jobs-keys") return keys;
+    if (name === "@/lib/api/cursor-pages") return load("../lib/api/cursor-pages.ts");
     if (["@/lib/api/types", "@/lib/api/error-mapper", "@/lib/jobs/actions"].includes(name)) return {};
     return require(name);
   };

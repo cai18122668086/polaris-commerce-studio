@@ -1,9 +1,12 @@
 import { getFeatureById } from "@/lib/feature-registry";
+import { PRIMARY_CREATION_ENTRIES } from "@/lib/creation-entrypoints";
+import { Lightbulb } from "lucide-react";
 
 function navigationFeature(
   featureId: string,
   options: {
     description: string;
+    label?: string;
   },
 ) {
   const feature = getFeatureById(featureId);
@@ -15,7 +18,7 @@ function navigationFeature(
   return {
     featureId: feature.id,
     href: feature.route,
-    label: feature.title,
+    label: options.label ?? feature.title,
     description: options.description,
     icon: feature.icon,
     tone: feature.tone,
@@ -42,8 +45,7 @@ export type NavigationMenuDefinition = {
 
 export const PRIMARY_NAVIGATION_LINKS = [
   { label: "首页", href: "/" },
-  { label: "灵感专区", href: "/inspiration" },
-  { label: "一键复刻", href: "/style-replica" },
+  ...PRIMARY_CREATION_ENTRIES.map(({ label, href }) => ({ label, href })),
   { label: "素材中心", href: "/assets" },
   { label: "生成记录", href: "/jobs" },
 ] as const;
@@ -137,3 +139,18 @@ export const AI_TOOLBOX_MENU = {
 } as const satisfies NavigationMenuDefinition;
 
 export const AI_NAVIGATION_MENUS = [AI_FEATURES_MENU, AI_TOOLBOX_MENU] as const;
+
+export const ALL_TOOLS_MENU: NavigationMenuDefinition = {
+  ...AI_FEATURES_MENU,
+  label: "全部工具",
+  groups: [
+    { label: "主推创作", items: [
+      navigationFeature("one-click-replica", { description: "有同行参考，做自己的商品套图" }),
+      navigationFeature("domestic-main-image", { label: "主图套图", description: "搜索主图与连续轮播，一次规划" }),
+      navigationFeature("detail-pack", { label: "详情图套图", description: "把卖点与细节组织成完整详情图" }),
+      { featureId: "inspiration", label: "灵感专区", href: "/inspiration", description: "看案例、找方向、一键做同款", icon: Lightbulb, tone: "indigo" },
+    ] },
+    { label: "精修与跨境", items: AI_FEATURES_MENU.groups.flatMap(group => group.items).filter(item => !["one-click-replica", "domestic-main-image", "detail-pack"].includes(item.featureId)) },
+    ...AI_TOOLBOX_MENU.groups,
+  ],
+};

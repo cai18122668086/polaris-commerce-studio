@@ -12,12 +12,15 @@ import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 import { StatusBadge } from "./status-badge";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
+import { errorMessage } from "@/lib/api/request";
 
 const stageLabels: Record<string, string> = {
   draft: "草稿",
   queued: "排队中",
   planning: "正在规划",
   awaiting_confirmation: "等待确认",
+  awaiting_final_review: "等待整组确认",
   processing: "正在生成",
   generating: "正在生成",
   retry: "正在重试",
@@ -54,14 +57,16 @@ export function TaskDrawer({
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const drawerRef = useRef<HTMLElement>(null);
+  useBodyScrollLock(open);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
-  const { workspace } = useWorkspace();
-  const jobs = useCreationRecords(workspace?.id, { limit: 8 });
+  const { workspace, error: workspaceError } = useWorkspace();
+  const jobs = useCreationRecords(workspace?.id);
   const runtime = useRuntimeStatus();
   const cancel = useCancelJob(workspace?.id);
   const retry = useRetryJob(workspace?.id);
-  const visibleJobs = jobs.data?.items.slice(0, 4) ?? [];
+  const allJobs = jobs.data?.items ?? [];
+  const visibleJobs = allJobs.slice(0, 4);
   const { refetch: refetchJobs } = jobs;
   useEffect(() => {
     if (open) void refetchJobs();
@@ -145,13 +150,14 @@ export function TaskDrawer({
           <button ref={closeButtonRef} className="icon-button" onClick={onClose} aria-label="关闭任务抽屉"><X size={19} /></button>
         </div>
         <div className="drawer-summary">
-          <div><span className="live-dot" /><p>正在处理</p><strong>{visibleJobs.filter((job) => ["queued", "planning", "processing"].includes(job.status)).length}</strong></div>
-          <div><p>已完成</p><strong>{visibleJobs.filter((job) => job.status === "completed").length}</strong></div>
-          <div><p>待处理异常</p><strong className="danger-text">{visibleJobs.filter((job) => ["failed", "partial"].includes(job.status)).length}</strong></div>
+          <div><span className="live-dot" /><p>正在处理</p><strong>{allJobs.filter((job) => ["queued", "planning", "processing", "cancelling"].includes(job.status)).length}</strong></div>
+          <div><p>已完成</p><strong>{allJobs.filter((job) => job.status === "completed").length}</strong></div>
+          <div><p>需处理</p><strong className="danger-text">{allJobs.filter((job) => ["failed", "partial", "awaiting_confirmation", "awaiting_final_review"].includes(job.status)).length}</strong></div>
         </div>
         <div className="drawer-list">
+          {(workspaceError || jobs.error || cancel.error || retry.error) && <div className="api-state api-state--error" role="alert"><p>{errorMessage(workspaceError ?? jobs.error ?? cancel.error ?? retry.error)}</p><button className="secondary-button" onClick={() => void jobs.refetch()}>重新加载任务</button></div>}
           {jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
-          {!jobs.isPending && visibleJobs.length === 0 && <div className="api-state"><p>暂无生成任务。</p></div>}
+          {!workspaceError && !jobs.error && !jobs.isPending && visibleJobs.length === 0 && <div className="api-state"><p>暂无生成任务。</p></div>}
           {visibleJobs.map((job) => (
             <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">

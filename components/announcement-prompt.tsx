@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BellRing, Check, Pin, X } from "lucide-react";
 
 import { usePublicAnnouncements } from "@/features/announcements/api/announcements";
+import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 
 const NEVER_SHOW_KEY = "polaris.dismissed-pinned-announcements";
 const SESSION_SEEN_KEY = "polaris.seen-pinned-announcements";
@@ -46,6 +47,8 @@ export function AnnouncementPrompt() {
     setPromptConsumed(true);
     setNeverShowAgain(false);
   }, [item, neverShowAgain]);
+
+  useBodyScrollLock(Boolean(item));
 
   useEffect(() => {
     if (!item) return;

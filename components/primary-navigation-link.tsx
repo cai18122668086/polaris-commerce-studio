@@ -14,7 +14,7 @@ export function PrimaryNavigationLink({ href, label, active, onClick, style, mob
     className={`${styles.link}${active ? " active" : ""}`}
     aria-current={active ? "page" : undefined}
     aria-describedby={replica ? tooltipId : undefined}>
-    {hot && <Flame className={mobile ? undefined : "main-nav__flame"} size={14} fill="currentColor" aria-hidden="true" style={mobile ? { color: "#e94724", verticalAlign: "-2px", marginRight: 4 } : undefined} />}
+    {hot && <Flame className={mobile ? undefined : "main-nav__flame"} size={14} fill="currentColor" aria-hidden="true" style={mobile ? { color: "#8d79ad", verticalAlign: "-2px", marginRight: 4 } : undefined} />}
     {label}
     {replica && <span id={tooltipId} role="tooltip" className={styles.tooltip}>全网独家，好用到你害怕</span>}
   </Link>;

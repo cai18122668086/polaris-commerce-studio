@@ -233,7 +233,7 @@ type AdminListResponse<T> = {
   pagination: AdminPagination;
 };
 
-function requestHeaders() {
+export function requestHeaders() {
   const headers = new Headers({ Accept: "application/json" });
   if (isLocalDevelopmentAuthEnabled()) {
     headers.set("X-User-Id", LOCAL_DEV_AUTH_USER_ID);
@@ -241,7 +241,7 @@ function requestHeaders() {
   return headers;
 }
 
-async function parseResponse<T>(response: Response): Promise<T> {
+export async function parseResponse<T>(response: Response): Promise<T> {
   let payload: unknown;
   try {
     payload = await response.json();

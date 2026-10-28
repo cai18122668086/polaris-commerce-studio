@@ -33,7 +33,7 @@ export function CreditAccountPanel() {
   const account = useCreditAccount(workspace?.id);
   const ledger = useCreditLedger(workspace?.id, Boolean(account.data?.enforcement_enabled));
   if (!account.data?.enforcement_enabled) return null;
-  const labels: Record<string, string> = { reserve: "预留", settle: "结算", release: "释放", purchase: "充值到账" };
+  const labels: Record<string, string> = { reserve: "预留", settle: "结算", release: "释放", purchase: "充值到账", gift: "赠送", compensation: "补偿", refund_hold: "退款冻结", refund_release: "退款释放", refund: "退款扣回" };
   return <section className={styles.panel} aria-labelledby="credit-account-heading"><div className={styles.heading}><div><p>CREATIVE CREDITS</p><h2 id="credit-account-heading">我的创作积分</h2></div><button aria-label="刷新积分余额" onClick={() => { void account.refetch(); void ledger.refetch(); }}><RefreshCw size={17} /></button></div>
     {account.isPending ? <p>正在读取积分账户…</p> : account.isError ? <p role="alert">积分账户读取失败，请重试。</p> : account.data ? <><div className={styles.summary}><div><span>可用积分</span><strong>{account.data.available_credits.toLocaleString()}</strong></div><div><span>任务预留</span><strong>{account.data.reserved_credits.toLocaleString()}</strong></div><div><span>账户总额</span><strong>{account.data.balance_credits.toLocaleString()}</strong></div></div><p className={styles.help}>提交任务时预留积分，按成功图片结算，未使用的预留自动释放。普通单图 5 积分/张，规划创作 15 积分/张。</p></> : null}
     {workspace && <CreditPurchasePanel key={workspace.id} workspaceId={workspace.id} />}

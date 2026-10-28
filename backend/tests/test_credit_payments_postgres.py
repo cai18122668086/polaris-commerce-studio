@@ -16,6 +16,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from app import services
+from app.admin_commerce_models import (
+    CreditAdjustmentRecord,
+    CustomerSupportRecord,
+    ManualRefundRecord,
+    SupportCaseRecord,
+)
 from app.config import Settings
 from app.credit_payment_routes import _settle_verified_purchase, settle_paid_purchase
 from app.database import Base
@@ -238,6 +244,13 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
         )
         session.commit()
     with engine.begin() as connection:
+        for record in [
+            ManualRefundRecord,
+            CreditAdjustmentRecord,
+            SupportCaseRecord,
+            CustomerSupportRecord,
+        ]:
+            record.__table__.drop(connection)
         CreditGrantRecord.__table__.drop(connection)
         CreditMembershipRecord.__table__.drop(connection)
         connection.execute(
@@ -257,6 +270,7 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
             "20261027_0028_credit_pricing_snapshot.py",
             "20261027_0029_credit_purchases.py",
             "20261027_0030_credit_memberships.py",
+            "20261028_0031_admin_commerce.py",
         ]:
             path = Path(__file__).resolve().parents[1] / "migrations/versions" / name
             spec = importlib.util.spec_from_file_location("credit_migration", path)

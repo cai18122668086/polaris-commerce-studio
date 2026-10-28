@@ -1587,6 +1587,7 @@ class CreditMembershipRecord(TimestampMixin, Base):
     months: Mapped[int] = mapped_column(Integer, nullable=False)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class CreditGrantRecord(TimestampMixin, Base):

@@ -222,6 +222,10 @@ const adminPermissionOptions = [
   ["workspaces:read", "工作区查看"],
   ["accounts:read", "账号运维查看"],
   ["logs:read", "任务日志查看"],
+  ["commerce:read", "客户与支付查看"],
+  ["credits:manage", "赠送补偿与支付核对"],
+  ["refunds:manage", "人工退款处理"],
+  ["support:manage", "客户备注与任务售后"],
   ["admins:manage", "管理员管理"],
 ] as const;
 

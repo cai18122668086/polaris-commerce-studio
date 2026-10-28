@@ -278,6 +278,7 @@ class CreditPurchaseList(BaseModel):
 
 
 class CreditMembershipState(BaseModel):
+    refund_pending: bool = False
     plan_id: str | None
     plan_name: str | None
     monthly_credits: int
@@ -555,6 +556,7 @@ def _settle_verified_purchase(session: Session, parameters: dict[str, str]) -> N
             .where(
                 CreditMembershipRecord.workspace_id == order.workspace_id,
                 CreditMembershipRecord.ends_at > now,
+                CreditMembershipRecord.cancelled_at.is_(None),
             )
             .order_by(CreditMembershipRecord.ends_at.desc())
             .limit(1)

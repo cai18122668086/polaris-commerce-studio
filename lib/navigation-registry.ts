@@ -45,7 +45,8 @@ export type NavigationMenuDefinition = {
 
 export const PRIMARY_NAVIGATION_LINKS = [
   { label: "首页", href: "/" },
-  ...PRIMARY_CREATION_ENTRIES.map(({ label, href }) => ({ label, href })),
+  ...PRIMARY_CREATION_ENTRIES.slice(0, 3).map(({ label, href }) => ({ label, href })),
+  { label: "跨境电商", href: "/#crossborder-commerce" },
   { label: "素材中心", href: "/assets" },
   { label: "生成记录", href: "/jobs" },
 ] as const;
@@ -78,14 +79,19 @@ export const AI_FEATURES_MENU = {
       ],
     },
     {
-      label: "电商套图",
+      label: "国内电商",
       items: [
         navigationFeature("domestic-main-image", {
           description: "生成搜索主图与五张连续轮播图",
         }),
         navigationFeature("detail-pack", {
-          description: "生成国内、国际全平台详情图",
+          description: "生成国内商品详情页视觉",
         }),
+      ],
+    },
+    {
+      label: "跨境电商",
+      items: [
         navigationFeature("amazon-visual-suite", {
           description: "生成亚马逊主图、副图与 A+ 内容",
         }),
@@ -150,7 +156,14 @@ export const ALL_TOOLS_MENU: NavigationMenuDefinition = {
       navigationFeature("detail-pack", { label: "详情图套图", description: "把卖点与细节组织成完整详情图" }),
       { featureId: "inspiration", label: "灵感专区", href: "/inspiration", description: "看案例、找方向、一键做同款", icon: Lightbulb, tone: "indigo" },
     ] },
-    { label: "精修与跨境", items: AI_FEATURES_MENU.groups.flatMap(group => group.items).filter(item => !["one-click-replica", "domestic-main-image", "detail-pack"].includes(item.featureId)) },
+    { label: "国内电商", items: [
+      navigationFeature("domestic-main-image", { label: "国内主图与轮播", description: "搜索主图与五张轮播图" }),
+      navigationFeature("detail-pack", { label: "国内商品详情页", description: "商品卖点与细节的完整详情图" }),
+    ] },
+    { label: "跨境电商", items: [
+      navigationFeature("amazon-visual-suite", { label: "亚马逊主副图与 A+", description: "主图 1 张、副图 6 张、桌面与移动 A+ 各 7 张" }),
+    ] },
+    { label: "精修与参考创作", items: [navigationFeature("local-edit", { description: "用自然语言完成局部精修" }), navigationFeature("reference-remix", { description: "参考构图与视觉风格" })] },
     ...AI_TOOLBOX_MENU.groups,
   ],
 };

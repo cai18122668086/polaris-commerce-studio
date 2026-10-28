@@ -3361,7 +3361,7 @@ class TengliOpenAICompatibleGateway:
 def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
     """Build the real adapter explicitly; callers control whether it is used."""
 
-    return TengliOpenAICompatibleGateway(
+    gateway = TengliOpenAICompatibleGateway(
         api_key=settings.tengli_api_key.get_secret_value(),
         base_url=settings.tengli_base_url,
         planner_api_key=settings.analysis_api_key.get_secret_value() or None,
@@ -3390,6 +3390,9 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         image_failover_model=settings.tengli_image_model,
         rotation_order=settings.provider_rotation_order,
     )
+    from .image_capacity import limit_gateway
+
+    return limit_gateway(gateway, settings.celery_broker_url, settings.image_global_concurrency)
 
 
 class XinghePlanningCoordinator:
@@ -6129,8 +6132,8 @@ class XingheImageProvider:
         skill_id: str = "xinghe-ecommerce-detail",
         revision_settings: Settings | None = None,
     ) -> None:
-        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
-            raise ValueError("Xinghe concurrency must be from 1 through 32.")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 3000:
+            raise ValueError("Xinghe concurrency must be from 1 through 3000.")
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage

@@ -51,15 +51,16 @@ function ResultCard({ workspaceId, jobId, sessionId, outputIndex = 0, title, onP
   const job = useJob(workspaceId, jobId);
   const [error, setError] = useState("");
   const data = job.data;
-  const asset = data?.assets.filter(item => item.direction === "output" && item.is_deliverable)[outputIndex];
+  const targetItem = data?.items.find(item => item.ordinal === outputIndex);
+  const asset = data?.assets.find(item => item.direction === "output" && item.is_deliverable && item.job_item_id === targetItem?.id);
   const terminal = ["completed", "partial", "failed", "cancelled"].includes(data?.status ?? "");
-  const moduleLabel = moduleProgress?.status === "GENERATED" ? "本屏已生成，等待整组交付" : moduleProgress?.status === "AWAITING_ARTWORK" ? "正在生成本屏" : moduleProgress?.status === "COMPLETE" ? (terminal ? "本屏审图通过，整组暂未交付" : "本屏审图通过，等待整组交付") : moduleProgress?.status === "REJECTED_BEST_EFFORT" ? "本屏尚未通过审图" : moduleProgress?.status === "REPAIR_REQUIRED" ? "正在修正本屏" : moduleProgress?.attempts ? "正在生成与审查本屏" : "等待处理本屏";
+  const moduleLabel = moduleProgress?.status === "GENERATED" ? "本屏已生成，正在保存图片" : moduleProgress?.status === "AWAITING_ARTWORK" ? "正在生成本屏" : moduleProgress?.status === "COMPLETE" ? "本屏已完成，正在保存图片" : moduleProgress?.status === "REJECTED_BEST_EFFORT" ? "本屏尚未通过审图" : moduleProgress?.status === "REPAIR_REQUIRED" ? "正在修正本屏" : moduleProgress?.attempts ? "正在生成与审查本屏" : "等待处理本屏";
   useEffect(() => { if (data) onStatus(jobId, data.status); }, [data, jobId, onStatus]);
   const download = async () => { try { if (!asset) return; const access = await getAssetAccessUrl(workspaceId, asset.asset_id, "attachment"); const response = await fetch(access.url, { credentials: "include" }); if (!response.ok) throw new Error("图片下载失败，请稍后重试。"); const url = URL.createObjectURL(await response.blob()); const a = document.createElement("a"); a.href = url; a.download = `${title}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (caught) { setError(caught instanceof Error ? caught.message : "下载失败"); } };
   return <article className={styles.resultCard}>
     <div className={styles.resultMedia}>{asset ? <AssetImage workspaceId={workspaceId} assetId={asset.asset_id} onClick={onPreview} /> : <div className={styles.generating}>{terminal ? <CircleHelp size={26} /> : <LoaderCircle className="spin" size={28} />}<span>{moduleProgress ? moduleLabel : terminal ? "本张暂未完成" : "正在绘制你的商品"}</span><small>{terminal ? (resumeWhole ? "已保留当前进度，可继续处理剩余步骤。" : data?.error_message ?? data?.items.find(item => item.error_message)?.error_message) : `${data?.progress ?? 0}% · 可离开页面，稍后在记录中查看`}</small></div>}</div>
     {!!moduleProgress?.reasons.length && <details className={styles.auditReasons}><summary>查看本屏审图原因</summary><ul>{moduleProgress.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></details>}
-    <div className={styles.resultMeta}><strong>{title}</strong><span>{data?.status === "completed" ? "已完成" : terminal ? "需重试" : "生成中"}</span></div>
+    <div className={styles.resultMeta}><strong>{title}</strong><span>{asset ? "已出图" : data?.status === "completed" ? "已完成" : terminal ? "需重试" : "生成中"}</span></div>
     <div className={styles.resultActions}>{asset && <button onClick={() => void download()}><Download size={14} />下载</button>}{terminal && !asset && outputIndex === 0 && <button disabled={retrying} onClick={() => onRetry(jobId)}><RotateCcw size={13} />{retrying ? "正在提交" : resumeWhole ? "继续处理剩余步骤" : retryWhole ? "重新复刻整组" : "重新生成"}</button>}<Link href={`/style-replica?sessionId=${encodeURIComponent(sessionId)}`}>查看任务<ChevronRight size={13} /></Link></div>
     {error && <p className={styles.error}>{error}</p>}
   </article>;

@@ -56,6 +56,10 @@ export async function verifyEmail() {
   initialise();
   return EmailVerification.verifyEmail();
 }
+export async function verifyEmailCode(code: string) {
+  initialise();
+  return EmailVerification.verifyEmail({ userContext: { verificationCode: code.trim() } });
+}
 export async function sendVerificationEmail() {
   initialise();
   return EmailVerification.sendVerificationEmail();

@@ -247,7 +247,7 @@ def test_default_mock_runner_still_allows_quota_disabled(
         ({"tengli_smoke_budget_usd": 20_000_001}, "budget"),
         ({"tengli_smoke_budget_usd": float("nan")}, "budget"),
         ({"xinghe_concurrency": 0}, "concurrency"),
-        ({"xinghe_concurrency": 33}, "concurrency"),
+        ({"xinghe_concurrency": 3001}, "concurrency"),
         ({"tengli_monthly_budget_usd": 0.5}, "monthly budget"),
         ({"tengli_base_url": ""}, "base URL"),
         ({"tengli_base_url": "ftp://provider.example"}, "base URL"),

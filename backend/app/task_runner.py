@@ -131,9 +131,9 @@ def validate_task_runner_settings(settings: Settings) -> None:
         )
     if (
         type(settings.xinghe_concurrency) is not int
-        or not 1 <= settings.xinghe_concurrency <= 32
+        or not 1 <= settings.xinghe_concurrency <= 3000
     ):
-        raise RuntimeError("tengli task runner concurrency must be from 1 through 32")
+        raise RuntimeError("tengli task runner concurrency must be from 1 through 3000")
     if (
         settings.provider_quota_enabled
         and settings.tengli_daily_budget_usd > 0

@@ -233,7 +233,8 @@ class Settings(BaseSettings):
         ge=1,
         le=2_000_000,
     )
-    xinghe_concurrency: int = Field(default=6, ge=1, le=32)
+    xinghe_concurrency: int = Field(default=6, ge=1, le=3000)
+    image_global_concurrency: int = Field(default=3000, ge=1, le=3000)
     replica_analysis_concurrency: int = Field(default=4, ge=1, le=16)
     # Kept for compatibility with existing deployment environments. Exact
     # sessions now use the current protocol in every workspace.
@@ -296,11 +297,11 @@ class Settings(BaseSettings):
         ]
     )
 
-    @field_validator("xinghe_concurrency", mode="before")
+    @field_validator("xinghe_concurrency", "image_global_concurrency", mode="before")
     @classmethod
     def parse_xinghe_concurrency(cls, value: object) -> object:
         if isinstance(value, bool):
-            raise ValueError("Image concurrency must be an integer from 1 through 32")
+            raise ValueError("Image concurrency must be an integer from 1 through 3000")
         if isinstance(value, int):
             return value
         if isinstance(value, str):

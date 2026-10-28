@@ -272,7 +272,12 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
 
   assert.match(featurePriorities, /HOT_FEATURE_IDS = new Set\(\[\s*"local-edit",\s*"one-click-replica",\s*"detail-pack",\s*"domestic-main-image",\s*\]\)/s);
   assert.match(toolDirectory, /import \{ HOT_FEATURE_IDS \} from "@\/lib\/feature-priorities"/);
-  assert.match(toolDirectory, /"local-edit", "reference-remix", "amazon-visual-suite"/);
+  assert.match(toolDirectory, /"local-edit", "reference-remix"/);
+  assert.match(toolDirectory, /<CommerceEntryGroups \/>/);
+  const commerceGroups = await utf8("components/commerce-entry-groups.tsx");
+  assert.match(commerceGroups, /国内电商/);
+  assert.match(commerceGroups, /跨境电商/);
+  assert.match(commerceGroups, /\/workspace\/amazon-visual-suite/);
   const creationEntries = await utf8("lib/creation-entrypoints.ts");
   for (const id of ["one-click-replica", "domestic-main-image", "detail-pack", "inspiration"]) {
     assert.ok(creationEntries.includes(`id: "${id}"`), `${id} keeps a primary homepage entry`);

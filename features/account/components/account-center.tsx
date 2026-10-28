@@ -1119,6 +1119,7 @@ function OrderDialog({
             </>
           )}
           <div className="modal-actions">
+            <Link className="button primary" href="/">返回首页，开始创作<ArrowRight size={16} /></Link>
             <Button onClick={onClose}>关闭</Button>
           </div>
         </>

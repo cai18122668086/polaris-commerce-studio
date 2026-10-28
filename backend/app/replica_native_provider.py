@@ -61,7 +61,8 @@ class NativeReplicaProvider:
     model = "gpt-image-2"
     pricing_version = "replica-native-20260923"
 
-    def __init__(self, session_factory: Any, gateway: Any, storage: Any) -> None:
+    def __init__(self, session_factory: Any, gateway: Any, storage: Any, *, max_concurrency: int = 6) -> None:
+        self.max_concurrency = max_concurrency
         self.session_factory, self.gateway, self.storage = (
             session_factory,
             gateway,
@@ -221,7 +222,7 @@ class NativeReplicaProvider:
                     or (
                         direct_source
                         and snapshot["model_protocol"].get("version")
-                        not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8"}
+                        not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8", "exact-compact-v9"}
                     )
                     else run_class(
                         values["replication_method"], snapshot["model_protocol"]
@@ -237,7 +238,7 @@ class NativeReplicaProvider:
             )
             if direct_source and snapshot.get("model_protocol") and snapshot.get("model_protocol", {}).get(
                 "version"
-            ) not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8"}:
+            ) not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8", "exact-compact-v9"}:
                 await replica_direct_delivery.restore_source(
                     run, snapshot, direct_source[1]
                 )
@@ -365,6 +366,14 @@ class NativeReplicaProvider:
         ledger_path = run.root / "invocations.json"
         ledger = read_json(ledger_path) if ledger_path.exists() else {}
         token = native["token"]
+
+        def save_ledger() -> None:
+            current = read_json(ledger_path) if ledger_path.exists() else {}
+            current[token] = ledger[token]
+            write_json(ledger_path, current)
+            ledger.clear()
+            ledger.update(current)
+
         minimum_edge = min(canvas) if run.method == "exact" else 0
         native_delivery = run.method == "exact" and getattr(run, "direct_execution", False)
         resolution_input: Path | None = None
@@ -400,7 +409,7 @@ class NativeReplicaProvider:
                         if prior.get("delivery_canvas") != receipt:
                             # Retain canvas_rejected and its original strict verdict.
                             prior["delivery_canvas"] = receipt
-                            write_json(ledger_path, ledger)
+                            save_ledger()
                             await self._save(run, request.job_id)
                 return path
             if prior.get("state") == "canvas_rejected":
@@ -439,7 +448,7 @@ class NativeReplicaProvider:
                     "source_plan_sha256": retry_candidate.plan_sha256,
                     "network_requests": 0,
                 }
-                write_json(ledger_path, ledger)
+                save_ledger()
                 run.usage.append(
                     {
                         "kind": "image_reuse",
@@ -625,7 +634,7 @@ class NativeReplicaProvider:
         }
         if resolution_recovery is not None:
             ledger[token]["resolution_recovery"] = resolution_recovery
-        write_json(ledger_path, ledger)
+        save_ledger()
         # The invocation fence is durable BEFORE the network call.
         await self._save(run, request.job_id)
         for format_attempt in range(
@@ -641,7 +650,7 @@ class NativeReplicaProvider:
                     "Use the bound format_canvas boundary; preserve the blueprint and product."
                 )
                 ledger[token]["state"] = "invoked"
-                write_json(ledger_path, ledger)
+                save_ledger()
                 await self._save(run, request.job_id)
             before = getattr(self.gateway, "external_network_request_count", None)
             result = await self.gateway.edit(
@@ -690,7 +699,7 @@ class NativeReplicaProvider:
                     "http_status": result.http_status,
                     "error_code": result.error_code,
                 }
-                write_json(ledger_path, ledger)
+                save_ledger()
                 await self._save(run, request.job_id)
                 raise ReplicaNativeError(
                     result.error_message or "生图未返回可核实产物。"
@@ -729,7 +738,7 @@ class NativeReplicaProvider:
                 ledger[token]["delivery_canvas"] = delivery_receipt(
                     canvas, actual, ledger[token]["sha256"]
                 )
-            write_json(ledger_path, ledger)
+            save_ledger()
             await self._save(run, request.job_id)
             if matches or native_admitted:
                 return path

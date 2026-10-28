@@ -19,6 +19,7 @@ import {
 } from "@/lib/home-feature-visuals";
 import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
 import { CreationStartHub } from "@/components/creation-start-hub";
+import { CommerceEntryGroups } from "@/components/commerce-entry-groups";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
@@ -57,7 +58,7 @@ const searchableTools = FEATURE_REGISTRY.map((feature) => {
 });
 
 const featuredTools = [
-  "local-edit", "reference-remix", "amazon-visual-suite",
+  "local-edit", "reference-remix",
 ].flatMap(id => {
   const tool = searchableTools.find(item => item.id === id && item.featured);
   return tool ? [tool] : [];
@@ -278,6 +279,7 @@ export function ToolDirectory() {
     <section className="focus-home">
       <HomeHero />
       <CreationStartHub />
+      <CommerceEntryGroups />
 
       <div className="focus-home__content">
         <div className="home-command home-command--primary" id="tools">
@@ -455,7 +457,7 @@ export function ToolDirectory() {
         </div>
 
         <header className="focus-home__section-head">
-          <h2>精修、模仿与跨境套图</h2>
+          <h2>精修与参考创作</h2>
           <p>主力工作台之外，这些工具也能帮你把图做好。</p>
         </header>
 

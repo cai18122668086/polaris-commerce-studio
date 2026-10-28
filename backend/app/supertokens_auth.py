@@ -6,6 +6,7 @@ from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from threading import Lock
 from typing import Any, Protocol, runtime_checkable
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI, Request
 
@@ -180,10 +181,33 @@ def _override_password_email_service(service: Any, app_name: str) -> Any:
     return service
 
 
-def _override_verification_email_service(service: Any, app_name: str) -> Any:
+def _override_verification_email_service(
+    service: Any, app_name: str, code_store: Any = None
+) -> Any:
     async def get_content(template_vars: Any, _user_context: dict[str, Any]) -> Any:
         from supertokens_python.ingredients.emaildelivery.types import EmailContent
 
+        if code_store is not None:
+            token = parse_qs(urlsplit(template_vars.email_verify_link).query)["token"][
+                0
+            ]
+            code = await code_store.issue(
+                template_vars.tenant_id,
+                template_vars.user.recipe_user_id.get_as_string(),
+                token,
+            )
+            return EmailContent(
+                body=(
+                    f"<h1>{escape(app_name)} 邮箱验证码</h1>"
+                    '<p style="font-size:32px;letter-spacing:8px;font-weight:bold">'
+                    f"{code}</p>"
+                    "<p>请在原网页输入此验证码，10 分钟内有效。无需点击链接。</p>"
+                    "<p>如非本人操作，请忽略此邮件。请勿将验证码提供给他人。</p>"
+                ),
+                subject=f"{code} 是您的邮箱验证码 · {app_name}",
+                to_email=template_vars.user.email,
+                is_html=True,
+            )
         return EmailContent(
             body=_transactional_email_html(
                 title_zh="验证您的邮箱",
@@ -235,6 +259,8 @@ class SuperTokensAuthAdapter:
             self.settings.auth_smtp_secure,
             self.settings.auth_email_from_name,
             self.settings.auth_email_from_address,
+            self.settings.celery_broker_url,
+            self.settings.access_url_secret,
         )
 
     def initialize(self) -> None:
@@ -267,6 +293,13 @@ class SuperTokensAuthAdapter:
         from supertokens_python.framework.fastapi import get_middleware
         from supertokens_python.recipe import emailpassword, emailverification, session
         from supertokens_python.recipe.session.framework.fastapi import verify_session
+
+        from .email_verification_codes import (
+            VerificationCodeStore,
+            override_verification_apis,
+        )
+
+        code_store = VerificationCodeStore(self.settings)
 
         password_email_delivery = None
         verification_email_delivery = None
@@ -306,7 +339,7 @@ class SuperTokensAuthAdapter:
                 service=emailverification_smtp.SMTPService(
                     smtp_settings,
                     override=lambda service: _override_verification_email_service(
-                        service, self.settings.app_name
+                        service, self.settings.app_name, code_store
                     ),
                 )
             )
@@ -331,7 +364,15 @@ class SuperTokensAuthAdapter:
                     recipe_list=[
                         emailpassword.init(email_delivery=password_email_delivery),
                         emailverification.init(
-                            "REQUIRED", email_delivery=verification_email_delivery
+                            "REQUIRED",
+                            email_delivery=verification_email_delivery,
+                            override=emailverification.InputOverrideConfig(
+                                apis=lambda original: override_verification_apis(
+                                    original,
+                                    code_store,
+                                    bool(self.settings.auth_smtp_host),
+                                )
+                            ),
                         ),
                         session.init(
                             cookie_secure=self.settings.supertokens_cookie_secure,

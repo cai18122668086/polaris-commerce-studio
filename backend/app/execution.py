@@ -282,7 +282,8 @@ def _amazon_review_accounting(
         request_count=sum(call.network_requests for call in called),
         reported_count=reported_count,
         known_actual_cost_count=sum(
-            call.network_requests for call in called
+            call.network_requests
+            for call in called
             if call.actual_cost_micros is not None
         ),
         actual_cost_micros=sum(known_costs),
@@ -553,8 +554,8 @@ class ExecutionCoordinator:
             raise ValueError("lease_seconds must be positive")
         if heartbeat_seconds <= 0 or heartbeat_seconds >= lease_seconds:
             raise ValueError("heartbeat_seconds must be positive and less than lease")
-        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
-            raise ValueError("max_concurrency must be from 1 through 32")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 3000:
+            raise ValueError("max_concurrency must be from 1 through 3000")
         if max_detail_retries < 0 or max_detail_retries > 2:
             raise ValueError("max_detail_retries must be from 0 through 2")
         if max_amazon_retries < 0 or max_amazon_retries > 2:
@@ -595,10 +596,14 @@ class ExecutionCoordinator:
                 self._amazon_generation_outstanding(job_id)
             ):
                 with self.session_factory() as session:
-                    failed = session.scalar(select(JobItemRecord.id).where(
-                        JobItemRecord.job_id == job_id,
-                        JobItemRecord.status == JobItemStatus.FAILED.value,
-                    ).limit(1))
+                    failed = session.scalar(
+                        select(JobItemRecord.id)
+                        .where(
+                            JobItemRecord.job_id == job_id,
+                            JobItemRecord.status == JobItemStatus.FAILED.value,
+                        )
+                        .limit(1)
+                    )
                 if failed is not None:
                     return self._mark_amazon_quality_blocked(job_id)
             return await self._maybe_finalize_domestic_automatic_delivery(
@@ -687,15 +692,14 @@ class ExecutionCoordinator:
                         if self._amazon_review_needs_manual_review(job_id):
                             return self._mark_amazon_review_pending(job_id)
                         return self._mark_amazon_quality_blocked(job_id)
-                    if (
-                        enforce_delivery
-                        and action in {"in_progress", "incomplete", "not_applicable"}
-                    ):
+                    if enforce_delivery and action in {
+                        "in_progress",
+                        "incomplete",
+                        "not_applicable",
+                    }:
                         return self._mark_amazon_review_pending(job_id)
                 retry_delay = (
-                    self._seconds_until_aurora_retry(job_id)
-                    if is_v20_aurora
-                    else None
+                    self._seconds_until_aurora_retry(job_id) if is_v20_aurora else None
                 )
                 if retry_delay is not None:
                     await asyncio.sleep(retry_delay)
@@ -728,10 +732,9 @@ class ExecutionCoordinator:
             if self._domestic_detail_batch_has_failure(job_id, leases):
                 self._skip_domestic_detail_pages_after_execution_failure(job_id)
                 break
-            if (
-                is_calibrated_parallel_aurora_mode(parallel_mode)
-                and self._domestic_batch_has_failure(job_id, leases)
-            ):
+            if is_calibrated_parallel_aurora_mode(
+                parallel_mode
+            ) and self._domestic_batch_has_failure(job_id, leases):
                 self._skip_calibrated_parallel_dependents(job_id, leases)
 
         if is_v20_aurora:
@@ -799,9 +802,15 @@ class ExecutionCoordinator:
             with self.session_factory() as session:
                 job = session.get(JobRecord, job_id, with_for_update=True)
                 if job is not None and eligible(job):
-                    plan = session.scalar(select(JobPlanRecord).where(
-                        JobPlanRecord.job_id == job.id,
-                    ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                    plan = session.scalar(
+                        select(JobPlanRecord)
+                        .where(
+                            JobPlanRecord.job_id == job.id,
+                        )
+                        .order_by(JobPlanRecord.revision.desc())
+                        .limit(1)
+                        .with_for_update()
+                    )
                     if plan is not None and complete_delivery(session, job, plan):
                         session.commit()
                         return JobStatus.COMPLETED
@@ -834,14 +843,19 @@ class ExecutionCoordinator:
                 JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
             ).update({"is_deliverable": False}, synchronize_session=False)
             if job.status == JobStatus.AWAITING_FINAL_REVIEW.value:
-                session.add(AuditEventRecord(
-                    workspace_id=job.workspace_id,
-                    action="job.review_state_recovered", resource_type="job",
-                    resource_id=job.id,
-                    details={"from": "awaiting_final_review",
-                             "to": "partial" if job.succeeded_item_count else "failed",
-                             "failed_item_count": job.failed_item_count},
-                ))
+                session.add(
+                    AuditEventRecord(
+                        workspace_id=job.workspace_id,
+                        action="job.review_state_recovered",
+                        resource_type="job",
+                        resource_id=job.id,
+                        details={
+                            "from": "awaiting_final_review",
+                            "to": "partial" if job.succeeded_item_count else "failed",
+                            "failed_item_count": job.failed_item_count,
+                        },
+                    )
+                )
             session.commit()
         result = self.finalize_job(job_id)
         if result in {JobStatus.PARTIAL, JobStatus.FAILED}:
@@ -894,14 +908,19 @@ class ExecutionCoordinator:
                 return None
             if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
                 return JobStatus(job.status)
-            if session.scalar(
-                select(JobItemRecord.id).where(
-                    JobItemRecord.job_id == job.id,
-                    JobItemRecord.status.in_(
-                        ("pending", "queued", "running", "retry_wait")
-                    ),
-                ).limit(1)
-            ) is not None:
+            if (
+                session.scalar(
+                    select(JobItemRecord.id)
+                    .where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status.in_(
+                            ("pending", "queued", "running", "retry_wait")
+                        ),
+                    )
+                    .limit(1)
+                )
+                is not None
+            ):
                 return JobStatus.PROCESSING
             transition_job(
                 job,
@@ -1242,9 +1261,7 @@ class ExecutionCoordinator:
                 item.status = JobItemStatus.SKIPPED.value
                 item.stage = "blocked_by_previous_pair"
                 item.error_code = "AURORA_DETAIL_SEQUENCE_HALTED"
-                item.error_message = (
-                    "因前置 pair 页面失败，后续详情页面未启动。"
-                )
+                item.error_message = "因前置 pair 页面失败，后续详情页面未启动。"
                 item.finished_at = now
                 item.next_attempt_at = None
                 item.state_version += 1
@@ -1413,9 +1430,15 @@ class ExecutionCoordinator:
             )
 
             if crossborder_eligible(job):
-                plan = session.scalar(select(JobPlanRecord).where(
-                    JobPlanRecord.job_id == job.id,
-                ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(
+                        JobPlanRecord.job_id == job.id,
+                    )
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
                 if plan is not None:
                     confirm_crossborder(session, job, plan)
                     session.commit()
@@ -2136,6 +2159,49 @@ class ExecutionCoordinator:
         artifact = result.artifact
         if artifact is None:
             return result
+        # Streaming replica outputs are already workspace-owned and durable.
+        # Reuse those exact bytes when the normal item/usage settlement runs.
+        with self.session_factory() as session:
+            job = session.get(JobRecord, lease.job_id)
+            published = (
+                session.scalar(
+                    select(AssetRecord)
+                    .join(JobAssetRecord, JobAssetRecord.asset_id == AssetRecord.id)
+                    .where(
+                        JobAssetRecord.job_id == lease.job_id,
+                        JobAssetRecord.job_item_id == lease.item_id,
+                        JobAssetRecord.direction == "output",
+                        AssetRecord.workspace_id == lease.workspace_id,
+                        AssetRecord.sha256 == artifact.sha256,
+                        AssetRecord.lifecycle_status == "ready",
+                        AssetRecord.deleted_at.is_(None),
+                    )
+                )
+                if job and job.configuration.get("replica_session_id")
+                else None
+            )
+            if (
+                published is not None
+                and published.width is not None
+                and published.height is not None
+            ):
+                return replace(
+                    result,
+                    artifact=None,
+                    persisted_artifact=PersistedProviderArtifact(
+                        filename=published.original_filename,
+                        content_type=published.content_type,
+                        byte_size=published.byte_size,
+                        width=published.width,
+                        height=published.height,
+                        sha256=published.sha256,
+                        storage_provider=published.storage_provider,
+                        storage_bucket=published.storage_bucket,
+                        object_key=published.object_key,
+                        object_version=published.object_version,
+                        etag=published.etag,
+                    ),
+                )
         if self.artifact_storage is None:
             return replace(
                 result,
@@ -2331,6 +2397,25 @@ class ExecutionCoordinator:
                     retryable=False,
                 )
 
+            published_asset = None
+            if result.persisted_artifact is not None and job.configuration.get(
+                "replica_session_id"
+            ):
+                published_asset = session.scalar(
+                    select(AssetRecord)
+                    .join(
+                        JobAssetRecord,
+                        JobAssetRecord.asset_id == AssetRecord.id,
+                    )
+                    .where(
+                        JobAssetRecord.job_id == job.id,
+                        JobAssetRecord.job_item_id == item.id,
+                        JobAssetRecord.direction == "output",
+                        AssetRecord.workspace_id == job.workspace_id,
+                        AssetRecord.object_key == result.persisted_artifact.object_key,
+                        AssetRecord.sha256 == result.persisted_artifact.sha256,
+                    )
+                )
             if result.persisted_artifact is not None:
                 limits = session.get(
                     WorkspaceLimitRecord,
@@ -2347,7 +2432,12 @@ class ExecutionCoordinator:
                 )
                 if (
                     limits is None
-                    or int(used_bytes or 0) + result.persisted_artifact.byte_size
+                    or int(used_bytes or 0)
+                    + (
+                        0
+                        if published_asset is not None
+                        else result.persisted_artifact.byte_size
+                    )
                     > limits.storage_quota_bytes
                 ):
                     result = replace(
@@ -2400,7 +2490,8 @@ class ExecutionCoordinator:
                 )
                 should_retry = bool(result.retryable) and (
                     (
-                        job.type in {
+                        job.type
+                        in {
                             JobType.REFERENCE_REMIX.value,
                             JobType.MODEL_POSE_TRANSFER.value,
                             JobType.CREATIVE_IMAGE.value,
@@ -2540,43 +2631,48 @@ class ExecutionCoordinator:
                 and result.persisted_artifact is not None
             ):
                 stored = result.persisted_artifact
-                asset_id = new_id("asset")
+                asset_id = (
+                    published_asset.id
+                    if published_asset is not None
+                    else new_id("asset")
+                )
                 metrics_value = result.raw_usage.get("metrics")
                 result_metrics = (
                     dict(metrics_value) if isinstance(metrics_value, dict) else {}
                 )
                 canonical_dimensions = _expected_delivery_dimensions(item, result)
-                session.add(
-                    AssetRecord(
-                        id=asset_id,
-                        workspace_id=job.workspace_id,
-                        media_kind=AssetMediaKind.IMAGE.value,
-                        origin_kind=AssetOriginKind.GENERATED.value,
-                        lifecycle_status=AssetLifecycleStatus.READY.value,
-                        original_filename=stored.filename,
-                        content_type=stored.content_type,
-                        byte_size=stored.byte_size,
-                        width=stored.width,
-                        height=stored.height,
-                        sha256=stored.sha256,
-                        storage_provider=stored.storage_provider,
-                        storage_bucket=stored.storage_bucket,
-                        object_key=stored.object_key,
-                        object_version=stored.object_version,
-                        etag=stored.etag,
-                        asset_metadata={
-                            "workflow_version": (
-                                item.configuration.get("workflow_version")
-                            ),
-                            "resume_signature": (
-                                item.configuration.get("resume_signature")
-                            ),
-                            "actual_width": stored.width,
-                            "actual_height": stored.height,
-                            "provider_metrics": result_metrics,
-                        },
+                if published_asset is None:
+                    session.add(
+                        AssetRecord(
+                            id=asset_id,
+                            workspace_id=job.workspace_id,
+                            media_kind=AssetMediaKind.IMAGE.value,
+                            origin_kind=AssetOriginKind.GENERATED.value,
+                            lifecycle_status=AssetLifecycleStatus.READY.value,
+                            original_filename=stored.filename,
+                            content_type=stored.content_type,
+                            byte_size=stored.byte_size,
+                            width=stored.width,
+                            height=stored.height,
+                            sha256=stored.sha256,
+                            storage_provider=stored.storage_provider,
+                            storage_bucket=stored.storage_bucket,
+                            object_key=stored.object_key,
+                            object_version=stored.object_version,
+                            etag=stored.etag,
+                            asset_metadata={
+                                "workflow_version": (
+                                    item.configuration.get("workflow_version")
+                                ),
+                                "resume_signature": (
+                                    item.configuration.get("resume_signature")
+                                ),
+                                "actual_width": stored.width,
+                                "actual_height": stored.height,
+                                "provider_metrics": result_metrics,
+                            },
+                        )
                     )
-                )
                 output_role = _output_asset_role(job.type)
                 output_validation = {
                     "sha256": stored.sha256,
@@ -2939,11 +3035,14 @@ class ExecutionCoordinator:
                 target = JobStatus.FAILED
             if target in {JobStatus.FAILED, JobStatus.PARTIAL} and not job.error_code:
                 failure = session.scalar(
-                    select(JobItemRecord).where(
+                    select(JobItemRecord)
+                    .where(
                         JobItemRecord.job_id == job.id,
                         JobItemRecord.status == JobItemStatus.FAILED.value,
                         JobItemRecord.error_code.is_not(None),
-                    ).order_by(JobItemRecord.ordinal).limit(1)
+                    )
+                    .order_by(JobItemRecord.ordinal)
+                    .limit(1)
                 )
                 if failure is not None:
                     job.error_code = failure.error_code
@@ -3349,16 +3448,28 @@ def build_fake_coordinator(
                     ),
                     manifest_validator=manifest_validator.validate,
                 ),
-                ReplicaDeliveryProvider(session_factory, gateway, storage),
+                ReplicaDeliveryProvider(
+                    session_factory,
+                    gateway,
+                    storage,
+                    max_concurrency=xinghe_concurrency,
+                ),
                 fast=AuroraRemixFastAdapter(
                     RemixFastProvider(
-                        session_factory, gateway, storage=storage,
+                        session_factory,
+                        gateway,
+                        storage=storage,
                         operation=JobType.REFERENCE_REMIX.value,
                         skill_id="aurora-remix-fast",
                         manifest_validator=manifest_validator.validate,
-                        work_root=(aurora_work_root / "remix-fast"
-                                   if aurora_work_root else None),
-                    ) if reference_remix_provider_enabled else UnavailableProvider(),
+                        work_root=(
+                            aurora_work_root / "remix-fast"
+                            if aurora_work_root
+                            else None
+                        ),
+                    )
+                    if reference_remix_provider_enabled
+                    else UnavailableProvider(),
                     manifest_validator=manifest_validator.validate,
                 ),
             ),
@@ -3395,7 +3506,9 @@ def build_fake_coordinator(
     from .domestic_detail.campaign_provider import DomesticCampaignReviewProvider
 
     new_routes[JobType.DOMESTIC_DETAIL_REVIEW.value] = DomesticCampaignReviewProvider(
-        session_factory, gateway, storage,
+        session_factory,
+        gateway,
+        storage,
     )
     provider = RegisteredOperationRoutingProvider(
         default_provider,

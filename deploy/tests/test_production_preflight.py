@@ -152,7 +152,7 @@ class ProductionPreflightTests(unittest.TestCase):
         errors = validate_caddy(mutated)
         self.assertTrue(any("external HTTP origins" in item for item in errors))
 
-    def test_repository_compose_files_use_six_way_concurrency(self) -> None:
+    def test_repository_compose_files_use_shared_image_capacity(self) -> None:
         compose_files = (
             DEPLOY.parent / "compose.yaml",
             DEPLOY / "compose.internal.yml",
@@ -162,6 +162,7 @@ class ProductionPreflightTests(unittest.TestCase):
             with self.subTest(compose_file=compose_file.name):
                 compose = compose_file.read_text(encoding="utf-8")
                 self.assertIn("POLARIS_XINGHE_CONCURRENCY:-6", compose)
+                self.assertIn("POLARIS_IMAGE_GLOBAL_CONCURRENCY:-3000", compose)
                 self.assertIn("--concurrency=${POLARIS_WORKER_CONCURRENCY:-6}", compose)
                 self.assertNotIn("POLARIS_XINGHE_CONCURRENCY:-2", compose)
                 self.assertNotIn("--concurrency=2", compose)

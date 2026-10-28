@@ -28,6 +28,7 @@ browser = [
   "playwright>=1.50,<2",
 ]
 dev = [
+  "fakeredis[lua]>=2.40,<3",
   "mypy>=1.16,<2",
   "pytest>=8,<10",
   "ruff>=0.12,<1",
@@ -74,6 +75,11 @@ module = [
   "app.ecommerce_session",
   "app.ecommerce_worker",
 ]
+ignore_errors = true
+
+# Byte-frozen v8 is retained for existing checkpoint hashes.
+[[tool.mypy.overrides]]
+module = ["app.replica_exact_versions.v8.*"]
 ignore_errors = true
 
 [tool.setuptools.packages.find]

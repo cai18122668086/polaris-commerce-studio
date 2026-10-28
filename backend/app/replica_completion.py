@@ -379,9 +379,10 @@ async def execute(
         restored = True
         plan = validate(run)
         state = run.state()
-        for i, (unit, module) in enumerate(
-            zip(plan["units"], state["modules"], strict=True)
-        ):
+        from .replica_streaming import parallel_images, publish_output
+
+        async def generate(i: int) -> None:
+            unit, module = plan["units"][i], state["modules"][i]
             state["module_index"] = i
             if module["status"] != "GENERATED":
                 if ordinal != 0:
@@ -435,6 +436,9 @@ async def execute(
                     unit["canvas"], image.size
                 ):
                     raise ReplicaNativeError("生成图片的字节或画幅不一致。")
+            await publish_output(provider, run, request, i, run.path(module["artwork"]))
+
+        await parallel_images(provider, list(range(len(state["modules"]))), generate)
         state.update(state="DELIVERED", module_index=len(state["modules"]))
         write_json(run.root / STATE, state)
         delivery = [m["artwork"] for m in state["modules"]]

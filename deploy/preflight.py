@@ -965,8 +965,8 @@ def validate_deployment(
                 "POLARIS_TENGLI_PLANNER_RESERVE_MICROS must be between 1 and 2000000"
             )
         concurrency = values.get("POLARIS_XINGHE_CONCURRENCY", "")
-        if not concurrency.isdecimal() or not 1 <= int(concurrency) <= 32:
-            errors.append("POLARIS_XINGHE_CONCURRENCY must be from 1 through 32 for tengli")
+        if not concurrency.isdecimal() or not 1 <= int(concurrency) <= 3000:
+            errors.append("POLARIS_XINGHE_CONCURRENCY must be from 1 through 3000 for tengli")
     total_memory, total_cpus = totals
     if host_memory_mib is None or host_memory_mib <= 0:
         errors.append("--host-memory-mib is required and must be positive")

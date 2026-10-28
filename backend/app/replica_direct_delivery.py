@@ -46,6 +46,13 @@ V7_BINDING = {
     ),
 }
 
+V8_BINDING = {
+    "version": "exact-compact-v8",
+    "content_sha256": (
+        "1f0b69dd19bd9319532ba9951cfea68319d71826c791c43a4b22707060d0ab84"
+    ),
+}
+
 
 def validate_source(
     previous: dict[str, Any], approved: dict[str, Any], prefix: str
@@ -53,8 +60,16 @@ def validate_source(
     from .replica_exact_compact import protocol_binding, run_class
     from .replica_execution_resume import V3_BINDING
 
-    allowed = (None, V3_BINDING, V4_BINDING, V5_BINDING, V6_BINDING,
-               V7_BINDING, protocol_binding())
+    allowed = (
+        None,
+        V3_BINDING,
+        V4_BINDING,
+        V5_BINDING,
+        V6_BINDING,
+        V7_BINDING,
+        V8_BINDING,
+        protocol_binding(),
+    )
     for snapshot in (previous, approved):
         binding = snapshot.get("model_protocol")
         if binding is not None and binding not in allowed:
@@ -342,12 +357,18 @@ def generation_request(run: Any, state: dict[str, Any], index: int) -> dict[str,
 async def execute(provider: Any, run: Any, request: Any) -> list[str]:
     activate(run)
     await run.checkpoint()
-    for index in range(len(run.state()["modules"])):
-        state = run.state()
+    from .replica_streaming import parallel_images, publish_output
+
+    state = run.state()
+
+    async def generate(index: int) -> None:
         state["module_index"] = index
         record, module = state["modules"][index], state["plan"]["modules"][index]
         if record["status"] == "GENERATED":
-            continue
+            await publish_output(
+                provider, run, request, index, run.path(record["artwork"])
+            )
+            return
         native = record.get("request")
         if native is None:
             native = generation_request(run, state, index)
@@ -372,6 +393,9 @@ async def execute(provider: Any, run: Any, request: Any) -> list[str]:
         record["status"] = "GENERATED"
         write_json(run.root / "direct-session.json", state)
         await provider._save(run, request.job_id)
+        await publish_output(provider, run, request, index, image)
+
+    await parallel_images(provider, list(range(len(state["modules"]))), generate)
     validate_direct_state(run)
     state = run.state()
     state.update(state="DELIVERED", module_index=len(state["modules"]))

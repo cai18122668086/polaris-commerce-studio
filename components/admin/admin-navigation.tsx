@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ExternalLink, ShieldCheck, Sparkles, Workflow } from "lucide-react";
+import { ArrowLeft, ExternalLink, ShieldCheck, Sparkles, Wallet, Workflow } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -8,6 +8,7 @@ import styles from "./admin-shell.module.css";
 
 const ADMIN_NAVIGATION = [
   { href: "/admin", label: "工作台", icon: ShieldCheck },
+  { href: "/admin/commerce", label: "客户与支付", icon: Wallet },
   { href: "/admin/announcements", label: "公告管理", icon: ExternalLink },
   { href: "/admin/inspiration", label: "灵感案例", icon: Sparkles },
   { href: "/admin/accounts", label: "电商账号", icon: Workflow },

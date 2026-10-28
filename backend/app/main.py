@@ -16,6 +16,7 @@ from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
 from sqlalchemy.orm import Session, sessionmaker
 
 from .admin_account_routes import router as admin_account_router
+from .admin_commerce_routes import router as admin_commerce_router
 from .admin_dashboard_routes import router as admin_dashboard_router
 from .admin_log_routes import router as admin_log_router
 from .admin_management_routes import router as admin_management_router
@@ -520,6 +521,7 @@ def create_app(
     application.include_router(admin_usage_router)
     application.include_router(admin_log_router)
     application.include_router(admin_management_router)
+    application.include_router(admin_commerce_router)
     application.include_router(inspiration_router)
     application.include_router(ecommerce_router)
     application.include_router(replica_router)

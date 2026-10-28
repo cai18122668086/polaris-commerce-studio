@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from .admin_commerce_models import ManualRefundRecord
 from .errors import ApiError
 from .models import (
     CreditGrantRecord,
@@ -227,6 +228,13 @@ def refresh(
         .where(
             CreditMembershipRecord.workspace_id == workspace_id,
             CreditMembershipRecord.starts_at <= now,
+            CreditMembershipRecord.cancelled_at.is_(None),
+            ~select(ManualRefundRecord.id)
+            .where(
+                ManualRefundRecord.purchase_id == CreditMembershipRecord.purchase_id,
+                ManualRefundRecord.status == "processing",
+            )
+            .exists(),
         )
         .order_by(CreditMembershipRecord.starts_at, CreditMembershipRecord.id)
     ):
@@ -280,11 +288,23 @@ def membership_state(
             .where(
                 CreditMembershipRecord.workspace_id == workspace_id,
                 CreditMembershipRecord.ends_at > now,
+                CreditMembershipRecord.cancelled_at.is_(None),
             )
             .order_by(CreditMembershipRecord.starts_at)
         )
     )
     current = next((row for row in members if aware(row.starts_at) <= now), None)
+    refund_pending = bool(
+        current
+        and session.scalar(
+            select(ManualRefundRecord.id)
+            .where(
+                ManualRefundRecord.purchase_id == current.purchase_id,
+                ManualRefundRecord.status == "processing",
+            )
+            .limit(1)
+        )
+    )
     lots = _lots(session, workspace_id)
     expiring = [
         lot
@@ -298,7 +318,7 @@ def membership_state(
         default=None,
     )
     next_grant = None
-    if current:
+    if current and not refund_pending:
         next_grant = next(
             (
                 add_months(current.starts_at, i)
@@ -308,6 +328,7 @@ def membership_state(
             None,
         )
     return {
+        "refund_pending": refund_pending,
         "plan_id": current.plan_id if current else None,
         "plan_name": current.plan_name if current else None,
         "monthly_credits": current.monthly_credits if current else 0,

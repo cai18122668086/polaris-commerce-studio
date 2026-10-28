@@ -694,6 +694,9 @@ function Overview({
               ? `${fmt(member.data.expiring_credits)} 积分将于 ${date(member.data.next_expiry_at)} 到期`
               : "优先使用即将到期的积分"}
           </p>
+          {member.data?.refund_pending && (
+            <p role="status">该会员订单正在人工退款核验，后续积分发放已暂停。</p>
+          )}
           {member.data?.next_plan_name && (
             <p>
               已购买 {member.data.next_plan_name}，将于{" "}
@@ -1250,8 +1253,12 @@ function Ledger({
     [filter, setFilter] = useState("全部"),
     [query, setQuery] = useState("");
   const rows = ledger.data?.pages.flatMap((page) => page.items) ?? [];
+  const supportKinds: Record<string, string> = {
+    gift: "赠送", compensation: "补偿", refund: "退款扣回",
+    refund_hold: "冻结", refund_release: "退回",
+  };
   const kind = (row: (typeof rows)[number]) =>
-    row.entry_type === "reserve"
+    supportKinds[row.entry_type] ?? (row.entry_type === "reserve"
       ? "冻结"
       : row.entry_type === "release"
         ? "退回"
@@ -1261,7 +1268,7 @@ function Ledger({
             ? "获得"
             : row.entry_type === "renewal"
               ? "续费"
-              : "消耗";
+              : "消耗");
   const shown = rows.filter(
     (row) =>
       (filter === "全部" || kind(row) === filter) && row.title.includes(query),
@@ -1305,7 +1312,7 @@ function Ledger({
             <small>积分</small>
           </strong>
           <p>
-            生成中占用 {credits.data ? fmt(credits.data.reserved_credits) : "—"}{" "}
+            生成或退款冻结 {credits.data ? fmt(credits.data.reserved_credits) : "—"}{" "}
             积分
           </p>
         </div>
@@ -1317,7 +1324,7 @@ function Ledger({
       <section className="panel ledger-panel">
         <div className="table-toolbar">
           <div className="filter-tabs">
-            {["全部", "消耗", "获得", "冻结", "退回", "到期"].map((value) => (
+            {["全部", "消耗", "获得", "赠送", "补偿", "退款扣回", "冻结", "退回", "到期"].map((value) => (
               <button
                 key={value}
                 className={filter === value ? "active" : ""}

@@ -20,7 +20,17 @@ DEFAULT_ADMIN_PERMISSIONS = (
     "accounts:read",
     "logs:read",
 )
-SUPER_ADMIN_PERMISSIONS = (*DEFAULT_ADMIN_PERMISSIONS, "admins:manage")
+COMMERCE_PERMISSIONS = (
+    "commerce:read",
+    "credits:manage",
+    "refunds:manage",
+    "support:manage",
+)
+SUPER_ADMIN_PERMISSIONS = (
+    *DEFAULT_ADMIN_PERMISSIONS,
+    *COMMERCE_PERMISSIONS,
+    "admins:manage",
+)
 
 SessionDependency = Annotated[Session, Depends(get_session)]
 PrincipalDependency = Annotated[Principal, Depends(get_principal)]

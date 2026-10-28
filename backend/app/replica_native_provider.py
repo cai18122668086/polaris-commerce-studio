@@ -652,7 +652,6 @@ class NativeReplicaProvider:
                 ledger[token]["state"] = "invoked"
                 save_ledger()
                 await self._save(run, request.job_id)
-            before = getattr(self.gateway, "external_network_request_count", None)
             result = await self.gateway.edit(
                 ImageEditRequest(
                     workspace_id=request.workspace_id,
@@ -671,12 +670,10 @@ class NativeReplicaProvider:
                     single_dispatch=False,
                 )
             )
-            after = getattr(self.gateway, "external_network_request_count", None)
-            requests = (
-                max(1, after - before)
-                if type(before) is int and type(after) is int
-                else 1
-            )
+            # The gateway counter is shared by concurrently running images.
+            # Only this response's dispatch count belongs to this usage record.
+            count = (getattr(result, "raw_usage", None) or {}).get("network_requests")
+            requests = count if type(count) is int and count >= 1 else 1
             run.record_usage(result, "image", requests)
             from .provider_diagnostics import retained_metrics
 

@@ -96,7 +96,7 @@ def segmentation_repair_available(row: Any, input_hash: str) -> bool:
         and values.get("_analysis_checkpoint", {})
         .get("model_protocol", {})
         .get("version")
-        in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8"}
+        in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8", "exact-compact-v9"}
         and segmentation_diagnostics(values)
     )
 

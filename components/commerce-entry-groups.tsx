@@ -1,19 +1,40 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Globe2, ShoppingBag } from "lucide-react";
 import { COMMERCE_ENTRIES } from "@/lib/commerce-entrypoints";
 import styles from "./commerce-entry-groups.module.css";
 
 export function CommerceEntryGroups() {
-  return <section className={styles.groups} aria-label="按电商市场选择创作">
-    <article id="domestic-commerce" className={styles.group}>
-      <span>淘宝 · 天猫 · 京东 · 拼多多</span><h2>国内电商</h2>
-      <p>按商品上新需要，选择主图轮播或详情页。</p>
-      {COMMERCE_ENTRIES.filter(entry => entry.market === "domestic").map(entry => <Link key={entry.id} href={entry.href}><strong>{entry.title}</strong><small>{entry.output}</small><ArrowUpRight size={18} /></Link>)}
-    </article>
-    <article id="crossborder-commerce" className={styles.group}>
-      <span>Amazon · Shopify · TikTok Shop · Shopee 等</span><h2>跨境电商</h2>
-      <p>亚马逊选择完整套图，其他海外渠道选择商品详情图。</p>
-      {COMMERCE_ENTRIES.filter(entry => entry.market === "international").map(entry => <Link key={entry.id} href={entry.href}><strong>{entry.title}</strong><small>{entry.output}</small><ArrowUpRight size={18} /></Link>)}
-    </article>
-  </section>;
+  const markets = [
+    { id: "domestic", anchor: "domestic-commerce", title: "国内电商", platforms: "淘宝 · 天猫 · 京东 · 拼多多", icon: ShoppingBag },
+    { id: "international", anchor: "crossborder-commerce", title: "跨境电商", platforms: "Amazon · Shopify · TikTok Shop · Shopee 等", icon: Globe2 },
+  ] as const;
+
+  return (
+    <section className={styles.section} aria-label="按电商市场选择创作">
+      <header className={styles.heading}>
+        <div>
+          <span className="commerce-eyebrow">CREATE FOR YOUR MARKET</span>
+          <h2>为你的销售平台做图。</h2>
+          <p>已确定销售平台？选择对应工作台，直接上传商品。</p>
+        </div>
+        <Link className={styles.guide} href="/create">帮我选择套图 <ArrowRight size={16} aria-hidden="true" /></Link>
+      </header>
+      <div className={styles.groups}>
+        {markets.map(market => (
+          <article id={market.anchor} key={market.id} className={styles.group} data-market={market.id} aria-labelledby={`${market.anchor}-title`}>
+            <header className={styles.marketHeading}>
+              <span className={styles.marketIcon}><market.icon size={22} aria-hidden="true" /></span>
+              <div><h3 id={`${market.anchor}-title`}>{market.title}</h3><p>{market.platforms}</p></div>
+            </header>
+            {COMMERCE_ENTRIES.filter(entry => entry.market === market.id).map(entry => (
+              <Link key={entry.id} className={styles.entry} href={entry.href}>
+                <span className={styles.entryCopy}><strong>{entry.title}</strong><small>{entry.id === "amazon-visual-suite" ? "21 张 · 主图 / 副图 / 桌面与移动 A+" : entry.output}</small></span>
+                <span className={styles.entryArrow}><ArrowUpRight size={18} aria-hidden="true" /></span>
+              </Link>
+            ))}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
 }

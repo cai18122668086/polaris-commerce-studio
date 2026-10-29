@@ -379,6 +379,7 @@ def test_postgres_streamed_delivery_is_settled_once_after_stop(
         session.get(AssetRecord, links[0].asset_id).deleted_at = utc_now()
         links[1].is_deliverable = False
         job.status = terminal
+        job.finished_at = utc_now()
         job_id = job.id
         session.commit()
     barrier = Barrier(4)

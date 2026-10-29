@@ -100,10 +100,11 @@ def protected():
     ]).decode().splitlines()
     result = {}
     for name in names:
-        role = name.removeprefix("polaris-production-").removesuffix("-1")
-        if role not in ROLES:
-            value = inspect(role)
-            result[role] = {"id": value["Id"], "image": value["Image"]}
+        if name not in {"polaris-production-" + role + "-1" for role in ROLES}:
+            # Historical acceptance containers can carry the project label
+            # while using a custom name. Preserve their exact identity too.
+            value = json.loads(subprocess.check_output(["docker", "inspect", name]))[0]
+            result[name] = {"id": value["Id"], "image": value["Image"]}
     return result
 
 
@@ -140,14 +141,15 @@ def prepare(root, manifest_path):
     ]))
     active, rollback = runtime_config(canonical, live, manifest["images"], revision)
     idle()
-    root.mkdir(mode=0o700, exist_ok=False)
-    private(root / "active.compose.private.json", active)
-    private(root / "rollback.compose.private.json", rollback)
-    private(root / "baseline.json", {
+    baseline = {
         **manifest, "protected": protected(),
         "containers": {role: live[role]["Id"] for role in ROLES},
         "schema": sql("SELECT version_num FROM alembic_version"),
-    })
+    }
+    root.mkdir(mode=0o700, exist_ok=False)
+    private(root / "active.compose.private.json", active)
+    private(root / "rollback.compose.private.json", rollback)
+    private(root / "baseline.json", baseline)
     compose(root, False, "config", "--quiet")
     compose(root, True, "config", "--quiet")
     fd = os.open(root / "postgres.dump", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

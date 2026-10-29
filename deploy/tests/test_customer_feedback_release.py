@@ -1,13 +1,15 @@
 """Release configuration preserves role isolation and literal runtime secrets."""
 
 import sys
+import json
 import unittest
 from copy import deepcopy
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from release_customer_feedback import ROLES, runtime_config
+from release_customer_feedback import ROLES, protected, runtime_config
 
 
 class FeedbackReleaseTests(unittest.TestCase):
@@ -66,6 +68,21 @@ class FeedbackReleaseTests(unittest.TestCase):
                 source["services"]["api"].update(change)
                 with self.assertRaises(ValueError):
                     runtime_config(source, live, images, "a" * 40)
+
+    def test_protects_custom_container_names_without_inventing_a_role(self):
+        custom = "polaris-replica-original-intake-plan-7210e0b"
+        calls = []
+
+        def output(args):
+            calls.append(args)
+            if args[1] == "ps":
+                return ("polaris-production-api-1\n" + custom + "\n").encode()
+            self.assertEqual(args, ["docker", "inspect", custom])
+            return json.dumps([{"Id": "container-id", "Image": "image-id"}]).encode()
+
+        with patch("release_customer_feedback.subprocess.check_output", output):
+            self.assertEqual(protected(), {custom: {"id": "container-id", "image": "image-id"}})
+        self.assertEqual(len(calls), 2)
 
 
 if __name__ == "__main__":

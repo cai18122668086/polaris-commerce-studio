@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { COMMERCE_ENTRIES, commerceEntriesFor, commerceEntryHref } from "../lib/commerce-entrypoints.ts";
 import { assetCreationHref, readAssetHandoff } from "../lib/assets/creation-handoff.ts";
 import { resolveJobWorkspaceHref } from "../lib/jobs/workspace-link-resolution.ts";
@@ -13,6 +14,11 @@ test("commerce choices each reach an actual distinct workspace and Amazon has on
   }
   assert.equal(COMMERCE_ENTRIES.filter(e => e.id.includes("amazon")).length, 1);
   assert.match(COMMERCE_ENTRIES.find(e => e.id === "amazon-visual-suite").output, /21/);
+});
+
+test("the homepage hero's generic main-image shortcut also asks for the market", async () => {
+  const hero = await readFile("components/home-showcase.tsx", "utf8");
+  assert.match(hero, /href="\/create\?goal=main" className="commerce-photo commerce-photo--commerce"/);
 });
 
 test("market choice preserves source identity and order into either detail workspace", () => {

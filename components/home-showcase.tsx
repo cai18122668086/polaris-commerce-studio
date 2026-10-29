@@ -74,7 +74,7 @@ export function HomeHero() {
             <img src="/images/homepage-features/native-v2-webp/02-background-primary-desktop.webp" alt="耳机置于自然光家居场景的换背景效果" width={1374} height={1145} />
             <span className="commerce-photo__caption">给商品一个新场景 <MoveUpRight size={17} /></span>
           </Link>
-          <Link href="/workspace/domestic-main-image" className="commerce-photo commerce-photo--commerce">
+          <Link href="/create?goal=main" className="commerce-photo commerce-photo--commerce">
             <span className="commerce-photo__tag">PRODUCT VISUAL</span>
             <img src="/images/homepage-features/native-v2-webp/05-domestic-primary-mobile.webp" alt="家用电煮锅电商主图效果" width={1774} height={887} />
             <span className="commerce-photo__caption">商品主图，一眼心动 <ArrowUpRight size={16} /></span>

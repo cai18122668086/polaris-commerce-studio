@@ -6,6 +6,7 @@
 .hero { display: flex; align-items: center; justify-content: space-between; gap: 28px; min-height: 208px; padding: 30px 34px; border: 1px solid #e7e1ef; border-radius: 16px; background: linear-gradient(115deg, #eee7fa, #f5f4f1 60%, #eef5df); overflow: hidden; }
 .heroCopy { position: relative; z-index: 1; }
 .heroCopy h1 { margin: 12px 0 14px; font-size: clamp(27px, 2.7vw, 36px); font-weight: 800; letter-spacing: -.045em; line-height: 1.4; }
+.heroCopy h1 > span { display: inline-block; }
 .heroCopy p { margin: 0; color: var(--accent-text-muted); font-size: 13px; line-height: 1.9; }
 .heroArt { display: flex; align-items: center; justify-content: center; flex: 0 0 290px; height: 146px; position: relative; padding-right: 10px; }
 .heroArt img { width: 110px; height: 134px; object-fit: cover; border: 5px solid #fff; border-radius: 9px; box-shadow: 0 5px 18px #68557920; transform: rotate(-10deg); }

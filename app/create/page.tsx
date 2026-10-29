@@ -34,7 +34,7 @@ export default function CreatePage() {
   return <AppShell sidebar={false}><div className={styles.page}>
     <div className={styles.breadcrumb}><Link href="/"><ArrowLeft size={14} aria-hidden="true" /> 创作首页</Link><span>/</span><span>电商套图</span></div>
     <header className={styles.hero}>
-      <div className={styles.heroCopy}><span className="commerce-eyebrow">MADE FOR YOUR NEXT LAUNCH</span><h1>为你的商品，选一套好图。</h1><p>从第一眼的主图，到讲清卖点的详情。<br />找到适合销售平台的套图，开始下一次上新。</p></div>
+      <div className={styles.heroCopy}><span className="commerce-eyebrow">MADE FOR YOUR NEXT LAUNCH</span><h1><span>为你的商品，</span><span>选一套好图。</span></h1><p>从第一眼的主图，到讲清卖点的详情。<br />找到适合销售平台的套图，开始下一次上新。</p></div>
       <div className={styles.heroArt} aria-hidden="true">
         {["domestic-main-image", "detail-pack", "amazon-visual-suite"].map(id => <img key={id} src={FEATURE_THUMBNAILS[id]} alt="" width={1374} height={1145} />)}
         <span><Sparkles size={13} /> 让好商品，一眼出彩</span>

@@ -3242,9 +3242,15 @@ def test_planner_walks_failover_keys_from_top_to_bottom() -> None:
 ])
 def test_replica_image_fallback_is_independent_of_planner_accounts(
     primary_status: int, enabled: bool, expected_calls: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import fakeredis
+
     from app.config import Settings
     from app.xinghe_agent import build_tengli_gateway
+
+    capacity = fakeredis.FakeRedis()
+    monkeypatch.setattr("app.image_capacity.Redis.from_url", lambda *args, **kwargs: capacity)
 
     class Transport(_RecordingTransport):
         async def post_multipart(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
@@ -3271,6 +3277,7 @@ def test_replica_image_fallback_is_independent_of_planner_accounts(
         page_number=1, group_key="replica", sources=(), prompt="Original cup poster",
         quality="high", idempotency_key="replica-route-test", size="1024x1024",
     )))
+    assert capacity.zcard("polaris:image-capacity:v1") == 0
     assert len(transport.multipart_calls) == expected_calls
     first = transport.multipart_calls[0]
     assert first["url"] == "https://image-primary.example/v1/images/edits"

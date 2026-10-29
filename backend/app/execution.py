@@ -2907,6 +2907,53 @@ class ExecutionCoordinator:
             if nonterminal:
                 return current
 
+            if job.type == JobType.REFERENCE_REMIX.value and job.configuration.get(
+                "replica_session_id"
+            ):
+                # Wait until every item has stopped before promoting streamed
+                # outputs, so active attempt leases remain valid. Real durable
+                # deliveries stay successful for billing and retry reuse even
+                # when a sibling call failed or the group was cancelled.
+                delivered = (
+                    session.scalars(
+                        select(JobItemRecord)
+                        .join(
+                            JobAssetRecord,
+                            JobAssetRecord.job_item_id == JobItemRecord.id,
+                        )
+                        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
+                        .where(
+                            JobItemRecord.job_id == job.id,
+                            JobItemRecord.workspace_id == job.workspace_id,
+                            JobItemRecord.status.not_in(SUCCESS_ITEM_STATUSES),
+                            JobAssetRecord.job_id == job.id,
+                            JobAssetRecord.workspace_id == job.workspace_id,
+                            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                            JobAssetRecord.is_deliverable.is_(True),
+                            AssetRecord.workspace_id == job.workspace_id,
+                            AssetRecord.origin_kind == AssetOriginKind.GENERATED.value,
+                            AssetRecord.asset_metadata["replica_incremental"]
+                            .as_boolean()
+                            .is_(True),
+                        )
+                        .with_for_update(of=JobItemRecord)
+                    )
+                    .unique()
+                    .all()
+                )
+                for item in delivered:
+                    counts[item.status] -= 1
+                    counts[JobItemStatus.SUCCEEDED.value] = (
+                        counts.get(JobItemStatus.SUCCEEDED.value, 0) + 1
+                    )
+                    item.status = JobItemStatus.SUCCEEDED.value
+                    item.stage = "generated"
+                    item.result_source = "generated"
+                    item.error_code = item.error_message = item.error_details = None
+                    item.next_attempt_at = None
+                    item.finished_at = item.finished_at or utc_now()
+                    item.state_version += 1
+
             succeeded = sum(counts.get(value, 0) for value in SUCCESS_ITEM_STATUSES)
             failed = counts.get(JobItemStatus.FAILED.value, 0)
             cancelled = counts.get(JobItemStatus.CANCELLED.value, 0)

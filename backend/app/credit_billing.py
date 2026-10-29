@@ -3,19 +3,12 @@
 from collections.abc import Mapping
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from sqlalchemy.sql.elements import ColumnElement
 
 from .domain import JobItemStatus, JobType
 from .errors import ApiError
-from .models import (
-    AssetRecord,
-    CreditReservationRecord,
-    JobAssetRecord,
-    JobItemRecord,
-    JobRecord,
-)
+from .models import CreditReservationRecord, JobAssetRecord, JobItemRecord, JobRecord
 
 PRICING_VERSION = "image-credits-5-15-v1"
 SINGLE_IMAGE_CREDITS = 5
@@ -99,32 +92,11 @@ def successful_image_credits(session: Session, job: JobRecord) -> int | None:
         return reservation.settled_credits
     unit = pricing["credits_per_image"]
     ids = pricing["item_ids"]
-    billable: ColumnElement[bool] = JobItemRecord.status.in_(
-        [JobItemStatus.SUCCEEDED.value, JobItemStatus.REUSED.value]
-    )
-    if job.type == JobType.REFERENCE_REMIX.value and job.configuration.get(
-        "replica_session_id"
-    ):
-        # Replica images can be downloaded before the group attempt settles.
-        # A later stop/failure must not refund images already delivered. The
-        # server-owned marker survives soft deletion; distinct item IDs still
-        # charge each image once and exclude preserved retry siblings.
-        billable = or_(
-            billable,
-            and_(
-                AssetRecord.workspace_id == job.workspace_id,
-                AssetRecord.origin_kind == "generated",
-                AssetRecord.asset_metadata["replica_incremental"]
-                .as_boolean()
-                .is_(True),
-            ),
-        )
     succeeded = (
         session.scalar(
             select(func.count(func.distinct(JobItemRecord.id)))
             .select_from(JobItemRecord)
             .join(JobAssetRecord, JobAssetRecord.job_item_id == JobItemRecord.id)
-            .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
             .where(
                 JobAssetRecord.workspace_id == job.workspace_id,
                 JobAssetRecord.job_id == job.id,
@@ -133,7 +105,9 @@ def successful_image_credits(session: Session, job: JobRecord) -> int | None:
                 JobItemRecord.workspace_id == job.workspace_id,
                 JobItemRecord.job_id == job.id,
                 JobItemRecord.id.in_(ids),
-                billable,
+                JobItemRecord.status.in_(
+                    [JobItemStatus.SUCCEEDED.value, JobItemStatus.REUSED.value]
+                ),
             )
         )
         or 0

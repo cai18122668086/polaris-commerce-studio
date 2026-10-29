@@ -261,17 +261,26 @@ def test_streamed_replica_images_remain_billable_after_stop(
         job_id = job.id
         session.commit()
     coordinator = client.app.state.task_runner.coordinator
+    expected = "partial" if terminal == "failed" else terminal
     for _ in range(2):
         if terminal == "cancelled":
-            assert coordinator.cancel(job_id).value == terminal
+            assert coordinator.cancel(job_id).value == expected
         else:
-            assert coordinator.finalize_job(job_id).value == terminal
+            assert coordinator.finalize_job(job_id).value == expected
     with factory() as session:
         job = session.get(JobRecord, job_id)
         account = session.get(WorkspaceCreditAccountRecord, WORKSPACE)
         assert job.actual_credits == 15
         assert account.balance_credits == original - 15
         assert account.reserved_credits == 0
+        delivered_item = session.scalar(
+            select(JobItemRecord).where(
+                JobItemRecord.job_id == job_id,
+                JobItemRecord.ordinal == 0,
+            )
+        )
+        assert delivered_item.status == "succeeded"
+        assert job.succeeded_item_count == 1
         assert (
             session.scalar(
                 select(func.count())
@@ -282,6 +291,65 @@ def test_streamed_replica_images_remain_billable_after_stop(
                 )
             )
             == 1
+        )
+        # Continuing a stopped batch preserves the paid image as REUSED and
+        # reserves only the two missing images, avoiding a second charge.
+        from app.domain import RetryScope
+        from app.routes_v1 import _copy_job_for_retry, _copy_job_relations_for_retry
+
+        selected = services.retry_item_ids(session, job, RetryScope.MISSING, [])
+        assert delivered_item.id not in selected and len(selected) == 2
+        child = _copy_job_for_retry(session, job, RetryScope.MISSING, selected)
+        session.add(child)
+        session.flush()
+        _copy_job_relations_for_retry(session, job, child, selected)
+        session.flush()
+        reservation = services.reserve_image_credits(session, WORKSPACE, child)
+        assert reservation.reserved_credits == 30
+        assert (
+            session.scalar(
+                select(JobItemRecord.status).where(
+                    JobItemRecord.job_id == child.id,
+                    JobItemRecord.ordinal == 0,
+                )
+            )
+            == "reused"
+        )
+        services.release_credits(session, child)
+        assert account.balance_credits == original - 15
+
+
+def test_streamed_item_is_not_promoted_while_any_call_is_running(client):
+    factory = client.app.state.session_factory
+    with factory() as session:
+        job, items = seed_job(
+            session,
+            kind="reference_remix",
+            count=2,
+            configuration={"replica_session_id": "replica-proof"},
+        )
+        services.reserve_image_credits(session, WORKSPACE, job)
+        link = session.scalar(
+            select(JobAssetRecord).where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.ordinal == 0,
+            )
+        )
+        session.get(AssetRecord, link.asset_id).asset_metadata = {
+            "replica_incremental": True
+        }
+        job.status = "processing"
+        items[0].status, items[1].status = "failed", "running"
+        job_id, item_id = job.id, items[0].id
+        session.commit()
+    assert (
+        client.app.state.task_runner.coordinator.finalize_job(job_id).value
+        == "processing"
+    )
+    with factory() as session:
+        assert session.get(JobItemRecord, item_id).status == "failed"
+        assert (
+            session.get(WorkspaceCreditAccountRecord, WORKSPACE).reserved_credits == 30
         )
 
 
@@ -300,8 +368,14 @@ def test_incremental_marker_cannot_reprice_other_workflows(client, kind, configu
             "replica_incremental": True
         }
         items[0].status = "failed"
-        session.flush()
-        services.settle_credits(session, job, 0)
+        job.status = "processing"
+        job_id = job.id
+        session.commit()
+    assert (
+        client.app.state.task_runner.coordinator.finalize_job(job_id).value == "failed"
+    )
+    with client.app.state.session_factory() as session:
+        job = session.get(JobRecord, job_id)
         assert job.actual_credits == 0
 
 

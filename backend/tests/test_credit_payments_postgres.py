@@ -26,6 +26,7 @@ from app.config import Settings
 from app.credit_payment_routes import _settle_verified_purchase, settle_paid_purchase
 from app.database import Base
 from app.errors import ApiError
+from app.execution import ExecutionCoordinator
 from app.models import (
     AssetRecord,
     CreditGrantRecord,
@@ -34,12 +35,14 @@ from app.models import (
     CreditPurchaseRecord,
     CreditReservationRecord,
     JobAssetRecord,
+    JobItemRecord,
     JobRecord,
     UserRecord,
     WorkspaceCreditAccountRecord,
     WorkspaceRecord,
     utc_now,
 )
+from app.provider import FakeProvider
 from tests.test_credit_payments import SECRET, paid_fields
 from tests.test_customer_credit_billing import seed_job
 
@@ -358,7 +361,7 @@ def test_postgres_streamed_delivery_is_settled_once_after_stop(
     with factory() as session:
         account = session.get(WorkspaceCreditAccountRecord, "ws_test")
         account.balance_credits = 100
-        job, _ = seed_job(
+        job, items = seed_job(
             session,
             kind="reference_remix",
             count=2,
@@ -378,17 +381,24 @@ def test_postgres_streamed_delivery_is_settled_once_after_stop(
             }
         session.get(AssetRecord, links[0].asset_id).deleted_at = utc_now()
         links[1].is_deliverable = False
-        job.status = terminal
-        job.finished_at = utc_now()
+        job.status = "processing"
+        if terminal == "failed":
+            for item in items:
+                item.status = "failed"
+                item.finished_at = utc_now()
         job_id = job.id
         session.commit()
     barrier = Barrier(4)
+    coordinator = ExecutionCoordinator(factory, FakeProvider())
 
     def settle():
         barrier.wait(timeout=10)
-        with factory() as session:
-            services.settle_credits(session, session.get(JobRecord, job_id), 0)
-            session.commit()
+        result = (
+            coordinator.cancel(job_id)
+            if terminal == "cancelled"
+            else coordinator.finalize_job(job_id)
+        )
+        assert result.value == ("cancelled" if terminal == "cancelled" else "partial")
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         list(executor.map(lambda _: settle(), range(4)))
@@ -396,6 +406,15 @@ def test_postgres_streamed_delivery_is_settled_once_after_stop(
         account = session.get(WorkspaceCreditAccountRecord, "ws_test")
         assert account.balance_credits == 85 and account.reserved_credits == 0
         assert session.get(JobRecord, job_id).actual_credits == 15
+        assert (
+            session.scalar(
+                select(JobItemRecord.status).where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.ordinal == 0,
+                )
+            )
+            == "succeeded"
+        )
         assert (
             session.scalar(
                 select(func.count())

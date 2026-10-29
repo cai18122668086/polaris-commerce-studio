@@ -146,7 +146,7 @@ def retry_source(
         parent = session.get(JobRecord, parent_id)
         if (
             not parent
-            or parent.status not in {"failed", "partial"}
+            or parent.status not in {"failed", "partial", "cancelled"}
             or job.workspace_id != request.workspace_id
             or parent.workspace_id != request.workspace_id
             or parent.configuration.get("replica_session_id")
@@ -158,6 +158,10 @@ def retry_source(
         document_id = job.configuration["replica_session_id"]
     source = values.get("native_executions", {}).get(parent_id, {}).get("snapshot")
     if not source:
+        if parent.status == "cancelled":
+            # Dispatch is preceded by a durable execution checkpoint. No
+            # checkpoint means this cancelled job never issued an image call.
+            return None
         raise ReplicaNativeError("原任务缺少持久生图检查点，不能重复生成代替恢复。")
     validate_source(
         source,
@@ -370,6 +374,14 @@ async def execute(provider: Any, run: Any, request: Any) -> list[str]:
             )
             return
         native = record.get("request")
+        if native is not None and (run.root / "invocations.json").exists():
+            prior = read_json(run.root / "invocations.json").get(native["token"], {})
+            if (
+                prior.get("state") == "rejected"
+                and prior.get("job_id") != request.job_id
+            ):
+                record.setdefault("previous_requests", []).append(record.pop("request"))
+                native = None
         if native is None:
             native = generation_request(run, state, index)
             record.update(

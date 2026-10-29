@@ -341,7 +341,7 @@ async def execute(
             if parent is not None:
                 if (
                     parent.workspace_id != request.workspace_id
-                    or parent.status not in {"failed", "partial"}
+                    or parent.status not in {"failed", "partial", "cancelled"}
                     or parent.configuration.get("replica_session_id") != document_id
                     or parent.configuration.get("settings", {}).get("replica_plan_hash")
                     != values["plan_hash"]
@@ -356,6 +356,8 @@ async def execute(
                     .get(parent.id, {})
                     .get("snapshot")
                 )
+                if not snapshot and parent.status == "cancelled":
+                    snapshot = values["native_snapshot"]
                 if (
                     not snapshot
                     or snapshot["files"].get(PLAN)
@@ -379,13 +381,15 @@ async def execute(
         restored = True
         plan = validate(run)
         state = run.state()
-        from .replica_streaming import parallel_images, publish_output
+        from .replica_streaming import parallel_images, publish_output, starts_group
+
+        group_starter = starts_group(provider, request, ordinal)
 
         async def generate(i: int) -> None:
             unit, module = plan["units"][i], state["modules"][i]
             state["module_index"] = i
             if module["status"] != "GENERATED":
-                if ordinal != 0:
+                if not group_starter:
                     raise ReplicaNativeError("整组生成尚未完成。")
                 ledger = (
                     read_json(run.root / "invocations.json")

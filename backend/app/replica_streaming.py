@@ -24,6 +24,39 @@ from .replica_native import ReplicaNativeError, digest
 from .storage import ValidatedImage
 
 
+def starts_group(provider: Any, request: Any, ordinal: int) -> bool:
+    """Keep one fixed batch starter when a retry preserves an early image."""
+    if ordinal == 0:
+        return True
+    factory = getattr(provider, "session_factory", None)
+    if factory is None:
+        return False
+    with factory() as session:
+        job = session.get(JobRecord, request.job_id)
+        if (
+            job is None
+            or job.workspace_id != request.workspace_id
+            or not job.retry_of_job_id
+            or job.retry_scope != "missing"
+        ):
+            return False
+        items = session.scalars(
+            select(JobItemRecord)
+            .where(
+                JobItemRecord.job_id == job.id,
+                JobItemRecord.workspace_id == request.workspace_id,
+            )
+            .order_by(JobItemRecord.ordinal)
+        ).all()
+        first = next((item for item in items if item.status != "reused"), None)
+        return bool(
+            first
+            and first.ordinal == ordinal
+            and all(item.status == "reused" for item in items if item.ordinal < ordinal)
+            and not any(item.status == "skipped" for item in items)
+        )
+
+
 def serialized_checkpoint[**P, R](
     call: Callable[P, Coroutine[Any, Any, R]],
 ) -> Callable[P, Coroutine[Any, Any, R]]:

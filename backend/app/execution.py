@@ -1631,17 +1631,22 @@ class ExecutionCoordinator:
                     else None
                 )
             if self._native_replica_record(job):
-                succeeded_pages = session.scalar(
-                    select(func.count())
-                    .select_from(JobItemRecord)
-                    .where(
-                        JobItemRecord.job_id == job.id,
-                        JobItemRecord.status.in_(SUCCESS_ITEM_STATUSES),
+                # A streamed retry can preserve any screen, not just a prefix.
+                # Keep one durable group attempt active and stop after failure;
+                # the ordered query below picks the first remaining item.
+                if (
+                    int(active or 0)
+                    or session.scalar(
+                        select(JobItemRecord.id)
+                        .where(
+                            JobItemRecord.job_id == job.id,
+                            JobItemRecord.status == JobItemStatus.FAILED.value,
+                        )
+                        .limit(1)
                     )
-                )
-                item_query = item_query.where(
-                    JobItemRecord.ordinal == int(succeeded_pages or 0)
-                )
+                    is not None
+                ):
+                    return None
             elif (
                 job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                 and not self._job_uses_parallel_aurora(session, job.id)

@@ -1158,7 +1158,19 @@ def retry_item_ids(
     # six-page retry to the first two failed pages.  Aurora has no user-visible
     # skip state; cancellation is represented by CANCELLED, so every SKIPPED
     # Aurora page is safe to regenerate from the immutable plan.
-    if source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+    if (
+        source.type == JobType.REFERENCE_REMIX.value
+        and source.configuration.get("replica_session_id")
+        and scope == RetryScope.MISSING
+    ):
+        selected.extend(
+            item.id
+            for item in items
+            if item.status == JobItemStatus.SKIPPED.value
+            and item.error_code == "REPLICA_NATIVE_DELIVERY_BLOCKED"
+            and item.id not in selected
+        )
+    elif source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
         plan = session.scalar(
             select(JobPlanRecord)
             .where(JobPlanRecord.job_id == source.id)

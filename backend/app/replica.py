@@ -31,7 +31,15 @@ from .database import get_session
 from .domain import AssetMediaKind, AssetOriginKind
 from .errors import ApiError
 from .justone import fetch_product, image_url, parse_product_link
-from .models import JobRecord, ReplicaDocumentRecord, WorkspaceRecord, utc_now
+from .models import (
+    AssetRecord,
+    JobAssetRecord,
+    JobItemRecord,
+    JobRecord,
+    ReplicaDocumentRecord,
+    WorkspaceRecord,
+    utc_now,
+)
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .new_image_skill_provider import TARGET_DIMENSIONS
 from .replica_native import (
@@ -1248,10 +1256,9 @@ def revise_analysis(
             _analyse, request.app, row.id, row.payload["analysis_attempt_id"]
         )
         return _wire(row)
-    if (
-        not _revision_available(row)
-        or row.payload.get("_analysis_input_hash") != _analysis_input_hash(row.payload)
-    ):
+    if not _revision_available(row) or row.payload.get(
+        "_analysis_input_hash"
+    ) != _analysis_input_hash(row.payload):
         raise ApiError(
             409, "REPLICA_REVISION_UNAVAILABLE", "当前任务没有可保留并继续修正的方案。"
         )
@@ -1554,11 +1561,28 @@ def retry_image(
     jobs = list(values.get("job_ids", []))
     if job_id not in jobs:
         raise ApiError(404, "REPLICA_JOB_NOT_FOUND", "请从当前复刻结果选择图片。")
+    native = values.get("replication_method") in SKILLS
+    delivered = session.scalar(
+        select(JobAssetRecord.id)
+        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
+        .join(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
+        .where(
+            JobAssetRecord.job_id == job_id,
+            JobAssetRecord.workspace_id == workspace.workspace_id,
+            JobAssetRecord.direction == "output",
+            JobAssetRecord.is_deliverable.is_(True),
+            JobItemRecord.status.in_(["succeeded", "reused"]),
+            AssetRecord.workspace_id == workspace.workspace_id,
+            AssetRecord.origin_kind == "generated",
+            AssetRecord.asset_metadata["replica_incremental"].as_boolean().is_(True),
+        )
+        .limit(1)
+    )
     retried = retry_job(
         job_id=job_id,
         payload=RetryRequest(
-            scope=RetryScope.FULL
-            if values.get("replication_method") in SKILLS
+            scope=(RetryScope.MISSING if delivered is not None else RetryScope.FULL)
+            if native
             else RetryScope.FAILED
         ),
         request=request,

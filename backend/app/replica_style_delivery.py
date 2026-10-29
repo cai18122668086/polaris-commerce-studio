@@ -519,7 +519,7 @@ class ReplicaDeliveryProvider(NativeReplicaProvider):
                     parent = session.get(JobRecord, parent_id)
                     if (
                         not parent
-                        or parent.status not in {"failed", "partial"}
+                        or parent.status not in {"failed", "partial", "cancelled"}
                         or parent.workspace_id != request.workspace_id
                         or parent.configuration.get("replica_session_id") != document_id
                         or parent.configuration.get("settings", {}).get(
@@ -537,7 +537,7 @@ class ReplicaDeliveryProvider(NativeReplicaProvider):
                         .get(parent_id, {})
                         .get("snapshot")
                     )
-                    if not source:
+                    if not source and parent.status != "cancelled":
                         raise ReplicaNativeError(
                             "原任务缺少持久检查点，不能重复生成代替恢复。"
                         )

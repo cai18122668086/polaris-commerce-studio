@@ -6664,8 +6664,7 @@ select:focus-visible {
 
   .brand-copy small,
   .desktop-only,
-  .usage-pill,
-  .task-trigger span {
+  .usage-pill {
     display: none !important;
   }
 
@@ -6674,8 +6673,11 @@ select:focus-visible {
   }
 
   .task-trigger {
-    width: 37px;
-    padding: 0;
+    width: auto;
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 11px;
+    white-space: nowrap;
     justify-content: center;
   }
 

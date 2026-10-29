@@ -1389,8 +1389,7 @@ select:focus-visible {
 
   .brand-copy small,
   .desktop-only,
-  .usage-pill span,
-  .task-trigger span {
+  .usage-pill span {
     display: none;
   }
 
@@ -1403,13 +1402,17 @@ select:focus-visible {
     height: 31px;
   }
 
-  .usage-pill,
-  .task-trigger {
+  .usage-pill {
     position: relative;
     width: 36px;
     min-width: 36px;
     padding: 0;
     justify-content: center;
+  }
+
+  .task-trigger {
+    position: relative;
+    min-width: 36px;
   }
 
   .task-trigger i {

@@ -327,7 +327,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .top-nav .usage-pill { padding-inline: 5px; }
   .top-nav .usage-pill span { display: none; }
   .top-nav .task-trigger { padding-inline: 8px; min-width: 34px; }
-  .top-nav .task-trigger span { display: none; }
   .top-nav .user-menu { padding: 0; }
   .top-nav .avatar { width: 29px; height: 29px; }
   .top-nav .mobile-menu { width: 28px; min-width: 28px; border: 0; }

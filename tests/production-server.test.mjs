@@ -210,6 +210,7 @@ async function assertBrowserAuthContract(origin) {
     assert.equal(await accessibleName(cdp, "button", "登录"), "登录");
     assert.match(await accessibleName(cdp, "link", "免费注册"), /免费注册/);
     await assertAccessibleInteractiveNames(cdp, "/auth/login");
+    await assertMobileTaskEntry(cdp, origin);
   } finally {
     cdp?.close();
     await stopProcessTree(browserProcess);
@@ -219,6 +220,38 @@ async function assertBrowserAuthContract(origin) {
       maxRetries: 8,
       retryDelay: 125,
     });
+  }
+}
+
+async function assertMobileTaskEntry(cdp, origin) {
+  await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `
+    document.cookie = "sFrontToken=" + btoa(JSON.stringify({ uid: "browser-test", ate: Date.now() + 3600000, up: {} })) + ";path=/";
+    document.cookie = "st-last-access-token-update=" + Date.now() + ";path=/";
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.href);
+      let body;
+      if (url.pathname.startsWith("/api/auth/")) body = { status: "OK", isVerified: true };
+      else if (url.pathname === "/api/v1/workspaces") body = [{ id: "ws-browser-test", name: "Browser test", role: "owner" }];
+      else if (url.pathname === "/api/v1/me") body = { id: "browser-test", display_name: "Browser test", email: "browser@example.invalid", email_verified: true, status: "active" };
+      else if (url.pathname.endsWith("/jobs")) body = { items: [], next_cursor: null, total: 0 };
+      else return originalFetch(input, init);
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    };
+  ` });
+  await navigate(cdp, origin);
+  await waitForValue(cdp, `!!document.querySelector('[aria-label^="打开任务中心"] span')`);
+  for (const width of [320, 390, 768]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 844, deviceScaleFactor: 1, mobile: true });
+    const entry = await evaluate(cdp, `(() => {
+      const button = document.querySelector('[aria-label^="打开任务中心"]');
+      const label = button.querySelector('span');
+      const rect = label.getBoundingClientRect();
+      return { text: label.textContent, visible: getComputedStyle(label).display !== 'none' && rect.width > 0, inside: rect.left >= 0 && rect.right <= innerWidth };
+    })()`);
+    assert.equal(entry.text, "任务中心");
+    assert.equal(entry.visible, true, width + "px should show the task label: " + JSON.stringify(entry));
+    assert.equal(entry.inside, true, width + "px task label should fit the viewport");
   }
 }
 

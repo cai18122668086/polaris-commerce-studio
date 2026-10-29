@@ -38,7 +38,7 @@ from .replica_native import (
     write_json,
 )
 
-VERSION = "exact-compact-v9"
+VERSION = "exact-compact-v10"
 PROMPTS = Path(__file__).with_name("replica_exact_prompts")
 OBSERVATIONS = (
     "subject_and_scale",
@@ -806,6 +806,11 @@ class CompactExactReplicaRun(NativeReplicaRun):
         return deepcopy(plan["_compact_scopes"])
 
     def image_prompt(self, prompt: str) -> str:
+        state = self.state()
+        module = state["plan"]["modules"][state["module_index"]]
+        return self.image_prompt_for_module(prompt, module["id"])
+
+    def image_prompt_for_module(self, prompt: str, module_id: str) -> str:
         header = (
             "Create ONE complete Chinese ecommerce visual for the current token only."
         )
@@ -820,7 +825,9 @@ class CompactExactReplicaRun(NativeReplicaRun):
             f"The target language for new poster copy is {target}.",
             1,
         )
-        module = self.state()["plan"]["modules"][self.state()["module_index"]]
+        module = next(
+            m for m in self.state()["plan"]["modules"] if m["id"] == module_id
+        )
         return (
             prompt
             + "\n\n"
@@ -1659,6 +1666,7 @@ def run_class(method: str, protocol: Any = None) -> type[NativeReplicaRun]:
         "exact-compact-v6",
         "exact-compact-v7",
         "exact-compact-v8",
+        "exact-compact-v9",
     }:
         archive = version.rsplit("-", 1)[-1]
         name = f"app._replica_exact_compact_{archive}"

@@ -45,7 +45,7 @@ def test_original_v8_checkpoint_keeps_its_protocol_and_plan(tmp_path):
     asyncio.run(legacy.prepare(payload, records))
     snapshot = asyncio.run(legacy.snapshot())
     assert snapshot["model_protocol"] == V8_BINDING
-    assert protocol_binding()["version"] == "exact-compact-v9"
+    assert protocol_binding()["version"] == "exact-compact-v10"
     restored = legacy_type(
         "exact",
         current.document_id,

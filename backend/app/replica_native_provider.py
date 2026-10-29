@@ -235,6 +235,7 @@ class NativeReplicaProvider:
                             "exact-compact-v7",
                             "exact-compact-v8",
                             "exact-compact-v9",
+                            "exact-compact-v10",
                         }
                     )
                     else run_class(
@@ -263,6 +264,7 @@ class NativeReplicaProvider:
                     "exact-compact-v7",
                     "exact-compact-v8",
                     "exact-compact-v9",
+                    "exact-compact-v10",
                 }
             ):
                 await replica_direct_delivery.restore_source(
@@ -609,7 +611,12 @@ class NativeReplicaProvider:
                     f"short edge of at least {minimum_edge} pixels. Do not return "
                     "preview dimensions or a locally enlarged copy.\n" + dispatch_prompt
                 )
-        dispatch_prompt = run.image_prompt(dispatch_prompt)
+        module_prompt = getattr(run, "image_prompt_for_module", None)
+        dispatch_prompt = (
+            module_prompt(dispatch_prompt, key)
+            if callable(module_prompt)
+            else run.image_prompt(dispatch_prompt)
+        )
         bound_prompt = (
             dispatch_prompt
             + "\n\nIMAGE_BINDINGS="

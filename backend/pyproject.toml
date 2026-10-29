@@ -79,7 +79,7 @@ ignore_errors = true
 
 # Byte-frozen v8 is retained for existing checkpoint hashes.
 [[tool.mypy.overrides]]
-module = ["app.replica_exact_versions.v8.*"]
+module = ["app.replica_exact_versions.v8.*", "app.replica_exact_versions.v9.*"]
 ignore_errors = true
 
 [tool.setuptools.packages.find]

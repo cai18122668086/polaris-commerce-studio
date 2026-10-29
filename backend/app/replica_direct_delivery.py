@@ -53,6 +53,13 @@ V8_BINDING = {
     ),
 }
 
+V9_BINDING = {
+    "version": "exact-compact-v9",
+    "content_sha256": (
+        "1fbfffe8378e55d2e529479a468030c30e24cd0dcb4e23ca9de4e81be62469f1"
+    ),
+}
+
 
 def validate_source(
     previous: dict[str, Any], approved: dict[str, Any], prefix: str
@@ -68,6 +75,7 @@ def validate_source(
         V6_BINDING,
         V7_BINDING,
         V8_BINDING,
+        V9_BINDING,
         protocol_binding(),
     )
     for snapshot in (previous, approved):
@@ -407,7 +415,14 @@ async def execute(provider: Any, run: Any, request: Any) -> list[str]:
         await provider._save(run, request.job_id)
         await publish_output(provider, run, request, index, image)
 
-    await parallel_images(provider, list(range(len(state["modules"]))), generate)
+    indices = list(range(len(state["modules"])))
+    if callable(getattr(run, "image_prompt_for_module", None)):
+        await parallel_images(provider, indices, generate)
+    else:
+        # Frozen protocols read module_index while compiling their prompt.
+        # Preserve their original sequential semantics on historical retries.
+        for index in indices:
+            await generate(index)
     validate_direct_state(run)
     state = run.state()
     state.update(state="DELIVERED", module_index=len(state["modules"]))

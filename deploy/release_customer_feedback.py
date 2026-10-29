@@ -166,8 +166,8 @@ def deploy(root, phase):
     rollback = phase == "rollback"
     if phase in {"backend", "rollback"}:
         idle()
-        if rollback and sql("SELECT count(*) FROM replica_documents WHERE payload::text LIKE '%exact-compact-v9%'") != "0":
-            raise RuntimeError("New v9 documents exist; retain v9 support in a forward repair")
+        if rollback and sql("SELECT count(*) FROM replica_documents WHERE payload::text ~ 'exact-compact-v(9|[1-9][0-9]+)' ") != "0":
+            raise RuntimeError("New replica protocols exist; retain their support in a forward repair")
         expected = baseline["images"] if rollback else baseline["bases"]
         for role in ROLES:
             if inspect(role)["Image"] != expected[role]:

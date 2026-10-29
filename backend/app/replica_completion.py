@@ -69,6 +69,8 @@ def _units(run: NativeReplicaRun, payload: dict) -> list[dict[str, Any]]:
         plan = state.get("plan") or {}
         refs = {u["id"]: u for u in plan.get("reference_units", [])}
         if plan.get("modules"):
+            from .replica_direct_delivery import generation_request
+
             physical = (
                 getattr(run, "checkpoints", {})
                 .get("plan_cursor", {})
@@ -102,8 +104,9 @@ def _units(run: NativeReplicaRun, payload: dict) -> list[dict[str, Any]]:
                         m["output_canvas"]["height"],
                     ],
                     "proposal": deepcopy(m),
+                    "native_prompt": generation_request(run, state, index)["prompt"],
                 }
-                for m in plan["modules"]
+                for index, m in enumerate(plan["modules"])
             ]
     cursor = getattr(run, "journal", {}).get("cursor", {})
     observation = (
@@ -207,6 +210,8 @@ async def prepare(
         ],
         "product_paths": originals[: len(payload["product_asset_ids"])],
         "facts": payload["facts"],
+        "resolved_facts": deepcopy(run.context.get("resolved_facts", {})),
+        "product_evidence": deepcopy(run.context.get("product_evidence", {})),
         "language": payload["language"],
         "platform": payload["platform_code"],
         "units": units,
@@ -299,6 +304,54 @@ def validate(run: CompletionRun) -> dict[str, Any]:
 
 
 def prompt(plan: dict, unit: dict, index: int) -> str:
+    if plan["method"] == "exact":
+        native = unit.get("native_prompt")
+        header = (
+            "Create ONE complete Chinese ecommerce visual for the current token only."
+        )
+        instruction = (
+            native.replace(
+                header,
+                "Create ONE complete ecommerce visual for the current token only.",
+                1,
+            )
+            if native
+            else (
+                "Create ONE complete ecommerce visual for the current token only.\n"
+                "Reference image 1 is the binding composition blueprint; "
+                "product images define product identity.\n"
+                "Reconstruct this exact reference one-to-one: preserve its subject "
+                "bounds and scale, background palette, camera, lighting, negative "
+                "space, text locations and size tiers, carriers, dividers, decorative "
+                "edges, poses and interactions. Replace only the actual product and "
+                "unsupported product-specific copy inside the existing regions. "
+                "Do not turn the reference into a generic product hero, card grid "
+                "or a new campaign design. Do not recolor the background to match "
+                "the replacement packaging. Product inputs provide physical identity "
+                "only: do not import their advertising layout, background or props. "
+                "Keep each populated text branch with truthful replacement copy; "
+                "preserve its hierarchy and density without inventing claims.\n"
+            )
+        )
+        return (
+            instruction
+            + "\n"
+            + json.dumps(
+                {
+                    "language": plan["language"],
+                    "platform": plan["platform"],
+                    "user_facts": plan["facts"],
+                    "resolved_facts": plan.get("resolved_facts", {}),
+                    "product_evidence": plan.get("product_evidence", {}),
+                    "current_screen": unit["proposal"],
+                    "canvas": unit["canvas"],
+                    "evidence_policy": "source_pixels_only"
+                    if not native
+                    else "native_plan",
+                },
+                ensure_ascii=False,
+            )
+        )
     return (
         "Generate the final ecommerce image using the available plan. This is screen "
         f"{index + 1} of {len(plan['units'])}; render only this screen. "

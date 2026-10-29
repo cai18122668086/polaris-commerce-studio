@@ -15,6 +15,7 @@ from app.models import (
     JobItemRecord,
     JobRecord,
     WorkspaceCreditAccountRecord,
+    utc_now,
 )
 from tests.test_api import (
     create_local_edit_job,
@@ -207,6 +208,101 @@ def test_cancellation_releases_all_unused_credits(client):
         services.release_credits(session, job)
         assert account.balance_credits == original
         assert account.reserved_credits == 0
+
+
+@pytest.mark.parametrize("terminal", ["cancelled", "failed"])
+@pytest.mark.parametrize("removed_after_delivery", [False, True])
+def test_streamed_replica_images_remain_billable_after_stop(
+    client, terminal, removed_after_delivery
+):
+    factory = client.app.state.session_factory
+    with factory() as session:
+        job, items = seed_job(
+            session,
+            kind="reference_remix",
+            count=3,
+            configuration={"replica_session_id": "replica-proof", "settings": {}},
+        )
+        account = session.get(WorkspaceCreditAccountRecord, WORKSPACE)
+        original = account.balance_credits
+        services.reserve_image_credits(session, WORKSPACE, job)
+        links = list(
+            session.scalars(
+                select(JobAssetRecord)
+                .where(JobAssetRecord.job_id == job.id)
+                .order_by(JobAssetRecord.ordinal)
+            )
+        )
+        delivered = session.get(AssetRecord, links[0].asset_id)
+        delivered.asset_metadata = {"replica_incremental": True}
+        if removed_after_delivery:
+            delivered.deleted_at = utc_now()
+        # An auxiliary image and an unconfirmed output must remain uncharged.
+        session.get(AssetRecord, links[1].asset_id).asset_metadata = {
+            "replica_incremental": True
+        }
+        links[1].is_deliverable = False
+        session.add(
+            JobAssetRecord(
+                workspace_id=WORKSPACE,
+                job_id=job.id,
+                job_item_id=items[0].id,
+                asset_id=delivered.id,
+                direction="output",
+                role="preview",
+                ordinal=0,
+                is_deliverable=True,
+            )
+        )
+        job.status = "processing"
+        if terminal == "failed":
+            for item in items:
+                item.status = "failed"
+        job_id = job.id
+        session.commit()
+    coordinator = client.app.state.task_runner.coordinator
+    for _ in range(2):
+        if terminal == "cancelled":
+            assert coordinator.cancel(job_id).value == terminal
+        else:
+            assert coordinator.finalize_job(job_id).value == terminal
+    with factory() as session:
+        job = session.get(JobRecord, job_id)
+        account = session.get(WorkspaceCreditAccountRecord, WORKSPACE)
+        assert job.actual_credits == 15
+        assert account.balance_credits == original - 15
+        assert account.reserved_credits == 0
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(CreditLedgerEntryRecord)
+                .where(
+                    CreditLedgerEntryRecord.job_id == job_id,
+                    CreditLedgerEntryRecord.entry_type == "settle",
+                )
+            )
+            == 1
+        )
+
+
+@pytest.mark.parametrize(
+    "kind,configuration",
+    [("reference_remix", {}), ("detail_pack", {"replica_session_id": "unrelated"})],
+)
+def test_incremental_marker_cannot_reprice_other_workflows(client, kind, configuration):
+    with client.app.state.session_factory() as session:
+        job, items = seed_job(session, kind=kind, count=1, configuration=configuration)
+        services.reserve_image_credits(session, WORKSPACE, job)
+        link = session.scalar(
+            select(JobAssetRecord).where(JobAssetRecord.job_id == job.id)
+        )
+        session.get(AssetRecord, link.asset_id).asset_metadata = {
+            "replica_incremental": True
+        }
+        items[0].status = "failed"
+        session.flush()
+        services.settle_credits(session, job, 0)
+        assert job.actual_credits == 0
 
 
 def test_supplier_quota_switch_cannot_bypass_customer_credits(client):

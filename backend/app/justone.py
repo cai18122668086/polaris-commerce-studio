@@ -368,10 +368,13 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
     try:
         return _fetch_endpoint(token, platform, item_id, canonical, endpoint)
     except ApiError as error:
-        if platform not in {"taobao", "tmall"} or error.code != "PRODUCT_UNAVAILABLE":
+        if platform not in {"taobao", "tmall"} or error.code not in {
+            "PRODUCT_UNAVAILABLE",
+            "PRODUCT_PROVIDER_301",
+        }:
             raise
-    # V6 sometimes reports a live item as unavailable. Try the independently
-    # verified V3 once, never recursively or after transport/balance failures.
+    # V6 can fail collection (301) or report a live item as unavailable. Try
+    # V3 once, never recursively or after transport, quota, or balance failures.
     product = _fetch_endpoint(
         token, platform, item_id, canonical, TAOBAO_FALLBACK_ENDPOINT
     )

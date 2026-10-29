@@ -8,16 +8,18 @@ export function WorkspaceHeader({
   description,
   meta,
   jobId,
+  newTaskHref,
 }: {
   eyebrow: string;
   title: string;
   description: string;
   meta?: React.ReactNode;
   jobId?: string;
+  newTaskHref?: string;
 }) {
   function startNewTask() {
     if (typeof window !== "undefined") {
-      window.location.replace(window.location.pathname);
+      window.location.replace(newTaskHref ?? window.location.pathname);
     }
   }
 

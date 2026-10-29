@@ -374,7 +374,7 @@ test("public navigation uses registry route matching instead of local-edit fallb
 });
 
 test("detail workspace automatically starts submitted suite plans and retains historical confirmation", async () => {
-  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const detail = await utf8("components/detail-pack-workspace.tsx");
   assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920"/);
   assert.match(detail, /严格交付 \{imageSize\}/);
   assert.match(detail, /\{selectedMarketplace\.name\} · \{imageSize\}/);
@@ -383,8 +383,9 @@ test("detail workspace automatically starts submitted suite plans and retains hi
   assert.match(detail, /!automaticPlan && job\.data\?\.plan && workflowAvailable/);
   assert.match(detail, /生成整套详情图/);
   assert.doesNotMatch(detail, /market_region: "international" as const/);
-  assert.match(detail, /selectRegion\("domestic"\).*disabled=\{Boolean\(jobId\)\}/);
-  assert.match(detail, /selectRegion\("international"\).*disabled=\{Boolean\(jobId\)\}/);
+  assert.match(detail, /draftMarketRegion = initialRegion/);
+  assert.match(detail, /saved\?\.market_region === "international"/);
+  assert.doesNotMatch(detail, /selectRegion\(/);
 });
 
 test("completed detail and Amazon packs expose real attachment and ZIP downloads", async () => {
@@ -392,7 +393,7 @@ test("completed detail and Amazon packs expose real attachment and ZIP downloads
   const jobApi = await utf8("features/jobs/api/jobs.ts");
   const result = await utf8("components/job-result-image.tsx");
   const archive = await utf8("components/job-deliverables-download.tsx");
-  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const detail = await utf8("components/detail-pack-workspace.tsx");
   const commerce = await utf8("components/commerce-skill-workspace.tsx");
 
   assert.match(assetApi, /disposition: "inline" \| "attachment"/);

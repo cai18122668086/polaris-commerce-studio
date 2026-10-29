@@ -47,7 +47,7 @@ test("business UI is API-backed and runtime capability is fail-closed", async ()
     "app/assets/page.tsx",
     "app/dashboard/page.tsx",
     "app/jobs/page.tsx",
-    "app/workspace/detail-pack/page.tsx",
+    "components/detail-pack-workspace.tsx",
     "app/workspace/local-edit/page.tsx",
     "components/task-drawer.tsx",
     "components/tool-sidebar.tsx",
@@ -95,7 +95,7 @@ test("runtime sources contain no non-loopback remote URLs", async () => {
 });
 
 test("public service copy stays honest and icon actions have stable names", async () => {
-  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const detail = await utf8("components/detail-pack-workspace.tsx");
   const local = await utf8("app/workspace/local-edit/page.tsx");
   const helpPanel = await utf8("components/help-panel.tsx");
   const jobs = await utf8("app/jobs/page.tsx");
@@ -125,7 +125,7 @@ test("public service copy stays honest and icon actions have stable names", asyn
 test("write actions use server allowed_actions as the only authority", async () => {
   const jobsPage = await utf8("app/jobs/page.tsx");
   const drawer = await utf8("components/task-drawer.tsx");
-  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const detail = await utf8("components/detail-pack-workspace.tsx");
   const local = await utf8("app/workspace/local-edit/page.tsx");
   const mutations = await utf8("features/jobs/api/jobs.ts");
 
@@ -141,7 +141,7 @@ test("write actions use server allowed_actions as the only authority", async () 
 });
 
 test("workflow pages submit the bounded inputs and failed-only retry scope", async () => {
-  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const detail = await utf8("components/detail-pack-workspace.tsx");
   const local = await utf8("app/workspace/local-edit/page.tsx");
 
   assert.match(local, /mediaKind: "mask"/);
@@ -165,7 +165,7 @@ test("workflow pages submit the bounded inputs and failed-only retry scope", asy
 
 test("upload inputs match the backend image contract and recover from file-level failures", async () => {
   const assets = await utf8("app/assets/page.tsx");
-  const detail = await utf8("app/workspace/detail-pack/page.tsx");
+  const detail = await utf8("components/detail-pack-workspace.tsx");
   const commerce = await utf8("components/commerce-skill-workspace.tsx");
   const product = await utf8("components/product-image-workspace.tsx");
 

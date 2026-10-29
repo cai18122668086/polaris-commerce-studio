@@ -13,7 +13,7 @@ export function CreationWorkspaceBar({ featureId }: { featureId: string }) {
   const root = useRef<HTMLElement>(null);
   const feature = FEATURE_REGISTRY.find(item => item.id === featureId);
   const entry = PRIMARY_CREATION_ENTRIES.find(item => item.id === featureId);
-  const label = entry?.label ?? feature?.title ?? "创作工具";
+  const label = feature?.title ?? entry?.label ?? "创作工具";
   useEffect(() => {
     if (!open) return;
     const onPointer = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const page = readFileSync(new URL("../app/workspace/detail-pack/page.tsx", import.meta.url), "utf8");
+const page = readFileSync(new URL("../components/detail-pack-workspace.tsx", import.meta.url), "utf8");
 const expression = page.match(/const nativeReviewed = ([^;]+);/)[1];
 const evaluate = new Function("job", "jobId", "isNativeDetail", "nativeApproval", "approvalDocument", "reviewedApprovalKey", "approvalKey", `return (${expression});`);
 const job = { data: { id: "historical", plan: { validation_status: "valid" } } };

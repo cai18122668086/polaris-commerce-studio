@@ -16,8 +16,9 @@ export function readAssetHandoff(search: Search, workspaceId: string, maxAssets:
   return { ids, caseId };
 }
 
-export function assetCreationHref(route: "/workspace/local-edit" | "/workspace/detail-pack", workspaceId: string, ids: string[], caseId?: string) {
+export function assetCreationHref(route: "/workspace/local-edit" | "/workspace/detail-pack" | "/create", workspaceId: string, ids: string[], caseId?: string) {
   const params = new URLSearchParams({ workspaceId });
+  if (route === "/create") params.set("goal", "detail");
   for (const id of ids) params.append("assetId", id);
   if (caseId) params.set("inspirationCaseId", caseId);
   readAssetHandoff(params, workspaceId, route === "/workspace/local-edit" ? 1 : 8);

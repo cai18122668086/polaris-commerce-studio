@@ -1,11 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
 
 from app import services
-from app.credit_billing import PRICING_KEY, image_unit_credits
+from app.credit_billing import PRICING_KEY, image_unit_credits, pricing_catalog
 from app.domain import JobType
 from app.models import (
     AssetRecord,
@@ -125,6 +126,162 @@ def test_every_executable_job_has_a_tariff(kind, expected):
         "amazon_visual_suite",
         "domestic_detail_review",
     }
+
+
+@pytest.mark.parametrize(
+    "kind,configuration",
+    [
+        ("creative_image", {"settings": {"inspiration_planning": True}}),
+        ("creative_image", {"inspiration_case_id": "published_case"}),
+        ("reference_remix", {"inspiration_case_id": "published_case"}),
+    ],
+)
+def test_inspiration_reservation_partial_settlement_and_retry_are_five_credits(
+    client, kind, configuration
+):
+    from app.domain import RetryScope
+    from app.routes_v1 import _copy_job_for_retry, _copy_job_relations_for_retry
+
+    with client.app.state.session_factory() as session:
+        job, items = seed_job(session, kind=kind, count=3, configuration=configuration)
+        account = session.get(WorkspaceCreditAccountRecord, WORKSPACE)
+        original = account.balance_credits
+        hold = services.reserve_image_credits(session, WORKSPACE, job)
+        assert hold.reserved_credits == job.estimated_credits == 15
+        assert hold.pricing_snapshot["credits_per_image"] == 5
+        items[0].status = "succeeded"
+        items[1].status = items[2].status = "failed"
+        session.flush()
+        services.settle_credits(session, job, 0)
+        assert job.actual_credits == 5
+        assert account.balance_credits == original - 5
+        assert account.reserved_credits == 0
+        job.status = "partial"
+        job.finished_at = utc_now()
+        job.succeeded_item_count = 1
+        job.failed_item_count = 2
+        selected = services.retry_item_ids(session, job, RetryScope.MISSING, [])
+        child = _copy_job_for_retry(session, job, RetryScope.MISSING, selected)
+        session.add(child)
+        session.flush()
+        _copy_job_relations_for_retry(session, job, child, selected)
+        session.flush()
+        retry_hold = services.reserve_image_credits(session, WORKSPACE, child)
+        assert retry_hold.reserved_credits == 10
+        services.release_credits(session, child)
+        assert account.reserved_credits == 0
+        assert account.balance_credits == original - 5
+
+
+def test_inspiration_quote_matches_both_workflows_and_does_not_discount_other_tools():
+    rules = pricing_catalog()
+    for kind in ("creative_image", "reference_remix"):
+        assert (
+            next(
+                p["credits_per_image"]
+                for p in rules
+                if p["job_type"] == kind and p["task_type"] == "inspiration"
+            )
+            == 5
+        )
+        assert image_unit_credits(kind, {"settings": {}}) == 15
+    assert (
+        image_unit_credits(
+            "reference_remix",
+            {
+                "settings": {"inspiration_planning": True},
+                "replica_session_id": "rep_test",
+            },
+        )
+        == 15
+    )
+    assert image_unit_credits("detail_pack", {"inspiration_case_id": "case"}) == 15
+
+
+@pytest.mark.parametrize("mode", ["free", "product", "reference"])
+def test_inspiration_http_quote_and_submission_both_reserve_five_per_image(
+    client, monkeypatch, mode
+):
+    product = upload_asset(client)
+    body = {
+        "type": "reference_remix" if mode == "reference" else "creative_image",
+        "input": {"product_asset_ids": [product["id"]]},
+        "configuration": {"image_count": 2, "instruction": "fixture prompt"},
+    }
+    if mode == "free":
+        body["configuration"]["inspiration_planning"] = True
+    else:
+        body["inspiration_case_id"] = "ins_validated_fixture"
+        if mode == "reference":
+            reference = upload_asset(client, filename="reference.png")
+            body["input"]["reference_asset_ids"] = [reference["id"]]
+        case = SimpleNamespace(
+            id="ins_validated_fixture",
+            prompt="fixture prompt",
+            workflow_type="reference_remix"
+            if mode == "reference"
+            else "product_prompt",
+            reference_source="admin_reference" if mode == "reference" else "none",
+        )
+        monkeypatch.setattr(
+            "app.routes_v1._validate_inspiration_case_job",
+            lambda _session, payload: case,
+        )
+    quoted = client.post(f"/api/v1/workspaces/{WORKSPACE}/credits/quote", json=body)
+    assert quoted.status_code == 200, quoted.text
+    assert quoted.json()["estimated_credits"] == 10
+    created = client.post(
+        f"/api/v1/workspaces/{WORKSPACE}/jobs",
+        json=body,
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert created.status_code == 202, created.text
+    assert created.json()["cost"]["estimated_credits"] == 10
+    with client.app.state.session_factory() as session:
+        hold = session.scalar(
+            select(CreditReservationRecord).where(
+                CreditReservationRecord.job_id == created.json()["id"]
+            )
+        )
+        assert hold.reserved_credits == 10
+        assert hold.pricing_snapshot["credits_per_image"] == 5
+
+
+def test_quote_rejects_unpublished_or_unknown_inspiration_case(client):
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE}/credits/quote",
+        json={
+            "type": "creative_image",
+            "inspiration_case_id": "ins_not_published",
+            "input": {"product_asset_ids": ["asset_fixture"]},
+            "configuration": {"instruction": "fixture prompt"},
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_old_inspiration_reservation_keeps_its_frozen_fifteen_credit_rate(client):
+    with client.app.state.session_factory() as session:
+        job, items = seed_job(
+            session,
+            kind="creative_image",
+            count=2,
+            configuration={"settings": {}},
+        )
+        hold = services.reserve_image_credits(session, WORKSPACE, job)
+        # Simulate the real pre-release snapshot, without rewriting the tariff.
+        hold.pricing_snapshot = {
+            **hold.pricing_snapshot,
+            "version": "image-credits-5-15-v1",
+            "credits_per_image": 15,
+        }
+        job.configuration = {"settings": {"inspiration_planning": True}}
+        assert hold.reserved_credits == job.estimated_credits == 30
+        items[0].status = "succeeded"
+        items[1].status = "failed"
+        session.flush()
+        services.settle_credits(session, job, 0)
+        assert job.actual_credits == 15
 
 
 @pytest.mark.parametrize(
@@ -411,7 +568,7 @@ def test_credit_endpoints_are_workspace_scoped(client):
     response = client.get(f"/api/v1/workspaces/{WORKSPACE}/credits")
     assert response.status_code == 200
     assert response.json()["enforcement_enabled"] is True
-    assert len(response.json()["pricing"]) == 16
+    assert len(response.json()["pricing"]) == 18
     assert client.get("/api/v1/workspaces/not-mine/credits").status_code in {403, 404}
     assert client.get("/api/v1/workspaces/not-mine/credits/ledger").status_code in {
         403,

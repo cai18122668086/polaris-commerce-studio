@@ -1,5 +1,4 @@
 import { getFeatureById } from "@/lib/feature-registry";
-import { PRIMARY_CREATION_ENTRIES } from "@/lib/creation-entrypoints";
 import { Lightbulb } from "lucide-react";
 
 function navigationFeature(
@@ -45,8 +44,10 @@ export type NavigationMenuDefinition = {
 
 export const PRIMARY_NAVIGATION_LINKS = [
   { label: "首页", href: "/" },
-  ...PRIMARY_CREATION_ENTRIES.slice(0, 3).map(({ label, href }) => ({ label, href })),
-  { label: "跨境电商", href: "/#crossborder-commerce" },
+  { label: "一键复刻", href: "/style-replica" },
+  { label: "国内电商", href: "/create?market=domestic" },
+  { label: "跨境电商", href: "/create?market=international" },
+  { label: "灵感专区", href: "/inspiration" },
   { label: "素材中心", href: "/assets" },
   { label: "生成记录", href: "/jobs" },
 ] as const;
@@ -94,6 +95,9 @@ export const AI_FEATURES_MENU = {
       items: [
         navigationFeature("amazon-visual-suite", {
           description: "生成亚马逊主图、副图与 A+ 内容",
+        }),
+        navigationFeature("crossborder-detail", {
+          description: "Shopify、TikTok Shop、Shopee 等商品详情图",
         }),
       ],
     },
@@ -152,8 +156,6 @@ export const ALL_TOOLS_MENU: NavigationMenuDefinition = {
   groups: [
     { label: "主推创作", items: [
       navigationFeature("one-click-replica", { description: "有同行参考，做自己的商品套图" }),
-      navigationFeature("domestic-main-image", { label: "主图套图", description: "搜索主图与连续轮播，一次规划" }),
-      navigationFeature("detail-pack", { label: "详情图套图", description: "把卖点与细节组织成完整详情图" }),
       { featureId: "inspiration", label: "灵感专区", href: "/inspiration", description: "看案例、找方向、一键做同款", icon: Lightbulb, tone: "indigo" },
     ] },
     { label: "国内电商", items: [
@@ -162,6 +164,7 @@ export const ALL_TOOLS_MENU: NavigationMenuDefinition = {
     ] },
     { label: "跨境电商", items: [
       navigationFeature("amazon-visual-suite", { label: "亚马逊主副图与 A+", description: "主图 1 张、副图 6 张、桌面与移动 A+ 各 7 张" }),
+      navigationFeature("crossborder-detail", { description: "其他海外平台商品详情图，8、10 或 12 张" }),
     ] },
     { label: "精修与参考创作", items: [navigationFeature("local-edit", { description: "用自然语言完成局部精修" }), navigationFeature("reference-remix", { description: "参考构图与视觉风格" })] },
     ...AI_TOOLBOX_MENU.groups,

@@ -1492,6 +1492,12 @@ def create_job(
         job.configuration["inspiration_reference_source"] = (
             inspiration_case.reference_source
         )
+        _, _, job.estimated_credits = estimate_job(
+            JobType(job.type),
+            job.expected_item_count,
+            job.configuration,
+            workspace_id=workspace.workspace_id,
+        )
     asset_ids = [item[0] for item in asset_roles]
     assets = get_ready_assets(session, workspace.workspace_id, asset_ids)
     if isinstance(payload, LocalEditJobCreate):

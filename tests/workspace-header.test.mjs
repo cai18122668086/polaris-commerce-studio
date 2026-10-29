@@ -7,5 +7,5 @@ test("workspace header starts a fresh task instead of rendering an inert button"
 
   assert.match(source, /type="button"/);
   assert.match(source, /onClick=\{startNewTask\}/);
-  assert.match(source, /window\.location\.replace\(window\.location\.pathname\)/);
+  assert.match(source, /window\.location\.replace\(newTaskHref \?\? window\.location\.pathname\)/);
 });

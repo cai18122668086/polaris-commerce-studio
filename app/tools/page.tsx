@@ -4,6 +4,7 @@ import { ArrowRight, ArrowUpRight, Lightbulb, Search, Sparkles, X } from "lucide
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { CommerceEntryGroups } from "@/components/commerce-entry-groups";
 import { FEATURE_CATEGORY_LABELS, FEATURE_REGISTRY, type FeatureCategory } from "@/lib/feature-registry";
 import { FEATURE_THUMBNAILS, PRIMARY_CREATION_ENTRIES } from "@/lib/creation-entrypoints";
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus } from "@/features/runtime/api/runtime";
@@ -41,6 +42,7 @@ export default function ToolsPage() {
         <Link href={PRIMARY_CREATION_ENTRIES[1].href}><img src={PRIMARY_CREATION_ENTRIES[1].image} alt="" /><span><strong>准备上新？制作主图套图</strong><small>1 张搜索主图 + 5 张连续轮播</small></span><ArrowUpRight size={17} /></Link>
         <Link href="/inspiration"><span className={styles.quickIcon}><Lightbulb size={21} /></span><span><strong>还没方向？先来找灵感</strong><small>按品类看案例，带着创作指令开始</small></span><ArrowUpRight size={17} /></Link>
       </div>
+      <CommerceEntryGroups />
       <section className={styles.directory} aria-labelledby="tools-directory-title">
         <div className={styles.directoryHead}><h2 id="tools-directory-title">找到顺手的创作工具</h2><label className={styles.searchBox}><Search size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="试试：换背景、模特、主图…" aria-label="搜索 AI 创作功能" />{query && <button type="button" onClick={() => setQuery("")} aria-label="清空搜索"><X size={15} /></button>}</label></div>
         <div className={styles.filterBar}><div className={styles.filters} role="group" aria-label="功能分类"><button type="button" aria-pressed={activeCategory === "all"} onClick={() => setCategory("all")}>全部工具</button>{categories.map(category => <button key={category} type="button" aria-pressed={activeCategory === category} onClick={() => setCategory(category)}>{FEATURE_CATEGORY_LABELS[category]}</button>)}</div><span aria-live="polite">{visibleFeatures.length} 项功能</span></div>
@@ -49,7 +51,7 @@ export default function ToolsPage() {
             const entry = PRIMARY_CREATION_ENTRIES.find(item => item.id === feature.id);
             const workflow = presentWorkflow(resolveRuntimeCapability(runtime.data, feature.runtimeCapability));
             return <Link key={feature.id} href={feature.route} className={styles.toolCard} aria-disabled={!workflow.canSubmit || undefined} tabIndex={workflow.canSubmit ? undefined : -1} title={workflow.canSubmit ? undefined : workflow.message} onClick={event => { if (!workflow.canSubmit) event.preventDefault(); }}>
-              <div className={styles.cardTitle}><h3>{entry?.label ?? feature.title}</h3>{entry && <span>推荐</span>}</div>
+              <div className={styles.cardTitle}><h3>{feature.title}</h3>{entry && <span>推荐</span>}</div>
               <div className={styles.cardImage}><img src={FEATURE_THUMBNAILS[feature.id]} alt={feature.title + "创作方向"} loading="lazy" decoding="async" width={480} height={400} /><span><ArrowUpRight size={20} /></span></div>
               <p>{feature.description}</p><div className={styles.cardFooter}><span>{workflow.canSubmit ? "立即制作" : runtime.isPending ? "检查服务状态…" : "当前不可用"}</span><ArrowRight size={14} /></div>
             </Link>;

@@ -34,7 +34,7 @@ const FEATURE_PRESENTATION_OVERRIDES: Record<
   },
 
   "detail-pack": {
-    description: "一键生成国内、国际全平台详情图",
+    description: "制作国内平台的商品详情图",
   },
 
 };
@@ -66,8 +66,12 @@ const featuredTools = [
 
 const RELATED_SCENARIO_RECOMMENDATIONS = [
   {
-    pattern: /亚马逊|amazon|跨境|a\+/iu,
-    featureIds: ["amazon-visual-suite", "detail-pack", "white-background"],
+    pattern: /亚马逊|amazon|a\+/iu,
+    featureIds: ["amazon-visual-suite", "white-background"],
+  },
+  {
+    pattern: /跨境|海外|国际|shopify|shopee|tiktok|aliexpress/iu,
+    featureIds: ["crossborder-detail", "amazon-visual-suite", "white-background"],
   },
   {
     pattern: /主图|淘宝|天猫|京东|轮播/iu,

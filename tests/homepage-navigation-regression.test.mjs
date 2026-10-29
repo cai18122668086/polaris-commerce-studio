@@ -25,6 +25,7 @@ const EXPECTED_FEATURE_CONTRACT = [
   ["model-pose-transfer", "/workspace/model-pose-transfer", "model_pose_transfer", "model_pose_transfer"],
   ["creative-image", "/workspace/creative-image", "creative_image", "creative_image"],
   ["detail-pack", "/workspace/detail-pack", "detail_pack", "detail_pack"],
+  ["crossborder-detail", "/workspace/crossborder-detail", "detail_pack", "crossborder_detail"],
   ["domestic-main-image", "/workspace/domestic-main-image", "domestic_main_image", "domestic_main_image"],
   ["amazon-visual-suite", "/workspace/amazon-visual-suite", "amazon_visual_suite", "amazon_visual_suite"],
 ];
@@ -37,6 +38,7 @@ const AI_FEATURE_MENU_IDS = [
   "domestic-main-image",
   "detail-pack",
   "amazon-visual-suite",
+  "crossborder-detail",
 ];
 
 const AI_TOOLBOX_MENU_IDS = [
@@ -277,13 +279,13 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
   const commerceGroups = await utf8("components/commerce-entry-groups.tsx");
   assert.match(commerceGroups, /国内电商/);
   assert.match(commerceGroups, /跨境电商/);
-  assert.match(commerceGroups, /\/workspace\/amazon-visual-suite/);
+  assert.match(commerceGroups, /COMMERCE_ENTRIES/);
   const creationEntries = await utf8("lib/creation-entrypoints.ts");
   for (const id of ["one-click-replica", "domestic-main-image", "detail-pack", "inspiration"]) {
     assert.ok(creationEntries.includes(`id: "${id}"`), `${id} keeps a primary homepage entry`);
   }
   assert.match(toolDirectory, /HOT_FEATURE_IDS\.has\(tool\.id\)/);
-  assert.match(toolDirectory, /pattern: \/亚马逊\|amazon\|跨境\|a\\\+\/iu[\s\S]*?featureIds: \["amazon-visual-suite", "detail-pack", "white-background"\]/);
+  assert.match(toolDirectory, /featureIds: \["crossborder-detail", "amazon-visual-suite", "white-background"\]/);
   assert.match(toolDirectory, /pattern: \/主图\|淘宝\|天猫\|京东\|轮播\/iu[\s\S]*?featureIds: \["domestic-main-image", "scene-main", "white-background"\]/);
   assert.match(toolDirectory, /role=\{searchResults\.length \? "listbox" : "region"\}/);
   assert.match(toolDirectory, /aria-label=\{searchResults\.length \? "功能搜索结果" : "相近场景推荐"\}/);

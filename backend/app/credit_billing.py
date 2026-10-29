@@ -10,7 +10,8 @@ from .domain import JobItemStatus, JobType
 from .errors import ApiError
 from .models import CreditReservationRecord, JobAssetRecord, JobItemRecord, JobRecord
 
-PRICING_VERSION = "image-credits-5-15-v1"
+PRICING_VERSION = "image-credits-5-15-v2"
+SUPPORTED_PRICING_VERSIONS = {"image-credits-5-15-v1", PRICING_VERSION}
 SINGLE_IMAGE_CREDITS = 5
 PLANNED_IMAGE_CREDITS = 15
 PRICING_KEY = "customer_credit_pricing"
@@ -21,12 +22,22 @@ def image_unit_credits(
 ) -> int:
     """Classify every executable job, including product-image presets."""
     kind = JobType(job_type)
+    config = configuration or {}
+    settings = config.get("settings", config)
+    if kind in {JobType.CREATIVE_IMAGE, JobType.REFERENCE_REMIX} and (
+        # Case provenance is resolved from a published case by the server.
+        config.get("inspiration_case_id")
+        or (
+            kind == JobType.CREATIVE_IMAGE
+            and settings.get("inspiration_planning") is True
+        )
+    ):
+        return SINGLE_IMAGE_CREDITS
     if kind == JobType.DOMESTIC_DETAIL_REVIEW:
         return 0  # Review/export/reconciliation produces no new customer image.
     if kind in {JobType.LOCAL_EDIT, JobType.MODEL_POSE_TRANSFER}:
         return SINGLE_IMAGE_CREDITS
     if kind == JobType.PRODUCT_IMAGE:
-        settings = (configuration or {}).get("settings", configuration or {})
         return (
             PLANNED_IMAGE_CREDITS
             if settings.get("task_type") == "scene_main"
@@ -85,7 +96,10 @@ def successful_image_credits(session: Session, job: JobRecord) -> int | None:
     if reservation is None:
         return None
     pricing = reservation.pricing_snapshot
-    if not isinstance(pricing, dict) or pricing.get("version") != PRICING_VERSION:
+    if (
+        not isinstance(pricing, dict)
+        or pricing.get("version") not in SUPPORTED_PRICING_VERSIONS
+    ):
         return None
     # Later reviews, retention or output removal must not rewrite a settled bill.
     if reservation.status in {"settled", "released"}:
@@ -118,6 +132,14 @@ def successful_image_credits(session: Session, job: JobRecord) -> int | None:
 def pricing_catalog() -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for kind in JobType:
+        if kind in {JobType.CREATIVE_IMAGE, JobType.REFERENCE_REMIX}:
+            items.append(
+                {
+                    "job_type": kind.value,
+                    "task_type": "inspiration",
+                    "credits_per_image": SINGLE_IMAGE_CREDITS,
+                }
+            )
         if kind == JobType.PRODUCT_IMAGE:
             for preset in (
                 "scene_main",

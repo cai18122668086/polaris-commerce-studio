@@ -72,6 +72,8 @@ def test_early_completion_uses_strict_pixels_instead_of_generic_hero(tmp_path):
     assert "Do not recolor the background" in compiled
     assert "text locations and size tiers" in compiled
     assert "source_pixels_only" in compiled
+    assert "Do not invent an English" in compiled
+    assert "front view" in compiled and "OCR" in compiled
     assert plan["resolved_facts"] == run.context["resolved_facts"]
     assert len(gateway.requests) == calls  # No extra paid analysis or fake audit.
 

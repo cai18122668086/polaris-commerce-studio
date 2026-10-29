@@ -333,6 +333,20 @@ def prompt(plan: dict, unit: dict, index: int) -> str:
                 "preserve its hierarchy and density without inventing claims.\n"
             )
         )
+        instruction += (
+            "\nPHYSICAL WORDMARK AND VIEW LOCK: Reproduce the actual printed brand "
+            "marks from the attached product pixels. OCR and resolved facts are "
+            "fallible transcriptions: they cannot rename the physical product or "
+            "replace its label with a familiar brand. Do not invent an English "
+            "transliteration or a new standalone brand. If no readable product "
+            "brand is available for a poster text slot, use a neutral supported "
+            "category description in that slot. Preserve the real package logo. "
+            "When the reference shows a front view, use the supplied product front "
+            "view; a back-label photo supplies evidence and must not replace that "
+            "front-facing composition. Never transfer unverified ingredients, "
+            "processes, certifications or awards from the benchmark. Retain their "
+            "carrier shape using supported replacement copy.\n"
+        )
         return (
             instruction
             + "\n"

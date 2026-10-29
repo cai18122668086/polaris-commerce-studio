@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { COMMERCE_ENTRIES, commerceEntryHref } from "../lib/commerce-entrypoints.ts";
+import { COMMERCE_ENTRIES, commerceEntriesFor, commerceEntryHref } from "../lib/commerce-entrypoints.ts";
 import { assetCreationHref, readAssetHandoff } from "../lib/assets/creation-handoff.ts";
 import { resolveJobWorkspaceHref } from "../lib/jobs/workspace-link-resolution.ts";
 import { FEATURE_REGISTRY } from "../lib/feature-registry.ts";
@@ -26,6 +26,18 @@ test("market choice preserves source identity and order into either detail works
       ids: ["asset_first", "asset_second"], caseId: "case_original",
     });
   }
+});
+
+test("main and detail journeys only offer matching deliverables in the chosen market", () => {
+  const cases = [
+    [{ market: "domestic", goal: "main" }, ["domestic-main-image"]],
+    [{ market: "domestic", goal: "detail" }, ["detail-pack"]],
+    [{ market: "international", goal: "main" }, ["amazon-visual-suite"]],
+    [{ market: "international", goal: "detail" }, ["amazon-visual-suite", "crossborder-detail"]],
+    [{ market: "international", goal: "detail", hasAssets: true }, ["crossborder-detail"]],
+  ];
+  for (const [selection, ids] of cases) assert.deepEqual(commerceEntriesFor(selection).map(e => e.id), ids);
+  assert.equal(commerceEntriesFor({ market: "unknown" }).length, 4);
 });
 
 test("saved market determines task continuation while old links remain usable", () => {

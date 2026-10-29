@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { COMMERCE_ENTRIES, commerceEntryHref } from "@/lib/commerce-entrypoints";
+import { commerceEntriesFor, commerceEntryHref } from "@/lib/commerce-entrypoints";
 import styles from "./create.module.css";
 
 export default function CreatePage() {
@@ -22,7 +22,7 @@ export default function CreatePage() {
     }
     return `/create?${params}`;
   }
-  const entries = COMMERCE_ENTRIES.filter(entry => (!market || entry.market === market) && (!hasAssets || entry.acceptsHandoff));
+  const entries = commerceEntriesFor({ market, goal, hasAssets });
   return <AppShell sidebar={false}><div className={styles.page}>
     <header><p>电商图片创作</p><h1>你的商品，准备在哪个市场上架？</h1><p>先选市场，再选图片用途。进入工作台后上传商品、填写真实卖点。</p></header>
     <nav className={styles.markets} aria-label="选择电商市场">

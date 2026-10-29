@@ -39,7 +39,7 @@ export default function ToolsPage() {
         </Link>)}
       </section>
       <div className={styles.quickLinks}>
-        <Link href={PRIMARY_CREATION_ENTRIES[1].href}><img src={PRIMARY_CREATION_ENTRIES[1].image} alt="" /><span><strong>准备上新？制作主图套图</strong><small>1 张搜索主图 + 5 张连续轮播</small></span><ArrowUpRight size={17} /></Link>
+        <Link href={PRIMARY_CREATION_ENTRIES[1].href}><img src={PRIMARY_CREATION_ENTRIES[1].image} alt="" /><span><strong>准备上新？制作主图套图</strong><small>国内主图轮播 / 亚马逊完整套图</small></span><ArrowUpRight size={17} /></Link>
         <Link href="/inspiration"><span className={styles.quickIcon}><Lightbulb size={21} /></span><span><strong>还没方向？先来找灵感</strong><small>按品类看案例，带着创作指令开始</small></span><ArrowUpRight size={17} /></Link>
       </div>
       <CommerceEntryGroups />

@@ -7,6 +7,14 @@ export const COMMERCE_ENTRIES = [
 
 export type CommerceEntry = (typeof COMMERCE_ENTRIES)[number];
 
+export function commerceEntriesFor({ market, goal, hasAssets = false }: { market?: string | null; goal?: string | null; hasAssets?: boolean } = {}) {
+  const selectedMarket = market === "domestic" || market === "international" ? market : undefined;
+  const selectedGoal = goal === "main" || goal === "detail" ? goal : undefined;
+  return COMMERCE_ENTRIES.filter(entry => (!selectedMarket || entry.market === selectedMarket)
+    && (!selectedGoal || entry.goal === selectedGoal || entry.goal === "both")
+    && (!hasAssets || entry.acceptsHandoff));
+}
+
 export function commerceEntryHref(entry: CommerceEntry, search?: Pick<URLSearchParams, "get" | "getAll">) {
   const ids = search?.getAll("assetId") ?? [];
   if (!ids.length || !entry.acceptsHandoff) return entry.href;

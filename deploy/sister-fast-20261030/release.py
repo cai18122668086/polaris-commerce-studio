@@ -91,6 +91,37 @@ def source_hashes():
             hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
+def build_base(role, live, root):
+    image = json.loads(out(["docker", "image", "inspect", live["Image"]]))[0]
+    layers = len(image["RootFS"]["Layers"])
+    tag = "polaris/suite-fast-base-" + role + ":" + live["Image"][7:19]
+    if layers <= 80:
+        subprocess.run(["docker", "tag", live["Image"], tag], check=True)
+        return tag
+    # The running root is read-only and Docker export omits all mounted volumes.
+    # Reading its already-mounted filesystem avoids the old image's overlay
+    # lowerdir limit. Runtime configuration is restored from inspect, below.
+    assert live["HostConfig"]["ReadonlyRootfs"]
+    current = inspect(role)
+    assert (current["Id"], current["Image"]) == (live["Id"], live["Image"])
+    tag = "polaris/suite-fast-flat-" + role + ":" + live["Image"][7:19]
+    exporter = subprocess.Popen(["docker", "export", current["Id"]], stdout=subprocess.PIPE)
+    try:
+        flattened = out(["docker", "import", "-", tag], stdin=exporter.stdout).decode().strip()
+    finally:
+        if exporter.stdout:
+            exporter.stdout.close()
+        assert exporter.wait() == 0, "Read-only image export failed"
+    helpers.private(root / ("flattened-" + role + ".json"), {
+        "observed_image": live["Image"], "observed_container": live["Id"],
+        "original_layers": layers, "flattened_image": flattened,
+        "read_only_export": True, "mounted_volumes_excluded": True,
+    })
+    print(json.dumps({"flattened": role, "original_layers": layers,
+                      "base_image": flattened}), flush=True)
+    return tag
+
+
 def build(root, revision):
     assert REPO == Path("/opt/polaris/releases") / revision, "Use the exact release directory"
     root.mkdir(mode=0o700, exist_ok=False)
@@ -102,9 +133,7 @@ def build(root, revision):
     for role in ROLES:
         dockerfile = "frontend" if role == "frontend" else "backend"
         tag = "polaris/suite-fast-" + role + ":" + revision[:12]
-        base_tag = "polaris/suite-fast-base-" + role + ":" + baseline[role][7:19]
-        subprocess.run(["docker", "tag", baseline[role], base_tag], check=True)
-        assert out(["docker", "image", "inspect", "--format", "{{.Id}}", base_tag]).decode().strip() == baseline[role]
+        base_tag = build_base(role, live[role], root)
         subprocess.run(["docker", "build", "-f",
             str(REPO / "deploy/sister-fast-20261030" / (dockerfile + ".Dockerfile")),
             "--pull=false", "--build-arg", "POLARIS_BASE_IMAGE=" + base_tag,
@@ -180,7 +209,9 @@ def verify_runtime(root):
         row = healthy(role)
         assert row["Image"] == manifest["images"][role]
         previous = baseline["roles"][role]
-        for key in ("Env", "Cmd", "Entrypoint", "Healthcheck", "User", "WorkingDir"):
+        env = lambda value: dict(entry.split("=", 1) for entry in value["Config"]["Env"])
+        assert env(row) == env(previous), role + " environment"
+        for key in ("Cmd", "Entrypoint", "Healthcheck", "User", "WorkingDir"):
             assert row["Config"].get(key) == previous["Config"].get(key), role + " runtime " + key
         for key in ("Memory", "NanoCpus", "ReadonlyRootfs", "CapDrop", "SecurityOpt"):
             assert row["HostConfig"].get(key) == previous["HostConfig"].get(key), role + " resource " + key

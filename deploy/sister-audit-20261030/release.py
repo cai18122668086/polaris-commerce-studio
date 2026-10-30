@@ -222,8 +222,10 @@ def build(root, revision, reuse_candidate=None):
             continue
         dockerfile = "frontend" if role == "frontend" else "backend"
         tag = "polaris/audit-" + role + ":" + revision[:12]
-        base_tag = previous['images']['frontend'] if previous else build_base(role, live[role], root)
+        base_tag = build_base(role, live[role], root) if not previous else (
+            'polaris/audit-reuse-frontend:' + reuse_candidate[:12])
         if previous:
+            subprocess.run(['docker', 'tag', previous['images']['frontend'], base_tag], check=True)
             dockerfile = 'frontend-overlay'
         subprocess.run(["docker", "build", "-f",
             str(REPO / "deploy/sister-audit-20261030" / (dockerfile + ".Dockerfile")),

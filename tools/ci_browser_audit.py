@@ -72,6 +72,9 @@ with sync_playwright() as p:
                 print('CHECK',width,path,flush=True)
                 visit(path,expected)
                 assert not page.evaluate('document.documentElement.scrollWidth>innerWidth'),(width,path,'overflow')
+                if path == '/account#settings':
+                    for card in page.locator('.settings-integration > section').all():
+                        assert card.evaluate('(e)=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth}'),(width,'account settings card clipped')
                 if path in ['/','/tools']:
                     for offset in range(0,page.evaluate('document.body.scrollHeight'),750):
                         page.evaluate('y=>window.scrollTo(0,y)',offset);page.wait_for_timeout(70)

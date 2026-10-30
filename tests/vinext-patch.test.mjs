@@ -44,8 +44,17 @@ test("vinext production patch is fresh-install safe and idempotent", async () =>
     await patchVinextProduction(fixture);
     const first = await snapshot(fixture);
     assert.match(first.staticCache, /relativePath\.split\(path\.sep\)/);
+    assert.match(first.staticCache, /relativePath\.startsWith\("images\/display\/"\)/);
     assert.match(first.prodServer, /pathname\.startsWith\("\/_polaris-static\/"\)/);
 
+    await patchVinextProduction(fixture);
+    assert.deepEqual(await snapshot(fixture), first);
+
+    const previousStaticCache = first.staticCache.replace(
+      'const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/") || relativePath.startsWith("images/display/");',
+      'const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/");',
+    );
+    await writeFile(path.join(fixture, "dist", "server", "static-file-cache.js"), previousStaticCache);
     await patchVinextProduction(fixture);
     assert.deepEqual(await snapshot(fixture), first);
 
@@ -76,6 +85,10 @@ async function restorePristineFixture(vinextRoot) {
     "prod-server.js",
   );
   const staticCache = (await readFile(staticCachePath, "utf8"))
+    .replace(
+      'const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/") || relativePath.startsWith("images/display/");',
+      'const isHashed = relativePath.startsWith("assets/");',
+    )
     .replace(
       'const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/");',
       'const isHashed = relativePath.startsWith("assets/");',

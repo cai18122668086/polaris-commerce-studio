@@ -207,9 +207,7 @@ def _principal_from_user(user: UserRecord, *, email_verified: bool) -> Principal
 async def get_principal(
     request: HTTPConnection,
     session: SessionDependency,
-    _session_cookie: Annotated[
-        str | None, Security(_SESSION_COOKIE)
-    ] = None,
+    _session_cookie: Annotated[str | None, Security(_SESSION_COOKIE)] = None,
 ) -> Principal:
     settings = request.app.state.settings
     if settings.auth_mode == "development":
@@ -340,4 +338,24 @@ def require_workspace_write(
 WorkspaceWriteDependency = Annotated[
     WorkspaceContext,
     Depends(require_workspace_write),
+]
+
+
+def require_workspace_processing_write(
+    request: HTTPConnection,
+    session: SessionDependency,
+    workspace: WorkspaceDependency,
+) -> WorkspaceContext:
+    require_workspace_write(workspace)
+    if request.app.state.settings.auth_mode == "external":
+        from .processing_consent import require_processing_consent
+
+        require_processing_consent(session, workspace.principal.user_id)
+        # Do not hold the consent read transaction during provider/storage calls.
+        session.rollback()
+    return workspace
+
+
+WorkspaceProcessingWriteDependency = Annotated[
+    WorkspaceContext, Depends(require_workspace_processing_write)
 ]

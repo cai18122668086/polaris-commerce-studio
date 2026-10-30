@@ -19,6 +19,7 @@ import { probeReferenceImage } from "@/lib/replica/reference-images";
 import { firstMissingReplicaOrdinal } from "@/lib/replica/results";
 import { mergeReplicaProgress, replicaAnalysisMessage, replicaOverallProgress, replicaPlanFailure, replicaSegmentationFailure, replicaWorkflowStep } from "@/lib/replica/progress";
 import { fastReplicaOutputAsset, replicaResultNeedsReconciliation } from "@/lib/replica/result-assets";
+import { DEFAULT_REPLICA_METHOD, REPLICA_MODE_CHOICES, REPLICA_MODE_VERSION, replicaCreditsFor, replicaDraftMethod, replicaSpeedFor } from "@/lib/replica/modes";
 import { ReplicaSelect } from "./replica-select";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
@@ -30,7 +31,7 @@ type AssetChoice = { id: string; name: string };
 type Product = { title: string | null; platform: string; targetPlatform?: string; imageUrls: string[]; descImageUrls: string[]; skuImageUrls: string[] };
 type Plan = { reference: { asset_id: string; title: string; aspect_ratio: string }; analysis: Record<string, unknown>; prompt: string };
 type ExecutionProgress = { post_generation_review?: "disabled"; generated?: number; percentage: number; total: number; reviewed: number; accepted: number; rejected: number; current_module: number; phase: string; modules: { id: string; status: string; attempts: number; reasons: string[] }[] };
-type ReplicaDocument = { id: string; kind: string; status: string; created_at: string; updated_at?: string; payload: { segmentation_restart_available?: boolean; segmentation_repair_available?: boolean; segmentation_diagnostics?: { coverage_valid: boolean; columns: { reference_index: number | null; split_count: number; inventory_count: number; reason?: string }[] }; execution_resume_available?: boolean; error_code?: string; analysis_attempt_id?: string; analysis_resume_available?: boolean; analysis_revision_available?: boolean; analysis_progress?: { stage: string; total: number; planned: number; reviewed: number; accepted: number; pending_corrections: number }; execution_progress?: ExecutionProgress; auto_start_after_plan?: boolean; automatic_submission_error?: string; replica_speed?: "standard" | "fast"; replication_method?: "exact" | "style"; analysis_stage?: string; skill_id?: string; product?: Product; product_asset_ids?: string[]; references?: Plan["reference"][]; plans?: Plan[]; plan_hash?: string; job_ids?: string[]; progress?: number; error?: string; facts?: string; confirmed_instructions?: string[]; credit_budget_exceeded?: boolean; credit_budget?: number; credit_quote?: { image_count: number; estimated_credits: number }; submission_complete?: boolean; platform_code?: string; language?: string } };
+type ReplicaDocument = { id: string; kind: string; status: string; created_at: string; updated_at?: string; payload: { segmentation_restart_available?: boolean; segmentation_repair_available?: boolean; segmentation_diagnostics?: { coverage_valid: boolean; columns: { reference_index: number | null; split_count: number; inventory_count: number; reason?: string }[] }; execution_resume_available?: boolean; error_code?: string; analysis_attempt_id?: string; analysis_resume_available?: boolean; analysis_revision_available?: boolean; analysis_progress?: { stage: string; total: number; planned: number; reviewed: number; accepted: number; pending_corrections: number }; execution_progress?: ExecutionProgress; auto_start_after_plan?: boolean; automatic_submission_error?: string; replica_speed?: "standard" | "fast"; replica_mode_version?: string; replication_method?: "exact" | "style"; analysis_stage?: string; skill_id?: string; product?: Product; product_asset_ids?: string[]; references?: Plan["reference"][]; plans?: Plan[]; plan_hash?: string; job_ids?: string[]; progress?: number; error?: string; facts?: string; confirmed_instructions?: string[]; credit_budget_exceeded?: boolean; credit_budget?: number; credit_quote?: { image_count: number; estimated_credits: number }; submission_complete?: boolean; platform_code?: string; language?: string } };
 const STEPS = ["准备素材", "分析参考", "确认商品", "设计方案", "生成图片", "完成"];
 
 async function replicaRequest<T>(workspaceId: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -83,7 +84,7 @@ export function StyleReplicaWorkspace() {
   const [libraryRole, setLibraryRole] = useState<"product" | "reference" | null>(null);
   const [mode, setMode] = useState<"link" | "image">("link");
   const [replicaSpeed, setReplicaSpeed] = useState<"standard" | "fast">("fast");
-  const [replicationMethod, setReplicationMethod] = useState<"exact" | "style">("exact");
+  const [replicationMethod, setReplicationMethod] = useState<"exact" | "style">(DEFAULT_REPLICA_METHOD);
   const [products, setProducts] = useState<AssetChoice[]>([]);
   const [references, setReferences] = useState<AssetChoice[]>([]);
   const [sourcePlatform, setSourcePlatform] = useState("auto");
@@ -123,6 +124,8 @@ export function StyleReplicaWorkspace() {
   const draftWorkspace = useRef("");
   const selectedReferenceCount = references.filter(item => selectedReferences.includes(item.id)).length;
   const status = sessionDoc?.status;
+  const historicalMode = !!sessionDoc && sessionDoc.payload.replica_mode_version !== REPLICA_MODE_VERSION;
+  const modeChoices = historicalMode ? REPLICA_MODE_CHOICES.map(option => option.value === replicationMethod ? { ...option, description: "历史任务 · 按原方案继续", price: replicaSpeed === "fast" ? 8 : 15, recommended: false } : option) : REPLICA_MODE_CHOICES;
   const planFailure = sessionDoc ? replicaPlanFailure(sessionDoc) : undefined;
   const segmentationFailure = sessionDoc ? replicaSegmentationFailure(sessionDoc) : undefined;
   const working = busy !== "" || ["analysing"].includes(status ?? "") || productDoc?.status === "fetching";
@@ -144,7 +147,7 @@ export function StyleReplicaWorkspace() {
   const selectReplicationMethod = (value: "exact" | "style") => {
     if (working || actionLock.current || value === replicationMethod) return;
     window.history.replaceState(null, "", "/style-replica");
-    setReplicationMethod(value); setAnalysisRequestId(crypto.randomUUID());
+    setReplicationMethod(value); setReplicaSpeed(replicaSpeedFor(value)); setAnalysisRequestId(crypto.randomUUID());
     setSessionDoc(undefined); setInstructions([]); setJobStatuses({}); setError("");
     retryIntents.current = {};
   };
@@ -175,12 +178,12 @@ export function StyleReplicaWorkspace() {
       if (!active || generation !== draftGeneration.current) return;
       draftWorkspace.current = workspaceId;
       setSessionDoc(undefined); setProductDoc(undefined); setSelected([]); setInstructions([]); setJobStatuses({});
-      try { const saved = JSON.parse(localStorage.getItem(`polaris-replica:${workspaceId}`) ?? "{}"); setProducts(saved.products ?? []); setReferences(saved.references ?? []); setAnalysisRequestId(saved.analysisRequestId ?? crypto.randomUUID()); setUrl(saved.url ?? ""); setSourcePlatform(saved.sourcePlatform ?? "auto"); setImageTab(saved.imageTab ?? "imageUrls"); if (saved.productDocId) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.productDocId}`).then(value => { if (active && generation === draftGeneration.current) { setProductDoc(value); setSelected(saved.selected ?? []); } }).catch(() => {}); setMode(saved.mode ?? "link"); setReplicationMethod(saved.replicationMethod ?? "exact"); setReplicaSpeed(saved.sessionId && saved.replicaSpeed !== "fast" ? "standard" : "fast"); setFacts(saved.facts ?? ""); setPlatform(saved.platform ?? "auto"); setLanguage(saved.language ?? "zh-CN"); setMainRatio(saved.mainRatio ?? "1:1"); setDetailRatio(saved.detailRatio ?? "3:4"); setRatio(saved.ratio ?? "follow-reference"); setSelectedReferences(saved.selectedReferences ?? (saved.references ?? []).map((item: AssetChoice) => item.id)); if (saved.sessionId && !new URLSearchParams(window.location.search).has("sessionId") && !new URLSearchParams(window.location.search).has("jobId") && !new URLSearchParams(window.location.search).has("assetId")) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.sessionId}`).then(value => { if (active && generation === draftGeneration.current) { setSessionDoc(value); setReplicaSpeed(value.payload.replica_speed === "fast" ? "fast" : "standard"); } }).catch(() => {}); } catch { /* A stale draft must not block the workspace. */ }
+      try { const saved = JSON.parse(localStorage.getItem(`polaris-replica:${workspaceId}`) ?? "{}"); setProducts(saved.products ?? []); setReferences(saved.references ?? []); setAnalysisRequestId(saved.analysisRequestId ?? crypto.randomUUID()); setUrl(saved.url ?? ""); setSourcePlatform(saved.sourcePlatform ?? "auto"); setImageTab(saved.imageTab ?? "imageUrls"); if (saved.productDocId) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.productDocId}`).then(value => { if (active && generation === draftGeneration.current) { setProductDoc(value); setSelected(saved.selected ?? []); } }).catch(() => {}); setMode(saved.mode ?? "link"); setReplicationMethod(replicaDraftMethod(saved)); setReplicaSpeed(replicaSpeedFor(replicaDraftMethod(saved))); setFacts(saved.facts ?? ""); setPlatform(saved.platform ?? "auto"); setLanguage(saved.language ?? "zh-CN"); setMainRatio(saved.mainRatio ?? "1:1"); setDetailRatio(saved.detailRatio ?? "3:4"); setRatio(saved.ratio ?? "follow-reference"); setSelectedReferences(saved.selectedReferences ?? (saved.references ?? []).map((item: AssetChoice) => item.id)); if (saved.sessionId && !new URLSearchParams(window.location.search).has("sessionId") && !new URLSearchParams(window.location.search).has("jobId") && !new URLSearchParams(window.location.search).has("assetId")) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.sessionId}`).then(value => { if (active && generation === draftGeneration.current) { setSessionDoc(value); setReplicationMethod(value.payload.replication_method ?? DEFAULT_REPLICA_METHOD); setReplicaSpeed(value.payload.replica_speed === "fast" ? "fast" : "standard"); } }).catch(() => {}); } catch { /* A stale draft must not block the workspace. */ }
       setHydratedWorkspace(workspaceId);
     });
     return () => { active = false; };
   }, [workspaceId]);
-  useEffect(() => { if (workspaceId && hydratedWorkspace === workspaceId) localStorage.setItem(`polaris-replica:${workspaceId}`, JSON.stringify({ products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDocId: productDoc?.id, sessionId: sessionDoc?.id })); }, [workspaceId, hydratedWorkspace, products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDoc?.id, sessionDoc?.id]);
+  useEffect(() => { if (workspaceId && hydratedWorkspace === workspaceId) localStorage.setItem(`polaris-replica:${workspaceId}`, JSON.stringify({ replicaModeVersion: REPLICA_MODE_VERSION, products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDocId: productDoc?.id, sessionId: sessionDoc?.id })); }, [workspaceId, hydratedWorkspace, products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDoc?.id, sessionDoc?.id]);
   useEffect(() => {
     if (!workspaceId || !pendingId) return;
     const generation = draftGeneration.current;
@@ -279,8 +282,9 @@ export function StyleReplicaWorkspace() {
       choices = references.filter(item => selectedReferences.includes(item.id)).map((item, index) => ({ asset_id: item.id, title: `参考图 ${index + 1}`, aspect_ratio: "follow-reference" }));
     }
     if (!products.length) throw new Error("请上传自己的产品图。");
-    setInstructions([]); setJobStatuses({}); setReplicaSpeed("fast");
-    const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, replication_method: replicationMethod, replica_speed: "fast", auto_start_after_plan: true, credit_budget: Math.max(1, choices.length) * 8, platform_code: platform === "auto" ? product?.targetPlatform ?? product?.platform ?? "tmall" : platform, language, facts });
+    const speed = replicaSpeedFor(replicationMethod);
+    setInstructions([]); setJobStatuses({}); setReplicaSpeed(speed);
+    const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, replication_method: replicationMethod, replica_mode_version: REPLICA_MODE_VERSION, replica_speed: speed, auto_start_after_plan: true, credit_budget: Math.max(1, choices.length) * replicaCreditsFor(replicationMethod), platform_code: platform === "auto" ? product?.targetPlatform ?? product?.platform ?? "tmall" : platform, language, facts });
     if (isCurrent()) setSessionDoc(result);
   });
   const confirm = () => workspaceId && sessionDoc && perform("提交生成", async isCurrent => { try { const value = await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/confirm`, { plan_hash: sessionDoc.payload.plan_hash, instructions: sessionDoc.payload.confirmed_instructions ?? instructions }); if (isCurrent()) setSessionDoc(value); } catch (caught) { const value = await replicaRequest<ReplicaDocument>(workspaceId, `/documents/${sessionDoc.id}`); if (isCurrent()) setSessionDoc(value); throw caught; } });
@@ -291,14 +295,14 @@ export function StyleReplicaWorkspace() {
     draftGeneration.current += 1; actionLock.current = false; uploadBatchLock.current = false;
     setBusy(""); setProductDoc(current => current?.status === "fetching" ? undefined : current);
     window.history.replaceState(null, "", "/style-replica"); setAnalysisRequestId(crypto.randomUUID());
-    setSessionDoc(undefined); setInstructions([]); setError(""); setJobStatuses({}); retryIntents.current = {};
+    setSessionDoc(undefined); setReplicaSpeed(replicaSpeedFor(replicationMethod)); setInstructions([]); setError(""); setJobStatuses({}); retryIntents.current = {};
   };
   const reset = () => {
     editSources();
     setProducts([]); setReferences([]); setSelectedReferences([]); setSelected([]);
     setProductDoc(undefined); setFacts(""); setUrl(""); setHiddenSources([]);
     setPreview(""); setModal(null);
-    setMode("link"); setReplicationMethod("exact"); setReplicaSpeed("fast"); setSourcePlatform("auto"); setImageTab("imageUrls");
+    setMode("link"); setReplicationMethod(DEFAULT_REPLICA_METHOD); setReplicaSpeed(replicaSpeedFor(DEFAULT_REPLICA_METHOD)); setSourcePlatform("auto"); setImageTab("imageUrls");
     setPlatform("auto"); setLanguage("zh-CN"); setMainRatio("1:1"); setDetailRatio("3:4"); setRatio("follow-reference");
     upload.reset();
     if (workspaceId) localStorage.removeItem(`polaris-replica:${workspaceId}`);
@@ -324,11 +328,8 @@ export function StyleReplicaWorkspace() {
         <p className={styles.hint}>清晰展示商品外观，支持多角度补充。</p>
         {uploadBox("product", products, 6)}
         <section className={styles.generationSettings}>
-          <SettingField label="复刻方式" span="full"><ChoiceControl name="replication-method" label="复刻方式" value={replicationMethod} onChange={selectReplicationMethod} disabled={working || !!sessionDoc} variant="cards" options={[
-            {value:"exact",label:"一比一模仿",description:"贴近参考构图与排版"},
-            {value:"style",label:"风格复刻",description:"提取风格，重构商品画面"},
-          ]} /></SettingField>
-          <p className={styles.hint}>新任务使用快速版，按成功交付每张 8 积分结算。</p>
+          <SettingField label="复刻方式" span="full"><ChoiceControl name="replication-method" label="复刻方式" value={replicationMethod} onChange={selectReplicationMethod} disabled={working || !!sessionDoc} variant="cards" options={modeChoices} /></SettingField>
+          <p className={styles.hint}>{historicalMode ? "历史任务沿用提交时的复刻方式与计费。" : replicationMethod === "style" ? "风格模仿约 5 分钟，功能强大；一比一复刻约 40 分钟，一模一样。" : "一比一复刻约 40 分钟，一模一样；需快速出图可选风格模仿。"}按成功交付每张 {replicaSpeed === "fast" ? 8 : 15} 积分结算。</p>
         </section>
         <div className={styles.modeTabs} role="tablist" aria-label="参考来源"><button role="tab" aria-selected={mode === "link"} className={mode === "link" ? styles.activeTab : ""} onClick={() => setMode("link")}>商品链接</button><button role="tab" aria-selected={mode === "image"} className={mode === "image" ? styles.activeTab : ""} onClick={() => setMode("image")}>风格参考图</button></div>
         {mode === "link" ? <>
@@ -349,7 +350,7 @@ export function StyleReplicaWorkspace() {
         </fieldset>
         {handoff.error && <p className={styles.error} role="alert">{handoff.error instanceof Error ? handoff.error.message : "素材带入失败，请重新选择。"}</p>}{error && <p className={styles.error} role="alert">{error}</p>}
         <div className={styles.sidebarFooter}>
-          <div className={styles.priceRow}><span>{replicaSpeed === "fast" ? "快速版" : "精致版"}<small>{replicaSpeed === "fast" ? 8 : 15} 积分 / 张</small></span><button type="button" onClick={() => setModal("fees")} aria-label="查看计费与拆屏预算说明"><CircleHelp size={14} /></button></div>
+          <div className={styles.priceRow}><span>{replicationMethod === "style" ? "风格模仿" : "一比一复刻"}<small>{replicaSpeed === "fast" ? 8 : 15} 积分 / 张</small></span><button type="button" onClick={() => setModal("fees")} aria-label="查看计费与拆屏预算说明"><CircleHelp size={14} /></button></div>
           <button className={styles.startButton} disabled={!!sessionDoc || working || !workspaceId || !products.length || (mode === "image" ? !selectedReferenceCount : !selected.length)} onClick={() => void analyse()}>{working ? <><LoaderCircle className="spin" size={16} />{busy || (status === "analysing" ? "正在诊断" : "正在拉取商品")}</> : <><Sparkles size={16} />生成商品套图{(mode === "image" ? selectedReferenceCount : selected.length) > 0 && <small>预计 {(mode === "image" ? selectedReferenceCount : selected.length) * (replicaSpeed === "fast" ? 8 : 15)} 积分</small>}</>}</button>
           <p className={styles.footerNote}>按成功图片结算 · 拆屏超出预算先确认</p>
         </div>
@@ -369,7 +370,7 @@ export function StyleReplicaWorkspace() {
         {!sessionDoc && (mode === "link" ? !product : !references.length) && <div className={styles.emptyState}><WorkspaceVisualPreview method={replicationMethod} /><h2>好构图，换成你的好商品</h2><p>上传产品图，添加商品链接或风格参考图<br />选好参考后，生成你的商品套图</p><div className={styles.emptySteps}><span>01 上传产品</span><ChevronRight size={13} /><span>02 选择参考</span><ChevronRight size={13} /><span>03 查看成图</span></div></div>}
       </section>
     </div>
-    {modal && <div className={styles.overlay} onClick={() => setModal(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-label={modal === "fees" ? "用量说明" : "使用教程"} onClick={event => event.stopPropagation()}><button className={styles.closeModal} onClick={() => setModal(null)} aria-label="关闭"><X size={20} /></button>{modal === "fees" ? <><h2>用量说明</h2><p>商品拉取通过第三方数据服务完成；同一商品当天再次查询会复用已有结果。</p><p>一键复刻快速版每张 8 积分、精致版每张 15 积分，按成功生成图片结算；提交时预留，失败或未执行部分释放。重新生成会创建新的计费任务。</p><Link href="/jobs">前往任务中心 <ChevronRight size={14} /></Link></> : <><h2>把参考风格，变成你的商品图</h2><ol><li>上传自己的产品图，让外观、材质与品牌清晰可见。</li><li>粘贴商品链接选图，或直接上传风格参考图。</li><li>选择目标平台与语言，可补充自己的真实卖点。</li><li>提交素材后自动分析、规划与生成。</li><li>查看成图，结果保存在素材库和生成记录中。</li></ol><p>参考图用于学习构图、光影和排版。商品参数、认证与售后承诺请以自己的真实信息为准。</p></>}</section></div>}
+    {modal && <div className={styles.overlay} onClick={() => setModal(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-label={modal === "fees" ? "用量说明" : "使用教程"} onClick={event => event.stopPropagation()}><button className={styles.closeModal} onClick={() => setModal(null)} aria-label="关闭"><X size={20} /></button>{modal === "fees" ? <><h2>用量说明</h2><p>商品拉取通过第三方数据服务完成；同一商品当天再次查询会复用已有结果。</p><p>风格模仿约 5 分钟，每张 8 积分；一比一复刻约 40 分钟，每张 15 积分，按成功生成图片结算；提交时预留，失败或未执行部分释放。重新生成会创建新的计费任务。</p><Link href="/jobs">前往任务中心 <ChevronRight size={14} /></Link></> : <><h2>把参考风格，变成你的商品图</h2><ol><li>上传自己的产品图，让外观、材质与品牌清晰可见。</li><li>粘贴商品链接选图，或直接上传风格参考图。</li><li>选择目标平台与语言，可补充自己的真实卖点。</li><li>提交素材后自动分析、规划与生成。</li><li>查看成图，结果保存在素材库和生成记录中。</li></ol><p>参考图用于学习构图、光影和排版。商品参数、认证与售后承诺请以自己的真实信息为准。</p></>}</section></div>}
     {preview && <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreview("")}><button onClick={() => setPreview("")} aria-label="关闭图片预览"><X size={24} /></button><img src={preview} alt="图片预览" referrerPolicy="no-referrer" /></div>}
   </div>;
 }

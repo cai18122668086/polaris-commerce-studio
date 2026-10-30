@@ -2699,6 +2699,8 @@ export interface components {
             product_asset_ids: string[];
             /** References */
             references: components["schemas"]["ReferenceChoice"][];
+            /** Replica Mode Version */
+            replica_mode_version?: "replica-modes-v2" | null;
             /**
              * Replica Speed
              * @default standard

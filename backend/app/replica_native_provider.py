@@ -282,6 +282,7 @@ class NativeReplicaProvider:
                 if not starts_group(self, request, ordinal):
                     raise ReplicaNativeError("前序复刻尚未通过完整验收。")
                 if run.method == "exact":
+                    run.delivery_ordinal = ordinal
                     delivery = await replica_direct_delivery.execute(self, run, request)
                 else:
                     delivery = await self._style(run, request)

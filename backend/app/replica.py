@@ -16,6 +16,7 @@ from urllib.request import Request as UrlRequest
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import (
     func,
@@ -91,10 +92,13 @@ class AnalysisRequest(BaseModel):
     language: str = Field(default="zh-CN", min_length=2, max_length=16)
     facts: str = Field(default="", max_length=4000)
     replication_method: Literal["exact", "style"] | None = None
+    replica_speed: Literal["standard", "fast"] = "standard"
     auto_start_after_plan: bool = False
 
     @model_validator(mode="after")
     def validate_roles(self) -> AnalysisRequest:
+        if self.replica_speed == "fast" and self.replication_method is None:
+            raise ValueError("快速复刻需要选择一比一模仿或风格复刻。")
         if (
             (
                 self.replication_method is not None
@@ -159,6 +163,9 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_style_analysis_revision",
                 "_style_crop_policy_adoption",
                 "_completion_requested",
+                "_fast_plan",
+                "_fast_analysis_receipt",
+                "_fast_invocations",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -233,6 +240,38 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
             {"reference": plan["reference"], "analysis": {}, "prompt": ""}
             for plan in row.payload.get("plans", [])
         ]
+    if row.payload.get("replica_speed") == "fast" and row.payload.get("job_ids"):
+        units = row.payload.get("_fast_plan", {}).get("units", [])
+        receipts = row.payload.get("_fast_invocations", {})
+        generated = sum(
+            receipts.get(u["id"], {}).get("state") == "returned" for u in units
+        )
+        value["payload"]["execution_progress"] = {
+            "post_generation_review": "disabled",
+            "generated": generated,
+            "percentage": 100
+            if row.status == "completed"
+            else min(99, 25 + round(70 * generated / max(1, len(units)))),
+            "total": len(units),
+            "reviewed": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "current_module": min(len(units), generated + 1),
+            "phase": "FAST_GENERATING",
+            "modules": [
+                {
+                    "id": u["id"],
+                    "status": "GENERATED"
+                    if receipts.get(u["id"], {}).get("state") == "returned"
+                    else "AWAITING_ARTWORK"
+                    if receipts.get(u["id"], {}).get("state") in {"invoked", "unknown"}
+                    else "PENDING",
+                    "attempts": int(u["id"] in receipts),
+                    "reasons": [],
+                }
+                for u in units
+            ],
+        }
     return value
 
 
@@ -274,6 +313,8 @@ def _analysis_input_hash(payload: dict[str, Any], protocol: str | None = None) -
     }
     if protocol is not None:
         values["_exact_model_protocol"] = protocol
+    if payload.get("replica_speed") == "fast":
+        values["replica_speed"] = "fast"
     return _hash(values)
 
 
@@ -381,6 +422,16 @@ async def _fetch(app: Any, document_id: str) -> None:
                 else "商品获取失败，请稍后重试或上传参考图。",
             },
         )
+
+
+@router.get("/product-platforms")
+def product_platforms(workspace: WorkspaceDependency) -> list[dict[str, str]]:
+    return [
+        {"code": code, "label": label}
+        for code, label in (
+            ("taobao", "淘宝"), ("tmall", "天猫"), ("1688", "1688"), ("jd", "京东")
+        )
+    ]
 
 
 @router.post("/products", status_code=202)
@@ -641,6 +692,59 @@ def _download(url: str, max_bytes: int) -> bytes:
     return payload
 
 
+@router.get(
+    "/products/{document_id}/images/{image_group}/{image_index}",
+    response_class=Response,
+)
+async def preview_product_image(
+    document_id: str,
+    image_group: Literal["imageUrls", "descImageUrls", "skuImageUrls"],
+    image_index: int,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> Response:
+    """Serve only this workspace's returned product images through the same origin."""
+    row = _get(session, workspace.workspace_id, document_id, "product")
+    urls = row.payload.get("product", {}).get(image_group, [])
+    if row.status != "ready" or not 0 <= image_index < len(urls):
+        raise ApiError(404, "PRODUCT_IMAGE_NOT_FOUND", "未找到该商品图片。")
+    url = urls[image_index]
+    session.rollback()
+    data = await asyncio.to_thread(
+        _download, url, request.app.state.settings.max_upload_bytes
+    )
+    from PIL import Image
+
+    try:
+        with Image.open(BytesIO(data)) as source:
+            if (
+                source.width * source.height
+                > request.app.state.settings.max_image_pixels
+            ):
+                raise ValueError("Image dimensions exceed the configured limit")
+            media_type = {
+                "JPEG": "image/jpeg",
+                "PNG": "image/png",
+                "WEBP": "image/webp",
+                "GIF": "image/gif",
+            }.get(source.format or "")
+            if not media_type:
+                raise ValueError("Unsupported image format")
+            source.verify()
+    except Exception:
+        raise ApiError(502, "PRODUCT_IMAGE_INVALID", "商品图片暂时无法读取。") from None
+    return Response(
+        data,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, max-age=86400",
+            "Vary": "Cookie",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.post("/products/{document_id}/import")
 async def import_images(
     document_id: str,
@@ -784,6 +888,20 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
         gateway = getattr(app.state, "replica_gateway", None) or build_tengli_gateway(
             app.state.settings
         )
+        if payload.get("replica_speed") == "fast":
+            from .replica_fast import analyse as analyse_fast
+
+            await analyse_fast(
+                app,
+                document_id,
+                workspace_id,
+                payload,
+                records,
+                gateway,
+                lambda: _analysis_current(app, document_id, attempt_id),
+                lambda state, values: _save(app, document_id, state, dict(values)),
+            )
+            return
         if payload.get("replication_method") in SKILLS:
             run_type = NativeReplicaRun
             if payload.get("replication_method") == "style":
@@ -1077,7 +1195,10 @@ def analyse(
     if not request.app.state.settings.reference_remix_provider_enabled:
         raise ApiError(503, "REPLICA_DISABLED", "复刻生成服务暂未开放，请稍后再试。")
     values = payload.model_dump(mode="json")
-    if payload.replication_method == "exact":
+    if payload.replica_speed == "standard":
+        # Keep original-edition request identities byte-compatible with old clients.
+        values.pop("replica_speed")
+    if payload.replication_method == "exact" and payload.replica_speed != "fast":
         from .replica_exact_compact import VERSION
 
         values["_exact_model_protocol"] = VERSION
@@ -1315,6 +1436,12 @@ def confirm(
     if any(len(text) > 4000 for text in payload.instructions):
         raise ApiError(
             422, "REPLICA_INSTRUCTION_TOO_LONG", "单张图片补充要求不能超过4000字。"
+        )
+    if values.get("replica_speed") == "fast":
+        from .replica_fast import confirm as confirm_fast
+
+        return confirm_fast(
+            document_id, payload, request, background_tasks, workspace, session, row
         )
     if values.get("replication_method") in SKILLS:
         return _confirm_native(

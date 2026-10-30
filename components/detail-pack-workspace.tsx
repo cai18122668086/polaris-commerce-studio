@@ -15,6 +15,7 @@ import { ImageDropZone } from "@/components/image-drop-zone";
 import { assetHandoffKey } from "@/lib/assets/creation-handoff";
 import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
 import { ReplicaSelect } from "@/components/replica-select";
+import { GenerationRecommendation } from "@/components/generation-recommendation";
 import { AppShell } from "@/components/app-shell";
 import { DomesticDetailIntakeQuestion } from "@/components/domestic-detail-intake-question";
 import { DomesticDetailApproval, NATIVE_DETAIL_APPROVAL_TEXT } from "@/components/domestic-detail-approval";
@@ -36,6 +37,7 @@ import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import { validateImageUpload } from "@/lib/image-upload";
 import { detailSkillSettings, savedDetailSkill } from "@/lib/detail-skills";
+import { DETAIL_SPEED_OPTIONS, detailSpeedSettings, savedDetailSpeed, type DetailSpeed } from "@/lib/detail-speed";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
@@ -125,6 +127,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const searchParams = useSearchParams();
   const router = useRouter();
   const [draftPageCount, setPageCount] = useState(8);
+  const [draftDetailSpeed, setDetailSpeed] = useState<DetailSpeed>("standard");
   const draftMarketRegion = initialRegion;
   const [draftMarketplaceId, setMarketplaceId] = useState(initialRegion === "domestic" ? "tmall" : "shopify");
   const [draftImageSize, setImageSize] = useState<MarketplaceImageSize>(initialRegion === "domestic" ? DOMESTIC_DETAIL_SIZE : "2048x2048");
@@ -160,6 +163,8 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const marketRegion: MarketRegion = jobId ? saved?.market_region === "international" ? "international" : "domestic" : draftMarketRegion;
   const detailSkill = jobId ? savedDetailSkill(job.data?.configuration) : "refined";
   const isRefinedDetail = marketRegion === "domestic" && detailSkill === "refined";
+  const detailSpeed = jobId ? savedDetailSpeed(job.data?.configuration) : draftDetailSpeed;
+  const isFastDetail = isRefinedDetail && detailSpeed === "fast";
   const marketplaceId = savedString("platform_code", draftMarketplaceId);
   const imageSize = (savedString("size", draftImageSize ?? "1440x1920") || DOMESTIC_DETAIL_SIZE) as MarketplaceImageSize;
   const language = jobId ? saved?.language === "en-US" ? "en-US" : "zh-CN" : draftLanguage;
@@ -273,6 +278,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
       language,
       market_region: marketRegion,
       ...detailSkillSettings(marketRegion, detailSkill),
+      ...detailSpeedSettings(marketRegion, detailSpeed),
       category: category.trim() || undefined,
       target_buyer: targetBuyer.trim() || undefined,
       auto_start_after_plan: true,
@@ -327,7 +333,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
           />
 
           <section className="marketplace-selector">
-            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>所选渠道会影响图片尺寸、构图和文案规范。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name} · 严格交付 {imageSize}</span></div>
+            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>所选渠道会影响图片尺寸、构图和文案规范。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name} · {isRefinedDetail ? "3:4 原图交付" : `严格交付 ${imageSize}`}</span></div>
             <p className="commerce-context">{marketRegion === "domestic" ? "国内电商 · 商品详情" : "跨境电商 · 商品详情"} · <Link href="/create">重新选择创作目标</Link></p>
             {marketRegion === "international" && <p>需要亚马逊主图、副图和 A+？<Link href="/workspace/amazon-visual-suite">制作亚马逊完整套图（21 张）</Link>。当前页面制作可选页数的商品详情图。</p>}
             <div className="marketplace-grid">
@@ -359,12 +365,13 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
               <label><span>商品名称 <i>*</i></span><input disabled={Boolean(jobId)} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：鎏金焕亮精华液" /></label>
               <label><span>商品类目</span><input disabled={Boolean(jobId)} value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
               <label><span>目标买家</span><input disabled={Boolean(jobId)} value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
-              <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize}</strong></div></label>
+              <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {isRefinedDetail ? "3:4 · 实际尺寸见结果" : imageSize}</strong></div></label>
               <label className="full"><span>核心卖点</span><textarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="用分号或换行分隔，最多 12 条" /></label>
             </div>
           <div className="creation-output-settings">
             <div className="creation-output-heading"><h3>输出设置</h3><span>{selectedMarketplace.name} · {language === "zh-CN" ? "简体中文" : "English"} · {pageCount} 页</span></div>
             <div className="output-options">
+              {isRefinedDetail && <div className="option-field"><span><Sparkles size={16} />生成版本</span><div className="segmented-control" role="group" aria-label="详情图生成版本">{DETAIL_SPEED_OPTIONS.map(option => <button key={option.value} type="button" aria-pressed={detailSpeed === option.value} className={detailSpeed === option.value ? "active" : ""} disabled={Boolean(jobId) || createJob.isPending} onClick={() => setDetailSpeed(option.value)}>{detailSpeed === option.value && <Check size={14} aria-hidden="true" />}{option.title}{option.value === "fast" && <GenerationRecommendation />}</button>)}</div></div>}
               <div className="option-field"><span><Languages size={16} />内容语言</span><div className="segmented-control"><button type="button" aria-pressed={language === "zh-CN"} className={language === "zh-CN" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("zh-CN")}>{language === "zh-CN" && <Check size={14} aria-hidden="true" />}简体中文</button><button type="button" aria-pressed={language === "en-US"} className={language === "en-US" ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setLanguage("en-US")}>{language === "en-US" && <Check size={14} aria-hidden="true" />}English</button></div></div>
               <div className="option-field"><span><FileCheck2 size={16} />详情页数</span>{isRefinedDetail ? <ReplicaSelect label="详情页数" layout="grid" disabled={Boolean(jobId)} value={String(pageCount)} onChange={value => setPageCount(Number(value))} options={Array.from({ length: 12 }, (_, index) => [String(index + 1), `${index + 1} 页`] as const)} /> : <div className="page-count-control">{[8, 10, 12].map((count) => <button key={count} className={pageCount === count ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setPageCount(count)}>{count} 页</button>)}</div>}</div>
               {marketRegion === "international" && <div className="option-field"><span><Globe2 size={16} />图片尺寸</span><div className="page-count-control">{selectedMarketplace.sizePresets?.map((preset) => <button key={preset.value} className={imageSize === preset.value ? "active" : ""} disabled={Boolean(jobId)} onClick={() => setImageSize(preset.value)}>{preset.label}</button>)}</div></div>}
@@ -377,7 +384,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
           {job.data?.stage === "intake_confirmation_required" && <DomesticDetailIntakeQuestion key={`${job.data.id}:${job.data.plan?.revision}`} workspaceId={workspace?.id} job={job.data} />}
 
           {!automaticPlan && jobId && <section className="planning-card" aria-busy={job.isFetching}>
-            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划{marketRegion === "domestic" ? ` · ${isRefinedDetail ? "精致" : "历史快速"}` : ""}</h2><p>{jobId ? automaticPlan ? "规划校验通过后自动生成整套图片，无需再次确认方案。" : "正在读取页面规划。" : marketRegion === "domestic" ? "提交后自动规划并生成整套图片。" : "创建任务后将生成待确认的页面方案。"}</p><small>{isRefinedDetail ? "先规划买家需求、卖点表达和逐页构图，再分别生成每张 3:4 详情图。已生成图片可直接查看与下载。" : marketRegion === "domestic" ? "国内详情按相邻两屏生成一个 3:8 连续画布，固定切成两张 3:4 图片并审核。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
+            <div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>页面规划{marketRegion === "domestic" ? ` · ${isFastDetail ? "快速版" : isRefinedDetail ? "精致版" : "历史快速"}` : ""}</h2><p>{jobId ? automaticPlan ? "规划校验通过后自动生成整套图片，无需再次确认方案。" : "正在读取页面规划。" : marketRegion === "domestic" ? "提交后自动规划并生成整套图片。" : "创建任务后将生成待确认的页面方案。"}</p><small>{isRefinedDetail ? "先规划买家需求、卖点表达和逐页构图，再分别生成每张 3:4 详情图。已生成图片可直接查看与下载。" : marketRegion === "domestic" ? "国内详情按相邻两屏生成一个 3:8 连续画布，固定切成两张 3:4 图片并审核。" : "跨境详情按平台尺寸分别生成独立模块，生成完成后需完成人工 QA 审阅再交付。"}</small></div></div>{job.data && <StatusBadge status={job.data.status} />}</div>
             {!jobId && <div className="api-state"><Info size={22} /><p>尚未创建规划任务。</p></div>}
             {jobId && job.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在准备页面规划，请稍候…</p></div>}
             {job.data && planPages.length === 0 && <div className="api-state"><Clock3 size={22} /><p>{jobNote(job.data)}</p></div>}
@@ -401,8 +408,8 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
           {job.data?.id === jobId && auroraApproval && job.data.plan?.validation_status === "invalid" && <div className="api-state api-state--error" role="alert"><p>当前方案尚未通过校验。请修正后重新审阅完整方案；旧审批内容不能用于此次修改。</p></div>}
 
           {resultAssets.length > 0 && <section className="detail-form-card">
-            <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>所有已完成的图片会展示在这里，并支持后续下载。</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
-            <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} />)}</div>
+            <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>{isRefinedDetail ? "保留图片原始分辨率，实际尺寸显示在每张图片下方，可单张或整套下载。" : "所有已完成的图片会展示在这里，并支持后续下载。"}</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
+            <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} width={typeof asset.validation.actual_width === "number" ? asset.validation.actual_width : undefined} height={typeof asset.validation.actual_height === "number" ? asset.validation.actual_height : undefined} />)}</div>
             {job.data?.status === "completed" && resultAssets.length === job.data.expected_item_count ? <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} /> : null}
           </section>}
           {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>

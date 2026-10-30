@@ -739,7 +739,7 @@ class JobRecord(TimestampMixin, Base):
         nullable=False,
     )
     configuration_schema: Mapped[str] = mapped_column(
-        String(32), default="v1", nullable=False
+        String(64), default="v1", nullable=False
     )
     prompt_version: Mapped[str] = mapped_column(
         String(64), default="phase1.1-mock", nullable=False
@@ -907,7 +907,7 @@ class JobPlanRecord(Base):
     job_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     schema_version: Mapped[str] = mapped_column(
-        String(32), default="v1", nullable=False
+        String(64), default="v1", nullable=False
     )
     payload: Mapped[dict[str, Any]] = mapped_column(json_type(), nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)

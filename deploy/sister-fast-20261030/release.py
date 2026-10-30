@@ -113,7 +113,8 @@ def build_base(role, live, root):
             if (
                 proof["observed_image"] == live["Image"]
                 and proof["flattened_image"] == cached["Id"]
-                and proof["observed_container"] == current["Id"]
+                and proof.get("read_only_export") is True
+                and proof.get("mounted_volumes_excluded") is True
                 and len(cached["RootFS"]["Layers"]) == 1
             ):
                 helpers.private(root / ("flattened-" + role + ".json"), proof)
@@ -136,6 +137,34 @@ def build_base(role, live, root):
     return tag
 
 
+def verify_image_files(image, hashes):
+    script = """import hashlib,json,pathlib,sys
+hashes=json.load(sys.stdin)
+bad=[]
+for name,expected in hashes.items():
+    path=pathlib.Path('/app')/name
+    if not path.is_file():
+        bad.append({'path':name,'reason':'missing'})
+    elif hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
+        bad.append({'path':name,'reason':'hash mismatch'})
+assert not bad,json.dumps(bad)
+print(len(hashes))
+"""
+    checked = out(["docker", "run", "--rm", "-i", "--network", "none",
+                   "--read-only", "--cap-drop", "ALL", "--security-opt",
+                   "no-new-privileges", "--entrypoint", "python", image,
+                   "-c", script], input=json.dumps(hashes).encode()).decode().strip()
+    assert int(checked) == len(hashes)
+
+
+def verify_candidate_files(manifest):
+    for role, image in manifest["images"].items():
+        if role != "frontend":
+            verify_image_files(image, manifest["files"])
+    print(json.dumps({"candidate_files_verified": True,
+                      "files_per_backend": len(manifest["files"])}), flush=True)
+
+
 def build(root, revision):
     assert REPO == Path("/opt/polaris/releases") / revision, "Use the exact release directory"
     root.mkdir(mode=0o700, exist_ok=False)
@@ -154,6 +183,8 @@ def build(root, revision):
             "--build-arg", "POLARIS_REVISION=" + revision, "-t", tag, str(REPO)],
             check=True)
         images[role] = out(["docker", "image", "inspect", "--format", "{{.Id}}", tag]).decode().strip()
+        if role != "frontend":
+            verify_image_files(images[role], hashes)
         print(json.dumps({"built": role, "image": images[role]}), flush=True)
     helpers.private(root / "manifest.json", {
         "revision": revision, "bases": baseline, "images": images, "files": hashes,
@@ -167,9 +198,11 @@ def prepare(root):
     manifest = json.loads((root / "manifest.json").read_text())
     live = {role: healthy(role) for role in ROLES}
     assert all(row["Image"] == manifest["bases"][role] for role, row in live.items()), "Runtime drifted"
-    assert sql("SELECT version_num FROM alembic_version") == OLD_SCHEMA
-    assert sql("SELECT character_maximum_length FROM information_schema.columns "
-               "WHERE table_name='job_plans' AND column_name='schema_version'") == "32"
+    schema = sql("SELECT version_num FROM alembic_version")
+    width = sql("SELECT character_maximum_length FROM information_schema.columns "
+                "WHERE table_name='job_plans' AND column_name='schema_version'")
+    assert (schema, width) in {(OLD_SCHEMA, "32"), (NEW_SCHEMA, "64")}
+    verify_candidate_files(manifest)
     idle()
     config = None
     for role, row in live.items():
@@ -200,7 +233,7 @@ def prepare(root):
     helpers.private(root / "rollback.compose.private.json", rollback)
     helpers.private(root / "active.compose.private.json", config)
     helpers.private(root / "baseline.private.json", {
-        "roles": live, "protected": protected(), "schema": OLD_SCHEMA,
+        "roles": live, "protected": protected(), "schema": schema,
         "plan_count": sql("SELECT count(*) FROM job_plans"),
     })
     compose(root, "active.compose.private.json", "config", "--quiet")
@@ -261,6 +294,7 @@ def activate(root):
     assert protected() == baseline["protected"]
     assert (root / "postgres.dump").stat().st_size > 0
     assert all(inspect(role)["Image"] == manifest["bases"][role] for role in ROLES)
+    verify_candidate_files(manifest)
     idle()
     # Stop dispatchers first, wait for in-flight work, then observe idle again.
     compose(root, "active.compose.private.json", "stop", "--timeout", "1200", *WORKERS)

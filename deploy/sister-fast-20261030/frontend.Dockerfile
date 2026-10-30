@@ -14,6 +14,7 @@ COPY app /app/app
 COPY components /app/components
 COPY lib /app/lib
 COPY features /app/features
+COPY public /app/public
 RUN cp -a /app/dist/client/_polaris-static /tmp/polaris-previous-static \
     && NODE_OPTIONS=--max-old-space-size=1536 npm run build \
     && cp -an /tmp/polaris-previous-static/. /app/dist/client/_polaris-static/ \

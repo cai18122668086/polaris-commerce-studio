@@ -34,6 +34,32 @@ class CandidatePreflightTests(unittest.TestCase):
                     RELEASE.activate(root)
                 compose.assert_not_called()
 
+    def test_experience_candidate_is_checked_before_workers_stop(self):
+        spec = importlib.util.spec_from_file_location(
+            "experience_release_test_target", RELEASE_PATH.parents[1] / "sister-experience-20261030/release.py")
+        assert spec and spec.loader
+        release = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(release)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "manifest.json").write_text(json.dumps({
+                "revision": "test", "bases": dict.fromkeys(release.ROLES, "original-image"),
+            }))
+            (root / "baseline.private.json").write_text(json.dumps({"protected": {}}))
+            (root / "postgres.dump").write_bytes(b"backup")
+            (root / "restore-rehearsal.json").write_text(json.dumps({
+                "source_revision": "test", "candidate_migration_passed": True,
+            }))
+            with (
+                patch.object(release, "protected", return_value={}),
+                patch.object(release, "inspect", return_value={"Image": "original-image"}),
+                patch.object(release, "verify_candidate_files", side_effect=AssertionError("missing file")),
+                patch.object(release, "compose") as compose,
+            ):
+                with self.assertRaisesRegex(AssertionError, "missing file"):
+                    release.activate(root)
+                compose.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

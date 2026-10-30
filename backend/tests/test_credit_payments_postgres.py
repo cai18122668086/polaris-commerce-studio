@@ -277,6 +277,7 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
             "20261027_0029_credit_purchases.py",
             "20261027_0030_credit_memberships.py",
             "20261028_0031_admin_commerce.py",
+            "20261030_0033_customer_support_requests.py",
         ]:
             path = Path(__file__).resolve().parents[1] / "migrations/versions" / name
             spec = importlib.util.spec_from_file_location("credit_migration", path)

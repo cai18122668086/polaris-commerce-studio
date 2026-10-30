@@ -84,6 +84,14 @@ def test_admin_commerce_additive_migration_preserves_financial_rows():
     with engine.begin() as connection:
         with Operations.context(MigrationContext.configure(connection)):
             migration.upgrade()
+            support_path = path.with_name("20261030_0033_customer_support_requests.py")
+            support_spec = importlib.util.spec_from_file_location(
+                "support_migration", support_path
+            )
+            assert support_spec and support_spec.loader
+            support_migration = importlib.util.module_from_spec(support_spec)
+            support_spec.loader.exec_module(support_migration)
+            support_migration.upgrade()
         changed_tables = {
             "customer_support_profiles",
             "admin_credit_adjustments",

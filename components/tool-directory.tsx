@@ -20,6 +20,8 @@ import {
 import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
 import { CreationStartHub } from "@/components/creation-start-hub";
 import { CommerceEntryGroups } from "@/components/commerce-entry-groups";
+import { FeatureCaseArt } from "./feature-case-art";
+import { getFeatureCaseArt } from "@/lib/feature-case-art";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
@@ -152,6 +154,10 @@ function HomeFeatureCardArt({
   useEffect(() => () => {
     if (previewTimerRef.current !== undefined) window.clearTimeout(previewTimerRef.current);
   }, []);
+
+  if (getFeatureCaseArt(featureId)) {
+    return <span className="home-feature-card__art case-art-shell"><FeatureCaseArt featureId={featureId} portrait={featureId !== "local-edit"} /></span>;
+  }
 
   if (!visual) {
     if (featureId === "one-click-replica") return <HomeReplicaCardArt />;
@@ -460,12 +466,12 @@ export function ToolDirectory() {
           </div>
         </div>
 
-        <header className="focus-home__section-head">
-          <h2>精修与参考创作</h2>
+        <header className="focus-home__section-head home-outcome-heading" id="outcomes">
+          <h2>精修、模仿与跨境套图</h2>
           <p>主力工作台之外，这些工具也能帮你把图做好。</p>
         </header>
 
-        <div className="home-feature-grid" ref={featureGridRef}>
+        <div className="home-feature-grid home-outcome-grid" ref={featureGridRef}>
           {featuredTools.map((tool) => {
               const capability = resolveRuntimeCapability(
                 runtime.data,

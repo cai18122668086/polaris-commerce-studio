@@ -16,12 +16,12 @@ export function readAssetHandoff(search: Search, workspaceId: string, maxAssets:
   return { ids, caseId };
 }
 
-export function assetCreationHref(route: "/workspace/local-edit" | "/workspace/detail-pack" | "/create", workspaceId: string, ids: string[], caseId?: string) {
+export function assetCreationHref(route: "/workspace/local-edit" | "/workspace/detail-pack" | "/workspace/domestic-main-image" | "/style-replica" | "/create", workspaceId: string, ids: string[], caseId?: string) {
   const params = new URLSearchParams({ workspaceId });
   if (route === "/create") params.set("goal", "detail");
   for (const id of ids) params.append("assetId", id);
   if (caseId) params.set("inspirationCaseId", caseId);
-  readAssetHandoff(params, workspaceId, route === "/workspace/local-edit" ? 1 : 8);
+  readAssetHandoff(params, workspaceId, route === "/workspace/local-edit" ? 1 : route === "/style-replica" ? 6 : 8);
   if (!ids.length) throw new Error("请先选择素材。");
   return `${route}?${params}`;
 }
